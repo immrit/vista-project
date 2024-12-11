@@ -39,8 +39,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         onDestinationSelected: _onItemTapped,
         destinations: const [
           NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
+            icon: Icon(Icons.home_filled),
+            // selectedIcon: Icon(Icons.dashbohomard),
             label: 'یادداشت‌ها',
           ),
           NavigationDestination(

@@ -6,6 +6,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'Provider/appwriteProvider.dart';
 import 'View/HomeScreen.dart';
 import 'View/WelcomeScreen.dart';
+import 'View/authentication/loginScreen.dart';
 import 'View/authentication/signupScreen.dart';
 
 void main() async {
@@ -139,7 +140,7 @@ class _MyAppState extends ConsumerState<MyApp> {
               routes: {
                 '/signup': (context) => const SignUpScreen(),
                 //   '/home': (context) => const HomeScreen(),
-                //   '/login': (context) => const Loginuser(),
+                '/login': (context) => const Loginuser(),
                 //   '/editeProfile': (context) => const EditProfile(),
                 //   '/welcome': (context) => const WelcomePage(),
                 //   '/settings': (context) => const Settings(),
