@@ -4,9 +4,9 @@ import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:appwrite/appwrite.dart';
-import '../../Provider/appwriteProvider.dart';
+import '../../../Provider/appwriteProvider.dart';
 import '../HomeScreen.dart';
-import '../utility/widgets.dart';
+import '../../utility/widgets.dart';
 
 // وضعیت بارگذاری
 final loadingProvider = StateProvider<bool>((ref) => true);

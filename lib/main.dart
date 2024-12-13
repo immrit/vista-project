@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'Provider/appwriteProvider.dart';
-import 'View/HomeScreen.dart';
+import 'View/Screens/HomeScreen.dart';
 import 'View/WelcomeScreen.dart';
-import 'View/authentication/loginScreen.dart';
-import 'View/authentication/signupScreen.dart';
+import 'View/Screens/authentication/loginScreen.dart';
+import 'View/Screens/authentication/signupScreen.dart';
 
 void main() async {
   // await Hive.initFlutter(); // مقداردهی اولیه Hive

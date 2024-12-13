@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:vista/Provider/appwriteProvider.dart';
+
+import '../../Provider/themeProvider.dart';
+import 'themes.dart';
 
 Widget CustomButtonWelcomePage(
     Color backgrundColor, String text, Color colorText, dynamic click) {
@@ -114,6 +120,144 @@ Widget customButton(dynamic ontap, String text, final WidgetRef ref) {
           ),
         ),
       ),
+    ),
+  );
+}
+
+//CustomDrawer
+
+Future<Drawer> CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
+    ThemeData currentcolor, BuildContext context, WidgetRef ref) async {
+  final user = ref.read(accountProvider);
+  final userget = await user.get();
+
+  void saveThemeToHive(String theme) async {
+    var box = Hive.box('settings');
+    await box.put('selectedTheme', theme);
+
+    final themeNotifier = ref.watch(themeProvider.notifier);
+  }
+
+  return Drawer(
+    width: 0.6.sw,
+    child: Column(
+      children: <Widget>[
+        DrawerHeader(
+          padding: EdgeInsets.zero,
+          margin: EdgeInsets.zero,
+          child: getprofile.when(
+              data: (getprofile) {
+                return UserAccountsDrawerHeader(
+                  decoration: BoxDecoration(
+                      color: currentcolor.appBarTheme.backgroundColor),
+                  currentAccountPicture: CircleAvatar(
+                    radius: 30,
+                    backgroundImage: getprofile!['avatar_url'] != null
+                        ? NetworkImage(getprofile['avatar_url'].toString())
+                        : const AssetImage(
+                            'lib/util/images/default-avatar.jpg'),
+                  ),
+                  margin: const EdgeInsets.only(bottom: 0),
+                  currentAccountPictureSize: const Size(65, 65),
+                  accountName: Row(
+                    children: [
+                      Text(
+                        '${getprofile['username']}',
+                        style: TextStyle(
+                            color: currentcolor.brightness == Brightness.dark
+                                ? Colors.white
+                                : Colors.black),
+                      ),
+                      const SizedBox(
+                        width: 5,
+                      ),
+                      if (getprofile['is_verified'])
+                        const Icon(Icons.verified,
+                            color: Colors.blue, size: 16),
+                    ],
+                  ),
+                  accountEmail: Text(userget.email,
+                      style: TextStyle(
+                          color: currentcolor.brightness == Brightness.dark
+                              ? Colors.white
+                              : Colors.black)),
+                );
+              },
+              error: (error, stack) {
+                final errorMsg = error.toString() == 'User is not logged in'
+                    ? 'کاربر وارد سیستم نشده است، لطفاً ورود کنید.'
+                    : 'خطا در دریافت اطلاعات کاربر، لطفاً دوباره تلاش کنید.';
+
+                return Center(child: Text(errorMsg));
+              },
+              loading: () => const Center(child: CircularProgressIndicator())),
+        ),
+        SwitchListTile(
+          title: const Text('حالت شب/روز'),
+          value: ref.watch(themeProvider).brightness == Brightness.dark,
+          onChanged: (bool isDark) {
+            // تغییر تم
+            final themeNotifier = ref.read(themeProvider.notifier);
+
+            if (isDark) {
+              themeNotifier.state = darkTheme;
+              saveThemeToHive('dark');
+            } else {
+              themeNotifier.state = lightTheme;
+              saveThemeToHive('light');
+            }
+          },
+          secondary: Icon(
+            ref.watch(themeProvider).brightness == Brightness.dark
+                ? Icons.dark_mode
+                : Icons.light_mode,
+          ),
+          activeColor: Colors.black,
+          activeTrackColor: Colors.white10,
+        ),
+
+        ListTile(
+          leading: const Icon(Icons.settings),
+          title: const Text(
+            'تنظیمات',
+          ),
+          onTap: () {
+            Navigator.pushNamed(context, '/settings');
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.support_agent),
+          title: const Text(
+            'پشتیبانی',
+          ),
+          // onTap: () {
+          //   Navigator.push(context,
+          //       MaterialPageRoute(builder: (context) => const SupportPage()));
+          // },
+        ),
+        // ListTile(
+        //   leading: const Icon(Icons.person_add),
+        //   title: const Text(
+        //     'دعوت از دوستان',
+        //   ),
+        //   onTap: () {
+        //     const String inviteText =
+        //         'دوست عزیز سلام! من از ویستا نوت برای ذخیره یادداشت هام و ارتباط با کلی رفیق جدید استفاده میکنم! \n پیشنهاد میکنم همین الان از بازار نصبش کنی😉:  https://cafebazaar.ir/app/com.example.vista_notes2/ ';
+        //     Share.share(inviteText);
+        //   },
+        // ),
+        ListTile(
+          leading: const Icon(Icons.logout),
+          title: const Text(
+            'خروج',
+          ),
+          onTap: () {
+            // final user = ref.read(accountProvider);
+            user.deleteSessions();
+            Navigator.pushReplacementNamed(context, '/welcome');
+          },
+        ),
+      ],
     ),
   );
 }

@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:appwrite/appwrite.dart';
 
-import '../../Provider/appwriteProvider.dart';
-import '../utility/widgets.dart';
+import '../../../Provider/appwriteProvider.dart';
+import '../../utility/widgets.dart';
 import 'setProfile.dart';
 
 class SignUpScreen extends ConsumerStatefulWidget {

@@ -3,15 +3,15 @@ import 'package:appwrite/models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:appwrite/appwrite.dart';
-import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import '../../Provider/appwriteProvider.dart';
-import '../../Provider/authProvider.dart';
-import '../utility/widgets.dart';
+import 'package:vista/View/Screens/HomeScreen.dart';
+import '../../../Provider/appwriteProvider.dart';
+import '../../../Provider/authProvider.dart';
+import '../../utility/widgets.dart';
 import 'signupScreen.dart';
 
 class Loginuser extends ConsumerStatefulWidget {
-  const Loginuser({Key? key}) : super(key: key);
+  const Loginuser({super.key});
 
   @override
   _LoginuserState createState() => _LoginuserState();
@@ -75,7 +75,9 @@ class _LoginuserState extends ConsumerState<Loginuser> {
         emailOrUsernameController.clear();
         passController.clear();
         getIpAddress();
-      } on AppwriteException catch (e) {
+        Navigator.pushReplacement(
+            context, MaterialPageRoute(builder: (context) => HomeScreen()));
+      } on AppwriteException {
         context.showSnackBar('نام کاربری یا رمز عبور اشتباه است',
             isError: true);
       } catch (error) {
@@ -98,7 +100,7 @@ class _LoginuserState extends ConsumerState<Loginuser> {
           url: 'https://your-app.com/reset-password',
         );
         context.showSnackBar('ایمیل بازیابی رمز عبور ارسال شد');
-      } on AppwriteException catch (e) {
+      } on AppwriteException {
         context.showSnackBar('خطایی رخ داد، دوباره تلاش کنید', isError: true);
       }
     }

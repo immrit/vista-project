@@ -1,6 +1,4 @@
-import 'package:appwrite/appwrite.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'appwriteProvider.dart';
 
 // final authProvider = Provider((ref) {
 //   return AuthService(ref);
@@ -32,7 +30,6 @@ import 'appwriteProvider.dart';
 //   }
 // }
 
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:appwrite/models.dart';
 
 final authStateProvider =

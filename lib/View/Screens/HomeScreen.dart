@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:vista/View/publicPosts.dart';
+import 'package:vista/View/Screens/publicPosts.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -15,7 +15,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // لیست صفحات
   final List<Widget> _tabs = [
     // const NotesScreen(), // صفحه یادداشت‌ها
-    const Publicposts(), // صفحه پست‌های عمومی
+    const PublicPostsScreen(), // صفحه پست‌های عمومی
     // const NotificationsPage(), // صفحه اعلان‌ها
     // ProfileScreen(
     //   userId: supabase.auth.currentUser!.id,
