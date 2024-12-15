@@ -1,15 +1,17 @@
+import 'dart:math';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:appwrite/appwrite.dart';
-import 'package:appwrite/models.dart';
+import 'package:uuid/uuid.dart';
 
 import 'appwriteProvider.dart';
+import 'authProvider.dart';
 
 // Provider های Appwrite
 Future<List<Map<String, dynamic>>> fetchPostsWithProfiles(Ref ref) async {
   try {
     final database = ref.read(databasesProvider);
 
-    // واکشی لیست پست‌ها
     final postsResponse = await database.listDocuments(
       databaseId: 'vista_db',
       collectionId: 'public_posts',
@@ -17,55 +19,20 @@ Future<List<Map<String, dynamic>>> fetchPostsWithProfiles(Ref ref) async {
 
     print("تعداد پست‌های دریافت شده: ${postsResponse.documents.length}");
 
-    final posts = postsResponse.documents;
+    final postsWithProfiles = postsResponse.documents.map((post) {
+      final userProfile = post.data['user_id'];
 
-    // واکشی اطلاعات پروفایل برای هر پست
-    final postsWithProfiles = await Future.wait<Map<String, dynamic>>(
-      posts.map((post) async {
-        print("داده‌های خام پست: ${post.data}"); // چاپ داده‌های پست
+      return {
+        'id': post.$id,
+        'content': post.data['content'] ?? '',
+        'createdAt': post.data['createdAt'],
+        'username': userProfile['username'] ?? 'بدون نام',
+        'full_name': userProfile['full_name'] ?? 'کاربر ناشناس',
+        'avatar_url': userProfile['avatar_url'] ?? '',
+        'userId': userProfile['userId'], // تغییر از $id به userId
+      };
+    }).toList();
 
-        // دریافت مستقیم پروفایل از کالکشن پروفایل‌ها
-        try {
-          final profilesResponse = await database.listDocuments(
-            databaseId: 'vista_db',
-            collectionId: '6759a45a0035156253ce',
-            queries: [
-              Query.limit(1),
-            ],
-          );
-
-          print(
-              "پاسخ پروفایل: ${profilesResponse.documents.first.data}"); // چاپ داده‌های پروفایل
-
-          if (profilesResponse.documents.isNotEmpty) {
-            final userProfile = profilesResponse.documents.first.data;
-
-            return {
-              'id': post.$id,
-              'content': post.data['content'] ?? '',
-              'createdAt': post.data['createdAt'],
-              'username': userProfile['username'],
-              'full_name': userProfile['full_name'],
-              'avatar_url': userProfile['avatar_url'],
-            };
-          }
-        } catch (e) {
-          print("خطا در دریافت پروفایل: $e");
-        }
-
-        // مقادیر پیش‌فرض در صورت خطا
-        return {
-          'id': post.$id,
-          'content': post.data['content'] ?? '',
-          'createdAt': post.data['createdAt'],
-          'username': 'Unknown',
-          'full_name': 'Unknown User',
-          'avatar_url': '',
-        };
-      }),
-    );
-
-    print("نتیجه نهایی: $postsWithProfiles"); // چاپ نتیجه نهایی
     return postsWithProfiles;
   } catch (e) {
     print("خطای اصلی: $e");
@@ -76,4 +43,54 @@ Future<List<Map<String, dynamic>>> fetchPostsWithProfiles(Ref ref) async {
 final postsWithProfilesProvider =
     FutureProvider<List<Map<String, dynamic>>>((ref) async {
   return fetchPostsWithProfiles(ref);
+});
+
+//create post
+class CreatePostNotifier extends StateNotifier<AsyncValue<void>> {
+  final Ref ref;
+
+  CreatePostNotifier(this.ref) : super(const AsyncValue.data(null));
+
+  Future<void> createPost({
+    required String content,
+  }) async {
+    state = const AsyncValue.loading();
+
+    try {
+      final database = ref.read(databasesProvider);
+      final userAsync = await ref.read(currentUserAccountProvider.future);
+
+      // ساخت ID با فرمت جدید
+      final now = DateTime.now();
+      final String uniqueId =
+          '${now.year}${now.month}${now.day}_${now.hour}${now.minute}${now.second}_${now.millisecond}';
+
+      final result = await database.createDocument(
+        databaseId: 'vista_db',
+        collectionId: 'public_posts',
+        documentId: uniqueId,
+        data: {
+          'content': content,
+          'user_id': userAsync.$id,
+          'createdAt': now.toIso8601String(),
+        },
+      );
+
+      state = const AsyncValue.data(null);
+    } catch (e, st) {
+      print("خطای ایجاد پست: $e");
+      if (e is AppwriteException) {
+        print("کد خطا: ${e.code}");
+        print("پیام خطا: ${e.message}");
+        print("نوع خطا: ${e.type}");
+        // print("ID تولید شده: $uniqueId");
+      }
+      state = AsyncValue.error(e, st);
+    }
+  }
+}
+
+final createPostProvider =
+    StateNotifierProvider<CreatePostNotifier, AsyncValue<void>>((ref) {
+  return CreatePostNotifier(ref);
 });

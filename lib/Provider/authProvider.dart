@@ -1,36 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-// final authProvider = Provider((ref) {
-//   return AuthService(ref);
-// });
-
-// class AuthService {
-//   final Ref ref;
-//   late final Account account;
-
-//   AuthService(this.ref) {
-//     final client = ref.read(appwriteClientProvider);
-//     account = Account(client);
-//   }
-
-//   Future<void> signUp({
-//     required String email,
-//     required String password,
-//   }) async {
-//     try {
-//       await account.create(
-//         userId: ID.unique(),
-//         email: email,
-//         password: password,
-//       );
-//     } catch (e) {
-//       print(e);
-//       throw Exception('خطا در ثبت‌نام: $e');
-//     }
-//   }
-// }
-
 import 'package:appwrite/models.dart';
+
+import 'appwriteProvider.dart';
 
 final authStateProvider =
     StateNotifierProvider<AuthStateNotifier, AsyncValue<User?>>((ref) {
@@ -65,4 +36,21 @@ final isRedirectingProvider = StateProvider<bool>((ref) {
 
 final isLoadingProvider = StateProvider<bool>((ref) {
   return false; // مقدار ابتدایی، نشان‌دهنده این است که در حال بارگذاری نیست
+});
+
+// get the current user
+
+final currentUserAccountProvider = FutureProvider<User>((ref) async {
+  final account = ref.watch(accountProvider);
+  try {
+    final user = await account.get();
+    return user;
+  } catch (e) {
+    throw Exception('خطا در دریافت اطلاعات کاربر');
+  }
+});
+
+final currentUserIdProvider = Provider<String?>((ref) {
+  final userAsync = ref.watch(currentUserAccountProvider);
+  return userAsync.whenData((user) => user.$id).value;
 });
