@@ -30,6 +30,7 @@ environment:
 dependencies:
   app_links: ^6.3.2
   appwrite: ^13.0.0
+  aws_s3_api: ^2.0.0
   cupertino_icons: ^1.0.8
   equatable: ^2.0.5
   flutter:
@@ -38,10 +39,11 @@ dependencies:
   flutter_screenutil: ^5.9.3
   hive: ^2.2.3
   hive_flutter: ^1.1.0
-  http: ^1.2.2
+  http: ^1.1.0
+  http_parser: ^4.0.2
   image_picker: ^1.1.2
+  path: ^1.8.0
   shamsi_date: ^1.0.4
-  uuid: ^4.5.1
 
 dev_dependencies:
   flutter_lints: ^5.0.0

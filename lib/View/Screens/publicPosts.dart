@@ -33,6 +33,25 @@ class PublicPostsScreen extends ConsumerWidget {
                     Text(post['content'] ?? ''),
                   ],
                 ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: Icon(
+                        post['isLiked']
+                            ? Icons.favorite
+                            : Icons.favorite_border,
+                        color: post['isLiked'] ? Colors.red : null,
+                      ),
+                      onPressed: () {
+                        ref
+                            .read(likePostProvider.notifier)
+                            .toggleLike(post['id']);
+                      },
+                    ),
+                    Text('${post['likeCount']}'),
+                  ],
+                ),
               );
             },
           );

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:vista/View/Screens/authentication/EditeProfile.dart';
 import 'package:vista/View/Screens/publicPosts.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -17,6 +18,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // const NotesScreen(), // صفحه یادداشت‌ها
     const PublicPostsScreen(), // صفحه پست‌های عمومی
     // const NotificationsPage(), // صفحه اعلان‌ها
+    EditProfileScreen()
     // ProfileScreen(
     //   userId: supabase.auth.currentUser!.id,
     //   username: supabase.auth.currentUser!.email!,

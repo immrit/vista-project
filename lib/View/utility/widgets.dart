@@ -28,7 +28,8 @@ Widget CustomButtonWelcomePage(
 }
 
 customTextField(String hintText, TextEditingController controller,
-    dynamic validator, bool obscureText, TextInputType keyboardType) {
+    dynamic validator, bool obscureText, TextInputType keyboardType,
+    {required int maxLines}) {
   return Directionality(
     textDirection: TextDirection.rtl,
     child: Padding(

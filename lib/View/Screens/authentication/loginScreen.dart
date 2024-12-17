@@ -121,20 +121,26 @@ class _LoginuserState extends ConsumerState<Loginuser> {
             children: [
               topText(text: '!خوش برگشتی'),
               const SizedBox(height: 80),
-              customTextField('نام کاربری یا ایمیل', emailOrUsernameController,
-                  (value) {
-                if (value == null || value.isEmpty) {
-                  return 'لطفا مقادیر را وارد نمایید';
-                }
-                return null;
-              }, false, TextInputType.emailAddress),
+              customTextField(
+                'نام کاربری یا ایمیل',
+                emailOrUsernameController,
+                (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'لطفا مقادیر را وارد نمایید';
+                  }
+                  return null;
+                },
+                false,
+                TextInputType.emailAddress,
+                maxLines: 1,
+              ),
               const SizedBox(height: 10),
               customTextField('رمزعبور', passController, (value) {
                 if (value == null || value.isEmpty) {
                   return 'لطفا مقادیر را وارد نمایید';
                 }
                 return null;
-              }, true, TextInputType.visiblePassword),
+              }, true, TextInputType.visiblePassword, maxLines: 1),
               TextButton(
                 onPressed: resetPassword,
                 child: const Text(

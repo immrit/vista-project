@@ -123,45 +123,27 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         children: [
           topText(text: 'به ویستا خوش اومدی'),
           const SizedBox(height: 80),
-          customTextField(
-            'ایمیل',
-            emailController,
-            (value) {
-              if (value == null || value.isEmpty) {
-                return 'لطفا مقادیر را وارد نمایید';
-              }
-            },
-            false,
-            TextInputType.emailAddress,
-          ),
+          customTextField('ایمیل', emailController, (value) {
+            if (value == null || value.isEmpty) {
+              return 'لطفا مقادیر را وارد نمایید';
+            }
+          }, false, TextInputType.emailAddress, maxLines: 1),
           const SizedBox(height: 10),
-          customTextField(
-            'رمزعبور',
-            passController,
-            (value) {
-              if (value == null || value.isEmpty) {
-                return 'لطفا مقادیر را وارد نمایید';
-              }
-            },
-            true,
-            TextInputType.visiblePassword,
-          ),
+          customTextField('رمزعبور', passController, (value) {
+            if (value == null || value.isEmpty) {
+              return 'لطفا مقادیر را وارد نمایید';
+            }
+          }, true, TextInputType.visiblePassword, maxLines: 1),
           const SizedBox(height: 10),
-          customTextField(
-            'تایید رمزعبور',
-            confirmPasswordController,
-            (value) {
-              if (value == null || value.isEmpty) {
-                return 'لطفا تایید رمزعبور را وارد نمایید';
-              }
-              if (value != passController.text) {
-                return 'عدم تطابق رمزعبور';
-              }
-              return null;
-            },
-            true,
-            TextInputType.visiblePassword,
-          ),
+          customTextField('تایید رمزعبور', confirmPasswordController, (value) {
+            if (value == null || value.isEmpty) {
+              return 'لطفا تایید رمزعبور را وارد نمایید';
+            }
+            if (value != passController.text) {
+              return 'عدم تطابق رمزعبور';
+            }
+            return null;
+          }, true, TextInputType.visiblePassword, maxLines: 1),
           Align(
             alignment: Alignment.center,
             child: TextButton(

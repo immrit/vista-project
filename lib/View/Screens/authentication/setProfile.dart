@@ -213,35 +213,29 @@ class _SetProfileDataState extends ConsumerState<SetProfileData> {
             ),
           ),
           const SizedBox(height: 30),
-          customTextField(
-            'نام کاربری',
-            _usernameController,
-            (value) {
-              if (value == null || value.isEmpty) {
-                return 'لطفا مقادیر را وارد نمایید';
-              }
-              if (!RegExp(r'^[a-z._-]{5,}$').hasMatch(value)) {
-                return 'نام کاربری باید حداقل ۵ حرف داشته باشد و فقط از حروف کوچک، _، - و . استفاده کنید';
-              }
-              return null;
-            },
-            false,
-            TextInputType.text,
-          ),
+          customTextField('نام کاربری', _usernameController, (value) {
+            if (value == null || value.isEmpty) {
+              return 'لطفا مقادیر را وارد نمایید';
+            }
+            if (!RegExp(r'^[a-z._-]{5,}$').hasMatch(value)) {
+              return 'نام کاربری باید حداقل ۵ حرف داشته باشد و فقط از حروف کوچک، _، - و . استفاده کنید';
+            }
+            return null;
+          }, false, TextInputType.text, maxLines: 1),
           SizedBox(height: 20.h),
           customTextField('نام', fullNameController, (value) {
             if (value == null || value.isEmpty) {
               return 'لطفا مقادیر را وارد نمایید';
             }
             return null;
-          }, false, TextInputType.text),
+          }, false, TextInputType.text, maxLines: 1),
           SizedBox(height: 20.h),
           customTextField('درباره شما', bioController, (value) {
             if (value == null || value.isEmpty) {
               return 'لطفا مقادیر را وارد نمایید';
             }
             return null;
-          }, false, TextInputType.text)
+          }, false, TextInputType.text, maxLines: 3)
         ],
       ),
       bottomNavigationBar: Padding(
