@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:vista/view/screen/searchPage.dart';
 import '/main.dart';
 import 'PublicPosts/notificationScreen.dart';
 import 'PublicPosts/profileScreen.dart';
 import 'PublicPosts/publicPosts.dart';
+import 'searchPage.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});

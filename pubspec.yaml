@@ -1,4 +1,4 @@
-name: vista
+name: Vista
 description: "vista."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
@@ -53,6 +53,27 @@ dependencies:
   url_launcher: ^6.3.1
   cached_network_image: ^3.3.0
   photo_view: ^0.14.0
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path: "lib/util/images/vistalogo.png"
+  adaptive_icon_background: "#000000" # رنگ پس‌زمینه برای اندروید
+  adaptive_icon_foreground: "lib/util/images/vistalogo.png" # آیکون جلو برای اندروید
+  min_sdk_android: 19
+  web:
+    generate: true
+    image_path: "lib/util/images/vistalogo.png"
+    background_color: "#000000"
+    theme_color: "#000000"
+  windows:
+    generate: true
+    image_path: "lib/util/images/vistalogo.png"
+    icon_size: 48
+  macos:
+    generate: true
+    image_path: "lib/util/images/vistalogo.png"
 
 
 dev_dependencies:

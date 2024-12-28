@@ -130,24 +130,47 @@ class _SetProfileDataState extends ConsumerState<SetProfileData> {
 
     if (user == null || userName.isEmpty) return;
 
-    if (!RegExp(r'^[a-zA-Z]+$').hasMatch(userName)) {
+    if (!RegExp(r'^[a-z][a-z.-]{4,}$').hasMatch(userName)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لطفاً فقط از حروف انگلیسی استفاده کنید')),
+        const SnackBar(
+            content: Text(
+                'نام کاربری باید حداقل ۵ حرف کوچک انگلیسی باشد و فقط می‌تواند شامل حروف و علامت‌های - و . باشد')),
       );
       ref.read(loadingProvider.notifier).state = false;
       return;
     }
 
-    final updates = {
-      'id': user.id,
-      'username': userName,
-      'full_name': fullNameController.text,
-      'bio': bioController.text,
-      'updated_at': DateTime.now().toIso8601String(),
-      'email': user.email,
-    };
-
     try {
+      // Check if username exists
+      final existingUser = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('username', userName)
+          .neq('id', user.id) // Exclude current user
+          .maybeSingle();
+
+      if (existingUser != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content:
+                  Text('این نام کاربری قبلاً توسط کاربر دیگری انتخاب شده است'),
+            ),
+          );
+          ref.read(loadingProvider.notifier).state = false;
+          return;
+        }
+      }
+
+      final updates = {
+        'id': user.id,
+        'username': userName,
+        'full_name': fullNameController.text,
+        'bio': bioController.text,
+        'updated_at': DateTime.now().toIso8601String(),
+        'email': user.email,
+      };
+
       await supabase.from('profiles').upsert(updates);
       if (mounted) {
         context.showSnackBar('پروفایل با موفقیت به‌روزرسانی شد!',
@@ -221,10 +244,10 @@ class _SetProfileDataState extends ConsumerState<SetProfileData> {
             _usernameController,
             (value) {
               if (value == null || value.isEmpty) {
-                return 'لطفا مقادیر را وارد نمایید';
+                return 'لطفا نام کاربری را وارد کنید';
               }
-              if (!RegExp(r'^[a-z._-]{5,}$').hasMatch(value)) {
-                return 'نام کاربری باید حداقل ۵ حرف داشته باشد و فقط از حروف کوچک، _، - و . استفاده کنید';
+              if (!RegExp(r'^[a-z][a-z.-]{4,}$').hasMatch(value)) {
+                return 'نام کاربری باید حداقل ۵ حرف کوچک انگلیسی باشد و فقط می‌تواند شامل حروف و علامت‌های - و . باشد';
               }
               return null;
             },

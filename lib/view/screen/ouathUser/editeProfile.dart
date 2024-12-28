@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../main.dart';
 import '/util/widgets.dart';
 import '../../../provider/provider.dart';
 import '../../../provider/ProfileImageUploadService.dart';
@@ -19,9 +20,13 @@ class _EditProfileState extends ConsumerState<EditProfile> {
   final TextEditingController _usernameController = TextEditingController();
   TextEditingController fullNameController = TextEditingController();
   final TextEditingController bioController = TextEditingController();
+  bool _isLoading = false;
 
   File? _imageFile;
   final picker = ImagePicker();
+
+  // Add validation pattern constant
+  final _usernamePattern = RegExp(r'^[a-z][a-z0-9._-]{4,}$');
 
   // متد برای نمایش دیالوگ
   void _showImageOptions() async {
@@ -182,6 +187,70 @@ class _EditProfileState extends ConsumerState<EditProfile> {
     }
   }
 
+  Future<void> _updateProfile() async {
+    setState(() => _isLoading = true);
+    final username = _usernameController.text.trim();
+
+    // تغییر پیغام خطا برای شامل شدن اعداد
+    if (!_usernamePattern.hasMatch(username)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'نام کاربری باید با حرف کوچک شروع شود و می‌تواند شامل حروف کوچک، اعداد و علامت‌های - . _ باشد'),
+        ),
+      );
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    try {
+      // بررسی نام کاربری تکراری
+      final response = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('username', username)
+          .neq('id', supabase.auth.currentUser!.id);
+
+      if (response.isNotEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('این نام کاربری قبلاً استفاده شده است'),
+          ),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      // اگر نام کاربری تکراری نباشد، ادامه عملیات
+      final updates = {
+        'username': username,
+        'full_name': fullNameController.text,
+        'bio': bioController.text,
+      };
+
+      await supabase
+          .from('profiles')
+          .upsert(updates)
+          .eq('id', supabase.auth.currentUser!.id);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('پروفایل با موفقیت به‌روزرسانی شد')),
+      );
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در بروزرسانی پروفایل: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final getProfileData = ref.watch(profileProvider);
@@ -234,10 +303,13 @@ class _EditProfileState extends ConsumerState<EditProfile> {
                       customTextField('نام کاربری', _usernameController,
                           (value) {
                         if (value == null || value.isEmpty) {
-                          return 'لطفا مقادیر را وارد نمایید';
+                          return 'نام کاربری نمی‌تواند خالی باشد';
                         }
-                        if (!RegExp(r'^[a-z._-]{5,}$').hasMatch(value)) {
-                          return 'نام کاربری باید حداقل ۵ حرف داشته باشد و فقط از حروف کوچک، _، - و . استفاده کنید';
+                        if (value.length < 5) {
+                          return 'نام کاربری باید حداقل ۵ حرف داشته باشد';
+                        }
+                        if (!_usernamePattern.hasMatch(value)) {
+                          return 'فقط حروف کوچک انگلیسی و علامت‌های - . _ مجاز است';
                         }
                         return null;
                       }, false, TextInputType.text),
