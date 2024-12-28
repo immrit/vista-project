@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -463,6 +464,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 post.content,
                 textAlign: getTextAlignment(post.content),
               )),
+
+          // اضافه کردن نمایش تصویر
+          // در متد _buildPostItem، بعد از نمایش متن پست:
+          // اضافه کردن نمایش تصویر در صورت وجود
+          if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            PostImageViewer(imageUrl: post.imageUrl!),
+          ],
+
           const SizedBox(height: 16),
           _buildPostActions(post),
         ],
@@ -625,4 +635,33 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     String shareText = '${post.username}: \n\n${post.content}';
     Share.share(shareText);
   }
+}
+
+// اضافه کردن متد نمایش تصویر تمام صفحه
+void _showFullScreenImage(BuildContext context, String imageUrl) {
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          iconTheme: const IconThemeData(color: Colors.white),
+        ),
+        body: Center(
+          child: InteractiveViewer(
+            minScale: 0.5,
+            maxScale: 4.0,
+            child: Hero(
+              tag: imageUrl,
+              child: CachedNetworkImage(
+                imageUrl: imageUrl,
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 }

@@ -1,22 +1,19 @@
 import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '/main.dart';
-import '/model/NotesModel.dart';
 import '/util/const.dart';
-import '/view/screen/Notes/AddNoteScreen.dart';
 import '../model/CommentModel.dart';
 import '../model/UserModel.dart';
 import '../model/publicPostModel.dart';
 import '../provider/provider.dart';
 import '../view/screen/PublicPosts/profileScreen.dart';
-import '../view/screen/searchPage.dart';
 import '../view/screen/support.dart';
 import 'themes.dart';
 
@@ -1479,6 +1476,62 @@ class _ReportProfileDialogState extends State<ReportProfileDialog> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class PostImageViewer extends StatelessWidget {
+  final String imageUrl;
+
+  const PostImageViewer({super.key, required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _showFullScreen(context),
+      child: Hero(
+        tag: imageUrl,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: CachedNetworkImage(
+            imageUrl: imageUrl,
+            fit: BoxFit.contain,
+            width: MediaQuery.of(context).size.width,
+            placeholder: (context, url) => const Center(
+              child: CircularProgressIndicator(),
+            ),
+            errorWidget: (context, url, error) => const Icon(Icons.error),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showFullScreen(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            iconTheme: const IconThemeData(color: Colors.white),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Hero(
+                tag: imageUrl,
+                child: CachedNetworkImage(
+                  imageUrl: imageUrl,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

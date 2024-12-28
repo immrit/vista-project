@@ -53,9 +53,7 @@ class PostImageUploadService {
         }
       } else {
         compressedFile = await compressImage(file);
-        if (compressedFile == null) {
-          compressedFile = file;
-        }
+        compressedFile ??= file;
       }
 
       // مسیر ذخیره‌سازی برای تصاویر پست‌ها
@@ -78,7 +76,7 @@ class PostImageUploadService {
       return uploadedUrl;
     } catch (e) {
       print('خطا در آپلود تصویر پست: $e');
-      throw Exception('آپلود تصویر پست به ArvanCloud شکست خورد');
+      throw Exception('آپلود تصویر پست به شکست خورد');
     } finally {
       if (compressedFile != null && compressedFile.path != file.path) {
         try {

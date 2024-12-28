@@ -450,7 +450,7 @@ class SupabaseService {
           await Future.delayed(Duration(seconds: attempt));
         }
       } catch (e) {
-        print('تلاش ${attempt}: خطا در حذف تصویر: $e');
+        print('تلاش $attempt: خطا در حذف تصویر: $e');
         if (attempt == maxAttempts) return false;
         await Future.delayed(Duration(seconds: attempt));
       }
@@ -1085,6 +1085,7 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
         content, 
         created_at, 
         user_id,
+        image_url,
         profiles!posts_user_id_fkey (
           username,
           avatar_url,
@@ -1112,6 +1113,7 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
           'username': post['profiles']['username'] ?? 'Unknown',
           'avatar_url': post['profiles']['avatar_url'] ?? '',
           'is_verified': post['profiles']['is_verified'] ?? false,
+          'image_url': post['image_url'],
           'comment_count': comments.length,
         });
       }).toList();
@@ -1210,21 +1212,29 @@ final postProvider =
     FutureProvider.family<PublicPostModel, String>((ref, postId) async {
   final supabase = Supabase.instance.client;
 
-  final response = await supabase
-      .from('posts')
-      .select('*, profiles(username, avatar_url, is_verified), likes(user_id)')
-      .eq('id', postId)
-      .maybeSingle();
+  final response = await supabase.from('posts').select('''
+        *,
+        image_url,
+        profiles (
+          username, 
+          avatar_url, 
+          is_verified
+        ),
+        likes (
+          user_id
+        )
+      ''').eq('id', postId).maybeSingle();
 
   if (response == null) {
     throw Exception('پستی با این شناسه یافت نشد.');
   }
 
+  print('Post Response: $response'); // برای دیباگ
+
   final likes = response['likes'] as List<dynamic>? ?? [];
   final likeCount = likes.length;
   final isLiked =
       likes.any((like) => like['user_id'] == supabase.auth.currentUser?.id);
-  print('Response from Supabase: $response');
 
   return PublicPostModel.fromMap({
     ...response,
@@ -1233,6 +1243,7 @@ final postProvider =
     'username': response['profiles']?['username'] ?? 'Unknown',
     'avatar_url': response['profiles']?['avatar_url'] ?? '',
     'is_verified': response['profiles']?['is_verified'] ?? false,
+    'image_url': response['image_url'], // اضافه کردن image_url
   });
 });
 
@@ -1462,4 +1473,22 @@ final fetchFollowingPostsProvider =
       'comment_count': comments.length, // تعداد کامنت‌ها
     });
   }).toList();
+});
+
+// Provider for searching all users
+final searchUsersProvider =
+    StreamProvider.autoDispose.family<List<ProfileModel>, String>((ref, query) {
+  if (query.isEmpty) {
+    return Stream.value([]);
+  }
+
+  return Stream.fromFuture(
+    supabase
+        .from('profiles')
+        .select()
+        .or('username.ilike.%$query%,full_name.ilike.%$query%')
+        .limit(10)
+        .then(
+            (data) => data.map((json) => ProfileModel.fromMap(json)).toList()),
+  );
 });

@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
@@ -227,64 +228,7 @@ Widget _buildPostList(
             // اضافه کردن نمایش تصویر در صورت وجود
             if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
               const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => Scaffold(
-                          backgroundColor: Colors.black,
-                          appBar: AppBar(
-                            backgroundColor: Colors.black,
-                            iconTheme: const IconThemeData(color: Colors.white),
-                          ),
-                          body: Center(
-                            child: InteractiveViewer(
-                              minScale: 0.5,
-                              maxScale: 4,
-                              child: Image.network(
-                                post.imageUrl!,
-                                fit: BoxFit.contain,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                  child: Image.network(
-                    post.imageUrl!,
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    height: 200,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return SizedBox(
-                        height: 200,
-                        child: Center(
-                          child: CircularProgressIndicator(
-                            value: loadingProgress.expectedTotalBytes != null
-                                ? loadingProgress.cumulativeBytesLoaded /
-                                    loadingProgress.expectedTotalBytes!
-                                : null,
-                          ),
-                        ),
-                      );
-                    },
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        height: 200,
-                        color: Colors.grey[300],
-                        child: const Center(
-                          child: Icon(Icons.error),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
+              PostImageViewer(imageUrl: post.imageUrl!),
             ],
             const SizedBox(height: 8),
             Row(
