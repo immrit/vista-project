@@ -5,7 +5,7 @@ import 'package:path/path.dart' as path;
 import 'package:aws_s3_api/s3-2006-03-01.dart';
 import '/main.dart';
 
-class ImageUploadService {
+class ProfileImageUploadService {
   static final s3 = S3(
     region: 'ir-thr-at1',
     credentials: AwsClientCredentials(

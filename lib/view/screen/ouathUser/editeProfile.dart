@@ -6,7 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '/util/widgets.dart';
 import '../../../provider/provider.dart';
-import '../../../provider/uploadimage.dart';
+import '../../../provider/ProfileImageUploadService.dart';
 
 class EditProfile extends ConsumerStatefulWidget {
   const EditProfile({super.key});
@@ -75,7 +75,8 @@ class _EditProfileState extends ConsumerState<EditProfile> {
 
       // حذف عکس از آروان کلود اگر وجود داشته باشد
       if (previousAvatarUrl != null && previousAvatarUrl.isNotEmpty) {
-        final success = await ImageUploadService.deleteImage(previousAvatarUrl);
+        final success =
+            await ProfileImageUploadService.deleteImage(previousAvatarUrl);
         if (!success) {
           throw Exception('خطا در حذف فایل از آروان کلود');
         }
@@ -146,7 +147,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
       }
 
       // آپلود تصویر به ArvanCloud
-      final imageUrl = await ImageUploadService.uploadImage(imageFile);
+      final imageUrl = await ProfileImageUploadService.uploadImage(imageFile);
 
       if (imageUrl == null) {
         throw Exception('آپلود تصویر به ArvanCloud شکست خورد');

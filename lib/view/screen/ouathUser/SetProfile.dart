@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
-import '../../../provider/uploadimage.dart'; // سرویس مربوط به آپلود تصویر در ArvanCloud
+import '../../../provider/ProfileImageUploadService.dart'; // سرویس مربوط به آپلود تصویر در ArvanCloud
 import '/util/widgets.dart';
 import '/view/screen/homeScreen.dart';
 import '../../../main.dart';
@@ -95,7 +95,7 @@ class _SetProfileDataState extends ConsumerState<SetProfileData> {
       }
 
       // استفاده از سرویس آپلود برای ArvanCloud
-      final imageUrl = await ImageUploadService.uploadImage(imageFile);
+      final imageUrl = await ProfileImageUploadService.uploadImage(imageFile);
 
       if (imageUrl == null) {
         throw Exception('آپلود تصویر به ArvanCloud شکست خورد');

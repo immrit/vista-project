@@ -11,6 +11,7 @@ import '../model/CommentModel.dart';
 import '../model/NotesModel.dart';
 import '../model/UserModel.dart';
 import '../util/themes.dart';
+import 'PostImageUploadService.dart';
 
 //check user state
 final authStateProvider = StreamProvider<User?>((ref) {
@@ -398,8 +399,25 @@ class SupabaseService {
       }
 
       _validateUUID(postId);
-
       final userId = _validateUser();
+
+      // دریافت اطلاعات پست برای پیدا کردن URL تصویر
+      final post = await supabase
+          .from('posts')
+          .select('image_url')
+          .eq('id', postId)
+          .single();
+
+      final String? imageUrl = post['image_url'];
+
+      // اگر پست تصویر داشته باشد، ابتدا از آروان کلاود حذف می‌کنیم
+      if (imageUrl != null && imageUrl.isNotEmpty) {
+        final bool imageDeleted =
+            await PostImageUploadService.deletePostImage(imageUrl);
+        if (!imageDeleted) {
+          print('هشدار: حذف تصویر از آروان کلاود ناموفق بود');
+        }
+      }
 
       // حذف لایک‌ها
       await supabase.from('likes').delete().eq('post_id', postId);
@@ -412,11 +430,32 @@ class SupabaseService {
 
       ref.invalidate(fetchPublicPosts);
 
-      print('پست و وابستگی‌های آن با موفقیت حذف شدند.');
+      print('پست، تصویر و وابستگی‌های آن با موفقیت حذف شدند.');
     } catch (e) {
       print('خطا در حذف پست: $e');
       rethrow;
     }
+  }
+
+// اضافه کردن متد کمکی برای تلاش مجدد حذف تصویر
+  Future<bool> _deletePostImageWithRetry(String imageUrl,
+      {int maxAttempts = 3}) async {
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        final bool success =
+            await PostImageUploadService.deletePostImage(imageUrl);
+        if (success) return true;
+
+        if (attempt < maxAttempts) {
+          await Future.delayed(Duration(seconds: attempt));
+        }
+      } catch (e) {
+        print('تلاش ${attempt}: خطا در حذف تصویر: $e');
+        if (attempt == maxAttempts) return false;
+        await Future.delayed(Duration(seconds: attempt));
+      }
+    }
+    return false;
   }
 
   Future<List<ProfileModel>> fetchFollowers(String userId) async {

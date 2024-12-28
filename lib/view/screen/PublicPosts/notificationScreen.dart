@@ -98,8 +98,9 @@ class NotificationsPage extends ConsumerWidget {
                               ),
                             );
                           } else if (notification.type == 'like' ||
-                              notification.type == 'comment' ||
-                              notification.type == 'mention') {
+                              notification.type == 'new_comment' ||
+                              notification.type == 'mention' ||
+                              notification.type == 'comment_reply') {
                             Navigator.push(
                               context,
                               MaterialPageRoute(

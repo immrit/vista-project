@@ -18,7 +18,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   // لیست صفحات
   final List<Widget> _tabs = [
-    const NotesScreen(), // صفحه یادداشت‌ها
     const PublicPostsScreen(), // صفحه پست‌های عمومی
     const NotificationsPage(), // صفحه اعلان‌ها
     ProfileScreen(
@@ -43,9 +42,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         onDestinationSelected: _onItemTapped,
         destinations: const [
           NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'یادداشت‌ها',
+            icon: Icon(Icons.home),
+            // selectedIcon: Icon(Icons.home),
+            label: '',
           ),
           NavigationDestination(
             icon: Icon(Icons.notes_outlined),

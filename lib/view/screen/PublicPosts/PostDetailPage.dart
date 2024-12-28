@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shamsi_date/shamsi_date.dart';
+import '../../../model/publicPostModel.dart';
 import '/main.dart';
 import '/view/screen/PublicPosts/profileScreen.dart';
 import '../../../model/CommentModel.dart';
@@ -60,6 +63,442 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
     );
   }
 
+  // Widget _buildPostImages(PublicPostModel post) {
+  //   if (post.imageUrl == null || post.imageUrl!.isEmpty) {
+  //     return const SizedBox.shrink();
+  //   }
+
+  //   return Container(
+  //     margin: const EdgeInsets.symmetric(vertical: 10),
+  //     child: GestureDetector(
+  //       onTap: () => _showImageDialog(context, post.imageUrl!),
+  //       child: ClipRRect(
+  //         borderRadius: BorderRadius.circular(8),
+  //         child: Image.network(
+  //           post.imageUrl!,
+  //           fit: BoxFit.cover,
+  //           height: 200,
+  //           width: double.infinity,
+  //           errorBuilder: (context, error, stackTrace) {
+  //             return Container(
+  //               height: 200,
+  //               width: double.infinity,
+  //               color: Colors.grey[300],
+  //               child: const Center(
+  //                 child:
+  //                     Icon(Icons.error_outline, size: 40, color: Colors.grey),
+  //               ),
+  //             );
+  //           },
+  //           loadingBuilder: (context, child, loadingProgress) {
+  //             if (loadingProgress == null) return child;
+  //             return Container(
+  //               height: 200,
+  //               width: double.infinity,
+  //               color: Colors.grey[100],
+  //               child: Center(
+  //                 child: CircularProgressIndicator(
+  //                   value: loadingProgress.expectedTotalBytes != null
+  //                       ? loadingProgress.cumulativeBytesLoaded /
+  //                           loadingProgress.expectedTotalBytes!
+  //                       : null,
+  //                 ),
+  //               ),
+  //             );
+  //           },
+  //         ),
+  //       ),
+  //     ),
+  //   );
+  // }
+
+  // Widget _buildPostImages(PublicPostModel post) {
+  //   if (post.imageUrl == null || post.imageUrl!.isEmpty) {
+  //     return const SizedBox.shrink();
+  //   }
+
+  //   return Container(
+  //     margin: const EdgeInsets.symmetric(vertical: 10),
+  //     child: FutureBuilder<Size>(
+  //       future: _getImageDimensions(post.imageUrl!),
+  //       builder: (context, snapshot) {
+  //         if (snapshot.connectionState == ConnectionState.waiting) {
+  //           return Container(
+  //             width: double.infinity,
+  //             height: 200,
+  //             color: Colors.grey[100],
+  //             child: const Center(child: CircularProgressIndicator()),
+  //           );
+  //         }
+
+  //         if (snapshot.hasError || !snapshot.hasData) {
+  //           return Container(
+  //             width: double.infinity,
+  //             height: 200,
+  //             color: Colors.grey[300],
+  //             child: const Center(
+  //               child: Icon(Icons.error_outline, size: 40, color: Colors.grey),
+  //             ),
+  //           );
+  //         }
+
+  //         double screenWidth = MediaQuery.of(context).size.width -
+  //             20; // پدینگ را در نظر می‌گیریم
+  //         double imageRatio = snapshot.data!.width / snapshot.data!.height;
+  //         double displayHeight = screenWidth / imageRatio;
+
+  //         return ClipRRect(
+  //           borderRadius: BorderRadius.circular(15),
+  //           child: Image.network(
+  //             post.imageUrl!,
+  //             width: screenWidth,
+  //             height: displayHeight,
+  //             fit: BoxFit.contain,
+  //             errorBuilder: (context, error, stackTrace) {
+  //               return Container(
+  //                 width: screenWidth,
+  //                 height: 200,
+  //                 color: Colors.grey[300],
+  //                 child: const Center(
+  //                   child:
+  //                       Icon(Icons.error_outline, size: 40, color: Colors.grey),
+  //                 ),
+  //               );
+  //             },
+  //           ),
+  //         );
+  //       },
+  //     ),
+  //   );
+  // }
+
+  // Future<Size> _getImageDimensions(String imageUrl) async {
+  //   final Completer<Size> completer = Completer();
+  //   final Image image = Image.network(imageUrl);
+
+  //   image.image.resolve(const ImageConfiguration()).addListener(
+  //         ImageStreamListener(
+  //           (ImageInfo info, bool _) {
+  //             completer.complete(Size(
+  //               info.image.width.toDouble(),
+  //               info.image.height.toDouble(),
+  //             ));
+  //           },
+  //           onError: (dynamic exception, StackTrace? stackTrace) {
+  //             completer.completeError(exception);
+  //           },
+  //         ),
+  //       );
+
+  //   return completer.future;
+  // }
+
+  Widget _buildPostImages(PublicPostModel post) {
+    if (post.imageUrl == null || post.imageUrl!.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 10),
+      child: FutureBuilder<Size>(
+        future: _getImageDimensions(post.imageUrl!),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Container(
+              width: double.infinity,
+              height: 200,
+              color: Colors.grey[100],
+              child: const Center(child: CircularProgressIndicator()),
+            );
+          }
+
+          if (snapshot.hasError || !snapshot.hasData) {
+            return Container(
+              width: double.infinity,
+              height: 200,
+              color: Colors.grey[300],
+              child: const Center(
+                child: Icon(Icons.error_outline, size: 40, color: Colors.grey),
+              ),
+            );
+          }
+
+          double screenWidth = MediaQuery.of(context).size.width - 20;
+          double imageRatio = snapshot.data!.width / snapshot.data!.height;
+          double displayHeight = screenWidth / imageRatio;
+
+          return GestureDetector(
+            onTap: () => _showZoomableImage(context, post.imageUrl!),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                post.imageUrl!,
+                width: screenWidth,
+                height: displayHeight,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    width: screenWidth,
+                    height: 200,
+                    color: Colors.grey[300],
+                    child: const Center(
+                      child: Icon(Icons.error_outline,
+                          size: 40, color: Colors.grey),
+                    ),
+                  );
+                },
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showZoomableImage(BuildContext context, String imageUrl) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => GestureDetector(
+        onTap: () => Navigator.of(context).pop(),
+        child: Container(
+          color: Colors.black.withOpacity(0.9),
+          child: Stack(
+            children: [
+              Container(
+                width: MediaQuery.of(context).size.width,
+                height: MediaQuery.of(context).size.height,
+                alignment: Alignment.center,
+                child: InteractiveViewer(
+                  minScale: 0.5,
+                  maxScale: 4.0,
+                  child: Image.network(
+                    imageUrl,
+                    fit: BoxFit.contain,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Center(
+                        child: CircularProgressIndicator(
+                          value: loadingProgress.expectedTotalBytes != null
+                              ? loadingProgress.cumulativeBytesLoaded /
+                                  loadingProgress.expectedTotalBytes!
+                              : null,
+                          color: Colors.white,
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Center(
+                        child: Icon(
+                          Icons.error_outline,
+                          size: 50,
+                          color: Colors.white,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 10,
+                right: 10,
+                child: IconButton(
+                  icon: const Icon(
+                    Icons.close,
+                    color: Colors.white,
+                    size: 30,
+                  ),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+              // اضافه کردن دکمه دانلود
+              // Positioned(
+              //   top: MediaQuery.of(context).padding.top + 10,
+              //   left: 10,
+              //   child: IconButton(
+              //     icon: const Icon(
+              //       Icons.download,
+              //       color: Colors.white,
+              //       size: 30,
+              //     ),
+              //     onPressed: () {
+              //       // اینجا کد دانلود عکس را اضافه کنید
+              //       ScaffoldMessenger.of(context).showSnackBar(
+              //         const SnackBar(
+              //           content: Text('دانلود تصویر شروع شد'),
+              //           duration: Duration(seconds: 2),
+              //         ),
+              //       );
+              //     },
+              //   ),
+              // ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<Size> _getImageDimensions(String imageUrl) async {
+    final Completer<Size> completer = Completer();
+    final Image image = Image.network(imageUrl);
+
+    image.image.resolve(const ImageConfiguration()).addListener(
+          ImageStreamListener(
+            (ImageInfo info, bool _) {
+              completer.complete(Size(
+                info.image.width.toDouble(),
+                info.image.height.toDouble(),
+              ));
+            },
+            onError: (dynamic exception, StackTrace? stackTrace) {
+              completer.completeError(exception);
+            },
+          ),
+        );
+
+    return completer.future;
+  }
+
+  // void _showImageDialog(BuildContext context, String imageUrl) {
+  //   showDialog(
+  //     context: context,
+  //     builder: (BuildContext context) {
+  //       return Dialog(
+  //         backgroundColor: Colors.transparent,
+  //         child: Stack(
+  //           alignment: Alignment.center,
+  //           children: [
+  //             InteractiveViewer(
+  //               panEnabled: true,
+  //               boundaryMargin: const EdgeInsets.all(20),
+  //               minScale: 0.5,
+  //               maxScale: 4,
+  //               child: Image.network(
+  //                 imageUrl,
+  //                 fit: BoxFit.contain,
+  //                 errorBuilder: (context, error, stackTrace) {
+  //                   return Container(
+  //                     color: Colors.grey[300],
+  //                     child: const Center(
+  //                       child: Icon(Icons.error_outline,
+  //                           size: 50, color: Colors.white),
+  //                     ),
+  //                   );
+  //                 },
+  //               ),
+  //             ),
+  //             Positioned(
+  //               top: 0,
+  //               right: 0,
+  //               child: Material(
+  //                 color: Colors.transparent,
+  //                 child: IconButton(
+  //                   icon:
+  //                       const Icon(Icons.close, color: Colors.white, size: 30),
+  //                   onPressed: () => Navigator.of(context).pop(),
+  //                 ),
+  //               ),
+  //             ),
+  //           ],
+  //         ),
+  //       );
+  //     },
+  //   );
+  // }
+
+  Widget _buildSingleImage(String imageUrl) {
+    return GestureDetector(
+      onTap: () => _showImageDialog(context, imageUrl),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(
+          imageUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return Container(
+              color: Colors.grey[300],
+              child: const Icon(Icons.error),
+            );
+          },
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return Center(
+              child: CircularProgressIndicator(
+                value: loadingProgress.expectedTotalBytes != null
+                    ? loadingProgress.cumulativeBytesLoaded /
+                        loadingProgress.expectedTotalBytes!
+                    : null,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMultipleImages(List<String> images) {
+    return ListView.builder(
+      scrollDirection: Axis.horizontal,
+      itemCount: images.length,
+      itemBuilder: (context, index) {
+        return Container(
+          width: 200,
+          margin: const EdgeInsets.only(right: 10),
+          child: GestureDetector(
+            onTap: () => _showImageDialog(context, images[index]),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                images[index],
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    color: Colors.grey[300],
+                    child: const Icon(Icons.error),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showImageDialog(BuildContext context, String imageUrl) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          child: Stack(
+            children: [
+              InteractiveViewer(
+                panEnabled: true,
+                boundaryMargin: const EdgeInsets.all(20),
+                minScale: 0.5,
+                maxScale: 4,
+                child: Image.network(
+                  imageUrl,
+                  fit: BoxFit.contain,
+                ),
+              ),
+              Positioned(
+                right: 0,
+                top: 0,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildPostDetails(BuildContext context, dynamic post) {
     final jalaliDate = Jalali.fromDateTime(post.createdAt.toLocal());
     final formattedDate =
@@ -91,6 +530,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
               textDirection: TextDirection.rtl,
               child: Text(post.content, style: const TextStyle(fontSize: 18)),
             ),
+            _buildPostImages(post), // اضافه کردن این خط
             const SizedBox(height: 10),
             _buildLikeRow(post),
           ],

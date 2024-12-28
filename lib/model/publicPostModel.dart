@@ -8,6 +8,8 @@ class PublicPostModel extends Equatable {
   final String userId;
   final String fullName;
   final String content;
+  final String? imageUrl; // جدید: اضافه کردن فیلد تصویر
+
   final DateTime createdAt;
   final String username;
   final String avatarUrl;
@@ -21,6 +23,7 @@ class PublicPostModel extends Equatable {
     required this.userId,
     required this.fullName,
     required this.content,
+    this.imageUrl,
     required this.createdAt,
     required this.username,
     this.avatarUrl = '',
@@ -37,6 +40,7 @@ class PublicPostModel extends Equatable {
       userId: _parseString(map, 'user_id'),
       fullName: _parseString(map, 'full_name'),
       content: _parseString(map, 'content'),
+      imageUrl: _parseString(map, 'image_url', defaultValue: ""), // جدید
       createdAt: _parseDateTime(map, 'created_at'),
       username: _parseUsername(map),
       avatarUrl: _parseAvatarUrl(map),
@@ -96,6 +100,7 @@ class PublicPostModel extends Equatable {
       'id': id,
       'user_id': userId,
       'content': content,
+      'image_url': imageUrl, // جدید
       'created_at': createdAt.toIso8601String(),
       'profiles': {
         'username': username,
@@ -105,47 +110,45 @@ class PublicPostModel extends Equatable {
       },
       'like_count': likeCount,
       'is_liked': isLiked,
-      'comment_count': commentCount, // جدید: اضافه کردن تعداد کامنت‌ها به Map
+      'comment_count': commentCount,
     };
   }
 
-  // متد تبدیل به JSON
   String toJson() => json.encode(toMap());
 
-  // متد سازنده از JSON
   factory PublicPostModel.fromJson(String source) =>
       PublicPostModel.fromMap(json.decode(source));
 
-  // متد copyWith برای تغییر خصوصیات
   PublicPostModel copyWith({
     String? id,
     String? userId,
     String? fullName,
     String? content,
+    String? imageUrl, // جدید
     DateTime? createdAt,
     String? username,
     String? avatarUrl,
     int? likeCount,
     bool? isLiked,
     bool? isVerified,
-    int? commentCount, // جدید: افزودن تعداد کامنت‌ها به copyWith
+    int? commentCount,
   }) {
     return PublicPostModel(
       id: id ?? this.id,
       userId: userId ?? this.userId,
       fullName: fullName ?? this.fullName,
       content: content ?? this.content,
+      imageUrl: imageUrl ?? this.imageUrl, // جدید
       createdAt: createdAt ?? this.createdAt,
       username: username ?? this.username,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       likeCount: likeCount ?? this.likeCount,
       isLiked: isLiked ?? this.isLiked,
       isVerified: isVerified ?? this.isVerified,
-      commentCount: commentCount ?? this.commentCount, // جدید
+      commentCount: commentCount ?? this.commentCount,
     );
   }
 
-  // override کردن متد toString برای چاپ راحت‌تر
   @override
   String toString() {
     return '''
@@ -154,29 +157,30 @@ class PublicPostModel extends Equatable {
       userId: $userId, 
       fullName: $fullName, 
       content: $content, 
+      imageUrl: $imageUrl, // جدید
       createdAt: $createdAt, 
       username: $username, 
       avatarUrl: $avatarUrl, 
       likeCount: $likeCount, 
       isLiked: $isLiked, 
       isVerified: $isVerified, 
-      commentCount: $commentCount // جدید
+      commentCount: $commentCount
     )''';
   }
 
-  // implementation of Equatable
   @override
   List<Object?> get props => [
         id,
         userId,
         fullName,
         content,
+        imageUrl, // جدید
         createdAt,
         username,
         avatarUrl,
         likeCount,
         isLiked,
         isVerified,
-        commentCount, // جدید
+        commentCount,
       ];
 }
