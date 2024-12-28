@@ -29,7 +29,7 @@ async function importCsvData() {
         try {
           await databases.createDocument(
             'vista_db', // آیدی دیتابیس
-            '6759a45a0035156253ce', // آیدی کالکشن profiles
+            'profiles', // آیدی کالکشن profiles
             ID.unique(),
             {
               username: profile['username'],
