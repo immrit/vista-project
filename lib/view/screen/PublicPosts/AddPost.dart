@@ -54,9 +54,20 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
 
 // تابع _addPost رو هم باید آپدیت کنیم
   Future<void> _addPost() async {
-    if (contentController.text.trim().isEmpty && _selectedImage == null) {
+    final content = contentController.text.trim();
+
+    // Check for empty post and minimum length
+    if (content.isEmpty && _selectedImage == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لطفاً متن یا تصویری را وارد کنید')),
+        const SnackBar(content: Text('لطفاً محتوا جهت ارسال پست را وارد کنید')),
+      );
+      return;
+    }
+
+    // Check minimum content length if there's text
+    if (content.isNotEmpty && content.length < 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('متن پست باید حداقل ۳ حرف داشته باشد')),
       );
       return;
     }

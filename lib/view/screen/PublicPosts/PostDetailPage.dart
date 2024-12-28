@@ -544,7 +544,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
       children: [
         CircleAvatar(
           backgroundImage: post.avatarUrl.isEmpty
-              ? const AssetImage('assets/default_avatar.png')
+              ? const AssetImage('lib/util/images/default-avatar.jpg')
               : NetworkImage(post.avatarUrl),
         ),
         const SizedBox(width: 10),
@@ -693,7 +693,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                 CircleAvatar(
                   radius: 20,
                   backgroundImage: comment.avatarUrl.isEmpty
-                      ? const AssetImage('assets/default_avatar.png')
+                      ? const AssetImage('lib/util/images/default-avatar.jpg')
                       : NetworkImage(comment.avatarUrl) as ImageProvider,
                 ),
                 const SizedBox(width: 10),
@@ -870,10 +870,10 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
               onTap: () => _onMentionTap(user),
               child: Chip(
                 avatar: CircleAvatar(
-                  backgroundImage:
-                      user.avatarUrl != null && user.avatarUrl!.isNotEmpty
-                          ? NetworkImage(user.avatarUrl!)
-                          : const AssetImage('assets/default_avatar.png'),
+                  backgroundImage: user.avatarUrl != null &&
+                          user.avatarUrl!.isNotEmpty
+                      ? NetworkImage(user.avatarUrl!)
+                      : const AssetImage('lib/util/images/default-avatar.jpg'),
                 ),
                 label: Text(user.username),
               ),

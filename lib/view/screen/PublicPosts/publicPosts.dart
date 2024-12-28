@@ -11,50 +11,62 @@ import '../../../util/widgets.dart';
 import 'AddPost.dart';
 import 'profileScreen.dart';
 
-class PublicPostsScreen extends ConsumerWidget {
+class PublicPostsScreen extends ConsumerStatefulWidget {
   const PublicPostsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PublicPostsScreen> createState() => _PublicPostsScreenState();
+}
+
+class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen> {
+  @override
+  Widget build(BuildContext context) {
     final currentColor = ref.watch(themeProvider);
     final getProfile = ref.watch(profileProvider);
 
     return DefaultTabController(
       length: 2,
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text(
-            'کافه ویستا',
-            style: TextStyle(
-                fontSize: 25,
-                fontWeight: FontWeight.bold,
-                fontFamily: 'vazier'),
-          ),
-          centerTitle: true,
-          bottom: TabBar(
-            indicatorColor: Theme.of(context).brightness == Brightness.dark
-                ? Colors.white // رنگ زیر تب انتخاب شده
-                : Colors.black,
-            labelColor: Theme.of(context).brightness == Brightness.dark
-                ? Colors.white
-                : Colors.black, // رنگ متن تب انتخاب شده
-            unselectedLabelColor:
-                Theme.of(context).brightness == Brightness.dark
+        body: NestedScrollView(
+          headerSliverBuilder: (context, innerBoxIsScrolled) => [
+            SliverAppBar(
+              floating: true,
+              snap: true,
+              title: const Text(
+                'Vista',
+                style: TextStyle(
+                  fontSize: 25,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Bauhaus',
+                ),
+              ),
+              centerTitle: true,
+              bottom: TabBar(
+                indicatorColor: Theme.of(context).brightness == Brightness.dark
                     ? Colors.white
-                    : Colors.black, // رنگ متن تب‌های انتخاب نشده
-            tabs: const [
-              Tab(text: 'همه پست‌ها'),
-              Tab(text: 'پست‌های دنبال‌شده‌ها'),
+                    : Colors.black,
+                labelColor: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white
+                    : Colors.black,
+                unselectedLabelColor:
+                    Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white
+                        : Colors.black,
+                tabs: const [
+                  Tab(text: 'همه پست‌ها'),
+                  Tab(text: 'پست‌های دنبال‌شده‌ها'),
+                ],
+              ),
+            ),
+          ],
+          body: const TabBarView(
+            children: [
+              _AllPostsTab(),
+              _FollowingPostsTab(),
             ],
           ),
         ),
         endDrawer: CustomDrawer(getProfile, currentColor, context, ref),
-        body: const TabBarView(
-          children: [
-            _AllPostsTab(),
-            _FollowingPostsTab(),
-          ],
-        ),
         floatingActionButton: FloatingActionButton(
           child: const Icon(Icons.edit),
           onPressed: () {
@@ -79,7 +91,14 @@ class _AllPostsTab extends ConsumerWidget {
 
     return RefreshIndicator(
       onRefresh: () async {
+        // Refresh posts
         ref.refresh(fetchPublicPosts);
+
+        // Get posts and refresh their comments
+        final posts = await ref.read(fetchPublicPosts.future);
+        for (final post in posts) {
+          ref.refresh(commentsProvider(post.id));
+        }
       },
       child: postsAsyncValue.when(
         data: (posts) => _buildPostList(context, ref, posts),
@@ -116,7 +135,14 @@ class _FollowingPostsTab extends ConsumerWidget {
 
     return RefreshIndicator(
       onRefresh: () async {
+        // Refresh posts
         ref.refresh(fetchFollowingPostsProvider);
+
+        // Get posts and refresh their comments
+        final posts = await ref.read(fetchFollowingPostsProvider.future);
+        for (final post in posts) {
+          ref.refresh(commentsProvider(post.id));
+        }
       },
       child: followingPostsAsyncValue.when(
         data: (posts) => _buildPostList(context, ref, posts),
@@ -151,6 +177,7 @@ Widget _buildPostList(
   }
 
   return ListView.builder(
+    padding: const EdgeInsets.only(top: 8.0), // کاهش فاصله از بالا
     itemCount: posts.length,
     itemBuilder: (context, index) {
       final post = posts[index];
