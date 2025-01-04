@@ -48,7 +48,14 @@ class _SearchpageState extends ConsumerState<Searchpage> {
             : const AssetImage('lib/util/images/default-avatar.jpg')
                 as ImageProvider,
       ),
-      title: Text(user.username),
+      title: Row(
+        children: [
+          Text(user.username),
+          const SizedBox(width: 5),
+          if (user.isVerified)
+            const Icon(Icons.verified, color: Colors.blue, size: 16),
+        ],
+      ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -233,7 +240,7 @@ class _SearchpageState extends ConsumerState<Searchpage> {
 class UserCard extends ConsumerStatefulWidget {
   final ProfileModel user;
 
-  const UserCard({Key? key, required this.user}) : super(key: key);
+  const UserCard({super.key, required this.user});
 
   @override
   ConsumerState<UserCard> createState() => _UserCardState();
@@ -295,13 +302,21 @@ class _UserCardState extends ConsumerState<UserCard> {
                       as ImageProvider,
             ),
             const SizedBox(height: 10),
-            Text(
-              widget.user.username,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  widget.user.username,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(width: 3),
+                if (widget.user.isVerified)
+                  const Icon(Icons.verified, color: Colors.blue, size: 16),
+              ],
             ),
             const SizedBox(height: 5),
             Text(

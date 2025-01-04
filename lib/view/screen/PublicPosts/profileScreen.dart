@@ -66,20 +66,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ],
               ),
             ),
-      floatingActionButton: profileState != null &&
-              currentUser != null &&
-              profileState.id == currentUser.id
-          ? FloatingActionButton(
-              child: const Icon(Icons.edit),
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const AddPublicPostScreen(),
-                  ),
-                );
-              },
-            )
-          : null, // زمانی که پروفایل مربوط به کاربر جاری نیست، null می‌شود
+      // floatingActionButton: profileState != null &&
+      //         currentUser != null &&
+      //         profileState.id == currentUser.id
+      //     ? FloatingActionButton(
+      //         child: const Icon(Icons.edit),
+      //         onPressed: () {
+      //           Navigator.of(context).push(
+      //             MaterialPageRoute(
+      //               builder: (context) => const AddPublicPostScreen(),
+      //             ),
+      //           );
+      //         },
+      //       )
+      // : null, // زمانی که پروفایل مربوط به کاربر جاری نیست، null می‌شود
     );
   }
 

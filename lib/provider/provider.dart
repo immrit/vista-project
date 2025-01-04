@@ -1448,6 +1448,7 @@ final fetchFollowingPostsProvider =
         content, 
         created_at, 
         user_id,
+        image_url,
         profiles(username, avatar_url, is_verified),
         likes(user_id),
         comments(id)

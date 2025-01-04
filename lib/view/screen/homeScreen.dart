@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '/main.dart';
+import 'PublicPosts/AddPost.dart';
 import 'PublicPosts/notificationScreen.dart';
 import 'PublicPosts/profileScreen.dart';
 import 'PublicPosts/publicPosts.dart';
@@ -20,7 +21,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final List<Widget> _tabs = [
     const PublicPostsScreen(), // صفحه پست‌های عمومی
     Searchpage(), // صفحه جستجو
-    // AddPublicPostScreen(), // صفحه افزودن پست
+    const AddPublicPostScreen(), // صفحه افزودن پست
     const NotificationsPage(), // صفحه اعلان‌ها
     ProfileScreen(
       userId: supabase.auth.currentUser!.id,
@@ -30,9 +31,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   // هندل کردن تغییر تب
   void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
+    if (index == 2) {
+      // Navigate to AddPostScreen directly instead of changing index
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => const AddPublicPostScreen(),
+        ),
+      );
+    } else {
+      setState(() {
+        _selectedIndex = index;
+      });
+    }
   }
 
   @override
@@ -42,28 +52,52 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: _onItemTapped,
-        destinations: [
-          NavigationDestination(
-            icon: Icon(Icons.home),
-            // selectedIcon: Icon(Icons.home),
+        destinations: <NavigationDestination>[
+          const NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
             label: '',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.search),
-            selectedIcon: Icon(Icons.search_outlined),
+            selectedIcon: Icon(Icons.search),
             label: '',
           ),
-          // NavigationDestination(
-          //   icon: Icon(Icons.add),
-          //   selectedIcon: Icon(Icons.add),
-          //   label: '',
-          // ),
           NavigationDestination(
+            icon: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                shape: BoxShape.rectangle,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white24
+                    : Colors.black12,
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: const Icon(Icons.add, size: 26),
+            ),
+            selectedIcon: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Theme.of(context).colorScheme.primary,
+                    Theme.of(context).colorScheme.secondary,
+                  ],
+                ),
+              ),
+              child: const Icon(Icons.add, size: 26, color: Colors.white),
+            ),
+            label: '',
+          ),
+          const NavigationDestination(
             icon: Icon(Icons.favorite_outline),
             selectedIcon: Icon(Icons.favorite),
             label: '',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.person_2_outlined),
             selectedIcon: Icon(Icons.person_2),
             label: '',
@@ -71,7 +105,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ],
         elevation: 3,
         animationDuration: const Duration(milliseconds: 500),
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
       ),
     );
   }

@@ -180,7 +180,7 @@ Widget addNotesTextFiels(
         maxLength: maxLength,
         controller: controller,
         style: TextStyle(fontSize: fontSize, fontWeight: fontWeight),
-        // حذف NeverScrollableScrollPhysics برای اجازه دادن به اسکرول
+        scrollPhysics: const NeverScrollableScrollPhysics(),
         decoration: InputDecoration(
             hintText: name,
             border: InputBorder.none,
@@ -523,129 +523,245 @@ TextDirection getDirectionality(String text) {
 }
 
 void showCommentsBottomSheet(
-  BuildContext context,
-  WidgetRef ref,
-  String postId,
-  String userId,
-) {
-  final TextEditingController commentController = TextEditingController();
-  final FocusNode commentFocusNode = FocusNode();
-  final List<UserModel> mentionedUsers = [];
+    BuildContext context, WidgetRef ref, String postId, String userId) {
+  final commentController = TextEditingController();
+  final commentFocusNode = FocusNode();
+  final mentionedUsers = <UserModel>[];
+  String? replyToCommentId;
+  String? replyToUsername;
 
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    builder: (BuildContext context) {
-      return StatefulBuilder(
-        builder: (context, setState) {
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-            ),
-            child: Container(
-              height: MediaQuery.of(context).size.height * 0.7,
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  // Comments List
-                  Expanded(
-                    child: Consumer(
-                      builder: (context, ref, _) {
-                        final commentsAsyncValue =
-                            ref.watch(commentsProvider(postId));
+    backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.75, // شروع از 75% صفحه
+          minChildSize: 0.4, // حداقل 40% صفحه
+          maxChildSize: 0.95, // حداکثر 95% صفحه
+          expand: false,
+          builder: (_, controller) => Column(
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
 
-                        return commentsAsyncValue.when(
-                          data: (comments) => comments.isEmpty
-                              ? Container(
-                                  padding: const EdgeInsets.only(top: 80),
-                                  width: double.infinity,
-                                  height: double.infinity,
-                                  child: Column(
-                                    // crossAxisAlignment:
-                                    //     CrossAxisAlignment.center,
-                                    // mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        Icons.speaker_notes_off,
-                                        size: 180,
-                                        color: Theme.of(context).brightness ==
-                                                Brightness.dark
-                                            ? Colors.white24
-                                            : Colors
-                                                .black26, // تغییر رنگ بر اساس تم
-                                      ),
-                                      Text(
-                                        'هنوز کامنتی وجود ندارد',
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.bold,
-                                          color: Theme.of(context).brightness ==
-                                                  Brightness.dark
-                                              ? Colors.white24
-                                              : Colors
-                                                  .black26, // تغییر رنگ بر اساس تم
-                                        ),
-                                      ),
-                                    ],
-                                  ))
-                              : _buildCommentsList(
-                                  context, ref, comments, userId),
-                          loading: () =>
-                              const Center(child: CircularProgressIndicator()),
-                          error: (error, stackTrace) => const Center(
-                              child: Text('خطا در بارگذاری کامنت‌ها')),
-                        );
-                      },
+              // Header
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Text(
+                      'نظرات',
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
-                  ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
 
-                  // Mention and Comment Input
-                  Directionality(
-                    textDirection: getDirectionality(commentController.text),
-                    child: TextField(
-                      controller: commentController,
-                      focusNode: commentFocusNode,
-                      decoration: InputDecoration(
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
+              // Reply indicator with animation
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                height: replyToUsername != null ? 50 : 0,
+                child: replyToUsername != null
+                    ? Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        color: Colors.blue.withOpacity(0.1),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.reply, color: Colors.blue),
+                            const SizedBox(width: 8),
+                            Text(
+                              'در پاسخ به: $replyToUsername',
+                              style: const TextStyle(color: Colors.blue),
+                            ),
+                            const Spacer(),
+                            IconButton(
+                              icon: const Icon(Icons.close, color: Colors.blue),
+                              onPressed: () => setState(() {
+                                replyToCommentId = null;
+                                replyToUsername = null;
+                                commentController.clear();
+                              }),
+                            ),
+                          ],
                         ),
-                        labelText: 'کامنت خود را بنویسید...',
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.send),
-                          onPressed: () => _sendComment(
+                      )
+                    : null,
+              ),
+
+              // Comments list
+              Expanded(
+                child: Consumer(
+                  builder: (context, ref, _) {
+                    final commentsAsyncValue =
+                        ref.watch(commentsProvider(postId));
+
+                    return commentsAsyncValue.when(
+                      data: (comments) => comments.isEmpty
+                          ? _buildEmptyState(context)
+                          : RefreshIndicator(
+                              onRefresh: () async {
+                                ref.invalidate(commentsProvider(postId));
+                              },
+                              child: ListView.builder(
+                                controller: controller,
+                                itemCount: comments.length,
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 16),
+                                itemBuilder: (context, index) {
+                                  final comment = comments[index];
+                                  return AnimatedContainer(
+                                    duration: Duration(milliseconds: 300),
+                                    curve: Curves.easeInOut,
+                                    child: _buildCommentTile(
+                                      context,
+                                      ref,
+                                      comment,
+                                      userId,
+                                      onReply: ({
+                                        required String parentCommentId,
+                                        required String parentUsername,
+                                        required String postId,
+                                      }) {
+                                        setState(() {
+                                          replyToCommentId = parentCommentId;
+                                          replyToUsername = parentUsername;
+                                          commentController.text =
+                                              '@$parentUsername ';
+                                          commentFocusNode.requestFocus();
+                                        });
+                                      },
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                      error: (error, stack) => Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.error_outline,
+                                size: 48, color: Colors.red),
+                            const SizedBox(height: 16),
+                            Text('Error: $error'),
+                            TextButton(
+                              onPressed: () =>
+                                  ref.invalidate(commentsProvider(postId)),
+                              child: const Text('تلاش مجدد'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      loading: () => const Center(
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+
+              // Input section
+              Container(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  8,
+                  16,
+                  MediaQuery.of(context).viewInsets.bottom + 8,
+                ),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black12,
+                      blurRadius: 4,
+                      offset: Offset(0, -2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: commentController,
+                        focusNode: commentFocusNode,
+                        textDirection: TextDirection.rtl,
+                        maxLines: null,
+                        decoration: InputDecoration(
+                          hintText: replyToUsername != null
+                              ? 'پاسخ خود را بنویسید...'
+                              : 'نظر خود را بنویسید...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(20),
+                            borderSide: BorderSide.none,
+                          ),
+                          filled: true,
+                          fillColor:
+                              Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.grey[800]
+                                  : Colors.grey[200],
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                        ),
+                        onChanged: (value) => _handleMentionSearch(
+                          ref,
+                          value,
+                          setState,
+                          mentionedUsers,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.send),
+                      // color: Theme.of(context).primaryColor,
+                      onPressed: () {
+                        final content = commentController.text.trim();
+                        if (content.isNotEmpty) {
+                          _sendComment(
                             context,
                             ref,
                             postId,
                             commentController,
                             mentionedUsers,
-                          ),
-                        ),
-                      ),
-                      onChanged: (value) {
-                        // Mention detection logic
-                        _handleMentionSearch(
-                            ref, value, setState, mentionedUsers);
+                            parentCommentId: replyToCommentId,
+                          );
+                          setState(() {
+                            replyToCommentId = null;
+                            replyToUsername = null;
+                            commentController.clear();
+                          });
+                        }
                       },
                     ),
-                  ),
-
-                  // Mention Suggestions
-                  Consumer(
-                    builder: (context, ref, _) {
-                      final mentionUsers = ref.watch(mentionNotifierProvider);
-                      return mentionUsers.isNotEmpty
-                          ? _buildMentionSuggestions(context, mentionUsers,
-                              setState, commentController, mentionedUsers)
-                          : const SizedBox.shrink();
-                    },
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          );
-        },
-      );
-    },
+            ],
+          ),
+        );
+      },
+    ),
   );
 }
 
@@ -729,13 +845,9 @@ void _addMentionToComment(
 }
 
 // Send Comment Method
-void _sendComment(
-  BuildContext context,
-  WidgetRef ref,
-  String postId,
-  TextEditingController commentController,
-  List<UserModel> mentionedUsers,
-) async {
+void _sendComment(BuildContext context, WidgetRef ref, String postId,
+    TextEditingController commentController, List<UserModel> mentionedUsers,
+    {String? parentCommentId}) async {
   final content = commentController.text.trim();
   final mentionedUserIds = mentionedUsers.map((user) => user.id).toList();
 
@@ -749,6 +861,7 @@ void _sendComment(
             content: content, // محتوای کامل کامنت
             ref: ref,
             mentionedUserIds: mentionedUserIds,
+            parentCommentId: parentCommentId,
           )
           .then((value) {
         commentController.clear();
@@ -767,20 +880,55 @@ void _sendComment(
 }
 
 // Comments List Widget
+Widget _buildEmptyState(BuildContext context) {
+  return Center(
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          Icons.comment_outlined,
+          size: 48,
+          color: Colors.grey[400],
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'هنوز نظری ثبت نشده است',
+          style: TextStyle(
+            color: Colors.grey[600],
+            fontSize: 16,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 Widget _buildCommentsList(BuildContext context, WidgetRef ref,
     List<CommentModel> comments, String userId) {
   return ListView.builder(
-    reverse: true,
+    // reverse: false,
     itemCount: comments.length,
     itemBuilder: (context, index) {
       final comment = comments[index];
-      return _buildCommentTile(context, ref, comment, userId);
+      return _buildCommentTile(context, ref, comment, userId, onReply: ({
+        required String parentCommentId,
+        required String parentUsername,
+        required String postId,
+      }) {
+        _showReplyBottomSheet(context, ref, postId,
+            parentCommentId: parentCommentId, parentUsername: parentUsername);
+      });
     },
   );
 }
 
 Widget _buildCommentTile(BuildContext context, WidgetRef ref,
-    CommentModel comment, String currentUserId) {
+    CommentModel comment, String currentUserId,
+    {required Function({
+      required String parentCommentId,
+      required String parentUsername,
+      required String postId,
+    }) onReply}) {
   final theme = Theme.of(context);
   final isDarkMode = theme.brightness == Brightness.dark;
 
@@ -893,12 +1041,10 @@ Widget _buildCommentTile(BuildContext context, WidgetRef ref,
           trailing: IconButton(
             icon: const Icon(Icons.reply),
             onPressed: () {
-              _showReplyBottomSheet(
-                context,
-                ref,
-                comment.postId,
+              onReply(
                 parentCommentId: comment.id,
-                parentUsername: comment.username, // پاس دادن نام کاربری
+                parentUsername: comment.username,
+                postId: comment.postId,
               );
             },
           ),
@@ -916,8 +1062,18 @@ Widget _buildCommentTile(BuildContext context, WidgetRef ref,
             ),
           ),
           children: comment.replies
-              .map((reply) =>
-                  _buildCommentTile(context, ref, reply, currentUserId))
+              .map((reply) => _buildCommentTile(
+                      context, ref, reply, currentUserId, onReply: ({
+                    required String parentCommentId,
+                    required String parentUsername,
+                    required String postId,
+                  }) {
+                    onReply(
+                      parentCommentId: reply.id,
+                      parentUsername: reply.username,
+                      postId: reply.postId,
+                    );
+                  }))
               .toList(),
         ),
 

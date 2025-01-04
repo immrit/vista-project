@@ -19,22 +19,34 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   bool isLoading = false;
   final int maxLength = 300; // حداکثر تعداد کاراکتر
   int remainingChars = 300;
+  static const int maxCharLength = 300;
+  File? _selectedImage;
 
   @override
   void initState() {
     super.initState();
+    // اضافه کردن لیسنر برای کنترل تعداد کاراکترها
     contentController.addListener(() {
       setState(() {
-        remainingChars = maxLength - contentController.text.length;
+        remainingChars = maxCharLength - contentController.text.length;
       });
     });
   }
 
-  double _calculateProgress() {
-    return contentController.text.length / maxLength;
+  // تابع جدید برای تعیین رنگ بر اساس تعداد کاراکترها
+  Color _getProgressColor() {
+    if (contentController.text.length > maxCharLength) {
+      return Colors.red;
+    }
+    return ref.watch(themeProvider).brightness == Brightness.dark
+        ? Colors.white
+        : Colors.black;
   }
 
-  File? _selectedImage;
+  // تابع جدید برای محاسبه پیشرفت
+  double _calculateProgress() {
+    return (contentController.text.length / maxCharLength).clamp(0.0, 1.0);
+  }
 
   Future<void> _pickImage() async {
     final ImagePicker picker = ImagePicker();
@@ -56,7 +68,15 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   Future<void> _addPost() async {
     final content = contentController.text.trim();
 
-    // Check for empty post and minimum length
+    // بررسی محدودیت‌های متن
+    if (content.length > maxCharLength) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('متن پست نمی‌تواند بیشتر از ۳۰۰ کاراکتر باشد')),
+      );
+      return;
+    }
+
     if (content.isEmpty && _selectedImage == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('لطفاً محتوا جهت ارسال پست را وارد کنید')),
@@ -64,7 +84,6 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       return;
     }
 
-    // Check minimum content length if there's text
     if (content.isNotEmpty && content.length < 3) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('متن پست باید حداقل ۳ حرف داشته باشد')),
@@ -206,7 +225,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
             children: [
               Row(
                 children: [
-                  // نمایش تعداد کاراکترهای باقیمانده
+                  // نمایش تعداد کاراکترهای باقیمانده با رنگ‌بندی جدید
                   Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: Stack(
@@ -217,9 +236,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                           height: 38,
                           child: CircularProgressIndicator(
                             value: _calculateProgress(),
-                            color: currentColor.brightness == Brightness.dark
-                                ? Colors.white
-                                : Colors.black,
+                            color: _getProgressColor(), // رنگ جدید
                             backgroundColor:
                                 currentColor.brightness == Brightness.dark
                                     ? Colors.black12
@@ -232,9 +249,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
-                            color: currentColor.brightness == Brightness.dark
-                                ? Colors.white
-                                : Colors.black,
+                            color: _getProgressColor(), // رنگ جدید
                           ),
                         ),
                       ],
