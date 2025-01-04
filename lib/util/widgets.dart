@@ -172,12 +172,15 @@ Widget addNotesTextFiels(
     child: Directionality(
       textDirection: getDirectionality(controller.text),
       child: TextField(
-        maxLines: lines,
+        maxLines: null, // تغییر از lines به null
+        minLines: lines, // اضافه کردن این خط
+        keyboardType: TextInputType.multiline, // اضافه کردن این خط
+        textInputAction: TextInputAction.newline, // اضافه کردن این خط
         textAlign: getTextAlignment(controller.text),
         maxLength: maxLength,
         controller: controller,
         style: TextStyle(fontSize: fontSize, fontWeight: fontWeight),
-        scrollPhysics: const NeverScrollableScrollPhysics(),
+        // حذف NeverScrollableScrollPhysics برای اجازه دادن به اسکرول
         decoration: InputDecoration(
             hintText: name,
             border: InputBorder.none,
