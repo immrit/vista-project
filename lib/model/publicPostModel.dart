@@ -9,7 +9,6 @@ class PublicPostModel extends Equatable {
   final String fullName;
   final String content;
   final String? imageUrl; // جدید: اضافه کردن فیلد تصویر
-
   final DateTime createdAt;
   final String username;
   final String avatarUrl;

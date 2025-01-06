@@ -13,7 +13,6 @@ import '../../../util/widgets.dart';
 import 'followers and followings/FollowersScreen.dart';
 import 'followers and followings/FollowingScreen.dart';
 import '../ouathUser/editeProfile.dart';
-import 'AddPost.dart';
 // در فایل ProfileScreen:
 
 class ProfileScreen extends ConsumerStatefulWidget {

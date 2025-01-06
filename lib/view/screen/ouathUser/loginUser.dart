@@ -3,6 +3,8 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../main.dart';
+import '../homeScreen.dart';
 import '/util/widgets.dart';
 
 import '../../../provider/provider.dart';
@@ -19,6 +21,7 @@ class _LoginuserState extends ConsumerState<Loginuser> {
   final TextEditingController emailOrUsernameController =
       TextEditingController();
   final TextEditingController passController = TextEditingController();
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -46,46 +49,101 @@ class _LoginuserState extends ConsumerState<Loginuser> {
       }
     }
 
-    Future<void> signIn() async {
-      ref.read(isLoadingProvider.notifier).state = true;
+    void showError(String message) {
+      if (!mounted) return;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در ورود: $message')),
+        );
+      });
+    }
+
+    Future<void> updateUserMetadata(
+        User user, Map<String, dynamic> profile) async {
       try {
-        String email;
+        await supabase.auth.updateUser(
+          UserAttributes(
+            data: {
+              'id': profile['id'],
+              'username': profile['username'],
+              'full_name': profile['full_name'],
+              'avatar_url': profile['avatar_url'],
+              'email': profile['email'],
+              'updated_at': profile['updated_at'],
+            },
+          ),
+        );
+      } catch (e) {
+        print('Error updating user metadata: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('خطا در بروزرسانی اطلاعات: $e')),
+          );
+        }
+      }
+    }
 
-        if (isEmail(emailOrUsernameController.text.trim())) {
-          email = emailOrUsernameController.text.trim();
-        } else {
-          final response = await Supabase.instance.client
-              .from('profiles')
-              .select('email')
-              .eq('username', emailOrUsernameController.text.trim())
-              .maybeSingle();
+    Future<void> signIn() async {
+      setState(() => _isLoading = true);
 
-          if (response == null) {
-            context.showSnackBar('نام کاربری یا رمز عبور اشتباه است',
-                isError: true);
-            return;
-          }
+      try {
+        final input = emailOrUsernameController.text.trim();
+        final password = passController.text.trim();
 
-          email = response['email'] as String;
+        if (input.isEmpty || password.isEmpty) {
+          showError('لطفا تمامی فیلدها را پر کنید');
+          return;
         }
 
-        // Sign in with email and password
-        final user = await Supabase.instance.client.auth.signInWithPassword(
+        String email;
+        Map<String, dynamic> userProfile;
+
+        // بررسی نوع ورود (ایمیل یا نام کاربری)
+        if (input.contains('@')) {
+          email = input;
+          userProfile = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('email', email)
+              .single();
+        } else {
+          userProfile = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('username', input)
+              .single();
+          email = userProfile['email'];
+        }
+
+        // لاگین کردن کاربر
+        final authResponse = await supabase.auth.signInWithPassword(
           email: email,
-          password: passController.text.trim(),
+          password: password,
         );
 
-        context.showSnackBar('خوش آمدید');
-        emailOrUsernameController.clear();
-        passController.clear();
-        getIpAddress();
-      } on AuthException {
-        context.showSnackBar('نام کاربری یا رمز عبور اشتباه است',
-            isError: true);
-      } catch (error) {
-        context.showSnackBar('خطایی پیش آمد', isError: true);
+        // آپدیت متادیتا بعد از لاگین موفق
+        if (authResponse.user != null) {
+          await updateUserMetadata(authResponse.user!, userProfile);
+        }
+
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const HomeScreen()),
+          );
+        }
+      } catch (e) {
+        if (e is PostgrestException) {
+          showError('نام کاربری یا ایمیل یافت نشد');
+        } else if (e is AuthException) {
+          showError('نام کاربری یا رمز عبور اشتباه است');
+        } else {
+          showError(e.toString());
+        }
       } finally {
-        ref.read(isLoadingProvider.notifier).state = false;
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
     }
 

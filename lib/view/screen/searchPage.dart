@@ -1,23 +1,87 @@
+import 'package:Vista/view/screen/PublicPosts/PostDetailPage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import '../../main.dart';
 import '../../model/ProfileModel.dart';
+import '../../model/publicPostModel.dart';
 import '../../provider/provider.dart';
 import 'PublicPosts/profileScreen.dart';
 
-class Searchpage extends ConsumerStatefulWidget {
-  const Searchpage({super.key});
+class SearchPage extends ConsumerStatefulWidget {
+  final String? initialHashtag;
+
+  const SearchPage({
+    super.key,
+    this.initialHashtag,
+  });
 
   @override
-  ConsumerState<Searchpage> createState() => _SearchpageState();
+  _SearchPageState createState() => _SearchPageState();
 }
 
-class _SearchpageState extends ConsumerState<Searchpage> {
+class _SearchPageState extends ConsumerState<SearchPage> {
   final TextEditingController _searchController = TextEditingController();
   String searchQuery = '';
   Map<String, bool> followState = {};
   bool isSearching = false;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialHashtag != null) {
+      _searchController.text = widget.initialHashtag!;
+      // Trigger search for hashtag
+      _performSearch(widget.initialHashtag!);
+    }
+  }
+
+  Future<void> _performSearch(String query) async {
+    setState(() {
+      searchQuery = query;
+      isSearching = query.isNotEmpty;
+    });
+
+    if (query.startsWith('#')) {
+      setState(() => _isLoading = true);
+      try {
+        final response = await supabase
+            .from('posts')
+            .select('''
+              *,
+              profiles (
+                username,
+                full_name,
+                avatar_url,
+                is_verified
+              )
+            ''')
+            .ilike('content', '%$query%')
+            .order('created_at', ascending: false);
+
+        if (!mounted) return;
+
+        final posts = (response as List).map((post) {
+          final Map<String, dynamic> postMap = Map<String, dynamic>.from(post);
+          return PublicPostModel.fromMap(postMap);
+        }).toList();
+
+        ref.read(searchResultsProvider.notifier).state = posts;
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
+    }
+  }
 
   void _toggleFollow(String userId) async {
     setState(() {
@@ -43,10 +107,15 @@ class _SearchpageState extends ConsumerState<Searchpage> {
     return ListTile(
       leading: CircleAvatar(
         radius: 25,
-        backgroundImage: user.avatarUrl != null
+        backgroundImage: user.avatarUrl != null && user.avatarUrl!.isNotEmpty
             ? NetworkImage(user.avatarUrl!)
             : const AssetImage('lib/util/images/default-avatar.jpg')
                 as ImageProvider,
+        onBackgroundImageError: (exception, stackTrace) {
+          // Fallback if image loading fails
+          debugPrint('Error loading avatar image: $exception');
+        },
+        backgroundColor: Colors.grey[300],
       ),
       title: Row(
         children: [
@@ -86,154 +155,121 @@ class _SearchpageState extends ConsumerState<Searchpage> {
   Widget build(BuildContext context) {
     final followingProvider =
         ref.watch(userFollowingProvider(supabase.auth.currentUser!.id));
-    final searchResults = ref.watch(searchUsersProvider(searchQuery));
+    final userSearchResults =
+        ref.watch(searchUsersProvider(searchQuery)).asData?.value ?? [];
+    final hashtagResults = ref.watch(searchResultsProvider);
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          // Search Bar
-          SliverAppBar(
-            floating: true,
-            pinned: true,
-            expandedHeight: 120,
-            flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Theme.of(context).primaryColor,
-                      Theme.of(context).primaryColor.withOpacity(0.8)
-                    ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                ),
-              ),
-            ),
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(60),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(30),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: TextField(
-                    controller: _searchController,
-                    textAlign: TextAlign.right,
-                    textDirection: TextDirection.rtl,
-                    decoration: InputDecoration(
-                      hintText:
-                          isSearching ? 'جستجو در بین همه کاربران...' : 'جستجو',
-                      hintStyle: const TextStyle(color: Colors.grey),
-                      prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear, color: Colors.grey),
-                              onPressed: () {
-                                setState(() {
-                                  _searchController.clear();
-                                  searchQuery = '';
-                                  isSearching = false;
-                                });
-                              },
-                            )
-                          : null,
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 15),
-                    ),
-                    onChanged: (value) {
-                      setState(() {
-                        searchQuery = value;
-                        isSearching = value.isNotEmpty;
-                      });
-                    },
-                    onTap: () => setState(() => isSearching = true),
-                  ),
-                ),
-              ),
-            ),
+      appBar: AppBar(
+        title: TextField(
+          controller: _searchController,
+          decoration: InputDecoration(
+            hintText: 'جستجو...',
+            border: InputBorder.none,
+            prefixIcon: const Icon(Icons.search),
           ),
+          onChanged: (value) {
+            _performSearch(value);
+          },
+        ),
+      ),
+      body: Consumer(
+        builder: (context, ref, child) {
+          if (_isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-          // Content
-          SliverPadding(
-            padding: const EdgeInsets.all(8.0),
-            sliver: !isSearching
-                ? followingProvider.when(
-                    data: (following) => following.isEmpty
-                        ? const SliverFillRemaining(
-                            child: Center(
-                              child: Text(
-                                'هنوز کسی را دنبال نکرده‌اید',
-                                style: TextStyle(color: Colors.grey),
-                              ),
+          if (!isSearching) {
+            return followingProvider.when(
+              data: (following) => following.isEmpty
+                  ? const Center(child: Text('هنوز کسی را دنبال نکرده‌اید'))
+                  : GridView.builder(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        childAspectRatio: 0.85,
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                      ),
+                      itemCount: following.length,
+                      itemBuilder: (context, index) =>
+                          UserCard(user: following[index]),
+                    ),
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => Center(child: Text('خطا: $error')),
+            );
+          }
+
+          if (searchQuery.startsWith('#')) {
+            return Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: MasonryGridView.count(
+                crossAxisCount: 2,
+                mainAxisSpacing: 4,
+                crossAxisSpacing: 4,
+                itemCount: hashtagResults.length,
+                itemBuilder: (context, index) {
+                  final post = hashtagResults[index];
+                  return Card(
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                PostDetailsPage(postId: post.id),
+                          ),
+                        );
+                      },
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (post.imageUrl != null &&
+                              post.imageUrl!.isNotEmpty)
+                            Image.network(
+                              post.imageUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  const SizedBox.shrink(),
                             ),
-                          )
-                        : SliverGrid(
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              childAspectRatio: 0.85,
-                              crossAxisSpacing: 10,
-                              mainAxisSpacing: 10,
-                            ),
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) =>
-                                  UserCard(user: following[index]),
-                              childCount: following.length,
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Text(
+                              post.content,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                    loading: () => const SliverFillRemaining(
-                      child: Center(child: CircularProgressIndicator()),
+                        ],
+                      ),
                     ),
-                    error: (error, _) => SliverFillRemaining(
-                      child: Center(child: Text('خطا: $error')),
-                    ),
-                  )
-                : searchResults.when(
-                    data: (users) => users.isEmpty
-                        ? const SliverFillRemaining(
-                            child: Center(
-                              child: Text(
-                                'نتیجه‌ای یافت نشد',
-                                style: TextStyle(color: Colors.grey),
-                              ),
-                            ),
-                          )
-                        : SliverGrid(
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              childAspectRatio: 0.85,
-                              crossAxisSpacing: 10,
-                              mainAxisSpacing: 10,
-                            ),
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) => UserCard(user: users[index]),
-                              childCount: users.length,
-                            ),
-                          ),
-                    loading: () => const SliverFillRemaining(
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-                    error: (error, _) => SliverFillRemaining(
-                      child: Center(child: Text('خطا: $error')),
-                    ),
-                  ),
-          ),
-        ],
+                  );
+                },
+              ),
+            );
+          }
+
+          return GridView.builder(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              childAspectRatio: 0.85,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+            ),
+            itemCount: userSearchResults.length,
+            itemBuilder: (context, index) =>
+                UserCard(user: userSearchResults[index]),
+          );
+        },
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 }
 
@@ -371,4 +407,65 @@ class _UserCardState extends ConsumerState<UserCard> {
       ),
     );
   }
+}
+
+// Update the provider definition
+final searchResultsProvider = StateProvider<List<PublicPostModel>>((ref) => []);
+
+class PostCard extends StatelessWidget {
+  final PublicPostModel post;
+
+  const PostCard({
+    super.key,
+    required this.post,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        title: Text(post.content),
+        // Add more post details here
+      ),
+    );
+  }
+}
+
+Widget buildPostTile({
+  required BuildContext context,
+  required PublicPostModel post,
+  required String currentUserId,
+  required WidgetRef ref,
+}) {
+  return Card(
+    margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    child: ListTile(
+      // Only show leading image if post has an image
+      leading: post.imageUrl != null && post.imageUrl!.isNotEmpty
+          ? Image.network(
+              post.imageUrl!,
+              width: 50,
+              height: 50,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return const SizedBox(
+                  width: 50,
+                  height: 50,
+                );
+              },
+            )
+          : null, // Don't show any image if post has no image
+      title: Text(post.content),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PostDetailsPage(
+              postId: post.id,
+            ),
+          ),
+        );
+      },
+    ),
+  );
 }

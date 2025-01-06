@@ -225,7 +225,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
             children: [
               Row(
                 children: [
-                  // نمایش تعداد کاراکترهای باقیمانده با رنگ‌بندی جدید
+                  // نمایش تعداد کاراکترهای باقیمانده
                   Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: Stack(
@@ -236,7 +236,9 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                           height: 38,
                           child: CircularProgressIndicator(
                             value: _calculateProgress(),
-                            color: _getProgressColor(), // رنگ جدید
+                            color: currentColor.brightness == Brightness.dark
+                                ? Colors.white
+                                : Colors.black,
                             backgroundColor:
                                 currentColor.brightness == Brightness.dark
                                     ? Colors.black12
@@ -249,7 +251,9 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
-                            color: _getProgressColor(), // رنگ جدید
+                            color: currentColor.brightness == Brightness.dark
+                                ? Colors.white
+                                : Colors.black,
                           ),
                         ),
                       ],

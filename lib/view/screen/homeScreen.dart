@@ -20,7 +20,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // لیست صفحات
   final List<Widget> _tabs = [
     const PublicPostsScreen(), // صفحه پست‌های عمومی
-    Searchpage(), // صفحه جستجو
+    SearchPage(), // صفحه جستجو
     const AddPublicPostScreen(), // صفحه افزودن پست
     const NotificationsPage(), // صفحه اعلان‌ها
     ProfileScreen(

@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import '../searchPage.dart';
 import '/model/publicPostModel.dart';
 import '../../../provider/provider.dart';
 import '../../../util/widgets.dart';
-import 'AddPost.dart';
 import 'profileScreen.dart';
+import 'dart:async';
 
 class PublicPostsScreen extends ConsumerStatefulWidget {
   const PublicPostsScreen({super.key});
@@ -18,6 +22,89 @@ class PublicPostsScreen extends ConsumerStatefulWidget {
 }
 
 class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen> {
+  String _connectionStatus = '';
+  late StreamSubscription<ConnectivityResult> _connectivitySubscription;
+  final Connectivity _connectivity = Connectivity();
+
+  Future<void> _initConnectivity() async {
+    try {
+      final result = await _connectivity.checkConnectivity();
+      if (mounted) {
+        _updateConnectionStatus(result);
+      }
+    } catch (e) {
+      debugPrint('Error checking connectivity: $e');
+      if (mounted) {
+        setState(() => _connectionStatus = 'آفلاین');
+      }
+      // Retry after 3 seconds
+      Future.delayed(const Duration(seconds: 3), _initConnectivity);
+    }
+  }
+
+// متد _updateConnectionStatus را به این صورت تغییر دهید
+  void _updateConnectionStatus(ConnectivityResult result) async {
+    if (!mounted) return;
+
+    // بررسی واقعی اتصال به اینترنت
+    bool hasInternet = false;
+    try {
+      final response = await Future.any<dynamic>([
+        Supabase.instance.client.from('posts').select().limit(1),
+        Future<dynamic>.delayed(
+            const Duration(seconds: 5), () => throw 'timeout'),
+      ]);
+      hasInternet = response != null;
+    } catch (e) {
+      hasInternet = false;
+    }
+
+    setState(() {
+      if (!hasInternet) {
+        _connectionStatus = 'آفلاین';
+        return;
+      }
+
+      switch (result) {
+        case ConnectivityResult.wifi:
+          _connectionStatus = 'متصل به وای‌فای';
+          break;
+        case ConnectivityResult.mobile:
+          _connectionStatus = 'متصل به اینترنت همراه';
+          break;
+        case ConnectivityResult.none:
+          _connectionStatus = 'آفلاین';
+          break;
+        default:
+          _connectionStatus = 'آفلاین';
+      }
+    });
+  }
+
+// متد initState را هم به این صورت تغییر دهید
+  @override
+  void initState() {
+    super.initState();
+    _initConnectivity();
+    _connectivitySubscription =
+        _connectivity.onConnectivityChanged.listen((result) {
+      _updateConnectionStatus(result);
+    });
+
+    // بررسی دوره‌ای وضعیت اتصال
+    Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (mounted) {
+        _initConnectivity();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentColor = ref.watch(themeProvider);
@@ -31,13 +118,29 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen> {
             SliverAppBar(
               floating: true,
               snap: true,
-              title: const Text(
-                'Vista',
-                style: TextStyle(
-                  fontSize: 25,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'Bauhaus',
-                ),
+              title: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: _connectionStatus == 'متصل به وای‌فای' ||
+                        _connectionStatus == 'متصل به اینترنت همراه'
+                    ? const Text(
+                        'Vista',
+                        key: ValueKey('app-name'),
+                        style: TextStyle(
+                          fontSize: 25,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Bauhaus',
+                        ),
+                      )
+                    : Text(
+                        _connectionStatus,
+                        key: ValueKey('connection-status'),
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: _connectionStatus == 'آفلاین'
+                              ? Colors.red
+                              : Colors.amber,
+                        ),
+                      ),
               ),
               centerTitle: true,
               bottom: TabBar(
@@ -236,10 +339,7 @@ Widget _buildPostList(
             const SizedBox(height: 8),
             Directionality(
               textDirection: getDirectionality(post.content),
-              child: Text(
-                post.content,
-                textAlign: getTextAlignment(post.content),
-              ),
+              child: _buildPostContent(post.content, context),
             ),
             // اضافه کردن نمایش تصویر در صورت وجود
             if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
@@ -296,6 +396,141 @@ Widget _buildPostList(
         ),
       );
     },
+  );
+}
+
+class LinkifyText extends StatelessWidget {
+  final String text;
+  final Function(String) onTap;
+  final TextStyle? linkStyle;
+
+  const LinkifyText({
+    super.key,
+    required this.text,
+    required this.onTap,
+    this.linkStyle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Updated regex to catch domains without http/https
+    final urlRegex = RegExp(
+      r'(?:(?:https?:\/\/)?(?:www\.)?)?[a-zA-Z0-9][-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&\/=]*)',
+      caseSensitive: false,
+    );
+
+    final spans = <InlineSpan>[];
+    var start = 0;
+
+    for (final match in urlRegex.allMatches(text)) {
+      if (match.start > start) {
+        spans.add(TextSpan(text: text.substring(start, match.start)));
+      }
+
+      final url = match.group(0)!;
+      spans.add(
+        TextSpan(
+          text: url,
+          style: linkStyle ??
+              const TextStyle(
+                color: Colors.blue,
+                decoration: TextDecoration.underline,
+              ),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () {
+              final formattedUrl =
+                  url.startsWith('http') ? url : 'https://$url';
+              onTap(formattedUrl);
+            },
+        ),
+      );
+
+      start = match.end;
+    }
+
+    if (start < text.length) {
+      spans.add(TextSpan(text: text.substring(start)));
+    }
+
+    return Text.rich(TextSpan(children: spans));
+  }
+}
+
+Widget _buildPostContent(String content, BuildContext context) {
+  // Regex for both URLs and hashtags
+  final pattern = RegExp(
+    r'(#\w+)|((https?:\/\/)?([\w\-])+\.{1}([a-zA-Z]{2,63})([\/\w-]*)*\/?\??([^\s<>\#]*)?)',
+    multiLine: true,
+  );
+
+  List<TextSpan> spans = [];
+  int start = 0;
+
+  for (Match match in pattern.allMatches(content)) {
+    // Add text before match
+    if (match.start > start) {
+      spans.add(TextSpan(text: content.substring(start, match.start)));
+    }
+
+    final matchedText = match.group(0)!;
+
+    if (matchedText.startsWith('#')) {
+      // Handle hashtag
+      spans.add(
+        TextSpan(
+          text: matchedText,
+          style: const TextStyle(
+            color: Colors.blue,
+            fontWeight: FontWeight.bold,
+          ),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () {
+              // Handle hashtag tap - could navigate to search/hashtag page
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SearchPage(
+                    initialHashtag: matchedText,
+                  ),
+                ),
+              );
+            },
+        ),
+      );
+    } else {
+      // Handle URL
+      spans.add(
+        TextSpan(
+          text: matchedText,
+          style: const TextStyle(
+            color: Colors.blue,
+            decoration: TextDecoration.underline,
+          ),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () async {
+              final url = matchedText.startsWith('http')
+                  ? matchedText
+                  : 'https://$matchedText';
+              if (await canLaunchUrl(Uri.parse(url))) {
+                await launchUrl(Uri.parse(url));
+              }
+            },
+        ),
+      );
+    }
+    start = match.end;
+  }
+
+  // Add remaining text
+  if (start < content.length) {
+    spans.add(TextSpan(text: content.substring(start)));
+  }
+
+  return RichText(
+    text: TextSpan(
+      style: DefaultTextStyle.of(context).style,
+      children: spans,
+    ),
   );
 }
 
