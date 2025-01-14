@@ -23,43 +23,46 @@ class PublicPostsScreen extends ConsumerStatefulWidget {
 
 class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen> {
   String _connectionStatus = '';
+  bool _isChecking = false;
   late StreamSubscription<ConnectivityResult> _connectivitySubscription;
   final Connectivity _connectivity = Connectivity();
 
   Future<void> _initConnectivity() async {
+    setState(() => _isChecking = true);
     try {
       final result = await _connectivity.checkConnectivity();
       if (mounted) {
-        _updateConnectionStatus(result);
+        await _updateConnectionStatus(result);
       }
     } catch (e) {
       debugPrint('Error checking connectivity: $e');
       if (mounted) {
-        setState(() => _connectionStatus = 'آفلاین');
+        setState(() {
+          _connectionStatus = 'آفلاین';
+          _isChecking = false;
+        });
       }
-      // Retry after 3 seconds
       Future.delayed(const Duration(seconds: 3), _initConnectivity);
     }
   }
 
-// متد _updateConnectionStatus را به این صورت تغییر دهید
-  void _updateConnectionStatus(ConnectivityResult result) async {
+  Future<void> _updateConnectionStatus(ConnectivityResult result) async {
     if (!mounted) return;
 
-    // بررسی واقعی اتصال به اینترنت
     bool hasInternet = false;
     try {
       final response = await Future.any<dynamic>([
-        Supabase.instance.client.from('posts').select().limit(1),
+        Supabase.instance.client.from('posts').select().limit(1).single(),
         Future<dynamic>.delayed(
-            const Duration(seconds: 5), () => throw 'timeout'),
+            const Duration(seconds: 3), () => throw 'timeout'),
       ]);
       hasInternet = response != null;
-    } catch (e) {
+    } catch (_) {
       hasInternet = false;
     }
 
     setState(() {
+      _isChecking = false;
       if (!hasInternet) {
         _connectionStatus = 'آفلاین';
         return;
@@ -72,16 +75,59 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen> {
         case ConnectivityResult.mobile:
           _connectionStatus = 'متصل به اینترنت همراه';
           break;
-        case ConnectivityResult.none:
-          _connectionStatus = 'آفلاین';
-          break;
         default:
           _connectionStatus = 'آفلاین';
       }
     });
   }
 
-// متد initState را هم به این صورت تغییر دهید
+  Widget _buildConnectionStatus() {
+    final color = _connectionStatus == 'آفلاین'
+        ? Colors.red
+        : _connectionStatus.contains('وای‌فای')
+            ? Colors.green
+            : Colors.blue;
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      child: Row(
+        key: ValueKey(_connectionStatus),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_isChecking)
+            const SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation(Colors.white),
+              ),
+            ),
+          if (!_isChecking) ...[
+            Icon(
+              _connectionStatus == 'آفلاین'
+                  ? Icons.cloud_off
+                  : _connectionStatus.contains('وای‌فای')
+                      ? Icons.wifi
+                      : Icons.signal_cellular_alt,
+              size: 16,
+              color: color,
+            ),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            _connectionStatus,
+            style: TextStyle(
+              fontSize: 14,
+              color: color,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -131,16 +177,7 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen> {
                           fontFamily: 'Bauhaus',
                         ),
                       )
-                    : Text(
-                        _connectionStatus,
-                        key: ValueKey('connection-status'),
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: _connectionStatus == 'آفلاین'
-                              ? Colors.red
-                              : Colors.amber,
-                        ),
-                      ),
+                    : _buildConnectionStatus(),
               ),
               centerTitle: true,
               bottom: TabBar(
@@ -341,6 +378,36 @@ Widget _buildPostList(
               textDirection: getDirectionality(post.content),
               child: _buildPostContent(post.content, context),
             ),
+            // نمایش هشتگ‌ها
+            if (post.hashtags.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: post.hashtags
+                    .map(
+                      (tag) => GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => SearchPage(
+                                initialHashtag: tag,
+                              ),
+                            ),
+                          );
+                        },
+                        child: Text(
+                          '#$tag',
+                          style: const TextStyle(
+                            color: Colors.blue,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ],
             // اضافه کردن نمایش تصویر در صورت وجود
             if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -457,17 +524,16 @@ class LinkifyText extends StatelessWidget {
 }
 
 Widget _buildPostContent(String content, BuildContext context) {
-  // Regex for both URLs and hashtags
   final pattern = RegExp(
-    r'(#\w+)|((https?:\/\/)?([\w\-])+\.{1}([a-zA-Z]{2,63})([\/\w-]*)*\/?\??([^\s<>\#]*)?)',
+    r'(#[\w\u0600-\u06FF]+)|((https?:\/\/)?([\w\-])+\.{1}([a-zA-Z]{2,63})([\/\w-]*)*\/?\??([^\s<>#]*))',
     multiLine: true,
+    unicode: true,
   );
 
   List<TextSpan> spans = [];
   int start = 0;
 
   for (Match match in pattern.allMatches(content)) {
-    // Add text before match
     if (match.start > start) {
       spans.add(TextSpan(text: content.substring(start, match.start)));
     }
@@ -475,7 +541,6 @@ Widget _buildPostContent(String content, BuildContext context) {
     final matchedText = match.group(0)!;
 
     if (matchedText.startsWith('#')) {
-      // Handle hashtag
       spans.add(
         TextSpan(
           text: matchedText,
@@ -485,12 +550,12 @@ Widget _buildPostContent(String content, BuildContext context) {
           ),
           recognizer: TapGestureRecognizer()
             ..onTap = () {
-              // Handle hashtag tap - could navigate to search/hashtag page
+              // ارسال کل هشتگ با علامت # به صفحه جستجو
               Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => SearchPage(
-                    initialHashtag: matchedText,
+                    initialHashtag: matchedText, // ارسال کل هشتگ با علامت #
                   ),
                 ),
               );
@@ -498,7 +563,7 @@ Widget _buildPostContent(String content, BuildContext context) {
         ),
       );
     } else {
-      // Handle URL
+      // کد مربوط به URL بدون تغییر
       spans.add(
         TextSpan(
           text: matchedText,
@@ -521,7 +586,6 @@ Widget _buildPostContent(String content, BuildContext context) {
     start = match.end;
   }
 
-  // Add remaining text
   if (start < content.length) {
     spans.add(TextSpan(text: content.substring(start)));
   }

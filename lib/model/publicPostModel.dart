@@ -8,14 +8,15 @@ class PublicPostModel extends Equatable {
   final String userId;
   final String fullName;
   final String content;
-  final String? imageUrl; // جدید: اضافه کردن فیلد تصویر
+  final String? imageUrl;
   final DateTime createdAt;
   final String username;
   final String avatarUrl;
+  final List<String> hashtags;
   int likeCount;
   bool isLiked;
   final bool isVerified;
-  int commentCount; // جدید: اضافه کردن فیلد تعداد کامنت‌ها
+  int commentCount;
 
   PublicPostModel({
     required this.id,
@@ -29,25 +30,35 @@ class PublicPostModel extends Equatable {
     this.likeCount = 0,
     this.isLiked = false,
     this.isVerified = false,
-    this.commentCount = 0, // مقدار پیش‌فرض
-  });
+    this.commentCount = 0,
+    List<String>? hashtags,
+  }) : hashtags = hashtags ?? _extractHashtags(content);
 
-  // متد سازنده از Map با روش‌های پیشرفته‌تر
+  // متد استاتیک برای استخراج هشتگ‌ها از متن
+  static List<String> _extractHashtags(String text) {
+    final hashtagRegExp = RegExp(r'#\w+');
+    return hashtagRegExp
+        .allMatches(text)
+        .map((match) => match.group(0)!)
+        .toList();
+  }
+
+  // متد سازنده از Map
   factory PublicPostModel.fromMap(Map<String, dynamic> map) {
     return PublicPostModel(
       id: _parseString(map, 'id'),
       userId: _parseString(map, 'user_id'),
       fullName: _parseString(map, 'full_name'),
       content: _parseString(map, 'content'),
-      imageUrl: _parseString(map, 'image_url', defaultValue: ""), // جدید
+      imageUrl: _parseString(map, 'image_url', defaultValue: ""),
       createdAt: _parseDateTime(map, 'created_at'),
       username: _parseUsername(map),
       avatarUrl: _parseAvatarUrl(map),
       likeCount: _parseInt(map, 'like_count'),
       isLiked: _parseBool(map, 'is_liked'),
       isVerified: _parseVerified(map),
-      commentCount: map['comment_count'] as int? ?? 0, // مقدار پیش‌فرض
-// جدید: افزودن پارسینگ تعداد کامنت
+      commentCount: _parseInt(map, 'comment_count'),
+      hashtags: _parseHashtags(map),
     );
   }
 
@@ -93,13 +104,20 @@ class PublicPostModel extends Equatable {
     return map['profiles']?['is_verified'] ?? false;
   }
 
+  static List<String> _parseHashtags(Map<String, dynamic> map) {
+    if (map['hashtags'] != null) {
+      return List<String>.from(map['hashtags']);
+    }
+    return _extractHashtags(_parseString(map, 'content'));
+  }
+
   // متد تبدیل به Map
   Map<String, dynamic> toMap() {
     return {
       'id': id,
       'user_id': userId,
       'content': content,
-      'image_url': imageUrl, // جدید
+      'image_url': imageUrl,
       'created_at': createdAt.toIso8601String(),
       'profiles': {
         'username': username,
@@ -110,6 +128,7 @@ class PublicPostModel extends Equatable {
       'like_count': likeCount,
       'is_liked': isLiked,
       'comment_count': commentCount,
+      'hashtags': hashtags,
     };
   }
 
@@ -123,7 +142,7 @@ class PublicPostModel extends Equatable {
     String? userId,
     String? fullName,
     String? content,
-    String? imageUrl, // جدید
+    String? imageUrl,
     DateTime? createdAt,
     String? username,
     String? avatarUrl,
@@ -131,13 +150,14 @@ class PublicPostModel extends Equatable {
     bool? isLiked,
     bool? isVerified,
     int? commentCount,
+    List<String>? hashtags,
   }) {
     return PublicPostModel(
       id: id ?? this.id,
       userId: userId ?? this.userId,
       fullName: fullName ?? this.fullName,
       content: content ?? this.content,
-      imageUrl: imageUrl ?? this.imageUrl, // جدید
+      imageUrl: imageUrl ?? this.imageUrl,
       createdAt: createdAt ?? this.createdAt,
       username: username ?? this.username,
       avatarUrl: avatarUrl ?? this.avatarUrl,
@@ -145,6 +165,7 @@ class PublicPostModel extends Equatable {
       isLiked: isLiked ?? this.isLiked,
       isVerified: isVerified ?? this.isVerified,
       commentCount: commentCount ?? this.commentCount,
+      hashtags: hashtags ?? this.hashtags,
     );
   }
 
@@ -156,14 +177,15 @@ class PublicPostModel extends Equatable {
       userId: $userId, 
       fullName: $fullName, 
       content: $content, 
-      imageUrl: $imageUrl, // جدید
+      imageUrl: $imageUrl,
       createdAt: $createdAt, 
       username: $username, 
       avatarUrl: $avatarUrl, 
       likeCount: $likeCount, 
       isLiked: $isLiked, 
       isVerified: $isVerified, 
-      commentCount: $commentCount
+      commentCount: $commentCount,
+      hashtags: $hashtags
     )''';
   }
 
@@ -173,7 +195,7 @@ class PublicPostModel extends Equatable {
         userId,
         fullName,
         content,
-        imageUrl, // جدید
+        imageUrl,
         createdAt,
         username,
         avatarUrl,
@@ -181,5 +203,6 @@ class PublicPostModel extends Equatable {
         isLiked,
         isVerified,
         commentCount,
+        hashtags,
       ];
 }

@@ -1694,3 +1694,59 @@ class PostImageViewer extends StatelessWidget {
     );
   }
 }
+
+class HashtagText extends StatelessWidget {
+  final String text;
+  final Function(String) onHashtagTap;
+
+  const HashtagText({
+    Key? key,
+    required this.text,
+    required this.onHashtagTap,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    List<TextSpan> textSpans = [];
+
+    // جداسازی کلمات متن
+    final words = text.split(' ');
+
+    for (var word in words) {
+      if (word.startsWith('#')) {
+        // اگر کلمه با # شروع شود، آن را به عنوان هشتگ قابل کلیک می‌سازیم
+        textSpans.add(
+          TextSpan(
+            text: '$word ',
+            style: const TextStyle(
+              color: Colors.blue,
+              fontWeight: FontWeight.bold,
+            ),
+            recognizer: TapGestureRecognizer()
+              ..onTap = () => onHashtagTap(word),
+          ),
+        );
+      } else {
+        // کلمات معمولی
+        textSpans.add(TextSpan(text: '$word '));
+      }
+    }
+
+    return RichText(
+      text: TextSpan(
+        style: DefaultTextStyle.of(context).style,
+        children: textSpans,
+      ),
+    );
+  }
+}
+
+class HashtagExtractor {
+  static List<String> extractHashtags(String text) {
+    final hashtagRegExp = RegExp(r'#\w+');
+    return hashtagRegExp
+        .allMatches(text)
+        .map((match) => match.group(0)!)
+        .toList();
+  }
+}

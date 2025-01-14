@@ -112,7 +112,9 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
         'created_at': DateTime.now().toIso8601String(),
       };
 
-      await supabase.from('posts').insert(postData);
+      await supabase.from('posts').insert(postData).then((value) {
+        ref.refresh(postsProvider);
+      });
 
       if (mounted) {
         Navigator.of(context).pop(true);

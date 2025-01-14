@@ -10,6 +10,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_links/app_links.dart';
 import 'firebase_options.dart';
+import 'model/Hive Model/RecentSearch.dart';
 import 'provider/provider.dart';
 import 'security/security.dart';
 import 'util/themes.dart';
@@ -22,60 +23,90 @@ import 'view/screen/ouathUser/welcome.dart';
 import 'view/screen/ouathUser/editeProfile.dart';
 
 void main() async {
-  await Hive.initFlutter(); // مقداردهی اولیه Hive
-  await Hive.openBox('settings'); // باز کردن جعبه تنظیمات
   WidgetsFlutterBinding.ensureInitialized();
 
+  // تنظیم debug print
+  debugPrint = (String? message, {int? wrapWidth}) {
+    if (message?.contains('MESA') == false) {
+      print(message);
+    }
+  };
+
+  // تنظیم orientation
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+
+  // راه‌اندازی Hive
+  await Hive.initFlutter();
+
+  // // پاک کردن باکس‌های قبلی برای اطمینان
+  // await Hive.deleteFromDisk();
+
+  // ثبت adapter ها با typeId های جدید
+  if (!Hive.isAdapterRegistered(2)) {
+    Hive.registerAdapter(SearchTypeAdapter()); // typeId: 2
+  }
+
+  if (!Hive.isAdapterRegistered(1)) {
+    Hive.registerAdapter(RecentSearchAdapter()); // typeId: 1
+  }
+
+  // باز کردن باکس‌ها
+  await Hive.openBox('settings');
+  await Hive.openBox<RecentSearch>('recent_searches');
+
+  // راه‌اندازی Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  updateIpAddress();
-  WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-  ]).then((_) async {
+  try {
+    // راه‌اندازی Supabase
     await Supabase.initialize(
-        url: 'http://api.coffevista.ir:54321',
+        url: 'http://mydash.coffevista.ir:8000',
         anonKey:
-            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0');
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE');
 
-    // بازیابی تم ذخیره‌شده از Hive
-    var box = Hive.box('settings');
-    String savedTheme = box.get('selectedTheme', defaultValue: 'light');
-    ThemeData initialTheme;
+    final response =
+        await Supabase.instance.client.from('profiles').select().single();
 
-    // تنظیم تم اولیه بر اساس تم ذخیره‌شده
-    switch (savedTheme) {
-      case 'light':
-        initialTheme = lightTheme;
-        break;
-      case 'dark':
-        initialTheme = darkTheme;
-        break;
-      case 'red':
-        initialTheme = redWhiteTheme;
-        break;
-      case 'yellow':
-        initialTheme = yellowBlackTheme;
-        break;
-      case 'teal':
-        initialTheme = tealWhiteTheme;
-        break;
-      default:
-        initialTheme = lightTheme;
-    }
+    print('Profile data: $response');
+  } catch (e) {
+    print('Supabase initialization error: $e');
+  }
 
-    runApp(
-      ProviderScope(
-        overrides: [
-          // Ensure themeProvider has the initial theme from Hive
-          themeProvider.overrideWith((ref) => initialTheme),
-        ],
-        child: MyApp(initialTheme: initialTheme),
-      ),
-    );
-  });
+  // بروزرسانی IP
+  await updateIpAddress();
+
+  // تنظیم تم
+  var box = Hive.box('settings');
+  String savedTheme = box.get('selectedTheme', defaultValue: 'light');
+  ThemeData initialTheme = _getInitialTheme(savedTheme);
+
+  runApp(
+    ProviderScope(
+      overrides: [
+        themeProvider.overrideWith((ref) => initialTheme),
+      ],
+      child: MyApp(initialTheme: initialTheme),
+    ),
+  );
+}
+
+ThemeData _getInitialTheme(String savedTheme) {
+  switch (savedTheme) {
+    case 'light':
+      return lightTheme;
+    case 'dark':
+      return darkTheme;
+    case 'red':
+      return redWhiteTheme;
+    case 'yellow':
+      return yellowBlackTheme;
+    case 'teal':
+      return tealWhiteTheme;
+    default:
+      return lightTheme;
+  }
 }
 
 final supabase = Supabase.instance.client;
@@ -140,18 +171,26 @@ class _MyAppState extends ConsumerState<MyApp> {
 
   // مدیریت دیپ لینک‌ها
   void _handleIncomingLinks() {
-    _sub = _appLinks.uriLinkStream.listen((Uri? uri) {
-      if (uri != null &&
-          uri.scheme == 'vistaNote' &&
-          uri.host == 'reset-password') {
-        String? accessToken = uri.queryParameters['access_token'];
-        if (accessToken != null) {
-          // هدایت به صفحه بازیابی رمز عبور با توکن
-          Navigator.pushNamed(context, '/reset-password',
-              arguments: accessToken);
-        }
-      }
-    });
+    try {
+      _sub = _appLinks.uriLinkStream.listen(
+        (Uri? uri) {
+          if (uri != null &&
+              uri.scheme == 'vistaNote' &&
+              uri.host == 'reset-password') {
+            String? accessToken = uri.queryParameters['access_token'];
+            if (accessToken != null && mounted) {
+              Navigator.pushNamed(context, '/reset-password',
+                  arguments: accessToken);
+            }
+          }
+        },
+        onError: (err) {
+          print('Deep link error: $err');
+        },
+      );
+    } catch (e) {
+      print('Error setting up deep link listener: $e');
+    }
   }
 
   @override

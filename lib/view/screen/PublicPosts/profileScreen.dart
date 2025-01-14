@@ -145,7 +145,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Row _buildAppBarTitle(ProfileModel profile) {
     return Row(
       children: [
-        Text(profile.username),
+        Text(
+          profile.username,
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         const SizedBox(width: 5),
         if (profile.isVerified)
           const Icon(Icons.verified, color: Colors.blue, size: 16),

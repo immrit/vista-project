@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../model/SearchResut.dart';
 import '/model/ProfileModel.dart';
 import '/model/notificationModel.dart';
 import '/model/publicPostModel.dart';
@@ -188,6 +190,30 @@ class SupabaseService {
       rethrow;
     }
   }
+
+  // Future<List<PublicPostModel>> searchPostsByHashtag(String hashtag) async {
+  //   try {
+  //     final response = await supabase
+  //         .from('posts')
+  //         .select('''
+  //         *,
+  //         profiles (
+  //           username,
+  //           full_name,
+  //           avatar_url,
+  //           is_verified
+  //         )
+  //       ''')
+  //         .ilike('content', '%$hashtag%')
+  //         .order('created_at', ascending: false);
+
+  //     return (response as List<dynamic>)
+  //         .map((post) => PublicPostModel.fromMap(post as Map<String, dynamic>))
+  //         .toList();
+  //   } catch (e) {
+  //     throw Exception('خطا در جستجوی پست‌ها: $e');
+  //   }
+  // }
 
   Future<void> toggleLike({
     required String postId,
@@ -1492,4 +1518,126 @@ final searchUsersProvider =
         .then(
             (data) => data.map((json) => ProfileModel.fromMap(json)).toList()),
   );
+});
+
+class SearchService {
+  final SupabaseClient _supabase = Supabase.instance.client;
+
+  Future<List<PublicPostModel>> searchHashtag(String hashtag) async {
+    try {
+      // نرمال‌سازی هشتگ
+      String searchTerm = hashtag.trim();
+      if (!searchTerm.startsWith('#')) {
+        searchTerm = '#$searchTerm';
+      }
+
+      // کوئری به دیتابیس
+      final response = await _supabase
+          .from('posts')
+          .select('''
+            id,
+            content,
+            created_at,
+            profiles (
+              id,
+              username,
+              full_name,
+              avatar_url,
+              is_verified
+            )
+          ''')
+          .ilike('content', '%$searchTerm%')
+          .order('created_at', ascending: false);
+
+      print('Hashtag search response: $response'); // برای دیباگ
+
+      if (response == null) return [];
+
+      return (response as List<dynamic>)
+          .map((post) {
+            try {
+              return PublicPostModel.fromMap(post as Map<String, dynamic>);
+            } catch (e) {
+              print('Error parsing post: $e');
+              return null;
+            }
+          })
+          .whereType<PublicPostModel>()
+          .toList();
+    } catch (e) {
+      print('Error in searchHashtag: $e');
+      return [];
+    }
+  }
+}
+
+// lib/providers/search_provider.dart
+class SearchNotifier extends StateNotifier<SearchState> {
+  final Ref ref;
+  final SearchService _searchService;
+
+  SearchNotifier(this.ref)
+      : _searchService = SearchService(),
+        super(SearchState());
+
+  void setTab(int index) {
+    state = state.copyWith(selectedTab: index);
+  }
+
+  Future<void> search(String query) async {
+    if (query.isEmpty) {
+      state = state.copyWith(
+        hashtagResults: [],
+        userResults: [],
+        isLoading: false,
+        currentQuery: '',
+      );
+      return;
+    }
+
+    state = state.copyWith(isLoading: true, currentQuery: query);
+
+    try {
+      if (query.startsWith('#')) {
+        final posts = await _searchService.searchHashtag(query);
+        state = state.copyWith(
+          hashtagResults: posts,
+          isLoading: false,
+          selectedTab: 1,
+        );
+      } else {
+        final response = await Supabase.instance.client
+            .from('profiles')
+            .select()
+            .or('username.ilike.%$query%,full_name.ilike.%$query%')
+            .limit(20);
+
+        final users = (response as List)
+            .map(
+                (user) => ProfileModel.fromMap(Map<String, dynamic>.from(user)))
+            .toList();
+
+        state = state.copyWith(
+          userResults: users,
+          isLoading: false,
+          selectedTab: 0,
+        );
+      }
+    } catch (e) {
+      state = state.copyWith(
+        error: e.toString(),
+        isLoading: false,
+      );
+    }
+  }
+
+  void clearHashtagResults() {
+    state = state.copyWith(hashtagResults: []);
+  }
+}
+
+// پروایدر
+final searchProvider =
+    StateNotifierProvider<SearchNotifier, SearchState>((ref) {
+  return SearchNotifier(ref);
 });

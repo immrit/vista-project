@@ -167,7 +167,7 @@ class _SetProfileDataState extends ConsumerState<SetProfileData> {
         'username': userName,
         'full_name': fullNameController.text,
         'bio': bioController.text,
-        'updated_at': DateTime.now().toIso8601String(),
+        'created_at': DateTime.now().toIso8601String(),
         'email': user.email,
       };
 

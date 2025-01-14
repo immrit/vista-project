@@ -87,7 +87,7 @@ class NotificationsPage extends ConsumerWidget {
                               : const Color.fromARGB(255, 137, 127, 127),
                         ),
                         onTap: () {
-                          if (notification.type == 'follow') {
+                          if (notification.type == '  ') {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
