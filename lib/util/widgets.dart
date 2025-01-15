@@ -1700,10 +1700,10 @@ class HashtagText extends StatelessWidget {
   final Function(String) onHashtagTap;
 
   const HashtagText({
-    Key? key,
+    super.key,
     required this.text,
     required this.onHashtagTap,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

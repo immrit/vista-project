@@ -158,6 +158,8 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen> {
 
     return DefaultTabController(
       length: 2,
+      initialIndex: 1, // اضافه کردن این خط
+
       child: Scaffold(
         body: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) => [

@@ -1549,9 +1549,7 @@ class SearchService {
           .ilike('content', '%$searchTerm%')
           .order('created_at', ascending: false);
 
-      print('Hashtag search response: $response'); // برای دیباگ
-
-      if (response == null) return [];
+      print('Hashtag search response: $response');
 
       return (response as List<dynamic>)
           .map((post) {

@@ -15,7 +15,7 @@ import 'dart:async';
 class SearchPage extends ConsumerStatefulWidget {
   final String? initialHashtag;
 
-  const SearchPage({Key? key, this.initialHashtag}) : super(key: key);
+  const SearchPage({super.key, this.initialHashtag});
 
   @override
   ConsumerState<SearchPage> createState() => _SearchPageState();
@@ -75,47 +75,48 @@ class _SearchPageState extends ConsumerState<SearchPage>
     _recentSearchesBox = await Hive.openBox<RecentSearch>('recent_searches');
   }
 
+  void _addToRecentSearches(String query) {
+    if (query.isEmpty || _recentSearchesBox == null) return;
+
+    final searchType =
+        query.startsWith('#') ? SearchType.hashtag : SearchType.user;
+
+    // حذف جستجوی تکراری قبلی
+    _recentSearchesBox!.values
+        .where((search) =>
+            search.query == query && search.searchType == searchType)
+        .forEach((search) => search.delete());
+
+    // اضافه کردن جستجوی جدید
+    _recentSearchesBox!.add(RecentSearch(
+      query: query,
+      timestamp: DateTime.now(),
+      searchType: searchType,
+    ));
+
+    // محدود کردن تعداد جستجوها به 20 مورد
+    if (_recentSearchesBox!.length > 20) {
+      final searches = _recentSearchesBox!.values.toList()
+        ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+      for (var i = 20; i < searches.length; i++) {
+        searches[i].delete();
+      }
+    }
+  }
+
   void _performSearch(String query) {
     setState(() {
       _showRecentSearches = query.isEmpty;
     });
-    void _addToRecentSearches(String query) {
-      if (query.isEmpty || _recentSearchesBox == null) return;
-
-      final searchType =
-          query.startsWith('#') ? SearchType.hashtag : SearchType.user;
-
-      // حذف جستجوی تکراری قبلی
-      _recentSearchesBox!.values
-          .where((search) =>
-              search.query == query && search.searchType == searchType)
-          .forEach((search) => search.delete());
-
-      // اضافه کردن جستجوی جدید
-      _recentSearchesBox!.add(RecentSearch(
-        query: query,
-        timestamp: DateTime.now(),
-        searchType: searchType,
-      ));
-
-      // محدود کردن تعداد جستجوها به 20 مورد
-      if (_recentSearchesBox!.length > 20) {
-        final searches = _recentSearchesBox!.values.toList()
-          ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
-
-        for (var i = 20; i < searches.length; i++) {
-          searches[i].delete();
-        }
-      }
-    }
 
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 500), () {
       if (mounted) {
         if (query.isNotEmpty) {
           _addToRecentSearches(query);
+          ref.read(searchProvider.notifier).search(query);
         }
-        ref.read(searchProvider.notifier).search(query);
       }
     });
   }
@@ -286,14 +287,33 @@ class _SearchPageState extends ConsumerState<SearchPage>
             },
           ),
       ],
-      bottom: TabBar(
-        controller: _tabController,
-        tabs: const [
-          Tab(text: 'هشتگ‌ها'),
-          Tab(text: 'کاربران'),
-        ],
-      ),
+      // تب‌ها فقط زمانی نمایش داده می‌شوند که جستجو انجام شده باشد
+      bottom: !_showRecentSearches
+          ? TabBar(
+              controller: _tabController,
+              tabs: const [
+                Tab(text: 'هشتگ‌ها'),
+                Tab(text: 'کاربران'),
+              ],
+            )
+          : null,
     );
+  }
+
+  Widget _buildBody(SearchState searchState) {
+    if (_showRecentSearches) {
+      return _buildRecentSearches();
+    }
+
+    return searchState.isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : TabBarView(
+            controller: _tabController,
+            children: [
+              _buildHashtagResults(searchState),
+              _buildUserResults(searchState),
+            ],
+          );
   }
 
   Widget _buildSearchBar() {
@@ -337,22 +357,6 @@ class _SearchPageState extends ConsumerState<SearchPage>
       filled: true,
       fillColor: Theme.of(context).cardColor,
     );
-  }
-
-  Widget _buildBody(SearchState searchState) {
-    if (_showRecentSearches && _searchController.text.isEmpty) {
-      return _buildRecentSearches();
-    }
-
-    return searchState.isLoading
-        ? const Center(child: CircularProgressIndicator())
-        : TabBarView(
-            controller: _tabController,
-            children: [
-              _buildHashtagResults(searchState),
-              _buildUserResults(searchState),
-            ],
-          );
   }
 
   Widget _buildHashtagResults(SearchState state) {
@@ -431,7 +435,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
 class PostCard extends ConsumerWidget {
   final PublicPostModel post;
 
-  const PostCard({Key? key, required this.post}) : super(key: key);
+  const PostCard({super.key, required this.post});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -469,7 +473,7 @@ class PostCard extends ConsumerWidget {
                       CircleAvatar(
                         radius: 12,
                         backgroundImage: post.avatarUrl != null
-                            ? NetworkImage(post.avatarUrl!)
+                            ? NetworkImage(post.avatarUrl)
                             : const AssetImage(
                                     'lib/util/images/default-avatar.jpg')
                                 as ImageProvider,
@@ -501,7 +505,7 @@ class PostCard extends ConsumerWidget {
 class UserCard extends ConsumerStatefulWidget {
   final ProfileModel user;
 
-  const UserCard({Key? key, required this.user}) : super(key: key);
+  const UserCard({super.key, required this.user});
 
   @override
   ConsumerState<UserCard> createState() => _UserCardState();
