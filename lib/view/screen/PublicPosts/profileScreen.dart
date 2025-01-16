@@ -630,7 +630,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   void _showComments(PublicPostModel post) {
-    showCommentsBottomSheet(context, ref, post.id, post.userId);
+    showCommentsBottomSheet(context, post.id, ref);
   }
 
   void _sharePost(PublicPostModel post) {

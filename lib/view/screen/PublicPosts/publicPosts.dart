@@ -442,8 +442,7 @@ Widget _buildPostList(
                     IconButton(
                       icon: const Icon(Icons.comment),
                       onPressed: () {
-                        showCommentsBottomSheet(
-                            context, ref, post.id, post.userId);
+                        showCommentsBottomSheet(context, post.id, ref);
                       },
                     ),
                     Text('${post.commentCount}')
