@@ -1,0 +1,37 @@
+// android/settings.gradle
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+        maven { url 'https://storage.googleapis.com/download.flutter.io' } // ضروری برای پلاگین فلاتر
+    }
+    plugins {
+        id 'dev.flutter.flutter-plugin-loader' version '3.0.0' // پلاگین اصلی فلاتر
+        id 'com.android.application' version '8.2.2'
+        id 'org.jetbrains.kotlin.android' version '1.9.23'
+    }
+}
+
+include ':app'
+
+// ------------------ بخش حیاتی برای فلاتر -------------------
+def flutterProjectRoot = rootProject.projectDir.parentFile
+def pluginsFile = new File(flutterProjectRoot, '.flutter-plugins-dependencies')
+if (pluginsFile.exists()) {
+    apply from: pluginsFile // روش مدرن برای بارگذاری پلاگین‌ها
+}
+
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://www.jitpack.io' } // اگر از کتابخانه‌های خاص استفاده میکنید
+    }
+    versionCatalogs {
+        libs {
+            from(files("${flutterProjectRoot}/flutter_libs.versions.toml")) // مدیریت نسخه‌ها
+        }
+    }
+}
+// ----------------------------------------------------------
