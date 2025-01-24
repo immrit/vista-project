@@ -1639,3 +1639,20 @@ final searchProvider =
     StateNotifierProvider<SearchNotifier, SearchState>((ref) {
   return SearchNotifier(ref);
 });
+
+// final chatRepositoryProvider = Provider((ref) {
+//   final supabase = ref.watch(supabaseClientProvider);
+//   return ChatRepository(supabase);
+// });
+
+// final recentChatsProvider = StreamProvider((ref) {
+//   final repository = ref.watch(chatRepositoryProvider);
+//   return repository.getRecentChats();
+// });
+
+// final chatMessagesProvider = StreamProvider.family((ref, String otherUserId) {
+//   final repository = ref.watch(chatRepositoryProvider);
+//   return repository.getChatMessages(otherUserId);
+// });
+
+// final selectedChatUserProvider = StateProvider<Profile?>((ref) => null);

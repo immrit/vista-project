@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:Vista/view/screen/SplashScreen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -64,7 +65,8 @@ void main() async {
     await Supabase.initialize(
         url: 'http://mydash.coffevista.ir:8000',
         anonKey:
-            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE');
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE',
+        debug: true);
 
     final response =
         await Supabase.instance.client.from('profiles').select().single();
@@ -112,18 +114,24 @@ ThemeData _getInitialTheme(String savedTheme) {
 final supabase = Supabase.instance.client;
 
 class MyApp extends ConsumerStatefulWidget {
+  const MyApp({super.key, required this.initialTheme});
+
   // تغییر به ConsumerStatefulWidget
   final ThemeData initialTheme;
-
-  const MyApp({super.key, required this.initialTheme});
 
   @override
   _MyAppState createState() => _MyAppState();
 }
 
 class _MyAppState extends ConsumerState<MyApp> {
-  StreamSubscription? _sub;
   late final AppLinks _appLinks;
+  StreamSubscription? _sub;
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -172,31 +180,38 @@ class _MyAppState extends ConsumerState<MyApp> {
   // مدیریت دیپ لینک‌ها
   void _handleIncomingLinks() {
     try {
-      _sub = _appLinks.uriLinkStream.listen(
-        (Uri? uri) {
-          if (uri != null &&
-              uri.scheme == 'vistaNote' &&
-              uri.host == 'reset-password') {
-            String? accessToken = uri.queryParameters['access_token'];
-            if (accessToken != null && mounted) {
-              Navigator.pushNamed(context, '/reset-password',
-                  arguments: accessToken);
+      _sub = _appLinks.uriLinkStream.listen((Uri? uri) {
+        if (uri != null) {
+          if (uri.scheme == 'vista' && uri.host == 'auth') {
+            switch (uri.path) {
+              case '/reset-password':
+                _handleResetPassword(uri);
+                break;
+              case '/invite':
+                // _handleInvite(uri);
+                break;
+              case '/confirm':
+                // _handleConfirm(uri);
+                break;
+              case '/email-change':
+                // _handleEmailChange(uri);
+                break;
             }
           }
-        },
-        onError: (err) {
-          print('Deep link error: $err');
-        },
-      );
+        }
+      }, onError: (err) {
+        print('Deep link error: $err');
+      });
     } catch (e) {
-      print('Error setting up deep link listener: $e');
+      print('Incoming links handler error: $e');
     }
   }
 
-  @override
-  void dispose() {
-    _sub?.cancel();
-    super.dispose();
+  void _handleResetPassword(Uri uri) {
+    String? token = uri.queryParameters['token'];
+    if (token != null && mounted) {
+      Navigator.pushNamed(context, '/reset-password', arguments: token);
+    }
   }
 
   @override
@@ -215,9 +230,7 @@ class _MyAppState extends ConsumerState<MyApp> {
                 title: 'Vista',
                 debugShowCheckedModeBanner: false,
                 theme: theme, // استفاده از تم جاری
-                home: supabase.auth.currentSession == null
-                    ? const WelcomePage()
-                    : const HomeScreen(),
+                home: SplashScreen(),
                 initialRoute: '/',
                 routes: {
                   '/signup': (context) => const SignUpScreen(),

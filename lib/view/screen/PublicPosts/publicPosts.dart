@@ -7,6 +7,8 @@ import 'package:shamsi_date/shamsi_date.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:loading_animation_widget/loading_animation_widget.dart';
+import '../../../main.dart';
 import '../searchPage.dart';
 import '/model/publicPostModel.dart';
 import '../../../provider/provider.dart';
@@ -21,11 +23,40 @@ class PublicPostsScreen extends ConsumerStatefulWidget {
   ConsumerState<PublicPostsScreen> createState() => _PublicPostsScreenState();
 }
 
-class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen> {
+class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
+    with AutomaticKeepAliveClientMixin {
   String _connectionStatus = '';
-  bool _isChecking = false;
-  late StreamSubscription<ConnectivityResult> _connectivitySubscription;
   final Connectivity _connectivity = Connectivity();
+  late StreamSubscription<ConnectivityResult> _connectivitySubscription;
+  bool _isChecking = false;
+  final _pageStorageKey = const PageStorageKey('public_posts');
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _connectivitySubscription.cancel();
+    super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _initConnectivity();
+    _connectivitySubscription =
+        _connectivity.onConnectivityChanged.listen((result) {
+      _updateConnectionStatus(result);
+    });
+
+    // بررسی دوره‌ای وضعیت اتصال
+    Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (mounted) {
+        _initConnectivity();
+      }
+    });
+  }
+
+  @override
+  bool get wantKeepAlive => true;
 
   Future<void> _initConnectivity() async {
     setState(() => _isChecking = true);
@@ -82,77 +113,15 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen> {
   }
 
   Widget _buildConnectionStatus() {
-    final color = _connectionStatus == 'آفلاین'
-        ? Colors.red
-        : _connectionStatus.contains('وای‌فای')
-            ? Colors.green
-            : Colors.blue;
-
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 300),
-      child: Row(
-        key: ValueKey(_connectionStatus),
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (_isChecking)
-            const SizedBox(
-              width: 12,
-              height: 12,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation(Colors.white),
-              ),
-            ),
-          if (!_isChecking) ...[
-            Icon(
-              _connectionStatus == 'آفلاین'
-                  ? Icons.cloud_off
-                  : _connectionStatus.contains('وای‌فای')
-                      ? Icons.wifi
-                      : Icons.signal_cellular_alt,
-              size: 16,
-              color: color,
-            ),
-            const SizedBox(width: 4),
-          ],
-          Text(
-            _connectionStatus,
-            style: TextStyle(
-              fontSize: 14,
-              color: color,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
+    return ConnectionStatusBar(
+      status: _connectionStatus,
+      isChecking: _isChecking,
     );
   }
 
   @override
-  void initState() {
-    super.initState();
-    _initConnectivity();
-    _connectivitySubscription =
-        _connectivity.onConnectivityChanged.listen((result) {
-      _updateConnectionStatus(result);
-    });
-
-    // بررسی دوره‌ای وضعیت اتصال
-    Timer.periodic(const Duration(seconds: 30), (timer) {
-      if (mounted) {
-        _initConnectivity();
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _connectivitySubscription.cancel();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    super.build(context);
     final currentColor = ref.watch(themeProvider);
     final getProfile = ref.watch(profileProvider);
 
@@ -235,23 +204,36 @@ class _AllPostsTab extends ConsumerWidget {
         data: (posts) => _buildPostList(context, ref, posts),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, stack) => Center(
-            child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text('دسترسی به اینترنت قطع است :('),
-            IconButton(
-              iconSize: 50,
-              splashColor: Colors.transparent,
-              color: Colors.white,
-              onPressed: () {
-                ref.invalidate(fetchPublicPosts);
-                ref.invalidate(commentsProvider);
-              },
-              icon: const Icon(Icons.refresh),
-            ),
-          ],
-        )),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                color: Colors.grey,
+                size: 48,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'مشکلی در دریافت پست‌ها پیش آمده',
+                style: TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () {
+                  ref.refresh(fetchFollowingPostsProvider);
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('تلاش مجدد'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -266,10 +248,7 @@ class _FollowingPostsTab extends ConsumerWidget {
 
     return RefreshIndicator(
       onRefresh: () async {
-        // Refresh posts
         ref.refresh(fetchFollowingPostsProvider);
-
-        // Get posts and refresh their comments
         final posts = await ref.read(fetchFollowingPostsProvider.future);
         for (final post in posts) {
           ref.refresh(commentsProvider(post.id));
@@ -278,24 +257,37 @@ class _FollowingPostsTab extends ConsumerWidget {
       child: followingPostsAsyncValue.when(
         data: (posts) => _buildPostList(context, ref, posts),
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, stack) => Center(
-            child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text('دسترسی به اینترنت قطع است :('),
-            IconButton(
-              iconSize: 50,
-              splashColor: Colors.transparent,
-              color: Colors.white,
-              onPressed: () {
-                ref.invalidate(fetchPublicPosts);
-                ref.invalidate(commentsProvider);
-              },
-              icon: const Icon(Icons.refresh),
-            ),
-          ],
-        )),
+        error: (error, stack) => Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                color: Colors.grey,
+                size: 48,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'مشکلی در دریافت پست‌ها پیش آمده',
+                style: TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () {
+                  ref.refresh(fetchFollowingPostsProvider);
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('تلاش مجدد'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -468,16 +460,16 @@ Widget _buildPostList(
 }
 
 class LinkifyText extends StatelessWidget {
-  final String text;
-  final Function(String) onTap;
-  final TextStyle? linkStyle;
-
   const LinkifyText({
     super.key,
     required this.text,
     required this.onTap,
     this.linkStyle,
   });
+
+  final TextStyle? linkStyle;
+  final Function(String) onTap;
+  final String text;
 
   @override
   Widget build(BuildContext context) {
@@ -690,4 +682,293 @@ PopupMenuButton<String> _buildPostActions(
         const PopupMenuItem(value: 'delete', child: Text('حذف')),
     ],
   );
+}
+
+class _PublicPostsState extends ConsumerState<PublicPostsScreen> {
+  String _connectionStatus = '';
+  final Connectivity _connectivity = Connectivity();
+  late StreamSubscription<ConnectivityResult> _connectivitySubscription;
+  bool _hasMore = true;
+  bool _isChecking = false;
+  bool _isLoading = false;
+  final int _limit = 10;
+  int _offset = 0;
+  List<Map<String, dynamic>> _posts = [];
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_scrollListener);
+    _scrollController.dispose();
+    _connectivitySubscription.cancel();
+    super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _initConnectivity();
+    _loadInitialPosts();
+    _scrollController.addListener(_scrollListener);
+  }
+
+  Future<void> _initConnectivity() async {
+    setState(() => _isChecking = true);
+    try {
+      final result = await _connectivity.checkConnectivity();
+      if (mounted) {
+        await _updateConnectionStatus(result);
+      }
+    } catch (e) {
+      debugPrint('Error checking connectivity: $e');
+      if (mounted) {
+        setState(() {
+          _connectionStatus = 'آفلاین';
+          _isChecking = false;
+        });
+      }
+      Future.delayed(const Duration(seconds: 3), _initConnectivity);
+    }
+  }
+
+  Future<void> _updateConnectionStatus(ConnectivityResult result) async {
+    if (!mounted) return;
+
+    bool hasInternet = false;
+    try {
+      final response = await Future.any<dynamic>([
+        Supabase.instance.client.from('posts').select().limit(1).single(),
+        Future<dynamic>.delayed(
+            const Duration(seconds: 3), () => throw 'timeout'),
+      ]);
+      hasInternet = response != null;
+    } catch (_) {
+      hasInternet = false;
+    }
+
+    setState(() {
+      _isChecking = false;
+      if (!hasInternet) {
+        _connectionStatus = 'آفلاین';
+        return;
+      }
+
+      switch (result) {
+        case ConnectivityResult.wifi:
+          _connectionStatus = 'متصل به وای‌فای';
+          break;
+        case ConnectivityResult.mobile:
+          _connectionStatus = 'متصل به اینترنت همراه';
+          break;
+        default:
+          _connectionStatus = 'آفلاین';
+      }
+    });
+  }
+
+  Future<void> _loadInitialPosts() async {
+    if (_isLoading) return;
+    setState(() {
+      _isLoading = true;
+      _posts = [];
+      _offset = 0;
+      _hasMore = true;
+    });
+
+    await _loadMorePosts();
+  }
+
+  Future<void> _loadMorePosts() async {
+    if (_isLoading || !_hasMore) return;
+
+    try {
+      final response = await supabase
+          .from('posts')
+          .select()
+          .range(_offset, _offset + _limit - 1)
+          .order('created_at', ascending: false);
+
+      if (response.isEmpty) {
+        setState(() => _hasMore = false);
+        return;
+      }
+
+      setState(() {
+        _posts.addAll(List<Map<String, dynamic>>.from(response));
+        _offset += response.length;
+        _hasMore = response.length >= _limit;
+      });
+    } catch (e) {
+      debugPrint('Error loading posts: $e');
+      // Show error snackbar
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load posts: $e')),
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _scrollListener() {
+    if (!_scrollController.hasClients) return;
+
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    const threshold = 200.0;
+
+    if (maxScroll - currentScroll <= threshold) {
+      _loadMorePosts();
+    }
+  }
+
+  Future<void> _handleRefresh() async {
+    await _loadInitialPosts();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      onRefresh: _handleRefresh,
+      child: _posts.isEmpty && _isLoading
+          ? Center(
+              child: LoadingAnimationWidget.progressiveDots(
+                color: Theme.of(context).primaryColor,
+                size: 50,
+              ),
+            )
+          : ListView.builder(
+              controller: _scrollController,
+              itemCount: _posts.length + (_hasMore ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index == _posts.length) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: LoadingAnimationWidget.progressiveDots(
+                        color: Theme.of(context).primaryColor,
+                        size: 40,
+                      ),
+                    ),
+                  );
+                }
+                return PostCard(post: PublicPostModel.fromMap(_posts[index]));
+              },
+            ),
+    );
+  }
+}
+
+class ShimmerLoading extends StatelessWidget {
+  const ShimmerLoading({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 200,
+      color: Colors.grey[300],
+    );
+  }
+}
+
+class ConnectionStatusBar extends StatefulWidget {
+  const ConnectionStatusBar({
+    Key? key,
+    required this.status,
+    required this.isChecking,
+  }) : super(key: key);
+
+  final bool isChecking;
+  final String status;
+
+  @override
+  State<ConnectionStatusBar> createState() => _ConnectionStatusBarState();
+}
+
+class _ConnectionStatusBarState extends State<ConnectionStatusBar>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+  late Animation<double> _slideAnimation;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+
+    _slideAnimation = Tween<double>(begin: -50.0, end: 0.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
+
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
+    );
+
+    _controller.forward();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = widget.status == 'آفلاین'
+        ? Colors.red[400]
+        : widget.status.contains('وای‌فای')
+            ? Colors.green[400]
+            : Colors.blue[400];
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, _slideAnimation.value),
+          child: Opacity(
+            opacity: _fadeAnimation.value,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: color?.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (widget.isChecking)
+                    LoadingAnimationWidget.staggeredDotsWave(
+                      color: color ?? Colors.grey,
+                      size: 20,
+                    )
+                  else
+                    Icon(
+                      widget.status == 'آفلاین'
+                          ? Icons.cloud_off_rounded
+                          : widget.status.contains('وای‌فای')
+                              ? Icons.wifi_rounded
+                              : Icons.signal_cellular_4_bar_rounded,
+                      color: color,
+                      size: 20,
+                    ),
+                  const SizedBox(width: 8),
+                  Text(
+                    widget.status,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }

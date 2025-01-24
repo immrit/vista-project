@@ -8,8 +8,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:timelines_plus/timelines_plus.dart';
 import '/main.dart';
-import '/util/const.dart';
 import '../model/CommentModel.dart';
 import '../model/UserModel.dart';
 import '../model/publicPostModel.dart';
@@ -538,8 +538,8 @@ class CommentsBottomSheet extends ConsumerStatefulWidget {
 
   const CommentsBottomSheet({
     required this.postId,
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   ConsumerState<CommentsBottomSheet> createState() =>
@@ -550,6 +550,8 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
   final TextEditingController commentController = TextEditingController();
   String? replyToCommentId;
   List<UserModel> mentionedUsers = [];
+  final String currentUserId = supabase.auth.currentUser!.id;
+  final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
   @override
   Widget build(BuildContext context) {
@@ -629,12 +631,17 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
   }
 
   Widget _buildCommentTree(List<CommentModel> comments) {
+    // Create a map of comments for easier lookup
     Map<String, CommentModel> commentMap = {
       for (var comment in comments) comment.id: comment
     };
 
+    // Build the reply tree structure
+    List<CommentModel> rootComments = [];
     for (var comment in comments) {
-      if (comment.parentCommentId != null) {
+      if (comment.parentCommentId == null) {
+        rootComments.add(comment);
+      } else {
         var parent = commentMap[comment.parentCommentId!];
         if (parent != null) {
           parent.replies.add(comment);
@@ -642,152 +649,229 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
       }
     }
 
-    return Column(
-      children: comments
-          .where((comment) => comment.parentCommentId == null)
-          .expand(_buildTree)
-          .toList(),
+    // Sort root comments by creation date (newest first)
+    rootComments.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: rootComments.length,
+      itemBuilder: (context, index) {
+        final rootComment = rootComments[index];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildCommentItem(rootComment),
+            if (rootComment.replies.isNotEmpty)
+              _buildRepliesSection(rootComment.replies),
+            const Divider(height: 1),
+          ],
+        );
+      },
     );
   }
 
-  List<Widget> _buildTree(CommentModel comment) {
-    return [
-      _buildCommentItem(comment),
-      if (comment.replies.isNotEmpty)
-        ExpansionTile(
-          title: Text(
-            'نمایش ${comment.replies.length} پاسخ',
-            style: const TextStyle(
-              color: Colors.blue,
-              fontSize: 13,
-            ),
+  Widget _buildRepliesSection(List<CommentModel> replies) {
+    // Sort replies by creation date (oldest first)
+    replies.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+    return Container(
+      margin: const EdgeInsets.only(left: 16), // تغییر مارجین به سمت راست
+      padding: const EdgeInsets.only(left: 16), // اضافه کردن پدینگ
+      decoration: BoxDecoration(
+        border: Border(
+          left: BorderSide(
+            // تغییر بوردر به سمت راست
+            color: Colors.grey.withOpacity(0.3),
+            width: 2,
           ),
-          children: comment.replies.expand(_buildTree).toList(),
         ),
-    ];
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: replies.map((reply) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildCommentItem(reply),
+              if (reply.replies.isNotEmpty) _buildRepliesSection(reply.replies),
+            ],
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildTimelineComment(CommentModel comment, bool isRoot) {
+    final theme = Theme.of(context);
+    final timelineColor = theme.brightness == Brightness.dark
+        ? Colors.grey[700]
+        : Colors.grey[300];
+
+    return TimelineTile(
+      nodePosition: 0, // Changed from 0.1 to 0 to remove indentation
+      node: TimelineNode(
+        indicator: DotIndicator(
+          color: timelineColor,
+          size: 16, // Reduced size for better appearance
+        ),
+        startConnector: isRoot
+            ? null
+            : SolidLineConnector(
+                color: timelineColor,
+              ),
+        endConnector: comment.replies.isEmpty
+            ? null
+            : SolidLineConnector(
+                color: timelineColor,
+              ),
+      ),
+      contents: Padding(
+        padding: const EdgeInsets.only(left: 8.0, bottom: 8.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildCommentItem(comment),
+            if (comment.replies.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(left: 16.0),
+                child: Column(
+                  children: comment.replies
+                      .map((reply) => _buildTimelineComment(reply, false))
+                      .toList(),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildCommentItem(CommentModel comment) {
     final theme = Theme.of(context);
 
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 20,
-                  backgroundImage: comment.avatarUrl.isEmpty
-                      ? const AssetImage('lib/util/images/default-avatar.jpg')
-                      : NetworkImage(comment.avatarUrl) as ImageProvider,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            comment.username,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                            ),
+      padding: const EdgeInsets.symmetric(
+          vertical: 8.0, horizontal: 8.0), // کاهش پدینگ افقی
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundImage: comment.avatarUrl.isEmpty
+                    ? const AssetImage('lib/util/images/default-avatar.jpg')
+                    : NetworkImage(comment.avatarUrl) as ImageProvider,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header section
+                    Row(
+                      children: [
+                        Text(
+                          comment.username,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
                           ),
-                          const SizedBox(width: 5),
-                          if (comment.isVerified)
-                            const Icon(Icons.verified,
+                        ),
+                        if (comment.isVerified)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 4),
+                            child: Icon(Icons.verified,
                                 color: Colors.blue, size: 16),
-                        ],
-                      ),
-                      Directionality(
-                        textDirection: TextDirection.rtl,
-                        child: Text(
-                          formatDateTimeToJalali(comment.createdAt),
+                          ),
+                        Text(
+                          ' · ${formatDateTimeToJalali(comment.createdAt)}',
                           style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 12,
+                            color: Colors.grey[600],
+                            fontSize: 14,
+                          ),
+                        ),
+                        const Spacer(),
+                        _buildCommentActions(comment),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    // Comment content
+                    Directionality(
+                      textDirection: getDirectionality(comment.content),
+                      child: RichText(
+                        text: TextSpan(
+                          children: _buildCommentTextSpans(
+                              comment, theme.brightness == Brightness.dark),
+                          style: TextStyle(
+                            fontSize: 15,
+                            height: 1.4,
+                            color: theme.textTheme.bodyLarge?.color,
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert, color: Colors.grey),
-                  itemBuilder: (context) => [
-                    if (comment.userId != supabase.auth.currentUser?.id)
-                      PopupMenuItem(
-                        value: 'report',
-                        child: const Row(
-                          children: [
-                            Icon(Icons.flag, color: Colors.orange),
-                            SizedBox(width: 8),
-                            Text('گزارش'),
-                          ],
+                    ),
+                    const SizedBox(height: 8),
+                    // Interaction buttons
+                    Row(
+                      children: [
+                        _buildInteractionButton(
+                          icon: Icons.reply_outlined,
+                          label: 'پاسخ',
+                          onTap: () {
+                            setState(() {
+                              replyToCommentId = comment.id;
+                              commentController.text = '@${comment.username} ';
+                              commentController.selection =
+                                  TextSelection.fromPosition(
+                                TextPosition(
+                                    offset: commentController.text.length),
+                              );
+                            });
+                          },
                         ),
-                        onTap: () {
-                          _showReportDialog(context, ref, comment,
-                              supabase.auth.currentUser!.id);
-                          Navigator.of(context).pop();
-                        },
-                      ),
-                    PopupMenuItem(
-                      value: 'delete',
-                      child: const Row(
-                        children: [
-                          Icon(Icons.delete, color: Colors.red),
-                          SizedBox(width: 8),
-                          Text('حذف'),
-                        ],
-                      ),
-                      onTap: () {
-                        _deleteComment(context, ref, comment.id, widget.postId);
-                      },
+                        const SizedBox(width: 16),
+                      ],
                     ),
                   ],
-                  onSelected: (value) {
-                    if (value == 'reply') {
-                      setState(() {
-                        replyToCommentId = comment.id;
-                      });
-                    }
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Directionality(
-              textDirection: getDirectionality(comment.content),
-              child: RichText(
-                text: TextSpan(
-                  children: _buildCommentTextSpans(
-                      comment, theme.brightness == Brightness.dark),
-                  style: const TextStyle(
-                    fontSize: 14,
-                    height: 1.4,
-                  ),
                 ),
               ),
-            ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  replyToCommentId = comment.id;
-                  commentController.text = '@${comment.username} ';
-                  commentController.selection = TextSelection.fromPosition(
-                    TextPosition(offset: commentController.text.length),
-                  );
-                });
-              },
-              child: const Text('پاسخ'),
-            ),
-          ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInteractionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    Color? color,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18, color: color ?? Colors.grey[600]),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color ?? Colors.grey[600],
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -816,6 +900,74 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
         );
       }
     }
+  }
+
+  Widget _buildCommentActions(CommentModel comment) {
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.more_vert, size: 20),
+      itemBuilder: (context) {
+        return [
+          if (comment.userId == currentUserId) ...[
+            const PopupMenuItem(
+              value: 'delete',
+              child: Row(
+                children: [
+                  Icon(Icons.delete_outline, color: Colors.red),
+                  SizedBox(width: 8),
+                  Text('حذف', style: TextStyle(color: Colors.red)),
+                ],
+              ),
+            ),
+          ],
+          const PopupMenuItem(
+            value: 'report',
+            child: Row(
+              children: [
+                Icon(Icons.flag_outlined),
+                SizedBox(width: 8),
+                Text('گزارش'),
+              ],
+            ),
+          ),
+        ];
+      },
+      onSelected: (value) async {
+        switch (value) {
+          case 'delete':
+            final confirm = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('حذف نظر'),
+                content: const Text('آیا از حذف این نظر مطمئن هستید؟'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('انصراف'),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      _deleteComment(context, ref, comment.id, widget.postId);
+                      Navigator.pop(context, true);
+                    },
+                    child:
+                        const Text('حذف', style: TextStyle(color: Colors.red)),
+                  ),
+                ],
+              ),
+            );
+            if (confirm == true) {
+              // اینجا عملیات حذف کامنت انجام می‌شود
+              await _deleteComment(context, ref, comment.id, widget.postId);
+            }
+            break;
+          case 'report':
+
+            // اینجا عملیات گزارش کامنت انجام می‌شود
+
+            break;
+        }
+      },
+    );
   }
 
   Widget _buildCommentInputArea(
@@ -935,17 +1087,13 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
           .deleteComment(commentId, ref);
       ref.invalidate(commentsProvider(postId));
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('کامنت با موفقیت حذف شد')),
-        );
-      }
+      _scaffoldMessengerKey.currentState?.showSnackBar(
+        const SnackBar(content: Text('کامنت با موفقیت حذف شد')),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا در حذف کامنت: $e')),
-        );
-      }
+      _scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(content: Text('خطا در حذف کامنت: $e')),
+      );
     }
   }
 

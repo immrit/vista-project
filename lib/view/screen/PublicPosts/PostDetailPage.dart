@@ -12,9 +12,9 @@ import '../../../model/UserModel.dart';
 import '../../../provider/provider.dart';
 
 class PostDetailsPage extends ConsumerStatefulWidget {
-  final String postId;
-
   const PostDetailsPage({super.key, required this.postId});
+
+  final String postId;
 
   @override
   ConsumerState<PostDetailsPage> createState() => _PostDetailsPageState();
@@ -22,14 +22,10 @@ class PostDetailsPage extends ConsumerStatefulWidget {
 
 class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
   late TextEditingController commentController;
-  String? replyToCommentId;
   final List<UserModel> mentionedUsers = [];
+  String? replyToCommentId;
 
-  @override
-  void initState() {
-    super.initState();
-    commentController = TextEditingController();
-  }
+  bool _isRetrying = false;
 
   @override
   void dispose() {
@@ -38,160 +34,30 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final postAsyncValue = ref.watch(postProvider(widget.postId));
-    final mentionNotifier = ref.watch(mentionNotifierProvider);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('جزئیات پست'),
-      ),
-      resizeToAvoidBottomInset: true,
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            postAsyncValue.when(
-              data: (post) => _buildPostDetails(context, post),
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) =>
-                  Center(child: Text('خطا در بارگذاری پست: $error')),
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: _buildCommentInputArea(context, mentionNotifier),
-    );
+  void initState() {
+    super.initState();
+    commentController = TextEditingController();
   }
 
-  // Widget _buildPostImages(PublicPostModel post) {
-  //   if (post.imageUrl == null || post.imageUrl!.isEmpty) {
-  //     return const SizedBox.shrink();
-  //   }
+// یک متد برای جلب userId از پایگاه داده بر اساس username
+  Future<String?> getUserIdByUsername(String username) async {
+    // فرض کنید از Supabase برای جلب userId استفاده می‌کنید
+    final response = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', username)
+        .single();
 
-  //   return Container(
-  //     margin: const EdgeInsets.symmetric(vertical: 10),
-  //     child: GestureDetector(
-  //       onTap: () => _showImageDialog(context, post.imageUrl!),
-  //       child: ClipRRect(
-  //         borderRadius: BorderRadius.circular(8),
-  //         child: Image.network(
-  //           post.imageUrl!,
-  //           fit: BoxFit.cover,
-  //           height: 200,
-  //           width: double.infinity,
-  //           errorBuilder: (context, error, stackTrace) {
-  //             return Container(
-  //               height: 200,
-  //               width: double.infinity,
-  //               color: Colors.grey[300],
-  //               child: const Center(
-  //                 child:
-  //                     Icon(Icons.error_outline, size: 40, color: Colors.grey),
-  //               ),
-  //             );
-  //           },
-  //           loadingBuilder: (context, child, loadingProgress) {
-  //             if (loadingProgress == null) return child;
-  //             return Container(
-  //               height: 200,
-  //               width: double.infinity,
-  //               color: Colors.grey[100],
-  //               child: Center(
-  //                 child: CircularProgressIndicator(
-  //                   value: loadingProgress.expectedTotalBytes != null
-  //                       ? loadingProgress.cumulativeBytesLoaded /
-  //                           loadingProgress.expectedTotalBytes!
-  //                       : null,
-  //                 ),
-  //               ),
-  //             );
-  //           },
-  //         ),
-  //       ),
-  //     ),
-  //   );
-  // }
+    if (response['id'] != null) {
+      return response['id'];
+    } else {
+      return null; // اگر کاربر یافت نشد
+    }
+  }
 
-  // Widget _buildPostImages(PublicPostModel post) {
-  //   if (post.imageUrl == null || post.imageUrl!.isEmpty) {
-  //     return const SizedBox.shrink();
-  //   }
-
-  //   return Container(
-  //     margin: const EdgeInsets.symmetric(vertical: 10),
-  //     child: FutureBuilder<Size>(
-  //       future: _getImageDimensions(post.imageUrl!),
-  //       builder: (context, snapshot) {
-  //         if (snapshot.connectionState == ConnectionState.waiting) {
-  //           return Container(
-  //             width: double.infinity,
-  //             height: 200,
-  //             color: Colors.grey[100],
-  //             child: const Center(child: CircularProgressIndicator()),
-  //           );
-  //         }
-
-  //         if (snapshot.hasError || !snapshot.hasData) {
-  //           return Container(
-  //             width: double.infinity,
-  //             height: 200,
-  //             color: Colors.grey[300],
-  //             child: const Center(
-  //               child: Icon(Icons.error_outline, size: 40, color: Colors.grey),
-  //             ),
-  //           );
-  //         }
-
-  //         double screenWidth = MediaQuery.of(context).size.width -
-  //             20; // پدینگ را در نظر می‌گیریم
-  //         double imageRatio = snapshot.data!.width / snapshot.data!.height;
-  //         double displayHeight = screenWidth / imageRatio;
-
-  //         return ClipRRect(
-  //           borderRadius: BorderRadius.circular(15),
-  //           child: Image.network(
-  //             post.imageUrl!,
-  //             width: screenWidth,
-  //             height: displayHeight,
-  //             fit: BoxFit.contain,
-  //             errorBuilder: (context, error, stackTrace) {
-  //               return Container(
-  //                 width: screenWidth,
-  //                 height: 200,
-  //                 color: Colors.grey[300],
-  //                 child: const Center(
-  //                   child:
-  //                       Icon(Icons.error_outline, size: 40, color: Colors.grey),
-  //                 ),
-  //               );
-  //             },
-  //           ),
-  //         );
-  //       },
-  //     ),
-  //   );
-  // }
-
-  // Future<Size> _getImageDimensions(String imageUrl) async {
-  //   final Completer<Size> completer = Completer();
-  //   final Image image = Image.network(imageUrl);
-
-  //   image.image.resolve(const ImageConfiguration()).addListener(
-  //         ImageStreamListener(
-  //           (ImageInfo info, bool _) {
-  //             completer.complete(Size(
-  //               info.image.width.toDouble(),
-  //               info.image.height.toDouble(),
-  //             ));
-  //           },
-  //           onError: (dynamic exception, StackTrace? stackTrace) {
-  //             completer.completeError(exception);
-  //           },
-  //         ),
-  //       );
-
-  //   return completer.future;
-  // }
+  TextDirection getDirectionality(String content) {
+    return content.startsWith('@') ? TextDirection.ltr : TextDirection.rtl;
+  }
 
   Widget _buildPostImages(PublicPostModel post) {
     if (post.imageUrl == null || post.imageUrl!.isEmpty) {
@@ -231,23 +97,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
             onTap: () => _showZoomableImage(context, post.imageUrl!),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                post.imageUrl!,
-                width: screenWidth,
-                height: displayHeight,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: screenWidth,
-                    height: 200,
-                    color: Colors.grey[300],
-                    child: const Center(
-                      child: Icon(Icons.error_outline,
-                          size: 40, color: Colors.grey),
-                    ),
-                  );
-                },
-              ),
+              child: _buildImageWithRetry(post.imageUrl!),
             ),
           );
         },
@@ -361,79 +211,12 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
     return completer.future;
   }
 
-  // void _showImageDialog(BuildContext context, String imageUrl) {
-  //   showDialog(
-  //     context: context,
-  //     builder: (BuildContext context) {
-  //       return Dialog(
-  //         backgroundColor: Colors.transparent,
-  //         child: Stack(
-  //           alignment: Alignment.center,
-  //           children: [
-  //             InteractiveViewer(
-  //               panEnabled: true,
-  //               boundaryMargin: const EdgeInsets.all(20),
-  //               minScale: 0.5,
-  //               maxScale: 4,
-  //               child: Image.network(
-  //                 imageUrl,
-  //                 fit: BoxFit.contain,
-  //                 errorBuilder: (context, error, stackTrace) {
-  //                   return Container(
-  //                     color: Colors.grey[300],
-  //                     child: const Center(
-  //                       child: Icon(Icons.error_outline,
-  //                           size: 50, color: Colors.white),
-  //                     ),
-  //                   );
-  //                 },
-  //               ),
-  //             ),
-  //             Positioned(
-  //               top: 0,
-  //               right: 0,
-  //               child: Material(
-  //                 color: Colors.transparent,
-  //                 child: IconButton(
-  //                   icon:
-  //                       const Icon(Icons.close, color: Colors.white, size: 30),
-  //                   onPressed: () => Navigator.of(context).pop(),
-  //                 ),
-  //               ),
-  //             ),
-  //           ],
-  //         ),
-  //       );
-  //     },
-  //   );
-  // }
-
   Widget _buildSingleImage(String imageUrl) {
     return GestureDetector(
       onTap: () => _showImageDialog(context, imageUrl),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
-        child: Image.network(
-          imageUrl,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return Container(
-              color: Colors.grey[300],
-              child: const Icon(Icons.error),
-            );
-          },
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
-            return Center(
-              child: CircularProgressIndicator(
-                value: loadingProgress.expectedTotalBytes != null
-                    ? loadingProgress.cumulativeBytesLoaded /
-                        loadingProgress.expectedTotalBytes!
-                    : null,
-              ),
-            );
-          },
-        ),
+        child: _buildImageWithRetry(imageUrl),
       ),
     );
   }
@@ -450,16 +233,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
             onTap: () => _showImageDialog(context, images[index]),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                images[index],
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    color: Colors.grey[300],
-                    child: const Icon(Icons.error),
-                  );
-                },
-              ),
+              child: _buildImageWithRetry(images[index]),
             ),
           ),
         );
@@ -1149,23 +923,107 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
     return spans;
   }
 
-// یک متد برای جلب userId از پایگاه داده بر اساس username
-  Future<String?> getUserIdByUsername(String username) async {
-    // فرض کنید از Supabase برای جلب userId استفاده می‌کنید
-    final response = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('username', username)
-        .single();
-
-    if (response['id'] != null) {
-      return response['id'];
-    } else {
-      return null; // اگر کاربر یافت نشد
-    }
+  Widget _buildImageWithRetry(String imageUrl) {
+    return Image.network(
+      imageUrl,
+      fit: BoxFit.cover,
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) return child;
+        return const Center(
+          child: CircularProgressIndicator(
+            color: Colors.white,
+          ),
+        );
+      },
+      errorBuilder: (context, error, stackTrace) {
+        return GestureDetector(
+          onTap: () {
+            setState(() {}); // Trigger rebuild to retry loading
+          },
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.grey[850],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.refresh_rounded,
+                  color: Colors.grey[400],
+                  size: 32,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'برای بارگذاری مجدد کلیک کنید',
+                  style: TextStyle(
+                    color: Colors.grey[400],
+                    fontSize: 12,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
-  TextDirection getDirectionality(String content) {
-    return content.startsWith('@') ? TextDirection.ltr : TextDirection.rtl;
+  @override
+  Widget build(BuildContext context) {
+    final postAsyncValue = ref.watch(postProvider(widget.postId));
+    final mentionNotifier = ref.watch(mentionNotifierProvider);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('جزئیات پست'),
+      ),
+      resizeToAvoidBottomInset: true,
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            postAsyncValue.when(
+              data: (post) => _buildPostDetails(context, post),
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.error_outline_rounded,
+                      size: 48,
+                      color: Colors.grey[400],
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'مشکلی در بارگذاری پست پیش آمده',
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontSize: 16,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: () => ref.refresh(postProvider(widget.postId)),
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('تلاش مجدد'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: _buildCommentInputArea(context, mentionNotifier),
+    );
   }
 }

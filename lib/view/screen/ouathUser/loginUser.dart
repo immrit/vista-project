@@ -8,6 +8,7 @@ import '../homeScreen.dart';
 import '/util/widgets.dart';
 
 import '../../../provider/provider.dart';
+import 'VerifyCodePage.dart';
 import 'signupUser.dart';
 
 class Loginuser extends ConsumerStatefulWidget {
@@ -148,19 +149,41 @@ class _LoginuserState extends ConsumerState<Loginuser> {
     }
 
     Future<void> resetPassword() async {
-      if (emailOrUsernameController.text.isEmpty) {
-        context.showSnackBar('لطفاً ایمیل یا نام کاربری خود را وارد کنید',
-            isError: true);
-        return;
-      }
+      setState(() => _isLoading = true);
 
       try {
-        // Assuming the entered text is an email for password reset
-        await Supabase.instance.client.auth
-            .resetPasswordForEmail(emailOrUsernameController.text.trim());
-        context.showSnackBar('ایمیل بازیابی رمز عبور ارسال شد');
-      } catch (e) {
-        context.showSnackBar('خطایی رخ داد، دوباره تلاش کنید', isError: true);
+        final email = emailOrUsernameController.text.trim();
+        if (email.isEmpty) {
+          context.showSnackBar('لطفاً ایمیل خود را وارد کنید', isError: true);
+          return;
+        }
+
+        await supabase.auth.resetPasswordForEmail(
+          email,
+          redirectTo: 'vista://auth/reset-password',
+        );
+
+        if (mounted) {
+          // Navigate to verify code page
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => VerifyCodePage(
+                email: email,
+              ),
+            ),
+          );
+
+          context.showSnackBar('کد بازیابی به ایمیل شما ارسال شد');
+        }
+      } catch (error) {
+        print('Reset password error: $error');
+        if (mounted) {
+          context.showSnackBar('خطا در ارسال ایمیل', isError: true);
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
     }
 

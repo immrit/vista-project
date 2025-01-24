@@ -30,30 +30,35 @@ final ThemeData lightTheme = ThemeData(
 // تم تاریک
 final ThemeData darkTheme = ThemeData(
   brightness: Brightness.dark,
-  primaryColor: Colors.grey[800],
-  scaffoldBackgroundColor: Colors.grey[900],
-  appBarTheme: AppBarTheme(
-    color: Colors.grey[800],
-    iconTheme: const IconThemeData(color: Colors.white),
-    titleTextStyle: const TextStyle(color: Colors.white, fontSize: 20),
+  primaryColor: const Color(0xFF1E1E1E), // Charcoal base
+  scaffoldBackgroundColor: const Color(0xFF1E1E1E), // Main background
+  appBarTheme: const AppBarTheme(
+    color: Color(0xFF252525), // Slightly lighter
+    iconTheme: IconThemeData(color: Colors.white),
+    titleTextStyle: TextStyle(color: Colors.white, fontSize: 20),
     elevation: 0,
   ),
-  colorScheme: ColorScheme.dark(
-    primary: Colors.grey[800]!,
-    secondary: Colors.white,
+  colorScheme: const ColorScheme.dark(
+    primary: Colors.white, // Changed from blue to white
+    secondary: Color(0xFF252525),
+    surface: Color(0xFF252525), // Cards & surfaces
+    background: Color(0xFF1E1E1E),
     onPrimary: Colors.white,
-    onSecondary: Colors.black,
-    surface: Colors.grey[800]!,
+    onSecondary: Colors.white,
     onSurface: Colors.white,
-  ),
-  bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-    selectedItemColor: Colors.white,
-    unselectedItemColor: Colors.grey,
+    onBackground: Colors.white,
   ),
   floatingActionButtonTheme: const FloatingActionButtonThemeData(
-    backgroundColor: Colors.grey,
+    backgroundColor: Colors.white,
     foregroundColor: Colors.black,
   ),
+  bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+    backgroundColor: Color(0xFF252525), // Nav bar background
+    selectedItemColor: Colors.white, // Changed from blue to white
+    unselectedItemColor: Color(0xFF8899A6),
+  ),
+  cardColor: const Color(0xFF252525),
+  dividerColor: const Color(0xFF323232),
   fontFamily: 'Vazir',
 );
 
