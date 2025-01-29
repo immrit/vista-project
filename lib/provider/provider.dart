@@ -1656,3 +1656,30 @@ final searchProvider =
 // });
 
 // final selectedChatUserProvider = StateProvider<Profile?>((ref) => null);
+class StoryControllerNotifier extends StateNotifier<int> {
+  StoryControllerNotifier() : super(0);
+
+  void nextStory() => state++;
+  void previousStory() => state--;
+  void setCurrentIndex(int index) => state = index;
+
+  // اضافه کردن این متد
+  void reset() => state = 0;
+}
+
+final storyControllerProvider =
+    StateNotifierProvider<StoryControllerNotifier, int>(
+  (ref) => StoryControllerNotifier(),
+);
+
+final viewsCountProvider =
+    FutureProvider.family<int, String>((ref, storyId) async {
+  final supabase = Supabase.instance.client;
+  final response = await supabase
+      .from('story_views')
+      .select('view_count')
+      .eq('story_id', storyId)
+      .single();
+
+  return response['view_count'] as int;
+});

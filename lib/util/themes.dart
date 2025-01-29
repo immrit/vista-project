@@ -41,12 +41,10 @@ final ThemeData darkTheme = ThemeData(
   colorScheme: const ColorScheme.dark(
     primary: Colors.white, // Changed from blue to white
     secondary: Color(0xFF252525),
-    surface: Color(0xFF252525), // Cards & surfaces
-    background: Color(0xFF1E1E1E),
+    surface: Color(0xFF252525),
     onPrimary: Colors.white,
     onSecondary: Colors.white,
     onSurface: Colors.white,
-    onBackground: Colors.white,
   ),
   floatingActionButtonTheme: const FloatingActionButtonThemeData(
     backgroundColor: Colors.white,

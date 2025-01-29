@@ -40,6 +40,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_image_compress: ^2.3.0
+  flutter_instagram_storyboard: ^1.0.1
   flutter_launcher_icons: ^0.14.1
   flutter_mentions: ^2.0.1
   flutter_riverpod: ^2.6.1

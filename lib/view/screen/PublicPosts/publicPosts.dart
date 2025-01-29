@@ -1,3 +1,4 @@
+import 'package:Vista/util/story_system.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -168,6 +169,13 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
                 ],
               ),
             ),
+            SliverToBoxAdapter(
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                height: 150, // Increased height for stories
+                child: const StoryBar(),
+              ),
+            )
           ],
           body: const TabBarView(
             children: [
@@ -872,10 +880,10 @@ class ShimmerLoading extends StatelessWidget {
 
 class ConnectionStatusBar extends StatefulWidget {
   const ConnectionStatusBar({
-    Key? key,
+    super.key,
     required this.status,
     required this.isChecking,
-  }) : super(key: key);
+  });
 
   final bool isChecking;
   final String status;

@@ -25,7 +25,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
   final List<UserModel> mentionedUsers = [];
   String? replyToCommentId;
 
-  bool _isRetrying = false;
+  final bool _isRetrying = false;
 
   @override
   void dispose() {
