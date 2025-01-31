@@ -1,9 +1,11 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import 'package:share_plus/share_plus.dart';
+import '../searchPage.dart';
 import '/main.dart';
 import '/util/const.dart';
 import '../../../model/ProfileModel.dart';
@@ -193,8 +195,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       padding: const EdgeInsets.only(top: 20),
       child: CircleAvatar(
         radius: 40,
-        backgroundImage:
-            profile.avatarUrl != null ? NetworkImage(profile.avatarUrl!) : null,
+        backgroundImage: profile.avatarUrl != null
+            ? CachedNetworkImageProvider(profile.avatarUrl!)
+            : null,
         child: profile.avatarUrl == null
             ? const CircleAvatar(
                 backgroundImage: AssetImage(
@@ -362,11 +365,220 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               child: Text('هنوز پستی وجود ندارد'),
             );
           }
-          return _buildPostItem(profile, profile.posts[index]);
+
+          final post = profile.posts[index];
+          return Card(
+            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header with avatar and username
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundImage: profile.avatarUrl != null
+                            ? NetworkImage(profile.avatarUrl!)
+                            : null,
+                      ),
+                      const SizedBox(width: 8),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            profile.username,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            _getFormattedDate(post.createdAt),
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // Post content
+                  Directionality(
+                    textDirection: TextDirection.rtl,
+                    child: _buildPostContent(post.content),
+                  ),
+
+                  // Hashtags
+                  if (post.hashtags.isNotEmpty)
+                    Directionality(
+                      textDirection: TextDirection.rtl,
+                      child: Wrap(
+                        spacing: 8,
+                        children: post.hashtags
+                            .map((tag) => GestureDetector(
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => SearchPage(
+                                        initialHashtag: '#$tag',
+                                      ),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    '#$tag',
+                                    style: const TextStyle(
+                                      color: Colors.blue,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ))
+                            .toList(),
+                      ),
+                    ),
+
+                  // Post image
+                  if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: CachedNetworkImage(
+                        imageUrl: post.imageUrl!,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: 200,
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 8),
+
+                  // Actions
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildLikeButton(post),
+                      _buildCommentButton(post),
+                      _buildShareButton(post),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
         },
         childCount: profile.posts.isEmpty ? 1 : profile.posts.length,
       ),
     );
+  }
+
+  Widget _buildRichText(String content, BuildContext context) {
+    final pattern = RegExp(
+      r'(#[\w\u0600-\u06FF]+)|((https?:\/\/)?([\w\-])+\.{1}([a-zA-Z]{2,63})([\/\w-]*)*\/?\??([^\s<>#]*))',
+      multiLine: true,
+      unicode: true,
+    );
+
+    List<TextSpan> spans = [];
+    int start = 0;
+
+    for (Match match in pattern.allMatches(content)) {
+      if (match.start > start) {
+        spans.add(TextSpan(text: content.substring(start, match.start)));
+      }
+
+      final matchedText = match.group(0)!;
+
+      if (matchedText.startsWith('#')) {
+        spans.add(
+          TextSpan(
+            text: matchedText,
+            style: const TextStyle(
+              color: Colors.blue,
+              fontWeight: FontWeight.w500,
+            ),
+            recognizer: TapGestureRecognizer()
+              ..onTap = () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => SearchPage(
+                      initialHashtag: matchedText,
+                    ),
+                  ),
+                );
+              },
+          ),
+        );
+      }
+      start = match.end;
+    }
+
+    if (start < content.length) {
+      spans.add(TextSpan(text: content.substring(start)));
+    }
+
+    return RichText(
+      text: TextSpan(
+        style: DefaultTextStyle.of(context).style,
+        children: spans,
+      ),
+    );
+  }
+
+  String _getFormattedDate(DateTime date) {
+    final jalali = Jalali.fromDateTime(date.toLocal());
+    return '${jalali.year}/${jalali.month}/${jalali.day}';
+  }
+
+  Widget _buildPostContent(String content) {
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(
+          color: Colors.black,
+          fontSize: 14,
+          height: 1.5,
+        ),
+        children: _parseContent(content),
+      ),
+    );
+  }
+
+  List<TextSpan> _parseContent(String content) {
+    final List<TextSpan> spans = [];
+    final pattern = RegExp(r'(#[\w\u0600-\u06FF]+)');
+
+    final matches = pattern.allMatches(content);
+    int lastIndex = 0;
+
+    for (final match in matches) {
+      if (match.start > lastIndex) {
+        spans.add(TextSpan(text: content.substring(lastIndex, match.start)));
+      }
+
+      spans.add(
+        TextSpan(
+          text: match.group(0),
+          style: const TextStyle(
+            color: Colors.blue,
+            fontWeight: FontWeight.w500,
+          ),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () {
+              // Handle hashtag tap
+            },
+        ),
+      );
+
+      lastIndex = match.end;
+    }
+
+    if (lastIndex < content.length) {
+      spans.add(TextSpan(text: content.substring(lastIndex)));
+    }
+
+    return spans;
   }
 
   Widget _buildPostItem(ProfileModel profile, PublicPostModel post) {
@@ -461,18 +673,65 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
           const SizedBox(height: 12),
           Directionality(
-              textDirection: getDirectionality(post.content),
-              child: Text(
-                post.content,
-                textAlign: getTextAlignment(post.content),
-              )),
+            textDirection: getDirectionality(post.content),
+            child: _buildPostContent(post.content),
+          ),
 
-          // اضافه کردن نمایش تصویر
-          // در متد _buildPostItem، بعد از نمایش متن پست:
-          // اضافه کردن نمایش تصویر در صورت وجود
+          // نمایش هشتگ‌ها
+          if (post.hashtags.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: post.hashtags
+                  .map(
+                    (tag) => GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => SearchPage(
+                              initialHashtag: '#$tag',
+                            ),
+                          ),
+                        );
+                      },
+                      child: Text(
+                        '#$tag',
+                        style: const TextStyle(
+                          color: Colors.blue,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+
+          // نمایش تصویر
           if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
             const SizedBox(height: 8),
-            PostImageViewer(imageUrl: post.imageUrl!),
+            GestureDetector(
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => FullScreenImageViewer(
+                      imageUrl: post.imageUrl!,
+                    ),
+                  ),
+                );
+              },
+              child: CachedNetworkImage(
+                imageUrl: post.imageUrl!,
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: 200,
+                placeholder: (context, url) => const Center(
+                  child: CircularProgressIndicator(),
+                ),
+                errorWidget: (context, url, error) => const Icon(Icons.error),
+              ),
+            ),
           ],
 
           const SizedBox(height: 16),

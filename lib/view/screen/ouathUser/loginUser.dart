@@ -194,69 +194,71 @@ class _LoginuserState extends ConsumerState<Loginuser> {
       }
     });
 
-    return Scaffold(
-      appBar: AppBar(),
-      body: ListView(
-        padding: const EdgeInsets.all(16.0),
-        children: [
-          Column(
-            children: [
-              topText(text: '!خوش برگشتی'),
-              const SizedBox(height: 80),
-              customTextField('نام کاربری یا ایمیل', emailOrUsernameController,
-                  (value) {
-                if (value == null || value.isEmpty) {
-                  return 'لطفا مقادیر را وارد نمایید';
-                }
-                return null;
-              }, false, TextInputType.emailAddress),
-              const SizedBox(height: 10),
-              customTextField('رمزعبور', passController, (value) {
-                if (value == null || value.isEmpty) {
-                  return 'لطفا مقادیر را وارد نمایید';
-                }
-                return null;
-              }, true, TextInputType.visiblePassword),
-              TextButton(
-                onPressed: resetPassword,
-                child: const Text(
-                  'فراموشی رمز عبور؟',
-                  style: TextStyle(color: Colors.blue),
+    return SafeArea(
+      child: Scaffold(
+        appBar: AppBar(),
+        body: ListView(
+          padding: const EdgeInsets.all(16.0),
+          children: [
+            Column(
+              children: [
+                topText(text: '!خوش برگشتی'),
+                const SizedBox(height: 80),
+                customTextField(
+                    'نام کاربری یا ایمیل', emailOrUsernameController, (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'لطفا مقادیر را وارد نمایید';
+                  }
+                  return null;
+                }, false, TextInputType.emailAddress),
+                const SizedBox(height: 10),
+                customTextField('رمزعبور', passController, (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'لطفا مقادیر را وارد نمایید';
+                  }
+                  return null;
+                }, true, TextInputType.visiblePassword),
+                TextButton(
+                  onPressed: resetPassword,
+                  child: const Text(
+                    'فراموشی رمز عبور؟',
+                    style: TextStyle(color: Colors.blue),
+                  ),
                 ),
-              ),
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    TextButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => const SignUpScreen()),
-                        );
-                      },
-                      child: const Text(
-                        "ثبت نام کنید ",
-                        style: TextStyle(color: Colors.blue),
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) => const SignUpScreen()),
+                          );
+                        },
+                        child: const Text(
+                          "ثبت نام کنید ",
+                          style: TextStyle(color: Colors.blue),
+                        ),
                       ),
-                    ),
-                    const Text("حساب کاربری ندارید؟"),
-                  ],
+                      const Text("حساب کاربری ندارید؟"),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ],
-      ),
-      bottomNavigationBar: Padding(
-        padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-            right: 10,
-            left: 10),
-        child: customButton(isLoading ? null : signIn,
-            isLoading ? '...در حال ورود' : 'ورود', ref),
+              ],
+            ),
+          ],
+        ),
+        bottomNavigationBar: Padding(
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              right: 10,
+              left: 10),
+          child: customButton(isLoading ? null : signIn,
+              isLoading ? '...در حال ورود' : 'ورود', ref),
+        ),
       ),
     );
   }

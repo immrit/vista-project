@@ -1,10 +1,13 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import '../../../model/publicPostModel.dart';
+import '../../../util/widgets.dart';
+import '../searchPage.dart';
 import '/main.dart';
 import '/view/screen/PublicPosts/profileScreen.dart';
 import '../../../model/CommentModel.dart';
@@ -94,7 +97,15 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
           double displayHeight = screenWidth / imageRatio;
 
           return GestureDetector(
-            onTap: () => _showZoomableImage(context, post.imageUrl!),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      PostImageViewer(imageUrl: post.imageUrl!),
+                ),
+              );
+            },
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: _buildImageWithRetry(post.imageUrl!),
@@ -290,6 +301,79 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
     );
   }
 
+  Widget _buildPostContent(String content, BuildContext context) {
+    final pattern = RegExp(
+      r'#[\w\u0600-\u06FF]+', // Simplified regex for hashtags only
+      multiLine: true,
+      unicode: true,
+    );
+
+    List<TextSpan> spans = [];
+    int start = 0;
+
+    for (Match match in pattern.allMatches(content)) {
+      // Add text before hashtag
+      if (match.start > start) {
+        spans.add(TextSpan(
+          text: content.substring(start, match.start),
+          style: TextStyle(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white
+                : Colors.black,
+            height: 1.5,
+          ),
+        ));
+      }
+
+      // Add hashtag
+      spans.add(
+        TextSpan(
+          text: match.group(0),
+          style: const TextStyle(
+            color: Colors.blue,
+            fontWeight: FontWeight.w500,
+          ),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SearchPage(
+                    initialHashtag: match.group(0)!,
+                  ),
+                ),
+              );
+            },
+        ),
+      );
+
+      start = match.end;
+    }
+
+    // Add remaining text
+    if (start < content.length) {
+      spans.add(TextSpan(
+        text: content.substring(start),
+        style: TextStyle(
+          color: Theme.of(context).brightness == Brightness.dark
+              ? Colors.white
+              : Colors.black,
+          height: 1.5,
+        ),
+      ));
+    }
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: RichText(
+        textAlign: TextAlign.right,
+        text: TextSpan(
+          children: spans,
+        ),
+      ),
+    );
+  }
+
   Widget _buildPostCard(dynamic post, String formattedDate) {
     return Card(
       margin: const EdgeInsets.all(10),
@@ -301,10 +385,40 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
             _buildPostHeader(post),
             const SizedBox(height: 10),
             Directionality(
-              textDirection: TextDirection.rtl,
-              child: Text(post.content, style: const TextStyle(fontSize: 18)),
+              textDirection: getDirectionality(post.content),
+              child: _buildPostContent(post.content, context),
             ),
-            _buildPostImages(post), // اضافه کردن این خط
+            // نمایش هشتگ‌ها
+            if (post.hashtags.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: post.hashtags
+                    .map(
+                      (tag) => GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => SearchPage(
+                                initialHashtag: '#$tag',
+                              ),
+                            ),
+                          );
+                        },
+                        child: Text(
+                          '#$tag',
+                          style: const TextStyle(
+                            color: Colors.blue,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ],
+            _buildPostImages(post),
             const SizedBox(height: 10),
             _buildLikeRow(post),
           ],
@@ -319,7 +433,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
         CircleAvatar(
           backgroundImage: post.avatarUrl.isEmpty
               ? const AssetImage('lib/util/images/default-avatar.jpg')
-              : NetworkImage(post.avatarUrl),
+              : CachedNetworkImageProvider(post.avatarUrl),
         ),
         const SizedBox(width: 10),
         Column(
@@ -468,7 +582,8 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                   radius: 20,
                   backgroundImage: comment.avatarUrl.isEmpty
                       ? const AssetImage('lib/util/images/default-avatar.jpg')
-                      : NetworkImage(comment.avatarUrl) as ImageProvider,
+                      : CachedNetworkImageProvider(comment.avatarUrl)
+                          as ImageProvider,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -646,7 +761,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                 avatar: CircleAvatar(
                   backgroundImage: user.avatarUrl != null &&
                           user.avatarUrl!.isNotEmpty
-                      ? NetworkImage(user.avatarUrl!)
+                      ? CachedNetworkImageProvider(user.avatarUrl!)
                       : const AssetImage('lib/util/images/default-avatar.jpg'),
                 ),
                 label: Text(user.username),

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path/path.dart' as path;
 import 'package:aws_s3_api/s3-2006-03-01.dart';
+import '../services/cache_manager.dart';
 import '/main.dart';
 
 class PostImageUploadService {
@@ -136,5 +137,31 @@ class PostImageUploadService {
       print('خطا در فشرده‌سازی تصویر پست: $e');
       return null;
     }
+  }
+
+  static Future<void> precacheStoryImages(List<String> imageUrls) async {
+    for (final url in imageUrls) {
+      await CustomCacheManager.storyInstance.downloadFile(url);
+    }
+  }
+
+  static Future<void> clearOldCache() async {
+    await CustomCacheManager.storyInstance.emptyCache();
+  }
+
+  static Future<void> precachePostImages(List<String> imageUrls) async {
+    for (final url in imageUrls) {
+      await CustomCacheManager.postInstance.downloadFile(url);
+    }
+  }
+
+  static Future<void> clearCache() async {
+    await CustomCacheManager.postInstance.emptyCache();
+    await CustomCacheManager.storyInstance.emptyCache();
+  }
+
+  static Future<void> removeOldCache() async {
+    await CustomCacheManager.postInstance.emptyCache();
+    await CustomCacheManager.storyInstance.emptyCache();
   }
 }

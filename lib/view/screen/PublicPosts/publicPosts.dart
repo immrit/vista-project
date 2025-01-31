@@ -1,4 +1,5 @@
-import 'package:Vista/util/story_system.dart';
+import 'package:Vista/view/screen/PublicPosts/PostDetailPage.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -169,13 +170,13 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
                 ],
               ),
             ),
-            SliverToBoxAdapter(
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                height: 150, // Increased height for stories
-                child: const StoryBar(),
-              ),
-            )
+            // SliverToBoxAdapter(
+            //   child: Container(
+            //     padding: const EdgeInsets.symmetric(vertical: 12),
+            //     height: 150, // Increased height for stories
+            //     child: const StoryBar(),
+            //   ),
+            // )
           ],
           body: const TabBarView(
             children: [
@@ -320,147 +321,180 @@ Widget _buildPostList(
 
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 18.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ProfileScreen(
-                        userId: post.userId,
-                        username: post.username,
-                      ),
-                    ),
-                  );
-                },
-                child: CircleAvatar(
-                  backgroundImage: post.avatarUrl.isEmpty
-                      ? const AssetImage('lib/util/images/default-avatar.jpg')
-                          as ImageProvider
-                      : NetworkImage(post.avatarUrl),
+        child: GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => PostDetailsPage(
+                  postId: post.id,
                 ),
               ),
-              title: GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ProfileScreen(
-                        userId: post.userId,
-                        username: post.username,
-                      ),
-                    ),
-                  );
-                },
-                child: Row(
-                  children: [
-                    Text(
-                      post.username,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(width: 4),
-                    if (post.isVerified)
-                      const Icon(Icons.verified,
-                          color: Colors.blue, size: 16.0),
-                  ],
-                ),
-              ),
-              subtitle: Text(
-                formattedDate,
-                style: TextStyle(color: Colors.grey[600], fontSize: 12),
-              ),
-              trailing: _buildPostActions(context, ref, post),
-            ),
-            const SizedBox(height: 8),
-            Directionality(
-              textDirection: getDirectionality(post.content),
-              child: _buildPostContent(post.content, context),
-            ),
-            // نمایش هشتگ‌ها
-            if (post.hashtags.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: post.hashtags
-                    .map(
-                      (tag) => GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => SearchPage(
-                                initialHashtag: tag,
-                              ),
-                            ),
-                          );
-                        },
-                        child: Text(
-                          '#$tag',
-                          style: const TextStyle(
-                            color: Colors.blue,
-                            fontWeight: FontWeight.w500,
-                          ),
+            );
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ProfileScreen(
+                          userId: post.userId,
+                          username: post.username,
                         ),
                       ),
-                    )
-                    .toList(),
-              ),
-            ],
-            // اضافه کردن نمایش تصویر در صورت وجود
-            if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              PostImageViewer(imageUrl: post.imageUrl!),
-            ],
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.start,
-              children: [
-                IconButton(
-                  icon: Icon(
-                    post.isLiked ? Icons.favorite : Icons.favorite_border,
-                    color: post.isLiked ? Colors.red : null,
+                    );
+                  },
+                  child: CircleAvatar(
+                    backgroundImage: post.avatarUrl.isEmpty
+                        ? const AssetImage('lib/util/images/default-avatar.jpg')
+                            as ImageProvider
+                        : CachedNetworkImageProvider(post.avatarUrl),
                   ),
-                  onPressed: () async {
-                    post.isLiked = !post.isLiked;
-                    post.likeCount += post.isLiked ? 1 : -1;
-                    (context as Element).markNeedsBuild();
-                    await ref.watch(supabaseServiceProvider).toggleLike(
-                          postId: post.id,
-                          ownerId: post.userId,
-                          ref: ref,
-                        );
-                  },
                 ),
-                Text('${post.likeCount}'),
-                const SizedBox(width: 16),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.comment),
-                      onPressed: () {
-                        showCommentsBottomSheet(context, post.id, ref);
-                      },
-                    ),
-                    Text('${post.commentCount}')
-                  ],
-                ),
-                const SizedBox(width: 16),
-                IconButton(
-                  icon: const Icon(Icons.share),
-                  onPressed: () {
-                    String sharePost =
-                        'کاربر ${post.username} به شما ارسال کرد:\n\n${post.content}';
-                    Share.share(sharePost);
+                title: GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ProfileScreen(
+                          userId: post.userId,
+                          username: post.username,
+                        ),
+                      ),
+                    );
                   },
+                  child: Row(
+                    children: [
+                      Text(
+                        post.username,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(width: 4),
+                      if (post.isVerified)
+                        const Icon(Icons.verified,
+                            color: Colors.blue, size: 16.0),
+                    ],
+                  ),
+                ),
+                subtitle: Text(
+                  formattedDate,
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                ),
+                trailing: _buildPostActions(context, ref, post),
+              ),
+              const SizedBox(height: 8),
+              Directionality(
+                textDirection: getDirectionality(post.content),
+                child: _buildPostContent(post.content, context),
+              ),
+              // نمایش هشتگ‌ها
+              if (post.hashtags.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: post.hashtags
+                      .map(
+                        (tag) => GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => SearchPage(
+                                  initialHashtag: tag,
+                                ),
+                              ),
+                            );
+                          },
+                          child: Text(
+                            '#$tag',
+                            style: const TextStyle(
+                              color: Colors.blue,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
                 ),
               ],
-            ),
-            const Divider(),
-          ],
+              // اضافه کردن نمایش تصویر در صورت وجود
+              if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            PostImageViewer(imageUrl: post.imageUrl!),
+                      ),
+                    );
+                  },
+                  child: Hero(
+                    tag: post.imageUrl!, // استفاده از Hero در اینجا
+                    child: CachedNetworkImage(
+                      imageUrl: post.imageUrl!,
+                      placeholder: (context, url) =>
+                          const Center(child: CircularProgressIndicator()),
+                      errorWidget: (context, url, error) =>
+                          const Icon(Icons.error),
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.start,
+                children: [
+                  IconButton(
+                    icon: Icon(
+                      post.isLiked ? Icons.favorite : Icons.favorite_border,
+                      color: post.isLiked ? Colors.red : null,
+                    ),
+                    onPressed: () async {
+                      post.isLiked = !post.isLiked;
+                      post.likeCount += post.isLiked ? 1 : -1;
+                      (context as Element).markNeedsBuild();
+                      await ref.watch(supabaseServiceProvider).toggleLike(
+                            postId: post.id,
+                            ownerId: post.userId,
+                            ref: ref,
+                          );
+                    },
+                  ),
+                  Text('${post.likeCount}'),
+                  const SizedBox(width: 16),
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.comment),
+                        onPressed: () {
+                          showCommentsBottomSheet(context, post.id, ref);
+                        },
+                      ),
+                      Text('${post.commentCount}')
+                    ],
+                  ),
+                  const SizedBox(width: 16),
+                  IconButton(
+                    icon: const Icon(Icons.share),
+                    onPressed: () {
+                      String sharePost =
+                          'کاربر ${post.username} به شما ارسال کرد:\n\n${post.content}';
+                      Share.share(sharePost);
+                    },
+                  ),
+                ],
+              ),
+              const Divider(),
+            ],
+          ),
         ),
       );
     },

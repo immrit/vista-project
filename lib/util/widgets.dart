@@ -240,7 +240,8 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
                   currentAccountPicture: CircleAvatar(
                     radius: 30,
                     backgroundImage: getprofile!['avatar_url'] != null
-                        ? NetworkImage(getprofile['avatar_url'].toString())
+                        ? CachedNetworkImageProvider(
+                            getprofile['avatar_url'].toString())
                         : const AssetImage(
                             'lib/util/images/default-avatar.jpg'),
                   ),
@@ -763,7 +764,8 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
                 radius: 20,
                 backgroundImage: comment.avatarUrl.isEmpty
                     ? const AssetImage('lib/util/images/default-avatar.jpg')
-                    : NetworkImage(comment.avatarUrl) as ImageProvider,
+                    : CachedNetworkImageProvider(comment.avatarUrl)
+                        as ImageProvider,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1008,7 +1010,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
                 avatar: CircleAvatar(
                   backgroundImage: user.avatarUrl != null &&
                           user.avatarUrl!.isNotEmpty
-                      ? NetworkImage(user.avatarUrl!)
+                      ? CachedNetworkImageProvider(user.avatarUrl!)
                       : const AssetImage('lib/util/images/default-avatar.jpg')
                           as ImageProvider,
                 ),
@@ -1451,56 +1453,172 @@ class _ReportProfileDialogState extends State<ReportProfileDialog> {
   }
 }
 
-class PostImageViewer extends StatelessWidget {
+class PostImageViewer extends StatefulWidget {
   final String imageUrl;
 
   const PostImageViewer({super.key, required this.imageUrl});
 
   @override
+  State<PostImageViewer> createState() => _PostImageViewerState();
+}
+
+class _PostImageViewerState extends State<PostImageViewer> {
+  double _dragOffset = 0;
+  double _opacity = 1.0;
+
+  void _handleVerticalDragUpdate(DragUpdateDetails details) {
+    setState(() {
+      _dragOffset += details.delta.dy;
+      // محاسبه شفافیت بر اساس میزان کشیدن
+      _opacity = 1 - (_dragOffset.abs() / 400).clamp(0.0, 1.0);
+    });
+  }
+
+  void _handleVerticalDragEnd(DragEndDetails details) {
+    if (_dragOffset.abs() > 100) {
+      Navigator.of(context).pop();
+    } else {
+      setState(() {
+        _dragOffset = 0;
+        _opacity = 1.0;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => _showFullScreen(context),
-      child: Hero(
-        tag: imageUrl,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: CachedNetworkImage(
-            imageUrl: imageUrl,
-            fit: BoxFit.contain,
-            width: MediaQuery.of(context).size.width,
-            placeholder: (context, url) => const Center(
-              child: CircularProgressIndicator(),
+    return Scaffold(
+      backgroundColor: Colors.black.withOpacity(_opacity),
+      body: GestureDetector(
+        onVerticalDragUpdate: _handleVerticalDragUpdate,
+        onVerticalDragEnd: _handleVerticalDragEnd,
+        child: Stack(
+          children: [
+            // تصویر اصلی
+            Transform.translate(
+              offset: Offset(0, _dragOffset),
+              child: Center(
+                child: Hero(
+                  tag: widget.imageUrl, // استفاده از Hero در اینجا
+                  child: CachedNetworkImage(
+                    imageUrl: widget.imageUrl,
+                    fit: BoxFit.contain,
+                    width: MediaQuery.of(context).size.width,
+                    height: MediaQuery.of(context).size.height,
+                    placeholder: (context, url) => const Center(
+                      child: CircularProgressIndicator(color: Colors.white),
+                    ),
+                    errorWidget: (context, url, error) => const Icon(
+                      Icons.error,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
             ),
-            errorWidget: (context, url, error) => const Icon(Icons.error),
-          ),
+
+            // دکمه بستن
+            Positioned(
+              top: 40,
+              right: 16,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black45,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
+}
 
-  void _showFullScreen(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => Scaffold(
-          backgroundColor: Colors.black,
-          appBar: AppBar(
-            backgroundColor: Colors.black,
-            iconTheme: const IconThemeData(color: Colors.white),
-          ),
-          body: Center(
-            child: InteractiveViewer(
-              minScale: 0.5,
-              maxScale: 4.0,
-              child: Hero(
-                tag: imageUrl,
-                child: CachedNetworkImage(
-                  imageUrl: imageUrl,
-                  fit: BoxFit.contain,
+class FullScreenImageViewer extends StatefulWidget {
+  final String imageUrl;
+
+  const FullScreenImageViewer({super.key, required this.imageUrl});
+
+  @override
+  State<FullScreenImageViewer> createState() => _FullScreenImageViewerState();
+}
+
+class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
+  double _dragOffset = 0;
+  double _opacity = 1.0;
+
+  void _handleVerticalDragUpdate(DragUpdateDetails details) {
+    setState(() {
+      _dragOffset += details.delta.dy;
+      // محاسبه شفافیت بر اساس میزان کشیدن
+      _opacity = 1 - (_dragOffset.abs() / 400).clamp(0.0, 1.0);
+    });
+  }
+
+  void _handleVerticalDragEnd(DragEndDetails details) {
+    if (_dragOffset.abs() > 100) {
+      Navigator.of(context).pop();
+    } else {
+      setState(() {
+        _dragOffset = 0;
+        _opacity = 1.0;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black.withOpacity(_opacity),
+      body: GestureDetector(
+        onVerticalDragUpdate: _handleVerticalDragUpdate,
+        onVerticalDragEnd: _handleVerticalDragEnd,
+        child: Stack(
+          children: [
+            // تصویر اصلی
+            Transform.translate(
+              offset: Offset(0, _dragOffset),
+              child: Center(
+                child: Hero(
+                  tag: widget.imageUrl,
+                  child: CachedNetworkImage(
+                    imageUrl: widget.imageUrl,
+                    fit: BoxFit.contain,
+                    width: MediaQuery.of(context).size.width,
+                    height: MediaQuery.of(context).size.height,
+                    placeholder: (context, url) => const Center(
+                      child: CircularProgressIndicator(color: Colors.white),
+                    ),
+                    errorWidget: (context, url, error) => const Icon(
+                      Icons.error,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
+
+            // دکمه بستن
+            Positioned(
+              top: 40,
+              right: 16,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black45,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

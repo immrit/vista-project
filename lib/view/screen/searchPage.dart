@@ -1,5 +1,5 @@
 import 'package:Vista/util/widgets.dart';
-import 'package:Vista/view/screen/PublicPosts/PostDetailPage.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
@@ -432,70 +432,56 @@ class _SearchPageState extends ConsumerState<SearchPage>
 }
 
 // کامپوننت کارت پست
-class PostCard extends ConsumerWidget {
+class PostCard extends StatelessWidget {
   final PublicPostModel post;
 
   const PostCard({super.key, required this.post});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => PostDetailsPage(postId: post.id),
+      child: Column(
+        children: [
+          if (post.imageUrl != null && post.imageUrl!.isNotEmpty)
+            CachedNetworkImage(
+              imageUrl: post.imageUrl!,
+              placeholder: (context, url) =>
+                  const Center(child: CircularProgressIndicator()),
+              errorWidget: (context, url, error) => const Icon(Icons.error),
+              fit: BoxFit.cover,
             ),
-          );
-        },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (post.imageUrl != null && post.imageUrl!.isNotEmpty)
-              AspectRatio(
-                aspectRatio: 1,
-                child: Image.network(
-                  post.imageUrl!,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) =>
-                      const SizedBox.shrink(),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 12,
+                      backgroundImage: post.avatarUrl != null
+                          ? NetworkImage(post.avatarUrl)
+                          : const AssetImage(
+                                  'lib/util/images/default-avatar.jpg')
+                              as ImageProvider,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      post.username ?? '',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ],
                 ),
-              ),
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 12,
-                        backgroundImage: post.avatarUrl != null
-                            ? NetworkImage(post.avatarUrl)
-                            : const AssetImage(
-                                    'lib/util/images/default-avatar.jpg')
-                                as ImageProvider,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        post.username ?? '',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    post.content,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
+                const SizedBox(height: 8),
+                Text(
+                  post.content,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
