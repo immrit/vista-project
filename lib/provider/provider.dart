@@ -1455,51 +1455,32 @@ final userFollowingProvider =
 
 final fetchFollowingPostsProvider =
     FutureProvider<List<PublicPostModel>>((ref) async {
-  final supabase = Supabase.instance.client;
-  final currentUserId = supabase.auth.currentUser?.id;
+  try {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return [];
 
-  // دریافت لیست افرادی که کاربر فعلی دنبال می‌کند
-  final followingResponse = await supabase
-      .from('follows')
-      .select('following_id')
-      .eq('follower_id', currentUserId.toString());
+    final followingIds = await supabase
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', userId);
 
-  final followingIds = followingResponse.map((e) => e['following_id']).toList();
+    if (followingIds.isEmpty) return [];
 
-  // دریافت پست‌های افراد دنبال شده
-  final response = await supabase
-      .from('posts')
-      .select('''
-        id, 
-        content, 
-        created_at, 
-        user_id,
-        image_url,
-        profiles(username, avatar_url, is_verified),
-        likes(user_id),
-        comments(id)
-      ''')
-      .or(followingIds.map((id) => 'user_id.eq.$id').join(','))
-      .order('created_at', ascending: false);
+    final following = followingIds.map((f) => f['following_id']).toList();
 
-  return response.map((post) {
-    final postLikes = post['likes'] as List? ?? [];
-    final comments = post['comments'] as List<dynamic>? ?? [];
+    final response = await supabase
+        .from('posts')
+        .select(
+          'id, content, created_at, image_url, user_id, profiles!inner(username, avatar_url, is_verified)',
+        )
+        .contains('user_id', following)
+        .order('created_at', ascending: false);
 
-    // چک کردن لایک توسط کاربر فعلی
-    final isLikedByCurrentUser =
-        postLikes.any((like) => like['user_id'] == currentUserId);
-
-    return PublicPostModel.fromMap({
-      ...post,
-      'like_count': postLikes.length,
-      'is_liked': isLikedByCurrentUser,
-      'username': post['profiles']?['username'] ?? 'Unknown',
-      'avatar_url': post['profiles']?['avatar_url'] ?? '',
-      'is_verified': post['profiles']?['is_verified'] ?? false,
-      'comment_count': comments.length, // تعداد کامنت‌ها
-    });
-  }).toList();
+    return response.map((post) => PublicPostModel.fromMap(post)).toList();
+  } catch (e) {
+    print('Error fetching following posts: $e');
+    throw 'خطا در برقراری ارتباط با سرور. لطفا اتصال اینترنت خود را بررسی کنید.';
+  }
 });
 
 // Provider for searching all users
@@ -1682,4 +1663,19 @@ final viewsCountProvider =
       .single();
 
   return response['view_count'] as int;
+});
+
+//notification check
+final hasNewNotificationProvider = FutureProvider<bool>((ref) async {
+  final userId = supabase.auth.currentUser?.id;
+  if (userId == null) return false;
+
+  final response = await supabase
+      .from('notifications')
+      .select()
+      .eq('recipient_id', userId)
+      .eq('is_read', false);
+
+  print('Has new notification: ${response.isNotEmpty}'); // اینجا چاپ می‌شود
+  return response.isNotEmpty;
 });

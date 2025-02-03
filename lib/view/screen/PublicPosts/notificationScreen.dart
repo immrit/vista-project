@@ -1,35 +1,130 @@
+import 'dart:async';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../main.dart';
+import '../../../model/notificationModel.dart';
 import '/util/widgets.dart';
 import '/view/screen/PublicPosts/profileScreen.dart';
 import '../../../provider/provider.dart';
 import '../../../util/const.dart';
 import 'PostDetailPage.dart';
 
-class NotificationsPage extends ConsumerWidget {
+class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
+  NotificationsNotifier() : super([]);
+
+  Future<void> fetchNotifications() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception("User not logged in");
+    }
+
+    final response = await supabase
+        .from('notifications')
+        .select(
+            '*, sender:profiles!notifications_sender_id_fkey(username, avatar_url, is_verified)')
+        .eq('recipient_id', userId)
+        .order('created_at', ascending: false);
+
+    final notifications =
+        response.map((item) => NotificationModel.fromMap(item)).toList();
+
+    state = notifications;
+  }
+
+  Future<void> deleteAllNotifications() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception("User not logged in");
+    }
+
+    await supabase.from('notifications').delete().eq('recipient_id', userId);
+
+    state = [];
+  }
+}
+
+final notificationsProvider = StateNotifierProvider.autoDispose<
+    NotificationsNotifier, List<NotificationModel>>((ref) {
+  return NotificationsNotifier()..fetchNotifications();
+});
+
+class NotificationsPage extends ConsumerStatefulWidget {
   const NotificationsPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  _NotificationsPageState createState() => _NotificationsPageState();
+}
+
+class _NotificationsPageState extends ConsumerState {
+  bool _isDisposed = false;
+  StreamSubscription? _notificationListener;
+
+  @override
+  void initState() {
+    super.initState();
+    _markNotificationsAsRead();
+    _listenToNotifications();
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    _notificationListener?.cancel();
+    super.dispose();
+  }
+
+  Future _markNotificationsAsRead() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null || _isDisposed) return;
+
+    try {
+      await supabase
+          .from('notifications')
+          .update({'is_read': true})
+          .eq('recipient_id', userId)
+          .eq('is_read', false);
+
+      if (!_isDisposed) {
+        ref.invalidate(notificationsProvider);
+        ref.invalidate(hasNewNotificationProvider);
+      }
+    } catch (e) {
+      print('Error marking notifications as read: $e');
+    }
+  }
+
+  void _listenToNotifications() {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    _notificationListener = supabase
+        .from('notifications')
+        .stream(primaryKey: ['id']).listen((data) {
+      if (!_isDisposed) {
+        ref.invalidate(notificationsProvider);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final notifications = ref.watch(notificationsProvider);
-    final getprofile = ref.watch(profileProvider);
-    final currentcolor = ref.watch(themeProvider);
+
     return Scaffold(
-      endDrawer: CustomDrawer(getprofile, currentcolor, context, ref),
-      appBar: AppBar(
-        title: const Text('اعلان ها'),
-      ),
+      appBar: AppBar(title: const Text('اعلان‌ها')),
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(notificationsProvider);
         },
         child: notifications.isEmpty
-            ? const Center(child: Text('اعلان جدیدی وجود نداره'))
+            ? const Center(child: Text('اعلان جدیدی وجود ندارد'))
             : ListView.builder(
                 itemCount: notifications.length,
                 itemBuilder: (context, index) {
                   final notification = notifications[index];
-
                   return Column(
                     children: [
                       ListTile(
@@ -48,30 +143,18 @@ class NotificationsPage extends ConsumerWidget {
                           child: CircleAvatar(
                             backgroundImage: notification.avatarUrl.isEmpty
                                 ? const AssetImage(defaultAvatarUrl)
-                                : NetworkImage(notification.avatarUrl),
+                                : CachedNetworkImageProvider(
+                                    notification.avatarUrl),
                           ),
                         ),
-                        title: GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => ProfileScreen(
-                                  userId: notification.senderId,
-                                  username: notification.username,
-                                ),
-                              ),
-                            );
-                          },
-                          child: Row(
-                            children: [
-                              Text(notification.username),
-                              const SizedBox(width: 5),
-                              if (notification.userIsVerified)
-                                const Icon(Icons.verified,
-                                    color: Colors.blue, size: 16),
-                            ],
-                          ),
+                        title: Row(
+                          children: [
+                            Text(notification.username),
+                            const SizedBox(width: 5),
+                            if (notification.userIsVerified)
+                              const Icon(Icons.verified,
+                                  color: Colors.blue, size: 16),
+                          ],
                         ),
                         subtitle: Directionality(
                           textDirection: TextDirection.rtl,
@@ -87,17 +170,7 @@ class NotificationsPage extends ConsumerWidget {
                               : const Color.fromARGB(255, 137, 127, 127),
                         ),
                         onTap: () {
-                          if (notification.type == '  ') {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => ProfileScreen(
-                                  userId: notification.senderId,
-                                  username: notification.username,
-                                ),
-                              ),
-                            );
-                          } else if (notification.type == 'like' ||
+                          if (notification.type == 'like' ||
                               notification.type == 'new_comment' ||
                               notification.type == 'mention' ||
                               notification.type == 'comment_reply') {
@@ -108,7 +181,6 @@ class NotificationsPage extends ConsumerWidget {
                                     postId: notification.PostId),
                               ),
                             );
-
                             ref.invalidate(
                                 commentsProvider(notification.PostId));
                           }
@@ -118,7 +190,7 @@ class NotificationsPage extends ConsumerWidget {
                         endIndent: 20,
                         indent: 20,
                         color: Colors.grey[200],
-                      )
+                      ),
                     ],
                   );
                 },
@@ -128,61 +200,45 @@ class NotificationsPage extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           FloatingActionButton(
-            heroTag: 'delete_notifications', // برای جلوگیری از تداخل هیرو
+            heroTag: 'delete_notifications',
             mini: true,
             backgroundColor: Colors.red,
             onPressed: () async {
-              // نمایش دیالوگ تایید
-              final bool? shouldDelete = await showDialog<bool>(
-                context: context,
-                builder: (BuildContext context) {
-                  final theme = Theme.of(context);
+              if (_isDisposed) return;
 
-                  return AlertDialog(
-                    title: const Directionality(
-                        textDirection: TextDirection.rtl,
-                        child: Text('آیا از حذف اعلان‌ها اطمینان دارید؟')),
-                    content: const Directionality(
-                        textDirection: TextDirection.rtl,
-                        child: Text('تمامی اعلان‌های شما حذف خواهند شد.')),
-                    actions: [
-                      TextButton(
-                        style: TextButton.styleFrom(
-                          foregroundColor: theme.textTheme.bodyLarge?.color,
-                        ),
-                        onPressed: () {
-                          Navigator.of(context).pop(false); // عدم تایید
-                        },
-                        child: const Text('لغو'),
-                      ),
-                      TextButton(
-                        style: TextButton.styleFrom(
-                          backgroundColor: theme.colorScheme.secondary,
-                          foregroundColor: theme.colorScheme.onSecondary,
-                        ),
-                        onPressed: () {
-                          Navigator.of(context).pop(true); // تایید
-                        },
-                        child: const Text('حذف'),
-                      ),
-                    ],
-                  );
-                },
+              final shouldDelete = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Directionality(
+                    textDirection: TextDirection.rtl,
+                    child: Text('آیا از حذف اعلان‌ها اطمینان دارید؟'),
+                  ),
+                  content: const Directionality(
+                    textDirection: TextDirection.rtl,
+                    child: Text('تمامی اعلان‌های شما حذف خواهند شد.'),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('لغو'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('حذف'),
+                    ),
+                  ],
+                ),
               );
 
-              // اگر کاربر تایید کرد، حذف انجام شود
-              if (shouldDelete == true) {
+              if (shouldDelete == true && !_isDisposed) {
                 try {
                   await ref
                       .read(notificationsProvider.notifier)
                       .deleteAllNotifications();
-
-                  // نمایش پیام موفقیت
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('همه اعلان‌ها حذف شدند')),
                   );
                 } catch (e) {
-                  // نمایش پیام خطا
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('خطا در حذف اعلان‌ها: $e')),
                   );
@@ -191,11 +247,13 @@ class NotificationsPage extends ConsumerWidget {
             },
             child: const Icon(Icons.delete),
           ),
-          const SizedBox(height: 10), // فاصله بین دکمه‌ها
+          const SizedBox(height: 10),
           FloatingActionButton(
             heroTag: 'refresh_notifications',
-            onPressed: () async {
-              ref.refresh(notificationsProvider);
+            onPressed: () {
+              if (!_isDisposed) {
+                ref.invalidate(notificationsProvider);
+              }
             },
             child: const Icon(Icons.refresh),
           ),

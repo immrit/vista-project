@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:badges/badges.dart' as badges;
+import '../../provider/provider.dart';
 import '/main.dart';
 import 'PublicPosts/AddPost.dart';
 import 'PublicPosts/notificationScreen.dart';
@@ -21,7 +23,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // لیست صفحات
   final List<Widget> _tabs = [
     const PublicPostsScreen(), // صفحه پست‌های عمومی
-    SearchPage(), // صفحه جستجو
+    const SearchPage(), // صفحه جستجو
     const AddPublicPostScreen(), // صفحه افزودن پست
     const NotificationsPage(), // صفحه اعلان‌ها
     ProfileScreen(
@@ -69,6 +71,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final hasNewNotificationAsync = ref.watch(hasNewNotificationProvider);
+
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
@@ -117,9 +121,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
               label: '',
             ),
-            const NavigationDestination(
-              icon: Icon(Icons.favorite_outline),
-              selectedIcon: Icon(Icons.favorite),
+
+// استفاده از تابع در NavigationDestination:
+            NavigationDestination(
+              icon: _buildNotificationBadge(Icons.favorite_border, false),
+              selectedIcon: _buildNotificationBadge(Icons.favorite, true),
               label: '',
             ),
             const NavigationDestination(
@@ -130,8 +136,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ],
           elevation: 3,
           animationDuration: const Duration(milliseconds: 500),
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         ),
+      ),
+    );
+  }
+
+  Widget _buildNotificationBadge(IconData icon, bool isSelected) {
+    return badges.Badge(
+      showBadge: ref.watch(hasNewNotificationProvider).when(
+            data: (hasNewNotification) => hasNewNotification,
+            loading: () => false,
+            error: (_, __) => false,
+          ),
+      badgeStyle: const badges.BadgeStyle(
+        badgeColor: Colors.red,
+      ),
+      position: badges.BadgePosition.topEnd(top: -10, end: -10),
+      child: Icon(
+        icon,
+        color: isSelected ? Theme.of(context).colorScheme.primary : null,
       ),
     );
   }

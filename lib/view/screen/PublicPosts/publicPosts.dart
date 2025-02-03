@@ -34,6 +34,8 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
   final _pageStorageKey = const PageStorageKey('public_posts');
   final ScrollController _scrollController = ScrollController();
 
+  final GlobalKey _tabControllerKey = GlobalKey();
+
   @override
   void dispose() {
     _connectivitySubscription.cancel();
@@ -130,7 +132,7 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
     return DefaultTabController(
       length: 2,
       initialIndex: 1, // اضافه کردن این خط
-
+      key: _tabControllerKey,
       child: Scaffold(
         body: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) => [
@@ -202,6 +204,8 @@ class _AllPostsTab extends ConsumerWidget {
       onRefresh: () async {
         // Refresh posts
         ref.refresh(fetchPublicPosts);
+        ref.refresh(notificationsProvider);
+        ref.refresh(hasNewNotificationProvider);
 
         // Get posts and refresh their comments
         final posts = await ref.read(fetchPublicPosts.future);
@@ -212,25 +216,27 @@ class _AllPostsTab extends ConsumerWidget {
       child: postsAsyncValue.when(
         data: (posts) => _buildPostList(context, ref, posts),
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, stack) => Center(
+        error: (error, stack) => Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Icon(
-                Icons.error_outline,
+                Icons.cloud_off,
                 color: Colors.grey,
                 size: 48,
               ),
               const SizedBox(height: 16),
-              const Text(
-                'مشکلی در دریافت پست‌ها پیش آمده',
-                style: TextStyle(color: Colors.grey),
+              Text(
+                error.toString(),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.grey,
+                  fontSize: 16,
+                ),
               ),
               const SizedBox(height: 16),
               ElevatedButton.icon(
-                onPressed: () {
-                  ref.refresh(fetchFollowingPostsProvider);
-                },
+                onPressed: () => ref.refresh(fetchFollowingPostsProvider),
                 icon: const Icon(Icons.refresh),
                 label: const Text('تلاش مجدد'),
                 style: ElevatedButton.styleFrom(
@@ -264,7 +270,49 @@ class _FollowingPostsTab extends ConsumerWidget {
         }
       },
       child: followingPostsAsyncValue.when(
-        data: (posts) => _buildPostList(context, ref, posts),
+        data: (posts) {
+          if (posts.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.people_outline,
+                    size: 64,
+                    color: Colors.grey,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'شما هنوز کسی را دنبال نکرده‌اید',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      // تغییر تب به "همه پست‌ها"
+                      final tabController = DefaultTabController.of(context);
+                      if (tabController != null) {
+                        tabController.animateTo(0); // تب اول (همه پست‌ها)
+                      }
+                    },
+                    icon: const Icon(Icons.search),
+                    label: const Text('یافتن افراد جدید'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+          return _buildPostList(context, ref, posts);
+        },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stack) => Center(
           child: Column(

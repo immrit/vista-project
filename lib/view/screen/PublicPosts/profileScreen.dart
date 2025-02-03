@@ -1,3 +1,4 @@
+import 'package:Vista/view/screen/searchPage.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -5,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import 'package:share_plus/share_plus.dart';
-import '../searchPage.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '/main.dart';
 import '/util/const.dart';
 import '../../../model/ProfileModel.dart';
@@ -15,6 +16,7 @@ import '../../../util/widgets.dart';
 import 'followers and followings/FollowersScreen.dart';
 import 'followers and followings/FollowingScreen.dart';
 import '../ouathUser/editeProfile.dart';
+import 'publicPosts.dart';
 // در فایل ProfileScreen:
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -195,9 +197,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       padding: const EdgeInsets.only(top: 20),
       child: CircleAvatar(
         radius: 40,
-        backgroundImage: profile.avatarUrl != null
-            ? CachedNetworkImageProvider(profile.avatarUrl!)
-            : null,
+        backgroundImage:
+            profile.avatarUrl != null ? NetworkImage(profile.avatarUrl!) : null,
         child: profile.avatarUrl == null
             ? const CircleAvatar(
                 backgroundImage: AssetImage(
@@ -261,6 +262,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   @override
+  String _getFormattedDate(DateTime date) {
+    Jalali jalaliDate = Jalali.fromDateTime(date.toLocal());
+    return '${jalaliDate.year}/${jalaliDate.month}/${jalaliDate.day}';
+  }
+
   Widget _buildProfileDetails(ProfileModel profile) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -365,115 +371,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               child: Text('هنوز پستی وجود ندارد'),
             );
           }
-
-          final post = profile.posts[index];
-          return Card(
-            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header with avatar and username
-                  Row(
-                    children: [
-                      CircleAvatar(
-                        backgroundImage: profile.avatarUrl != null
-                            ? NetworkImage(profile.avatarUrl!)
-                            : null,
-                      ),
-                      const SizedBox(width: 8),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            profile.username,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            _getFormattedDate(post.createdAt),
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // Post content
-                  Directionality(
-                    textDirection: TextDirection.rtl,
-                    child: _buildPostContent(post.content),
-                  ),
-
-                  // Hashtags
-                  if (post.hashtags.isNotEmpty)
-                    Directionality(
-                      textDirection: TextDirection.rtl,
-                      child: Wrap(
-                        spacing: 8,
-                        children: post.hashtags
-                            .map((tag) => GestureDetector(
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => SearchPage(
-                                        initialHashtag: '#$tag',
-                                      ),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    '#$tag',
-                                    style: const TextStyle(
-                                      color: Colors.blue,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ))
-                            .toList(),
-                      ),
-                    ),
-
-                  // Post image
-                  if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: CachedNetworkImage(
-                        imageUrl: post.imageUrl!,
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: 200,
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(height: 8),
-
-                  // Actions
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildLikeButton(post),
-                      _buildCommentButton(post),
-                      _buildShareButton(post),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          );
+          return _buildPostItem(profile, profile.posts[index]);
         },
         childCount: profile.posts.isEmpty ? 1 : profile.posts.length,
       ),
     );
   }
 
-  Widget _buildRichText(String content, BuildContext context) {
+  Widget _buildPostContent(String content, BuildContext context) {
     final pattern = RegExp(
       r'(#[\w\u0600-\u06FF]+)|((https?:\/\/)?([\w\-])+\.{1}([a-zA-Z]{2,63})([\/\w-]*)*\/?\??([^\s<>#]*))',
       multiLine: true,
@@ -485,7 +390,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     for (Match match in pattern.allMatches(content)) {
       if (match.start > start) {
-        spans.add(TextSpan(text: content.substring(start, match.start)));
+        spans.add(TextSpan(
+          text: content.substring(start, match.start),
+          style: TextStyle(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white
+                : Colors.black,
+          ),
+        ));
       }
 
       final matchedText = match.group(0)!;
@@ -496,7 +408,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             text: matchedText,
             style: const TextStyle(
               color: Colors.blue,
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.bold,
             ),
             recognizer: TapGestureRecognizer()
               ..onTap = () {
@@ -511,231 +423,161 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               },
           ),
         );
+      } else {
+        spans.add(
+          TextSpan(
+            text: matchedText,
+            style: const TextStyle(
+              color: Colors.blue,
+              decoration: TextDecoration.underline,
+            ),
+            recognizer: TapGestureRecognizer()
+              ..onTap = () async {
+                final url = matchedText.startsWith('http')
+                    ? matchedText
+                    : 'https://$matchedText';
+                if (await canLaunchUrl(Uri.parse(url))) {
+                  await launchUrl(Uri.parse(url));
+                }
+              },
+          ),
+        );
       }
       start = match.end;
     }
 
     if (start < content.length) {
-      spans.add(TextSpan(text: content.substring(start)));
+      spans.add(TextSpan(
+        text: content.substring(start),
+        style: TextStyle(
+          color: Theme.of(context).brightness == Brightness.dark
+              ? Colors.white
+              : Colors.black,
+        ),
+      ));
     }
 
     return RichText(
       text: TextSpan(
-        style: DefaultTextStyle.of(context).style,
         children: spans,
       ),
     );
   }
 
-  String _getFormattedDate(DateTime date) {
-    final jalali = Jalali.fromDateTime(date.toLocal());
-    return '${jalali.year}/${jalali.month}/${jalali.day}';
-  }
-
-  Widget _buildPostContent(String content) {
-    return RichText(
-      text: TextSpan(
-        style: const TextStyle(
-          color: Colors.black,
-          fontSize: 14,
-          height: 1.5,
-        ),
-        children: _parseContent(content),
-      ),
-    );
-  }
-
-  List<TextSpan> _parseContent(String content) {
-    final List<TextSpan> spans = [];
-    final pattern = RegExp(r'(#[\w\u0600-\u06FF]+)');
-
-    final matches = pattern.allMatches(content);
-    int lastIndex = 0;
-
-    for (final match in matches) {
-      if (match.start > lastIndex) {
-        spans.add(TextSpan(text: content.substring(lastIndex, match.start)));
-      }
-
-      spans.add(
-        TextSpan(
-          text: match.group(0),
-          style: const TextStyle(
-            color: Colors.blue,
-            fontWeight: FontWeight.w500,
-          ),
-          recognizer: TapGestureRecognizer()
-            ..onTap = () {
-              // Handle hashtag tap
-            },
-        ),
-      );
-
-      lastIndex = match.end;
-    }
-
-    if (lastIndex < content.length) {
-      spans.add(TextSpan(text: content.substring(lastIndex)));
-    }
-
-    return spans;
-  }
-
   Widget _buildPostItem(ProfileModel profile, PublicPostModel post) {
-    final theme = Theme.of(context);
-
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header with menu
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildPostHeader(profile, post),
-              PopupMenuButton<String>(
-                onSelected: (value) async {
-                  switch (value) {
-                    case 'report':
-                      showDialog(
-                        context: context,
-                        builder: (context) => ReportDialog(post: post),
-                      );
-                      break;
-                    case 'copy':
-                      Clipboard.setData(ClipboardData(text: post.content));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('متن کپی شد!')));
-                      break;
-                    case 'delete':
-                      bool confirmDelete = await showDialog(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('حذف پست'),
-                          content:
-                              const Text('آیا از حذف این پست اطمینان دارید؟'),
-                          actions: <Widget>[
-                            TextButton(
-                              style: TextButton.styleFrom(
-                                foregroundColor:
-                                    theme.textTheme.bodyLarge?.color,
-                              ),
-                              onPressed: () => Navigator.of(context).pop(false),
-                              child: const Text('خیر'),
-                            ),
-                            TextButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: theme.colorScheme.secondary,
-                                foregroundColor: theme.colorScheme.onSecondary,
-                              ),
-                              onPressed: () => Navigator.of(context).pop(true),
-                              child: const Text('بله'),
-                            ),
-                          ],
-                        ),
-                      );
-                      if (confirmDelete ?? false) {
-                        final supabaseService =
-                            ref.read(supabaseServiceProvider);
-                        try {
-                          await supabaseService.deletePost(ref, post.id);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('پست حذف شد!')));
-                        } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('خطا در حذف پست!')));
-                        }
-                      }
-                      break;
-                  }
-                },
-                itemBuilder: (BuildContext context) {
-                  final currentUserId = supabase.auth.currentUser?.id;
-                  return <PopupMenuEntry<String>>[
-                    const PopupMenuItem<String>(
-                      value: 'report',
-                      child: Text('گزارش کردن'),
-                    ),
-                    const PopupMenuItem<String>(
-                      value: 'copy',
-                      child: Text('کپی کردن'),
-                    ),
-                    if (post.userId == currentUserId)
-                      const PopupMenuItem<String>(
-                        value: 'delete',
-                        child: Text('حذف'),
-                      ),
-                  ];
-                },
-                icon: const Icon(Icons.more_vert),
+              CircleAvatar(
+                backgroundImage: profile.avatarUrl != null
+                    ? NetworkImage(profile.avatarUrl!)
+                    : null,
               ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      profile.username,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      _getFormattedDate(post.createdAt),
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _buildPostMenu(context, post),
             ],
           ),
+
+          // Rest of post content remains the same
           const SizedBox(height: 12),
+
           Directionality(
             textDirection: getDirectionality(post.content),
-            child: _buildPostContent(post.content),
+            child: _buildPostContent(post.content, context),
           ),
 
-          // نمایش هشتگ‌ها
           if (post.hashtags.isNotEmpty) ...[
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               children: post.hashtags
-                  .map(
-                    (tag) => GestureDetector(
-                      onTap: () {
-                        Navigator.push(
+                  .map((tag) => GestureDetector(
+                        onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (context) => SearchPage(
                               initialHashtag: '#$tag',
                             ),
                           ),
-                        );
-                      },
-                      child: Text(
-                        '#$tag',
-                        style: const TextStyle(
-                          color: Colors.blue,
-                          fontWeight: FontWeight.w500,
                         ),
-                      ),
-                    ),
-                  )
+                        child: Text(
+                          '#$tag',
+                          style: const TextStyle(
+                            color: Colors.blue,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ))
                   .toList(),
             ),
           ],
 
-          // نمایش تصویر
           if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
             const SizedBox(height: 8),
             GestureDetector(
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => FullScreenImageViewer(
-                      imageUrl: post.imageUrl!,
-                    ),
-                  ),
-                );
-              },
-              child: CachedNetworkImage(
-                imageUrl: post.imageUrl!,
-                fit: BoxFit.cover,
-                width: double.infinity,
-                height: 200,
-                placeholder: (context, url) => const Center(
-                  child: CircularProgressIndicator(),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      PostImageViewer(imageUrl: post.imageUrl!),
                 ),
-                errorWidget: (context, url, error) => const Icon(Icons.error),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: CachedNetworkImage(
+                  imageUrl: post.imageUrl!,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  placeholder: (context, url) => const ShimmerLoading(),
+                  errorWidget: (context, url, error) => const Icon(Icons.error),
+                ),
               ),
             ),
           ],
 
-          const SizedBox(height: 16),
-          _buildPostActions(post),
+          const SizedBox(height: 8),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
+              _buildLikeButton(post),
+              const SizedBox(width: 16),
+              _buildCommentButton(post),
+              const SizedBox(width: 16),
+              _buildShareButton(post),
+            ],
+          ),
+          // const SizedBox(height: 16),
+          Divider(
+            endIndent: 1,
+            indent: 1,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white10
+                : Colors.black26,
+          ),
         ],
       ),
     );
@@ -895,6 +737,88 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void _sharePost(PublicPostModel post) {
     String shareText = '${post.username}: \n\n${post.content}';
     Share.share(shareText);
+  }
+
+  PopupMenuButton<String> _buildPostMenu(
+      BuildContext context, PublicPostModel post) {
+    final currentUserId = supabase.auth.currentUser?.id;
+    final isCurrentUserPost = post.userId == currentUserId;
+
+    return PopupMenuButton<String>(
+      onSelected: (value) async {
+        switch (value) {
+          case 'delete':
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('حذف پست'),
+                content: const Text('آیا از حذف این پست اطمینان دارید؟'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('انصراف'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.red,
+                    ),
+                    child: const Text('حذف'),
+                  ),
+                ],
+              ),
+            );
+
+            if (confirmed == true) {
+              try {
+                await ref
+                    .read(supabaseServiceProvider)
+                    .deletePost(ref, post.id);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('پست با موفقیت حذف شد')),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('خطا در حذف پست')),
+                );
+              }
+            }
+            break;
+
+          case 'report':
+            showDialog(
+              context: context,
+              builder: (context) => ReportDialog(post: post),
+            );
+            break;
+
+          case 'copy':
+            await Clipboard.setData(ClipboardData(text: post.content));
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('متن کپی شد!')),
+              );
+            }
+            break;
+        }
+      },
+      itemBuilder: (context) => [
+        if (isCurrentUserPost)
+          const PopupMenuItem(
+            value: 'delete',
+            child: Text('حذف'),
+          )
+        else
+          const PopupMenuItem(
+            value: 'report',
+            child: Text('گزارش'),
+          ),
+        const PopupMenuItem(
+          value: 'copy',
+          child: Text('کپی'),
+        ),
+      ],
+    );
   }
 }
 
