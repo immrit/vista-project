@@ -31,6 +31,104 @@ class _LoginuserState extends ConsumerState<Loginuser> {
     super.dispose();
   }
 
+  Future<void> _handleLogin() async {
+    try {
+      setState(() => _isLoading = true);
+
+      final input = emailOrUsernameController.text.trim();
+      final password = passController.text.trim();
+
+      if (input.isEmpty || password.isEmpty) {
+        showError('لطفا تمامی فیلدها را پر کنید');
+        return;
+      }
+
+      String email;
+      Map<String, dynamic> userProfile;
+
+      // بررسی نوع ورود (ایمیل یا نام کاربری)
+      if (input.contains('@')) {
+        email = input;
+        userProfile = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('email', email)
+            .single();
+      } else {
+        userProfile = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('username', input)
+            .single();
+        email = userProfile['email'];
+      }
+
+      // لاگین کردن کاربر
+      final authResponse = await supabase.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+
+      // آپدیت متادیتا بعد از لاگین موفق
+      if (authResponse.user != null) {
+        await updateUserMetadata(authResponse.user!, userProfile);
+      }
+
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+        );
+      }
+    } catch (e) {
+      if (e is PostgrestException) {
+        showError('نام کاربری یا ایمیل یافت نشد');
+      } else if (e is AuthException) {
+        showError('نام کاربری یا رمز عبور اشتباه است');
+      } else {
+        showError(e.toString());
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void showError(String message) {
+    if (!mounted) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در ورود: $message')),
+      );
+    });
+  }
+
+  Future<void> updateUserMetadata(
+      User user, Map<String, dynamic> profile) async {
+    try {
+      await supabase.auth.updateUser(
+        UserAttributes(
+          data: {
+            'id': profile['id'],
+            'username': profile['username'],
+            'full_name': profile['full_name'],
+            'avatar_url': profile['avatar_url'],
+            'email': profile['email'],
+            'updated_at': profile['updated_at'],
+          },
+        ),
+      );
+    } catch (e) {
+      print('Error updating user metadata: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در بروزرسانی اطلاعات: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isLoading = ref.watch(isLoadingProvider);
@@ -47,104 +145,6 @@ class _LoginuserState extends ConsumerState<Loginuser> {
         }
       } catch (error) {
         throw Exception('Failed to fetch IP address');
-      }
-    }
-
-    void showError(String message) {
-      if (!mounted) return;
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا در ورود: $message')),
-        );
-      });
-    }
-
-    Future<void> updateUserMetadata(
-        User user, Map<String, dynamic> profile) async {
-      try {
-        await supabase.auth.updateUser(
-          UserAttributes(
-            data: {
-              'id': profile['id'],
-              'username': profile['username'],
-              'full_name': profile['full_name'],
-              'avatar_url': profile['avatar_url'],
-              'email': profile['email'],
-              'updated_at': profile['updated_at'],
-            },
-          ),
-        );
-      } catch (e) {
-        print('Error updating user metadata: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('خطا در بروزرسانی اطلاعات: $e')),
-          );
-        }
-      }
-    }
-
-    Future<void> signIn() async {
-      setState(() => _isLoading = true);
-
-      try {
-        final input = emailOrUsernameController.text.trim();
-        final password = passController.text.trim();
-
-        if (input.isEmpty || password.isEmpty) {
-          showError('لطفا تمامی فیلدها را پر کنید');
-          return;
-        }
-
-        String email;
-        Map<String, dynamic> userProfile;
-
-        // بررسی نوع ورود (ایمیل یا نام کاربری)
-        if (input.contains('@')) {
-          email = input;
-          userProfile = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('email', email)
-              .single();
-        } else {
-          userProfile = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('username', input)
-              .single();
-          email = userProfile['email'];
-        }
-
-        // لاگین کردن کاربر
-        final authResponse = await supabase.auth.signInWithPassword(
-          email: email,
-          password: password,
-        );
-
-        // آپدیت متادیتا بعد از لاگین موفق
-        if (authResponse.user != null) {
-          await updateUserMetadata(authResponse.user!, userProfile);
-        }
-
-        if (mounted) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => const HomeScreen()),
-          );
-        }
-      } catch (e) {
-        if (e is PostgrestException) {
-          showError('نام کاربری یا ایمیل یافت نشد');
-        } else if (e is AuthException) {
-          showError('نام کاربری یا رمز عبور اشتباه است');
-        } else {
-          showError(e.toString());
-        }
-      } finally {
-        if (mounted) {
-          setState(() => _isLoading = false);
-        }
       }
     }
 
@@ -256,8 +256,33 @@ class _LoginuserState extends ConsumerState<Loginuser> {
               bottom: MediaQuery.of(context).viewInsets.bottom + 20,
               right: 10,
               left: 10),
-          child: customButton(isLoading ? null : signIn,
-              isLoading ? '...در حال ورود' : 'ورود', ref),
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _handleLogin,
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 50),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: _isLoading
+                ? const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      ),
+                      SizedBox(width: 10),
+                      Text('درحال ورود...'),
+                    ],
+                  )
+                : const Text('ورود'),
+          ),
         ),
       ),
     );

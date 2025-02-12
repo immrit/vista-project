@@ -3,10 +3,8 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../main.dart';
 import '../../../model/notificationModel.dart';
-import '/util/widgets.dart';
 import '/view/screen/PublicPosts/profileScreen.dart';
 import '../../../provider/provider.dart';
 import '../../../util/const.dart';
@@ -108,6 +106,9 @@ class _NotificationsPageState extends ConsumerState {
       }
     });
   }
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   Widget build(BuildContext context) {

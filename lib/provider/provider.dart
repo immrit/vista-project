@@ -1456,49 +1456,56 @@ final userFollowingProvider =
 final fetchFollowingPostsProvider =
     FutureProvider<List<PublicPostModel>>((ref) async {
   try {
-    final userId = supabase.auth.currentUser?.id;
-    if (userId == null) return [];
+    final currentUserId = supabase.auth.currentUser?.id;
+    if (currentUserId == null) return [];
 
-    final followingIds = await supabase
+    // Check followings first
+    final followingResponse = await supabase
         .from('follows')
         .select('following_id')
-        .eq('follower_id', userId);
+        .eq('follower_id', currentUserId);
 
-    if (followingIds.isEmpty) return [];
+    if (followingResponse.isEmpty) {
+      return []; // Return empty list if no followings
+    }
 
-    final following = followingIds.map((f) => f['following_id']).toList();
+    final followingIds =
+        followingResponse.map((e) => e['following_id'] as String).toList();
 
     final response = await supabase
         .from('posts')
-        .select(
-          'id, content, created_at, image_url, user_id, profiles!inner(username, avatar_url, is_verified)',
-        )
-        .contains('user_id', following)
+        .select('''
+          *,
+          profiles!posts_user_id_fkey (
+            username, 
+            avatar_url,
+            is_verified
+          ),
+          likes (user_id),
+          comments (id)
+        ''')
+        .inFilter('user_id', followingIds)
         .order('created_at', ascending: false);
 
-    return response.map((post) => PublicPostModel.fromMap(post)).toList();
+    return response.map((post) {
+      final likes = List<Map<String, dynamic>>.from(post['likes'] ?? []);
+      final comments = List<Map<String, dynamic>>.from(post['comments'] ?? []);
+      final profile = post['profiles'] as Map<String, dynamic>;
+
+      return PublicPostModel.fromMap({
+        ...post,
+        'like_count': likes.length,
+        'is_liked': likes.any((like) => like['user_id'] == currentUserId),
+        'username': profile['username'],
+        'avatar_url': profile['avatar_url'] ?? '',
+        'is_verified': profile['is_verified'] ?? false,
+        'comment_count': comments.length,
+      });
+    }).toList();
   } catch (e) {
     print('Error fetching following posts: $e');
-    throw 'خطا در برقراری ارتباط با سرور. لطفا اتصال اینترنت خود را بررسی کنید.';
+    return []; // Return empty list instead of throwing error
   }
-});
-
-// Provider for searching all users
-final searchUsersProvider =
-    StreamProvider.autoDispose.family<List<ProfileModel>, String>((ref, query) {
-  if (query.isEmpty) {
-    return Stream.value([]);
-  }
-
-  return Stream.fromFuture(
-    supabase
-        .from('profiles')
-        .select()
-        .or('username.ilike.%$query%,full_name.ilike.%$query%')
-        .limit(10)
-        .then(
-            (data) => data.map((json) => ProfileModel.fromMap(json)).toList()),
-  );
 });
 
 class SearchService {

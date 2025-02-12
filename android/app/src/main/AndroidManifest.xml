@@ -33,7 +33,7 @@
                 <!-- تنظیم دامنه برای دیپ لینک -->
                 <data android:scheme="http" />
                 <data android:scheme="https" />
-                <data android:host="mydash.coffevista.ir:8000" />
+                <data android:host="api.coffevista.ir:8443" />
                 <!-- اگر از path خاصی استفاده می‌کنید، اینجا اضافه کنید -->
                 <data android:pathPattern="/auth/reset-password" />
             </intent-filter>
@@ -45,8 +45,8 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data 
                     android:scheme="http"
-                    android:host="mydash.coffevista.ir"
-                    android:port="8000" />
+                    android:host="api.coffevista.ir"
+                    android:port="8443" />
             </intent-filter>
 
             <!-- URL scheme for http/https -->
@@ -56,8 +56,8 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="http" />
                 <data android:scheme="https" />
-                <data android:host="mydash.coffevista.ir" />
-                <data android:port="8000" />
+                <data android:host="api.coffevista.ir" />
+                <data android:port="8443" />
                 <data android:pathPattern="/auth/reset-password" />
             </intent-filter>
 

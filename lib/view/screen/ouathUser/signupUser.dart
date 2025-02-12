@@ -76,6 +76,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       String errorMessage = getErrorMessage(error.message);
       context.showSnackBar(errorMessage, isError: true);
     } catch (error) {
+      print('Error: $error');
       context.showSnackBar('خطای غیرمنتظره‌ای رخ داده است.', isError: true);
     } finally {
       ref.read(isLoadingProvider.notifier).state = false;

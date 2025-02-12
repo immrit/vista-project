@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import '../../../main.dart';
+import '../Stories/story_system.dart';
 import '../searchPage.dart';
 import '/model/publicPostModel.dart';
 import '../../../provider/provider.dart';
@@ -172,13 +173,13 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
                 ],
               ),
             ),
-            // SliverToBoxAdapter(
-            //   child: Container(
-            //     padding: const EdgeInsets.symmetric(vertical: 12),
-            //     height: 150, // Increased height for stories
-            //     child: const StoryBar(),
-            //   ),
-            // )
+            SliverToBoxAdapter(
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                height: 150, // Increased height for stories
+                child: const StoryBar(),
+              ),
+            )
           ],
           body: const TabBarView(
             children: [
@@ -294,9 +295,7 @@ class _FollowingPostsTab extends ConsumerWidget {
                     onPressed: () {
                       // تغییر تب به "همه پست‌ها"
                       final tabController = DefaultTabController.of(context);
-                      if (tabController != null) {
-                        tabController.animateTo(0); // تب اول (همه پست‌ها)
-                      }
+                      tabController.animateTo(0); // تب اول (همه پست‌ها)
                     },
                     icon: const Icon(Icons.search),
                     label: const Text('یافتن افراد جدید'),

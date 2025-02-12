@@ -252,7 +252,7 @@ class VersionNumber extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Text(
-      '1.0.6+6 :نسخه', // به‌روز‌رسانی این خط با شماره نسخه فعلی برنامه
+      '1.0.7+7 :نسخه', // به‌روز‌رسانی این خط با شماره نسخه فعلی برنامه
       style: TextStyle(fontSize: 16),
     );
   }
