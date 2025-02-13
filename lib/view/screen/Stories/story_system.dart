@@ -11,7 +11,16 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../../main.dart';
 import '../../../provider/uploadStoryImage.dart';
 import '../../../util/const.dart';
-import 'story_views_screen.dart';
+
+// در ابتدای فایل (بعد از importها) اضافه کنید:
+String timeAgo(DateTime dateTime) {
+  final now = DateTime.now();
+  final difference = now.difference(dateTime);
+  if (difference.inSeconds < 60) return 'همین الان';
+  if (difference.inMinutes < 60) return '${difference.inMinutes} دقیقه پیش';
+  if (difference.inHours < 24) return '${difference.inHours} ساعت پیش';
+  return '${difference.inDays} روز پیش';
+}
 
 /// مدل‌های داده
 @immutable
@@ -237,6 +246,39 @@ class StoryService {
     } catch (e) {
       debugPrint('Error tracking story view: $e');
       throw 'Failed to track story view';
+    }
+  }
+
+  Future<void> deleteStory(String storyId) async {
+    try {
+      final currentUserId = _client.auth.currentUser?.id;
+      if (currentUserId == null) throw Exception('User not authenticated');
+      await _client
+          .from('stories')
+          .delete()
+          .eq('id', storyId)
+          .eq('user_id', currentUserId);
+      print('Story deleted: $storyId');
+    } catch (e) {
+      print('Error deleting story: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> reportStory(String storyId, String reason) async {
+    try {
+      final currentUserId = _client.auth.currentUser?.id;
+      if (currentUserId == null) throw Exception('User not authenticated');
+      await _client.from('story_reports').insert({
+        'story_id': storyId,
+        'reporter_id': currentUserId,
+        'reason': reason,
+        'reported_at': DateTime.now().toIso8601String(),
+      });
+      print('Story reported: $storyId');
+    } catch (e) {
+      print('Error reporting story: $e');
+      rethrow;
     }
   }
 }
@@ -632,28 +674,161 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Row(
-                          children: [
-                            Text(
-                              currentUser.username,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    currentUser.username,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  if (currentUser.isVerified) ...[
+                                    const SizedBox(width: 4),
+                                    const Icon(
+                                      Icons.verified,
+                                      color: Colors.blue,
+                                      size: 14,
+                                    ),
+                                  ],
+                                ],
                               ),
-                            ),
-                            if (currentUser.isVerified)
-                              const Padding(
-                                padding: EdgeInsets.only(left: 4),
-                                child: Icon(
-                                  Icons.verified,
-                                  color: Colors.blue,
-                                  size: 14,
+                              Text(
+                                timeAgo(_getCurrentStory().createdAt),
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
                                 ),
                               ),
-                          ],
+                            ],
+                          ),
                         ),
-                        const Spacer(),
+                        PopupMenuButton<String>(
+                          icon: const Icon(
+                            Icons.more_vert,
+                            color: Colors.white,
+                          ),
+                          onSelected: (value) async {
+                            final storyService = ref.read(storyServiceProvider);
+                            final currentStory = _getCurrentStory();
+                            if (value == 'delete') {
+                              final confirmed = await showDialog<bool>(
+                                context: context,
+                                builder: (_) => AlertDialog(
+                                  title: const Text('حذف استوری'),
+                                  content: const Text(
+                                      'آیا از حذف این استوری مطمئن هستید؟'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, false),
+                                      child: const Text('خیر'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, true),
+                                      child: const Text('بله'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirmed == true) {
+                                try {
+                                  await storyService
+                                      .deleteStory(currentStory.id!);
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                          content: Text('استوری حذف شد')),
+                                    );
+                                    Navigator.pop(context);
+                                  }
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                          content: Text(
+                                              'خطا در حذف استوری: ${e.toString()}')),
+                                    );
+                                  }
+                                }
+                              }
+                            } else if (value == 'report') {
+                              final reasonController = TextEditingController();
+                              final confirmed = await showDialog<bool>(
+                                context: context,
+                                builder: (_) => AlertDialog(
+                                  title: const Text('گزارش استوری'),
+                                  content: TextField(
+                                    controller: reasonController,
+                                    decoration: const InputDecoration(
+                                      hintText: 'علت گزارش...',
+                                    ),
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, false),
+                                      child: const Text('لغو'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, true),
+                                      child: const Text('ارسال'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirmed == true &&
+                                  reasonController.text.trim().isNotEmpty) {
+                                try {
+                                  await storyService.reportStory(
+                                    currentStory.id!,
+                                    reasonController.text.trim(),
+                                  );
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                          content: Text('استوری گزارش شد')),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                          content: Text(
+                                              'خطا در گزارش استوری: ${e.toString()}')),
+                                    );
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          itemBuilder: (context) {
+                            // اگر استوری متعلق به کاربر فعلی است، گزینه حذف و در غیر اینصورت گزارش نمایش داده می‌شود.
+                            if (currentStory.userId ==
+                                supabase.auth.currentUser?.id) {
+                              return const [
+                                PopupMenuItem<String>(
+                                  value: 'delete',
+                                  child: Text('حذف استوری'),
+                                ),
+                              ];
+                            } else {
+                              return const [
+                                PopupMenuItem<String>(
+                                  value: 'report',
+                                  child: Text('گزارش استوری'),
+                                ),
+                              ];
+                            }
+                          },
+                        ),
                         IconButton(
                           icon: const Icon(
                             Icons.close,
