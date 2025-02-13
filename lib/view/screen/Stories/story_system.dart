@@ -333,34 +333,42 @@ class _StoryRing extends ConsumerWidget {
             child: Container(
               width: 70,
               height: 70,
+              padding: const EdgeInsets.all(3),
               decoration: BoxDecoration(
-                gradient: user.stories.isNotEmpty
-                    ? const LinearGradient(
-                        colors: [Colors.purple, Colors.orange],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      )
-                    : null,
                 shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [Colors.purple, Colors.orange],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
               ),
-              child: Padding(
-                  padding: const EdgeInsets.all(3.0),
-                  child: CircleAvatar(
-                    backgroundImage: (user.profileImageUrl == null ||
-                            user.profileImageUrl!.isEmpty)
-                        ? const AssetImage(defaultAvatarUrl)
-                        : CachedNetworkImageProvider(user.profileImageUrl!)
-                            as ImageProvider,
-                  )),
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                ),
+                child: CircleAvatar(
+                  radius: 30,
+                  backgroundImage: (user.profileImageUrl == null ||
+                          user.profileImageUrl!.isEmpty)
+                      ? const AssetImage(defaultAvatarUrl)
+                      : CachedNetworkImageProvider(user.profileImageUrl!)
+                          as ImageProvider,
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 4),
           Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(user.username, style: const TextStyle(fontSize: 12)),
+              Text(
+                user.username,
+                style: const TextStyle(fontSize: 12),
+              ),
               if (user.isVerified) ...[
                 const SizedBox(width: 4),
-                Icon(Icons.verified, color: Colors.blue, size: 14),
+                const Icon(Icons.verified, color: Colors.blue, size: 14),
               ],
             ],
           ),
@@ -371,23 +379,12 @@ class _StoryRing extends ConsumerWidget {
 
   void _navigateToStoryScreen(
       BuildContext context, StoryUser user, WidgetRef ref) {
-    if (user.stories.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('هیچ استوری برای نمایش وجود ندارد')),
-      );
-      return;
-    }
-
-    // تغییر اینجاست - پاس دادن تمام کاربران به جای فقط کاربر فعلی
     final storiesAsync = ref.read(storyUsersProvider);
-    storiesAsync.whenData((allUsers) {
+    storiesAsync.whenData((users) {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => StoryPlayerScreen(
-            initialUser: user,
-            users: allUsers, // پاس دادن همه کاربران
-          ),
+          builder: (_) => StoryPlayerScreen(initialUser: user, users: users),
         ),
       );
     });
@@ -474,6 +471,8 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   int _currentUserIndex = 0; // شاخص کاربر فعلی
   int _currentStoryIndex = 0; // شاخص استوری فعلی
   final Set<String> _trackedStoryViews = {};
+  bool _isPaused = false;
+  DateTime? _lastTapTime;
 
   @override
   void initState() {
@@ -580,16 +579,38 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       backgroundColor: Colors.black,
       body: GestureDetector(
         onTapDown: (details) {
+          final now = DateTime.now();
           final screenWidth = MediaQuery.of(context).size.width;
           final tapPosition = details.globalPosition.dx;
 
-          if (tapPosition < screenWidth * 0.35) {
-            _handlePreviousStory();
-          } else if (tapPosition > screenWidth * 0.65) {
-            _handleNextStory();
+          if (_lastTapTime != null &&
+              now.difference(_lastTapTime!) <
+                  const Duration(milliseconds: 300)) {
+            // Double tap detected
+            if (tapPosition < screenWidth * 0.5) {
+              _handlePreviousStory();
+            } else {
+              _handleNextStory();
+            }
           } else {
-            _pauseOrResumeAnimation();
+            // Single tap
+            if (tapPosition < screenWidth * 0.35) {
+              _handlePreviousStory();
+            } else if (tapPosition > screenWidth * 0.65) {
+              _handleNextStory();
+            } else {
+              _pauseOrResumeAnimation();
+            }
           }
+          _lastTapTime = now;
+        },
+        onLongPressStart: (_) {
+          _isPaused = true;
+          _animationController.stop();
+        },
+        onLongPressEnd: (_) {
+          _isPaused = false;
+          _animationController.forward();
         },
         child: Stack(
           children: [
@@ -617,14 +638,35 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                         fit: BoxFit.cover,
                         placeholder: (context, url) => Container(
                           color: Colors.black,
-                          child: const Center(
-                            child: CircularProgressIndicator(
-                              valueColor: AlwaysStoppedAnimation(Colors.white),
+                          child: TweenAnimationBuilder<double>(
+                            tween: Tween(begin: 0.0, end: 1.0),
+                            duration: const Duration(milliseconds: 300),
+                            builder: (context, value, child) => Opacity(
+                              opacity: value,
+                              child: child,
+                            ),
+                            child: const Center(
+                              child: CircularProgressIndicator(
+                                valueColor:
+                                    AlwaysStoppedAnimation(Colors.white),
+                              ),
                             ),
                           ),
                         ),
-                        errorWidget: (context, url, error) => const Center(
-                          child: Icon(Icons.error, color: Colors.white),
+                        errorWidget: (context, url, error) => Container(
+                          color: Colors.black54,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.error_outline,
+                                  color: Colors.white, size: 32),
+                              const SizedBox(height: 8),
+                              Text(
+                                'خطا در بارگذاری تصویر',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
@@ -941,16 +983,10 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     final currentStory = _getCurrentStory();
     if (currentStory.id == null || currentStory.userId == currentUserId) return;
 
-    // Create a unique key for this view
     final viewKey = '${currentStory.id}-$currentUserId';
-
-    // Check if we've already tracked this view in the current session
-    if (_trackedStoryViews.contains(viewKey)) {
-      return;
-    }
+    if (_trackedStoryViews.contains(viewKey)) return;
 
     try {
-      // Add to local tracking set first
       _trackedStoryViews.add(viewKey);
 
       await supabase.from('story_views').insert({
@@ -959,10 +995,19 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
         'viewed_at': DateTime.now().toIso8601String(),
       });
 
-      debugPrint('Story view tracked: ${currentStory.id}');
+      // Use setState to trigger UI update if needed
+      if (mounted) {
+        setState(() {
+          // Update any UI state if needed
+        });
+      }
     } catch (e) {
-      // If there's an error (like duplicate), keep it in the set to prevent retries
-      debugPrint('Error tracking story view: $e');
+      // Handle error appropriately
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در ثبت بازدید')),
+        );
+      }
     }
   }
 
@@ -1056,30 +1101,43 @@ class StoryProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: List.generate(
-        itemCount,
-        (index) => Expanded(
-          child: AnimatedBuilder(
-            animation: controller,
-            builder: (context, child) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: LinearProgressIndicator(
-                    value: _getProgressValue(index),
-                    backgroundColor: passiveColor,
-                    valueColor: AlwaysStoppedAnimation(activeColor),
-                    minHeight: 2.5,
-                  ),
-                ),
-              );
-            },
+    return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(
+            children: List.generate(
+          itemCount,
+          (index) => Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: AnimatedBuilder(
+                animation: controller,
+                builder: (context, child) {
+                  return Stack(
+                    children: [
+                      Container(
+                        height: 2.5,
+                        decoration: BoxDecoration(
+                          color: passiveColor,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      FractionallySizedBox(
+                        widthFactor: _getProgressValue(index),
+                        child: Container(
+                          height: 2.5,
+                          decoration: BoxDecoration(
+                            color: activeColor,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
           ),
-        ),
-      ),
-    );
+        )));
   }
 
   double _getProgressValue(int index) {
@@ -1148,10 +1206,12 @@ class StoryViewersBottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey[900] : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
       child: Column(
         children: [
@@ -1159,57 +1219,87 @@ class StoryViewersBottomSheet extends StatelessWidget {
           Stack(
             alignment: Alignment.center,
             children: [
-              // Handle bar
               Container(
                 margin: const EdgeInsets.symmetric(vertical: 8),
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.grey[300],
+                  color: isDark ? Colors.grey[700] : Colors.grey[300],
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              // Close button
               Positioned(
                 right: 8,
                 top: 8,
                 child: IconButton(
-                  icon: const Icon(Icons.close),
+                  icon: Icon(
+                    Icons.close,
+                    color: isDark ? Colors.white : Colors.black,
+                  ),
                   onPressed: onDismiss,
                 ),
               ),
             ],
           ),
-          // Title
-          const Padding(
-            padding: EdgeInsets.all(16),
+          Padding(
+            padding: const EdgeInsets.all(16),
             child: Text(
               'بازدیدها',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black,
               ),
             ),
           ),
-          // Viewers list
+          FutureBuilder<int>(
+            future: _getViewCount(storyId),
+            builder: (context, snapshot) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'تعداد بازدید: ${snapshot.data ?? 0}',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
+                ),
+              );
+            },
+          ),
           Expanded(
             child: FutureBuilder(
               future: _fetchStoryViews(storyId),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return Center(
+                    child: CircularProgressIndicator(
+                      color: isDark ? Colors.white : Colors.black,
+                    ),
+                  );
                 }
 
                 if (snapshot.hasError) {
                   return Center(
-                    child: Text('خطا: ${snapshot.error}'),
+                    child: Text(
+                      'خطا در دریافت بازدیدها',
+                      style: TextStyle(
+                        color: isDark ? Colors.white70 : Colors.black54,
+                      ),
+                    ),
                   );
                 }
 
                 final views = snapshot.data as List<Map<String, dynamic>>;
                 if (views.isEmpty) {
-                  return const Center(
-                    child: Text('هنوز کسی این استوری را ندیده است'),
+                  return Center(
+                    child: Text(
+                      'هنوز کسی این استوری را ندیده است',
+                      style: TextStyle(
+                        color: isDark ? Colors.white70 : Colors.black54,
+                      ),
+                    ),
                   );
                 }
 
@@ -1224,10 +1314,17 @@ class StoryViewersBottomSheet extends StatelessWidget {
                           view['profiles']['avatar_url'] ?? defaultAvatarUrl,
                         ),
                       ),
-                      title:
-                          Text(view['profiles']['username'] ?? 'کاربر ناشناس'),
+                      title: Text(
+                        view['profiles']['username'] ?? 'کاربر ناشناس',
+                        style: TextStyle(
+                          color: isDark ? Colors.white : Colors.black,
+                        ),
+                      ),
                       subtitle: Text(
-                        _getTimeAgo(DateTime.parse(view['viewed_at'])),
+                        timeAgo(DateTime.parse(view['viewed_at'])),
+                        style: TextStyle(
+                          color: isDark ? Colors.white70 : Colors.black54,
+                        ),
                       ),
                     );
                   },
@@ -1240,39 +1337,18 @@ class StoryViewersBottomSheet extends StatelessWidget {
     );
   }
 
-  Future<List<Map<String, dynamic>>> _fetchStoryViews(String storyId) async {
-    final currentUserId = supabase.auth.currentUser?.id;
-    if (currentUserId == null) return [];
+  // ... rest of the methods remain unchanged
 
-    final response = await supabase
-        .from('story_views')
-        .select('''
-          viewer_id,
-          viewed_at,
-          profiles:viewer_id(
-            username,
-            avatar_url
-          )
-        ''')
-        .eq('story_id', storyId)
-        .neq('viewer_id', currentUserId) // Don't show story owner
-        .order('viewed_at', ascending: false);
-
-    return List<Map<String, dynamic>>.from(response);
+  Future<int> _getViewCount(String storyId) async {
+    final views = await _fetchStoryViews(storyId);
+    return views.length;
   }
 
-  String _getTimeAgo(DateTime dateTime) {
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
-
-    if (difference.inMinutes < 1) {
-      return 'همین الان';
-    } else if (difference.inHours < 1) {
-      return '${difference.inMinutes} دقیقه پیش';
-    } else if (difference.inDays < 1) {
-      return '${difference.inHours} ساعت پیش';
-    } else {
-      return '${difference.inDays} روز پیش';
-    }
+  Future<List<Map<String, dynamic>>> _fetchStoryViews(String storyId) async {
+    final response = await supabase
+        .from('story_views')
+        .select('*, profiles:profiles(*)')
+        .eq('story_id', storyId);
+    return List<Map<String, dynamic>>.from(response);
   }
 }

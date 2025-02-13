@@ -227,17 +227,17 @@ class _AllPostsTab extends ConsumerWidget {
                 size: 48,
               ),
               const SizedBox(height: 16),
-              Text(
-                error.toString(),
+              const Text(
+                'به نظر می‌رسد مشکلی در اتصال به اینترنت وجود دارد.\nلطفاً اتصال خود را بررسی کنید و دوباره تلاش کنید.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   color: Colors.grey,
                   fontSize: 16,
                 ),
               ),
               const SizedBox(height: 16),
               ElevatedButton.icon(
-                onPressed: () => ref.refresh(fetchFollowingPostsProvider),
+                onPressed: () => ref.refresh(fetchPublicPosts),
                 icon: const Icon(Icons.refresh),
                 label: const Text('تلاش مجدد'),
                 style: ElevatedButton.styleFrom(
@@ -318,20 +318,22 @@ class _FollowingPostsTab extends ConsumerWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Icon(
-                Icons.error_outline,
+                Icons.cloud_off,
                 color: Colors.grey,
                 size: 48,
               ),
               const SizedBox(height: 16),
               const Text(
-                'مشکلی در دریافت پست‌ها پیش آمده',
-                style: TextStyle(color: Colors.grey),
+                'به نظر می‌رسد مشکلی در اتصال به اینترنت وجود دارد.\nلطفاً اتصال خود را بررسی کنید و دوباره تلاش کنید.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 16,
+                ),
               ),
               const SizedBox(height: 16),
               ElevatedButton.icon(
-                onPressed: () {
-                  ref.refresh(fetchFollowingPostsProvider);
-                },
+                onPressed: () => ref.refresh(fetchPublicPosts),
                 icon: const Icon(Icons.refresh),
                 label: const Text('تلاش مجدد'),
                 style: ElevatedButton.styleFrom(
