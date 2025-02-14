@@ -1,0 +1,2 @@
+G:/esmaili/project/vista-project/android/app/.cxx/Debug/5b654u6q/armeabi-v7a/CMakeFiles/edit_cache.dir
+G:/esmaili/project/vista-project/android/app/.cxx/Debug/5b654u6q/armeabi-v7a/CMakeFiles/rebuild_cache.dir

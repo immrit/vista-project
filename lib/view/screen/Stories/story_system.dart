@@ -31,6 +31,7 @@ class StoryUser {
   final DateTime? lastStoryDate;
   final List<AppStoryContent> stories;
   final bool isVerified;
+  final bool isViewed; // فیلد جدید
 
   const StoryUser({
     required this.id,
@@ -39,12 +40,14 @@ class StoryUser {
     this.lastStoryDate,
     this.stories = const [],
     this.isVerified = false,
+    this.isViewed = false, // مقدار پیش‌فرض false
   });
 
   StoryUser copyWith({
     List<AppStoryContent>? stories,
     DateTime? lastStoryDate,
     bool? isVerified,
+    bool? isViewed, // اضافه کردن isViewed
   }) {
     return StoryUser(
       id: id,
@@ -53,6 +56,7 @@ class StoryUser {
       stories: stories ?? this.stories,
       lastStoryDate: lastStoryDate ?? this.lastStoryDate,
       isVerified: isVerified ?? this.isVerified,
+      isViewed: isViewed ?? this.isViewed, // به‌روزرسانی isViewed
     );
   }
 }
@@ -63,13 +67,15 @@ class AppStoryContent {
   final DateTime createdAt;
   final Duration duration;
   final String? userId;
+  final bool isViewed;
 
   const AppStoryContent({
-    this.id, // Changed from optional to required
+    this.id,
     required this.mediaUrl,
     required this.createdAt,
-    required this.userId, // Changed from optional to required
+    required this.userId,
     this.duration = const Duration(seconds: 7),
+    this.isViewed = false,
   });
 }
 
@@ -108,7 +114,6 @@ class Story {
           DateTime.parse(map['created_at'] ?? DateTime.now().toIso8601String()),
       expiresAt: DateTime.parse(map['expires_at'] ??
           DateTime.now().add(const Duration(hours: 24)).toIso8601String()),
-      isViewed: map['is_viewed'] ?? false,
       mediaType: map['media_type'] ?? 'image',
       viewsCount: map['views_count'] ?? 0,
     );
@@ -135,24 +140,67 @@ class StoryService {
 
   StoryService() : _client = supabase;
 
+  Future<List<String>> fetchFollowingIds() async {
+    try {
+      final currentUserId = _client.auth.currentUser?.id;
+      if (currentUserId == null) throw Exception('User not authenticated');
+
+      final response = await _client
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', currentUserId);
+
+      return List<String>.from(response.map((row) => row['following_id']));
+    } catch (e) {
+      print('Error fetching following IDs: $e');
+      return [];
+    }
+  }
+
   Future<List<StoryUser>> fetchActiveUsers() async {
     try {
-      final response = await _client.from('stories').select('''
+      final currentUserId = _client.auth.currentUser?.id;
+      if (currentUserId == null) throw Exception('User not authenticated');
+
+      final followingIds = await fetchFollowingIds();
+
+      // واکشی استوری‌ها
+      final storiesResponse = await _client.from('stories').select('''
         id,
         user_id,
-        profiles!inner(username, avatar_url ,is_verified ),
+        profiles!inner(username, avatar_url, is_verified),
         media_url,
         created_at
       ''').order('created_at', ascending: false).limit(100);
 
+      // واکشی بازدیدها برای کاربر فعلی
+      final viewsResponse = await _client
+          .from('story_views')
+          .select('story_id, is_viewed')
+          .eq('viewer_id', currentUserId);
+
+      // تبدیل بازدیدها به یک مپ برای دسترسی سریع
+      final viewsMap = <String, bool>{};
+      for (final view in viewsResponse) {
+        viewsMap[view['story_id'] as String] = view['is_viewed'] as bool;
+      }
+
       final usersMap = <String, StoryUser>{};
-      for (final item in response) {
+      for (final item in storiesResponse) {
         final userId = item['user_id'] as String;
+        if (!(userId == currentUserId || followingIds.contains(userId))) {
+          continue;
+        }
+
+        final storyId = item['id'] as String;
+        final isViewed = viewsMap[storyId] ?? false; // وضعیت is_viewed
+
         final story = AppStoryContent(
-          id: item['id'] as String, // Added this
-          userId: userId, // Added this
+          id: storyId,
+          userId: userId,
           mediaUrl: item['media_url'] as String,
           createdAt: DateTime.parse(item['created_at'] as String),
+          isViewed: isViewed, // وضعیت is_viewed
         );
 
         if (!usersMap.containsKey(userId)) {
@@ -217,11 +265,10 @@ class StoryService {
     }
   }
 
-  Future<void> trackStoryView(String storyId) async {
+  Future trackStoryView(String storyId) async {
     try {
       final userId = supabase.auth.currentUser?.id;
       if (userId == null) throw 'User not authenticated';
-
       // بررسی اینکه آیا این بازدید قبلاً ثبت شده است یا خیر
       final existingView = await supabase
           .from('story_views')
@@ -229,19 +276,17 @@ class StoryService {
           .eq('story_id', storyId)
           .eq('viewer_id', userId)
           .maybeSingle();
-
       if (existingView != null) {
         debugPrint('This story view is already tracked');
         return; // اگر قبلاً ثبت شده، دیگر تکرار نکن
       }
-
-      // ثبت بازدید جدید
+      // ثبت بازدید جدید با is_viewed = TRUE
       await supabase.from('story_views').insert({
         'story_id': storyId,
         'viewer_id': userId,
         'viewed_at': DateTime.now().toIso8601String(),
+        'is_viewed': true, // اضافه کردن این فیلد
       });
-
       debugPrint('Story view tracked successfully');
     } catch (e) {
       debugPrint('Error tracking story view: $e');
@@ -324,6 +369,13 @@ class _StoryRing extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final ringColor = isDarkMode ? Colors.grey[800] : Colors.grey[300];
+    final seenColor = isDarkMode ? Colors.white : Colors.white;
+
+    // بررسی اینکه آیا حداقل یک استوری دیده نشده است
+    final hasUnseenStories = user.stories.any((story) => !story.isViewed);
+
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: Column(
@@ -333,22 +385,23 @@ class _StoryRing extends ConsumerWidget {
             child: Container(
               width: 70,
               height: 70,
-              padding: const EdgeInsets.all(3),
               decoration: BoxDecoration(
+                gradient: hasUnseenStories
+                    ? const LinearGradient(
+                        colors: [Colors.purple, Colors.orange],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      )
+                    : null, // اگر همه استوری‌ها دیده شده‌اند، گرادیان نداشته باشد
+                border: Border.all(
+                  color: hasUnseenStories ? Colors.transparent : seenColor,
+                  width: 2,
+                ), // اگر همه استوری‌ها دیده شده‌اند، حاشیه سفید داشته باشد
                 shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                  colors: [Colors.purple, Colors.orange],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
               ),
-              child: Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white,
-                ),
+              child: Padding(
+                padding: const EdgeInsets.all(3.0),
                 child: CircleAvatar(
-                  radius: 30,
                   backgroundImage: (user.profileImageUrl == null ||
                           user.profileImageUrl!.isEmpty)
                       ? const AssetImage(defaultAvatarUrl)
@@ -360,15 +413,11 @@ class _StoryRing extends ConsumerWidget {
           ),
           const SizedBox(height: 4),
           Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                user.username,
-                style: const TextStyle(fontSize: 12),
-              ),
+              Text(user.username, style: const TextStyle(fontSize: 12)),
               if (user.isVerified) ...[
                 const SizedBox(width: 4),
-                const Icon(Icons.verified, color: Colors.blue, size: 14),
+                Icon(Icons.verified, color: Colors.blue, size: 14),
               ],
             ],
           ),
@@ -379,12 +428,22 @@ class _StoryRing extends ConsumerWidget {
 
   void _navigateToStoryScreen(
       BuildContext context, StoryUser user, WidgetRef ref) {
+    if (user.stories.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('هیچ استوری برای نمایش وجود ندارد')),
+      );
+      return;
+    }
+
     final storiesAsync = ref.read(storyUsersProvider);
-    storiesAsync.whenData((users) {
+    storiesAsync.whenData((allUsers) {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => StoryPlayerScreen(initialUser: user, users: users),
+          builder: (_) => StoryPlayerScreen(
+            initialUser: user,
+            users: allUsers,
+          ),
         ),
       );
     });
@@ -471,8 +530,6 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   int _currentUserIndex = 0; // شاخص کاربر فعلی
   int _currentStoryIndex = 0; // شاخص استوری فعلی
   final Set<String> _trackedStoryViews = {};
-  bool _isPaused = false;
-  DateTime? _lastTapTime;
 
   @override
   void initState() {
@@ -579,38 +636,16 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       backgroundColor: Colors.black,
       body: GestureDetector(
         onTapDown: (details) {
-          final now = DateTime.now();
           final screenWidth = MediaQuery.of(context).size.width;
           final tapPosition = details.globalPosition.dx;
 
-          if (_lastTapTime != null &&
-              now.difference(_lastTapTime!) <
-                  const Duration(milliseconds: 300)) {
-            // Double tap detected
-            if (tapPosition < screenWidth * 0.5) {
-              _handlePreviousStory();
-            } else {
-              _handleNextStory();
-            }
+          if (tapPosition < screenWidth * 0.35) {
+            _handlePreviousStory();
+          } else if (tapPosition > screenWidth * 0.65) {
+            _handleNextStory();
           } else {
-            // Single tap
-            if (tapPosition < screenWidth * 0.35) {
-              _handlePreviousStory();
-            } else if (tapPosition > screenWidth * 0.65) {
-              _handleNextStory();
-            } else {
-              _pauseOrResumeAnimation();
-            }
+            _pauseOrResumeAnimation();
           }
-          _lastTapTime = now;
-        },
-        onLongPressStart: (_) {
-          _isPaused = true;
-          _animationController.stop();
-        },
-        onLongPressEnd: (_) {
-          _isPaused = false;
-          _animationController.forward();
         },
         child: Stack(
           children: [
@@ -638,35 +673,14 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                         fit: BoxFit.cover,
                         placeholder: (context, url) => Container(
                           color: Colors.black,
-                          child: TweenAnimationBuilder<double>(
-                            tween: Tween(begin: 0.0, end: 1.0),
-                            duration: const Duration(milliseconds: 300),
-                            builder: (context, value, child) => Opacity(
-                              opacity: value,
-                              child: child,
-                            ),
-                            child: const Center(
-                              child: CircularProgressIndicator(
-                                valueColor:
-                                    AlwaysStoppedAnimation(Colors.white),
-                              ),
+                          child: const Center(
+                            child: CircularProgressIndicator(
+                              valueColor: AlwaysStoppedAnimation(Colors.white),
                             ),
                           ),
                         ),
-                        errorWidget: (context, url, error) => Container(
-                          color: Colors.black54,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.error_outline,
-                                  color: Colors.white, size: 32),
-                              const SizedBox(height: 8),
-                              Text(
-                                'خطا در بارگذاری تصویر',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                            ],
-                          ),
+                        errorWidget: (context, url, error) => const Center(
+                          child: Icon(Icons.error, color: Colors.white),
                         ),
                       ),
                     ],
@@ -979,35 +993,32 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   void _trackCurrentStory() async {
     final currentUserId = supabase.auth.currentUser?.id;
     if (currentUserId == null) return;
-
     final currentStory = _getCurrentStory();
     if (currentStory.id == null || currentStory.userId == currentUserId) return;
 
+    // Create a unique key for this view
     final viewKey = '${currentStory.id}-$currentUserId';
-    if (_trackedStoryViews.contains(viewKey)) return;
+
+    // Check if we've already tracked this view in the current session
+    if (_trackedStoryViews.contains(viewKey)) {
+      return;
+    }
 
     try {
+      // Add to local tracking set first
       _trackedStoryViews.add(viewKey);
 
+      // Track the story view in the database
       await supabase.from('story_views').insert({
         'story_id': currentStory.id,
         'viewer_id': currentUserId,
         'viewed_at': DateTime.now().toIso8601String(),
+        'is_viewed': true,
       });
 
-      // Use setState to trigger UI update if needed
-      if (mounted) {
-        setState(() {
-          // Update any UI state if needed
-        });
-      }
+      debugPrint('Story view tracked: ${currentStory.id}');
     } catch (e) {
-      // Handle error appropriately
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا در ثبت بازدید')),
-        );
-      }
+      debugPrint('Error tracking story view: $e');
     }
   }
 
@@ -1052,7 +1063,9 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.transparent,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? Colors.black
+          : Colors.white,
       isScrollControlled: true,
       isDismissible: true,
       enableDrag: true,
@@ -1101,43 +1114,30 @@ class StoryProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Row(
-            children: List.generate(
-          itemCount,
-          (index) => Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: AnimatedBuilder(
-                animation: controller,
-                builder: (context, child) {
-                  return Stack(
-                    children: [
-                      Container(
-                        height: 2.5,
-                        decoration: BoxDecoration(
-                          color: passiveColor,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                      FractionallySizedBox(
-                        widthFactor: _getProgressValue(index),
-                        child: Container(
-                          height: 2.5,
-                          decoration: BoxDecoration(
-                            color: activeColor,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
+    return Row(
+      children: List.generate(
+        itemCount,
+        (index) => Expanded(
+          child: AnimatedBuilder(
+            animation: controller,
+            builder: (context, child) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: _getProgressValue(index),
+                    backgroundColor: passiveColor,
+                    valueColor: AlwaysStoppedAnimation(activeColor),
+                    minHeight: 2.5,
+                  ),
+                ),
+              );
+            },
           ),
-        )));
+        ),
+      ),
+    );
   }
 
   double _getProgressValue(int index) {
@@ -1204,106 +1204,92 @@ class StoryViewersBottomSheet extends StatelessWidget {
     super.key,
   });
 
+  // در _fetchStoryViews
+  Future<List<Map<String, dynamic>>> _fetchStoryViews(String storyId) async {
+    final currentUserId = supabase.auth.currentUser?.id;
+    if (currentUserId == null) return [];
+    final response = await supabase
+        .from('story_views')
+        .select('''
+        viewer_id,
+        viewed_at,
+        profiles:viewer_id(
+          username,
+          avatar_url
+        )
+      ''')
+        .eq('story_id', storyId)
+        .neq('viewer_id', currentUserId) // Don't show story owner
+        .order('viewed_at', ascending: false);
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+// در StoryViewersBottomSheet
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return FutureBuilder(
+      future: _fetchStoryViews(storyId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('خطا: ${snapshot.error}'));
+        }
+        final views = snapshot.data as List<Map<String, dynamic>>;
+        final viewCount = views.length; // تعداد بازدیدها
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? Colors.grey[900] : Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      child: Column(
-        children: [
-          // Handle bar and close button
-          Stack(
-            alignment: Alignment.center,
+        return Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.grey[900]
+                : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: Column(
             children: [
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.grey[700] : Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Positioned(
-                right: 8,
-                top: 8,
-                child: IconButton(
-                  icon: Icon(
-                    Icons.close,
-                    color: isDark ? Colors.white : Colors.black,
+              // Handle bar and close button
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Handle bar
+                  Container(
+                    margin: const EdgeInsets.symmetric(vertical: 8),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.grey[900]
+                          : Colors.white,
+                      borderRadius:
+                          const BorderRadius.vertical(top: Radius.circular(16)),
+                    ),
                   ),
-                  onPressed: onDismiss,
-                ),
+                  // Close button
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: onDismiss,
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              'بازدیدها',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : Colors.black,
-              ),
-            ),
-          ),
-          FutureBuilder<int>(
-            future: _getViewCount(storyId),
-            builder: (context, snapshot) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
+              // Title with view count
+              Padding(
+                padding: const EdgeInsets.all(16),
                 child: Text(
-                  'تعداد بازدید: ${snapshot.data ?? 0}',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: isDark ? Colors.white70 : Colors.black87,
+                  'بازدیدها ($viewCount)',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-              );
-            },
-          ),
-          Expanded(
-            child: FutureBuilder(
-              future: _fetchStoryViews(storyId),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return Center(
-                    child: CircularProgressIndicator(
-                      color: isDark ? Colors.white : Colors.black,
-                    ),
-                  );
-                }
-
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Text(
-                      'خطا در دریافت بازدیدها',
-                      style: TextStyle(
-                        color: isDark ? Colors.white70 : Colors.black54,
-                      ),
-                    ),
-                  );
-                }
-
-                final views = snapshot.data as List<Map<String, dynamic>>;
-                if (views.isEmpty) {
-                  return Center(
-                    child: Text(
-                      'هنوز کسی این استوری را ندیده است',
-                      style: TextStyle(
-                        color: isDark ? Colors.white70 : Colors.black54,
-                      ),
-                    ),
-                  );
-                }
-
-                return ListView.builder(
+              ),
+              // Viewers list
+              Expanded(
+                child: ListView.builder(
                   controller: scrollController,
                   itemCount: views.length,
                   itemBuilder: (context, index) {
@@ -1314,41 +1300,54 @@ class StoryViewersBottomSheet extends StatelessWidget {
                           view['profiles']['avatar_url'] ?? defaultAvatarUrl,
                         ),
                       ),
-                      title: Text(
-                        view['profiles']['username'] ?? 'کاربر ناشناس',
-                        style: TextStyle(
-                          color: isDark ? Colors.white : Colors.black,
-                        ),
-                      ),
-                      subtitle: Text(
-                        timeAgo(DateTime.parse(view['viewed_at'])),
-                        style: TextStyle(
-                          color: isDark ? Colors.white70 : Colors.black54,
-                        ),
-                      ),
+                      title:
+                          Text(view['profiles']['username'] ?? 'کاربر ناشناس'),
+                      subtitle:
+                          Text(_getTimeAgo(DateTime.parse(view['viewed_at']))),
                     );
                   },
-                );
-              },
-            ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  // ... rest of the methods remain unchanged
+  // Future<List<Map<String, dynamic>>> _fetchStoryViews(String storyId) async {
+  //   final currentUserId = supabase.auth.currentUser?.id;
+  //   if (currentUserId == null) return [];
 
-  Future<int> _getViewCount(String storyId) async {
-    final views = await _fetchStoryViews(storyId);
-    return views.length;
-  }
+  //   final response = await supabase
+  //       .from('story_views')
+  //       .select('''
+  //           viewer_id,
+  //           viewed_at,
+  //           profiles:viewer_id(
+  //             username,
+  //             avatar_url
+  //           )
+  //         ''')
+  //       .eq('story_id', storyId)
+  //       .neq('viewer_id', currentUserId) // Don't show story owner
+  //       .order('viewed_at', ascending: false);
 
-  Future<List<Map<String, dynamic>>> _fetchStoryViews(String storyId) async {
-    final response = await supabase
-        .from('story_views')
-        .select('*, profiles:profiles(*)')
-        .eq('story_id', storyId);
-    return List<Map<String, dynamic>>.from(response);
+  //   return List<Map<String, dynamic>>.from(response);
+  // }
+
+  String _getTimeAgo(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inMinutes < 1) {
+      return 'همین الان';
+    } else if (difference.inHours < 1) {
+      return '${difference.inMinutes} دقیقه پیش';
+    } else if (difference.inDays < 1) {
+      return '${difference.inHours} ساعت پیش';
+    } else {
+      return '${difference.inDays} روز پیش';
+    }
   }
 }
