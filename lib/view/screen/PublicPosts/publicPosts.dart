@@ -176,7 +176,7 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
             SliverToBoxAdapter(
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 12),
-                height: 150, // Increased height for stories
+                height: 135, // Increased height for stories
                 child: const StoryBar(),
               ),
             )
@@ -207,6 +207,7 @@ class _AllPostsTab extends ConsumerWidget {
         ref.refresh(fetchPublicPosts);
         ref.refresh(notificationsProvider);
         ref.refresh(hasNewNotificationProvider);
+        ref.refresh(storyUsersProvider);
 
         // Get posts and refresh their comments
         final posts = await ref.read(fetchPublicPosts.future);

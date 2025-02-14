@@ -1,6 +1,7 @@
 // story_system.dart
 import 'dart:async';
 import 'dart:io';
+import 'package:Vista/view/screen/PublicPosts/profileScreen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -77,6 +78,21 @@ class AppStoryContent {
     this.duration = const Duration(seconds: 7),
     this.isViewed = false,
   });
+  AppStoryContent copyWith({
+    String? id,
+    String? userId,
+    String? mediaUrl,
+    DateTime? createdAt,
+    bool? isViewed,
+  }) {
+    return AppStoryContent(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      mediaUrl: mediaUrl ?? this.mediaUrl,
+      createdAt: createdAt ?? this.createdAt,
+      isViewed: isViewed ?? this.isViewed,
+    );
+  }
 }
 
 enum MediaType { image, video }
@@ -218,7 +234,19 @@ class StoryService {
           );
         }
       }
-      return usersMap.values.toList();
+
+      // جدا کردن کاربر جاری از بقیه کاربران
+      final currentUserStories = usersMap[currentUserId];
+      final otherUsersStories =
+          usersMap.values.where((user) => user.id != currentUserId).toList();
+
+      // ترکیب لیست‌ها: ابتدا کاربر جاری، سپس بقیه کاربران
+      final sortedUsers = [
+        if (currentUserStories != null) currentUserStories,
+        ...otherUsersStories,
+      ];
+
+      return sortedUsers;
     } catch (e) {
       print('Error fetching active users: $e');
       rethrow;
@@ -354,7 +382,7 @@ class StoryBar extends ConsumerWidget {
           itemCount: users.length + 1,
           itemBuilder: (ctx, index) {
             if (index == 0) return const _AddStoryButton();
-            return _StoryRing(user: users[index - 1]);
+            return StoryRing(user: users[index - 1]);
           },
         ),
       ),
@@ -362,10 +390,10 @@ class StoryBar extends ConsumerWidget {
   }
 }
 
-class _StoryRing extends ConsumerWidget {
+class StoryRing extends ConsumerWidget {
   final StoryUser user;
 
-  const _StoryRing({required this.user});
+  const StoryRing({required this.user});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -388,14 +416,14 @@ class _StoryRing extends ConsumerWidget {
               decoration: BoxDecoration(
                 gradient: hasUnseenStories
                     ? const LinearGradient(
-                        colors: [Colors.purple, Colors.orange],
+                        colors: [Color(0xFF4A90E2), Color(0xFF8E44AD)],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       )
                     : null, // اگر همه استوری‌ها دیده شده‌اند، گرادیان نداشته باشد
                 border: Border.all(
                   color: hasUnseenStories ? Colors.transparent : seenColor,
-                  width: 2,
+                  width: 1,
                 ), // اگر همه استوری‌ها دیده شده‌اند، حاشیه سفید داشته باشد
                 shape: BoxShape.circle,
               ),
@@ -414,7 +442,13 @@ class _StoryRing extends ConsumerWidget {
           const SizedBox(height: 4),
           Row(
             children: [
-              Text(user.username, style: const TextStyle(fontSize: 12)),
+              Text(
+                user.username,
+                style: const TextStyle(fontSize: 12),
+                overflow: TextOverflow.fade,
+                maxLines: 1,
+                softWrap: false,
+              ),
               if (user.isVerified) ...[
                 const SizedBox(width: 4),
                 Icon(Icons.verified, color: Colors.blue, size: 14),
@@ -470,7 +504,7 @@ class _AddStoryButton extends ConsumerWidget {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('استوری با موفقیت اضافه شد')),
           );
-          ref.invalidate(storyUsersProvider);
+          ref.invalidate(storyUsersProvider); // بروزرسانی UI
         }
       } catch (e) {
         if (context.mounted) {
@@ -718,15 +752,23 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                             shape: BoxShape.circle,
                             border: Border.all(color: Colors.white38, width: 1),
                           ),
-                          child: CircleAvatar(
-                            radius: 16,
-                            backgroundImage:
-                                (currentUser.profileImageUrl == null ||
-                                        currentUser.profileImageUrl!.isEmpty)
-                                    ? const AssetImage(defaultAvatarUrl)
-                                    : CachedNetworkImageProvider(
-                                            currentUser.profileImageUrl!)
-                                        as ImageProvider,
+                          child: GestureDetector(
+                            onTap: () =>
+                                Navigator.of(context).push(MaterialPageRoute(
+                                    builder: (context) => ProfileScreen(
+                                          userId: currentUser.id,
+                                          username: currentUser.username,
+                                        ))),
+                            child: CircleAvatar(
+                              radius: 16,
+                              backgroundImage:
+                                  (currentUser.profileImageUrl == null ||
+                                          currentUser.profileImageUrl!.isEmpty)
+                                      ? const AssetImage(defaultAvatarUrl)
+                                      : CachedNetworkImageProvider(
+                                              currentUser.profileImageUrl!)
+                                          as ImageProvider,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -802,7 +844,10 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                                       const SnackBar(
                                           content: Text('استوری حذف شد')),
                                     );
-                                    Navigator.pop(context);
+                                    ref.invalidate(
+                                        storyUsersProvider); // بروزرسانی UI
+                                    Navigator.pop(
+                                        context); // بستن صفحه پخش استوری
                                   }
                                 } catch (e) {
                                   if (context.mounted) {
@@ -814,59 +859,9 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                                   }
                                 }
                               }
-                            } else if (value == 'report') {
-                              final reasonController = TextEditingController();
-                              final confirmed = await showDialog<bool>(
-                                context: context,
-                                builder: (_) => AlertDialog(
-                                  title: const Text('گزارش استوری'),
-                                  content: TextField(
-                                    controller: reasonController,
-                                    decoration: const InputDecoration(
-                                      hintText: 'علت گزارش...',
-                                    ),
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () =>
-                                          Navigator.pop(context, false),
-                                      child: const Text('لغو'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () =>
-                                          Navigator.pop(context, true),
-                                      child: const Text('ارسال'),
-                                    ),
-                                  ],
-                                ),
-                              );
-                              if (confirmed == true &&
-                                  reasonController.text.trim().isNotEmpty) {
-                                try {
-                                  await storyService.reportStory(
-                                    currentStory.id!,
-                                    reasonController.text.trim(),
-                                  );
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                          content: Text('استوری گزارش شد')),
-                                    );
-                                  }
-                                } catch (e) {
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                          content: Text(
-                                              'خطا در گزارش استوری: ${e.toString()}')),
-                                    );
-                                  }
-                                }
-                              }
                             }
                           },
                           itemBuilder: (context) {
-                            // اگر استوری متعلق به کاربر فعلی است، گزینه حذف و در غیر اینصورت گزارش نمایش داده می‌شود.
                             if (currentStory.userId ==
                                 supabase.auth.currentUser?.id) {
                               return const [
@@ -996,16 +991,12 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     final currentStory = _getCurrentStory();
     if (currentStory.id == null || currentStory.userId == currentUserId) return;
 
-    // Create a unique key for this view
     final viewKey = '${currentStory.id}-$currentUserId';
-
-    // Check if we've already tracked this view in the current session
     if (_trackedStoryViews.contains(viewKey)) {
       return;
     }
 
     try {
-      // Add to local tracking set first
       _trackedStoryViews.add(viewKey);
 
       // Track the story view in the database
@@ -1017,6 +1008,9 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       });
 
       debugPrint('Story view tracked: ${currentStory.id}');
+
+      // Update the state using the provider
+      ref.read(storyUsersProvider);
     } catch (e) {
       debugPrint('Error tracking story view: $e');
     }
@@ -1314,27 +1308,6 @@ class StoryViewersBottomSheet extends StatelessWidget {
       },
     );
   }
-
-  // Future<List<Map<String, dynamic>>> _fetchStoryViews(String storyId) async {
-  //   final currentUserId = supabase.auth.currentUser?.id;
-  //   if (currentUserId == null) return [];
-
-  //   final response = await supabase
-  //       .from('story_views')
-  //       .select('''
-  //           viewer_id,
-  //           viewed_at,
-  //           profiles:viewer_id(
-  //             username,
-  //             avatar_url
-  //           )
-  //         ''')
-  //       .eq('story_id', storyId)
-  //       .neq('viewer_id', currentUserId) // Don't show story owner
-  //       .order('viewed_at', ascending: false);
-
-  //   return List<Map<String, dynamic>>.from(response);
-  // }
 
   String _getTimeAgo(DateTime dateTime) {
     final now = DateTime.now();

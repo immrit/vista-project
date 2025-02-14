@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 
+import '../view/screen/Stories/story_system.dart';
 import 'publicPostModel.dart';
 
 enum VerificationType { none, blueTick, official }
@@ -21,6 +22,7 @@ class ProfileModel extends Equatable {
   final VerificationType verificationType;
   final bool isFollowed;
   final List<PublicPostModel> posts;
+  final List<Story> stories; // اضافه کردن لیست استوری‌ها
 
   const ProfileModel({
     required this.id,
@@ -36,6 +38,7 @@ class ProfileModel extends Equatable {
     this.verificationType = VerificationType.none,
     this.isFollowed = false,
     this.posts = const [],
+    this.stories = const [], // مقدار پیش‌فرض برای استوری‌ها
   });
 
   factory ProfileModel.fromMap(Map<String, dynamic> map) {
@@ -64,6 +67,9 @@ class ProfileModel extends Equatable {
       posts: (map['posts'] as List<dynamic>? ?? [])
           .map((post) => PublicPostModel.fromMap(post))
           .toList(),
+      stories: (map['stories'] as List<dynamic>? ?? [])
+          .map((story) => Story.fromMap(story))
+          .toList(), // واکشی استوری‌ها
     );
   }
 
@@ -82,6 +88,8 @@ class ProfileModel extends Equatable {
       'verification_type': verificationType.name,
       'is_followed': isFollowed,
       'posts': posts.map((post) => post.toMap()).toList(),
+      'stories':
+          stories.map((story) => story.toMap()).toList(), // ذخیره استوری‌ها
     };
   }
 
@@ -101,6 +109,7 @@ class ProfileModel extends Equatable {
     VerificationType? verificationType,
     bool? isFollowed,
     List<PublicPostModel>? posts,
+    List<Story>? stories, // اضافه کردن استوری‌ها به copyWith
   }) {
     return ProfileModel(
       id: id ?? this.id,
@@ -116,6 +125,7 @@ class ProfileModel extends Equatable {
       verificationType: verificationType ?? this.verificationType,
       isFollowed: isFollowed ?? this.isFollowed,
       posts: posts ?? this.posts,
+      stories: stories ?? this.stories, // اضافه کردن استوری‌ها
     );
   }
 
@@ -134,5 +144,6 @@ class ProfileModel extends Equatable {
         verificationType,
         isFollowed,
         posts,
+        stories, // اضافه کردن استوری‌ها به props
       ];
 }
