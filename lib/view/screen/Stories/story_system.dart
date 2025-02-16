@@ -178,24 +178,22 @@ class StoryService {
       final currentUserId = _client.auth.currentUser?.id;
       if (currentUserId == null) throw Exception('User not authenticated');
 
-      final followingIds = await fetchFollowingIds();
-
-      // واکشی استوری‌ها
-      final storiesResponse = await _client.from('stories').select('''
+      // موازی‌سازی درخواست‌ها
+      final (followingIds, storiesResponse, viewsResponse) = await (
+        fetchFollowingIds(),
+        _client.from('stories').select('''
         id,
         user_id,
         profiles!inner(username, avatar_url, is_verified),
         media_url,
         created_at
-      ''').order('created_at', ascending: false).limit(100);
+      ''').order('created_at', ascending: false).limit(100),
+        _client
+            .from('story_views')
+            .select('story_id, is_viewed')
+            .eq('viewer_id', currentUserId),
+      ).wait;
 
-      // واکشی بازدیدها برای کاربر فعلی
-      final viewsResponse = await _client
-          .from('story_views')
-          .select('story_id, is_viewed')
-          .eq('viewer_id', currentUserId);
-
-      // تبدیل بازدیدها به یک مپ برای دسترسی سریع
       final viewsMap = <String, bool>{};
       for (final view in viewsResponse) {
         viewsMap[view['story_id'] as String] = view['is_viewed'] as bool;
@@ -209,44 +207,38 @@ class StoryService {
         }
 
         final storyId = item['id'] as String;
-        final isViewed = viewsMap[storyId] ?? false; // وضعیت is_viewed
+        final isViewed = viewsMap[storyId] ?? false;
 
         final story = AppStoryContent(
           id: storyId,
           userId: userId,
           mediaUrl: item['media_url'] as String,
           createdAt: DateTime.parse(item['created_at'] as String),
-          isViewed: isViewed, // وضعیت is_viewed
+          isViewed: isViewed,
         );
 
-        if (!usersMap.containsKey(userId)) {
-          usersMap[userId] = StoryUser(
+        usersMap.update(
+          userId,
+          (user) => user.copyWith(stories: [...user.stories, story]),
+          ifAbsent: () => StoryUser(
             id: userId,
             username: item['profiles']['username'] as String,
             profileImageUrl: item['profiles']['avatar_url'] as String?,
             lastStoryDate: DateTime.parse(item['created_at'] as String),
             isVerified: item['profiles']['is_verified'] as bool? ?? false,
             stories: [story],
-          );
-        } else {
-          usersMap[userId] = usersMap[userId]!.copyWith(
-            stories: [...usersMap[userId]!.stories, story],
-          );
-        }
+          ),
+        );
       }
 
-      // جدا کردن کاربر جاری از بقیه کاربران
       final currentUserStories = usersMap[currentUserId];
       final otherUsersStories =
           usersMap.values.where((user) => user.id != currentUserId).toList();
 
-      // ترکیب لیست‌ها: ابتدا کاربر جاری، سپس بقیه کاربران
-      final sortedUsers = [
+      return [
         if (currentUserStories != null) currentUserStories,
         ...otherUsersStories,
       ];
-
-      return sortedUsers;
     } catch (e) {
       print('Error fetching active users: $e');
       rethrow;
@@ -393,7 +385,7 @@ class StoryBar extends ConsumerWidget {
 class StoryRing extends ConsumerWidget {
   final StoryUser user;
 
-  const StoryRing({required this.user});
+  const StoryRing({super.key, required this.user});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -408,7 +400,7 @@ class StoryRing extends ConsumerWidget {
       padding: const EdgeInsets.all(8.0),
       child: Column(
         children: [
-          GestureDetector(
+          InkWell(
             onTap: () => _navigateToStoryScreen(context, user, ref),
             child: Container(
               width: 70,
@@ -420,11 +412,11 @@ class StoryRing extends ConsumerWidget {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       )
-                    : null, // اگر همه استوری‌ها دیده شده‌اند، گرادیان نداشته باشد
+                    : null,
                 border: Border.all(
                   color: hasUnseenStories ? Colors.transparent : seenColor,
                   width: 1,
-                ), // اگر همه استوری‌ها دیده شده‌اند، حاشیه سفید داشته باشد
+                ),
                 shape: BoxShape.circle,
               ),
               child: Padding(
@@ -716,13 +708,14 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                         errorWidget: (context, url, error) => const Center(
                           child: Icon(Icons.error, color: Colors.white),
                         ),
+                        cacheKey: story
+                            .mediaUrl, // اضافه کردن cacheKey برای بهبود عملکرد
                       ),
                     ],
                   ),
                 );
               },
             ),
-
             // Header Section with Progress Bar
             Positioned(
               top: MediaQuery.of(context).padding.top,
@@ -1112,9 +1105,9 @@ class StoryProgressBar extends StatelessWidget {
       children: List.generate(
         itemCount,
         (index) => Expanded(
-          child: AnimatedBuilder(
-            animation: controller,
-            builder: (context, child) {
+          child: ValueListenableBuilder<double>(
+            valueListenable: controller,
+            builder: (context, value, child) {
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 2),
                 child: ClipRRect(
@@ -1221,8 +1214,8 @@ class StoryViewersBottomSheet extends StatelessWidget {
 // در StoryViewersBottomSheet
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder(
-      future: _fetchStoryViews(storyId),
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _fetchStoryViews(storyId).asStream(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -1230,8 +1223,8 @@ class StoryViewersBottomSheet extends StatelessWidget {
         if (snapshot.hasError) {
           return Center(child: Text('خطا: ${snapshot.error}'));
         }
-        final views = snapshot.data as List<Map<String, dynamic>>;
-        final viewCount = views.length; // تعداد بازدیدها
+        final views = snapshot.data ?? [];
+        final viewCount = views.length;
 
         return Container(
           decoration: BoxDecoration(
