@@ -3,8 +3,10 @@ import 'dart:async';
 import 'dart:io';
 import 'package:Vista/view/screen/PublicPosts/profileScreen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import 'package:mime/mime.dart';
@@ -12,6 +14,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../../main.dart';
 import '../../../provider/uploadStoryImage.dart';
 import '../../../util/const.dart';
+import 'story_editor.dart';
 
 // در ابتدای فایل (بعد از importها) اضافه کنید:
 String timeAgo(DateTime dateTime) {
@@ -488,21 +491,32 @@ class _AddStoryButton extends ConsumerWidget {
     );
 
     if (pickedFile != null) {
-      try {
-        final service = ref.read(storyServiceProvider);
-        await service.uploadImageStory(File(pickedFile.path));
+      final editedImage = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => StoryEditorScreen(
+            imageFile: File(pickedFile.path),
+          ),
+        ),
+      );
 
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('استوری با موفقیت اضافه شد')),
-          );
-          ref.invalidate(storyUsersProvider); // بروزرسانی UI
-        }
-      } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('خطا: ${e.toString()}')),
-          );
+      if (editedImage != null) {
+        try {
+          final service = ref.read(storyServiceProvider);
+          await service.uploadImageStory(editedImage);
+
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('استوری با موفقیت اضافه شد')),
+            );
+            ref.invalidate(storyUsersProvider); // بروزرسانی UI
+          }
+        } catch (e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('خطا: ${e.toString()}')),
+            );
+          }
         }
       }
     }
@@ -551,535 +565,613 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     with SingleTickerProviderStateMixin {
   late final PageController _pageController;
   late final AnimationController _animationController;
-  Timer? _progressTimer;
   bool _isDisposed = false;
-  int _currentUserIndex = 0; // شاخص کاربر فعلی
-  int _currentStoryIndex = 0; // شاخص استوری فعلی
+  bool _isLoading = true;
+  int _currentUserIndex = 0;
+  int _currentStoryIndex = 0;
   final Set<String> _trackedStoryViews = {};
+  final Set<String> _preloadedImages = {};
 
   @override
   void initState() {
     super.initState();
     _initialize();
+    _preloadNextStoryImage();
   }
 
   void _initialize() {
     _currentUserIndex = widget.users.indexOf(widget.initialUser);
-    _currentStoryIndex = 0;
-
     _pageController = PageController(initialPage: _getGlobalStoryIndex());
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 7),
-    );
-
-    _animationController.addStatusListener((status) {
-      if (status == AnimationStatus.completed && !_isDisposed) {
-        _handleNextStory();
-      }
-    });
+    )..addStatusListener(_handleAnimationStatus);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_isDisposed) {
-        _startStoryTimer();
-        _trackCurrentStory();
+        _preloadCurrentStoryImage();
       }
     });
   }
 
+  void _handleAnimationStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed && !_isDisposed) {
+      _handleNextStory();
+    }
+  }
+
+  Future<void> _preloadCurrentStoryImage() async {
+    final story = _getCurrentStory();
+    if (story.mediaUrl.isEmpty || _preloadedImages.contains(story.mediaUrl)) {
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      await precacheImage(CachedNetworkImageProvider(story.mediaUrl), context);
+      if (!_isDisposed) {
+        _preloadedImages.add(story.mediaUrl);
+        setState(() {
+          _isLoading = false;
+        });
+        _startStoryTimer();
+        _trackCurrentStory();
+      }
+    } catch (e) {
+      debugPrint('Error preloading image: $e');
+      if (!_isDisposed) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _preloadNextStoryImage() async {
+    final nextStory = _getNextStory();
+    if (nextStory?.mediaUrl == null ||
+        _preloadedImages.contains(nextStory!.mediaUrl)) {
+      return;
+    }
+
+    try {
+      await precacheImage(
+          CachedNetworkImageProvider(nextStory.mediaUrl), context);
+      if (!_isDisposed) {
+        _preloadedImages.add(nextStory.mediaUrl);
+      }
+    } catch (e) {
+      debugPrint('Error preloading next image: $e');
+    }
+  }
+
+  AppStoryContent? _getNextStory() {
+    final currentUser = widget.users[_currentUserIndex];
+    if (_currentStoryIndex < currentUser.stories.length - 1) {
+      return currentUser.stories[_currentStoryIndex + 1];
+    } else if (_currentUserIndex < widget.users.length - 1) {
+      return widget.users[_currentUserIndex + 1].stories.first;
+    }
+    return null;
+  }
+
   void _startStoryTimer() {
+    if (_isLoading) return;
     _animationController.reset();
     _animationController.forward();
   }
 
-  void _pauseOrResumeAnimation() {
-    if (_animationController.isAnimating) {
-      _animationController.stop();
-    } else {
-      _animationController.forward();
-    }
-  }
-
-  void _handleNextStory() {
-    final currentUser = widget.users[_currentUserIndex];
-
-    if (_currentStoryIndex < currentUser.stories.length - 1) {
-      setState(() {
-        _currentStoryIndex++;
-      });
-      _startStoryTimer();
-    } else if (_currentUserIndex < widget.users.length - 1) {
-      setState(() {
-        _currentUserIndex++;
-        _currentStoryIndex = 0;
-      });
-      _startStoryTimer();
-    } else {
-      Navigator.pop(context);
-      return;
-    }
-
-    _pageController.animateToPage(
-      _getGlobalStoryIndex(),
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
-    _trackCurrentStory();
-  }
-
-  void _handlePreviousStory() {
-    if (_currentStoryIndex > 0) {
-      setState(() {
-        _currentStoryIndex--;
-      });
-    } else if (_currentUserIndex > 0) {
-      setState(() {
-        _currentUserIndex--;
-        final previousUser = widget.users[_currentUserIndex];
-        _currentStoryIndex = previousUser.stories.length - 1;
-      });
-    } else {
-      return;
-    }
-
-    _pageController.animateToPage(
-      _getGlobalStoryIndex(),
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
-    _startStoryTimer();
-    _trackCurrentStory();
+  void _cleanupResources() {
+    _preloadedImages.clear();
+    _trackedStoryViews.clear();
+    _animationController.dispose();
+    _pageController.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentUser = widget.users[_currentUserIndex];
-    final currentStory = _getCurrentStory();
-    final isCurrentUserStory =
-        currentStory.userId == supabase.auth.currentUser?.id;
-
     return Scaffold(
       backgroundColor: Colors.black,
       body: GestureDetector(
-        onTapDown: (details) {
-          final screenWidth = MediaQuery.of(context).size.width;
-          final tapPosition = details.globalPosition.dx;
-
-          if (tapPosition < screenWidth * 0.35) {
-            _handlePreviousStory();
-          } else if (tapPosition > screenWidth * 0.65) {
-            _handleNextStory();
-          } else {
-            _pauseOrResumeAnimation();
-          }
-        },
+        onTapDown: _handleTapDown,
+        onLongPress: () => _animationController.stop(),
+        onLongPressUp: () => _animationController.forward(),
         child: Stack(
           children: [
-            // Story Content
-            PageView.builder(
-              controller: _pageController,
-              physics: const NeverScrollableScrollPhysics(),
-              onPageChanged: (index) {
-                if (!_isDisposed) {
-                  _updateIndicesFromGlobalIndex(index);
-                  _startStoryTimer();
-                  _trackCurrentStory();
-                }
-              },
-              itemCount: _getTotalStoryCount(),
-              itemBuilder: (context, index) {
-                final story = _getStoryByGlobalIndex(index);
-                return Hero(
-                  tag: 'story-${story.id}',
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      CachedNetworkImage(
-                        imageUrl: story.mediaUrl,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) => Container(
-                          color: Colors.black,
-                          child: const Center(
-                            child: CircularProgressIndicator(
-                              valueColor: AlwaysStoppedAnimation(Colors.white),
-                            ),
-                          ),
-                        ),
-                        errorWidget: (context, url, error) => const Center(
-                          child: Icon(Icons.error, color: Colors.white),
-                        ),
-                        cacheKey: story
-                            .mediaUrl, // اضافه کردن cacheKey برای بهبود عملکرد
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-            // Header Section with Progress Bar
-            Positioned(
-              top: MediaQuery.of(context).padding.top,
-              left: 0,
-              right: 0,
-              child: Column(
-                children: [
-                  // Progress Bar
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    child: StoryProgressBar(
-                      controller: _animationController,
-                      activeIndex: _currentStoryIndex,
-                      itemCount: currentUser.stories.length,
-                      activeColor: Colors.white,
-                      passiveColor: Colors.white24,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  // User Info
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: Row(
-                      children: [
-                        Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white38, width: 1),
-                          ),
-                          child: GestureDetector(
-                            onTap: () =>
-                                Navigator.of(context).push(MaterialPageRoute(
-                                    builder: (context) => ProfileScreen(
-                                          userId: currentUser.id,
-                                          username: currentUser.username,
-                                        ))),
-                            child: CircleAvatar(
-                              radius: 16,
-                              backgroundImage:
-                                  (currentUser.profileImageUrl == null ||
-                                          currentUser.profileImageUrl!.isEmpty)
-                                      ? const AssetImage(defaultAvatarUrl)
-                                      : CachedNetworkImageProvider(
-                                              currentUser.profileImageUrl!)
-                                          as ImageProvider,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Text(
-                                    currentUser.username,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  if (currentUser.isVerified) ...[
-                                    const SizedBox(width: 4),
-                                    const Icon(
-                                      Icons.verified,
-                                      color: Colors.blue,
-                                      size: 14,
-                                    ),
-                                  ],
-                                ],
-                              ),
-                              Text(
-                                timeAgo(_getCurrentStory().createdAt),
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        PopupMenuButton<String>(
-                          icon: const Icon(
-                            Icons.more_vert,
-                            color: Colors.white,
-                          ),
-                          onSelected: (value) async {
-                            final storyService = ref.read(storyServiceProvider);
-                            final currentStory = _getCurrentStory();
-                            if (value == 'delete') {
-                              final confirmed = await showDialog<bool>(
-                                context: context,
-                                builder: (_) => AlertDialog(
-                                  title: const Text('حذف استوری'),
-                                  content: const Text(
-                                      'آیا از حذف این استوری مطمئن هستید؟'),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () =>
-                                          Navigator.pop(context, false),
-                                      child: const Text('خیر'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () =>
-                                          Navigator.pop(context, true),
-                                      child: const Text('بله'),
-                                    ),
-                                  ],
-                                ),
-                              );
-                              if (confirmed == true) {
-                                try {
-                                  await storyService
-                                      .deleteStory(currentStory.id!);
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                          content: Text('استوری حذف شد')),
-                                    );
-                                    ref.invalidate(
-                                        storyUsersProvider); // بروزرسانی UI
-                                    Navigator.pop(
-                                        context); // بستن صفحه پخش استوری
-                                  }
-                                } catch (e) {
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                          content: Text(
-                                              'خطا در حذف استوری: ${e.toString()}')),
-                                    );
-                                  }
-                                }
-                              }
-                            }
-                          },
-                          itemBuilder: (context) {
-                            if (currentStory.userId ==
-                                supabase.auth.currentUser?.id) {
-                              return const [
-                                PopupMenuItem<String>(
-                                  value: 'delete',
-                                  child: Text('حذف استوری'),
-                                ),
-                              ];
-                            } else {
-                              return const [
-                                PopupMenuItem<String>(
-                                  value: 'report',
-                                  child: Text('گزارش استوری'),
-                                ),
-                              ];
-                            }
-                          },
-                        ),
-                        IconButton(
-                          icon: const Icon(
-                            Icons.close,
-                            color: Colors.white,
-                            size: 28,
-                          ),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Views button at bottom center (only for current user's story)
-            if (isCurrentUserStory)
-              Positioned(
-                bottom: MediaQuery.of(context).padding.bottom + 20,
-                left: 0,
-                right: 0,
-                child: GestureDetector(
-                  onTap: () {
-                    if (currentStory.id != null) {
-                      _showViewersBottomSheet(context, currentStory.id!);
-                    }
-                  },
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.remove_red_eye,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                          SizedBox(width: 8),
-                          Text(
-                            'مشاهده بازدیدها',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+            _buildPageView(),
+            _buildProgressBar(),
+            _buildHeader(),
+            if (_isLoading) _buildLoadingIndicator(),
           ],
         ),
       ),
     );
   }
 
-  int _getGlobalStoryIndex() {
-    int globalIndex = 0;
-    for (int i = 0; i < _currentUserIndex; i++) {
-      globalIndex += widget.users[i].stories.length;
-    }
-    globalIndex += _currentStoryIndex;
-    return globalIndex;
-  }
+  Future<void> _deleteStory(String storyId) async {
+    try {
+      // نمایش دیالوگ تایید
+      final shouldDelete = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('حذف استوری'),
+          content: const Text('آیا از حذف این استوری اطمینان دارید؟'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('انصراف'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('حذف'),
+            ),
+          ],
+        ),
+      );
 
-  int _getTotalStoryCount() {
-    return widget.users.fold(0, (sum, user) => sum + user.stories.length);
-  }
+      if (shouldDelete ?? false) {
+        final service = ref.read(storyServiceProvider);
+        await service.deleteStory(storyId);
 
-  AppStoryContent _getStoryByGlobalIndex(int globalIndex) {
-    int currentIndex = 0;
-    for (final user in widget.users) {
-      if (currentIndex + user.stories.length > globalIndex) {
-        return user.stories[globalIndex - currentIndex];
+        if (!mounted) return;
+
+        // بستن صفحه استوری
+        Navigator.of(context).pop();
+
+        // نمایش پیام موفقیت
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('استوری با موفقیت حذف شد')),
+        );
+
+        // به‌روزرسانی لیست استوری‌ها
+        ref.invalidate(storyUsersProvider);
       }
-      currentIndex += user.stories.length;
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در حذف استوری: $e')),
+      );
     }
-    throw Exception('Invalid global index');
   }
 
-  void _updateIndicesFromGlobalIndex(int globalIndex) {
-    int currentIndex = 0;
-    for (int i = 0; i < widget.users.length; i++) {
-      final user = widget.users[i];
-      if (currentIndex + user.stories.length > globalIndex) {
-        setState(() {
-          _currentUserIndex = i;
-          _currentStoryIndex = globalIndex - currentIndex;
-        });
-        return;
-      }
-      currentIndex += user.stories.length;
+  Future<void> _shareStory(AppStoryContent story) async {
+    try {
+      final url = story.mediaUrl;
+      await Share.share(
+        'مشاهده استوری در اپلیکیشن\n$url',
+        subject: 'اشتراک‌گذاری استوری',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('خطا در اشتراک‌گذاری استوری'),
+        ),
+      );
     }
-    throw Exception('Invalid global index');
+  }
+
+  void _handleStoryNavigation(bool forward) {
+    if (_isLoading) return;
+
+    if (forward) {
+      _handleNextStory();
+    } else {
+      _handlePreviousStory();
+    }
+  }
+
+// اضافه کردن متد برای تشخیص double tap
+  DateTime? _lastTapTime;
+
+  void _handleDoubleTap(TapDownDetails details) {
+    final now = DateTime.now();
+    if (_lastTapTime != null &&
+        now.difference(_lastTapTime!) < const Duration(milliseconds: 300)) {
+      // Double tap detected
+      final screenWidth = MediaQuery.of(context).size.width;
+      final dx = details.globalPosition.dx;
+
+      if (dx < screenWidth * 0.5) {
+        _handleStoryNavigation(false);
+      } else {
+        _handleStoryNavigation(true);
+      }
+    }
+    _lastTapTime = now;
+  }
+
+  void _showViewers(String storyId) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.8,
+        builder: (context, scrollController) => StoryViewersBottomSheet(
+          storyId: storyId,
+          scrollController: scrollController,
+          onDismiss: () => Navigator.pop(context),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingIndicator() {
+    return const Center(
+      child: CircularProgressIndicator(
+        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+      ),
+    );
+  }
+
+  Widget _buildPageView() {
+    return PageView.builder(
+      controller: _pageController,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _getTotalStoryCount(),
+      itemBuilder: (context, index) {
+        final story = _getStoryByGlobalIndex(index);
+        return Hero(
+          tag: 'story-${story.id}',
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 300),
+            opacity: _isLoading ? 0.0 : 1.0,
+            child: CachedNetworkImage(
+              imageUrl: story.mediaUrl,
+              fit: BoxFit.cover,
+              placeholder: (context, url) => Container(color: Colors.black),
+              errorWidget: (context, url, error) => const Center(
+                child: Icon(Icons.error, color: Colors.white),
+              ),
+              cacheManager: CustomCacheManager.instance,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    _cleanupResources();
+    super.dispose();
+  }
+
+  // Add these methods
+
+  void _handleTapDown(TapDownDetails details) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final dx = details.globalPosition.dx;
+
+    if (dx < screenWidth * 0.3) {
+      _handlePreviousStory();
+    } else if (dx > screenWidth * 0.7) {
+      _handleNextStory();
+    } else {
+      _showStoryOptions();
+    }
+  }
+
+  void _handlePreviousStory() {
+    if (_isLoading) return;
+
+    if (_currentStoryIndex > 0) {
+      setState(() {
+        _currentStoryIndex--;
+        _pageController.previousPage(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      });
+      _preloadCurrentStoryImage();
+    } else if (_currentUserIndex > 0) {
+      setState(() {
+        _currentUserIndex--;
+        _currentStoryIndex = widget.users[_currentUserIndex].stories.length - 1;
+        _pageController.previousPage(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      });
+      _preloadCurrentStoryImage();
+    }
+  }
+
+  void _handleNextStory() {
+    if (_isLoading) return;
+
+    final currentUser = widget.users[_currentUserIndex];
+    if (_currentStoryIndex < currentUser.stories.length - 1) {
+      setState(() {
+        _currentStoryIndex++;
+        _pageController.nextPage(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      });
+      _preloadCurrentStoryImage();
+      _preloadNextStoryImage();
+    } else if (_currentUserIndex < widget.users.length - 1) {
+      setState(() {
+        _currentUserIndex++;
+        _currentStoryIndex = 0;
+        _pageController.nextPage(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      });
+      _preloadCurrentStoryImage();
+      _preloadNextStoryImage();
+    } else {
+      Navigator.pop(context);
+    }
+  }
+
+  void _showStoryOptions() {
+    final story = _getCurrentStory();
+    final isOwner = story.userId == supabase.auth.currentUser?.id;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).brightness == Brightness.dark
+              ? Colors.grey[900]
+              : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[400],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              if (isOwner) ...[
+                ListTile(
+                  leading: const Icon(Icons.remove_red_eye),
+                  title: const Text('مشاهده‌کنندگان'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showViewers(story.id!);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete, color: Colors.red),
+                  title: const Text('حذف استوری',
+                      style: TextStyle(color: Colors.red)),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await _deleteStory(story.id!);
+                  },
+                ),
+              ] else ...[
+                ListTile(
+                  leading: const Icon(Icons.report),
+                  title: const Text('گزارش استوری'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showReportDialog(story.id!);
+                  },
+                ),
+              ],
+              ListTile(
+                leading: const Icon(Icons.share),
+                title: const Text('اشتراک‌گذاری'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _shareStory(story);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showReportDialog(String storyId) {
+    final reasons = [
+      'محتوای نامناسب',
+      'محتوای خشونت‌آمیز',
+      'محتوای اسپم',
+      'نقض حق نشر',
+      'سایر موارد'
+    ];
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('گزارش استوری'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: reasons
+              .map(
+                (reason) => ListTile(
+                  title: Text(reason),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await _reportStory(storyId, reason);
+                  },
+                ),
+              )
+              .toList(),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _reportStory(String storyId, String reason) async {
+    try {
+      final service = ref.read(storyServiceProvider);
+      await service.reportStory(storyId, reason);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('گزارش شما با موفقیت ثبت شد')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در ثبت گزارش: $e')),
+        );
+      }
+    }
   }
 
   void _trackCurrentStory() async {
-    final currentUserId = supabase.auth.currentUser?.id;
-    if (currentUserId == null) return;
-    final currentStory = _getCurrentStory();
-    if (currentStory.id == null || currentStory.userId == currentUserId) return;
-
-    final viewKey = '${currentStory.id}-$currentUserId';
-    if (_trackedStoryViews.contains(viewKey)) {
+    final story = _getCurrentStory();
+    if (story.id == null || story.userId == supabase.auth.currentUser?.id) {
       return;
     }
 
+    final viewKey = '${story.id}-${supabase.auth.currentUser?.id}';
+    if (_trackedStoryViews.contains(viewKey)) return;
+
     try {
       _trackedStoryViews.add(viewKey);
-
-      // Track the story view in the database
-      await supabase.from('story_views').insert({
-        'story_id': currentStory.id,
-        'viewer_id': currentUserId,
-        'viewed_at': DateTime.now().toIso8601String(),
-        'is_viewed': true,
-      });
-
-      debugPrint('Story view tracked: ${currentStory.id}');
-
-      // Update the state using the provider
-      ref.read(storyUsersProvider);
+      await ref.read(storyServiceProvider).trackStoryView(story.id!);
     } catch (e) {
       debugPrint('Error tracking story view: $e');
     }
   }
 
   AppStoryContent _getCurrentStory() {
-    final currentUser = widget.users[_currentUserIndex];
-    return currentUser.stories[_currentStoryIndex];
+    return widget.users[_currentUserIndex].stories[_currentStoryIndex];
   }
 
-  @override
-  void dispose() {
-    _isDisposed = true;
-    _progressTimer?.cancel();
-    _animationController.dispose();
-    _pageController.dispose();
-    _trackedStoryViews.clear();
-    super.dispose();
+  int _getTotalStoryCount() {
+    return widget.users.fold(0, (sum, user) => sum + user.stories.length);
   }
 
-  void _startTimer() {
-    _animationController.reset();
-    _animationController.forward();
-
-    _progressTimer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
-      if (!_animationController.isAnimating) {
-        _animationController.forward();
-      }
-    });
-  }
-
-  void _handleAnimationProgress() {
-    if (!mounted) return;
-
-    final progress = _animationController.value;
-    if (progress >= 1.0) {
-      _handleNextStory();
+  int _getGlobalStoryIndex() {
+    int index = 0;
+    for (int i = 0; i < _currentUserIndex; i++) {
+      index += widget.users[i].stories.length;
     }
+    return index + _currentStoryIndex;
   }
 
-  void _showViewersBottomSheet(BuildContext context, String storyId) {
-    // Pause story animation when showing bottom sheet
-    _animationController.stop();
+  AppStoryContent _getStoryByGlobalIndex(int globalIndex) {
+    int index = globalIndex;
+    for (final user in widget.users) {
+      if (index < user.stories.length) {
+        return user.stories[index];
+      }
+      index -= user.stories.length;
+    }
+    throw Exception('Invalid global story index');
+  }
 
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Theme.of(context).brightness == Brightness.dark
-          ? Colors.black
-          : Colors.white,
-      isScrollControlled: true,
-      isDismissible: true,
-      enableDrag: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.4,
-        maxChildSize: 0.8,
-        expand: false,
-        builder: (context, scrollController) => StoryViewersBottomSheet(
-          storyId: storyId,
-          scrollController: scrollController,
-          onDismiss: () {
-            // Resume story animation when bottom sheet is closed
-            Navigator.pop(context);
-            _animationController.forward();
-          },
+  Widget _buildProgressBar() {
+    final currentUser = widget.users[_currentUserIndex];
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: StoryProgressBar(
+            controller: _animationController,
+            activeIndex: _currentStoryIndex,
+            itemCount: currentUser.stories.length,
+            activeColor: Colors.white,
+            passiveColor: Colors.white.withOpacity(0.3),
+          ),
         ),
       ),
-    ).whenComplete(() {
-      // Resume story animation when bottom sheet is closed
-      if (!_isDisposed && mounted) {
-        _animationController.forward();
-      }
-    });
+    );
+  }
+
+  Widget _buildHeader() {
+    final currentUser = widget.users[_currentUserIndex];
+    return Positioned(
+      top: 40, // Move header below progress bar
+      left: 0,
+      right: 0,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Row(
+            children: [
+              CircleAvatar(
+                backgroundImage: currentUser.profileImageUrl != null
+                    ? CachedNetworkImageProvider(currentUser.profileImageUrl!)
+                    : const AssetImage(defaultAvatarUrl) as ImageProvider,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          currentUser.username,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (currentUser.isVerified) ...[
+                          const SizedBox(width: 4),
+                          const Icon(Icons.verified,
+                              color: Colors.blue, size: 14),
+                        ],
+                      ],
+                    ),
+                    Text(
+                      timeAgo(_getCurrentStory().createdAt),
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.more_vert, color: Colors.white),
+                onPressed: _showStoryOptions,
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Add this class for custom cache management
+class CustomCacheManager {
+  static const key = 'storyImageCache';
+  static CacheManager? _instance;
+
+  static CacheManager get instance {
+    _instance ??= CacheManager(
+      Config(
+        key,
+        stalePeriod: const Duration(days: 1),
+        maxNrOfCacheObjects: 100,
+        repo: JsonCacheInfoRepository(databaseName: key),
+        fileService: HttpFileService(),
+      ),
+    );
+    return _instance!;
   }
 }
 
