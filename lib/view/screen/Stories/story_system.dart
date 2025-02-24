@@ -1,11 +1,14 @@
 // story_system.dart
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:Vista/view/screen/PublicPosts/profileScreen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -14,6 +17,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../../main.dart';
 import '../../../provider/uploadStoryImage.dart';
 import '../../../util/const.dart';
+import 'stdesign.dart';
 import 'story_editor.dart';
 
 // در ابتدای فایل (بعد از importها) اضافه کنید:
@@ -277,10 +281,10 @@ class StoryService {
   }
 
   void _validateImageFile(File file) {
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     final mimeType = lookupMimeType(file.path);
     if (mimeType == null || !allowedTypes.contains(mimeType)) {
-      throw Exception('فقط مجاز به آپلود تصویر (JPEG, PNG, GIF) هستید');
+      throw Exception('فقط مجاز به آپلود تصویر (JPEG, PNG, GIF, WEBP) هستید');
     }
     final sizeInMB = file.lengthSync() / (1024 * 1024);
     if (sizeInMB > 15) {
@@ -488,34 +492,75 @@ class _AddStoryButton extends ConsumerWidget {
       source: ImageSource.gallery,
       imageQuality: 85,
       maxWidth: 1080,
+      requestFullMetadata: true, // این خط برای دریافت متادیتاهای EXIF ضروری است
     );
 
     if (pickedFile != null) {
-      final editedImage = await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => StoryEditorScreen(
-            imageFile: File(pickedFile.path),
+      if (!context.mounted) return;
+
+      // خواندن EXIF برای تشخیص جهت تصویر
+      final bytes = await pickedFile.readAsBytes();
+      final originalImage = img.decodeImage(bytes);
+
+      if (originalImage != null) {
+        // تصحیح جهت تصویر قبل از ویرایش
+        img.Image correctedImage;
+        if (originalImage.exif.imageIfd.orientation == 6) {
+          correctedImage = img.copyRotate(originalImage, angle: 90);
+        } else if (originalImage.exif.imageIfd.orientation == 3) {
+          correctedImage = img.copyRotate(originalImage, angle: 180);
+        } else if (originalImage.exif.imageIfd.orientation == 8) {
+          correctedImage = img.copyRotate(originalImage, angle: 270);
+        } else {
+          correctedImage = originalImage;
+        }
+
+        // ذخیره تصویر تصحیح شده
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File('${tempDir.path}/temp_corrected.jpg');
+        await tempFile.writeAsBytes(img.encodeJpg(correctedImage));
+
+        // باز کردن صفحه ویرایشگر با تصویر تصحیح شده
+        final editedImage = await Navigator.push<Uint8List>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ImageEditorScreen(imagePath: tempFile.path),
           ),
-        ),
-      );
+        );
 
-      if (editedImage != null) {
-        try {
-          final service = ref.read(storyServiceProvider);
-          await service.uploadImageStory(editedImage);
+        // ادامه روند قبلی...
+        if (editedImage != null && context.mounted) {
+          try {
+            // Decode کردن تصویر
+            final editedImg = img.decodeImage(editedImage);
+            if (editedImg == null) {
+              throw Exception('تصویر ویرایش‌شده نامعتبر است');
+            }
+            // چرخش 180 درجه
+            final rotatedImage = img.copyRotate(editedImg, angle: 180);
+            // اعمال flip افقی برای اصلاح تغییر مکان چپ/راست
+            final fixedImage = img.flipHorizontal(rotatedImage);
+            final fixedBytes = Uint8List.fromList(img.encodeJpg(fixedImage));
 
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('استوری با موفقیت اضافه شد')),
-            );
-            ref.invalidate(storyUsersProvider); // بروزرسانی UI
-          }
-        } catch (e) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('خطا: ${e.toString()}')),
-            );
+            final tempDir = await getTemporaryDirectory();
+            final tempFile = File('${tempDir.path}/edited_story.jpg');
+            await tempFile.writeAsBytes(fixedBytes);
+
+            final service = ref.read(storyServiceProvider);
+            await service.uploadImageStory(tempFile);
+
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('استوری با موفقیت اضافه شد')),
+              );
+              ref.invalidate(storyUsersProvider);
+            }
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('خطا: ${e.toString()}')),
+              );
+            }
           }
         }
       }
