@@ -17,7 +17,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../../main.dart';
 import '../../../provider/uploadStoryImage.dart';
 import '../../../util/const.dart';
-import 'stdesign.dart';
 import 'story_editor.dart';
 
 // در ابتدای فایل (بعد از importها) اضافه کنید:
@@ -607,7 +606,7 @@ class StoryPlayerScreen extends ConsumerStatefulWidget {
 }
 
 class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   late final PageController _pageController;
   late final AnimationController _animationController;
   bool _isDisposed = false;
@@ -617,6 +616,11 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   final Set<String> _trackedStoryViews = {};
   final Set<String> _preloadedImages = {};
 
+  // افزودن سیستم مدیریت حافظه
+  final _imageCache = <String, Uint8List>{};
+  static const _maxCachedImages = 5;
+  @override
+  bool get wantKeepAlive => true;
   @override
   void initState() {
     super.initState();
@@ -653,12 +657,14 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
 
     setState(() => _isLoading = true);
     try {
-      await precacheImage(CachedNetworkImageProvider(story.mediaUrl), context);
+      final file =
+          await CustomCacheManager.instance.getSingleFile(story.mediaUrl);
+      final bytes = await file.readAsBytes();
+      _addToImageCache(story.mediaUrl, bytes);
+
       if (!_isDisposed) {
         _preloadedImages.add(story.mediaUrl);
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
         _startStoryTimer();
         _trackCurrentStory();
       }
@@ -707,8 +713,31 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   void _cleanupResources() {
     _preloadedImages.clear();
     _trackedStoryViews.clear();
+    // _animationController.dispose();
+    _pageController.dispose();
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
     _animationController.dispose();
     _pageController.dispose();
+    _clearImageCache();
+    _cleanupResources();
+    _preloadedImages.clear();
+    _trackedStoryViews.clear();
+    super.dispose();
+  }
+
+  void _clearImageCache() {
+    _imageCache.clear();
+  }
+
+  void _addToImageCache(String url, Uint8List bytes) {
+    if (_imageCache.length >= _maxCachedImages) {
+      _imageCache.remove(_imageCache.keys.first);
+    }
+    _imageCache[url] = bytes;
   }
 
   @override
@@ -877,13 +906,6 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
         );
       },
     );
-  }
-
-  @override
-  void dispose() {
-    _isDisposed = true;
-    _cleanupResources();
-    super.dispose();
   }
 
   // Add these methods
@@ -1210,8 +1232,8 @@ class CustomCacheManager {
     _instance ??= CacheManager(
       Config(
         key,
-        stalePeriod: const Duration(days: 1),
-        maxNrOfCacheObjects: 100,
+        stalePeriod: const Duration(hours: 24), // کاهش زمان نگهداری کش
+        maxNrOfCacheObjects: 50, // محدود کردن تعداد تصاویر کش شده
         repo: JsonCacheInfoRepository(databaseName: key),
         fileService: HttpFileService(),
       ),
