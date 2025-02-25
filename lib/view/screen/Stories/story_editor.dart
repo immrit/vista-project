@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:typed_data';
+import 'package:exif/exif.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img; // برای تبدیل فرمت تصویر
 import 'package:pro_image_editor/pro_image_editor.dart';
@@ -36,18 +36,58 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
     }
   }
 
-  static Uint8List? _processImage(Uint8List imageBytes) {
+  static Future<Uint8List?> _processImage(Uint8List imageBytes) async {
     try {
+      // خواندن اطلاعات EXIF قبل از decode تصویر
+      Map<String, IfdTag>? exifData;
+      try {
+        exifData = await readExifFromBytes(imageBytes);
+      } catch (e) {
+        debugPrint('Error reading EXIF data: $e');
+        // ادامه پردازش حتی در صورت خطا در خواندن EXIF
+      }
+
       final image = img.decodeImage(imageBytes);
       if (image == null) {
         debugPrint('Failed to decode image');
         return null;
       }
 
-      // چرخش 180 درجه و flip افقی
-      var processedImage = img.copyRotate(image, angle: 180);
-      processedImage =
-          img.flip(processedImage, direction: img.FlipDirection.horizontal);
+      // اعمال جهت صحیح بر اساس EXIF
+      var processedImage = image;
+
+      if (exifData != null && exifData.containsKey('Image Orientation')) {
+        final orientationTag = exifData['Image Orientation'];
+        if (orientationTag != null) {
+          int orientation = int.tryParse(orientationTag.printable) ?? 1;
+
+          switch (orientation) {
+            case 3: // چرخش 180 درجه
+              processedImage = img.copyRotate(processedImage, angle: 180);
+              break;
+            case 6: // چرخش 90 درجه CW
+              processedImage = img.copyRotate(processedImage, angle: 90);
+              break;
+            case 8: // چرخش 270 درجه CW (یا 90 درجه CCW)
+              processedImage = img.copyRotate(processedImage, angle: 270);
+              break;
+            case 2: // flip افقی
+              processedImage = img.flipHorizontal(processedImage);
+              break;
+            case 4: // flip عمودی
+              processedImage = img.flipVertical(processedImage);
+              break;
+            case 5: // چرخش 90 درجه CW و flip افقی
+              processedImage = img.copyRotate(processedImage, angle: 90);
+              processedImage = img.flipHorizontal(processedImage);
+              break;
+            case 7: // چرخش 270 درجه CW و flip افقی
+              processedImage = img.copyRotate(processedImage, angle: 270);
+              processedImage = img.flipHorizontal(processedImage);
+              break;
+          }
+        }
+      }
 
       // تنظیم اندازه تصویر
       if (processedImage.width > 1080 || processedImage.height > 1920) {
@@ -72,40 +112,8 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
         );
       }
 
-      // اعمال تغییرات برای نسبت تصویر
-      if (processedImage.width / processedImage.height < 16 / 9) {
-        const bgWidth = 1080;
-        const bgHeight = 1920;
-
-        final background = img.Image(
-          width: bgWidth,
-          height: bgHeight,
-          format: img.Format.uint8,
-        );
-
-        final offsetX = (bgWidth - processedImage.width) ~/ 2;
-        final offsetY = (bgHeight - processedImage.height) ~/ 2;
-
-        img.compositeImage(
-          background,
-          processedImage,
-          dstX: offsetX,
-          dstY: offsetY,
-          blend: img.BlendMode.alpha,
-        );
-
-        processedImage = background;
-      }
-
-      // حذف اطلاعات EXIF و تبدیل به JPEG
-      processedImage.exif.clear();
-
-      return Uint8List.fromList(
-        img.encodeJpg(
-          processedImage,
-          quality: 85,
-        ),
-      );
+      // تبدیل به فرمت JPEG با کیفیت مناسب
+      return Uint8List.fromList(img.encodeJpg(processedImage, quality: 85));
     } catch (e) {
       debugPrint('Error processing image: $e');
       return null;

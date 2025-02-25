@@ -1,8 +1,8 @@
 // story_system.dart
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 import 'dart:typed_data';
-import 'package:Vista/view/screen/PublicPosts/profileScreen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -491,75 +491,41 @@ class _AddStoryButton extends ConsumerWidget {
       source: ImageSource.gallery,
       imageQuality: 85,
       maxWidth: 1080,
-      requestFullMetadata: true, // این خط برای دریافت متادیتاهای EXIF ضروری است
+      requestFullMetadata: true,
     );
 
     if (pickedFile != null) {
       if (!context.mounted) return;
 
-      // خواندن EXIF برای تشخیص جهت تصویر
-      final bytes = await pickedFile.readAsBytes();
-      final originalImage = img.decodeImage(bytes);
+      // اول به صفحه ویرایشگر برو
+      final editedImage = await Navigator.push<Uint8List>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ImageEditorScreen(imagePath: pickedFile.path),
+        ),
+      );
 
-      if (originalImage != null) {
-        // تصحیح جهت تصویر قبل از ویرایش
-        img.Image correctedImage;
-        if (originalImage.exif.imageIfd.orientation == 6) {
-          correctedImage = img.copyRotate(originalImage, angle: 90);
-        } else if (originalImage.exif.imageIfd.orientation == 3) {
-          correctedImage = img.copyRotate(originalImage, angle: 180);
-        } else if (originalImage.exif.imageIfd.orientation == 8) {
-          correctedImage = img.copyRotate(originalImage, angle: 270);
-        } else {
-          correctedImage = originalImage;
-        }
+      // اگر تصویر ویرایش شده برگشت
+      if (editedImage != null && context.mounted) {
+        try {
+          final tempDir = await getTemporaryDirectory();
+          final tempFile = File('${tempDir.path}/edited_story.jpg');
+          await tempFile.writeAsBytes(editedImage);
 
-        // ذخیره تصویر تصحیح شده
-        final tempDir = await getTemporaryDirectory();
-        final tempFile = File('${tempDir.path}/temp_corrected.jpg');
-        await tempFile.writeAsBytes(img.encodeJpg(correctedImage));
+          final service = ref.read(storyServiceProvider);
+          await service.uploadImageStory(tempFile);
 
-        // باز کردن صفحه ویرایشگر با تصویر تصحیح شده
-        final editedImage = await Navigator.push<Uint8List>(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ImageEditorScreen(imagePath: tempFile.path),
-          ),
-        );
-
-        // ادامه روند قبلی...
-        if (editedImage != null && context.mounted) {
-          try {
-            // Decode کردن تصویر
-            final editedImg = img.decodeImage(editedImage);
-            if (editedImg == null) {
-              throw Exception('تصویر ویرایش‌شده نامعتبر است');
-            }
-            // چرخش 180 درجه
-            final rotatedImage = img.copyRotate(editedImg, angle: 180);
-            // اعمال flip افقی برای اصلاح تغییر مکان چپ/راست
-            final fixedImage = img.flipHorizontal(rotatedImage);
-            final fixedBytes = Uint8List.fromList(img.encodeJpg(fixedImage));
-
-            final tempDir = await getTemporaryDirectory();
-            final tempFile = File('${tempDir.path}/edited_story.jpg');
-            await tempFile.writeAsBytes(fixedBytes);
-
-            final service = ref.read(storyServiceProvider);
-            await service.uploadImageStory(tempFile);
-
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('استوری با موفقیت اضافه شد')),
-              );
-              ref.invalidate(storyUsersProvider);
-            }
-          } catch (e) {
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('خطا: ${e.toString()}')),
-              );
-            }
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('استوری با موفقیت اضافه شد')),
+            );
+            ref.invalidate(storyUsersProvider);
+          }
+        } catch (e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('خطا: ${e.toString()}')),
+            );
           }
         }
       }
@@ -714,18 +680,18 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     _preloadedImages.clear();
     _trackedStoryViews.clear();
     // _animationController.dispose();
-    _pageController.dispose();
+    // _pageController.dispose();
   }
 
   @override
   void dispose() {
     _isDisposed = true;
+    if (_animationController.isAnimating) {
+      _animationController.stop();
+    }
+    _cleanupResources();
     _animationController.dispose();
     _pageController.dispose();
-    _clearImageCache();
-    _cleanupResources();
-    _preloadedImages.clear();
-    _trackedStoryViews.clear();
     super.dispose();
   }
 
@@ -881,27 +847,77 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     );
   }
 
+// در متد _buildPageView تغییرات زیر را اعمال کنید
   Widget _buildPageView() {
     return PageView.builder(
       controller: _pageController,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: _getTotalStoryCount(),
       itemBuilder: (context, index) {
+        // اضافه کردن بررسی‌های بیشتر برای جلوگیری از کرش
+        if (_isDisposed) return Container(color: Colors.black);
+
         final story = _getStoryByGlobalIndex(index);
+        if (story.mediaUrl == null || story.mediaUrl.isEmpty) {
+          return const Center(child: Text('استوری یافت نشد'));
+        }
+
         return Hero(
-          tag: 'story-${story.id}',
-          child: AnimatedOpacity(
-            duration: const Duration(milliseconds: 300),
-            opacity: _isLoading ? 0.0 : 1.0,
-            child: CachedNetworkImage(
-              imageUrl: story.mediaUrl,
-              fit: BoxFit.cover,
-              placeholder: (context, url) => Container(color: Colors.black),
-              errorWidget: (context, url, error) => const Center(
-                child: Icon(Icons.error, color: Colors.white),
+          tag: 'story-${story.id ?? "unknown"}',
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // پس‌زمینه ساده با رنگ مشکی
+              Container(color: Colors.black),
+
+              // تصویر اصلی با ابعاد واقعی در مرکز
+              Center(
+                child: SizedBox(
+                  width: MediaQuery.of(context).size.width,
+                  height: MediaQuery.of(context).size.height,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 300),
+                    opacity: _isLoading ? 0.0 : 1.0,
+                    child: CachedNetworkImage(
+                      imageUrl: story.mediaUrl,
+                      fit: BoxFit.contain,
+                      memCacheWidth: 1080,
+                      memCacheHeight: 1920,
+                      placeholder: (context, url) => Container(
+                        color: Colors.transparent,
+                        child: const Center(
+                          child: CircularProgressIndicator(color: Colors.white),
+                        ),
+                      ),
+                      errorWidget: (context, url, error) => const Center(
+                        child: Icon(Icons.error, color: Colors.white),
+                      ),
+                      cacheManager: CustomCacheManager.instance,
+                    ),
+                  ),
+                ),
               ),
-              cacheManager: CustomCacheManager.instance,
-            ),
+
+              // افکت تیره کردن پس‌زمینه برای بهبود خوانایی متن
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: 150,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.7),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -1232,8 +1248,8 @@ class CustomCacheManager {
     _instance ??= CacheManager(
       Config(
         key,
-        stalePeriod: const Duration(hours: 24), // کاهش زمان نگهداری کش
-        maxNrOfCacheObjects: 50, // محدود کردن تعداد تصاویر کش شده
+        stalePeriod: const Duration(days: 1), // کاهش زمان نگهداری کش
+        maxNrOfCacheObjects: 100, // محدود کردن تعداد تصاویر کش شده
         repo: JsonCacheInfoRepository(databaseName: key),
         fileService: HttpFileService(),
       ),
