@@ -1,13 +1,15 @@
 // story_system.dart
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
+import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
+import 'package:exif/exif.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -491,45 +493,152 @@ class _AddStoryButton extends ConsumerWidget {
       source: ImageSource.gallery,
       imageQuality: 85,
       maxWidth: 1080,
+      maxHeight: 1920,
       requestFullMetadata: true,
     );
 
-    if (pickedFile != null) {
-      if (!context.mounted) return;
+    if (pickedFile != null && context.mounted) {
+      try {
+        // خواندن داده‌های EXIF
+        final fileBytes = await pickedFile.readAsBytes();
+        final exifData = await readExifFromBytes(fileBytes);
 
-      // اول به صفحه ویرایشگر برو
-      final editedImage = await Navigator.push<Uint8List>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ImageEditorScreen(imagePath: pickedFile.path),
-        ),
-      );
+        // چرخش تصویر بر اساس Orientation
+        File rotatedFile =
+            await _rotateImageBasedOnExif(pickedFile.path, exifData);
 
-      // اگر تصویر ویرایش شده برگشت
-      if (editedImage != null && context.mounted) {
-        try {
-          final tempDir = await getTemporaryDirectory();
-          final tempFile = File('${tempDir.path}/edited_story.jpg');
-          await tempFile.writeAsBytes(editedImage);
+        if (context.mounted) {
+          final editedImage = await Navigator.push<Uint8List>(
+            context,
+            MaterialPageRoute(
+              builder: (_) =>
+                  StoryEditorScreen(initialImagePath: rotatedFile.path),
+            ),
+          );
 
-          final service = ref.read(storyServiceProvider);
-          await service.uploadImageStory(tempFile);
+          if (editedImage != null && context.mounted) {
+            final finalFile =
+                File('${(await getTemporaryDirectory()).path}/final_story.png');
+            await finalFile.writeAsBytes(editedImage);
 
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('استوری با موفقیت اضافه شد')),
-            );
-            ref.invalidate(storyUsersProvider);
+            final service = ref.read(storyServiceProvider);
+            await service.uploadImageStory(finalFile);
+
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('استوری با موفقیت اضافه شد')),
+              );
+              ref.invalidate(storyUsersProvider);
+            }
           }
-        } catch (e) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('خطا: ${e.toString()}')),
-            );
-          }
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('خطا: ${e.toString()}')),
+          );
         }
       }
     }
+  }
+
+  Future<File> _rotateImageBasedOnExif(
+      String imagePath, Map<String, IfdTag> exifData) async {
+    final file = File(imagePath);
+    final bytes = await file.readAsBytes();
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+
+    final orientation = exifData['Image Orientation']?.printable;
+    int rotationAngle = _getRotationAngle(orientation);
+
+    if (rotationAngle != 0) {
+      final pictureRecorder = ui.PictureRecorder();
+      final canvas = Canvas(pictureRecorder);
+      final radians = rotationAngle * (math.pi / 180);
+
+      // محاسبه ابعاد جدید
+      final width = rotationAngle == 90 || rotationAngle == 270
+          ? image.height
+          : image.width;
+      final height = rotationAngle == 90 || rotationAngle == 270
+          ? image.width
+          : image.height;
+
+      canvas.translate(width / 2, height / 2);
+      canvas.rotate(radians);
+      canvas.translate(-width / 2, -height / 2);
+
+      canvas.drawImage(image, Offset.zero, Paint());
+
+      final picture = pictureRecorder.endRecording();
+      final img = await picture.toImage(width, height);
+      final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+      final buffer = byteData!.buffer.asUint8List();
+
+      final directory = await getTemporaryDirectory();
+      final filePath = '${directory.path}/rotated_image.png';
+      await File(filePath).writeAsBytes(buffer);
+      return File(filePath);
+    }
+
+    return file;
+  }
+
+  int _getRotationAngle(String? orientation) {
+    switch (orientation) {
+      case 'Rotate 90 CW':
+        return 90;
+      case 'Rotate 180':
+        return 180;
+      case 'Rotate 270 CW':
+        return 270;
+      default:
+        return 0;
+    }
+  }
+
+// متد کمکی برای چرخش 180 درجه تصویر
+  Future<File> _rotateImage180(File imageFile) async {
+    // خواندن تصویر به صورت byte
+    final Uint8List bytes = await imageFile.readAsBytes();
+    final ui.Codec codec = await ui.instantiateImageCodec(bytes);
+    final ui.FrameInfo frameInfo = await codec.getNextFrame();
+    final ui.Image image = frameInfo.image;
+
+    // ایجاد یک canvas برای چرخش تصویر
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    // تنظیم canvas برای چرخش 180 درجه
+    canvas.translate(image.width / 2, image.height / 2);
+    canvas.rotate(math.pi); // 180 درجه
+    canvas.translate(-image.width / 2, -image.height / 2);
+
+    // کشیدن تصویر روی canvas
+    canvas.drawImage(image, Offset.zero, Paint());
+
+    // تبدیل canvas به تصویر
+    final ui.Picture picture = recorder.endRecording();
+    final ui.Image rotatedImage =
+        await picture.toImage(image.width, image.height);
+    final ByteData? rotatedByteData =
+        await rotatedImage.toByteData(format: ui.ImageByteFormat.png);
+
+    if (rotatedByteData == null) {
+      return imageFile; // برگرداندن تصویر اصلی در صورت خطا
+    }
+
+    // ذخیره تصویر چرخیده شده
+    final Uint8List rotatedBytes = rotatedByteData.buffer.asUint8List();
+    final String dir = path.dirname(imageFile.path);
+    final String newPath =
+        path.join(dir, 'rotated_${path.basename(imageFile.path)}');
+    final File rotatedFile = File(newPath);
+    await rotatedFile.writeAsBytes(rotatedBytes);
+
+    return rotatedFile;
   }
 
   @override
@@ -854,11 +963,10 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       physics: const NeverScrollableScrollPhysics(),
       itemCount: _getTotalStoryCount(),
       itemBuilder: (context, index) {
-        // اضافه کردن بررسی‌های بیشتر برای جلوگیری از کرش
         if (_isDisposed) return Container(color: Colors.black);
 
         final story = _getStoryByGlobalIndex(index);
-        if (story.mediaUrl == null || story.mediaUrl.isEmpty) {
+        if (story.mediaUrl.isEmpty) {
           return const Center(child: Text('استوری یافت نشد'));
         }
 
@@ -867,10 +975,8 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // پس‌زمینه ساده با رنگ مشکی
               Container(color: Colors.black),
 
-              // تصویر اصلی با ابعاد واقعی در مرکز
               Center(
                 child: SizedBox(
                   width: MediaQuery.of(context).size.width,
@@ -878,27 +984,35 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                   child: AnimatedOpacity(
                     duration: const Duration(milliseconds: 300),
                     opacity: _isLoading ? 0.0 : 1.0,
-                    child: CachedNetworkImage(
-                      imageUrl: story.mediaUrl,
-                      fit: BoxFit.contain,
-                      memCacheWidth: 1080,
-                      memCacheHeight: 1920,
-                      placeholder: (context, url) => Container(
-                        color: Colors.transparent,
-                        child: const Center(
-                          child: CircularProgressIndicator(color: Colors.white),
+                    child: Transform(
+                      // اضافه کردن Transform برای حل مشکل چرخش
+                      alignment: Alignment.center,
+                      transform: Matrix4.rotationY(0), // حذف چرخش
+                      child: CachedNetworkImage(
+                        imageUrl: story.mediaUrl,
+                        fit: BoxFit.contain,
+                        memCacheWidth: 1080,
+                        memCacheHeight: 1920,
+                        alignment: Alignment.center,
+                        filterQuality: FilterQuality.high,
+                        placeholder: (context, url) => Container(
+                          color: Colors.transparent,
+                          child: const Center(
+                            child:
+                                CircularProgressIndicator(color: Colors.white),
+                          ),
                         ),
+                        errorWidget: (context, url, error) => const Center(
+                          child: Icon(Icons.error, color: Colors.white),
+                        ),
+                        cacheManager: CustomCacheManager.instance,
                       ),
-                      errorWidget: (context, url, error) => const Center(
-                        child: Icon(Icons.error, color: Colors.white),
-                      ),
-                      cacheManager: CustomCacheManager.instance,
                     ),
                   ),
                 ),
               ),
 
-              // افکت تیره کردن پس‌زمینه برای بهبود خوانایی متن
+              // افکت تیره کردن پس‌زمینه
               Positioned(
                 left: 0,
                 right: 0,
