@@ -1,15 +1,11 @@
 // story_system.dart
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' as ui;
-import 'package:exif/exif.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -195,7 +191,7 @@ class StoryService {
         profiles!inner(username, avatar_url, is_verified),
         media_url,
         created_at
-      ''').order('created_at', ascending: false).limit(100),
+      ''').order('created_at'), // حذف descending برای نمایش قدیمی به جدید
         _client
             .from('story_views')
             .select('story_id, is_viewed')
@@ -237,6 +233,11 @@ class StoryService {
             stories: [story],
           ),
         );
+      }
+
+      // مرتب‌سازی استوری‌های هر کاربر بر اساس زمان
+      for (var user in usersMap.values) {
+        user.stories.sort((a, b) => a.createdAt.compareTo(b.createdAt));
       }
 
       final currentUserStories = usersMap[currentUserId];
@@ -499,20 +500,15 @@ class _AddStoryButton extends ConsumerWidget {
 
     if (pickedFile != null && context.mounted) {
       try {
-        // خواندن داده‌های EXIF
-        final fileBytes = await pickedFile.readAsBytes();
-        final exifData = await readExifFromBytes(fileBytes);
-
-        // چرخش تصویر بر اساس Orientation
-        File rotatedFile =
-            await _rotateImageBasedOnExif(pickedFile.path, exifData);
+        // مستقیماً از فایل انتخاب شده استفاده می‌کنیم بدون چرخش
+        File imageFile = File(pickedFile.path);
 
         if (context.mounted) {
           final editedImage = await Navigator.push<Uint8List>(
             context,
             MaterialPageRoute(
               builder: (_) =>
-                  StoryEditorScreen(initialImagePath: rotatedFile.path),
+                  StoryEditorScreen(initialImagePath: imageFile.path),
             ),
           );
 
@@ -540,105 +536,6 @@ class _AddStoryButton extends ConsumerWidget {
         }
       }
     }
-  }
-
-  Future<File> _rotateImageBasedOnExif(
-      String imagePath, Map<String, IfdTag> exifData) async {
-    final file = File(imagePath);
-    final bytes = await file.readAsBytes();
-    final codec = await ui.instantiateImageCodec(bytes);
-    final frame = await codec.getNextFrame();
-    final image = frame.image;
-
-    final orientation = exifData['Image Orientation']?.printable;
-    int rotationAngle = _getRotationAngle(orientation);
-
-    if (rotationAngle != 0) {
-      final pictureRecorder = ui.PictureRecorder();
-      final canvas = Canvas(pictureRecorder);
-      final radians = rotationAngle * (math.pi / 180);
-
-      // محاسبه ابعاد جدید
-      final width = rotationAngle == 90 || rotationAngle == 270
-          ? image.height
-          : image.width;
-      final height = rotationAngle == 90 || rotationAngle == 270
-          ? image.width
-          : image.height;
-
-      canvas.translate(width / 2, height / 2);
-      canvas.rotate(radians);
-      canvas.translate(-width / 2, -height / 2);
-
-      canvas.drawImage(image, Offset.zero, Paint());
-
-      final picture = pictureRecorder.endRecording();
-      final img = await picture.toImage(width, height);
-      final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
-      final buffer = byteData!.buffer.asUint8List();
-
-      final directory = await getTemporaryDirectory();
-      final filePath = '${directory.path}/rotated_image.png';
-      await File(filePath).writeAsBytes(buffer);
-      return File(filePath);
-    }
-
-    return file;
-  }
-
-  int _getRotationAngle(String? orientation) {
-    switch (orientation) {
-      case 'Rotate 90 CW':
-        return 90;
-      case 'Rotate 180':
-        return 180;
-      case 'Rotate 270 CW':
-        return 270;
-      default:
-        return 0;
-    }
-  }
-
-// متد کمکی برای چرخش 180 درجه تصویر
-  Future<File> _rotateImage180(File imageFile) async {
-    // خواندن تصویر به صورت byte
-    final Uint8List bytes = await imageFile.readAsBytes();
-    final ui.Codec codec = await ui.instantiateImageCodec(bytes);
-    final ui.FrameInfo frameInfo = await codec.getNextFrame();
-    final ui.Image image = frameInfo.image;
-
-    // ایجاد یک canvas برای چرخش تصویر
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-
-    // تنظیم canvas برای چرخش 180 درجه
-    canvas.translate(image.width / 2, image.height / 2);
-    canvas.rotate(math.pi); // 180 درجه
-    canvas.translate(-image.width / 2, -image.height / 2);
-
-    // کشیدن تصویر روی canvas
-    canvas.drawImage(image, Offset.zero, Paint());
-
-    // تبدیل canvas به تصویر
-    final ui.Picture picture = recorder.endRecording();
-    final ui.Image rotatedImage =
-        await picture.toImage(image.width, image.height);
-    final ByteData? rotatedByteData =
-        await rotatedImage.toByteData(format: ui.ImageByteFormat.png);
-
-    if (rotatedByteData == null) {
-      return imageFile; // برگرداندن تصویر اصلی در صورت خطا
-    }
-
-    // ذخیره تصویر چرخیده شده
-    final Uint8List rotatedBytes = rotatedByteData.buffer.asUint8List();
-    final String dir = path.dirname(imageFile.path);
-    final String newPath =
-        path.join(dir, 'rotated_${path.basename(imageFile.path)}');
-    final File rotatedFile = File(newPath);
-    await rotatedFile.writeAsBytes(rotatedBytes);
-
-    return rotatedFile;
   }
 
   @override
@@ -694,6 +591,11 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   // افزودن سیستم مدیریت حافظه
   final _imageCache = <String, Uint8List>{};
   static const _maxCachedImages = 5;
+  bool _isPaused = false; // اضافه کردن متغیر جدید
+  final DraggableScrollableController _dragController =
+      DraggableScrollableController();
+  bool _isViewersVisible = false;
+
   @override
   bool get wantKeepAlive => true;
   @override
@@ -701,6 +603,9 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     super.initState();
     _initialize();
     _preloadNextStoryImage();
+
+    // اضافه کردن listener برای کنترلر
+    _dragController.addListener(_onDragUpdate);
   }
 
   void _initialize() {
@@ -795,12 +700,14 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   @override
   void dispose() {
     _isDisposed = true;
-    if (_animationController.isAnimating) {
-      _animationController.stop();
-    }
-    _cleanupResources();
     _animationController.dispose();
     _pageController.dispose();
+    _clearImageCache();
+    _cleanupResources();
+    _preloadedImages.clear();
+    _trackedStoryViews.clear();
+    _dragController.removeListener(_onDragUpdate);
+    _dragController.dispose();
     super.dispose();
   }
 
@@ -815,22 +722,205 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     _imageCache[url] = bytes;
   }
 
+  void _onDragUpdate() {
+    if (!mounted) return;
+
+    final extent = _dragController.size;
+    if (extent > 0) {
+      if (!_isPaused) {
+        setState(() => _isPaused = true);
+        _animationController.stop();
+      }
+    } else {
+      if (_isViewersVisible) {
+        setState(() => _isViewersVisible = false);
+      }
+      if (_isPaused && mounted) {
+        setState(() => _isPaused = false);
+        _animationController.forward();
+      }
+    }
+  }
+
+  void _handleVerticalDrag(DragUpdateDetails details) {
+    if (details.primaryDelta! < -20 && !_isViewersVisible && mounted) {
+      setState(() {
+        _isViewersVisible = true;
+        _isPaused = true; // متوقف کردن تایمر استوری
+      });
+      _animationController.stop();
+
+      // نمایش BottomSheet با StoryViewersBottomSheet
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => StoryViewersBottomSheet(
+          storyId: _getCurrentStory().id!,
+          scrollController: ScrollController(),
+          onDismiss: () {
+            setState(() {
+              _isViewersVisible = false;
+              _isPaused = false; // شروع دوباره تایمر استوری
+            });
+            _animationController.forward();
+          },
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: GestureDetector(
-        onTapDown: _handleTapDown,
-        onLongPress: () => _animationController.stop(),
-        onLongPressUp: () => _animationController.forward(),
-        child: Stack(
-          children: [
-            _buildPageView(),
-            _buildProgressBar(),
-            _buildHeader(),
-            if (_isLoading) _buildLoadingIndicator(),
-          ],
-        ),
+      body: Stack(
+        children: [
+          GestureDetector(
+            onTapDown: _handleTapDown,
+            onLongPress: () {
+              _animationController.stop();
+              setState(() => _isPaused = true);
+            },
+            onLongPressUp: () {
+              if (!_isPaused) {
+                _animationController.forward();
+              }
+            },
+            onVerticalDragUpdate: _handleVerticalDrag, // اتصال به متد جدید
+            child: Stack(
+              children: [
+                _buildPageView(),
+                _buildProgressBar(),
+                _buildHeader(),
+                if (_isLoading) _buildLoadingIndicator(),
+                if (_isPaused)
+                  const Center(
+                    child: Icon(
+                      Icons.pause_circle_outline,
+                      color: Colors.white,
+                      size: 50,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          // Viewers sheet
+          NotificationListener<DraggableScrollableNotification>(
+            onNotification: (notification) {
+              if (notification.extent < 0.1) {
+                setState(() {
+                  _isViewersVisible = false;
+                  _isPaused = false;
+                });
+                _animationController.forward();
+              } else {
+                setState(() => _isPaused = true);
+                _animationController.stop();
+              }
+              return true;
+            },
+            child: DraggableScrollableSheet(
+              controller: _dragController,
+              initialChildSize: 0.0,
+              minChildSize: 0.0,
+              maxChildSize: 0.8,
+              snap: true,
+              snapSizes: const [0.0, 0.7],
+              builder: (context, scrollController) {
+                final story = _getCurrentStory();
+                if (story.id == null) return const SizedBox();
+
+                return AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: _isViewersVisible ? 1.0 : 0.0,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(20),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        // Drag indicator
+                        Container(
+                          margin: const EdgeInsets.symmetric(vertical: 10),
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[400],
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        // Title
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          child: Text(
+                            'بازدیدکنندگان',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        // Viewers list
+                        Expanded(
+                          child: FutureBuilder<List<Map<String, dynamic>>>(
+                            future: _fetchStoryViews(story.id!),
+                            builder: (context, snapshot) {
+                              if (!_isViewersVisible) return const SizedBox();
+
+                              if (snapshot.connectionState ==
+                                  ConnectionState.waiting) {
+                                return const Center(
+                                    child: CircularProgressIndicator());
+                              }
+
+                              if (snapshot.hasError) {
+                                return Center(
+                                    child: Text('خطا: ${snapshot.error}'));
+                              }
+
+                              final views = snapshot.data ?? [];
+                              if (views.isEmpty) {
+                                return const Center(
+                                  child: Text('هنوز بازدیدی ثبت نشده است'),
+                                );
+                              }
+
+                              return ListView.builder(
+                                controller: scrollController,
+                                itemCount: views.length,
+                                itemBuilder: (context, index) {
+                                  final view = views[index];
+                                  return ListTile(
+                                    leading: CircleAvatar(
+                                      backgroundImage:
+                                          CachedNetworkImageProvider(
+                                        view['profiles']['avatar_url'] ??
+                                            defaultAvatarUrl,
+                                      ),
+                                    ),
+                                    title: Text(view['profiles']['username'] ??
+                                        'کاربر ناشناس'),
+                                    subtitle: Text(timeAgo(
+                                        DateTime.parse(view['viewed_at']))),
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          )
+        ],
       ),
     );
   }
@@ -956,82 +1046,27 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     );
   }
 
-// در متد _buildPageView تغییرات زیر را اعمال کنید
   Widget _buildPageView() {
     return PageView.builder(
       controller: _pageController,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: _getTotalStoryCount(),
       itemBuilder: (context, index) {
-        if (_isDisposed) return Container(color: Colors.black);
-
         final story = _getStoryByGlobalIndex(index);
-        if (story.mediaUrl.isEmpty) {
-          return const Center(child: Text('استوری یافت نشد'));
-        }
-
         return Hero(
-          tag: 'story-${story.id ?? "unknown"}',
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Container(color: Colors.black),
-
-              Center(
-                child: SizedBox(
-                  width: MediaQuery.of(context).size.width,
-                  height: MediaQuery.of(context).size.height,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 300),
-                    opacity: _isLoading ? 0.0 : 1.0,
-                    child: Transform(
-                      // اضافه کردن Transform برای حل مشکل چرخش
-                      alignment: Alignment.center,
-                      transform: Matrix4.rotationY(0), // حذف چرخش
-                      child: CachedNetworkImage(
-                        imageUrl: story.mediaUrl,
-                        fit: BoxFit.contain,
-                        memCacheWidth: 1080,
-                        memCacheHeight: 1920,
-                        alignment: Alignment.center,
-                        filterQuality: FilterQuality.high,
-                        placeholder: (context, url) => Container(
-                          color: Colors.transparent,
-                          child: const Center(
-                            child:
-                                CircularProgressIndicator(color: Colors.white),
-                          ),
-                        ),
-                        errorWidget: (context, url, error) => const Center(
-                          child: Icon(Icons.error, color: Colors.white),
-                        ),
-                        cacheManager: CustomCacheManager.instance,
-                      ),
-                    ),
-                  ),
-                ),
+          tag: 'story-${story.id}',
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 300),
+            opacity: _isLoading ? 0.0 : 1.0,
+            child: CachedNetworkImage(
+              imageUrl: story.mediaUrl,
+              fit: BoxFit.cover,
+              placeholder: (context, url) => Container(color: Colors.black),
+              errorWidget: (context, url, error) => const Center(
+                child: Icon(Icons.error, color: Colors.white),
               ),
-
-              // افکت تیره کردن پس‌زمینه
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                height: 150,
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                      colors: [
-                        Colors.black.withOpacity(0.7),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
+              cacheManager: CustomCacheManager.instance,
+            ),
           ),
         );
       },
@@ -1043,13 +1078,31 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   void _handleTapDown(TapDownDetails details) {
     final screenWidth = MediaQuery.of(context).size.width;
     final dx = details.globalPosition.dx;
+    final dy = details.globalPosition.dy;
+
+    // تعریف محدوده آیکون های هدر
+    final headerHeight = 100.0; // ارتفاع تقریبی هدر
+    final isInHeaderArea =
+        dy <= headerHeight + MediaQuery.of(context).padding.top;
+
+    // اگر کلیک در ناحیه هدر بود، نباید به استوری بعدی برود
+    if (isInHeaderArea) {
+      return;
+    }
 
     if (dx < screenWidth * 0.3) {
       _handlePreviousStory();
     } else if (dx > screenWidth * 0.7) {
       _handleNextStory();
     } else {
-      _showStoryOptions();
+      setState(() {
+        _isPaused = !_isPaused;
+        if (_isPaused) {
+          _animationController.stop();
+        } else {
+          _animationController.forward();
+        }
+      });
     }
   }
 
@@ -1109,6 +1162,9 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   }
 
   void _showStoryOptions() {
+    // استپ کردن انیمیشن قبل از نمایش باتم شیت
+    _animationController.stop();
+
     final story = _getCurrentStory();
     final isOwner = story.userId == supabase.auth.currentUser?.id;
 
@@ -1175,7 +1231,13 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
           ),
         ),
       ),
-    );
+    ).then((_) {
+      // شروع مجدد انیمیشن بعد از بسته شدن باتم شیت
+      // فقط اگر استوری در حالت pause نباشد
+      if (!_isPaused) {
+        _animationController.forward();
+      }
+    });
   }
 
   void _showReportDialog(String storyId) {
@@ -1242,6 +1304,27 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     } catch (e) {
       debugPrint('Error tracking story view: $e');
     }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchStoryViews(String storyId) async {
+    final currentUserId = supabase.auth.currentUser?.id;
+    if (currentUserId == null) return [];
+
+    final response = await supabase
+        .from('story_views')
+        .select('''
+          viewer_id,
+          viewed_at,
+          profiles:viewer_id(
+            username,
+            avatar_url
+          )
+        ''')
+        .eq('story_id', storyId)
+        .neq('viewer_id', currentUserId)
+        .order('viewed_at', ascending: false);
+
+    return List<Map<String, dynamic>>.from(response);
   }
 
   AppStoryContent _getCurrentStory() {
@@ -1337,9 +1420,19 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                   ],
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.more_vert, color: Colors.white),
-                onPressed: _showStoryOptions,
+              // تغییر در آیکون more_vert
+              GestureDetector(
+                onTap: () {
+                  _showStoryOptions();
+                },
+                child: const Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: Icon(
+                    Icons.more_vert,
+                    color: Colors.white,
+                    size: 30,
+                  ),
+                ),
               ),
               IconButton(
                 icon: const Icon(Icons.close, color: Colors.white),
@@ -1362,8 +1455,8 @@ class CustomCacheManager {
     _instance ??= CacheManager(
       Config(
         key,
-        stalePeriod: const Duration(days: 1), // کاهش زمان نگهداری کش
-        maxNrOfCacheObjects: 100, // محدود کردن تعداد تصاویر کش شده
+        stalePeriod: const Duration(hours: 24), // کاهش زمان نگهداری کش
+        maxNrOfCacheObjects: 50, // محدود کردن تعداد تصاویر کش شده
         repo: JsonCacheInfoRepository(databaseName: key),
         fileService: HttpFileService(),
       ),

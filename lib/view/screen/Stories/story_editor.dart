@@ -1,13 +1,9 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'dart:math' as math;
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -203,7 +199,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
   late Animation<Offset> _toolbarAnimation;
 
   late TabController _tabController;
-  int _currentTabIndex = 0;
+  int _currentTabIndex = -1;
 
   // برای انیمیشن المان‌ها
   final Map<int, AnimationController> _elementAnimControllers = {};
@@ -235,7 +231,12 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
       setState(() {
-        _currentTabIndex = _tabController.index;
+        // اگر تب فعلی همان تب انتخاب شده باشد، آن را غیرفعال کنیم
+        if (_currentTabIndex == _tabController.index) {
+          _currentTabIndex = -1;
+        } else {
+          _currentTabIndex = _tabController.index;
+        }
         _selectedElement = null;
       });
     });
@@ -1719,12 +1720,549 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
     );
   }
 
+  Widget _buildSideToolbar() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 10,
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 12),
+          _buildToolbarItem(
+            icon: Icons.text_fields,
+            isSelected: _currentTabIndex == 0,
+            onTap: () => _setCurrentTab(0),
+          ),
+          _buildToolbarItem(
+            icon: Icons.brush,
+            isSelected: _currentTabIndex == 1,
+            onTap: () => _setCurrentTab(1),
+          ),
+          _buildToolbarItem(
+            icon: Icons.filter,
+            isSelected: _currentTabIndex == 2,
+            onTap: () => _setCurrentTab(2),
+          ),
+          _buildToolbarItem(
+            icon: Icons.layers,
+            isSelected: _currentTabIndex == 3,
+            onTap: () => _setCurrentTab(3),
+          ),
+          // اضافه کردن سایر آیکون‌های مورد نیاز
+        ],
+      ),
+    );
+  }
+
+  Widget _buildToolbarItem({
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.blue.withOpacity(0.3) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? Colors.blue : Colors.white,
+              size: 28,
+            ),
+            const SizedBox(height: 4),
+            if (isSelected)
+              Container(
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(
+                  color: Colors.blue,
+                  shape: BoxShape.circle,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _setCurrentTab(int index) {
+    setState(() {
+      if (_currentTabIndex == index) {
+        _currentTabIndex = -1; // برای بستن پنل در صورت کلیک مجدد
+      } else {
+        _currentTabIndex = index;
+        _selectedElement = null;
+      }
+    });
+  }
+
+  Widget _buildOptionPanel() {
+    return AnimatedOpacity(
+      opacity: _currentTabIndex != -1 ? 1.0 : 0.0,
+      duration: const Duration(milliseconds: 200),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.6),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white10, width: 1),
+        ),
+        child: _getOptionsForCurrentTab(),
+      ),
+    );
+  }
+
+  Widget _getOptionsForCurrentTab() {
+    switch (_currentTabIndex) {
+      case 0:
+        return _buildTextOptions();
+      case 1:
+        return _buildDrawingOptions();
+      case 2:
+        return _buildFilterOptions();
+      case 3:
+        return _buildLayersOptions();
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _buildTextOptions() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'افزودن متن',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // دکمه افزودن متن
+        InkWell(
+          onTap: _addTextElement,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: const [
+                Icon(Icons.add, color: Colors.white),
+                SizedBox(width: 8),
+                Text(
+                  'متن جدید',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // گزینه ویرایش متن (فقط اگر متنی انتخاب شده باشد)
+        if (_selectedElement != null &&
+            _selectedElement!.data is TextElementData)
+          InkWell(
+            onTap: () => _editTextElement(_selectedElement!),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: const [
+                  Icon(Icons.edit, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text(
+                    'ویرایش متن',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+        // اینجا می‌توانید گزینه‌های بیشتری اضافه کنید
+      ],
+    );
+  }
+
+  Widget _buildDrawingOptions() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'نقاشی',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // دکمه فعال/غیرفعال کردن حالت نقاشی
+        InkWell(
+          onTap: () {
+            setState(() {
+              _isDrawingMode = !_isDrawingMode;
+            });
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            decoration: BoxDecoration(
+              color: _isDrawingMode
+                  ? Colors.blue.withOpacity(0.3)
+                  : Colors.grey.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  _isDrawingMode ? Icons.check : Icons.brush,
+                  color: Colors.white,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _isDrawingMode ? 'در حال نقاشی' : 'شروع نقاشی',
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        if (_isDrawingMode) ...[
+          const SizedBox(height: 16),
+
+          // تنظیم اندازه قلم
+          Row(
+            children: [
+              const Text('اندازه:', style: TextStyle(color: Colors.white)),
+              Expanded(
+                child: Slider(
+                  value: _brushSize,
+                  min: 1,
+                  max: 30,
+                  divisions: 29,
+                  activeColor: Colors.blue,
+                  inactiveColor: Colors.grey,
+                  onChanged: (value) {
+                    setState(() {
+                      _brushSize = value;
+                    });
+                  },
+                ),
+              ),
+              Text(
+                _brushSize.toInt().toString(),
+                style: const TextStyle(color: Colors.white),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // انتخاب رنگ
+          const Text('رنگ:', style: TextStyle(color: Colors.white)),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                ...Colors.primaries.map((color) => _buildColorOption(color)),
+                _buildColorOption(Colors.white),
+                _buildColorOption(Colors.black),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // دکمه‌های بازگشت و پاک کردن
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              if (_drawingPoints.isNotEmpty)
+                InkWell(
+                  onTap: () {
+                    setState(() {
+                      _drawingPoints.removeLast();
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.undo, color: Colors.white),
+                  ),
+                ),
+              InkWell(
+                onTap: () {
+                  setState(() {
+                    _drawingPoints.clear();
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.delete, color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildFilterOptions() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'فیلترها',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Expanded(
+          child: GridView.builder(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 0.9,
+            ),
+            itemCount: _filters.length,
+            itemBuilder: (context, index) {
+              final entry = _filters.entries.elementAt(index);
+              final isSelected = _currentFilter == entry.key;
+
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _currentFilter = entry.key;
+                  });
+                },
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color:
+                                isSelected ? Colors.blue : Colors.transparent,
+                            width: 2,
+                          ),
+                          boxShadow: isSelected
+                              ? [
+                                  BoxShadow(
+                                    color: Colors.blue.withOpacity(0.3),
+                                    blurRadius: 6,
+                                  )
+                                ]
+                              : null,
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: ColorFiltered(
+                            colorFilter: entry.value,
+                            child: _imageFile != null
+                                ? Image.file(
+                                    _imageFile!,
+                                    fit: BoxFit.cover,
+                                  )
+                                : Container(color: Colors.grey),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      entry.key,
+                      style: TextStyle(
+                        color: isSelected ? Colors.blue : Colors.white,
+                        fontWeight:
+                            isSelected ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLayersOptions() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'لایه‌ها',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+        if (_selectedElement != null) ...[
+          // دکمه حذف
+          InkWell(
+            onTap: _deleteSelectedElement,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: const [
+                  Icon(Icons.delete, color: Colors.white, size: 20),
+                  SizedBox(width: 8),
+                  Text(
+                    'حذف',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // دکمه کپی
+          InkWell(
+            onTap: _duplicateSelectedElement,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: Colors.purple.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: const [
+                  Icon(Icons.copy, color: Colors.white, size: 20),
+                  SizedBox(width: 8),
+                  Text(
+                    'کپی',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // دکمه جلو آوردن
+          InkWell(
+            onTap: _bringElementForward,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: const [
+                  Icon(Icons.arrow_upward, color: Colors.white, size: 20),
+                  SizedBox(width: 8),
+                  Text(
+                    'آوردن به جلو',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // دکمه بردن به عقب
+          InkWell(
+            onTap: _sendElementBackward,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: const [
+                  Icon(Icons.arrow_downward, color: Colors.white, size: 20),
+                  SizedBox(width: 8),
+                  Text(
+                    'بردن به عقب',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ] else
+          const Center(
+            child: Text(
+              'یک المان را انتخاب کنید',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: SafeArea(
+      body: GestureDetector(
+        // با کلیک روی صفحه، تب‌ها بسته شوند
+        onTap: () {
+          setState(() {
+            _currentTabIndex = -1;
+            _selectedElement = null;
+          });
+        },
         child: Stack(
+          fit: StackFit.expand,
           children: [
             // تصویر انتخاب شده و محتوای اصلی
             if (_loadedImage != null)
@@ -1735,13 +2273,24 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
                 ),
               ),
 
-            // نوار ابزار پایین
+            // پنل ابزار کناری (جایگزین نوار ابزار پایین)
             Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: _buildToolbar(),
+              top: 60,
+              bottom: 20,
+              right: 10,
+              width: 80,
+              child: _buildSideToolbar(),
             ),
+
+            // پنل گزینه‌های انتخاب شده
+            if (_currentTabIndex != -1)
+              Positioned(
+                top: 60,
+                bottom: 20,
+                right: 100,
+                width: 200,
+                child: _buildOptionPanel(),
+              ),
 
             // دکمه‌های بالای صفحه
             Positioned(
@@ -1929,9 +2478,7 @@ class DrawingPainter extends CustomPainter {
         ..style = PaintingStyle.stroke;
 
       for (int i = 0; i < point.points.length - 1; i++) {
-        if (point.points[i + 1] != null) {
-          canvas.drawLine(point.points[i], point.points[i + 1], paint);
-        }
+        canvas.drawLine(point.points[i], point.points[i + 1], paint);
       }
     }
   }
