@@ -548,6 +548,26 @@ class CommentsBottomSheet extends ConsumerStatefulWidget {
 }
 
 class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
+  Widget _buildInteractionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    String size = 'normal',
+  }) {
+    final theme = Theme.of(context);
+    final double iconSize = size == 'small' ? 16 : 20;
+    final double fontSize = size == 'small' ? 12 : 14;
+
+    return TextButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: iconSize, color: theme.colorScheme.primary),
+      label: Text(
+        label,
+        style: TextStyle(fontSize: fontSize, color: theme.colorScheme.primary),
+      ),
+    );
+  }
+
   final TextEditingController commentController = TextEditingController();
   String? replyToCommentId;
   List<UserModel> mentionedUsers = [];
@@ -561,6 +581,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
       minChildSize: 0.5,
       maxChildSize: 0.95,
       builder: (context, scrollController) {
+        // اضافه کردن RefreshIndicator
         return Container(
           decoration: BoxDecoration(
             color: Theme.of(context).scaffoldBackgroundColor,
@@ -573,16 +594,21 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.grey[300],
+                  color: Colors.grey[500],
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
               Expanded(
-                child: ListView(
-                  controller: scrollController,
-                  children: [
-                    _buildCommentsSection(),
-                  ],
+                child: RefreshIndicator(
+                  onRefresh: () async {
+                    ref.invalidate(commentsProvider(widget.postId));
+                  },
+                  child: ListView(
+                    controller: scrollController,
+                    children: [
+                      _buildCommentsSection(),
+                    ],
+                  ),
                 ),
               ),
               SafeArea(
@@ -604,28 +630,70 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: double.infinity,
+        // سربرگ تب‌ها برای مدیریت بهتر کامنت‌ها
+        Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: const Directionality(
-            textDirection: TextDirection.rtl,
-            child: Text(
-              'نظرات:',
-              textAlign: TextAlign.right,
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Directionality(
+                  textDirection: TextDirection.rtl,
+                  child: Text(
+                    'نظرات:',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 10),
-        const Divider(color: Colors.grey, height: 1, endIndent: 75, indent: 25),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
+        const Divider(height: 1, endIndent: 16, indent: 16),
+        const SizedBox(height: 8),
         commentsAsyncValue.when(
           data: (comments) => comments.isEmpty
-              ? const Center(child: Text('هنوز کامنتی وجود ندارد'))
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      children: [
+                        Icon(Icons.chat_bubble_outline,
+                            size: 48, color: Colors.grey[400]),
+                        const SizedBox(height: 8),
+                        const Text('هنوز نظری ثبت نشده است.'),
+                        const SizedBox(height: 4),
+                        const Text('اولین نفری باشید که نظر می‌دهید!',
+                            style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                )
               : _buildCommentTree(comments),
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) =>
-              Center(child: Text('خطا در بارگذاری کامنت‌ها: $error')),
+          loading: () => const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24.0),
+              child: CircularProgressIndicator(),
+            ),
+          ),
+          error: (error, _) => Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                  const SizedBox(height: 8),
+                  Text('خطا در بارگذاری نظرات: $error'),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    onPressed: () =>
+                        ref.invalidate(commentsProvider(widget.postId)),
+                    child: const Text('تلاش مجدد'),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -660,12 +728,48 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
       itemBuilder: (context, index) {
         final rootComment = rootComments[index];
         return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildCommentItem(rootComment),
-            if (rootComment.replies.isNotEmpty)
-              _buildRepliesSection(rootComment.replies),
-            const Divider(height: 1),
+            // Parent comment container
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: Theme.of(context).dividerColor.withOpacity(0.1),
+                    width: 1,
+                  ),
+                ),
+              ),
+              child: Stack(
+                children: [
+                  if (rootComment.replies.isNotEmpty)
+                    Positioned(
+                      left: 28,
+                      top: 45,
+                      bottom: 0,
+                      width: 2,
+                      child: Container(
+                        color: Theme.of(context).dividerColor.withOpacity(0.5),
+                      ),
+                    ),
+                  Column(
+                    children: [
+                      _buildCommentItem(rootComment),
+                      if (rootComment.replies.isNotEmpty)
+                        _buildRepliesSection(rootComment.replies),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            // Add spacing between parent comments
+            Divider(
+              height: 1,
+              endIndent: 16,
+              indent: 16,
+              color: Colors.grey[800],
+            ),
+            const SizedBox(height: 16),
           ],
         );
       },
@@ -673,31 +777,59 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
   }
 
   Widget _buildRepliesSection(List<CommentModel> replies) {
-    // Sort replies by creation date (oldest first)
     replies.sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
     return Container(
-      margin: const EdgeInsets.only(left: 16), // تغییر مارجین به سمت راست
-      padding: const EdgeInsets.only(left: 16), // اضافه کردن پدینگ
-      decoration: BoxDecoration(
-        border: Border(
-          left: BorderSide(
-            // تغییر بوردر به سمت راست
-            color: Colors.grey.withOpacity(0.3),
-            width: 2,
-          ),
-        ),
-      ),
+      margin: const EdgeInsets.only(left: 15),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: replies.map((reply) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildCommentItem(reply),
-              if (reply.replies.isNotEmpty) _buildRepliesSection(reply.replies),
-            ],
-          );
+        children: replies.expand((reply) {
+          // ابتدا کامنت اصلی را اضافه می‌کنیم
+          List<Widget> replyWidgets = [
+            Stack(
+              children: [
+                // خط افقی برای هر ریپلای
+                Positioned(
+                  left: 20,
+                  top: 25,
+                  width: 20,
+                  height: 2,
+                  child: Container(
+                    color: Theme.of(context).dividerColor.withOpacity(0.5),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(left: 40),
+                  child: _buildCommentItem(reply),
+                ),
+              ],
+            ),
+          ];
+
+          // سپس ریپلای‌های زیرمجموعه را در همان سطح اضافه می‌کنیم
+          if (reply.replies.isNotEmpty) {
+            replyWidgets.addAll(
+              reply.replies.map((nestedReply) => Stack(
+                    children: [
+                      Positioned(
+                        left: 20,
+                        top: 25,
+                        width: 20,
+                        height: 2,
+                        child: Container(
+                          color:
+                              Theme.of(context).dividerColor.withOpacity(0.5),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 40),
+                        child: _buildCommentItem(nestedReply),
+                      ),
+                    ],
+                  )),
+            );
+          }
+
+          return replyWidgets;
         }).toList(),
       ),
     );
@@ -750,131 +882,100 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
 
   Widget _buildCommentItem(CommentModel comment) {
     final theme = Theme.of(context);
+    final bool isReply = comment.parentCommentId != null;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(
-          vertical: 8.0, horizontal: 8.0), // کاهش پدینگ افقی
-      child: Column(
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundImage: comment.avatarUrl.isEmpty
-                    ? const AssetImage('lib/util/images/default-avatar.jpg')
-                    : CachedNetworkImageProvider(comment.avatarUrl)
-                        as ImageProvider,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          // Avatar
+          CircleAvatar(
+            radius: isReply ? 16 : 20,
+            backgroundImage: comment.avatarUrl.isEmpty
+                ? const AssetImage('lib/util/images/default-avatar.jpg')
+                : CachedNetworkImageProvider(comment.avatarUrl)
+                    as ImageProvider,
+          ),
+
+          const SizedBox(width: 8),
+
+          // Comment content
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header with username and actions
+                Row(
                   children: [
-                    // Header section
-                    Row(
-                      children: [
-                        Text(
-                          comment.username,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                          ),
-                        ),
-                        if (comment.isVerified)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 4),
-                            child: Icon(Icons.verified,
-                                color: Colors.blue, size: 16),
-                          ),
-                        Text(
-                          ' · ${formatDateTimeToJalali(comment.createdAt)}',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 14,
-                          ),
-                        ),
-                        const Spacer(),
-                        _buildCommentActions(comment),
-                      ],
+                    Text(
+                      comment.username,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: isReply ? 14 : 15,
+                      ),
                     ),
-                    const SizedBox(height: 4),
-                    // Comment content
-                    Directionality(
-                      textDirection: getDirectionality(comment.content),
-                      child: RichText(
-                        text: TextSpan(
-                          children: _buildCommentTextSpans(
-                              comment, theme.brightness == Brightness.dark),
-                          style: TextStyle(
-                            fontSize: 15,
-                            height: 1.4,
-                            color: theme.textTheme.bodyLarge?.color,
-                          ),
+                    if (comment.isVerified)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: Icon(Icons.verified,
+                            color: Colors.blue, size: isReply ? 14 : 16),
+                      ),
+                    Text(
+                      ' · ${formatDateTimeToJalali(comment.createdAt)}',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: isReply ? 12 : 14,
+                      ),
+                    ),
+                    const Spacer(),
+                    _buildCommentActions(comment),
+                  ],
+                ),
+
+                // Comment text
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4.0),
+                  child: Directionality(
+                    textDirection: getDirectionality(comment.content),
+                    child: RichText(
+                      text: TextSpan(
+                        children: _buildCommentTextSpans(
+                            comment, theme.brightness == Brightness.dark),
+                        style: TextStyle(
+                          fontSize: isReply ? 14 : 15,
+                          height: 1.4,
+                          color: theme.textTheme.bodyLarge?.color,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    // Interaction buttons
-                    Row(
-                      children: [
-                        _buildInteractionButton(
-                          icon: Icons.reply_outlined,
-                          label: 'پاسخ',
-                          onTap: () {
-                            setState(() {
-                              replyToCommentId = comment.id;
-                              commentController.text = '@${comment.username} ';
-                              commentController.selection =
-                                  TextSelection.fromPosition(
-                                TextPosition(
-                                    offset: commentController.text.length),
-                              );
-                            });
-                          },
-                        ),
-                        const SizedBox(width: 16),
-                      ],
+                  ),
+                ),
+
+                // Interaction buttons
+                Row(
+                  children: [
+                    _buildInteractionButton(
+                      icon: Icons.reply_outlined,
+                      label: 'پاسخ',
+                      onTap: () {
+                        setState(() {
+                          replyToCommentId = comment.id;
+                          commentController.text = '@${comment.username} ';
+                          commentController.selection =
+                              TextSelection.fromPosition(
+                            TextPosition(offset: commentController.text.length),
+                          );
+                        });
+                      },
+                      size: isReply ? 'small' : 'normal',
                     ),
                   ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildInteractionButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    Color? color,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 18, color: color ?? Colors.grey[600]),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  color: color ?? Colors.grey[600],
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -885,21 +986,59 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
 
     if (content.isNotEmpty) {
       try {
-        await ref.read(commentNotifierProvider.notifier).addComment(
-            postId: widget.postId,
-            content: content,
-            postOwnerId: supabase.auth.currentUser!.id,
-            mentionedUserIds: mentionedUserIds,
-            parentCommentId: replyToCommentId,
-            ref: ref);
-        commentController.clear();
-        replyToCommentId = null;
-        mentionedUsers.clear();
-        ref.invalidate(commentsProvider(widget.postId));
-      } catch (e) {
+        // Show loading
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا در ارسال کامنت: $e')),
+          const SnackBar(content: Text('در حال ارسال نظر...')),
         );
+
+        print('Sending comment with:');
+        print('Content: $content');
+        print('PostID: ${widget.postId}');
+        print('ParentCommentID: $replyToCommentId');
+        print('MentionedUsers: $mentionedUserIds');
+
+        final result =
+            await ref.read(commentNotifierProvider.notifier).addComment(
+                  postId: widget.postId,
+                  content: content,
+                  postOwnerId: supabase.auth.currentUser!.id,
+                  mentionedUserIds: mentionedUserIds,
+                  parentCommentId: replyToCommentId,
+                  ref: ref,
+                );
+
+        // Clear input and states
+        commentController.clear();
+        setState(() {
+          replyToCommentId = null;
+          mentionedUsers.clear();
+        });
+
+        // Refresh comments list
+        ref.invalidate(commentsProvider(widget.postId));
+
+        // Show success message
+        if (mounted) {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('نظر با موفقیت ثبت شد'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        print('Error sending comment: $e');
+        // Show error
+        if (mounted) {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('خطا در ارسال نظر: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
