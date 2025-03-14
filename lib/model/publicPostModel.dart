@@ -17,6 +17,8 @@ class PublicPostModel extends Equatable {
   bool isLiked;
   final bool isVerified;
   int commentCount;
+  final String? musicUrl;
+  final String? title; // اضافه کردن فیلد title
 
   PublicPostModel({
     required this.id,
@@ -32,6 +34,8 @@ class PublicPostModel extends Equatable {
     this.isVerified = false,
     this.commentCount = 0,
     List<String>? hashtags,
+    this.musicUrl,
+    this.title, // اضافه کردن title به constructor
   }) : hashtags = hashtags ?? _extractHashtags(content);
 
   // متد استاتیک برای استخراج هشتگ‌ها از متن
@@ -45,6 +49,8 @@ class PublicPostModel extends Equatable {
 
   // متد سازنده از Map
   factory PublicPostModel.fromMap(Map<String, dynamic> map) {
+    print(
+        "Music URL from API: ${map['music_url']}"); // اضافه کردن این خط برای دیباگ
     return PublicPostModel(
       id: _parseString(map, 'id'),
       userId: _parseString(map, 'user_id'),
@@ -59,6 +65,7 @@ class PublicPostModel extends Equatable {
       isVerified: _parseVerified(map),
       commentCount: _parseInt(map, 'comment_count'),
       hashtags: _parseHashtags(map),
+      musicUrl: _parseString(map, 'music_url', defaultValue: ""),
     );
   }
 
@@ -129,6 +136,7 @@ class PublicPostModel extends Equatable {
       'is_liked': isLiked,
       'comment_count': commentCount,
       'hashtags': hashtags,
+      'music_url': musicUrl,
     };
   }
 
@@ -151,6 +159,8 @@ class PublicPostModel extends Equatable {
     bool? isVerified,
     int? commentCount,
     List<String>? hashtags,
+    String? musicUrl,
+    String? title,
   }) {
     return PublicPostModel(
       id: id ?? this.id,
@@ -166,6 +176,8 @@ class PublicPostModel extends Equatable {
       isVerified: isVerified ?? this.isVerified,
       commentCount: commentCount ?? this.commentCount,
       hashtags: hashtags ?? this.hashtags,
+      musicUrl: musicUrl ?? this.musicUrl,
+      title: title ?? this.title,
     );
   }
 
@@ -185,7 +197,8 @@ class PublicPostModel extends Equatable {
       isLiked: $isLiked, 
       isVerified: $isVerified, 
       commentCount: $commentCount,
-      hashtags: $hashtags
+      hashtags: $hashtags,
+      musicUrl: $musicUrl,
     )''';
   }
 
@@ -204,5 +217,7 @@ class PublicPostModel extends Equatable {
         isVerified,
         commentCount,
         hashtags,
+        musicUrl,
+        title,
       ];
 }

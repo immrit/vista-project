@@ -777,38 +777,28 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
   }
 
   Widget _buildRepliesSection(List<CommentModel> replies) {
+    // مرتب‌سازی ریپلای‌ها بر اساس تاریخ
     replies.sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
-    return Container(
-      margin: const EdgeInsets.only(left: 15),
-      child: Column(
-        children: replies.expand((reply) {
-          // ابتدا کامنت اصلی را اضافه می‌کنیم
-          List<Widget> replyWidgets = [
-            Stack(
-              children: [
-                // خط افقی برای هر ریپلای
-                Positioned(
-                  left: 20,
-                  top: 25,
-                  width: 20,
-                  height: 2,
-                  child: Container(
-                    color: Theme.of(context).dividerColor.withOpacity(0.5),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(left: 40),
-                  child: _buildCommentItem(reply),
-                ),
-              ],
-            ),
-          ];
+    // نمایش فقط یک ریپلای
+    const int initialVisibleReplies = 1;
+    bool showAllReplies = false;
 
-          // سپس ریپلای‌های زیرمجموعه را در همان سطح اضافه می‌کنیم
-          if (reply.replies.isNotEmpty) {
-            replyWidgets.addAll(
-              reply.replies.map((nestedReply) => Stack(
+    return StatefulBuilder(
+      builder: (context, setState) {
+        // انتخاب ریپلای‌های نمایشی
+        List<CommentModel> displayedReplies = showAllReplies
+            ? replies
+            : replies.take(initialVisibleReplies).toList();
+
+        return Container(
+          margin: const EdgeInsets.only(left: 15),
+          child: Column(
+            children: [
+              // نمایش ریپلای‌های محدود
+              ...displayedReplies.expand((reply) {
+                return [
+                  Stack(
                     children: [
                       Positioned(
                         left: 20,
@@ -822,16 +812,41 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
                       ),
                       Padding(
                         padding: const EdgeInsets.only(left: 40),
-                        child: _buildCommentItem(nestedReply),
+                        child: _buildCommentItem(reply),
                       ),
                     ],
-                  )),
-            );
-          }
+                  ),
+                ];
+              }),
 
-          return replyWidgets;
-        }).toList(),
-      ),
+              // دکمه نمایش بیشتر اگر ریپلای‌های بیشتری وجود دارد
+              if (replies.length > initialVisibleReplies)
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      showAllReplies = !showAllReplies;
+                    });
+                  },
+                  child: Text(
+                    showAllReplies
+                        ? 'نمایش کمتر'
+                        : 'نمایش ${replies.length - initialVisibleReplies} پاسخ بیشتر',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onPrimary,
+                      // افزودن استایل محو برای دکمه
+                      shadows: [
+                        Shadow(
+                          color: Colors.black.withOpacity(0.3),
+                          blurRadius: 2,
+                        )
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 

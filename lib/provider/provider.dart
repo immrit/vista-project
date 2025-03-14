@@ -419,7 +419,6 @@ class SupabaseService {
 
   Future<void> deletePost(WidgetRef ref, String postId) async {
     try {
-      // بررسی اعتبار شناسه
       if (postId.isEmpty) {
         throw ArgumentError('شناسه پست نمی‌تواند خالی باشد');
       }
@@ -427,62 +426,92 @@ class SupabaseService {
       _validateUUID(postId);
       final userId = _validateUser();
 
-      // دریافت اطلاعات پست برای پیدا کردن URL تصویر
+      // دریافت اطلاعات پست برای پیدا کردن URL های فایل‌ها
       final post = await supabase
           .from('posts')
-          .select('image_url')
+          .select('image_url, music_url, story_url')
           .eq('id', postId)
           .single();
 
-      final String? imageUrl = post['image_url'];
+      final mediaUrls = [
+        post['image_url'],
+        post['music_url'],
+        post['story_url']
+      ].where((url) => url != null && url.isNotEmpty).toList();
 
-      // اگر پست تصویر داشته باشد، ابتدا از آروان کلاود حذف می‌کنیم
-      if (imageUrl != null && imageUrl.isNotEmpty) {
-        final bool imageDeleted =
-            await PostImageUploadService.deletePostImage(imageUrl);
-        if (!imageDeleted) {
-          print('هشدار: حذف تصویر از آروان کلاود ناموفق بود');
+      // حذف تمام فایل‌ها از آروان کلاود
+      for (String url in mediaUrls) {
+        final bool deleted = await _deleteMediaWithRetry(url);
+        if (!deleted) {
+          print('هشدار: حذف فایل $url از آروان کلاود ناموفق بود');
         }
       }
 
-      // حذف لایک‌ها
-      await supabase.from('likes').delete().eq('post_id', postId);
-
-      // حذف نوتیفیکیشن‌ها
-      await supabase.from('notifications').delete().eq('post_id', postId);
+      // حذف داده‌های مرتبط از دیتابیس به ترتیب
+      await Future.wait([
+        // حذف لایک‌ها
+        supabase.from('likes').delete().eq('post_id', postId),
+        // حذف کامنت‌ها
+        supabase.from('comments').delete().eq('post_id', postId),
+        // حذف نوتیفیکیشن‌ها
+        supabase.from('notifications').delete().eq('post_id', postId),
+        // حذف بازدیدهای استوری
+        supabase.from('story_views').delete().eq('story_id', postId),
+      ]);
 
       // حذف پست
       await supabase.from('posts').delete().eq('id', postId);
 
+      // بروزرسانی UI
       ref.invalidate(fetchPublicPosts);
+      ref.invalidate(userProfileProvider(userId));
 
-      print('پست، تصویر و وابستگی‌های آن با موفقیت حذف شدند.');
+      print('پست و تمام فایل‌های مرتبط با موفقیت حذف شدند.');
     } catch (e) {
       print('خطا در حذف پست: $e');
       rethrow;
     }
   }
 
-// اضافه کردن متد کمکی برای تلاش مجدد حذف تصویر
-  Future<bool> _deletePostImageWithRetry(String imageUrl,
+  Future<bool> _deleteMediaWithRetry(String mediaUrl,
       {int maxAttempts = 3}) async {
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         final bool success =
-            await PostImageUploadService.deletePostImage(imageUrl);
+            await PostImageUploadService.deletePostImage(mediaUrl);
         if (success) return true;
 
         if (attempt < maxAttempts) {
           await Future.delayed(Duration(seconds: attempt));
         }
       } catch (e) {
-        print('تلاش $attempt: خطا در حذف تصویر: $e');
+        print('تلاش $attempt: خطا در حذف فایل: $e');
         if (attempt == maxAttempts) return false;
         await Future.delayed(Duration(seconds: attempt));
       }
     }
     return false;
   }
+
+  // Future<bool> _deleteMediaWithRetry(String mediaUrl,
+  //     {int maxAttempts = 3}) async {
+  //   for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+  //     try {
+  //       final bool success =
+  //           await PostImageUploadService.deletePostImage(mediaUrl);
+  //       if (success) return true;
+
+  //       if (attempt < maxAttempts) {
+  //         await Future.delayed(Duration(seconds: attempt));
+  //       }
+  //     } catch (e) {
+  //       print('تلاش $attempt: خطا در حذف مدیا: $e');
+  //       if (attempt == maxAttempts) return false;
+  //       await Future.delayed(Duration(seconds: attempt));
+  //     }
+  //   }
+  //   return false;
+  // }
 
   Future<List<ProfileModel>> fetchFollowers(String userId) async {
     final response = await supabase.from('follows').select('''
@@ -1085,15 +1114,15 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
 
       // دریافت اطلاعات پروفایل
       final profileResponse = await supabase.from('profiles').select('''
-        id,
-        username,
-        full_name,
-        avatar_url,
-        email,
-        bio,
-        created_at,
-        is_verified
-      ''').eq('id', userId).single();
+            id,
+            username,
+            full_name,
+            avatar_url,
+            email,
+            bio,
+            created_at,
+            is_verified
+          ''').eq('id', userId).single();
 
       // محاسبه تعداد دنبال‌کنندگان
       final followersResponse = await supabase
@@ -1101,32 +1130,36 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
           .select('id')
           .eq('following_id', userId);
 
+      final followersCount = followersResponse.length;
+
       // محاسبه تعداد دنبال‌شونده‌ها
       final followingResponse =
           await supabase.from('follows').select('id').eq('follower_id', userId);
 
-      // دریافت پست‌ها با foreign key های مشخص
-      final postsResponse = await supabase.from('posts').select('''
-        id, 
-        content, 
-        created_at, 
-        user_id,
-        image_url,
-        profiles!posts_user_id_fkey (
-          username,
-          avatar_url,
-          is_verified
-        ),
-        likes!likes_post_id_fkey (
-          user_id
-        ),
-        comments!comments_post_id_fkey (
-          id
-        )
-      ''').eq('user_id', userId).order('created_at', ascending: false);
+      final followingCount = followingResponse.length;
 
-      // ساخت مدل پروفایل
-      final profile = ProfileModel.fromMap(profileResponse);
+      // دریافت پست‌ها
+      final postsResponse = await supabase.from('posts').select('''
+            *,
+            profiles!posts_user_id_fkey (
+              username,
+              avatar_url,
+              is_verified
+            ),
+            likes (
+              user_id
+            ),
+            comments (
+              id
+            )
+          ''').eq('user_id', userId).order('created_at', ascending: false);
+
+      // ساخت مدل پروفایل با اطلاعات به‌روز شده
+      final profile = ProfileModel.fromMap({
+        ...profileResponse,
+        'followers_count': followersCount,
+        'following_count': followingCount,
+      });
 
       final posts = postsResponse.map((post) {
         final postLikes = post['likes'] as List? ?? [];
@@ -1139,7 +1172,6 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
           'username': post['profiles']['username'] ?? 'Unknown',
           'avatar_url': post['profiles']['avatar_url'] ?? '',
           'is_verified': post['profiles']['is_verified'] ?? false,
-          'image_url': post['image_url'],
           'comment_count': comments.length,
         });
       }).toList();
@@ -1147,7 +1179,7 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
       // بررسی وضعیت فالو
       final followStatusResponse = await supabase
           .from('follows')
-          .select('id')
+          .select()
           .eq('follower_id', currentUserId!)
           .eq('following_id', userId)
           .maybeSingle();
@@ -1155,13 +1187,11 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
       // به‌روزرسانی استیت
       state = profile.copyWith(
         posts: posts,
-        followersCount: followersResponse.length,
-        followingCount: followingResponse.length,
         isFollowed: followStatusResponse != null,
       );
     } catch (e) {
       print('خطا در دریافت پروفایل: $e');
-      state = null;
+      rethrow;
     }
   }
 
@@ -1241,6 +1271,7 @@ final postProvider =
   final response = await supabase.from('posts').select('''
         *,
         image_url,
+        music_url,
         profiles (
           username, 
           avatar_url, 
@@ -1270,6 +1301,7 @@ final postProvider =
     'avatar_url': response['profiles']?['avatar_url'] ?? '',
     'is_verified': response['profiles']?['is_verified'] ?? false,
     'image_url': response['image_url'], // اضافه کردن image_url
+    'music_url': response['music_url'], // اضافه کردن music_url
   });
 });
 

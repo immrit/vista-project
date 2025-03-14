@@ -1,7 +1,19 @@
+buildscript {
+    repositories {
+        google()
+        mavenCentral() // added repository
+    }
+}
+
 allprojects {
     repositories {
         google()
-        mavenCentral()
+        mavenCentral() // added repository
+    }
+    configurations.all {
+        resolutionStrategy {
+            force 'androidx.exifinterface:exifinterface:1.3.5' // force a stable version
+        }
     }
 }
 

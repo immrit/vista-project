@@ -11,11 +11,14 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import '../../../main.dart';
+import '../../../model/MusicModel.dart';
+import '../../../provider/MusicProvider.dart';
 import '../Stories/story_system.dart';
 import '../searchPage.dart';
 import '/model/publicPostModel.dart';
 import '../../../provider/provider.dart';
 import '../../../util/widgets.dart';
+import 'MusicWaveform.dart';
 import 'profileScreen.dart';
 import 'dart:async';
 
@@ -440,7 +443,7 @@ Widget _buildPostList(
               const SizedBox(height: 8),
               Directionality(
                 textDirection: getDirectionality(post.content),
-                child: _buildPostContent(post.content, context),
+                child: _buildPostContent(post, context),
               ),
               // نمایش هشتگ‌ها
               if (post.hashtags.isNotEmpty) ...[
@@ -608,7 +611,70 @@ class LinkifyText extends StatelessWidget {
   }
 }
 
-Widget _buildPostContent(String content, BuildContext context) {
+Widget _buildPostContent(PublicPostModel post, BuildContext context) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Directionality(
+        textDirection: getDirectionality(post.content),
+        child: _buildPostContentText(post.content, context),
+      ),
+      if (post.musicUrl != null && post.musicUrl!.isNotEmpty)
+        Consumer(
+          builder: (context, ref, child) {
+            final isPlaying = ref.watch(isPlayingProvider);
+            final currentlyPlaying = ref.watch(currentlyPlayingProvider).value;
+            final isThisPlaying = currentlyPlaying?.musicUrl == post.musicUrl;
+            final position = ref.watch(musicPositionProvider);
+            final duration = ref.watch(musicDurationProvider);
+
+            return Container(
+              margin: const EdgeInsets.symmetric(vertical: 8.0),
+              decoration: BoxDecoration(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.grey[900]
+                    : Colors.grey[100],
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: MusicWaveform(
+                musicUrl: post.musicUrl!,
+                isPlaying: isPlaying && isThisPlaying,
+                position: position,
+                duration: duration,
+                onPlayPause: () {
+                  if (isPlaying && isThisPlaying) {
+                    ref.read(musicPlayerProvider.notifier).togglePlayPause();
+                  } else {
+                    final music = MusicModel(
+                      id: post.id,
+                      userId: post.userId,
+                      title: post.title ?? 'موزیک',
+                      artist: post.username,
+                      musicUrl: post.musicUrl!,
+                      createdAt: post.createdAt,
+                      username: post.username,
+                      avatarUrl: post.avatarUrl,
+                      isVerified: post.isVerified,
+                    );
+                    ref.read(musicPlayerProvider.notifier).playMusic(music);
+                  }
+                },
+              ),
+            );
+          },
+        ),
+    ],
+  );
+}
+
+Widget _buildPostContentText(String content, BuildContext context) {
   final pattern = RegExp(
     r'(#[\w\u0600-\u06FF]+)|((https?:\/\/)?([\w\-])+\.{1}([a-zA-Z]{2,63})([\/\w-]*)*\/?\??([^\s<>#]*))',
     multiLine: true,

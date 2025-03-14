@@ -13,6 +13,9 @@ import '/view/screen/PublicPosts/profileScreen.dart';
 import '../../../model/CommentModel.dart';
 import '../../../model/UserModel.dart';
 import '../../../provider/provider.dart';
+import '../../../model/MusicModel.dart';
+import '../../../provider/MusicProvider.dart';
+import 'MusicWaveform.dart';
 
 class PostDetailsPage extends ConsumerStatefulWidget {
   const PostDetailsPage({super.key, required this.postId});
@@ -421,6 +424,63 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
             _buildPostImages(post),
             const SizedBox(height: 10),
             _buildLikeRow(post),
+            if (post.musicUrl != null && post.musicUrl!.isNotEmpty)
+              Consumer(
+                builder: (context, ref, child) {
+                  final isPlaying = ref.watch(isPlayingProvider);
+                  final currentlyPlaying =
+                      ref.watch(currentlyPlayingProvider).value;
+                  final isThisPlaying =
+                      currentlyPlaying?.musicUrl == post.musicUrl;
+                  final position = ref.watch(musicPositionProvider);
+                  final duration = ref.watch(musicDurationProvider);
+
+                  return Container(
+                    margin: const EdgeInsets.symmetric(vertical: 16.0),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.grey[900]
+                          : Colors.grey[100],
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: MusicWaveform(
+                      musicUrl: post.musicUrl!,
+                      isPlaying: isPlaying && isThisPlaying,
+                      position: position,
+                      duration: duration,
+                      onPlayPause: () {
+                        if (isPlaying && isThisPlaying) {
+                          ref
+                              .read(musicPlayerProvider.notifier)
+                              .togglePlayPause();
+                        } else {
+                          final music = MusicModel(
+                            id: post.id,
+                            userId: post.userId,
+                            title: post.title ?? 'موزیک',
+                            artist: post.username,
+                            musicUrl: post.musicUrl!,
+                            createdAt: post.createdAt,
+                            username: post.username,
+                            avatarUrl: post.avatarUrl,
+                            isVerified: post.isVerified,
+                          );
+                          ref
+                              .read(musicPlayerProvider.notifier)
+                              .playMusic(music);
+                        }
+                      },
+                    ),
+                  );
+                },
+              ),
           ],
         ),
       ),

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'package:aws_s3_api/s3-2006-03-01.dart';
 import '../services/cache_manager.dart';
@@ -163,5 +164,64 @@ class PostImageUploadService {
   static Future<void> removeOldCache() async {
     await CustomCacheManager.postInstance.emptyCache();
     await CustomCacheManager.storyInstance.emptyCache();
+  }
+
+  static Future<String> uploadMusicFile(File file) async {
+    try {
+      // بررسی سایز فایل
+      final fileSize = await file.length();
+      final maxSize = 10 * 1024 * 1024; // 10MB
+      if (fileSize > maxSize) {
+        throw Exception('حجم فایل موزیک باید کمتر از 10 مگابایت باشد');
+      }
+
+      // بررسی فرمت فایل
+      final extension = path.extension(file.path).toLowerCase();
+      if (!_isValidAudioFormat(extension)) {
+        throw Exception('فقط فایل‌های mp3 و m4a پشتیبانی می‌شوند');
+      }
+
+      // ساخت نام منحصر به فرد برای فایل
+      final fileName = 'music/${supabase.auth.currentUser!.id}'
+          '_${DateTime.now().millisecondsSinceEpoch}$extension';
+
+      // آپلود به آروان
+      await s3.putObject(
+        bucket: bucketName,
+        key: fileName,
+        body: await file.readAsBytes(),
+        contentType: _getAudioContentType(extension),
+        acl: ObjectCannedACL.publicRead,
+        metadata: {'originalName': path.basename(file.path)},
+      );
+
+      final url = 'https://storage.coffevista.ir/$bucketName/$fileName';
+      print("Uploaded music file URL: $url"); // اضافه کردن این خط
+
+      // تست دسترسی به فایل
+      final response = await http.head(Uri.parse(url));
+      print(
+          "File access test status code: ${response.statusCode}"); // اضافه کردن این خط
+
+      return url;
+    } catch (e) {
+      print("Music upload error: $e"); // اضافه کردن این خط
+      rethrow; // انتشار خطا برای مدیریت در AddPublicPostScreen
+    }
+  }
+
+  static bool _isValidAudioFormat(String extension) {
+    return ['.mp3', '.m4a'].contains(extension);
+  }
+
+  static String _getAudioContentType(String extension) {
+    switch (extension) {
+      case '.mp3':
+        return 'audio/mpeg';
+      case '.m4a':
+        return 'audio/mp4';
+      default:
+        return 'audio/mpeg';
+    }
   }
 }

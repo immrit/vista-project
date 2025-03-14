@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../../main.dart';
 import '../../../provider/PostImageUploadService.dart';
 import '../../../provider/provider.dart';
@@ -21,6 +22,8 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   int remainingChars = 300;
   static const int maxCharLength = 300;
   File? _selectedImage;
+  File? _selectedMusic;
+  String? _musicFileName;
 
   @override
   void initState() {
@@ -64,7 +67,21 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     }
   }
 
-// تابع _addPost رو هم باید آپدیت کنیم
+  // Add new method for picking music file
+  Future<void> _pickMusicFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.audio,
+      allowMultiple: false,
+    );
+
+    if (result != null) {
+      setState(() {
+        _selectedMusic = File(result.files.single.path!);
+        _musicFileName = result.files.single.name;
+      });
+    }
+  }
+
   Future<void> _addPost() async {
     final content = contentController.text.trim();
 
@@ -97,6 +114,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
 
     try {
       String? imageUrl;
+      String? musicUrl;
 
       // اگر تصویری انتخاب شده باشد، ابتدا آن را آپلود می‌کنیم
       if (_selectedImage != null) {
@@ -104,11 +122,18 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
             await PostImageUploadService.uploadPostImage(_selectedImage!);
       }
 
+      // Upload music if selected
+      if (_selectedMusic != null) {
+        musicUrl =
+            await PostImageUploadService.uploadMusicFile(_selectedMusic!);
+      }
+
       // ایجاد پست با تصویر (در صورت وجود)
       final postData = {
         'user_id': supabase.auth.currentUser!.id,
         'content': contentController.text.trim(),
         if (imageUrl != null) 'image_url': imageUrl,
+        if (musicUrl != null) 'music_url': musicUrl,
         'created_at': DateTime.now().toIso8601String(),
       };
 
@@ -124,8 +149,12 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       }
     } catch (e) {
       if (mounted) {
+        String errorMessage = 'خطا در ارسال پست';
+        if (e.toString().contains('storage')) {
+          errorMessage = 'خطا در آپلود فایل موزیک. لطفاً دوباره تلاش کنید';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا در ارسال پست: $e')),
+          SnackBar(content: Text(errorMessage)),
         );
       }
     } finally {
@@ -211,6 +240,29 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                               ),
                             ),
                           ],
+                        ),
+                      ),
+                    // Add music picker button
+                    if (_selectedMusic == null)
+                      ElevatedButton.icon(
+                        onPressed: _pickMusicFile,
+                        icon: const Icon(Icons.music_note),
+                        label: const Text('افزودن موزیک'),
+                      )
+                    else
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.music_note),
+                          title: Text(_musicFileName ?? 'فایل موزیک'),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () {
+                              setState(() {
+                                _selectedMusic = null;
+                                _musicFileName = null;
+                              });
+                            },
+                          ),
                         ),
                       ),
                   ],

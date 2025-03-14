@@ -1,18 +1,18 @@
-import 'package:Vista/view/screen/searchPage.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../../model/MusicModel.dart';
+import '../../../provider/MusicProvider.dart';
 import '/main.dart';
 import '/util/const.dart';
 import '../../../model/ProfileModel.dart';
 import '../../../model/publicPostModel.dart';
 import '../../../provider/provider.dart';
 import '../../../util/widgets.dart';
+import 'MusicWaveform.dart';
 import 'followers and followings/FollowersScreen.dart';
 import 'followers and followings/FollowingScreen.dart';
 import '../ouathUser/editeProfile.dart';
@@ -378,88 +378,77 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Widget _buildPostContent(String content, BuildContext context) {
-    final pattern = RegExp(
-      r'(#[\w\u0600-\u06FF]+)|((https?:\/\/)?([\w\-])+\.{1}([a-zA-Z]{2,63})([\/\w-]*)*\/?\??([^\s<>#]*))',
-      multiLine: true,
-      unicode: true,
-    );
-
-    List<TextSpan> spans = [];
-    int start = 0;
-
-    for (Match match in pattern.allMatches(content)) {
-      if (match.start > start) {
-        spans.add(TextSpan(
-          text: content.substring(start, match.start),
-          style: TextStyle(
-            color: Theme.of(context).brightness == Brightness.dark
-                ? Colors.white
-                : Colors.black,
+  Widget _buildPostContent(PublicPostModel post, BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (post.content.isNotEmpty)
+          Directionality(
+            textDirection: getDirectionality(post.content),
+            child: _buildPostContentText(post.content, context),
           ),
-        ));
-      }
+        if (post.musicUrl != null && post.musicUrl!.isNotEmpty)
+          Consumer(
+            builder: (context, ref, child) {
+              final isPlaying = ref.watch(isPlayingProvider);
+              final currentlyPlaying =
+                  ref.watch(currentlyPlayingProvider).value;
+              final isThisPlaying = currentlyPlaying?.musicUrl == post.musicUrl;
+              final position = ref.watch(musicPositionProvider);
+              final duration = ref.watch(musicDurationProvider);
 
-      final matchedText = match.group(0)!;
-
-      if (matchedText.startsWith('#')) {
-        spans.add(
-          TextSpan(
-            text: matchedText,
-            style: const TextStyle(
-              color: Colors.blue,
-              fontWeight: FontWeight.bold,
-            ),
-            recognizer: TapGestureRecognizer()
-              ..onTap = () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => SearchPage(
-                      initialHashtag: matchedText,
+              return Container(
+                margin: const EdgeInsets.symmetric(vertical: 8.0),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.grey[900]
+                      : Colors.grey[100],
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
                     ),
-                  ),
-                );
-              },
+                  ],
+                ),
+                child: MusicWaveform(
+                  musicUrl: post.musicUrl!,
+                  isPlaying: isPlaying && isThisPlaying,
+                  position: position,
+                  duration: duration,
+                  onPlayPause: () {
+                    if (isPlaying && isThisPlaying) {
+                      ref.read(musicPlayerProvider.notifier).togglePlayPause();
+                    } else {
+                      final music = MusicModel(
+                        id: post.id,
+                        userId: post.userId,
+                        title: post.title ?? 'موزیک',
+                        artist: post.username,
+                        musicUrl: post.musicUrl!,
+                        createdAt: post.createdAt,
+                        username: post.username,
+                        avatarUrl: post.avatarUrl,
+                        isVerified: post.isVerified,
+                      );
+                      ref.read(musicPlayerProvider.notifier).playMusic(music);
+                    }
+                  },
+                ),
+              );
+            },
           ),
-        );
-      } else {
-        spans.add(
-          TextSpan(
-            text: matchedText,
-            style: const TextStyle(
-              color: Colors.blue,
-              decoration: TextDecoration.underline,
-            ),
-            recognizer: TapGestureRecognizer()
-              ..onTap = () async {
-                final url = matchedText.startsWith('http')
-                    ? matchedText
-                    : 'https://$matchedText';
-                if (await canLaunchUrl(Uri.parse(url))) {
-                  await launchUrl(Uri.parse(url));
-                }
-              },
-          ),
-        );
-      }
-      start = match.end;
-    }
+      ],
+    );
+  }
 
-    if (start < content.length) {
-      spans.add(TextSpan(
-        text: content.substring(start),
-        style: TextStyle(
-          color: Theme.of(context).brightness == Brightness.dark
-              ? Colors.white
-              : Colors.black,
-        ),
-      ));
-    }
-
-    return RichText(
-      text: TextSpan(
-        children: spans,
+  Widget _buildPostContentText(String content, BuildContext context) {
+    return Text(
+      content,
+      style: TextStyle(
+        fontSize: 16,
+        color: Theme.of(context).textTheme.bodyLarge?.color,
       ),
     );
   }
@@ -470,7 +459,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header with menu
+          // Header section
           Row(
             children: [
               CircleAvatar(
@@ -501,50 +490,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ],
           ),
 
-          // Rest of post content remains the same
           const SizedBox(height: 12),
 
-          Directionality(
-            textDirection: getDirectionality(post.content),
-            child: _buildPostContent(post.content, context),
-          ),
+          // Content and Music section
+          _buildPostContent(post, context),
 
-          if (post.hashtags.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: post.hashtags
-                  .map((tag) => GestureDetector(
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => SearchPage(
-                              initialHashtag: '#$tag',
-                            ),
-                          ),
-                        ),
-                        child: Text(
-                          '#$tag',
-                          style: const TextStyle(
-                            color: Colors.blue,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ))
-                  .toList(),
-            ),
-          ],
-
+          // Image section
           if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
             const SizedBox(height: 8),
             GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) =>
-                      PostImageViewer(imageUrl: post.imageUrl!),
-                ),
-              ),
+              onTap: () => _showFullScreenImage(context, post.imageUrl!),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: CachedNetworkImage(
@@ -560,6 +515,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
           const SizedBox(height: 8),
 
+          // Actions section
           Row(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
@@ -570,7 +526,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               _buildShareButton(post),
             ],
           ),
-          // const SizedBox(height: 16),
+
           Divider(
             endIndent: 1,
             indent: 1,
