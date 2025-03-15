@@ -429,14 +429,13 @@ class SupabaseService {
       // دریافت اطلاعات پست برای پیدا کردن URL های فایل‌ها
       final post = await supabase
           .from('posts')
-          .select('image_url, music_url, story_url')
+          .select('image_url, music_url')
           .eq('id', postId)
           .single();
 
       final mediaUrls = [
         post['image_url'],
         post['music_url'],
-        post['story_url']
       ].where((url) => url != null && url.isNotEmpty).toList();
 
       // حذف تمام فایل‌ها از آروان کلاود
@@ -1717,4 +1716,11 @@ final hasNewNotificationProvider = FutureProvider<bool>((ref) async {
 
   print('Has new notification: ${response.isNotEmpty}'); // اینجا چاپ می‌شود
   return response.isNotEmpty;
+});
+
+final currentUserProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final userId = supabase.auth.currentUser!.id;
+  final response =
+      await supabase.from('profiles').select().eq('id', userId).single();
+  return response;
 });

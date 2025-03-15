@@ -1,4 +1,5 @@
 import 'package:Vista/view/screen/PublicPosts/PostDetailPage.dart';
+import 'package:Vista/widgets/norooz_title.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
@@ -147,15 +148,16 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
                 duration: const Duration(milliseconds: 300),
                 child: _connectionStatus == 'متصل به وای‌فای' ||
                         _connectionStatus == 'متصل به اینترنت همراه'
-                    ? const Text(
-                        'Vista',
-                        key: ValueKey('app-name'),
-                        style: TextStyle(
-                          fontSize: 25,
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'Bauhaus',
-                        ),
-                      )
+                    ? NoroozTitle()
+                    //  const Text(
+                    //     'Vista',
+                    //     key: ValueKey('app-name'),
+                    //     style: TextStyle(
+                    //       fontSize: 25,
+                    //       fontWeight: FontWeight.bold,
+                    //       fontFamily: 'Bauhaus',
+                    //     ),
+                    //   )
                     : _buildConnectionStatus(),
               ),
               centerTitle: true,
@@ -827,6 +829,7 @@ PopupMenuButton<String> _buildPostActions(
               await ref.watch(supabaseServiceProvider).deletePost(ref, post.id);
               ScaffoldMessenger.of(context)
                   .showSnackBar(const SnackBar(content: Text('پست حذف شد!')));
+              ref.refresh(fetchPublicPosts);
             }
           }
           break;

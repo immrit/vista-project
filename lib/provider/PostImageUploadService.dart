@@ -170,7 +170,7 @@ class PostImageUploadService {
     try {
       // بررسی سایز فایل
       final fileSize = await file.length();
-      final maxSize = 10 * 1024 * 1024; // 10MB
+      final maxSize = 13 * 1024 * 1024; // 10MB
       if (fileSize > maxSize) {
         throw Exception('حجم فایل موزیک باید کمتر از 10 مگابایت باشد');
       }
