@@ -146,17 +146,7 @@ class MusicPlayerNotifier extends StateNotifier<AsyncValue<Duration>> {
     try {
       await player.stop();
 
-      final audioSource = AudioSource.uri(
-        Uri.parse(music.musicUrl),
-        tag: MediaItem(
-          id: music.id,
-          title: music.title,
-          artist: music.artist,
-          artUri: music.coverUrl != null ? Uri.parse(music.coverUrl!) : null,
-        ),
-      );
-
-      await player.setAudioSource(audioSource);
+      await player.setUrl(music.musicUrl);
       _duration = player.duration;
 
       _ref.read(currentlyPlayingProvider.notifier).state =
@@ -165,6 +155,7 @@ class MusicPlayerNotifier extends StateNotifier<AsyncValue<Duration>> {
 
       await player.play();
     } catch (e, stack) {
+      print('Error playing music: $e');
       state = AsyncValue.error(e, stack);
       _ref.read(isPlayingProvider.notifier).state = false;
       rethrow;

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb; // اضافه کردن این import
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -89,6 +90,12 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
   }
 
   Future<void> _downloadInBackground() async {
+    if (kIsWeb) {
+      // در نسخه وب، نیازی به دانلود نیست
+      setState(() => _isDownloaded = true);
+      return;
+    }
+
     try {
       final tempDir = await getTemporaryDirectory();
       final filename = widget.musicUrl.split('/').last;
@@ -104,11 +111,19 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
       }
     } catch (e) {
       debugPrint('Error downloading audio: $e');
+      // در صورت خطا هم اجازه پخش می‌دهیم
+      setState(() => _isDownloaded = true);
     }
   }
 
   Future<void> _handlePlayPause() async {
     if (_isDownloading) return;
+
+    if (kIsWeb) {
+      // در نسخه وب مستقیماً پخش می‌کنیم
+      widget.onPlayPause?.call();
+      return;
+    }
 
     if (!_isDownloaded) {
       setState(() => _isDownloading = true);
@@ -132,7 +147,7 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
   }
 
   Future<bool> _downloadMusic() async {
-    if (_isDownloaded) return true;
+    if (_isDownloaded || kIsWeb) return true;
 
     try {
       final tempDir = await getTemporaryDirectory();
