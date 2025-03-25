@@ -204,157 +204,240 @@ class _AllPostsTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final postsAsyncValue = ref.watch(fetchPublicPosts);
+    // استفاده از ویجت جدید بارگذاری تنبل
+    return const _AllPostsPaginatedTab();
+  }
+}
+
+class _AllPostsPaginatedTab extends ConsumerWidget {
+  const _AllPostsPaginatedTab({Key? key}) : super(key: key);
+
+  final bool _hasMore = true; // Define _hasMore as a boolean variable
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final postsAsync = ref.watch(publicPostsProvider);
 
     return RefreshIndicator(
-      onRefresh: () async {
-        // Refresh posts
-        ref.refresh(fetchPublicPosts);
-        ref.refresh(notificationsProvider);
-        ref.refresh(hasNewNotificationProvider);
-        ref.refresh(storyUsersProvider);
-
-        // Get posts and refresh their comments
-        final posts = await ref.read(fetchPublicPosts.future);
-        for (final post in posts) {
-          ref.refresh(commentsProvider(post.id));
-        }
-      },
-      child: postsAsyncValue.when(
-        data: (posts) => _buildPostList(context, ref, posts),
+      onRefresh: () async =>
+          ref.read(publicPostsProvider.notifier).refreshPosts(),
+      child: postsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.cloud_off,
-                color: Colors.grey,
-                size: 48,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'به نظر می‌رسد مشکلی در اتصال به اینترنت وجود دارد.\nلطفاً اتصال خود را بررسی کنید و دوباره تلاش کنید.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: () => ref.refresh(fetchPublicPosts),
-                icon: const Icon(Icons.refresh),
-                label: const Text('تلاش مجدد'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
+        error: (error, stack) => Center(child: Text('Error: $error')),
+        data: (posts) {
+          return ListView.builder(
+            itemCount: posts.length + (_hasMore ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (index == posts.length) {
+                ref.read(publicPostsProvider.notifier).loadMorePosts();
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: LoadingAnimationWidget.progressiveDots(
+                      color: Theme.of(context).primaryColor,
+                      size: 40,
+                    ),
                   ),
-                ),
-              ),
-            ],
-          ),
-        ),
+                );
+              }
+
+              final post = posts[index];
+              return _buildPostItem(context, ref, post);
+            },
+          );
+        },
       ),
     );
   }
 }
 
 class _FollowingPostsTab extends ConsumerWidget {
-  const _FollowingPostsTab();
+  const _FollowingPostsTab({Key? key}) : super(key: key);
+  final bool _hasMore = true; // Define _hasMore as a boolean variable
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final followingPostsAsyncValue = ref.watch(fetchFollowingPostsProvider);
+    final postsAsync = ref.watch(fetchFollowingPostsProvider);
 
     return RefreshIndicator(
-      onRefresh: () async {
-        ref.refresh(fetchFollowingPostsProvider);
-        final posts = await ref.read(fetchFollowingPostsProvider.future);
-        for (final post in posts) {
-          ref.refresh(commentsProvider(post.id));
-        }
-      },
-      child: followingPostsAsyncValue.when(
-        data: (posts) {
-          if (posts.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.people_outline,
-                    size: 64,
-                    color: Colors.grey,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'شما هنوز کسی را دنبال نکرده‌اید',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      // تغییر تب به "همه پست‌ها"
-                      final tabController = DefaultTabController.of(context);
-                      tabController.animateTo(0); // تب اول (همه پست‌ها)
-                    },
-                    icon: const Icon(Icons.search),
-                    label: const Text('یافتن افراد جدید'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 12,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-          return _buildPostList(context, ref, posts);
-        },
+      onRefresh: () async =>
+          ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
+      child: postsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.cloud_off,
-                color: Colors.grey,
-                size: 48,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'به نظر می‌رسد مشکلی در اتصال به اینترنت وجود دارد.\nلطفاً اتصال خود را بررسی کنید و دوباره تلاش کنید.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: () => ref.refresh(fetchPublicPosts),
-                icon: const Icon(Icons.refresh),
-                label: const Text('تلاش مجدد'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
+        error: (error, stack) => Center(child: Text('Error: $error')),
+        data: (posts) {
+          return ListView.builder(
+            itemCount: posts.length + (_hasMore ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (index == posts.length) {
+                ref.read(fetchFollowingPostsProvider.notifier).loadMorePosts();
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: LoadingAnimationWidget.progressiveDots(
+                      color: Theme.of(context).primaryColor,
+                      size: 40,
+                    ),
                   ),
-                ),
-              ),
-            ],
-          ),
-        ),
+                );
+              }
+
+              final post = posts[index];
+              return _buildPostItem(context, ref, post);
+            },
+          );
+        },
       ),
     );
   }
+}
+
+Widget _buildPostItem(
+    BuildContext context, WidgetRef ref, PublicPostModel post) {
+  // تبدیل تاریخ به جلالی
+  DateTime createdAt = post.createdAt.toLocal();
+  Jalali jalaliDate = Jalali.fromDateTime(createdAt);
+  String formattedDate =
+      '${jalaliDate.year}/${jalaliDate.month}/${jalaliDate.day}';
+
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 18.0),
+    child: GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PostDetailsPage(postId: post.id),
+          ),
+        );
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // هدر پست شامل آواتار، نام کاربری، تاریخ و منوهای عملیات
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ProfileScreen(
+                        userId: post.userId, username: post.username),
+                  ),
+                );
+              },
+              child: CircleAvatar(
+                backgroundImage: post.avatarUrl.isEmpty
+                    ? const AssetImage('lib/util/images/default-avatar.jpg')
+                        as ImageProvider
+                    : CachedNetworkImageProvider(post.avatarUrl),
+              ),
+            ),
+            title: GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ProfileScreen(
+                        userId: post.userId, username: post.username),
+                  ),
+                );
+              },
+              child: Row(
+                children: [
+                  Text(post.username,
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 4),
+                  if (post.isVerified)
+                    const Icon(Icons.verified, color: Colors.blue, size: 16.0),
+                ],
+              ),
+            ),
+            subtitle: Text(formattedDate,
+                style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+            trailing: _buildPostActions(context, ref, post),
+          ),
+          const SizedBox(height: 8),
+
+          // بخش محتوای پست (متن، موزیک)
+          Directionality(
+            textDirection: getDirectionality(post.content),
+            child: _buildPostContent(post, context),
+          ),
+
+          // نمایش تصویر اگر پست دارای imageUrl باشد
+          if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        PostImageViewer(imageUrl: post.imageUrl!),
+                  ),
+                );
+              },
+              child: Hero(
+                tag: post.imageUrl!,
+                child: CachedNetworkImage(
+                  imageUrl: post.imageUrl!,
+                  placeholder: (context, url) =>
+                      const Center(child: CircularProgressIndicator()),
+                  errorWidget: (context, url, error) => const Icon(Icons.error),
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+
+          // ردیف دکمه‌های لایک، کامنت و اشتراک
+          Row(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
+              IconButton(
+                icon: Icon(
+                  post.isLiked ? Icons.favorite : Icons.favorite_border,
+                  color: post.isLiked ? Colors.red : null,
+                ),
+                onPressed: () async {
+                  post.isLiked = !post.isLiked;
+                  post.likeCount += post.isLiked ? 1 : -1;
+                  (context as Element).markNeedsBuild();
+                  await ref.watch(supabaseServiceProvider).toggleLike(
+                        postId: post.id,
+                        ownerId: post.userId,
+                        ref: ref,
+                      );
+                },
+              ),
+              Text('${post.likeCount}'), // نمایش تعداد لایک‌ها
+              const SizedBox(width: 16),
+              IconButton(
+                icon: const Icon(Icons.comment),
+                onPressed: () {
+                  showCommentsBottomSheet(context, post.id, ref);
+                },
+              ),
+              Text('${post.commentCount}'), // نمایش تعداد کامنت‌ها
+              const SizedBox(width: 16),
+              IconButton(
+                icon: const Icon(Icons.share),
+                onPressed: () {
+                  String sharePost =
+                      'Post by ${post.username}: ${post.content}';
+                  Share.share(sharePost);
+                },
+              ),
+            ],
+          ),
+          const Divider(),
+        ],
+      ),
+    ),
+  );
 }
 
 Widget _buildPostList(
@@ -942,12 +1025,16 @@ class _PublicPostsState extends ConsumerState<PublicPostsScreen> {
   Future<void> _loadMorePosts() async {
     if (_isLoading || !_hasMore) return;
 
+    setState(() => _isLoading = true);
+
     try {
       final response = await supabase
           .from('posts')
           .select()
           .range(_offset, _offset + _limit - 1)
           .order('created_at', ascending: false);
+
+      print('Response from server: $response'); // لاگ پاسخ سرور
 
       if (response.isEmpty) {
         setState(() => _hasMore = false);
@@ -961,7 +1048,6 @@ class _PublicPostsState extends ConsumerState<PublicPostsScreen> {
       });
     } catch (e) {
       debugPrint('Error loading posts: $e');
-      // Show error snackbar
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to load posts: $e')),
       );

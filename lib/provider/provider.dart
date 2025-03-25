@@ -166,6 +166,93 @@ final postsProvider = StateProvider<List<PublicPostModel>>((ref) {
   return posts.value ?? [];
 });
 
+class PublicPostsNotifier
+    extends StateNotifier<AsyncValue<List<PublicPostModel>>> {
+  final SupabaseClient supabase;
+  int _limit = 10;
+  int _offset = 0;
+  bool _hasMore = true;
+
+  PublicPostsNotifier(this.supabase) : super(const AsyncValue.loading()) {
+    _loadInitialPosts();
+  }
+
+  Future<void> _loadInitialPosts() async {
+    state = const AsyncValue.loading();
+    _offset = 0;
+    _hasMore = true;
+    await _loadMorePosts();
+  }
+
+  Future<void> _loadMorePosts() async {
+    if (!_hasMore) return;
+
+    try {
+      final response = await supabase
+          .from('posts')
+          .select('''
+            *,
+            profiles!posts_user_id_fkey (
+              username,
+              avatar_url,
+              is_verified
+            ),
+            likes (
+              user_id
+            ),
+            comments (
+              id
+            )
+          ''')
+          .range(_offset, _offset + _limit - 1)
+          .order('created_at', ascending: false);
+
+      if (response.isEmpty) {
+        _hasMore = false;
+        state = AsyncValue.data([...?state.value, ...[]]);
+        return;
+      }
+
+      _offset += response.length;
+      _hasMore = response.length >= _limit;
+
+      final posts = (response as List<dynamic>).map((post) {
+        final postLikes = post['likes'] as List? ?? [];
+        final comments = post['comments'] as List<dynamic>? ?? [];
+
+        return PublicPostModel.fromMap({
+          ...post,
+          'like_count': postLikes.length,
+          'is_liked': postLikes
+              .any((like) => like['user_id'] == supabase.auth.currentUser?.id),
+          'username': post['profiles']['username'] ?? 'Unknown',
+          'avatar_url': post['profiles']['avatar_url'] ?? '',
+          'is_verified': post['profiles']['is_verified'] ?? false,
+          'comment_count': comments.length,
+        });
+      }).toList();
+
+      state = AsyncValue.data([...?state.value, ...posts]);
+    } catch (e, stackTrace) {
+      state = AsyncValue.error(e, stackTrace);
+    }
+  }
+
+  Future<void> refreshPosts() async {
+    await _loadInitialPosts();
+  }
+
+  Future<void> loadMorePosts() async {
+    await _loadMorePosts();
+  }
+}
+
+final publicPostsProvider = StateNotifierProvider<PublicPostsNotifier,
+    AsyncValue<List<PublicPostModel>>>((ref) {
+  final supabase = ref.watch(supabaseClientProvider);
+  return PublicPostsNotifier(supabase);
+});
+
 // سرویس Supabase برای مدیریت لایک‌ها
 class SupabaseService {
   final SupabaseClient supabase;
@@ -1484,60 +1571,164 @@ final userFollowingProvider =
   return await supabaseService.fetchFollowing(userId);
 });
 
-final fetchFollowingPostsProvider =
-    FutureProvider<List<PublicPostModel>>((ref) async {
-  try {
-    final currentUserId = supabase.auth.currentUser?.id;
-    if (currentUserId == null) return [];
+class FollowingPostsNotifier
+    extends StateNotifier<AsyncValue<List<PublicPostModel>>> {
+  final SupabaseClient supabase;
+  int _limit = 10;
+  int _offset = 0;
+  bool _hasMore = true;
 
-    // Check followings first
-    final followingResponse = await supabase
-        .from('follows')
-        .select('following_id')
-        .eq('follower_id', currentUserId);
-
-    if (followingResponse.isEmpty) {
-      return []; // Return empty list if no followings
-    }
-
-    final followingIds =
-        followingResponse.map((e) => e['following_id'] as String).toList();
-
-    final response = await supabase
-        .from('posts')
-        .select('''
-          *,
-          profiles!posts_user_id_fkey (
-            username, 
-            avatar_url,
-            is_verified
-          ),
-          likes (user_id),
-          comments (id)
-        ''')
-        .inFilter('user_id', followingIds)
-        .order('created_at', ascending: false);
-
-    return response.map((post) {
-      final likes = List<Map<String, dynamic>>.from(post['likes'] ?? []);
-      final comments = List<Map<String, dynamic>>.from(post['comments'] ?? []);
-      final profile = post['profiles'] as Map<String, dynamic>;
-
-      return PublicPostModel.fromMap({
-        ...post,
-        'like_count': likes.length,
-        'is_liked': likes.any((like) => like['user_id'] == currentUserId),
-        'username': profile['username'],
-        'avatar_url': profile['avatar_url'] ?? '',
-        'is_verified': profile['is_verified'] ?? false,
-        'comment_count': comments.length,
-      });
-    }).toList();
-  } catch (e) {
-    print('Error fetching following posts: $e');
-    return []; // Return empty list instead of throwing error
+  FollowingPostsNotifier(this.supabase) : super(const AsyncValue.loading()) {
+    _loadInitialPosts();
   }
+
+  Future<void> _loadInitialPosts() async {
+    state = const AsyncValue.loading();
+    _offset = 0;
+    _hasMore = true;
+    await _loadMorePosts();
+  }
+
+  Future<void> _loadMorePosts() async {
+    if (!_hasMore) return;
+
+    try {
+      final currentUserId = supabase.auth.currentUser?.id;
+      if (currentUserId == null) {
+        state = const AsyncValue.data([]);
+        return;
+      }
+
+      // Check followings first
+      final followingResponse = await supabase
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', currentUserId);
+
+      if (followingResponse.isEmpty) {
+        state = const AsyncValue.data([]);
+        return;
+      }
+
+      final followingIds =
+          followingResponse.map((e) => e['following_id'] as String).toList();
+
+      final response = await supabase
+          .from('posts')
+          .select('''
+            *,
+            profiles!posts_user_id_fkey (
+              username, 
+              avatar_url,
+              is_verified
+            ),
+            likes (user_id),
+            comments (id)
+          ''')
+          .inFilter('user_id', followingIds)
+          .order('created_at', ascending: false)
+          .range(_offset, _offset + _limit - 1);
+
+      if (response.isEmpty) {
+        _hasMore = false;
+        state = AsyncValue.data([...?state.value, ...[]]);
+        return;
+      }
+
+      _offset += response.length;
+      _hasMore = response.length >= _limit;
+
+      final posts = response.map((post) {
+        final likes = List<Map<String, dynamic>>.from(post['likes'] ?? []);
+        final comments =
+            List<Map<String, dynamic>>.from(post['comments'] ?? []);
+        final profile = post['profiles'] as Map<String, dynamic>;
+
+        return PublicPostModel.fromMap({
+          ...post,
+          'like_count': likes.length,
+          'is_liked': likes.any((like) => like['user_id'] == currentUserId),
+          'username': profile['username'],
+          'avatar_url': profile['avatar_url'] ?? '',
+          'is_verified': profile['is_verified'] ?? false,
+          'comment_count': comments.length,
+        });
+      }).toList();
+
+      state = AsyncValue.data([...?state.value, ...posts]);
+    } catch (e, stackTrace) {
+      state = AsyncValue.error(e, stackTrace);
+    }
+  }
+
+  Future<void> refreshPosts() async {
+    await _loadInitialPosts();
+  }
+
+  Future<void> loadMorePosts() async {
+    await _loadMorePosts();
+  }
+}
+
+final fetchFollowingPostsProvider = StateNotifierProvider<
+    FollowingPostsNotifier, AsyncValue<List<PublicPostModel>>>((ref) {
+  final supabase = ref.watch(supabaseClientProvider);
+  return FollowingPostsNotifier(supabase);
 });
+// final fetchFollowingPostsProvider =
+//     FutureProvider<List<PublicPostModel>>((ref) async {
+//   try {
+//     final currentUserId = supabase.auth.currentUser?.id;
+//     if (currentUserId == null) return [];
+
+//     // Check followings first
+//     final followingResponse = await supabase
+//         .from('follows')
+//         .select('following_id')
+//         .eq('follower_id', currentUserId);
+
+//     if (followingResponse.isEmpty) {
+//       return []; // Return empty list if no followings
+//     }
+
+//     final followingIds =
+//         followingResponse.map((e) => e['following_id'] as String).toList();
+
+//     final response = await supabase
+//         .from('posts')
+//         .select('''
+//           *,
+//           profiles!posts_user_id_fkey (
+//             username,
+//             avatar_url,
+//             is_verified
+//           ),
+//           likes (user_id),
+//           comments (id)
+//         ''')
+//         .inFilter('user_id', followingIds)
+//         .order('created_at', ascending: false);
+
+//     return response.map((post) {
+//       final likes = List<Map<String, dynamic>>.from(post['likes'] ?? []);
+//       final comments = List<Map<String, dynamic>>.from(post['comments'] ?? []);
+//       final profile = post['profiles'] as Map<String, dynamic>;
+
+//       return PublicPostModel.fromMap({
+//         ...post,
+//         'like_count': likes.length,
+//         'is_liked': likes.any((like) => like['user_id'] == currentUserId),
+//         'username': profile['username'],
+//         'avatar_url': profile['avatar_url'] ?? '',
+//         'is_verified': profile['is_verified'] ?? false,
+//         'comment_count': comments.length,
+//       });
+//     }).toList();
+//   } catch (e) {
+//     print('Error fetching following posts: $e');
+//     return []; // Return empty list instead of throwing error
+//   }
+// });
 
 class SearchService {
   final SupabaseClient _supabase = Supabase.instance.client;
