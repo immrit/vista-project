@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -15,6 +16,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../../main.dart';
 import '../../../provider/uploadStoryImage.dart';
 import '../../../util/const.dart';
+import '../PublicPosts/profileScreen.dart';
 import 'story_editor.dart';
 
 // در ابتدای فایل (بعد از importها) اضافه کنید:
@@ -373,19 +375,74 @@ class StoryBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final storiesAsync = ref.watch(storyUsersProvider);
 
-    return SizedBox(
-      height: 100,
-      child: storiesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => _ErrorView(error: err.toString()),
-        data: (users) => ListView.builder(
-          scrollDirection: Axis.horizontal,
-          itemCount: users.length + 1,
-          itemBuilder: (ctx, index) {
-            if (index == 0) return const _AddStoryButton();
-            return StoryRing(user: users[index - 1]);
-          },
+    return Column(
+      children: [
+        storiesAsync.when(
+          loading: () => _buildLoadingStoryBar(),
+          error: (err, _) => _buildErrorStoryBar(context, err.toString(), ref),
+          data: (users) => _buildStoryList(context, users),
         ),
+      ],
+    );
+  }
+
+  Widget _buildLoadingStoryBar() {
+    return SizedBox(
+      height: 110,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: 5, // تعداد آیتم‌های اسکلتون
+        itemBuilder: (context, index) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Column(
+              children: [
+                Container(
+                  width: 74,
+                  height: 74,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  width: 60,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildErrorStoryBar(
+      BuildContext context, String error, WidgetRef ref) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+      child: _ErrorView(
+        error: error,
+        onRetry: () => ref.refresh(storyUsersProvider),
+      ),
+    );
+  }
+
+  Widget _buildStoryList(BuildContext context, List<StoryUser> users) {
+    return SizedBox(
+      height: 110,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: users.length + 1,
+        itemBuilder: (ctx, index) {
+          if (index == 0) return const _AddStoryButton();
+          return StoryRing(user: users[index - 1]);
+        },
       ),
     );
   }
@@ -400,61 +457,95 @@ class StoryRing extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final ringColor = isDarkMode ? Colors.grey[800] : Colors.grey[300];
-    final seenColor = isDarkMode ? Colors.white : Colors.white;
+    final seenColor = isDarkMode ? Colors.white38 : Colors.grey[300]!;
 
-    // بررسی اینکه آیا حداقل یک استوری دیده نشده است
+    // بررسی استوری‌های دیده نشده
     final hasUnseenStories = user.stories.any((story) => !story.isViewed);
 
     return Padding(
-      padding: const EdgeInsets.all(8.0),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
       child: Column(
         children: [
-          InkWell(
+          GestureDetector(
             onTap: () => _navigateToStoryScreen(context, user, ref),
             child: Container(
-              width: 70,
-              height: 70,
+              width: 73,
+              height: 73,
+              padding: const EdgeInsets.all(3),
               decoration: BoxDecoration(
+                shape: BoxShape.circle,
                 gradient: hasUnseenStories
                     ? const LinearGradient(
-                        colors: [Color(0xFF4A90E2), Color(0xFF8E44AD)],
+                        colors: [
+                          Color(0xFF4A90E2),
+                          Color.fromARGB(255, 98, 152, 213),
+                          Color.fromARGB(255, 129, 171, 220),
+                          Color.fromARGB(255, 174, 130, 193),
+                          Color.fromARGB(255, 138, 107, 151),
+                          Color(0xFF8E44AD),
+                        ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       )
                     : null,
-                border: Border.all(
-                  color: hasUnseenStories ? Colors.transparent : seenColor,
-                  width: 1,
-                ),
-                shape: BoxShape.circle,
+                color: hasUnseenStories ? null : seenColor.withOpacity(0.2),
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(3.0),
-                child: CircleAvatar(
-                  backgroundImage: (user.profileImageUrl == null ||
-                          user.profileImageUrl!.isEmpty)
-                      ? const AssetImage(defaultAvatarUrl)
-                      : CachedNetworkImageProvider(user.profileImageUrl!)
-                          as ImageProvider,
+              child: Container(
+                padding: const EdgeInsets.all(2.5),
+                decoration: const BoxDecoration(
+                  color: Colors.black,
+                  shape: BoxShape.circle,
+                ),
+                child: Hero(
+                  tag: 'story_avatar_${user.id}',
+                  child: CircleAvatar(
+                    backgroundImage: (user.profileImageUrl == null ||
+                            user.profileImageUrl!.isEmpty)
+                        ? const AssetImage(defaultAvatarUrl)
+                        : CachedNetworkImageProvider(user.profileImageUrl!)
+                            as ImageProvider,
+                  ),
                 ),
               ),
             ),
           ),
           const SizedBox(height: 4),
-          Row(
-            children: [
-              Text(
-                user.username,
-                style: const TextStyle(fontSize: 12),
-                overflow: TextOverflow.fade,
-                maxLines: 1,
-                softWrap: false,
-              ),
-              if (user.isVerified) ...[
-                const SizedBox(width: 4),
-                Icon(Icons.verified, color: Colors.blue, size: 14),
+          SizedBox(
+            width: 70,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(
+                    user.username,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: hasUnseenStories
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                      color: hasUnseenStories
+                          ? isDarkMode
+                              ? Colors.white
+                              : Colors.black
+                          : isDarkMode
+                              ? Colors.white70
+                              : Colors.black54,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                if (user.isVerified) ...[
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.verified,
+                    color: Colors.blue,
+                    size: 12,
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ],
       ),
@@ -540,22 +631,63 @@ class _AddStoryButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
     return Padding(
-      padding: const EdgeInsets.all(8.0),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
       child: GestureDetector(
         onTap: () => _handleImageUpload(context, ref),
         child: Column(
           children: [
             Container(
-              width: 70,
-              height: 70,
+              width: 74,
+              height: 74,
+              padding: const EdgeInsets.all(2),
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300),
+                border: Border.all(
+                  color: isDarkMode ? Colors.white38 : Colors.grey[300]!,
+                  width: 1.5,
+                ),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.add, size: 30),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.grey[800] : Colors.grey[100],
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: isDarkMode
+                          ? Colors.white
+                          : Theme.of(context).primaryColor,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.add,
+                      size: 20,
+                      color: isDarkMode ? Colors.black : Colors.white,
+                    ),
+                  ),
+                ),
+              ),
             ),
-            const Text('افزودن استوری'),
+            const SizedBox(height: 4),
+            Container(
+              width: 74,
+              child: Text(
+                'افزودن استوری',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isDarkMode ? Colors.white70 : Colors.black54,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
       ),
@@ -587,10 +719,12 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   int _currentStoryIndex = 0;
   final Set<String> _trackedStoryViews = {};
   final Set<String> _preloadedImages = {};
+  final _loadingCache = <String, bool>{};
+  final _imageCache = <String, Uint8List>{};
+  static const _maxCachedImages = 8; // افزایش تعداد تصاویر کش شده
 
   // افزودن سیستم مدیریت حافظه
-  final _imageCache = <String, Uint8List>{};
-  static const _maxCachedImages = 5;
+
   bool _isPaused = false; // اضافه کردن متغیر جدید
   final DraggableScrollableController _dragController =
       DraggableScrollableController();
@@ -602,10 +736,254 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   void initState() {
     super.initState();
     _initialize();
+    _preloadStories(); // روش جدید پیش‌بارگذاری
+
     _preloadNextStoryImage();
 
     // اضافه کردن listener برای کنترلر
     _dragController.addListener(_onDragUpdate);
+  }
+
+  Future<void> _preloadStories() async {
+    // پیش‌بارگذاری استوری فعلی
+    await _preloadCurrentStoryImage();
+
+    // پیش‌بارگذاری استوری بعدی
+    await _preloadNextStoryImage();
+
+    // پیش‌بارگذاری استوری کاربر بعدی (اگر وجود داشته باشد)
+    if (_currentUserIndex < widget.users.length - 1) {
+      final nextUser = widget.users[_currentUserIndex + 1];
+      if (nextUser.stories.isNotEmpty) {
+        await _preloadSpecificStory(nextUser.stories.first);
+      }
+    }
+  }
+
+  // پیش‌بارگذاری یک استوری خاص
+  Future<void> _preloadSpecificStory(AppStoryContent story) async {
+    if (story.mediaUrl.isEmpty ||
+        _preloadedImages.contains(story.mediaUrl) ||
+        _loadingCache[story.mediaUrl] == true) {
+      return;
+    }
+
+    _loadingCache[story.mediaUrl] = true;
+    try {
+      // استفاده از سیستم کش شخصی‌سازی شده
+      final file = await CustomCacheManager.instance.getSingleFile(
+        story.mediaUrl,
+        headers: {
+          'Cache-Control': 'max-age=86400'
+        }, // اضافه کردن هدر برای بهبود کش
+      );
+
+      final bytes = await file.readAsBytes();
+      _addToImageCache(story.mediaUrl, bytes);
+      _preloadedImages.add(story.mediaUrl);
+      _loadingCache[story.mediaUrl] = false;
+    } catch (e) {
+      _loadingCache[story.mediaUrl] = false;
+      debugPrint('خطا در پیش‌بارگذاری تصویر: $e');
+    }
+  }
+
+  // بهبود روش پیش‌بارگذاری استوری فعلی
+  Future<void> _preloadCurrentStoryImage() async {
+    final story = _getCurrentStory();
+    if (story.mediaUrl.isEmpty ||
+        _preloadedImages.contains(story.mediaUrl) ||
+        _loadingCache[story.mediaUrl] == true) {
+      setState(() => _isLoading = false);
+      _startStoryTimer();
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    _loadingCache[story.mediaUrl] = true;
+
+    try {
+      // استفاده از CustomCacheManager با قابلیت نمایش پیشرفت دانلود
+      final file = await CustomCacheManager.instance.getSingleFile(
+        story.mediaUrl,
+        headers: {'Cache-Control': 'max-age=86400'},
+      );
+
+      final bytes = await file.readAsBytes();
+      _addToImageCache(story.mediaUrl, bytes);
+
+      if (!_isDisposed) {
+        _preloadedImages.add(story.mediaUrl);
+        _loadingCache[story.mediaUrl] = false;
+        setState(() => _isLoading = false);
+        _startStoryTimer();
+        _trackCurrentStory();
+      }
+    } catch (e) {
+      _loadingCache[story.mediaUrl] = false;
+      debugPrint('خطا در بارگذاری تصویر: $e');
+      if (!_isDisposed) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true; // متغیر جدید برای نشان دادن خطا
+        });
+      }
+    }
+  }
+
+  // افزودن متغیر برای نمایش خطا
+  bool _hasError = false;
+
+  // بازنویسی نمایش نشانگر بارگذاری
+  Widget _buildLoadingIndicator() {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            LoadingAnimationWidget.staggeredDotsWave(
+              color: Colors.white,
+              size: 40,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'در حال بارگذاری...',
+              style: TextStyle(color: Colors.white, fontSize: 16),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // افزودن نمایش خطا
+  Widget _buildErrorView() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      color: Colors.black,
+      child: Center(
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.85,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: isDarkMode ? Colors.grey[900] : Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 20,
+                spreadRadius: 5,
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Icon(
+                    Icons.wifi_off_rounded,
+                    size: 40,
+                    color: Colors.red[600],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'خطا در بارگذاری استوری',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: isDarkMode ? Colors.white : Colors.black,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'ممکن است اتصال اینترنت شما قطع باشد یا فایل استوری در دسترس نباشد.',
+                style: TextStyle(
+                  fontSize: 15,
+                  color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
+                      side: BorderSide(
+                        color:
+                            isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Text(
+                      'بازگشت',
+                      style: TextStyle(
+                        color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        _hasError = false;
+                        _isLoading = true;
+                      });
+                      _preloadCurrentStoryImage();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
+                      backgroundColor: Colors.blue[600],
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.refresh_rounded, size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          'تلاش مجدد',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _initialize() {
@@ -626,33 +1004,6 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   void _handleAnimationStatus(AnimationStatus status) {
     if (status == AnimationStatus.completed && !_isDisposed) {
       _handleNextStory();
-    }
-  }
-
-  Future<void> _preloadCurrentStoryImage() async {
-    final story = _getCurrentStory();
-    if (story.mediaUrl.isEmpty || _preloadedImages.contains(story.mediaUrl)) {
-      return;
-    }
-
-    setState(() => _isLoading = true);
-    try {
-      final file =
-          await CustomCacheManager.instance.getSingleFile(story.mediaUrl);
-      final bytes = await file.readAsBytes();
-      _addToImageCache(story.mediaUrl, bytes);
-
-      if (!_isDisposed) {
-        _preloadedImages.add(story.mediaUrl);
-        setState(() => _isLoading = false);
-        _startStoryTimer();
-        _trackCurrentStory();
-      }
-    } catch (e) {
-      debugPrint('Error preloading image: $e');
-      if (!_isDisposed) {
-        setState(() => _isLoading = false);
-      }
     }
   }
 
@@ -751,176 +1102,482 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       _animationController.stop();
 
       // نمایش BottomSheet با StoryViewersBottomSheet
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (context) => StoryViewersBottomSheet(
-          storyId: _getCurrentStory().id!,
-          scrollController: ScrollController(),
-          onDismiss: () {
-            setState(() {
-              _isViewersVisible = false;
-              _isPaused = false; // شروع دوباره تایمر استوری
-            });
-            _animationController.forward();
-          },
-        ),
-      );
+      // showModalBottomSheet(
+      //   context: context,
+      //   isScrollControlled: true,
+      //   backgroundColor: Colors.transparent,
+      //   builder: (context) => StoryViewersBottomSheet(
+      //     storyId: _getCurrentStory().id!,
+      //     scrollController: ScrollController(),
+      //     onDismiss: () {
+      //       setState(() {
+      //         _isViewersVisible = false;
+      //         _isPaused = false; // شروع دوباره تایمر استوری
+      //       });
+      //       _animationController.forward();
+      //     },
+      //   ),
+      // );
     }
   }
 
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          GestureDetector(
-            onTapDown: _handleTapDown,
-            onLongPress: () {
-              _animationController.stop();
-              setState(() => _isPaused = true);
-            },
-            onLongPressUp: () {
-              if (!_isPaused) {
-                _animationController.forward();
-              }
-            },
-            onVerticalDragUpdate: _handleVerticalDrag, // اتصال به متد جدید
-            child: Stack(
-              children: [
-                _buildPageView(),
-                _buildProgressBar(),
-                _buildHeader(),
-                if (_isLoading) _buildLoadingIndicator(),
-                if (_isPaused)
-                  const Center(
-                    child: Icon(
-                      Icons.pause_circle_outline,
-                      color: Colors.white,
-                      size: 50,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
-          // Viewers sheet
-          NotificationListener<DraggableScrollableNotification>(
-            onNotification: (notification) {
-              if (notification.extent < 0.1) {
-                setState(() {
-                  _isViewersVisible = false;
-                  _isPaused = false;
-                });
-                _animationController.forward();
-              } else {
-                setState(() => _isPaused = true);
+      body: SafeArea(
+        child: Stack(
+          children: [
+            // Story Content
+            GestureDetector(
+              onTapDown: _handleTapDown,
+              onLongPress: () {
                 _animationController.stop();
-              }
-              return true;
-            },
-            child: DraggableScrollableSheet(
-              controller: _dragController,
-              initialChildSize: 0.0,
-              minChildSize: 0.0,
-              maxChildSize: 0.8,
-              snap: true,
-              snapSizes: const [0.0, 0.7],
-              builder: (context, scrollController) {
-                final story = _getCurrentStory();
-                if (story.id == null) return const SizedBox();
-
-                return AnimatedOpacity(
-                  duration: const Duration(milliseconds: 200),
-                  opacity: _isViewersVisible ? 1.0 : 0.0,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).scaffoldBackgroundColor,
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(20),
+                setState(() => _isPaused = true);
+              },
+              onLongPressUp: () {
+                if (!_isPaused) {
+                  _animationController.forward();
+                }
+              },
+              onVerticalDragUpdate: _handleVerticalDrag,
+              onVerticalDragEnd: _handleVerticalDragEnd,
+              child: Stack(
+                children: [
+                  _buildPageView(),
+                  _buildProgressBar(),
+                  _buildHeader(),
+                  if (_isLoading) _buildLoadingIndicator(),
+                  if (_isPaused && !_isViewersVisible)
+                    const Center(
+                      child: Icon(
+                        Icons.pause_circle_outline,
+                        color: Colors.white,
+                        size: 50,
                       ),
                     ),
-                    child: Column(
-                      children: [
-                        // Drag indicator
-                        Container(
-                          margin: const EdgeInsets.symmetric(vertical: 10),
-                          width: 40,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: Colors.grey[400],
-                            borderRadius: BorderRadius.circular(2),
+                  // Lottie animation as swipe up indicator
+                  if (!_isViewersVisible)
+                    Positioned(
+                      bottom: 30,
+                      left: 0,
+                      right: 0,
+                      child: _buildSwipeUpIndicator(),
+                    ),
+                ],
+              ),
+            ),
+
+            // Viewers Panel
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              bottom: _isViewersVisible
+                  ? 0
+                  : -MediaQuery.of(context).size.height * 0.7,
+              left: 0,
+              right: 0,
+              height: MediaQuery.of(context).size.height * 0.7,
+              child: _buildViewersPanel(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSwipeUpIndicator() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.keyboard_arrow_up_rounded,
+          color: Colors.white.withOpacity(0.8),
+          size: 30,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'بالا بکشید تا بازدیدکنندگان را ببینید',
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.8),
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+
+  // void _handleVerticalDrag(DragUpdateDetails details) {
+  //   if (details.primaryDelta! < -20 && !_isViewersVisible && mounted) {
+  //     setState(() {
+  //       _isViewersVisible = true;
+  //       _isPaused = true;
+  //       _animationController.stop();
+  //     });
+  //   } else if (details.primaryDelta! > 20 && _isViewersVisible && mounted) {
+  //     setState(() {
+  //       _isViewersVisible = false;
+  //       _isPaused = false;
+  //       _animationController.forward();
+  //     });
+  //   }
+  // }
+
+  void _handleVerticalDragEnd(DragEndDetails details) {
+    // اگر سرعت کشیدن به سمت بالا زیاد باشد، پنل را نمایش می‌دهیم
+    if (details.velocity.pixelsPerSecond.dy < -300 && !_isViewersVisible) {
+      setState(() {
+        _isViewersVisible = true;
+        _isPaused = true;
+        _animationController.stop();
+      });
+    }
+
+    // اگر سرعت کشیدن به سمت پایین زیاد باشد، پنل را مخفی می‌کنیم
+    else if (details.velocity.pixelsPerSecond.dy > 300 && _isViewersVisible) {
+      setState(() {
+        _isViewersVisible = false;
+        _isPaused = false;
+        _animationController.forward();
+      });
+    }
+  }
+
+  Widget _buildViewersPanel() {
+    final story = _getCurrentStory();
+    if (story.id == null || story.userId != supabase.auth.currentUser?.id) {
+      return const SizedBox(); // فقط برای استوری‌های خود کاربر نمایش داده شود
+    }
+
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColor = isDarkMode ? const Color(0xFF1F1F1F) : Colors.white;
+    final textColor = isDarkMode ? Colors.white : const Color(0xFF303030);
+    final subtitleColor = isDarkMode ? Colors.white70 : Colors.black54;
+
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      child: Container(
+        color: backgroundColor,
+        child: Column(
+          children: [
+            // Handle and Title
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: backgroundColor,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    offset: const Offset(0, 1),
+                    blurRadius: 3,
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  // Handle indicator
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  FutureBuilder<List<Map<String, dynamic>>>(
+                    future: _fetchStoryViews(story.id!),
+                    builder: (context, snapshot) {
+                      final viewCount = snapshot.data?.length ?? 0;
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.remove_red_eye_outlined,
+                            size: 20,
+                            color: textColor,
                           ),
-                        ),
-                        // Title
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 16),
-                          child: Text(
-                            'بازدیدکنندگان',
+                          const SizedBox(width: 8),
+                          Text(
+                            'بازدیدکنندگان استوری ($viewCount)',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
+                              color: textColor,
                             ),
                           ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+
+            // Viewers List
+            Expanded(
+              child: FutureBuilder<List<Map<String, dynamic>>>(
+                future: _fetchStoryViews(story.id!),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          isDarkMode ? Colors.white : Colors.black,
                         ),
-                        // Viewers list
-                        Expanded(
-                          child: FutureBuilder<List<Map<String, dynamic>>>(
-                            future: _fetchStoryViews(story.id!),
-                            builder: (context, snapshot) {
-                              if (!_isViewersVisible) return const SizedBox();
+                      ),
+                    );
+                  }
 
-                              if (snapshot.connectionState ==
-                                  ConnectionState.waiting) {
-                                return const Center(
-                                    child: CircularProgressIndicator());
-                              }
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.error_outline_rounded,
+                            color: Colors.red[400],
+                            size: 36,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'خطا در دریافت بازدیدکنندگان',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              color: textColor,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'لطفاً مجدداً تلاش کنید',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: subtitleColor,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              setState(() {}); // برای اجرای مجدد FutureBuilder
+                            },
+                            icon: const Icon(Icons.refresh_rounded, size: 18),
+                            label: const Text('تلاش مجدد'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: isDarkMode
+                                  ? Colors.white10
+                                  : Colors.black.withOpacity(0.05),
+                              foregroundColor: textColor,
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 10),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
 
-                              if (snapshot.hasError) {
-                                return Center(
-                                    child: Text('خطا: ${snapshot.error}'));
-                              }
+                  final views = snapshot.data ?? [];
 
-                              final views = snapshot.data ?? [];
-                              if (views.isEmpty) {
-                                return const Center(
-                                  child: Text('هنوز بازدیدی ثبت نشده است'),
-                                );
-                              }
+                  if (views.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.visibility_off_outlined,
+                            size: 48,
+                            color: subtitleColor.withOpacity(0.7),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'هنوز کسی استوری شما را ندیده است',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              color: textColor,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'به زودی بازدیدها نمایش داده خواهند شد',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: subtitleColor,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    );
+                  }
 
-                              return ListView.builder(
-                                controller: scrollController,
-                                itemCount: views.length,
-                                itemBuilder: (context, index) {
-                                  final view = views[index];
-                                  return ListTile(
-                                    leading: CircleAvatar(
-                                      backgroundImage:
-                                          CachedNetworkImageProvider(
-                                        view['profiles']['avatar_url'] ??
-                                            defaultAvatarUrl,
+                  return ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: views.length,
+                    itemBuilder: (context, index) {
+                      final view = views[index];
+                      return InkWell(
+                        onTap: () {
+                          // بستن صفحه استوری
+                          Navigator.of(context).pop();
+
+                          // به جای استفاده از Named Route، از MaterialPageRoute استفاده می‌کنیم
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (context) => ProfileScreen(
+                              userId: view['viewer_id'],
+                              username: view['profiles']['username'] ?? 'کاربر',
+                            ),
+                          ));
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
+                          child: Row(
+                            children: [
+                              // Profile Image
+                              Container(
+                                width: 50,
+                                height: 50,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.grey.withOpacity(0.2),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(25),
+                                  child: CachedNetworkImage(
+                                    imageUrl: view['profiles']['avatar_url'] ??
+                                        defaultAvatarUrl,
+                                    fit: BoxFit.cover,
+                                    placeholder: (context, url) => Container(
+                                      color: Colors.grey[300],
+                                      child: const Icon(Icons.person,
+                                          color: Colors.white),
+                                    ),
+                                    errorWidget: (context, url, error) =>
+                                        Container(
+                                      color: Colors.grey[300],
+                                      child: const Icon(Icons.error,
+                                          color: Colors.white),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              // User Info
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Text(
+                                          view['profiles']['username'] ??
+                                              'کاربر ناشناس',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                            color: textColor,
+                                          ),
+                                        ),
+                                        if ((view['profiles']['is_verified'] ??
+                                                false) ==
+                                            true) ...[
+                                          const SizedBox(width: 4),
+                                          const Icon(
+                                            Icons.verified,
+                                            color: Colors.blue,
+                                            size: 14,
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      timeAgo(
+                                          DateTime.parse(view['viewed_at'])),
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: subtitleColor,
                                       ),
                                     ),
-                                    title: Text(view['profiles']['username'] ??
-                                        'کاربر ناشناس'),
-                                    subtitle: Text(timeAgo(
-                                        DateTime.parse(view['viewed_at']))),
-                                  );
-                                },
-                              );
-                            },
+                                  ],
+                                ),
+                              ),
+                              // دکمه‌ی عملیات
+                              Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(20),
+                                  onTap: () {
+                                    // بستن صفحه استوری
+                                    Navigator.of(context).pop();
+
+                                    // به جای استفاده از Named Route، از MaterialPageRoute استفاده می‌کنیم
+                                    Navigator.of(context)
+                                        .push(MaterialPageRoute(
+                                      builder: (context) => ProfileScreen(
+                                        userId: view['viewer_id'],
+                                        username: view['profiles']
+                                                ['username'] ??
+                                            'کاربر',
+                                      ),
+                                    ));
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Icon(
+                                      Icons.arrow_forward_ios,
+                                      size: 16,
+                                      color: subtitleColor,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                );
-              },
+                      );
+                    },
+                  );
+                },
+              ),
             ),
-          )
-        ],
+
+            // Bottom button to close
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: OutlinedButton(
+                  onPressed: () {
+                    setState(() {
+                      _isViewersVisible = false;
+                      _isPaused = false;
+                      _animationController.forward();
+                    });
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: textColor,
+                    side: BorderSide(color: textColor.withOpacity(0.3)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    minimumSize: const Size(double.infinity, 45),
+                  ),
+                  child: const Text('بستن و ادامه استوری'),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1020,31 +1677,23 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     _lastTapTime = now;
   }
 
-  void _showViewers(String storyId) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.3,
-        maxChildSize: 0.8,
-        builder: (context, scrollController) => StoryViewersBottomSheet(
-          storyId: storyId,
-          scrollController: scrollController,
-          onDismiss: () => Navigator.pop(context),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLoadingIndicator() {
-    return const Center(
-      child: CircularProgressIndicator(
-        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-      ),
-    );
-  }
+  // void _showViewers(String storyId) {
+  //   showModalBottomSheet(
+  //     context: context,
+  //     backgroundColor: Colors.transparent,
+  //     isScrollControlled: true,
+  //     builder: (context) => DraggableScrollableSheet(
+  //       initialChildSize: 0.6,
+  //       minChildSize: 0.3,
+  //       maxChildSize: 0.8,
+  //       builder: (context, scrollController) => StoryViewersBottomSheet(
+  //         storyId: storyId,
+  //         scrollController: scrollController,
+  //         onDismiss: () => Navigator.pop(context),
+  //       ),
+  //     ),
+  //   );
+  // }
 
   Widget _buildPageView() {
     return PageView.builder(
@@ -1197,7 +1846,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                   title: const Text('مشاهده‌کنندگان'),
                   onTap: () {
                     Navigator.pop(context);
-                    _showViewers(story.id!);
+                    // _showViewers(story.id!);
                   },
                 ),
                 ListTile(
@@ -1455,13 +2104,18 @@ class CustomCacheManager {
     _instance ??= CacheManager(
       Config(
         key,
-        stalePeriod: const Duration(hours: 24), // کاهش زمان نگهداری کش
-        maxNrOfCacheObjects: 50, // محدود کردن تعداد تصاویر کش شده
+        stalePeriod: const Duration(hours: 6), // کاهش زمان نگهداری کش
+        maxNrOfCacheObjects: 100, // افزایش تعداد ایتم‌های کش شده
         repo: JsonCacheInfoRepository(databaseName: key),
         fileService: HttpFileService(),
       ),
     );
     return _instance!;
+  }
+
+  // روش برای پاک کردن کش استوری‌های قدیمی
+  static Future<void> clearOldCache() async {
+    await instance.emptyCache();
   }
 }
 
@@ -1486,33 +2140,48 @@ class StoryProgressBar extends StatelessWidget {
     return Row(
       children: List.generate(
         itemCount,
-        (index) => Expanded(
-          child: ValueListenableBuilder<double>(
-            valueListenable: controller,
-            builder: (context, value, child) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: LinearProgressIndicator(
-                    value: _getProgressValue(index),
-                    backgroundColor: passiveColor,
-                    valueColor: AlwaysStoppedAnimation(activeColor),
-                    minHeight: 2.5,
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
+        (index) {
+          final isActive = index == activeIndex;
+          final isCompleted = index < activeIndex;
+
+          return Expanded(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              height: 3,
+              decoration: BoxDecoration(
+                color:
+                    isCompleted ? activeColor : passiveColor.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: isActive
+                  ? LayoutBuilder(
+                      builder: (context, constraints) {
+                        return AnimatedBuilder(
+                          animation: controller,
+                          builder: (context, child) {
+                            return Row(
+                              children: [
+                                Container(
+                                  width:
+                                      constraints.maxWidth * controller.value,
+                                  decoration: BoxDecoration(
+                                    color: activeColor,
+                                    borderRadius: BorderRadius.circular(5),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                    )
+                  : const SizedBox(),
+            ),
+          );
+        },
       ),
     );
-  }
-
-  double _getProgressValue(int index) {
-    if (index < activeIndex) return 1.0;
-    if (index > activeIndex) return 0.0;
-    return controller.value;
   }
 }
 
@@ -1540,162 +2209,197 @@ class CloseStoryButton extends StatelessWidget {
 
 class _ErrorView extends StatelessWidget {
   final String error;
+  final VoidCallback? onRetry;
 
-  const _ErrorView({required this.error});
+  const _ErrorView({required this.error, this.onRetry});
 
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.error_outline, color: Colors.red, size: 40),
-          const SizedBox(height: 10),
-          Text('خطا در دریافت داده‌ها',
-              style: Theme.of(context).textTheme.titleMedium),
-          Text(error, style: const TextStyle(color: Colors.grey)),
-        ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.red.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.red.shade300),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, color: Colors.red.shade700, size: 32),
+            const SizedBox(height: 8),
+            Text(
+              'خطا در بارگذاری استوری‌ها',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: Colors.red.shade700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'لطفاً اتصال اینترنت خود را بررسی کنید',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.red.shade700,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            if (onRetry != null) ...[
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh),
+                label: const Text('تلاش مجدد'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade50,
+                  foregroundColor: Colors.red.shade700,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
 }
 
-// Add this class to the same file or create a new one
-class StoryViewersBottomSheet extends StatelessWidget {
-  final String storyId;
-  final ScrollController scrollController;
-  final VoidCallback onDismiss;
+// // Add this class to the same file or create a new one
+// class StoryViewersBottomSheet extends StatelessWidget {
+//   final String storyId;
+//   final ScrollController scrollController;
+//   final VoidCallback onDismiss;
 
-  const StoryViewersBottomSheet({
-    required this.storyId,
-    required this.scrollController,
-    required this.onDismiss,
-    super.key,
-  });
+//   const StoryViewersBottomSheet({
+//     required this.storyId,
+//     required this.scrollController,
+//     required this.onDismiss,
+//     super.key,
+//   });
 
-  // در _fetchStoryViews
-  Future<List<Map<String, dynamic>>> _fetchStoryViews(String storyId) async {
-    final currentUserId = supabase.auth.currentUser?.id;
-    if (currentUserId == null) return [];
-    final response = await supabase
-        .from('story_views')
-        .select('''
-        viewer_id,
-        viewed_at,
-        profiles:viewer_id(
-          username,
-          avatar_url
-        )
-      ''')
-        .eq('story_id', storyId)
-        .neq('viewer_id', currentUserId) // Don't show story owner
-        .order('viewed_at', ascending: false);
-    return List<Map<String, dynamic>>.from(response);
-  }
+//   // در _fetchStoryViews
+//   Future<List<Map<String, dynamic>>> _fetchStoryViews(String storyId) async {
+//     final currentUserId = supabase.auth.currentUser?.id;
+//     if (currentUserId == null) return [];
+//     final response = await supabase
+//         .from('story_views')
+//         .select('''
+//         viewer_id,
+//         viewed_at,
+//         profiles:viewer_id(
+//           username,
+//           avatar_url
+//         )
+//       ''')
+//         .eq('story_id', storyId)
+//         .neq('viewer_id', currentUserId) // Don't show story owner
+//         .order('viewed_at', ascending: false);
+//     return List<Map<String, dynamic>>.from(response);
+//   }
 
-// در StoryViewersBottomSheet
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: _fetchStoryViews(storyId).asStream(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text('خطا: ${snapshot.error}'));
-        }
-        final views = snapshot.data ?? [];
-        final viewCount = views.length;
+// // در StoryViewersBottomSheet
+//   @override
+//   Widget build(BuildContext context) {
+//     return StreamBuilder<List<Map<String, dynamic>>>(
+//       stream: _fetchStoryViews(storyId).asStream(),
+//       builder: (context, snapshot) {
+//         if (snapshot.connectionState == ConnectionState.waiting) {
+//           return const Center(child: CircularProgressIndicator());
+//         }
+//         if (snapshot.hasError) {
+//           return Center(child: Text('خطا: ${snapshot.error}'));
+//         }
+//         final views = snapshot.data ?? [];
+//         final viewCount = views.length;
 
-        return Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).brightness == Brightness.dark
-                ? Colors.grey[900]
-                : Colors.white,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-          ),
-          child: Column(
-            children: [
-              // Handle bar and close button
-              Stack(
-                alignment: Alignment.center,
-                children: [
-                  // Handle bar
-                  Container(
-                    margin: const EdgeInsets.symmetric(vertical: 8),
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? Colors.grey[900]
-                          : Colors.white,
-                      borderRadius:
-                          const BorderRadius.vertical(top: Radius.circular(16)),
-                    ),
-                  ),
-                  // Close button
-                  Positioned(
-                    right: 8,
-                    top: 8,
-                    child: IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: onDismiss,
-                    ),
-                  ),
-                ],
-              ),
-              // Title with view count
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  'بازدیدها ($viewCount)',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              // Viewers list
-              Expanded(
-                child: ListView.builder(
-                  controller: scrollController,
-                  itemCount: views.length,
-                  itemBuilder: (context, index) {
-                    final view = views[index];
-                    return ListTile(
-                      leading: CircleAvatar(
-                        backgroundImage: CachedNetworkImageProvider(
-                          view['profiles']['avatar_url'] ?? defaultAvatarUrl,
-                        ),
-                      ),
-                      title:
-                          Text(view['profiles']['username'] ?? 'کاربر ناشناس'),
-                      subtitle:
-                          Text(_getTimeAgo(DateTime.parse(view['viewed_at']))),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+//         return Container(
+//           decoration: BoxDecoration(
+//             color: Theme.of(context).brightness == Brightness.dark
+//                 ? Colors.grey[900]
+//                 : Colors.white,
+//             borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+//           ),
+//           child: Column(
+//             children: [
+//               // Handle bar and close button
+//               Stack(
+//                 alignment: Alignment.center,
+//                 children: [
+//                   // Handle bar
+//                   Container(
+//                     margin: const EdgeInsets.symmetric(vertical: 8),
+//                     width: 40,
+//                     height: 4,
+//                     decoration: BoxDecoration(
+//                       color: Theme.of(context).brightness == Brightness.dark
+//                           ? Colors.grey[900]
+//                           : Colors.white,
+//                       borderRadius:
+//                           const BorderRadius.vertical(top: Radius.circular(16)),
+//                     ),
+//                   ),
+//                   // Close button
+//                   Positioned(
+//                     right: 8,
+//                     top: 8,
+//                     child: IconButton(
+//                       icon: const Icon(Icons.close),
+//                       onPressed: onDismiss,
+//                     ),
+//                   ),
+//                 ],
+//               ),
+//               // Title with view count
+//               Padding(
+//                 padding: const EdgeInsets.all(16),
+//                 child: Text(
+//                   'بازدیدها ($viewCount)',
+//                   style: const TextStyle(
+//                     fontSize: 18,
+//                     fontWeight: FontWeight.bold,
+//                   ),
+//                 ),
+//               ),
+//               // Viewers list
+//               Expanded(
+//                 child: ListView.builder(
+//                   controller: scrollController,
+//                   itemCount: views.length,
+//                   itemBuilder: (context, index) {
+//                     final view = views[index];
+//                     return ListTile(
+//                       leading: CircleAvatar(
+//                         backgroundImage: CachedNetworkImageProvider(
+//                           view['profiles']['avatar_url'] ?? defaultAvatarUrl,
+//                         ),
+//                       ),
+//                       title:
+//                           Text(view['profiles']['username'] ?? 'کاربر ناشناس'),
+//                       subtitle:
+//                           Text(_getTimeAgo(DateTime.parse(view['viewed_at']))),
+//                     );
+//                   },
+//                 ),
+//               ),
+//             ],
+//           ),
+//         );
+//       },
+//     );
+//   }
 
-  String _getTimeAgo(DateTime dateTime) {
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
+//   String _getTimeAgo(DateTime dateTime) {
+//     final now = DateTime.now();
+//     final difference = now.difference(dateTime);
 
-    if (difference.inMinutes < 1) {
-      return 'همین الان';
-    } else if (difference.inHours < 1) {
-      return '${difference.inMinutes} دقیقه پیش';
-    } else if (difference.inDays < 1) {
-      return '${difference.inHours} ساعت پیش';
-    } else {
-      return '${difference.inDays} روز پیش';
-    }
-  }
-}
+//     if (difference.inMinutes < 1) {
+//       return 'همین الان';
+//     } else if (difference.inHours < 1) {
+//       return '${difference.inMinutes} دقیقه پیش';
+//     } else if (difference.inDays < 1) {
+//       return '${difference.inHours} ساعت پیش';
+//     } else {
+//       return '${difference.inDays} روز پیش';
+//     }
+//   }
+// }

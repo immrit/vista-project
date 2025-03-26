@@ -905,12 +905,38 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Avatar
-          CircleAvatar(
-            radius: isReply ? 16 : 20,
-            backgroundImage: comment.avatarUrl.isEmpty
-                ? const AssetImage('lib/util/images/default-avatar.jpg')
-                : CachedNetworkImageProvider(comment.avatarUrl)
-                    as ImageProvider,
+          GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ProfileScreen(
+                    userId: comment.userId,
+                    username: comment.username,
+                  ),
+                ),
+              );
+            },
+            child: GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ProfileScreen(
+                      userId: comment.userId,
+                      username: comment.username,
+                    ),
+                  ),
+                );
+              },
+              child: CircleAvatar(
+                radius: isReply ? 16 : 20,
+                backgroundImage: comment.avatarUrl.isEmpty
+                    ? const AssetImage('lib/util/images/default-avatar.jpg')
+                    : CachedNetworkImageProvider(comment.avatarUrl)
+                        as ImageProvider,
+              ),
+            ),
           ),
 
           const SizedBox(width: 8),

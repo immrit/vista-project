@@ -169,9 +169,10 @@ final postsProvider = StateProvider<List<PublicPostModel>>((ref) {
 class PublicPostsNotifier
     extends StateNotifier<AsyncValue<List<PublicPostModel>>> {
   final SupabaseClient supabase;
-  int _limit = 10;
+  final int _limit = 15; // افزایش تعداد آیتم‌های لود شده در یک صفحه
   int _offset = 0;
   bool _hasMore = true;
+  bool _isLoading = false;
 
   PublicPostsNotifier(this.supabase) : super(const AsyncValue.loading()) {
     _loadInitialPosts();
@@ -181,13 +182,21 @@ class PublicPostsNotifier
     state = const AsyncValue.loading();
     _offset = 0;
     _hasMore = true;
+    _isLoading = false;
     await _loadMorePosts();
   }
 
   Future<void> _loadMorePosts() async {
-    if (!_hasMore) return;
+    if (!_hasMore || _isLoading) return;
+
+    _isLoading = true;
 
     try {
+      // اضافه کردن تأخیر کوتاه برای جلوگیری از درخواست‌های مکرر به سرور
+      if (_offset > 0) {
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+
       final response = await supabase
           .from('posts')
           .select('''
@@ -209,7 +218,7 @@ class PublicPostsNotifier
 
       if (response.isEmpty) {
         _hasMore = false;
-        state = AsyncValue.data([...?state.value, ...[]]);
+        _isLoading = false;
         return;
       }
 
@@ -232,11 +241,34 @@ class PublicPostsNotifier
         });
       }).toList();
 
-      state = AsyncValue.data([...?state.value, ...posts]);
+      // اگر state.value null است، posts را به عنوان لیست جدید قرار می‌دهیم
+      // در غیر این صورت، posts را به لیست موجود اضافه می‌کنیم
+      final currentPosts = state.value ?? [];
+      state = AsyncValue.data([...currentPosts, ...posts]);
     } catch (e, stackTrace) {
-      state = AsyncValue.error(e, stackTrace);
+      String errorMessage = 'خطا در بارگذاری پست‌ها';
+
+      if (e is PostgrestException) {
+        errorMessage =
+            'خطا در ارتباط با سرور. لطفا اتصال اینترنت خود را بررسی کنید';
+      } else if (e is TimeoutException) {
+        errorMessage =
+            'زمان پاسخگویی سرور به پایان رسید. لطفا دوباره تلاش کنید';
+      } else if (e is AuthException) {
+        errorMessage = 'لطفا دوباره وارد حساب کاربری خود شوید';
+      }
+
+      state = AsyncValue.error(errorMessage, stackTrace);
+    } finally {
+      _isLoading = false;
     }
   }
+
+  // متد برای بررسی اینکه آیا پست‌های بیشتری وجود دارد یا خیر
+  bool hasMorePosts() => _hasMore;
+
+  // متد برای بررسی اینکه آیا در حال بارگذاری هستیم یا خیر
+  bool isLoading() => _isLoading;
 
   Future<void> refreshPosts() async {
     await _loadInitialPosts();
@@ -1574,9 +1606,10 @@ final userFollowingProvider =
 class FollowingPostsNotifier
     extends StateNotifier<AsyncValue<List<PublicPostModel>>> {
   final SupabaseClient supabase;
-  int _limit = 10;
+  final int _limit = 10;
   int _offset = 0;
   bool _hasMore = true;
+  bool _isLoading = false;
 
   FollowingPostsNotifier(this.supabase) : super(const AsyncValue.loading()) {
     _loadInitialPosts();
@@ -1657,7 +1690,21 @@ class FollowingPostsNotifier
 
       state = AsyncValue.data([...?state.value, ...posts]);
     } catch (e, stackTrace) {
-      state = AsyncValue.error(e, stackTrace);
+      String errorMessage = 'خطا در بارگذاری پست‌ها';
+
+      if (e is PostgrestException) {
+        errorMessage =
+            'خطا در ارتباط با سرور. لطفا اتصال اینترنت خود را بررسی کنید';
+      } else if (e is TimeoutException) {
+        errorMessage =
+            'زمان پاسخگویی سرور به پایان رسید. لطفا دوباره تلاش کنید';
+      } else if (e is AuthException) {
+        errorMessage = 'لطفا دوباره وارد حساب کاربری خود شوید';
+      }
+
+      state = AsyncValue.error(errorMessage, stackTrace);
+    } finally {
+      _isLoading = false;
     }
   }
 

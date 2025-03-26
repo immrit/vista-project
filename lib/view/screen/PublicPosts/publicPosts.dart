@@ -1,5 +1,6 @@
 import 'package:Vista/view/screen/PublicPosts/PostDetailPage.dart';
 import 'package:Vista/widgets/norooz_title.dart';
+import 'package:buttons_tabbar/buttons_tabbar.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
@@ -125,6 +126,7 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
     return ConnectionStatusBar(
       status: _connectionStatus,
       isChecking: _isChecking,
+      onRetry: _initConnectivity, // تابع بررسی مجدد اتصال
     );
   }
 
@@ -133,10 +135,24 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
     super.build(context);
     final currentColor = ref.watch(themeProvider);
     final getProfile = ref.watch(profileProvider);
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    // تعریف رنگ‌ها و سایه‌ها با gradient
+    final selectedGradient = LinearGradient(
+      colors: isDarkMode
+          ? [Colors.grey[800]!, Colors.grey[700]!]
+          : [Colors.white, Colors.grey[100]!],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
+
+    final shadowColor = isDarkMode
+        ? Colors.black.withOpacity(0.3)
+        : Colors.grey.withOpacity(0.2);
 
     return DefaultTabController(
       length: 2,
-      initialIndex: 1, // اضافه کردن این خط
+      initialIndex: 1,
       key: _tabControllerKey,
       child: Scaffold(
         body: NestedScrollView(
@@ -149,39 +165,95 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
                 child: _connectionStatus == 'متصل به وای‌فای' ||
                         _connectionStatus == 'متصل به اینترنت همراه'
                     ? NoroozTitle()
-                    //  const Text(
-                    //     'Vista',
-                    //     key: ValueKey('app-name'),
-                    //     style: TextStyle(
-                    //       fontSize: 25,
-                    //       fontWeight: FontWeight.bold,
-                    //       fontFamily: 'Bauhaus',
-                    //     ),
-                    //   )
                     : _buildConnectionStatus(),
               ),
               centerTitle: true,
-              bottom: TabBar(
-                indicatorColor: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.white
-                    : Colors.black,
-                labelColor: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.white
-                    : Colors.black,
-                unselectedLabelColor:
-                    Theme.of(context).brightness == Brightness.dark
-                        ? Colors.white
-                        : Colors.black,
-                tabs: const [
-                  Tab(text: 'همه پست‌ها'),
-                  Tab(text: 'پست‌های دنبال‌شده‌ها'),
-                ],
+              bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(65),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: isDarkMode ? Colors.grey[850] : Colors.grey[200],
+                      borderRadius: BorderRadius.circular(25),
+                      boxShadow: [
+                        BoxShadow(
+                          color: shadowColor,
+                          blurRadius: 8,
+                          spreadRadius: 1,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(25),
+                      child: ButtonsTabBar(
+                        // تنظیمات ظاهری
+                        decoration: BoxDecoration(
+                          gradient: selectedGradient,
+                          boxShadow: [
+                            BoxShadow(
+                              color: shadowColor,
+                              blurRadius: 4,
+                              spreadRadius: 1,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        unselectedDecoration: BoxDecoration(
+                          color: Colors.transparent,
+                        ),
+                        contentPadding:
+                            const EdgeInsets.symmetric(horizontal: 20),
+                        buttonMargin: const EdgeInsets.all(1),
+                        height: 46,
+                        splashColor:
+                            isDarkMode ? Colors.white12 : Colors.black12,
+                        labelStyle: TextStyle(
+                          color: isDarkMode ? Colors.white : Colors.black87,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                        unselectedLabelStyle: TextStyle(
+                          color: isDarkMode ? Colors.white70 : Colors.black54,
+                          fontWeight: FontWeight.normal,
+                          fontSize: 14,
+                        ),
+                        // انیمیشن نرم برای تغییر تب
+                        physics: const BouncingScrollPhysics(),
+                        duration: 300,
+                        tabs: [
+                          Tab(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: const [
+                                Icon(Icons.public, size: 16),
+                                SizedBox(width: 8),
+                                Text('همه پست‌ها'),
+                              ],
+                            ),
+                          ),
+                          Tab(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: const [
+                                Icon(Icons.people, size: 16),
+                                SizedBox(width: 8),
+                                Text('دنبال‌شده‌ها'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
             SliverToBoxAdapter(
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 12),
-                height: 135, // Increased height for stories
+                height: 135,
                 child: const StoryBar(),
               ),
             )
@@ -210,30 +282,84 @@ class _AllPostsTab extends ConsumerWidget {
 }
 
 class _AllPostsPaginatedTab extends ConsumerWidget {
-  const _AllPostsPaginatedTab({Key? key}) : super(key: key);
-
-  final bool _hasMore = true; // Define _hasMore as a boolean variable
+  const _AllPostsPaginatedTab({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final postsAsync = ref.watch(publicPostsProvider);
+    final notifier = ref.watch(publicPostsProvider.notifier);
 
     return RefreshIndicator(
       onRefresh: () async =>
           ref.read(publicPostsProvider.notifier).refreshPosts(),
       child: postsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(child: Text('Error: $error')),
+        loading: () => _buildPostsSkeletonList(),
+        error: (error, stack) => Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline_rounded,
+                size: 56,
+                color: Colors.red,
+              ),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  error.toString(),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () {
+                  ref.refresh(publicPostsProvider);
+                  ref.refresh(fetchFollowingPostsProvider);
+                  ref.refresh(storyUsersProvider);
+                },
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('تلاش مجدد'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
         data: (posts) {
+          if (posts.isEmpty) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.article_outlined, size: 64, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text('هیچ پستی یافت نشد', style: TextStyle(fontSize: 18)),
+                ],
+              ),
+            );
+          }
+
           return ListView.builder(
-            itemCount: posts.length + (_hasMore ? 1 : 0),
+            itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
             itemBuilder: (context, index) {
               if (index == posts.length) {
-                ref.read(publicPostsProvider.notifier).loadMorePosts();
+                notifier.loadMorePosts();
                 return Center(
                   child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: LoadingAnimationWidget.progressiveDots(
+                    padding: const EdgeInsets.all(16.0),
+                    child: LoadingAnimationWidget.staggeredDotsWave(
                       color: Theme.of(context).primaryColor,
                       size: 40,
                     ),
@@ -249,10 +375,20 @@ class _AllPostsPaginatedTab extends ConsumerWidget {
       ),
     );
   }
+
+  // ویجت اسکلتون برای نمایش هنگام بارگذاری
+  Widget _buildPostsSkeletonList() {
+    return ListView.builder(
+      itemCount: 5, // تعداد اسکلتون‌های نمایش داده شده
+      itemBuilder: (context, index) {
+        return buildPostSkeleton(context);
+      },
+    );
+  }
 }
 
 class _FollowingPostsTab extends ConsumerWidget {
-  const _FollowingPostsTab({Key? key}) : super(key: key);
+  const _FollowingPostsTab({super.key});
   final bool _hasMore = true; // Define _hasMore as a boolean variable
 
   @override
@@ -263,8 +399,46 @@ class _FollowingPostsTab extends ConsumerWidget {
       onRefresh: () async =>
           ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
       child: postsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(child: Text('Error: $error')),
+        loading: () => _buildPostsSkeletonList(),
+        error: (error, stack) => Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline_rounded,
+                size: 56,
+                color: Colors.red,
+              ),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  error.toString(),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () => ref.refresh(publicPostsProvider),
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('تلاش مجدد'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
         data: (posts) {
           return ListView.builder(
             itemCount: posts.length + (_hasMore ? 1 : 0),
@@ -290,6 +464,107 @@ class _FollowingPostsTab extends ConsumerWidget {
       ),
     );
   }
+
+  // ویجت اسکلتون برای نمایش هنگام بارگذاری
+  Widget _buildPostsSkeletonList() {
+    return ListView.builder(
+      itemCount: 5, // تعداد اسکلتون‌های نمایش داده شده
+      itemBuilder: (context, index) {
+        return buildPostSkeleton(context);
+      },
+    );
+  }
+}
+
+Widget buildPostSkeleton(BuildContext context) {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  final shimmerBaseColor = isDark ? Colors.grey[800]! : Colors.grey[300]!;
+  final shimmerHighlightColor = isDark ? Colors.grey[700]! : Colors.grey[100]!;
+
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: shimmerBaseColor,
+              shape: BoxShape.circle,
+            ),
+          ),
+          title: Container(
+            width: 120,
+            height: 16,
+            color: shimmerBaseColor,
+          ),
+          subtitle: Container(
+            width: 80,
+            height: 12,
+            margin: const EdgeInsets.only(top: 4),
+            color: shimmerBaseColor,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          height: 16,
+          color: shimmerBaseColor,
+          margin: const EdgeInsets.only(left: 56, right: 24),
+        ),
+        const SizedBox(height: 4),
+        Container(
+          height: 16,
+          color: shimmerBaseColor,
+          margin: const EdgeInsets.only(left: 24, right: 56),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          height: 200,
+          color: shimmerBaseColor,
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: shimmerBaseColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              width: 24,
+              height: 16,
+              color: shimmerBaseColor,
+            ),
+            const SizedBox(width: 24),
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: shimmerBaseColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              width: 24,
+              height: 16,
+              color: shimmerBaseColor,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const Divider(),
+      ],
+    ),
+  );
 }
 
 Widget _buildPostItem(
@@ -331,7 +606,12 @@ Widget _buildPostItem(
                 backgroundImage: post.avatarUrl.isEmpty
                     ? const AssetImage('lib/util/images/default-avatar.jpg')
                         as ImageProvider
-                    : CachedNetworkImageProvider(post.avatarUrl),
+                    : CachedNetworkImageProvider(
+                        post.avatarUrl,
+                        // اضافه کردن گزینه‌های جدید برای بهبود کش کردن
+                        maxWidth: 100,
+                        maxHeight: 100,
+                      ),
               ),
             ),
             title: GestureDetector(
@@ -360,13 +640,19 @@ Widget _buildPostItem(
           ),
           const SizedBox(height: 8),
 
-          // بخش محتوای پست (متن، موزیک)
+          // بخش محتوای پست (متن، موزیک) - با استایل بهبود یافته
           Directionality(
             textDirection: getDirectionality(post.content),
             child: _buildPostContent(post, context),
           ),
 
-          // نمایش تصویر اگر پست دارای imageUrl باشد
+          // نمایش هشتگ‌ها با استایل جدید
+          if (post.hashtags.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _buildHashtags(post.hashtags, context),
+          ],
+
+          // نمایش تصویر اگر پست دارای imageUrl باشد - با استایل و انیمیشن بهبود یافته
           if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
             const SizedBox(height: 8),
             GestureDetector(
@@ -381,28 +667,47 @@ Widget _buildPostItem(
               },
               child: Hero(
                 tag: post.imageUrl!,
-                child: CachedNetworkImage(
-                  imageUrl: post.imageUrl!,
-                  placeholder: (context, url) =>
-                      const Center(child: CircularProgressIndicator()),
-                  errorWidget: (context, url, error) => const Icon(Icons.error),
-                  fit: BoxFit.cover,
+                child: ClipRRect(
+                  borderRadius:
+                      BorderRadius.circular(12.0), // گرد کردن گوشه‌های تصویر
+                  child: CachedNetworkImage(
+                    imageUrl: post.imageUrl!,
+                    placeholder: (context, url) => Container(
+                      height: 200,
+                      color: Colors.grey[300],
+                      child: Center(
+                        child: LoadingAnimationWidget.staggeredDotsWave(
+                          color: Theme.of(context).primaryColor,
+                          size: 40,
+                        ),
+                      ),
+                    ),
+                    errorWidget: (context, url, error) => Container(
+                      height: 200,
+                      color: Colors.grey[300],
+                      child: const Center(
+                        child: Icon(Icons.broken_image, size: 40),
+                      ),
+                    ),
+                    fit: BoxFit.cover,
+                    fadeInDuration: const Duration(milliseconds: 300),
+                    fadeOutDuration: const Duration(milliseconds: 300),
+                  ),
                 ),
               ),
             ),
           ],
           const SizedBox(height: 8),
 
-          // ردیف دکمه‌های لایک، کامنت و اشتراک
+          // ردیف دکمه‌های لایک، کامنت و اشتراک - با انیمیشن بهبود یافته
           Row(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
-              IconButton(
-                icon: Icon(
-                  post.isLiked ? Icons.favorite : Icons.favorite_border,
-                  color: post.isLiked ? Colors.red : null,
-                ),
-                onPressed: () async {
+              // دکمه لایک با انیمیشن
+              LikeButton(
+                isLiked: post.isLiked,
+                likeCount: post.likeCount,
+                onTap: () async {
                   post.isLiked = !post.isLiked;
                   post.likeCount += post.isLiked ? 1 : -1;
                   (context as Element).markNeedsBuild();
@@ -413,23 +718,51 @@ Widget _buildPostItem(
                       );
                 },
               ),
-              Text('${post.likeCount}'), // نمایش تعداد لایک‌ها
               const SizedBox(width: 16),
-              IconButton(
-                icon: const Icon(Icons.comment),
-                onPressed: () {
-                  showCommentsBottomSheet(context, post.id, ref);
-                },
+              // دکمه کامنت با استایل جدید
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.comment_outlined),
+                    onPressed: () {
+                      showCommentsBottomSheet(context, post.id, ref);
+                    },
+                  ),
+                  Text(
+                    '${post.commentCount}',
+                    style: TextStyle(
+                      fontWeight: post.commentCount > 0
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                  ),
+                ],
               ),
-              Text('${post.commentCount}'), // نمایش تعداد کامنت‌ها
               const SizedBox(width: 16),
-              IconButton(
-                icon: const Icon(Icons.share),
-                onPressed: () {
+              // دکمه اشتراک‌گذاری با انیمیشن کلیک
+              GestureDetector(
+                onTap: () {
                   String sharePost =
-                      'Post by ${post.username}: ${post.content}';
+                      'کاربر ${post.username} به شما ارسال کرد:\n\n${post.content}';
+
+                  // اگر پست تصویر دارد، آن را هم به اشتراک بگذارید
+                  if (post.imageUrl != null && post.imageUrl!.isNotEmpty) {
+                    sharePost += '\n\nتصویر: ${post.imageUrl}';
+                  }
+
                   Share.share(sharePost);
                 },
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.transparent,
+                  ),
+                  child: const Icon(
+                    Icons.share_outlined,
+                    size: 22,
+                  ),
+                ),
               ),
             ],
           ),
@@ -440,202 +773,50 @@ Widget _buildPostItem(
   );
 }
 
-Widget _buildPostList(
-    BuildContext context, WidgetRef ref, List<PublicPostModel> posts) {
-  if (posts.isEmpty) {
-    return const Center(child: Text('هیچ پستی وجود ندارد.'));
-  }
+Widget _buildHashtags(List<String> hashtags, BuildContext context) {
+  return Wrap(
+    spacing: 8,
+    children: hashtags.map((tag) {
+      // انتخاب رنگی مناسب برای هر هشتگ بر اساس اولین کاراکتر آن
+      final colors = [
+        Colors.blue,
+        Colors.purple,
+        Colors.teal,
+        Colors.orange,
+        Colors.green,
+        Colors.pink,
+      ];
 
-  return ListView.builder(
-    padding: const EdgeInsets.only(top: 8.0), // کاهش فاصله از بالا
-    itemCount: posts.length,
-    itemBuilder: (context, index) {
-      final post = posts[index];
+      final color = colors[tag.codeUnitAt(0) % colors.length];
 
-      DateTime createdAt = post.createdAt.toLocal();
-      Jalali jalaliDate = Jalali.fromDateTime(createdAt);
-      String formattedDate =
-          '${jalaliDate.year}/${jalaliDate.month}/${jalaliDate.day}';
-
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 18.0),
-        child: GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => PostDetailsPage(
-                  postId: post.id,
-                ),
+      return GestureDetector(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => SearchPage(
+                initialHashtag: tag,
               ),
-            );
-          },
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => ProfileScreen(
-                          userId: post.userId,
-                          username: post.username,
-                        ),
-                      ),
-                    );
-                  },
-                  child: CircleAvatar(
-                    backgroundImage: post.avatarUrl.isEmpty
-                        ? const AssetImage('lib/util/images/default-avatar.jpg')
-                            as ImageProvider
-                        : CachedNetworkImageProvider(post.avatarUrl),
-                  ),
-                ),
-                title: GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => ProfileScreen(
-                          userId: post.userId,
-                          username: post.username,
-                        ),
-                      ),
-                    );
-                  },
-                  child: Row(
-                    children: [
-                      Text(
-                        post.username,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(width: 4),
-                      if (post.isVerified)
-                        const Icon(Icons.verified,
-                            color: Colors.blue, size: 16.0),
-                    ],
-                  ),
-                ),
-                subtitle: Text(
-                  formattedDate,
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                ),
-                trailing: _buildPostActions(context, ref, post),
-              ),
-              const SizedBox(height: 8),
-              Directionality(
-                textDirection: getDirectionality(post.content),
-                child: _buildPostContent(post, context),
-              ),
-              // نمایش هشتگ‌ها
-              if (post.hashtags.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: post.hashtags
-                      .map(
-                        (tag) => GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => SearchPage(
-                                  initialHashtag: tag,
-                                ),
-                              ),
-                            );
-                          },
-                          child: Text(
-                            '#$tag',
-                            style: const TextStyle(
-                              color: Colors.blue,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ],
-              // اضافه کردن نمایش تصویر در صورت وجود
-              if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            PostImageViewer(imageUrl: post.imageUrl!),
-                      ),
-                    );
-                  },
-                  child: Hero(
-                    tag: post.imageUrl!, // استفاده از Hero در اینجا
-                    child: CachedNetworkImage(
-                      imageUrl: post.imageUrl!,
-                      placeholder: (context, url) =>
-                          const Center(child: CircularProgressIndicator()),
-                      errorWidget: (context, url, error) =>
-                          const Icon(Icons.error),
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.start,
-                children: [
-                  IconButton(
-                    icon: Icon(
-                      post.isLiked ? Icons.favorite : Icons.favorite_border,
-                      color: post.isLiked ? Colors.red : null,
-                    ),
-                    onPressed: () async {
-                      post.isLiked = !post.isLiked;
-                      post.likeCount += post.isLiked ? 1 : -1;
-                      (context as Element).markNeedsBuild();
-                      await ref.watch(supabaseServiceProvider).toggleLike(
-                            postId: post.id,
-                            ownerId: post.userId,
-                            ref: ref,
-                          );
-                    },
-                  ),
-                  Text('${post.likeCount}'),
-                  const SizedBox(width: 16),
-                  Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.comment),
-                        onPressed: () {
-                          showCommentsBottomSheet(context, post.id, ref);
-                        },
-                      ),
-                      Text('${post.commentCount}')
-                    ],
-                  ),
-                  const SizedBox(width: 16),
-                  IconButton(
-                    icon: const Icon(Icons.share),
-                    onPressed: () {
-                      String sharePost =
-                          'کاربر ${post.username} به شما ارسال کرد:\n\n${post.content}';
-                      Share.share(sharePost);
-                    },
-                  ),
-                ],
-              ),
-              const Divider(),
-            ],
+            ),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withOpacity(0.5)),
+          ),
+          child: Text(
+            '#$tag',
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       );
-    },
+    }).toList(),
   );
 }
 
@@ -834,275 +1015,76 @@ Widget _buildPostContentText(String content, BuildContext context) {
   );
 }
 
-PopupMenuButton<String> _buildPostActions(
+Widget _buildPostActions(
     BuildContext context, WidgetRef ref, PublicPostModel post) {
-  final currentUserId = Supabase.instance.client.auth.currentUser?.id;
   return PopupMenuButton<String>(
+    icon: const Icon(Icons.more_vert),
     onSelected: (value) async {
-      switch (value) {
-        case 'report':
-          if (post.userId != currentUserId) {
-            return showDialog(
-              context: context,
-              builder: (context) => ReportDialog(post: post),
-            );
-          }
-
-          break;
-        case 'copy':
-          Clipboard.setData(ClipboardData(text: post.content));
-          ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('متن کپی شد!')));
-          break;
-        case 'delete':
-          if (post.userId == currentUserId) {
-            final confirmed = await showDialog(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('حذف پست'),
-                content: const Text('آیا از حذف این پست اطمینان دارید؟'),
-                actions: [
-                  TextButton(
-                    style: ButtonStyle(
-                      overlayColor: WidgetStateProperty.all(
-                        Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white12 // افکت لمس در تم تاریک
-                            : Colors.black12, // افکت لمس در تم روشن
-                      ),
-                    ),
-                    onPressed: () => Navigator.pop(context, false),
-                    child: Text(
-                      'انصراف',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.grey[300] // رنگ روشن‌تر برای تم تاریک
-                            : Colors.grey[800], // رنگ تیره‌تر برای تم روشن
-                      ),
-                    ),
-                  ),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                          Theme.of(context).brightness == Brightness.dark
-                              ? Colors.red[700] // رنگ دکمه در تم تاریک
-                              : Colors.red, // رنگ دکمه در تم روشن
-                      shadowColor:
-                          Theme.of(context).brightness == Brightness.dark
-                              ? Colors.black
-                              : Colors.grey[400], // سایه
-                      elevation: 5,
-                    ),
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text(
-                      'حذف',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors
-                            .white, // Text color remains white for both themes
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-            if (confirmed == true) {
-              await ref.watch(supabaseServiceProvider).deletePost(ref, post.id);
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(const SnackBar(content: Text('پست حذف شد!')));
-              ref.refresh(fetchPublicPosts);
-            }
-          }
-          break;
+      if (value == 'report') {
+        _showReportDialog(context, ref, post.id);
+      } else if (value == 'copy') {
+        await Clipboard.setData(ClipboardData(text: post.content));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('متن پست کپی شد'),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            action: SnackBarAction(
+              label: 'باشه',
+              onPressed: () {},
+            ),
+          ),
+        );
+      } else if (value == 'delete') {
+        final currentUserId = supabase.auth.currentUser?.id;
+        if (currentUserId == post.userId) {
+          _showDeleteConfirmation(context, ref, post.id);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('شما نمی‌توانید این پست را حذف کنید'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       }
     },
     itemBuilder: (context) => [
-      if (post.userId != currentUserId)
-        const PopupMenuItem(value: 'report', child: Text('گزارش')),
-      const PopupMenuItem(value: 'copy', child: Text('کپی')),
-      if (post.userId == currentUserId)
-        const PopupMenuItem(value: 'delete', child: Text('حذف')),
+      const PopupMenuItem<String>(
+        value: 'report',
+        child: Row(
+          children: [
+            Icon(Icons.flag, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('گزارش پست'),
+          ],
+        ),
+      ),
+      const PopupMenuItem<String>(
+        value: 'copy',
+        child: Row(
+          children: [
+            Icon(Icons.content_copy, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('کپی متن'),
+          ],
+        ),
+      ),
+      if (supabase.auth.currentUser?.id == post.userId)
+        const PopupMenuItem<String>(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(Icons.delete, color: Colors.red),
+              SizedBox(width: 8),
+              Text('حذف پست'),
+            ],
+          ),
+        ),
     ],
   );
-}
-
-class _PublicPostsState extends ConsumerState<PublicPostsScreen> {
-  String _connectionStatus = '';
-  final Connectivity _connectivity = Connectivity();
-  late StreamSubscription<ConnectivityResult> _connectivitySubscription;
-  bool _hasMore = true;
-  bool _isChecking = false;
-  bool _isLoading = false;
-  final int _limit = 10;
-  int _offset = 0;
-  List<Map<String, dynamic>> _posts = [];
-  final ScrollController _scrollController = ScrollController();
-
-  @override
-  void dispose() {
-    _scrollController.removeListener(_scrollListener);
-    _scrollController.dispose();
-    _connectivitySubscription.cancel();
-    super.dispose();
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _initConnectivity();
-    _loadInitialPosts();
-    _scrollController.addListener(_scrollListener);
-  }
-
-  Future<void> _initConnectivity() async {
-    setState(() => _isChecking = true);
-    try {
-      final result = await _connectivity.checkConnectivity();
-      if (mounted) {
-        await _updateConnectionStatus(result);
-      }
-    } catch (e) {
-      debugPrint('Error checking connectivity: $e');
-      if (mounted) {
-        setState(() {
-          _connectionStatus = 'آفلاین';
-          _isChecking = false;
-        });
-      }
-      Future.delayed(const Duration(seconds: 3), _initConnectivity);
-    }
-  }
-
-  Future<void> _updateConnectionStatus(ConnectivityResult result) async {
-    if (!mounted) return;
-
-    bool hasInternet = false;
-    try {
-      final response = await Future.any<dynamic>([
-        Supabase.instance.client.from('posts').select().limit(1).single(),
-        Future<dynamic>.delayed(
-            const Duration(seconds: 3), () => throw 'timeout'),
-      ]);
-      hasInternet = response != null;
-    } catch (_) {
-      hasInternet = false;
-    }
-
-    setState(() {
-      _isChecking = false;
-      if (!hasInternet) {
-        _connectionStatus = 'آفلاین';
-        return;
-      }
-
-      switch (result) {
-        case ConnectivityResult.wifi:
-          _connectionStatus = 'متصل به وای‌فای';
-          break;
-        case ConnectivityResult.mobile:
-          _connectionStatus = 'متصل به اینترنت همراه';
-          break;
-        default:
-          _connectionStatus = 'آفلاین';
-      }
-    });
-  }
-
-  Future<void> _loadInitialPosts() async {
-    if (_isLoading) return;
-    setState(() {
-      _isLoading = true;
-      _posts = [];
-      _offset = 0;
-      _hasMore = true;
-    });
-
-    await _loadMorePosts();
-  }
-
-  Future<void> _loadMorePosts() async {
-    if (_isLoading || !_hasMore) return;
-
-    setState(() => _isLoading = true);
-
-    try {
-      final response = await supabase
-          .from('posts')
-          .select()
-          .range(_offset, _offset + _limit - 1)
-          .order('created_at', ascending: false);
-
-      print('Response from server: $response'); // لاگ پاسخ سرور
-
-      if (response.isEmpty) {
-        setState(() => _hasMore = false);
-        return;
-      }
-
-      setState(() {
-        _posts.addAll(List<Map<String, dynamic>>.from(response));
-        _offset += response.length;
-        _hasMore = response.length >= _limit;
-      });
-    } catch (e) {
-      debugPrint('Error loading posts: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load posts: $e')),
-      );
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  void _scrollListener() {
-    if (!_scrollController.hasClients) return;
-
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    final currentScroll = _scrollController.position.pixels;
-    const threshold = 200.0;
-
-    if (maxScroll - currentScroll <= threshold) {
-      _loadMorePosts();
-    }
-  }
-
-  Future<void> _handleRefresh() async {
-    await _loadInitialPosts();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return RefreshIndicator(
-      onRefresh: _handleRefresh,
-      child: _posts.isEmpty && _isLoading
-          ? Center(
-              child: LoadingAnimationWidget.progressiveDots(
-                color: Theme.of(context).primaryColor,
-                size: 50,
-              ),
-            )
-          : ListView.builder(
-              controller: _scrollController,
-              itemCount: _posts.length + (_hasMore ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index == _posts.length) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: LoadingAnimationWidget.progressiveDots(
-                        color: Theme.of(context).primaryColor,
-                        size: 40,
-                      ),
-                    ),
-                  );
-                }
-                return PostCard(post: PublicPostModel.fromMap(_posts[index]));
-              },
-            ),
-    );
-  }
 }
 
 class ShimmerLoading extends StatelessWidget {
@@ -1117,15 +1099,163 @@ class ShimmerLoading extends StatelessWidget {
   }
 }
 
+void _showDeleteConfirmation(
+    BuildContext context, WidgetRef ref, String postId) {
+  showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: const Text('حذف پست'),
+        content: const Text('آیا از حذف این پست مطمئن هستید؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('لغو'),
+          ),
+          TextButton(
+            onPressed: () async {
+              try {
+                await ref.read(supabaseServiceProvider).deletePost(ref, postId);
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('پست با موفقیت حذف شد')),
+                  );
+                  ref.read(publicPostsProvider.notifier).refreshPosts();
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('خطا در حذف پست: $e')),
+                  );
+                }
+              }
+            },
+            child: const Text('حذف'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+void _showReportDialog(BuildContext context, WidgetRef ref, String postId) {
+  showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: const Text('گزارش پست'),
+        content: const Text('آیا می‌خواهید این پست را گزارش دهید؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('لغو'),
+          ),
+          TextButton(
+            onPressed: () {
+              // Add your report logic here
+              Navigator.of(context).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('پست گزارش شد')),
+              );
+            },
+            child: const Text('گزارش'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+class LikeButton extends StatefulWidget {
+  final bool isLiked;
+  final int likeCount;
+  final Function onTap;
+
+  const LikeButton({
+    super.key,
+    required this.isLiked,
+    required this.likeCount,
+    required this.onTap,
+  });
+
+  @override
+  State<LikeButton> createState() => _LikeButtonState();
+}
+
+class _LikeButtonState extends State<LikeButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _sizeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+
+    _sizeAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.5), weight: 50),
+      TweenSequenceItem(tween: Tween(begin: 1.5, end: 1.0), weight: 50),
+    ]).animate(_controller);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        AnimatedBuilder(
+          animation: _sizeAnimation,
+          builder: (context, child) {
+            return Transform.scale(
+              scale: _sizeAnimation.value,
+              child: IconButton(
+                icon: Icon(
+                  widget.isLiked ? Icons.favorite : Icons.favorite_border,
+                  color: widget.isLiked ? Colors.red : null,
+                ),
+                onPressed: () {
+                  if (!widget.isLiked) {
+                    _controller.forward(from: 0.0);
+                  }
+                  widget.onTap();
+                },
+              ),
+            );
+          },
+        ),
+        Text(
+          widget.likeCount.toString(),
+          style: TextStyle(
+            fontWeight: widget.isLiked ? FontWeight.bold : FontWeight.normal,
+            color: widget.isLiked ? Colors.red : null,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class ConnectionStatusBar extends StatefulWidget {
+  final String status;
+  final bool isChecking;
+  final VoidCallback onRetry;
+
   const ConnectionStatusBar({
     super.key,
     required this.status,
     required this.isChecking,
+    required this.onRetry,
   });
-
-  final bool isChecking;
-  final String status;
 
   @override
   State<ConnectionStatusBar> createState() => _ConnectionStatusBarState();
@@ -1134,14 +1264,8 @@ class ConnectionStatusBar extends StatefulWidget {
 class _ConnectionStatusBarState extends State<ConnectionStatusBar>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation<double> _fadeAnimation;
   late Animation<double> _slideAnimation;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
@@ -1151,7 +1275,7 @@ class _ConnectionStatusBarState extends State<ConnectionStatusBar>
       duration: const Duration(milliseconds: 300),
     );
 
-    _slideAnimation = Tween<double>(begin: -50.0, end: 0.0).animate(
+    _slideAnimation = Tween<double>(begin: -10.0, end: 0.0).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeOut),
     );
 
@@ -1163,12 +1287,24 @@ class _ConnectionStatusBarState extends State<ConnectionStatusBar>
   }
 
   @override
+  void didUpdateWidget(ConnectionStatusBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.status != widget.status) {
+      _controller.reset();
+      _controller.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final color = widget.status == 'آفلاین'
-        ? Colors.red[400]
-        : widget.status.contains('وای‌فای')
-            ? Colors.green[400]
-            : Colors.blue[400];
+    final brightness = Theme.of(context).brightness;
+    final isDark = brightness == Brightness.dark;
 
     return AnimatedBuilder(
       animation: _controller,
@@ -1177,45 +1313,144 @@ class _ConnectionStatusBarState extends State<ConnectionStatusBar>
           offset: Offset(0, _slideAnimation.value),
           child: Opacity(
             opacity: _fadeAnimation.value,
+            child: _buildStatusContent(isDark),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStatusContent(bool isDark) {
+    // اگر آفلاین است، پیغام خطا با دکمه تلاش مجدد نمایش داده شود
+    if (widget.status.contains('آفلاین')) {
+      return _buildOfflineMessage(isDark);
+    }
+
+    // در غیر این صورت، نوار وضعیت معمولی نمایش داده شود
+    return _buildStatusIndicator(isDark);
+  }
+
+  Widget _buildOfflineMessage(bool isDark) {
+    final color = isDark ? Colors.redAccent : Colors.red[700];
+    final backgroundColor =
+        isDark ? Colors.red.withOpacity(0.2) : Colors.red[50];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: color!.withOpacity(0.5),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.wifi_off_rounded,
+            color: color,
+            size: 16,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'اتصال اینترنت برقرار نیست',
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(width: 8),
+          InkWell(
+            onTap: () => widget.onRetry(),
+            borderRadius: BorderRadius.circular(4),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: color?.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(8),
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(4),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (widget.isChecking)
-                    LoadingAnimationWidget.staggeredDotsWave(
-                      color: color ?? Colors.grey,
-                      size: 20,
-                    )
-                  else
-                    Icon(
-                      widget.status == 'آفلاین'
-                          ? Icons.cloud_off_rounded
-                          : widget.status.contains('وای‌فای')
-                              ? Icons.wifi_rounded
-                              : Icons.signal_cellular_4_bar_rounded,
-                      color: color,
-                      size: 20,
-                    ),
-                  const SizedBox(width: 8),
-                  Text(
-                    widget.status,
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  Icon(
+                    Icons.refresh_rounded,
+                    color: color,
+                    size: 12,
                   ),
+                  const SizedBox(width: 4),
+                  // Text(
+                  //   'تلاش مجدد',
+                  //   style: TextStyle(
+                  //     color: color,
+                  //     fontSize: 11,
+                  //     fontWeight: FontWeight.bold,
+                  //   ),
+                  // ),
                 ],
               ),
             ),
           ),
-        );
-      },
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusIndicator(bool isDark) {
+    Color? mainColor;
+    IconData iconData;
+
+    if (widget.isChecking) {
+      mainColor = isDark ? Colors.blueAccent : Colors.blue[700];
+      iconData = Icons.sync_rounded;
+    } else if (widget.status.contains('وای‌فای')) {
+      mainColor = isDark ? Colors.greenAccent : Colors.green[700];
+      iconData = Icons.wifi_rounded;
+    } else {
+      mainColor = isDark ? Colors.amberAccent : Colors.amber[700];
+      iconData = Icons.signal_cellular_alt_rounded;
+    }
+
+    final backgroundColor =
+        isDark ? mainColor!.withOpacity(0.2) : mainColor!.withAlpha(20);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.isChecking)
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(mainColor),
+              ),
+            )
+          else
+            Icon(
+              iconData,
+              color: mainColor,
+              size: 14,
+            ),
+          const SizedBox(width: 5),
+          Text(
+            widget.status,
+            style: TextStyle(
+              color: mainColor,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
