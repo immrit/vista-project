@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../main.dart';
 import '../homeScreen.dart';
-import '/util/widgets.dart';
+import '../../util/widgets.dart';
 
 import '../../../provider/provider.dart';
 import 'VerifyCodePage.dart';

@@ -1,4 +1,4 @@
-import 'package:Vista/util/widgets.dart';
+import 'package:Vista/view/util/widgets.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,9 +26,10 @@ class _SearchPageState extends ConsumerState<SearchPage>
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounceTimer;
-  late Box<RecentSearch>? _recentSearchesBox; // تغییر به nullable
+  Box<RecentSearch>? _recentSearchesBox;
   bool _showRecentSearches = true;
-  bool _isInitialized = false; // اضافه کردن فلگ برای کنترل وضعیت초기화
+  bool _isInitialized = false;
+  bool _isSearching = false;
 
   @override
   void initState() {
@@ -60,19 +61,29 @@ class _SearchPageState extends ConsumerState<SearchPage>
   }
 
   void _handleInitialHashtag() {
-    if (widget.initialHashtag != null) {
+    if (widget.initialHashtag != null && widget.initialHashtag!.isNotEmpty) {
       final hashtag = widget.initialHashtag!.startsWith('#')
           ? widget.initialHashtag!
           : '#${widget.initialHashtag!}';
       _searchController.text = hashtag;
-      _showRecentSearches = false;
-      _tabController.animateTo(0);
+      setState(() {
+        _showRecentSearches = false;
+        _isSearching = true;
+      });
+      _tabController.animateTo(0); // هشتگ‌ها
       _performSearch(hashtag);
     }
   }
 
   Future<void> _initHive() async {
-    _recentSearchesBox = await Hive.openBox<RecentSearch>('recent_searches');
+    try {
+      _recentSearchesBox = await Hive.openBox<RecentSearch>('recent_searches');
+    } catch (e) {
+      debugPrint('خطا در باز کردن باکس Hive: $e');
+      // در صورت خطا، سعی به بازیابی باکس
+      await Hive.deleteBoxFromDisk('recent_searches');
+      _recentSearchesBox = await Hive.openBox<RecentSearch>('recent_searches');
+    }
   }
 
   void _addToRecentSearches(String query) {
@@ -82,10 +93,14 @@ class _SearchPageState extends ConsumerState<SearchPage>
         query.startsWith('#') ? SearchType.hashtag : SearchType.user;
 
     // حذف جستجوی تکراری قبلی
-    _recentSearchesBox!.values
+    final itemsToRemove = _recentSearchesBox!.values
         .where((search) =>
             search.query == query && search.searchType == searchType)
-        .forEach((search) => search.delete());
+        .toList();
+
+    for (var item in itemsToRemove) {
+      item.delete();
+    }
 
     // اضافه کردن جستجوی جدید
     _recentSearchesBox!.add(RecentSearch(
@@ -108,23 +123,31 @@ class _SearchPageState extends ConsumerState<SearchPage>
   void _performSearch(String query) {
     setState(() {
       _showRecentSearches = query.isEmpty;
+      _isSearching = query.isNotEmpty;
     });
 
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 500), () {
-      if (mounted) {
-        if (query.isNotEmpty) {
-          _addToRecentSearches(query);
-          ref.read(searchProvider.notifier).search(query);
+      if (mounted && query.isNotEmpty) {
+        _addToRecentSearches(query);
+
+        // تنظیم تب مناسب برای نوع جستجو
+        if (query.startsWith('#') && _tabController.index != 0) {
+          _tabController.animateTo(0); // هشتگ‌ها
+        } else if (!query.startsWith('#') && _tabController.index != 1) {
+          _tabController.animateTo(1); // کاربران
         }
+
+        ref.read(searchProvider.notifier).search(query);
       }
     });
   }
 
   void _clearSearch() {
+    _searchController.clear();
     setState(() {
-      _searchController.clear();
       _showRecentSearches = true;
+      _isSearching = false;
     });
     ref.read(searchProvider.notifier).clearHashtagResults();
   }
@@ -151,15 +174,27 @@ class _SearchPageState extends ConsumerState<SearchPage>
 
         if (searches.isEmpty) {
           return Center(
-            child: Text(
-              'جستجوی اخیری وجود ندارد',
-              style: TextStyle(
-                color: Theme.of(context)
-                    .textTheme
-                    .bodyLarge
-                    ?.color
-                    ?.withOpacity(0.6),
-              ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.search_off,
+                  size: 64,
+                  color: Theme.of(context).iconTheme.color?.withOpacity(0.5),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'جستجوی اخیری وجود ندارد',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Theme.of(context)
+                        .textTheme
+                        .bodyLarge
+                        ?.color
+                        ?.withOpacity(0.6),
+                  ),
+                ),
+              ],
             ),
           );
         }
@@ -169,15 +204,20 @@ class _SearchPageState extends ConsumerState<SearchPage>
           itemBuilder: (context, index) {
             final search = searches[index];
             return ListTile(
-              leading: Icon(
-                search.searchType == SearchType.hashtag
-                    ? Icons.tag
-                    : Icons.person,
-                color: Theme.of(context).iconTheme.color,
+              leading: CircleAvatar(
+                backgroundColor:
+                    Theme.of(context).primaryColor.withOpacity(0.1),
+                child: Icon(
+                  search.searchType == SearchType.hashtag
+                      ? Icons.tag
+                      : Icons.person,
+                  color: Theme.of(context).primaryColor,
+                ),
               ),
               title: Text(
                 search.query,
                 style: TextStyle(
+                  fontWeight: FontWeight.w500,
                   color: Theme.of(context).textTheme.bodyLarge?.color,
                 ),
               ),
@@ -197,11 +237,12 @@ class _SearchPageState extends ConsumerState<SearchPage>
                       fontSize: 12,
                     ),
                   ),
-                  const SizedBox(width: 8),
                   IconButton(
                     icon: Icon(
                       Icons.close,
-                      color: Theme.of(context).iconTheme.color,
+                      size: 18,
+                      color:
+                          Theme.of(context).iconTheme.color?.withOpacity(0.6),
                     ),
                     onPressed: () => search.delete(),
                   ),
@@ -262,35 +303,13 @@ class _SearchPageState extends ConsumerState<SearchPage>
         if (_showRecentSearches && _recentSearchesBox?.isNotEmpty == true)
           IconButton(
             icon: const Icon(Icons.delete_sweep),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('پاک کردن تاریخچه'),
-                  content: const Text(
-                      'آیا مطمئن هستید که می‌خواهید تمام تاریخچه جستجو را پاک کنید؟'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('انصراف'),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        _recentSearchesBox?.clear();
-                        Navigator.pop(context);
-                      },
-                      child: const Text('پاک کردن'),
-                    ),
-                  ],
-                ),
-              );
-            },
+            onPressed: _showClearHistoryDialog,
           ),
       ],
-      // تب‌ها فقط زمانی نمایش داده می‌شوند که جستجو انجام شده باشد
       bottom: !_showRecentSearches
           ? TabBar(
               controller: _tabController,
+              indicatorWeight: 3,
               tabs: const [
                 Tab(text: 'هشتگ‌ها'),
                 Tab(text: 'کاربران'),
@@ -300,20 +319,48 @@ class _SearchPageState extends ConsumerState<SearchPage>
     );
   }
 
+  void _showClearHistoryDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('پاک کردن تاریخچه'),
+        content: const Text(
+            'آیا مطمئن هستید که می‌خواهید تمام تاریخچه جستجو را پاک کنید؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('انصراف'),
+          ),
+          TextButton(
+            onPressed: () {
+              _recentSearchesBox?.clear();
+              Navigator.pop(context);
+            },
+            child: const Text('پاک کردن'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBody(SearchState searchState) {
     if (_showRecentSearches) {
       return _buildRecentSearches();
     }
 
-    return searchState.isLoading
-        ? const Center(child: CircularProgressIndicator())
-        : TabBarView(
-            controller: _tabController,
-            children: [
-              _buildHashtagResults(searchState),
-              _buildUserResults(searchState),
-            ],
-          );
+    if (searchState.isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    return TabBarView(
+      controller: _tabController,
+      children: [
+        _buildHashtagResults(searchState),
+        _buildUserResults(searchState),
+      ],
+    );
   }
 
   Widget _buildSearchBar() {
@@ -329,6 +376,8 @@ class _SearchPageState extends ConsumerState<SearchPage>
           controller: _searchController,
           decoration: _buildSearchDecoration(),
           onChanged: _performSearch,
+          textInputAction: TextInputAction.search,
+          onSubmitted: _performSearch,
         ),
       ),
     );
@@ -336,7 +385,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
 
   InputDecoration _buildSearchDecoration() {
     return InputDecoration(
-      hintText: 'جستجو...',
+      hintText: 'جستجوی کاربران یا هشتگ‌ها...',
       prefixIcon: Icon(
         Icons.search,
         color: Theme.of(context).iconTheme.color,
@@ -356,6 +405,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
       ),
       filled: true,
       fillColor: Theme.of(context).cardColor,
+      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
     );
   }
 
@@ -365,7 +415,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
     }
 
     if (_shouldShowEmptyState(state.hashtagResults, state.currentQuery)) {
-      return const Center(child: Text('نتیجه‌ای یافت نشد'));
+      return _buildEmptyResultWidget("هشتگی با این عنوان یافت نشد");
     }
 
     return RefreshIndicator(
@@ -388,7 +438,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
     }
 
     if (_shouldShowEmptyState(state.userResults, state.currentQuery)) {
-      return const Center(child: Text('نتیجه‌ای یافت نشد'));
+      return _buildEmptyResultWidget("کاربری با این مشخصات یافت نشد");
     }
 
     return RefreshIndicator(
@@ -404,6 +454,36 @@ class _SearchPageState extends ConsumerState<SearchPage>
         itemCount: state.userResults.length,
         itemBuilder: (context, index) =>
             UserCard(user: state.userResults[index]),
+      ),
+    );
+  }
+
+  Widget _buildEmptyResultWidget(String message) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.search_off,
+            size: 64,
+            color: Theme.of(context).disabledColor,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            message,
+            style: TextStyle(
+              fontSize: 16,
+              color: Theme.of(context).textTheme.bodyLarge?.color,
+            ),
+          ),
+          const SizedBox(height: 24),
+          if (_isSearching)
+            OutlinedButton.icon(
+              onPressed: _clearSearch,
+              icon: const Icon(Icons.refresh),
+              label: const Text('جستجوی جدید'),
+            ),
+        ],
       ),
     );
   }
@@ -431,7 +511,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
   }
 }
 
-// کامپوننت کارت پست
+// کامپوننت کارت پست - بهبود یافته
 class PostCard extends StatelessWidget {
   final PublicPostModel post;
 
@@ -440,54 +520,178 @@ class PostCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: Column(
-        children: [
-          if (post.imageUrl != null && post.imageUrl!.isNotEmpty)
-            CachedNetworkImage(
-              imageUrl: post.imageUrl!,
-              placeholder: (context, url) =>
-                  const Center(child: CircularProgressIndicator()),
-              errorWidget: (context, url, error) => const Icon(Icons.error),
-              fit: BoxFit.cover,
+      clipBehavior: Clip.antiAlias,
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
+        onTap: () {
+          // باز کردن صفحه جزئیات پست
+          // TODO: اضافه کردن مسیریابی به صفحه جزئیات پست
+        },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // هدر پست با اطلاعات کاربر
+            _buildPostHeader(context),
+
+            // تصویر پست
+            if (post.imageUrl != null && post.imageUrl!.isNotEmpty)
+              CachedNetworkImage(
+                imageUrl: post.imageUrl!,
+                height: 150,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => Container(
+                  height: 150,
+                  width: double.infinity,
+                  color: Colors.grey[300],
+                  child: const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+                errorWidget: (context, url, error) => Container(
+                  height: 150,
+                  width: double.infinity,
+                  color: Colors.grey[300],
+                  child: const Icon(Icons.error),
+                ),
+              ),
+
+            // متن پست
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    post.content,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // فوتر پست با آمار لایک و کامنت
+                  _buildPostFooter(),
+                ],
+              ),
             ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPostHeader(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: Row(
+        children: [
+          // آواتار کاربر
+          CircleAvatar(
+            radius: 16,
+            backgroundImage: post.avatarUrl.isNotEmpty
+                ? NetworkImage(post.avatarUrl)
+                : const AssetImage('lib/view/util/images/default-avatar.jpg')
+                    as ImageProvider,
+          ),
+          const SizedBox(width: 8),
+
+          // نام کاربری و آیکون تیک
+          Expanded(
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 12,
-                      backgroundImage: post.avatarUrl != null
-                          ? NetworkImage(post.avatarUrl)
-                          : const AssetImage(
-                                  'lib/util/images/default-avatar.jpg')
-                              as ImageProvider,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      post.username ?? '',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
                 Text(
-                  post.content,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
+                  post.username ?? 'کاربر',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
+                const SizedBox(width: 4),
+                if (post.isVerified) _buildVerificationBadge(post),
               ],
+            ),
+          ),
+
+          // زمان انتشار پست
+          Text(
+            _getTimeAgo(post.createdAt!),
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).textTheme.bodySmall?.color,
             ),
           ),
         ],
       ),
     );
   }
+
+  Widget _buildPostFooter() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        // تعداد لایک
+        Row(
+          children: [
+            const Icon(Icons.favorite_border, size: 16, color: Colors.grey),
+            const SizedBox(width: 4),
+            Text(
+              post.likeCount.toString() ?? '0',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+
+        // تعداد کامنت
+        Row(
+          children: [
+            const Icon(Icons.chat_bubble_outline, size: 16, color: Colors.grey),
+            const SizedBox(width: 4),
+            Text(
+              post.commentCount.toString() ?? '0',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+
+        // دکمه اشتراک‌گذاری
+        const Icon(Icons.share_outlined, size: 16, color: Colors.grey),
+      ],
+    );
+  }
+
+  // نمایش تیک تأیید متناسب با نوع آن
+  Widget _buildVerificationBadge(PublicPostModel post) {
+    if (post.verificationType == 'blueTick') {
+      return const Icon(Icons.verified, color: Colors.blue, size: 16);
+    } else if (post.verificationType == 'goldTick') {
+      return const Icon(Icons.verified, color: Colors.amber, size: 16);
+    } else if (post.verificationType == 'blackTick') {
+      return const Icon(Icons.verified, color: Colors.black, size: 16);
+    } else {
+      return const Icon(Icons.verified, color: Colors.blue, size: 16);
+    }
+  }
+
+  // تبدیل تاریخ به فرمت «... پیش»
+  String _getTimeAgo(DateTime dateTime) {
+    final difference = DateTime.now().difference(dateTime);
+
+    if (difference.inMinutes < 1) {
+      return 'همین الان';
+    } else if (difference.inHours < 1) {
+      return '${difference.inMinutes} دقیقه پیش';
+    } else if (difference.inDays < 1) {
+      return '${difference.inHours} ساعت پیش';
+    } else if (difference.inDays < 30) {
+      return '${difference.inDays} روز پیش';
+    } else {
+      return '${(difference.inDays / 30).floor()} ماه پیش';
+    }
+  }
 }
 
-// کامپوننت کارت کاربر
+// کامپوننت کارت کاربر - بهبود یافته
 class UserCard extends ConsumerStatefulWidget {
   final ProfileModel user;
 
@@ -501,6 +705,8 @@ class _UserCardState extends ConsumerState<UserCard> {
   bool _isLoading = false;
 
   Future<void> _toggleFollow() async {
+    if (_isLoading) return; // جلوگیری از کلیک مجدد هنگام بارگذاری
+
     setState(() => _isLoading = true);
     try {
       await ref
@@ -509,7 +715,10 @@ class _UserCardState extends ConsumerState<UserCard> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا در تغییر وضعیت فالو: $e')),
+          SnackBar(
+            content: Text('خطا در تغییر وضعیت فالو: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     } finally {
@@ -522,12 +731,13 @@ class _UserCardState extends ConsumerState<UserCard> {
   @override
   Widget build(BuildContext context) {
     final userProfile = ref.watch(userProfileProvider(widget.user.id));
-    final currentColor = ref.watch(themeProvider);
 
     return Card(
-      elevation: 3,
+      elevation: 2,
+      shadowColor: Colors.black26,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: InkWell(
+        borderRadius: BorderRadius.circular(15),
         onTap: () {
           Navigator.push(
             context,
@@ -539,62 +749,132 @@ class _UserCardState extends ConsumerState<UserCard> {
             ),
           );
         },
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircleAvatar(
-              radius: 40,
-              backgroundImage: widget.user.avatarUrl != null
-                  ? NetworkImage(widget.user.avatarUrl!)
-                  : const AssetImage('lib/util/images/default-avatar.jpg')
-                      as ImageProvider,
-            ),
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  widget.user.username,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                if (widget.user.isVerified)
-                  const Icon(Icons.verified, color: Colors.blue, size: 16),
-              ],
-            ),
-            Text(
-              widget.user.fullName,
-              style: const TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: 120,
-              height: 32,
-              child: _isLoading
-                  ? const CircularProgressIndicator()
-                  : ElevatedButton(
-                      onPressed: _toggleFollow,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: userProfile?.isFollowed ?? false
-                            ? Colors.grey
-                            : Theme.of(context).primaryColor,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                      ),
-                      child: Text(
-                        userProfile?.isFollowed ?? false
-                            ? 'دنبال شده'
-                            : 'دنبال کردن',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ),
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildUserAvatar(),
+              const SizedBox(height: 12),
+              _buildUserInfo(),
+              const SizedBox(height: 12),
+              _buildFollowButton(userProfile),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Widget _buildUserAvatar() {
+    return Stack(
+      alignment: Alignment.bottomRight,
+      children: [
+        CircleAvatar(
+          radius: 40,
+          backgroundColor: Colors.grey[200],
+          backgroundImage:
+              widget.user.avatarUrl != null && widget.user.avatarUrl!.isNotEmpty
+                  ? NetworkImage(widget.user.avatarUrl!)
+                  : const AssetImage('lib/view/util/images/default-avatar.jpg')
+                      as ImageProvider,
+        ),
+        if (widget.user.isVerified)
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+            child: _buildVerificationBadge(),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildUserInfo() {
+    return Column(
+      children: [
+        Text(
+          widget.user.username,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+        ),
+        if (widget.user.fullName.isNotEmpty)
+          Text(
+            widget.user.fullName,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[600],
+            ),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+          ),
+        // if (widget.user.bio != null && widget.user.bio!.isNotEmpty)
+        //   Padding(
+        //     padding: const EdgeInsets.only(top: 4),
+        //     child: Text(
+        //       widget.user.bio!,
+        //       style: TextStyle(
+        //         fontSize: 12,
+        //         color: Colors.grey[600],
+        //       ),
+        //       textAlign: TextAlign.center,
+        //       overflow: TextOverflow.ellipsis,
+        //       maxLines: 2,
+        //     ),
+        //   ),
+      ],
+    );
+  }
+
+  Widget _buildFollowButton(ProfileModel? userProfile) {
+    final isFollowed = userProfile?.isFollowed ?? false;
+
+    return SizedBox(
+      width: 120,
+      height: 32,
+      child: _isLoading
+          ? const Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          : ElevatedButton(
+              onPressed: _toggleFollow,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isFollowed
+                    ? Colors.grey[300]
+                    : Theme.of(context).primaryColor,
+                foregroundColor: isFollowed ? Colors.black87 : Colors.white,
+                elevation: isFollowed ? 0 : 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+              child: Text(
+                isFollowed ? 'دنبال شده' : 'دنبال کردن',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+    );
+  }
+
+  Widget _buildVerificationBadge() {
+    if (widget.user.verificationType == VerificationType.blueTick) {
+      return const Icon(Icons.verified, color: Colors.blue, size: 18);
+    } else if (widget.user.verificationType == VerificationType.goldTick) {
+      return const Icon(Icons.verified, color: Colors.amber, size: 18);
+    } else if (widget.user.verificationType == VerificationType.blackTick) {
+      return const Icon(Icons.verified, color: Colors.black, size: 18);
+    } else {
+      return const Icon(Icons.verified, color: Colors.blue, size: 18);
+    }
   }
 }

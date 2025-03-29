@@ -82,7 +82,7 @@ class _SplashScreenState extends State<SplashScreen> {
                   );
                 },
                 child: Image.asset(
-                  'lib/util/images/vistalogo.png',
+                  'lib/view/util/images/vistalogo.png',
                   height: 200,
                 ),
               ),

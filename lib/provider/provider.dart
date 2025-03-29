@@ -12,7 +12,7 @@ import '../main.dart';
 import '../model/CommentModel.dart';
 import '../model/NotesModel.dart';
 import '../model/UserModel.dart';
-import '../util/themes.dart';
+import '../view/util/themes.dart';
 import 'PostImageUploadService.dart';
 
 //check user state
@@ -37,8 +37,12 @@ final profileProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
     throw Exception('User is not logged in');
   }
 
-  final response =
-      await supabase.from('profiles').select().eq('id', user.id).maybeSingle();
+  final response = await supabase.from('profiles').select('''
+        *,
+        verification_type,
+        account_type,
+        role
+      ''').eq('id', user.id).maybeSingle();
 
   if (response == null) {
     throw Exception('Profile not found');
@@ -120,7 +124,8 @@ final fetchPublicPosts = FutureProvider<List<PublicPostModel>>((ref) async {
           profiles!posts_user_id_fkey (
             username, 
             avatar_url, 
-            is_verified
+            is_verified,
+            verification_type
           ),
           likes (
             user_id
@@ -204,7 +209,8 @@ class PublicPostsNotifier
             profiles!posts_user_id_fkey (
               username,
               avatar_url,
-              is_verified
+              is_verified,
+              verification_type
             ),
             likes (
               user_id
@@ -918,7 +924,8 @@ class CommentService {
           profiles!comments_owner_id_fkey (
             username, 
             avatar_url, 
-            is_verified
+            is_verified,
+            verification_type
           )
         ''').single();
 
@@ -937,9 +944,13 @@ class CommentService {
           profiles!comments_owner_id_fkey (
             username, 
             avatar_url, 
-            is_verified
-          )
+            is_verified,
+            verification_type )
         ''').eq('post_id', postId).order('created_at', ascending: false);
+
+      if (response.isEmpty) {
+        return []; // اگر پاسخی دریافت نشد، لیست خالی برگردانید
+      }
 
       List<CommentModel> comments =
           (response as List).map((item) => CommentModel.fromMap(item)).toList();
@@ -1239,7 +1250,10 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
             email,
             bio,
             created_at,
-            is_verified
+            is_verified,
+            verification_type,
+            account_type,
+            role
           ''').eq('id', userId).single();
 
       // محاسبه تعداد دنبال‌کنندگان
@@ -1393,11 +1407,10 @@ final postProvider =
         profiles (
           username, 
           avatar_url, 
-          is_verified
+          is_verified,
+          verification_type
         ),
-        likes (
-          user_id
-        )
+        likes (user_id)
       ''').eq('id', postId).maybeSingle();
 
   if (response == null) {
@@ -1649,15 +1662,16 @@ class FollowingPostsNotifier
       final response = await supabase
           .from('posts')
           .select('''
-            *,
-            profiles!posts_user_id_fkey (
-              username, 
-              avatar_url,
-              is_verified
-            ),
-            likes (user_id),
-            comments (id)
-          ''')
+      *,
+      profiles!posts_user_id_fkey (
+        username, 
+        avatar_url,
+        is_verified,
+        verification_type
+      ),
+      likes (user_id),
+      comments (id)
+    ''')
           .inFilter('user_id', followingIds)
           .order('created_at', ascending: false)
           .range(_offset, _offset + _limit - 1);
@@ -1800,7 +1814,8 @@ class SearchService {
               username,
               full_name,
               avatar_url,
-              is_verified
+              is_verified,
+              verification_type
             )
           ''')
           .ilike('content', '%$searchTerm%')

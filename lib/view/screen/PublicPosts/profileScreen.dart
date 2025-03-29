@@ -9,12 +9,12 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../model/MusicModel.dart';
 import '../../../provider/MusicProvider.dart';
+import '../../util/const.dart';
+import '../../util/widgets.dart';
 import '/main.dart';
-import '/util/const.dart';
 import '../../../model/ProfileModel.dart';
 import '../../../model/publicPostModel.dart';
 import '../../../provider/provider.dart';
-import '../../../util/widgets.dart';
 import 'MusicWaveform.dart';
 import 'followers and followings/FollowersScreen.dart';
 import 'followers and followings/FollowingScreen.dart';
@@ -78,7 +78,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           .read(userProfileProvider(widget.userId).notifier)
           .fetchProfile(widget.userId);
       ref.read(postsProvider);
-      ref.watch(commentsProvider(widget.userId));
+      ref.watch(commentServiceProvider);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -125,10 +125,29 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       children: [
         Text(profile.username, style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(width: 5),
-        if (profile.isVerified)
-          const Icon(Icons.verified, color: Colors.blue, size: 16),
+        if (profile.isVerified) _buildVerificationBadge(profile),
       ],
     );
+  }
+
+  Widget _buildVerificationBadge(ProfileModel profile) {
+    // نمایش تیک مناسب براساس نوع تأیید
+    if (profile.hasBlueBadge) {
+      return const Icon(Icons.verified, color: Colors.blue, size: 16);
+    } else if (profile.hasGoldBadge) {
+      return const Icon(Icons.verified, color: Colors.amber, size: 16);
+    } else if (profile.hasBlackBadge) {
+      return Container(
+        padding: const EdgeInsets.all(.1), // فاصله باریک برای پس‌زمینه
+        decoration: BoxDecoration(
+          color: Colors.white60, // پس‌زمینه سفید
+          shape: BoxShape.circle, // پس‌زمینه دایره‌ای
+        ),
+        child: const Icon(Icons.verified, color: Colors.black, size: 14),
+      );
+    } else {
+      return const SizedBox.shrink(); // در صورت نداشتن تیک، چیزی نمایش نمی‌دهیم
+    }
   }
 
   Widget _buildProfileHeader(ProfileModel profile) {
@@ -469,8 +488,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(profile.username,
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Row(
+                      children: [
+                        Text(profile.username,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.bold)),
+                        SizedBox(width: 3),
+                        _buildVerificationBadge(profile)
+                      ],
+                    ),
                     Text(_getFormattedDate(post.createdAt),
                         style:
                             TextStyle(color: Colors.grey[600], fontSize: 12)),

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '/util/widgets.dart';
+import '../../util/widgets.dart';
 import '/view/screen/ouathUser/SetProfile.dart';
 import '../../../main.dart';
 import '../../../provider/provider.dart';

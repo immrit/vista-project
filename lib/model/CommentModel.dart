@@ -12,6 +12,7 @@ class CommentModel {
   final String postOwnerId;
   final String? parentCommentId;
   List<CommentModel> replies;
+  VerificationType verificationType; // اضافه کردن فیلد جدید نوع تیک
 
   CommentModel({
     required this.id,
@@ -22,6 +23,8 @@ class CommentModel {
     required this.username,
     this.avatarUrl = '',
     this.isVerified = false,
+    this.verificationType = VerificationType.none, // مقدار پیش‌فرض
+
     required this.postOwnerId,
     this.parentCommentId,
     this.replies = const [],
@@ -36,6 +39,8 @@ class CommentModel {
     String? username,
     String? avatarUrl,
     bool? isVerified,
+    VerificationType? verificationType, // اضافه کردن به copyWith
+
     String? postOwnerId,
     String? parentCommentId,
     List<CommentModel>? replies,
@@ -49,6 +54,9 @@ class CommentModel {
       username: username ?? this.username,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       isVerified: isVerified ?? this.isVerified,
+      verificationType:
+          verificationType ?? this.verificationType, // اضافه کردن به سازنده
+
       postOwnerId: postOwnerId ?? this.postOwnerId,
       parentCommentId: parentCommentId ?? this.parentCommentId,
       replies: replies ?? this.replies,
@@ -66,6 +74,9 @@ class CommentModel {
       username: map['profiles']?['username'] as String? ?? 'کاربر',
       avatarUrl: map['profiles']?['avatar_url'] as String? ?? '',
       isVerified: map['profiles']?['is_verified'] as bool? ?? false,
+      verificationType: _mapVerificationType(
+          map['profiles']?['verification_type']), // اضافه کردن دریافت نوع تیک
+
       postOwnerId: map['post_owner_id'] as String? ?? '',
       parentCommentId: map['parent_comment_id'] as String?,
       replies: (map['replies'] as List?)
@@ -73,6 +84,22 @@ class CommentModel {
               .toList() ??
           [],
     );
+  }
+  static VerificationType _mapVerificationType(dynamic value) {
+    if (value == null) return VerificationType.none;
+    if (value is String) {
+      switch (value) {
+        case 'blueTick':
+          return VerificationType.blueTick;
+        case 'goldTick':
+          return VerificationType.goldTick;
+        case 'blackTick':
+          return VerificationType.blackTick;
+        default:
+          return VerificationType.none;
+      }
+    }
+    return VerificationType.none;
   }
 
   Map<String, dynamic> toMap() {
@@ -86,6 +113,8 @@ class CommentModel {
         'username': username,
         'avatar_url': avatarUrl,
         'is_verified': isVerified,
+        'verification_type':
+            verificationType.name, // اضافه کردن نوع تیک به خروجی
       },
       'post_owner_id': postOwnerId,
       'parent_comment_id': parentCommentId,
@@ -122,4 +151,21 @@ class CommentModel {
         createdAt.hashCode ^
         userId.hashCode;
   }
+
+  // متدهای کمکی برای بررسی نوع تیک
+  bool get hasBlueBadge =>
+      isVerified && verificationType == VerificationType.blueTick;
+  bool get hasGoldBadge =>
+      isVerified && verificationType == VerificationType.goldTick;
+  bool get hasBlackBadge =>
+      isVerified && verificationType == VerificationType.blackTick;
+  bool get hasAnyBadge =>
+      isVerified && verificationType != VerificationType.none;
+}
+
+enum VerificationType {
+  none, // بدون نشان
+  blueTick, // نشان آبی (مدیران و ناظران)
+  goldTick, // نشان طلایی (حساب تجاری)
+  blackTick // نشان مشکی (تولیدکنندگان محتوا)
 }

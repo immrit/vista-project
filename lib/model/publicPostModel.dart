@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
+import 'ProfileModel.dart'; // واردکردن ProfileModel برای استفاده از VerificationType
 
 @immutable
 class PublicPostModel extends Equatable {
@@ -16,9 +17,10 @@ class PublicPostModel extends Equatable {
   int likeCount;
   bool isLiked;
   final bool isVerified;
+  final VerificationType verificationType; // اضافه کردن نوع نشان تأیید
   int commentCount;
   final String? musicUrl;
-  final String? title; // اضافه کردن فیلد title
+  final String? title;
 
   PublicPostModel({
     required this.id,
@@ -32,10 +34,12 @@ class PublicPostModel extends Equatable {
     this.likeCount = 0,
     this.isLiked = false,
     this.isVerified = false,
+    this.verificationType =
+        VerificationType.none, // پارامتر جدید با مقدار پیش‌فرض
     this.commentCount = 0,
     List<String>? hashtags,
     this.musicUrl,
-    this.title, // اضافه کردن title به constructor
+    this.title,
   }) : hashtags = hashtags ?? _extractHashtags(content);
 
   // متد استاتیک برای استخراج هشتگ‌ها از متن
@@ -63,9 +67,11 @@ class PublicPostModel extends Equatable {
       likeCount: _parseInt(map, 'like_count'),
       isLiked: _parseBool(map, 'is_liked'),
       isVerified: _parseVerified(map),
+      verificationType: _parseVerificationType(map), // پارس کردن نوع نشان
       commentCount: _parseInt(map, 'comment_count'),
       hashtags: _parseHashtags(map),
       musicUrl: _parseString(map, 'music_url', defaultValue: ""),
+      title: _parseString(map, 'title'),
     );
   }
 
@@ -111,6 +117,22 @@ class PublicPostModel extends Equatable {
     return map['profiles']?['is_verified'] ?? false;
   }
 
+  // اضافه کردن متد برای پارس کردن نوع نشان
+  static VerificationType _parseVerificationType(Map<String, dynamic> map) {
+    final verificationType = map['profiles']?['verification_type'];
+    if (verificationType != null) {
+      try {
+        return VerificationType.values.firstWhere(
+          (type) => type.name == verificationType.toString(),
+          orElse: () => VerificationType.none,
+        );
+      } catch (e) {
+        return VerificationType.none;
+      }
+    }
+    return VerificationType.none;
+  }
+
   static List<String> _parseHashtags(Map<String, dynamic> map) {
     if (map['hashtags'] != null) {
       return List<String>.from(map['hashtags']);
@@ -131,12 +153,14 @@ class PublicPostModel extends Equatable {
         'full_name': fullName,
         'avatar_url': avatarUrl,
         'is_verified': isVerified,
+        'verification_type': verificationType.name, // اضافه کردن نوع نشان
       },
       'like_count': likeCount,
       'is_liked': isLiked,
       'comment_count': commentCount,
       'hashtags': hashtags,
       'music_url': musicUrl,
+      'title': title,
     };
   }
 
@@ -157,6 +181,7 @@ class PublicPostModel extends Equatable {
     int? likeCount,
     bool? isLiked,
     bool? isVerified,
+    VerificationType? verificationType, // اضافه کردن به پارامترهای copyWith
     int? commentCount,
     List<String>? hashtags,
     String? musicUrl,
@@ -174,6 +199,8 @@ class PublicPostModel extends Equatable {
       likeCount: likeCount ?? this.likeCount,
       isLiked: isLiked ?? this.isLiked,
       isVerified: isVerified ?? this.isVerified,
+      verificationType: verificationType ??
+          this.verificationType, // اضافه کردن به پیاده‌سازی copyWith
       commentCount: commentCount ?? this.commentCount,
       hashtags: hashtags ?? this.hashtags,
       musicUrl: musicUrl ?? this.musicUrl,
@@ -196,9 +223,11 @@ class PublicPostModel extends Equatable {
       likeCount: $likeCount, 
       isLiked: $isLiked, 
       isVerified: $isVerified, 
+      verificationType: $verificationType, // اضافه کردن نوع نشان به متد toString
       commentCount: $commentCount,
       hashtags: $hashtags,
       musicUrl: $musicUrl,
+      title: $title,
     )''';
   }
 
@@ -215,9 +244,20 @@ class PublicPostModel extends Equatable {
         likeCount,
         isLiked,
         isVerified,
+        verificationType, // اضافه کردن نوع نشان به props
         commentCount,
         hashtags,
         musicUrl,
         title,
       ];
+
+  // اضافه کردن متدهای کمکی برای بررسی نوع نشان
+  bool get hasBlueBadge =>
+      isVerified && verificationType == VerificationType.blueTick;
+  bool get hasGoldBadge =>
+      isVerified && verificationType == VerificationType.goldTick;
+  bool get hasBlackBadge =>
+      isVerified && verificationType == VerificationType.blackTick;
+  bool get hasAnyBadge =>
+      isVerified && verificationType != VerificationType.none;
 }

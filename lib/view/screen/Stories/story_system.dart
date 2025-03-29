@@ -15,7 +15,7 @@ import 'package:mime/mime.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../main.dart';
 import '../../../provider/uploadStoryImage.dart';
-import '../../../util/const.dart';
+import '../../util/const.dart';
 import '../PublicPosts/profileScreen.dart';
 import 'story_editor.dart';
 
@@ -675,7 +675,7 @@ class _AddStoryButton extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 4),
-            Container(
+            SizedBox(
               width: 74,
               child: Text(
                 'افزودن استوری',
@@ -1121,6 +1121,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     }
   }
 
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
@@ -1246,8 +1247,11 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
 
   Widget _buildViewersPanel() {
     final story = _getCurrentStory();
-    if (story.id == null || story.userId != supabase.auth.currentUser?.id) {
-      return const SizedBox(); // فقط برای استوری‌های خود کاربر نمایش داده شود
+    final currentUserId = supabase.auth.currentUser?.id;
+
+    // اگر کاربر صاحب استوری نیست، یک ویجت خالی برگردان
+    if (story.userId != currentUserId) {
+      return const SizedBox.shrink();
     }
 
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;

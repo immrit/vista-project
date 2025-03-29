@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
-import '../../../util/widgets.dart';
+import '../../util/widgets.dart';
 
 class WelcomePage extends StatelessWidget {
   const WelcomePage({super.key});
@@ -20,7 +20,7 @@ class WelcomePage extends StatelessWidget {
                   children: [
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20).r,
-                      child: Image.asset('lib/util/images/vistalogo.png'),
+                      child: Image.asset('lib/view/util/images/vistalogo.png'),
                     ),
                     Text(
                       '!سلام خیلی خوش اومدی به ویستا',

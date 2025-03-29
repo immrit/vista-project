@@ -485,7 +485,7 @@
 //                   child: CircleAvatar(
 //                     radius: isReply ? 16 : 20,
 //                     backgroundImage: comment.avatarUrl.isEmpty
-//                         ? const AssetImage('lib/util/images/default-avatar.jpg')
+//                         ? const AssetImage('lib/view/util/images/default-avatar.jpg')
 //                         : CachedNetworkImageProvider(comment.avatarUrl)
 //                             as ImageProvider,
 //                   ),
@@ -1455,7 +1455,7 @@
 //                                     ? CachedNetworkImageProvider(
 //                                         user.avatarUrl!)
 //                                     : const AssetImage(
-//                                             'lib/util/images/default-avatar.jpg')
+//                                             'lib/view/util/images/default-avatar.jpg')
 //                                         as ImageProvider,
 //                               ),
 //                               const SizedBox(width: 8),
@@ -1483,7 +1483,7 @@
 //               CircleAvatar(
 //                 radius: 18,
 //                 backgroundImage:
-//                     const AssetImage('lib/util/images/default-avatar.jpg'),
+//                     const AssetImage('lib/view/util/images/default-avatar.jpg'),
 //               ),
 //               const SizedBox(width: 12),
 

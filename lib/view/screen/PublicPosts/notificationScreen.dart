@@ -7,7 +7,7 @@ import '../../../main.dart';
 import '../../../model/notificationModel.dart';
 import '/view/screen/PublicPosts/profileScreen.dart';
 import '../../../provider/provider.dart';
-import '../../../util/const.dart';
+import '../../util/const.dart';
 import 'PostDetailPage.dart';
 
 class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
@@ -107,6 +107,45 @@ class _NotificationsPageState extends ConsumerState {
     });
   }
 
+// تابع برای نمایش نشان تأیید
+  Widget _buildVerificationBadge(Map<String, dynamic>? userData) {
+    // بررسی وضعیت تأیید حساب کاربری
+    final bool isVerified = userData?['is_verified'] ?? false;
+    if (!isVerified) {
+      return const SizedBox.shrink();
+    }
+
+    // بررسی نوع نشان تأیید
+    final String verificationType = userData?['verification_type'] ?? 'none';
+    IconData iconData = Icons.verified;
+    Color iconColor = Colors.blue;
+
+    // تعیین نوع و رنگ آیکون بر اساس نوع نشان
+    switch (verificationType) {
+      case 'blueTick':
+        iconData = Icons.verified;
+        iconColor = Colors.blue;
+        break;
+      case 'goldTick':
+        iconData = Icons.verified;
+        iconColor = Colors.amber;
+        break;
+      case 'blackTick':
+        iconData = Icons.verified;
+        iconColor = const Color(0xFF303030); // رنگ مشکی متمایل به خاکستری تیره
+        break;
+      default:
+        // حالت پیش‌فرض برای پروفایل‌های تأیید شده بدون نوع مشخص
+        iconData = Icons.verified;
+        iconColor = Colors.blue;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 4.0),
+      child: Icon(iconData, color: iconColor, size: 16),
+    );
+  }
+
   @override
   bool get wantKeepAlive => true;
 
@@ -152,9 +191,11 @@ class _NotificationsPageState extends ConsumerState {
                           children: [
                             Text(notification.username),
                             const SizedBox(width: 5),
-                            if (notification.userIsVerified)
-                              const Icon(Icons.verified,
-                                  color: Colors.blue, size: 16),
+                            _buildVerificationBadge({
+                              'is_verified': notification.userIsVerified,
+                              'verification_type':
+                                  notification.verificationType,
+                            }),
                           ],
                         ),
                         subtitle: Directionality(

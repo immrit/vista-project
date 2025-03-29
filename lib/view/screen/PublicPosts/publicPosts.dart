@@ -1,5 +1,4 @@
 import 'package:Vista/view/screen/PublicPosts/PostDetailPage.dart';
-import 'package:Vista/widgets/norooz_title.dart';
 import 'package:buttons_tabbar/buttons_tabbar.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -15,11 +14,12 @@ import 'package:loading_animation_widget/loading_animation_widget.dart';
 import '../../../main.dart';
 import '../../../model/MusicModel.dart';
 import '../../../provider/MusicProvider.dart';
+import '../../util/widgets.dart';
+import '../../widgets/norooz_title.dart';
 import '../Stories/story_system.dart';
 import '../searchPage.dart';
 import '/model/publicPostModel.dart';
 import '../../../provider/provider.dart';
-import '../../../util/widgets.dart';
 import 'MusicWaveform.dart';
 import 'profileScreen.dart';
 import 'dart:async';
@@ -282,7 +282,7 @@ class _AllPostsTab extends ConsumerWidget {
 }
 
 class _AllPostsPaginatedTab extends ConsumerWidget {
-  const _AllPostsPaginatedTab({super.key});
+  const _AllPostsPaginatedTab();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -388,7 +388,7 @@ class _AllPostsPaginatedTab extends ConsumerWidget {
 }
 
 class _FollowingPostsTab extends ConsumerWidget {
-  const _FollowingPostsTab({super.key});
+  const _FollowingPostsTab();
   final bool _hasMore = true; // Define _hasMore as a boolean variable
 
   @override
@@ -604,7 +604,8 @@ Widget _buildPostItem(
               },
               child: CircleAvatar(
                 backgroundImage: post.avatarUrl.isEmpty
-                    ? const AssetImage('lib/util/images/default-avatar.jpg')
+                    ? const AssetImage(
+                            'lib/view/util/images/default-avatar.jpg')
                         as ImageProvider
                     : CachedNetworkImageProvider(
                         post.avatarUrl,
@@ -629,8 +630,7 @@ Widget _buildPostItem(
                   Text(post.username,
                       style: const TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(width: 4),
-                  if (post.isVerified)
-                    const Icon(Icons.verified, color: Colors.blue, size: 16.0),
+                  if (post.isVerified) _buildVerificationBadge(post)
                 ],
               ),
             ),
@@ -771,6 +771,26 @@ Widget _buildPostItem(
       ),
     ),
   );
+}
+
+Widget _buildVerificationBadge(PublicPostModel profile) {
+  // نمایش تیک مناسب براساس نوع تأیید
+  if (profile.hasBlueBadge) {
+    return const Icon(Icons.verified, color: Colors.blue, size: 16);
+  } else if (profile.hasGoldBadge) {
+    return const Icon(Icons.verified, color: Colors.amber, size: 16);
+  } else if (profile.hasBlackBadge) {
+    return Container(
+      padding: const EdgeInsets.all(.1), // فاصله باریک برای پس‌زمینه
+      decoration: BoxDecoration(
+        color: Colors.white60, // پس‌زمینه سفید
+        shape: BoxShape.circle, // پس‌زمینه دایره‌ای
+      ),
+      child: const Icon(Icons.verified, color: Colors.black, size: 14),
+    );
+  } else {
+    return const SizedBox.shrink(); // در صورت نداشتن تیک، چیزی نمایش نمی‌دهیم
+  }
 }
 
 Widget _buildHashtags(List<String> hashtags, BuildContext context) {

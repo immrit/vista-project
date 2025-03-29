@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../provider/ProfileImageUploadService.dart'; // سرویس مربوط به آپلود تصویر در ArvanCloud
-import '/util/widgets.dart';
+import '../../util/widgets.dart';
 import '/view/screen/homeScreen.dart';
 import '../../../main.dart';
 
@@ -231,7 +231,8 @@ class _SetProfileDataState extends ConsumerState<SetProfileData> {
                 image: DecorationImage(
                   image: _imageFile != null
                       ? FileImage(_imageFile!)
-                      : const AssetImage('lib/util/images/default-avatar.jpg')
+                      : const AssetImage(
+                              'lib/view/util/images/default-avatar.jpg')
                           as ImageProvider,
                   fit: BoxFit.cover,
                 ),

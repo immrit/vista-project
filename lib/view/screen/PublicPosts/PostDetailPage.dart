@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import '../../../model/publicPostModel.dart';
-import '../../../util/widgets.dart';
+import '../../util/widgets.dart';
 import '../searchPage.dart';
 import '/main.dart';
 import '/view/screen/PublicPosts/profileScreen.dart';
@@ -492,7 +492,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
       children: [
         CircleAvatar(
           backgroundImage: post.avatarUrl.isEmpty
-              ? const AssetImage('lib/util/images/default-avatar.jpg')
+              ? const AssetImage('lib/view/util/images/default-avatar.jpg')
               : CachedNetworkImageProvider(post.avatarUrl),
         ),
         const SizedBox(width: 10),
@@ -506,8 +506,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(width: 5),
-                if (post.isVerified)
-                  const Icon(Icons.verified, color: Colors.blue, size: 16),
+                if (post.isVerified) _buildVerificationBadge(post)
               ],
             ),
             Text(
@@ -518,6 +517,26 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
         ),
       ],
     );
+  }
+
+  Widget _buildVerificationBadge(PublicPostModel profile) {
+    // نمایش تیک مناسب براساس نوع تأیید
+    if (profile.hasBlueBadge) {
+      return const Icon(Icons.verified, color: Colors.blue, size: 16);
+    } else if (profile.hasGoldBadge) {
+      return const Icon(Icons.verified, color: Colors.amber, size: 16);
+    } else if (profile.hasBlackBadge) {
+      return Container(
+        padding: const EdgeInsets.all(.1), // فاصله باریک برای پس‌زمینه
+        decoration: BoxDecoration(
+          color: Colors.white60, // پس‌زمینه سفید
+          shape: BoxShape.circle, // پس‌زمینه دایره‌ای
+        ),
+        child: const Icon(Icons.verified, color: Colors.black, size: 16),
+      );
+    } else {
+      return const SizedBox.shrink(); // در صورت نداشتن تیک، چیزی نمایش نمی‌دهیم
+    }
   }
 
   String _formatDate(DateTime date) {
@@ -641,7 +660,8 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                 CircleAvatar(
                   radius: 20,
                   backgroundImage: comment.avatarUrl.isEmpty
-                      ? const AssetImage('lib/util/images/default-avatar.jpg')
+                      ? const AssetImage(
+                          'lib/view/util/images/default-avatar.jpg')
                       : CachedNetworkImageProvider(comment.avatarUrl)
                           as ImageProvider,
                 ),
@@ -819,10 +839,11 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
               onTap: () => _onMentionTap(user),
               child: Chip(
                 avatar: CircleAvatar(
-                  backgroundImage: user.avatarUrl != null &&
-                          user.avatarUrl!.isNotEmpty
-                      ? CachedNetworkImageProvider(user.avatarUrl!)
-                      : const AssetImage('lib/util/images/default-avatar.jpg'),
+                  backgroundImage:
+                      user.avatarUrl != null && user.avatarUrl!.isNotEmpty
+                          ? CachedNetworkImageProvider(user.avatarUrl!)
+                          : const AssetImage(
+                              'lib/view/util/images/default-avatar.jpg'),
                 ),
                 label: Text(user.username),
               ),

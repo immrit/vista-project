@@ -5,7 +5,12 @@ import 'package:flutter/foundation.dart';
 import '../view/screen/Stories/story_system.dart';
 import 'publicPostModel.dart';
 
-enum VerificationType { none, blueTick, official }
+enum VerificationType {
+  none, // بدون نشان
+  blueTick, // نشان آبی (مدیران و ناظران)
+  goldTick, // نشان طلایی (حساب تجاری)
+  blackTick // نشان مشکی (تولیدکنندگان محتوا)
+}
 
 @immutable
 class ProfileModel extends Equatable {
@@ -146,4 +151,12 @@ class ProfileModel extends Equatable {
         posts,
         stories, // اضافه کردن استوری‌ها به props
       ];
+  bool get hasBlueBadge =>
+      isVerified && verificationType == VerificationType.blueTick;
+  bool get hasGoldBadge =>
+      isVerified && verificationType == VerificationType.goldTick;
+  bool get hasBlackBadge =>
+      isVerified && verificationType == VerificationType.blackTick;
+  bool get hasAnyBadge =>
+      isVerified && verificationType != VerificationType.none;
 }

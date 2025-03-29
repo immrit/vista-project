@@ -10,6 +10,7 @@ class NotificationModel extends Equatable {
   final String type;
   final String username;
   final bool userIsVerified;
+  final String verificationType; // فیلد جدید
   final String avatarUrl;
   final String PostId;
   final bool isRead;
@@ -24,6 +25,7 @@ class NotificationModel extends Equatable {
     required this.username,
     required this.avatarUrl,
     required this.userIsVerified,
+    this.verificationType = 'none', // مقدار پیش‌فرض
     required this.PostId,
     this.isRead = false,
   });
@@ -43,6 +45,8 @@ class NotificationModel extends Equatable {
         username: map['sender']?['username']?.toString() ?? 'Unknown',
         avatarUrl: map['sender']?['avatar_url']?.toString() ?? '',
         userIsVerified: map['sender']?['is_verified'] == true,
+        verificationType:
+            map['sender']?['verification_type']?.toString() ?? 'none',
         PostId: map['post_id']?.toString() ?? '',
         isRead: map['is_read'] == true,
       );
@@ -80,6 +84,7 @@ class NotificationModel extends Equatable {
     String? username,
     String? avatarUrl,
     bool? userIsVerified,
+    String? verificationType,
     String? PostId,
     bool? isRead,
   }) {
@@ -93,6 +98,7 @@ class NotificationModel extends Equatable {
       username: username ?? this.username,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       userIsVerified: userIsVerified ?? this.userIsVerified,
+      verificationType: verificationType ?? this.verificationType,
       PostId: PostId ?? this.PostId,
       isRead: isRead ?? this.isRead,
     );

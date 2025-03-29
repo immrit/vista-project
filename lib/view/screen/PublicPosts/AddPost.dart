@@ -277,13 +277,14 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
               backgroundImage: userData.when(
                 data: (data) => data['avatar_url'] != null
                     ? NetworkImage(data['avatar_url'])
-                    : const AssetImage('lib/util/images/default-avatar.jpg')
+                    : const AssetImage(
+                            'lib/view/util/images/default-avatar.jpg')
                         as ImageProvider,
                 loading: () =>
-                    const AssetImage('lib/util/images/default-avatar.jpg')
+                    const AssetImage('lib/view/util/images/default-avatar.jpg')
                         as ImageProvider,
                 error: (_, __) =>
-                    const AssetImage('lib/util/images/default-avatar.jpg')
+                    const AssetImage('lib/view/util/images/default-avatar.jpg')
                         as ImageProvider,
               ),
               backgroundColor: Colors.grey[300],
@@ -295,12 +296,19 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   userData.when(
-                    data: (data) => Text(
-                      data['username'] ?? 'بدون نام',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: textColor,
-                      ),
+                    data: (data) => Row(
+                      children: [
+                        _buildVerificationBadge(data),
+
+                        Text(
+                          data['username'] ?? 'بدون نام',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: textColor,
+                          ),
+                        ),
+                        // اضافه کردن نشان تأیید
+                      ],
                     ),
                     loading: () => const Text('در حال بارگذاری...'),
                     error: (_, __) => const Text('خطا در بارگذاری نام کاربر'),
@@ -319,6 +327,87 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildVerificationBadge(Map<String, dynamic>? userData) {
+    // بررسی وضعیت تأیید حساب کاربری
+    final bool isVerified = userData?['is_verified'] ?? false;
+    if (!isVerified) {
+      return const SizedBox.shrink();
+    }
+
+    // بررسی نوع نشان تأیید
+    final String verificationType = userData?['verification_type'] ?? 'none';
+    IconData iconData = Icons.verified;
+    Color iconColor = Colors.blue;
+
+    // تعیین نوع و رنگ آیکون بر اساس نوع نشان
+    switch (verificationType) {
+      case 'blueTick':
+        iconData = Icons.verified;
+        iconColor = Colors.blue;
+        break;
+      case 'goldTick':
+        iconData = Icons.verified;
+        iconColor = Colors.amber;
+        break;
+      case 'blackTick':
+        iconData = Icons.verified;
+        iconColor = Colors.black;
+        break;
+      default:
+        // حالت پیش‌فرض برای پروفایل‌های تأیید شده بدون نوع مشخص
+        iconData = Icons.verified;
+        iconColor = Colors.blue;
+    }
+
+    // ایجاد ویجت نشان بر اساس نوع
+    if (verificationType == 'blackTick') {
+      // اضافه کردن پس‌زمینه باریک برای تیک مشکی
+      return Padding(
+        padding: const EdgeInsets.only(right: 4.0),
+        child: Container(
+          padding: const EdgeInsets.all(.3), // فاصله باریک برای پس‌زمینه
+          decoration: BoxDecoration(
+            color: Colors.white, // پس‌زمینه سفید
+            shape: BoxShape.circle, // پس‌زمینه دایره‌ای
+          ),
+          child: Icon(iconData, color: iconColor, size: 16),
+        ),
+      );
+    } else {
+      // بازگشت آیکون ساده برای تیک‌های آبی و طلایی
+      return Padding(
+        padding: const EdgeInsets.only(right: 4.0),
+        child: Icon(iconData, color: iconColor, size: 16),
+      );
+    }
+  }
+
+// نمایش اطلاعات کاربر در بالای صفحه افزودن پست
+  Widget _buildUserInfo(BuildContext context, Map<String, dynamic> userData) {
+    return Row(
+      children: [
+        CircleAvatar(
+          radius: 20,
+          backgroundImage: userData['avatar_url'] != null
+              ? NetworkImage(userData['avatar_url'])
+              : const AssetImage('lib/view/util/images/default-avatar.jpg')
+                  as ImageProvider,
+        ),
+        const SizedBox(width: 8),
+        Row(
+          children: [
+            Text(
+              userData['username'] ?? 'کاربر',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            // نمایش نشان تأیید در کنار نام کاربر
+            _buildVerificationBadge(userData),
+          ],
+        ),
+      ],
     );
   }
 

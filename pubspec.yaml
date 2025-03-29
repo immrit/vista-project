@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.1.4+12
+version: 1.1.5+13
 
 environment:
   sdk: ^3.5.4
@@ -82,27 +82,28 @@ dependencies:
   timelines_plus: ^1.0.6
   url_launcher: ^6.3.1
   voice_message_package: ^2.2.1
+  confetti: ^0.7.0
 
 flutter_launcher_icons:
   android: true
   ios: true
   remove_alpha_ios: true
-  image_path: "lib/util/images/vistalogo.png"
+  image_path: "lib/view/util/images/vistalogo.png"
   adaptive_icon_background: "#000000" # رنگ پس‌زمینه برای اندروید
-  adaptive_icon_foreground: "lib/util/images/vistalogo.png" # آیکون جلو برای اندروید
+  adaptive_icon_foreground: "lib/view/util/images/vistalogo.png" # آیکون جلو برای اندروید
   min_sdk_android: 19
   web:
     generate: true
-    image_path: "lib/util/images/vistalogo.png"
+    image_path: "lib/view/util/images/vistalogo.png"
     background_color: "#000000"
     theme_color: "#000000"
   windows:
     generate: true
-    image_path: "lib/util/images/vistalogo.png"
+    image_path: "lib/view/util/images/vistalogo.png"
     icon_size: 48
   macos:
     generate: true
-    image_path: "lib/util/images/vistalogo.png"
+    image_path: "lib/view/util/images/vistalogo.png"
 
 dev_dependencies:
   flutter_lints: ^5.0.0
@@ -121,10 +122,10 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
-    - lib/util/images/vistalogo.png
-    - lib/util/images/headerBack.jpg
-    - lib/util/images/default-avatar.jpg
-    - lib/util/images/fish.svg
+    - lib/view/util/images/vistalogo.png
+    - lib/view/util/images/headerBack.jpg
+    - lib/view/util/images/default-avatar.jpg
+    - lib/view/util/images/fish.svg
   #   - images/a_dot_ham.jpeg
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -138,12 +139,12 @@ flutter:
   fonts:
     - family: Vazir
       fonts:
-        - asset: lib/util/fonts/Vazir.ttf
+        - asset: lib/view/util/fonts/Vazir.ttf
     #       - asset: fonts/Schyler-Italic.ttf
     #         style: italic
     - family: Bauhaus
       fonts:
-        - asset: lib/util/fonts/BauhausBold.ttf
+        - asset: lib/view/util/fonts/BauhausBold.ttf
   #       - asset: fonts/TrajanPro_Bold.ttf
   #         weight: 700
   #

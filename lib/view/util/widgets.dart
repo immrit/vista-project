@@ -9,13 +9,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timelines_plus/timelines_plus.dart';
+import '../screen/Settings/ContactUs.dart';
 import '/main.dart';
-import '../model/CommentModel.dart';
-import '../model/UserModel.dart';
-import '../model/publicPostModel.dart';
-import '../provider/provider.dart';
-import '../view/screen/PublicPosts/profileScreen.dart';
-import '../view/screen/support.dart';
+import '../../model/CommentModel.dart';
+import '../../model/UserModel.dart';
+import '../../model/publicPostModel.dart';
+import '../../provider/provider.dart';
+import '../screen/PublicPosts/profileScreen.dart';
 import 'themes.dart';
 
 class topText extends StatelessWidget {
@@ -252,16 +252,16 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
                       Text(
                         '${getprofile['username']}',
                         style: TextStyle(
+                            overflow: TextOverflow.ellipsis,
                             color: currentcolor.brightness == Brightness.dark
                                 ? Colors.white
                                 : Colors.black),
                       ),
                       const SizedBox(
-                        width: 5,
+                        width: 3,
                       ),
                       if (getprofile['is_verified'])
-                        const Icon(Icons.verified,
-                            color: Colors.blue, size: 16),
+                        _buildVerificationBadge(context, getprofile)
                     ],
                   ),
                   accountEmail: Text("${supabase.auth.currentUser!.email}",
@@ -320,7 +320,7 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
           ),
           onTap: () {
             Navigator.push(context,
-                MaterialPageRoute(builder: (context) => const SupportPage()));
+                MaterialPageRoute(builder: (context) => ContactUsScreen()));
           },
         ),
         // ListTile(
@@ -345,6 +345,60 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
           },
         ),
       ],
+    ),
+  );
+}
+
+Widget _buildVerificationBadge(
+    BuildContext context, Map<String, dynamic>? profile) {
+  // بررسی وضعیت تأیید حساب کاربری
+  final bool isVerified = profile?['is_verified'] ?? false;
+  if (!isVerified) {
+    return const SizedBox.shrink();
+  }
+
+  // بررسی نوع نشان تأیید
+  final String verificationType = profile?['verification_type'] ?? 'none';
+  IconData iconData = Icons.verified;
+  Color iconColor = Colors.blue;
+
+  // تعیین نوع و رنگ آیکون بر اساس نوع نشان
+  switch (verificationType) {
+    case 'blueTick':
+      iconData = Icons.verified;
+      iconColor = Colors.blue;
+      break;
+    case 'goldTick':
+      iconData = Icons.verified;
+      iconColor = Colors.amber;
+      break;
+    case 'blackTick':
+      iconData = Icons.verified;
+      iconColor = const Color(0xFF303030); // رنگ مشکی متمایل به خاکستری تیره
+      break;
+    default:
+      // حالت پیش‌فرض برای پروفایل‌های تأیید شده بدون نوع مشخص
+      iconData = Icons.verified;
+      iconColor = Colors.blue;
+  }
+
+  // نمایش نشان با امکان کلیک برای مشاهده اطلاعات بیشتر
+  return Container(
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      color: Colors.white,
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.2),
+          blurRadius: 2,
+          offset: const Offset(0, 1),
+        ),
+      ],
+    ),
+    child: Icon(
+      iconData,
+      color: iconColor,
+      size: 13,
     ),
   );
 }
@@ -956,11 +1010,11 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
                         fontSize: isReply ? 14 : 15,
                       ),
                     ),
+                    SizedBox(width: 4),
                     if (comment.isVerified)
                       Padding(
                         padding: const EdgeInsets.only(right: 4),
-                        child: Icon(Icons.verified,
-                            color: Colors.blue, size: isReply ? 14 : 16),
+                        child: _buildVerificationBadge(comment, isReply),
                       ),
                     Text(
                       ' · ${formatDateTimeToJalali(comment.createdAt)}',
@@ -1019,6 +1073,28 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
         ],
       ),
     );
+  }
+
+  Widget _buildVerificationBadge(CommentModel comment, bool isReply) {
+    final double size = isReply ? 12 : 14;
+
+    if (comment.hasBlueBadge) {
+      return Icon(Icons.verified, color: Colors.blue, size: size);
+    } else if (comment.hasGoldBadge) {
+      return Icon(Icons.verified, color: Colors.amber, size: size);
+    } else if (comment.hasBlackBadge) {
+      return Container(
+        padding: const EdgeInsets.all(.1), // فاصله باریک برای پس‌زمینه
+        decoration: BoxDecoration(
+          color: Colors.white60, // پس‌زمینه سفید
+          shape: BoxShape.circle, // پس‌زمینه دایره‌ای
+        ),
+        child: const Icon(Icons.verified, color: Colors.black, size: 12),
+      );
+    } else {
+      // حالت پیش‌فرض برای تیک‌های قدیمی که فقط isVerified دارند
+      return Icon(Icons.verified, color: Colors.blue, size: size);
+    }
   }
 
   void _sendComment() async {

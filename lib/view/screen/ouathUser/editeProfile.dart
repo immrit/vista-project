@@ -5,7 +5,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../main.dart';
-import '/util/widgets.dart';
+import '../../util/widgets.dart';
 import '../../../provider/provider.dart';
 import '../../../provider/ProfileImageUploadService.dart';
 
@@ -293,7 +293,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
                                   : (avatarUrl != null && avatarUrl.isNotEmpty)
                                       ? NetworkImage(avatarUrl)
                                       : const AssetImage(
-                                          'lib/util/images/default-avatar.jpg'),
+                                          'lib/view/util/images/default-avatar.jpg'),
                               fit: BoxFit.cover,
                             ),
                           ),

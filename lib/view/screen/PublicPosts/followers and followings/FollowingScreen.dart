@@ -68,7 +68,7 @@ class FollowingTile extends StatelessWidget {
         radius: 25,
         backgroundImage: followed.avatarUrl != null
             ? NetworkImage(followed.avatarUrl!)
-            : const AssetImage('lib/util/images/default-avatar.jpg')
+            : const AssetImage('lib/view/util/images/default-avatar.jpg')
                 as ImageProvider,
       ),
       title: Text(

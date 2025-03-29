@@ -3,7 +3,12 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 
 // Enum برای نوع تایید
-enum VerificationType { none, blueTick, official }
+enum VerificationType {
+  none, // بدون نشان
+  blueTick, // نشان آبی (مدیران و ناظران)
+  goldTick, // نشان طلایی (حساب تجاری)
+  blackTick // نشان مشکی (تولیدکنندگان محتوا)
+}
 
 @immutable
 class UserModel extends Equatable {
@@ -107,4 +112,12 @@ class UserModel extends Equatable {
   // متدهای اضافی برای بررسی وضعیت
   bool get hasAvatar => avatarUrl != null && avatarUrl!.isNotEmpty;
   bool get hasEmail => email != null && email!.isNotEmpty;
+  bool get hasBlueBadge =>
+      isVerified && verificationType == VerificationType.blueTick;
+  bool get hasGoldBadge =>
+      isVerified && verificationType == VerificationType.goldTick;
+  bool get hasBlackBadge =>
+      isVerified && verificationType == VerificationType.blackTick;
+  bool get hasAnyBadge =>
+      isVerified && verificationType != VerificationType.none;
 }
