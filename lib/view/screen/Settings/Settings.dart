@@ -19,203 +19,207 @@ class Settings extends ConsumerWidget {
     final getprofile = ref.watch(profileProvider);
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('تنظیمات'),
-        elevation: 0, // حذف سایه
-        centerTitle: true, // مرکز قرار دادن عنوان
-      ),
-      body: getprofile.when(
-        data: (getprofile) {
-          return SafeArea(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // پروفایل کاربر - با طراحی زیباتر
-                    _buildUserProfileCard(context, getprofile, colorScheme),
+    return SafeArea(
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('تنظیمات'),
+          elevation: 0, // حذف سایه
+          centerTitle: true, // مرکز قرار دادن عنوان
+        ),
+        body: getprofile.when(
+          data: (getprofile) {
+            return SafeArea(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // پروفایل کاربر - با طراحی زیباتر
+                      _buildUserProfileCard(context, getprofile, colorScheme),
 
-                    const SizedBox(height: 24),
+                      const SizedBox(height: 24),
 
-                    // بخش تنظیمات حساب کاربری
-                    _buildSectionHeader('حساب کاربری', Icons.person_outline),
-                    Card(
-                      margin: const EdgeInsets.symmetric(vertical: 8.0),
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                      // بخش تنظیمات حساب کاربری
+                      _buildSectionHeader('حساب کاربری', Icons.person_outline),
+                      Card(
+                        margin: const EdgeInsets.symmetric(vertical: 8.0),
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          children: [
+                            ProfileFields(
+                              'ویرایش پروفایل',
+                              Icons.person,
+                              () {
+                                Navigator.pushNamed(context, '/editeProfile');
+                              },
+                              colorScheme.primary,
+                            ),
+                            const Divider(height: 1),
+                            ProfileFields(
+                              'تغییر رمز عبور',
+                              Icons.lock,
+                              () {
+                                Navigator.of(context).push(MaterialPageRoute(
+                                    builder: (context) =>
+                                        ChangePasswordWidget()));
+                              },
+                              colorScheme.primary,
+                            ),
+                          ],
+                        ),
                       ),
-                      child: Column(
-                        children: [
-                          ProfileFields(
-                            'ویرایش پروفایل',
-                            Icons.person,
-                            () {
-                              Navigator.pushNamed(context, '/editeProfile');
-                            },
-                            colorScheme.primary,
-                          ),
-                          const Divider(height: 1),
-                          ProfileFields(
-                            'تغییر رمز عبور',
-                            Icons.lock,
-                            () {
-                              Navigator.of(context).push(MaterialPageRoute(
-                                  builder: (context) =>
-                                      ChangePasswordWidget()));
-                            },
-                            colorScheme.primary,
-                          ),
-                        ],
-                      ),
-                    ),
 
-                    const SizedBox(height: 24),
+                      const SizedBox(height: 24),
 
-                    // بخش ظاهر و شخصی‌سازی
-                    _buildSectionHeader('ظاهر و شخصی‌سازی', Icons.palette),
-                    Card(
-                      margin: const EdgeInsets.symmetric(vertical: 8.0),
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                      // بخش ظاهر و شخصی‌سازی
+                      _buildSectionHeader('ظاهر و شخصی‌سازی', Icons.palette),
+                      Card(
+                        margin: const EdgeInsets.symmetric(vertical: 8.0),
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ProfileFields(
+                          'تم و استایل',
+                          Icons.color_lens,
+                          () {
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) => const ThemeItems()));
+                          },
+                          colorScheme.primary,
+                        ),
                       ),
-                      child: ProfileFields(
-                        'تم و استایل',
-                        Icons.color_lens,
-                        () {
+
+                      const SizedBox(height: 24),
+                      const SizedBox(height: 24),
+
+                      // فروشگاه ویستا
+                      _buildSectionHeader('ویستا استور', Icons.palette),
+                      Card(
+                        margin: const EdgeInsets.symmetric(vertical: 8.0),
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child:
+                            ProfileFields('نشان‌های ویژه', Icons.verified, () {
                           Navigator.push(
                               context,
                               MaterialPageRoute(
-                                  builder: (context) => const ThemeItems()));
-                        },
-                        colorScheme.primary,
+                                  builder: (context) =>
+                                      const VerificationBadgeStore()));
+                        }, colorScheme.primary),
                       ),
-                    ),
 
-                    const SizedBox(height: 24),
-                    const SizedBox(height: 24),
+                      const SizedBox(height: 24),
 
-                    // فروشگاه ویستا
-                    _buildSectionHeader('ویستا استور', Icons.palette),
-                    Card(
-                      margin: const EdgeInsets.symmetric(vertical: 8.0),
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                      // اضافه کردن بخش جدید - درباره ما
+                      _buildSectionHeader('درباره ما', Icons.info_outline),
+                      Card(
+                        margin: const EdgeInsets.symmetric(vertical: 8.0),
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          children: [
+                            ProfileFields(
+                              'شرایط و قوانین',
+                              Icons.gavel,
+                              () {
+                                Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            TermsAndConditionsScreen()));
+                              },
+                              colorScheme.primary,
+                            ),
+                            const Divider(height: 1),
+                            ProfileFields(
+                              'تماس با ما',
+                              Icons.contact_support,
+                              () {
+                                Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            ContactUsScreen()));
+                              },
+                              colorScheme.primary,
+                            ),
+                          ],
+                        ),
                       ),
-                      child: ProfileFields('نشان‌های ویژه', Icons.verified, () {
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) =>
-                                    const VerificationBadgeStore()));
-                      }, colorScheme.primary),
-                    ),
 
-                    const SizedBox(height: 24),
-
-                    // اضافه کردن بخش جدید - درباره ما
-                    _buildSectionHeader('درباره ما', Icons.info_outline),
-                    Card(
-                      margin: const EdgeInsets.symmetric(vertical: 8.0),
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
-                        children: [
-                          ProfileFields(
-                            'شرایط و قوانین',
-                            Icons.gavel,
-                            () {
-                              Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (context) =>
-                                          TermsAndConditionsScreen()));
-                            },
-                            colorScheme.primary,
-                          ),
-                          const Divider(height: 1),
-                          ProfileFields(
-                            'تماس با ما',
-                            Icons.contact_support,
-                            () {
-                              Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (context) => ContactUsScreen()));
-                            },
-                            colorScheme.primary,
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-                  ],
+                      const SizedBox(height: 16),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          );
-        },
-        error: (error, stack) {
-          final errorMsg = error.toString() == 'User is not logged in'
-              ? 'کاربر وارد سیستم نشده است، لطفاً ورود کنید.'
-              : 'خطا در دریافت اطلاعات کاربر، لطفاً دوباره تلاش کنید.';
+            );
+          },
+          error: (error, stack) {
+            final errorMsg = error.toString() == 'User is not logged in'
+                ? 'کاربر وارد سیستم نشده است، لطفاً ورود کنید.'
+                : 'خطا در دریافت اطلاعات کاربر، لطفاً دوباره تلاش کنید.';
 
-          return Center(
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 60, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text(
+                    errorMsg,
+                    style: const TextStyle(fontSize: 16),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: () {
+                      ref.refresh(profileProvider);
+                    },
+                    child: const Text('تلاش مجدد'),
+                  ),
+                ],
+              ),
+            );
+          },
+          loading: () => const Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.error_outline, size: 60, color: Colors.red),
-                const SizedBox(height: 16),
-                Text(
-                  errorMsg,
-                  style: const TextStyle(fontSize: 16),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: () {
-                    ref.refresh(profileProvider);
-                  },
-                  child: const Text('تلاش مجدد'),
-                ),
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('در حال بارگذاری...'),
               ],
             ),
-          );
-        },
-        loading: () => const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('در حال بارگذاری...'),
-            ],
           ),
         ),
-      ),
-      bottomNavigationBar: Container(
-        width: double.infinity,
-        height: 50,
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          border: Border(
-            top: BorderSide(
-              color: colorScheme.outlineVariant.withOpacity(0.2),
-              width: 1,
+        bottomNavigationBar: Container(
+          width: double.infinity,
+          height: 50,
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            border: Border(
+              top: BorderSide(
+                color: colorScheme.outlineVariant.withOpacity(0.2),
+                width: 1,
+              ),
             ),
           ),
-        ),
-        child: const Align(
-          alignment: Alignment.center,
-          child: VersionNumber(),
+          child: const Align(
+            alignment: Alignment.center,
+            child: VersionNumber(),
+          ),
         ),
       ),
     );

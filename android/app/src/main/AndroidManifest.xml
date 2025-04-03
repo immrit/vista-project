@@ -1,4 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- مجوزها بدون تغییر -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
@@ -7,7 +8,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <application
-        android:label="vista"
+        android:label="Vista"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -30,69 +31,41 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- اینتنت فیلتر برای دیپ لینک -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <!-- تنظیم دامنه برای دیپ لینک -->
-                <data android:scheme="http" />
-                <data android:scheme="https" />
-                <data android:host="api.coffevista.ir:8443" />
-                <!-- اگر از path خاصی استفاده می‌کنید، اینجا اضافه کنید -->
-                <data android:pathPattern="/auth/reset-password" />
-            </intent-filter>
+            <!-- اینتنت فیلتر برای دیپ لینک HTTP/HTTPS - بهینه شده -->
+<intent-filter android:autoVerify="true">
+    <action android:name="android.intent.action.VIEW" />
+    <category android:name="android.intent.category.DEFAULT" />
+    <category android:name="android.intent.category.BROWSABLE" />
+    <data android:scheme="https" />
+    <data android:scheme="http" />
+    <data android:host="coffevista.ir" />
+    <data android:pathPattern="/auth/v1/verify" />
+    <data android:pathPattern="/auth/v1/callback" />
+</intent-filter>
 
-            <!-- Add this new intent filter for deep linking -->
+            <!-- اینتنت فیلتر برای دیپ لینک custom scheme vista:// - بهینه شده -->
+<intent-filter>
+    <action android:name="android.intent.action.VIEW" />
+    <category android:name="android.intent.category.DEFAULT" />
+    <category android:name="android.intent.category.BROWSABLE" />
+    <data android:scheme="vista" />
+    <data android:host="auth" />
+    <data android:path="/reset-password" />
+    <data android:path="/confirm" />
+    <data android:path="/email-change" />
+    <data android:path="/invite" />
+</intent-filter>
+            
+            <!-- اینتنت فیلتر برای مسیرهای خاص email-change و سایر عملیات auth -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data 
-                    android:scheme="http"
-                    android:host="api.coffevista.ir"
-                    android:port="8443" />
-            </intent-filter>
-
-            <!-- URL scheme for http/https -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="http" />
-                <data android:scheme="https" />
-                <data android:host="api.coffevista.ir" />
-                <data android:port="8443" />
-                <data android:pathPattern="/auth/reset-password" />
-            </intent-filter>
-
-            <!-- Custom URL scheme for vista:// -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="vista" />
-                <data android:host="auth" />
+                <data android:scheme="vista" android:host="auth" />
+                <data android:pathPattern="/email-change" />
+                <data android:pathPattern="/confirm" />
                 <data android:pathPattern="/reset-password" />
-            </intent-filter>
-
-            <!-- New intent filter for deep linking -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data 
-                    android:scheme="vista"
-                    android:pathPattern="/auth/reset-password" />
-                <data 
-                    android:scheme="vista"
-                    android:pathPattern="/auth/invite" />
-                <data 
-                    android:scheme="vista"
-                    android:pathPattern="/auth/confirm" />
-                <data 
-                    android:scheme="vista"
-                    android:pathPattern="/auth/email-change" />
+                <data android:pathPattern="/invite" />
             </intent-filter>
         </activity>
 

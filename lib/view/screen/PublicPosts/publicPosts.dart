@@ -164,7 +164,13 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
                 duration: const Duration(milliseconds: 300),
                 child: _connectionStatus == 'متصل به وای‌فای' ||
                         _connectionStatus == 'متصل به اینترنت همراه'
-                    ? NoroozTitle()
+                    ? Text(
+                        "Vista",
+                        style: TextStyle(
+                            fontFamily: 'Bauhaus',
+                            fontWeight: FontWeight.bold,
+                            fontSize: 24),
+                      )
                     : _buildConnectionStatus(),
               ),
               centerTitle: true,

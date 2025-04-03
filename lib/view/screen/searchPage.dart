@@ -615,7 +615,7 @@ class PostCard extends StatelessWidget {
 
           // زمان انتشار پست
           Text(
-            _getTimeAgo(post.createdAt!),
+            _getTimeAgo(post.createdAt),
             style: TextStyle(
               fontSize: 12,
               color: Theme.of(context).textTheme.bodySmall?.color,

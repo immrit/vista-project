@@ -6,7 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../main.dart';
 
 class ContactUsScreen extends StatefulWidget {
-  const ContactUsScreen({Key? key}) : super(key: key);
+  const ContactUsScreen({super.key});
 
   @override
   State<ContactUsScreen> createState() => _ContactUsScreenState();

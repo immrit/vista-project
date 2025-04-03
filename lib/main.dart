@@ -4,7 +4,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_mentions/flutter_mentions.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -14,6 +13,7 @@ import 'firebase_options.dart';
 import 'model/Hive Model/RecentSearch.dart';
 import 'provider/provider.dart';
 import 'security/security.dart';
+import 'services/deepLink.dart';
 import 'view/util/themes.dart';
 import 'view/screen/Settings/Settings.dart';
 import 'view/screen/homeScreen.dart';
@@ -39,10 +39,7 @@ void main() async {
   // راه‌اندازی Hive
   await Hive.initFlutter();
 
-  // // پاک کردن باکس‌های قبلی برای اطمینان
-  // await Hive.deleteFromDisk();
-
-  // ثبت adapter ها با typeId های جدید
+  // ثبت adapter ها
   if (!Hive.isAdapterRegistered(2)) {
     Hive.registerAdapter(SearchTypeAdapter()); // typeId: 2
   }
@@ -116,7 +113,6 @@ final supabase = Supabase.instance.client;
 class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key, required this.initialTheme});
 
-  // تغییر به ConsumerStatefulWidget
   final ThemeData initialTheme;
 
   @override
@@ -125,11 +121,13 @@ class MyApp extends ConsumerStatefulWidget {
 
 class _MyAppState extends ConsumerState<MyApp> {
   late final AppLinks _appLinks;
-  StreamSubscription? _sub;
+  StreamSubscription? _linkSubscription;
+  bool _isLoading = false;
+  bool _appInitialized = false;
 
   @override
   void dispose() {
-    _sub?.cancel();
+    _linkSubscription?.cancel();
     super.dispose();
   }
 
@@ -137,8 +135,31 @@ class _MyAppState extends ConsumerState<MyApp> {
   void initState() {
     super.initState();
     _appLinks = AppLinks();
-    _handleIncomingLinks();
 
+    // مدیریت دیپ لینک‌های ورودی
+    _setupDeepLinkHandling();
+
+    // مدیریت FCM توکن
+    _setupFCMToken();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // اگر اپلیکیشن برای اولین بار initialize شده است
+    if (!_appInitialized && mounted) {
+      _appInitialized = true;
+
+      // پردازش توکن‌های در انتظار بعد از ایجاد context
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        DeepLinkService.processPendingTokens(context);
+      });
+    }
+  }
+
+  /// راه‌اندازی مدیریت توکن FCM
+  void _setupFCMToken() {
     supabase.auth.onAuthStateChange.listen((event) async {
       if (event.event == AuthChangeEvent.signedIn) {
         await FirebaseMessaging.instance.requestPermission();
@@ -147,15 +168,17 @@ class _MyAppState extends ConsumerState<MyApp> {
 
         if (fcmToken != null) {
           await _setFcmToken(fcmToken);
-          print("FcmToken: $fcmToken");
+          print("FCM Token: $fcmToken");
         }
       }
     });
+
     FirebaseMessaging.instance.onTokenRefresh.listen((fcmToken) async {
       await _setFcmToken(fcmToken);
     });
   }
 
+  /// ذخیره توکن FCM در پروفایل کاربر
   Future<void> _setFcmToken(String fcmToken) async {
     final user = supabase.auth.currentUser;
     final userId = user?.id;
@@ -165,52 +188,87 @@ class _MyAppState extends ConsumerState<MyApp> {
           user?.email?.split('@')[0] ??
           'user_$userId';
 
-      final fullName = user?.userMetadata?['full_name'] ??
-          username; // Fallback to username if no full_name
+      final fullName = user?.userMetadata?['full_name'] ?? username;
 
       await supabase.from('profiles').upsert({
         'id': userId,
         'fcm_token': fcmToken,
         'username': username,
-        'full_name': fullName, // Add required full_name field
+        'full_name': fullName,
       });
     }
   }
 
-  // مدیریت دیپ لینک‌ها
-  void _handleIncomingLinks() {
+  /// راه‌اندازی مدیریت دیپ لینک
+  void _setupDeepLinkHandling() {
+    // پردازش لینک اولیه
+    _processInitialLink();
+
+    // گوش دادن به دیپ لینک‌های ورودی
+    _linkSubscription = _appLinks.uriLinkStream.listen((Uri? uri) {
+      if (uri != null) {
+        print('Received deep link: $uri');
+        _processDeepLink(uri);
+      }
+    }, onError: (error) {
+      print('Deep link error: $error');
+    });
+  }
+
+  /// پردازش لینک اولیه
+  Future<void> _processInitialLink() async {
     try {
-      _sub = _appLinks.uriLinkStream.listen((Uri? uri) {
-        if (uri != null) {
-          if (uri.scheme == 'vista' && uri.host == 'auth') {
-            switch (uri.path) {
-              case '/reset-password':
-                _handleResetPassword(uri);
-                break;
-              case '/invite':
-                // _handleInvite(uri);
-                break;
-              case '/confirm':
-                // _handleConfirm(uri);
-                break;
-              case '/email-change':
-                // _handleEmailChange(uri);
-                break;
-            }
-          }
-        }
-      }, onError: (err) {
-        print('Deep link error: $err');
-      });
+      final initialLink = await _appLinks.getInitialLink();
+      if (initialLink != null) {
+        print('Processing initial link: $initialLink');
+        _processDeepLink(initialLink);
+      }
     } catch (e) {
-      print('Incoming links handler error: $e');
+      print('Error processing initial link: $e');
     }
   }
 
-  void _handleResetPassword(Uri uri) {
-    String? token = uri.queryParameters['token'];
-    if (token != null && mounted) {
-      Navigator.pushNamed(context, '/reset-password', arguments: token);
+  /// پردازش دیپ لینک برای انواع مختلف
+  void _processDeepLink(Uri uri) {
+    print('Processing deep link: $uri');
+    print('Path: ${uri.path}');
+    print('Parameters: ${uri.queryParameters}');
+    print('Fragment: ${uri.fragment}');
+
+    // جلوگیری از پردازش همزمان چندین درخواست
+    if (_isLoading) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      // اینجا ما context را فقط در صورتی که برنامه کاملاً بارگذاری شده باشد ارسال می‌کنیم
+      BuildContext? safeContext = _appInitialized ? context : null;
+
+      // بررسی مسیر لینک برای تشخیص نوع عملیات
+      if (uri.toString().contains('reset-password')) {
+        DeepLinkService.handleResetPassword(uri, safeContext);
+      } else if (uri.toString().contains('email-change')) {
+        DeepLinkService.handleEmailChange(uri, safeContext);
+      } else if (uri.toString().contains('confirm')) {
+        DeepLinkService.handleConfirm(uri, safeContext);
+      } else if (uri.scheme == 'vista' && uri.host == 'auth') {
+        // روش قدیمی
+        switch (uri.path) {
+          case '/reset-password':
+            DeepLinkService.handleResetPassword(uri, safeContext);
+            break;
+          case '/email-change':
+            DeepLinkService.handleEmailChange(uri, safeContext);
+            break;
+          case '/confirm':
+            DeepLinkService.handleConfirm(uri, safeContext);
+            break;
+        }
+      }
+    } catch (e) {
+      print('Error processing deep link: $e');
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
@@ -223,29 +281,44 @@ class _MyAppState extends ConsumerState<MyApp> {
       builder: (context, child) {
         return Consumer(
           builder: (context, ref, child) {
-            final theme =
-                ref.watch(themeProvider); // دریافت تم جاری از طریق Riverpod
-            return Portal(
-              child: MaterialApp(
-                title: 'Vista',
-                debugShowCheckedModeBanner: false,
-                theme: theme, // استفاده از تم جاری
-                home: SplashScreen(),
-                initialRoute: '/',
-                routes: {
-                  '/signup': (context) => const SignUpScreen(),
-                  '/home': (context) => const HomeScreen(),
-                  '/login': (context) => const Loginuser(),
-                  '/editeProfile': (context) => const EditProfile(),
-                  // '/profile': (context) => const Profile(),
-                  '/welcome': (context) => const WelcomePage(),
-                  '/settings': (context) => const Settings(),
-                  '/reset-password': (context) => ResetPasswordPage(
-                        token: ModalRoute.of(context)?.settings.arguments
-                            as String,
-                      ),
-                },
-              ),
+            final theme = ref.watch(themeProvider);
+            return MaterialApp(
+              title: 'Vista',
+              debugShowCheckedModeBanner: false,
+              theme: theme,
+              navigatorKey: DeepLinkService.navigatorKey,
+              home: SplashScreen(),
+              initialRoute: '/',
+              scaffoldMessengerKey: GlobalKey<ScaffoldMessengerState>(),
+              routes: {
+                '/signup': (context) => const SignUpScreen(),
+                '/home': (context) => const HomeScreen(),
+                '/login': (context) => const Loginuser(),
+                '/editeProfile': (context) => const EditProfile(),
+                '/welcome': (context) => const WelcomePage(),
+                '/settings': (context) => const Settings(),
+                '/reset-password': (context) => ResetPasswordPage(
+                      token: ModalRoute.of(context)?.settings.arguments
+                              as String? ??
+                          '',
+                    ),
+              },
+              // builder: (context, child) {
+              //   return Directionality(
+              //     textDirection: TextDirection.rtl,
+              //     child: Stack(
+              //       children: [
+              //         child!,
+              //         if (_isLoading)
+              //           const Positioned.fill(
+              //             child: Center(
+              //               child: CircularProgressIndicator(),
+              //             ),
+              //           ),
+              //       ],
+              //     ),
+              //   );
+              // },
             );
           },
         );
