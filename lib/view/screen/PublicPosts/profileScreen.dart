@@ -9,8 +9,10 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../model/MusicModel.dart';
 import '../../../provider/MusicProvider.dart';
+import '../../../provider/chat_provider.dart.dart';
 import '../../util/const.dart';
 import '../../util/widgets.dart';
+import '../chat/ChatScreen.dart';
 import '/main.dart';
 import '../../../model/ProfileModel.dart';
 import '../../../model/publicPostModel.dart';
@@ -199,36 +201,114 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget _buildProfileActionButton(
       ProfileModel profile, bool isCurrentUserProfile) {
     final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
-    return ElevatedButton(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: isCurrentUserProfile
-            ? Colors.black
-            : profile.isFollowed
+
+    // اگر پروفایل خود کاربر است، فقط دکمه ویرایش پروفایل را نمایش می‌دهیم
+    if (isCurrentUserProfile) {
+      return ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+        ),
+        onPressed: () => Navigator.of(context)
+            .push(MaterialPageRoute(builder: (context) => const EditProfile())),
+        child: const Text('ویرایش پروفایل'),
+      );
+    }
+
+    // برای پروفایل دیگران، هم دکمه دنبال کردن و هم دکمه ارسال پیام را نمایش می‌دهیم
+    return Row(
+      children: [
+        // دکمه ارسال پیام
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: isDarkTheme ? Colors.white24 : Colors.blue,
+            foregroundColor: isDarkTheme ? Colors.white : Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+          ),
+          onPressed: () => _startConversation(profile.id, profile.username),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.message, size: 16),
+              SizedBox(width: 4),
+              Text('ارسال پیام'),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        // دکمه دنبال کردن
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: profile.isFollowed
                 ? (isDarkTheme ? Colors.white : Colors.black)
                 : Colors.white,
-        foregroundColor: isCurrentUserProfile
-            ? Colors.white
-            : profile.isFollowed
+            foregroundColor: profile.isFollowed
                 ? (isDarkTheme ? Colors.black : Colors.white)
                 : (isDarkTheme ? Colors.black : Colors.black),
-        side: BorderSide(
-          color: isCurrentUserProfile
-              ? Colors.transparent
-              : profile.isFollowed
+            side: BorderSide(
+              color: profile.isFollowed
                   ? Colors.transparent
                   : (isDarkTheme ? Colors.black : Colors.black),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+          ),
+          onPressed: () => _toggleFollow(profile.id),
+          child: Text(profile.isFollowed ? 'لغو دنبال کردن' : 'دنبال کردن'),
         ),
-      ),
-      onPressed: () => isCurrentUserProfile
-          ? Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const EditProfile()))
-          : _toggleFollow(profile.id),
-      child: Text(isCurrentUserProfile
-          ? 'ویرایش پروفایل'
-          : profile.isFollowed
-              ? 'لغو دنبال کردن'
-              : 'دنبال کردن'),
+      ],
     );
+  }
+
+  // متد برای شروع گفتگو با کاربر دیگر
+  void _startConversation(String otherUserId, String otherUsername) async {
+    try {
+      // نمایش دادن یک نشانگر بارگذاری
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      // ایجاد یا بازیابی مکالمه از طریق سرویس چت
+      final chatService = ref.read(chatServiceProvider);
+      final conversationId =
+          await chatService.createOrGetConversation(otherUserId);
+
+      // بستن نشانگر بارگذاری
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
+
+      // انتقال به صفحه چت
+      if (context.mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ChatScreen(
+              conversationId: conversationId,
+              otherUserId: otherUserId,
+              otherUserName: otherUsername,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      print("خطای ایجاد گفتگو: $e");
+
+      // بستن نشانگر بارگذاری در صورت بروز خطا
+      if (context.mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      // نمایش پیام خطا
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در ایجاد گفتگو: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   String _getFormattedDate(DateTime date) {

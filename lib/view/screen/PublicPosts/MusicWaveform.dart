@@ -1,12 +1,12 @@
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb; // اضافه کردن این import
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import '../../../provider/MusicProvider.dart';
+import '../Music/MusicDownloadManager.dart';
 
 class MusicWaveform extends ConsumerStatefulWidget {
   final String musicUrl;
@@ -33,9 +33,8 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
   late AnimationController _waveformAnimation;
   final List<double> _waveform = [];
   bool _isInitialized = false;
-  bool _isDownloaded = false;
-  String? _localPath;
   bool _isDownloading = false;
+  bool _showDownloadButton = false;
 
   @override
   void initState() {
@@ -46,7 +45,7 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
     );
     _generateWaveform();
     _setupPlaybackListeners();
-    _downloadInBackground();
+    _checkDownloadStatus();
   }
 
   void _generateWaveform() {
@@ -89,86 +88,107 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
     });
   }
 
-  Future<void> _downloadInBackground() async {
-    if (kIsWeb) {
-      // در نسخه وب، نیازی به دانلود نیست
-      setState(() => _isDownloaded = true);
-      return;
-    }
+  Future<void> _checkDownloadStatus() async {
+    if (kIsWeb) return;
 
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final filename = widget.musicUrl.split('/').last;
-      _localPath = '${tempDir.path}/$filename';
+    final downloadManager = ref.read(musicDownloadManagerProvider.notifier);
+    final isDownloaded = downloadManager.isDownloaded(widget.musicUrl);
 
-      if (!File(_localPath!).existsSync()) {
-        final response = await http.get(Uri.parse(widget.musicUrl));
-        await File(_localPath!).writeAsBytes(response.bodyBytes);
-      }
-
-      if (mounted) {
-        setState(() => _isDownloaded = true);
-      }
-    } catch (e) {
-      debugPrint('Error downloading audio: $e');
-      // در صورت خطا هم اجازه پخش می‌دهیم
-      setState(() => _isDownloaded = true);
+    if (mounted) {
+      setState(() {
+        _showDownloadButton = !isDownloaded;
+      });
     }
   }
 
   Future<void> _handlePlayPause() async {
     if (_isDownloading) return;
 
-    if (kIsWeb) {
-      // در نسخه وب مستقیماً پخش می‌کنیم
-      widget.onPlayPause?.call();
-      return;
-    }
+    final downloadManager = ref.read(musicDownloadManagerProvider.notifier);
+    final isDownloaded = downloadManager.isDownloaded(widget.musicUrl);
 
-    if (!_isDownloaded) {
-      setState(() => _isDownloading = true);
-      try {
-        final downloaded = await _downloadMusic();
-        const SnackBar(content: Text('دانلود'));
+    if (!isDownloaded && !kIsWeb) {
+      // برای پخش، نیاز به دانلود نیست، اما برای اطمینان
+      // فایل را در حافظه موقت ذخیره می‌کنیم
+      final tempDir = await getTemporaryDirectory();
+      final filename = widget.musicUrl.split('/').last;
+      final localPath = '${tempDir.path}/$filename';
 
-        if (!downloaded) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('خطا در دانلود موزیک')),
-          );
-          return;
-        }
-      } finally {
+      if (!File(localPath).existsSync()) {
+        setState(() => _isDownloading = true);
+
+        await downloadManager.downloadMusic(
+          widget.musicUrl,
+          onProgress: (progress) {
+            // می‌توان حالت پیشرفت دانلود را نمایش داد
+          },
+        );
+
         if (mounted) {
           setState(() => _isDownloading = false);
         }
       }
     }
+
     widget.onPlayPause?.call();
   }
 
-  Future<bool> _downloadMusic() async {
-    if (_isDownloaded || kIsWeb) return true;
+  Future<void> _handleDownload() async {
+    if (_isDownloading) return;
+
+    setState(() => _isDownloading = true);
 
     try {
-      final tempDir = await getTemporaryDirectory();
-      final filename = widget.musicUrl.split('/').last;
-      _localPath = '${tempDir.path}/$filename';
+      final downloadManager = ref.read(musicDownloadManagerProvider.notifier);
 
-      if (!File(_localPath!).existsSync()) {
-        final response = await http.get(Uri.parse(widget.musicUrl));
-        if (response.statusCode != 200) {
-          throw Exception('Failed to download music');
+      final filePath = await downloadManager.downloadMusic(
+        widget.musicUrl,
+        onProgress: (progress) {
+          // تابع پیشرفت دانلود
+        },
+      );
+
+      if (filePath != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  'فایل با موفقیت دانلود شد و در "${filePath.split('/').last}" ذخیره شد'),
+              duration: const Duration(seconds: 3),
+              action: SnackBarAction(
+                label: 'فهمیدم',
+                onPressed: () {},
+              ),
+            ),
+          );
+
+          setState(() {
+            _showDownloadButton = false;
+          });
         }
-        await File(_localPath!).writeAsBytes(response.bodyBytes);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('خطا در دانلود فایل'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
       }
-
-      if (mounted) {
-        setState(() => _isDownloaded = true);
-      }
-      return true;
     } catch (e) {
-      debugPrint('Error downloading music: $e');
-      return false;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در دانلود: $e'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isDownloading = false);
+      }
     }
   }
 
@@ -193,6 +213,10 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
         _waveformAnimation.stop();
       }
     }
+
+    if (widget.musicUrl != oldWidget.musicUrl) {
+      _checkDownloadStatus();
+    }
   }
 
   @override
@@ -208,8 +232,14 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
         ? widget.position!.inMilliseconds / widget.duration!.inMilliseconds
         : 0.0;
 
+    // نمایش وضعیت دانلود
+    final downloadInfo =
+        ref.watch(musicDownloadManagerProvider)[widget.musicUrl];
+    final isDownloading = downloadInfo?.status == DownloadStatus.downloading;
+    final downloadProgress = downloadInfo?.progress ?? 0.0;
+
     return Container(
-      height: 55,
+      height: 60,
       margin: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
         color: isDarkMode
@@ -229,7 +259,7 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
               children: [
                 GestureDetector(
                   onHorizontalDragUpdate: (details) {
-                    final width = constraints.maxWidth - 80;
+                    final width = constraints.maxWidth - 120; // تنظیم عرض
                     final dx =
                         (details.localPosition.dx - 50).clamp(0.0, width);
                     final progress = dx / width;
@@ -239,7 +269,7 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
                     }
                   },
                   onTapDown: (details) {
-                    final width = constraints.maxWidth - 80;
+                    final width = constraints.maxWidth - 120; // تنظیم عرض
                     final dx =
                         (details.localPosition.dx - 50).clamp(0.0, width);
                     final progress = dx / width;
@@ -255,7 +285,8 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           child: CustomPaint(
-                            size: Size(constraints.maxWidth - 80, 40),
+                            size: Size(
+                                constraints.maxWidth - 120, 40), // تنظیم عرض
                             painter: TelegramWaveformPainter(
                               waveData: _waveform,
                               progress: progress,
@@ -268,6 +299,10 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
                         ),
                       ),
                       _buildDuration(context),
+                      // دکمه دانلود
+                      if (_showDownloadButton && !kIsWeb)
+                        _buildDownloadButton(
+                            context, isDownloading, downloadProgress),
                     ],
                   ),
                 ),
@@ -348,6 +383,48 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
           fontSize: 12,
           fontWeight: FontWeight.w500,
           color: isDarkMode ? Colors.white70 : Colors.black87,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDownloadButton(
+      BuildContext context, bool isDownloading, double downloadProgress) {
+    return Container(
+      width: 40,
+      height: 40,
+      margin: const EdgeInsets.only(right: 8),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: isDownloading ? null : _handleDownload,
+          borderRadius: BorderRadius.circular(20),
+          child: isDownloading
+              ? Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    CircularProgressIndicator(
+                      value: downloadProgress,
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Theme.of(context).primaryColor,
+                      ),
+                    ),
+                    Text(
+                      '${(downloadProgress * 100).toInt()}%',
+                      style: TextStyle(
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).primaryColor,
+                      ),
+                    ),
+                  ],
+                )
+              : Icon(
+                  Icons.download_rounded,
+                  color: Theme.of(context).primaryColor,
+                  size: 24,
+                ),
         ),
       ),
     );

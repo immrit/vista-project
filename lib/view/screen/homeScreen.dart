@@ -1,13 +1,21 @@
+import 'package:Vista/view/screen/chat/ChatConversationsScreen.dart'
+    show ChatConversationsScreen;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:badges/badges.dart' as badges;
 import '../../provider/provider.dart';
 import '/main.dart';
 import 'PublicPosts/AddPost.dart';
-import 'PublicPosts/notificationScreen.dart';
 import 'PublicPosts/profileScreen.dart';
 import 'PublicPosts/publicPosts.dart';
 import 'searchPage.dart';
+
+// پرووایدر برای بررسی پیام‌های جدید
+final hasNewMessagesProvider = FutureProvider<bool>((ref) async {
+  // در حالت واقعی، این باید از سوپابیس بخواند
+  await Future.delayed(Duration(milliseconds: 500));
+  return true; // برای نمایش اولیه، نشانگر پیام جدید را نشان می‌دهیم
+});
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -20,12 +28,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _selectedIndex = 0;
   DateTime? _lastPressed;
 
-  // لیست صفحات
+  // لیست صفحات با حذف نوتیفیکیشن و اضافه کردن چت
   final List<Widget> _tabs = [
     const PublicPostsScreen(), // صفحه پست‌های عمومی
     const SearchPage(), // صفحه جستجو
     const AddPublicPostScreen(), // صفحه افزودن پست
-    const NotificationsPage(), // صفحه اعلان‌ها
+    const ChatConversationsScreen(), // صفحه چت (جدید)
     ProfileScreen(
       userId: supabase.auth.currentUser!.id,
       username: supabase.auth.currentUser!.email!,
@@ -35,7 +43,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // هندل کردن تغییر تب
   void _onItemTapped(int index) {
     if (index == 2) {
-      // Navigate to AddPostScreen directly instead of changing index
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => const AddPublicPostScreen(),
@@ -121,11 +128,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
               label: '',
             ),
-
-// استفاده از تابع در NavigationDestination:
+            // تب چت به جای تب اعلان‌ها
             NavigationDestination(
-              icon: _buildNotificationBadge(Icons.favorite_border, false),
-              selectedIcon: _buildNotificationBadge(Icons.favorite, true),
+              icon: _buildMessageBadge(Icons.chat_bubble_outline, false),
+              selectedIcon: _buildMessageBadge(Icons.chat_bubble, true),
               label: '',
             ),
             const NavigationDestination(
@@ -142,10 +148,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  // تابع برای نمایش بج اعلان
   Widget _buildNotificationBadge(IconData icon, bool isSelected) {
     return badges.Badge(
       showBadge: ref.watch(hasNewNotificationProvider).when(
             data: (hasNewNotification) => hasNewNotification,
+            loading: () => false,
+            error: (_, __) => false,
+          ),
+      badgeStyle: const badges.BadgeStyle(
+        badgeColor: Colors.red,
+      ),
+      position: badges.BadgePosition.topEnd(top: -10, end: -10),
+      child: Icon(
+        icon,
+        color: isSelected ? Theme.of(context).colorScheme.primary : null,
+      ),
+    );
+  }
+
+  // تابع برای نمایش بج پیام جدید
+  Widget _buildMessageBadge(IconData icon, bool isSelected) {
+    return badges.Badge(
+      showBadge: ref.watch(hasNewMessagesProvider).when(
+            data: (hasNewMessages) => hasNewMessages,
             loading: () => false,
             error: (_, __) => false,
           ),

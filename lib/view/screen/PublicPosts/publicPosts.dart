@@ -1,4 +1,5 @@
 import 'package:Vista/view/screen/PublicPosts/PostDetailPage.dart';
+import 'package:badges/badges.dart' as badges;
 import 'package:buttons_tabbar/buttons_tabbar.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -15,12 +16,12 @@ import '../../../main.dart';
 import '../../../model/MusicModel.dart';
 import '../../../provider/MusicProvider.dart';
 import '../../util/widgets.dart';
-import '../../widgets/norooz_title.dart';
 import '../Stories/story_system.dart';
 import '../searchPage.dart';
 import '/model/publicPostModel.dart';
 import '../../../provider/provider.dart';
 import 'MusicWaveform.dart';
+import 'notificationScreen.dart';
 import 'profileScreen.dart';
 import 'dart:async';
 
@@ -152,7 +153,7 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
 
     return DefaultTabController(
       length: 2,
-      initialIndex: 1,
+      initialIndex: 0,
       key: _tabControllerKey,
       child: Scaffold(
         body: NestedScrollView(
@@ -160,6 +161,17 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
             SliverAppBar(
               floating: true,
               snap: true,
+              // آیکون های سمت چپ (leading) - آیکون اعلان‌ها اینجا قرار می‌گیرد
+              leading: IconButton(
+                icon: _buildNotificationBadge(),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const NotificationsPage(),
+                    ),
+                  );
+                },
+              ),
               title: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 300),
                 child: _connectionStatus == 'متصل به وای‌فای' ||
@@ -228,6 +240,7 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
                         // انیمیشن نرم برای تغییر تب
                         physics: const BouncingScrollPhysics(),
                         duration: 300,
+
                         tabs: [
                           Tab(
                             child: Row(
@@ -272,6 +285,24 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
           ),
         ),
         endDrawer: CustomDrawer(getProfile, currentColor, context, ref),
+      ),
+    );
+  }
+
+  Widget _buildNotificationBadge() {
+    return badges.Badge(
+      showBadge: ref.watch(hasNewNotificationProvider).when(
+            data: (hasNewNotification) => hasNewNotification,
+            loading: () => false,
+            error: (_, __) => false,
+          ),
+      badgeStyle: const badges.BadgeStyle(
+        badgeColor: Colors.red,
+      ),
+      position: badges.BadgePosition.topEnd(top: -8, end: -8),
+      child: Icon(
+        Icons.favorite_border,
+        color: Colors.white,
       ),
     );
   }

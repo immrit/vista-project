@@ -231,9 +231,13 @@ class _MyAppState extends ConsumerState<MyApp> {
   /// پردازش دیپ لینک برای انواع مختلف
   void _processDeepLink(Uri uri) {
     print('Processing deep link: $uri');
-    print('Path: ${uri.path}');
-    print('Parameters: ${uri.queryParameters}');
+    print('Uri scheme: ${uri.scheme}');
+    print('Uri host: ${uri.host}');
+    print('Uri path: ${uri.path}');
+    print('Query parameters: ${uri.queryParameters}');
+    print('Query: ${uri.query}');
     print('Fragment: ${uri.fragment}');
+    print('Raw data: ${uri.toString()}');
 
     // جلوگیری از پردازش همزمان چندین درخواست
     if (_isLoading) return;
@@ -244,14 +248,20 @@ class _MyAppState extends ConsumerState<MyApp> {
       // اینجا ما context را فقط در صورتی که برنامه کاملاً بارگذاری شده باشد ارسال می‌کنیم
       BuildContext? safeContext = _appInitialized ? context : null;
 
-      // بررسی مسیر لینک برای تشخیص نوع عملیات
+      // اول بر اساس string کامل بررسی می‌کنیم
       if (uri.toString().contains('reset-password')) {
+        print('Handling reset password');
         DeepLinkService.handleResetPassword(uri, safeContext);
-      } else if (uri.toString().contains('email-change')) {
+      } else if (uri.toString().contains('email-change') ||
+          (uri.path.contains('email-change'))) {
+        print('Handling email change');
         DeepLinkService.handleEmailChange(uri, safeContext);
       } else if (uri.toString().contains('confirm')) {
+        print('Handling confirmation');
         DeepLinkService.handleConfirm(uri, safeContext);
-      } else if (uri.scheme == 'vista' && uri.host == 'auth') {
+      }
+      // سپس بر اساس الگوی uri.scheme و uri.host
+      else if (uri.scheme == 'vista' && uri.host == 'auth') {
         // روش قدیمی
         switch (uri.path) {
           case '/reset-password':
@@ -263,7 +273,11 @@ class _MyAppState extends ConsumerState<MyApp> {
           case '/confirm':
             DeepLinkService.handleConfirm(uri, safeContext);
             break;
+          default:
+            print('Unknown path: ${uri.path}');
         }
+      } else {
+        print('Unrecognized deep link format: $uri');
       }
     } catch (e) {
       print('Error processing deep link: $e');

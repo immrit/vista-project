@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 
+import '../main.dart';
+
 // کلاس مدیریت دیپ لینک
 class DeepLinkService {
   static final GlobalKey<NavigatorState> navigatorKey =
@@ -63,94 +65,94 @@ class DeepLinkService {
 
   // پردازش لینک تغییر ایمیل
   static Future<void> handleEmailChange(Uri uri, BuildContext? context) async {
-    String? token = _extractToken(uri);
-    print('handleEmailChange token: $token');
+    print('handleEmailChange called');
+    final token = _extractToken(uri);
 
-    if (token != null) {
-      if (context == null) {
-        pendingEmailChangeToken = token;
-        print(
-            'Context not available, saving email change token for later: $token');
-        return;
+    if (token == null) {
+      print('Error: No token found in email change link');
+      if (context != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('خطا: لینک تغییر ایمیل نامعتبر است')),
+        );
+      } else {
+        pendingEmailChangeToken = null;
       }
+      return;
+    }
 
-      try {
-        // بررسی وجود ایمیل جدید ذخیره شده
-        if (pendingNewEmail == null) {
-          ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
+    print('Email change token: $token');
+
+    try {
+      // تلاش مستقیم برای تایید با OtpType.emailChange
+      final response = await supabase.auth.verifyOTP(
+        token: token,
+        type: OtpType.emailChange,
+      );
+
+      if (response.session != null || response.user != null) {
+        print('Email change verified successfully');
+
+        // نمایش پیام موفقیت‌آمیز
+        if (context != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('ایمیل جدید ثبت نشده است. لطفاً دوباره تلاش کنید.'),
-              backgroundColor: Colors.red,
+              content: Text('ایمیل شما با موفقیت تغییر یافت'),
+              duration: Duration(seconds: 5),
             ),
           );
-          return;
-        }
 
-        ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
-          const SnackBar(
-            content: Text('در حال تأیید تغییر ایمیل...'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-        print(
-            'Verifying email change with token: $token and email: $pendingNewEmail');
-        final supabase = Supabase.instance.client;
-
-        // فراخوانی verifyOTP همراه با ارسال ایمیل جدید
-        final res = await supabase.auth.verifyOTP(
-          token: token,
-          type: OtpType.emailChange,
-          email: pendingNewEmail,
-        );
-        print('Email change verification response: $res');
-
-        final updatedUser = res.user;
-        if (updatedUser != null && updatedUser.email != null) {
-          try {
-            await supabase.from('profiles').update({
-              'email': updatedUser.email,
-            }).eq('id', updatedUser.id);
-            print('Profile updated with new email: ${updatedUser.email}');
-
-            // به‌روزرسانی provider برای نمایش ایمیل جدید در اینترفیس کاربری
-            if (context is ConsumerStatefulElement) {
-              final ref = context as ConsumerStatefulElement;
-              ref.read(userEmailProvider.notifier).state = updatedUser.email;
-            }
-          } catch (dbErr) {
-            print('Error updating profile: $dbErr');
-          }
+          // بروزرسانی اطلاعات کاربری
+          navigatorKey.currentState
+              ?.pushNamedAndRemoveUntil('/home', (route) => false);
         } else {
-          print('updatedUser یا ایمیل آن null است.');
+          pendingEmailChangeToken = token;
         }
+      } else {
+        print('Error: Email change verification failed');
+        if (context != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('خطا در تغییر ایمیل: توکن نامعتبر است'),
+              duration: Duration(seconds: 5),
+            ),
+          );
+        } else {
+          pendingEmailChangeToken = token;
+        }
+      }
+    } catch (e) {
+      print('Error verifying email change: $e');
 
-        ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
-          const SnackBar(
-            content: Text('ایمیل شما با موفقیت تغییر کرد'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        navigatorKey.currentState
-            ?.pushNamedAndRemoveUntil('/editeProfile', (route) => false);
-
-        // پاکسازی متغیر pendingNewEmail پس از اعمال تغییر
-        pendingNewEmail = null;
-      } catch (e) {
-        print('Email change error: $e');
-        ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
+      // ذخیره توکن برای پردازش بعدی
+      if (context == null) {
+        pendingEmailChangeToken = token;
+      } else {
+        // نمایش خطا به کاربر
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('خطا در تغییر ایمیل: $e'),
-            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
           ),
         );
       }
-    } else {
-      ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
-        const SnackBar(
-          content: Text('لینک تغییر ایمیل نامعتبر است'),
-          backgroundColor: Colors.red,
-        ),
-      );
+    }
+  }
+
+// اصلاح متد پردازش deep link
+  void handleDeepLink(Uri uri) {
+    print('Processing deep link: $uri');
+    print('Path: ${uri.path}');
+    print('Parameters: ${uri.queryParameters}');
+    print('Fragment: ${uri.fragment}');
+
+    if (uri.path.contains('/email-change')) {
+      final token = uri.queryParameters['token'];
+      if (token != null) {
+        print('handleEmailChange token: $token');
+        handleEmailChange(uri, navigatorKey.currentContext);
+      } else {
+        print('Error: No token found in email change link');
+      }
     }
   }
 
@@ -234,7 +236,7 @@ class DeepLinkService {
 
           // به‌روزرسانی provider برای نمایش ایمیل جدید در اینترفیس کاربری
           if (context is ConsumerStatefulElement) {
-            final ref = context as ConsumerStatefulElement;
+            final ref = context;
             ref.read(userEmailProvider.notifier).state = updatedUser.email;
           }
         } catch (dbErr) {
