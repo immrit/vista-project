@@ -49,11 +49,24 @@ final hasNewMessagesProvider = FutureProvider.autoDispose<bool>((ref) async {
   );
 });
 
+// پرووایدر برای MessageNotifier
+final messageNotifierProvider =
+    StateNotifierProvider.autoDispose<MessageNotifier, AsyncValue<void>>((ref) {
+  return MessageNotifier(ref);
+});
+
 // کنترل‌کننده برای ارسال پیام
 class MessageNotifier extends StateNotifier<AsyncValue<void>> {
   MessageNotifier(this.ref) : super(const AsyncValue.data(null));
 
   final Ref ref;
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 
   Future<void> sendMessage({
     required String conversationId,
@@ -61,9 +74,15 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
     String? attachmentUrl,
     String? attachmentType,
   }) async {
+    if (_disposed) return;
+
     state = const AsyncValue.loading();
     try {
       final chatService = ref.read(chatServiceProvider);
+
+      // اضافه کردن لاگ برای تشخیص مشکل
+      print('MessageNotifier: ارسال پیام به $conversationId');
+
       await chatService.sendMessage(
         conversationId: conversationId,
         content: content,
@@ -71,47 +90,100 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
         attachmentType: attachmentType,
       );
 
+      if (_disposed) return;
+
       // بروزرسانی پیام‌ها
       ref.invalidate(messagesProvider(conversationId));
       ref.invalidate(conversationsProvider);
 
+      if (_disposed) return;
       state = const AsyncValue.data(null);
     } catch (e, stack) {
-      state = AsyncValue.error(e, stack);
+      print('MessageNotifier: خطا در ارسال پیام: $e');
+      if (!_disposed) {
+        state = AsyncValue.error(e, stack);
+      }
     }
   }
 
   Future<void> markAsRead(String conversationId) async {
+    if (_disposed) return;
+
     try {
       final chatService = ref.read(chatServiceProvider);
       await chatService.markConversationAsRead(conversationId);
 
+      if (_disposed) return;
+
       // بروزرسانی مکالمات
       ref.invalidate(conversationsProvider);
     } catch (e) {
-      // خطا را نادیده می‌گیریم
+      print('خطا در علامت‌گذاری به عنوان خوانده شده: $e');
     }
   }
 
   Future<ConversationModel> createConversation(String otherUserId) async {
+    if (_disposed) {
+      throw Exception('Notifier has been disposed');
+    }
+
     state = const AsyncValue.loading();
     try {
       final chatService = ref.read(chatServiceProvider);
       final conversation = await chatService.createConversation(otherUserId);
 
+      if (_disposed) {
+        throw Exception('Notifier was disposed during operation');
+      }
+
       // بروزرسانی مکالمات
       ref.invalidate(conversationsProvider);
-
       state = const AsyncValue.data(null);
       return conversation;
     } catch (e, stack) {
-      state = AsyncValue.error(e, stack);
+      if (!_disposed) {
+        state = AsyncValue.error(e, stack);
+      }
       rethrow;
     }
   }
 }
 
-final messageNotifierProvider =
-    StateNotifierProvider.autoDispose<MessageNotifier, AsyncValue<void>>((ref) {
-  return MessageNotifier(ref);
+// این کلاس را به chat_provider.dart.dart اضافه کنید
+// در فایل chat_provider.dart اضافه کنید
+class SafeMessageHandler {
+  final MessageNotifier notifier;
+
+  SafeMessageHandler(this.notifier);
+  Future<void> markAsRead(String conversationId) async {
+    try {
+      await notifier.markAsRead(conversationId);
+    } catch (e) {
+      print('خطا در علامت‌گذاری به عنوان خوانده شده: $e');
+    }
+  }
+
+  Future<void> sendMessage({
+    required String conversationId,
+    required String content,
+    String? attachmentUrl,
+    String? attachmentType,
+  }) async {
+    try {
+      await notifier.sendMessage(
+        conversationId: conversationId,
+        content: content,
+        attachmentUrl: attachmentUrl,
+        attachmentType: attachmentType,
+      );
+    } catch (e) {
+      print('خطا در ارسال پیام: $e');
+    }
+  }
+}
+
+final safeMessageHandlerProvider =
+    Provider.autoDispose<SafeMessageHandler>((ref) {
+  final notifier = ref.watch(messageNotifierProvider.notifier);
+  return SafeMessageHandler(notifier);
 });

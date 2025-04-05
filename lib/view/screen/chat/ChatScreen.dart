@@ -33,22 +33,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final imagePicker = ImagePicker();
   File? _selectedImage;
   bool _isUploading = false;
-
+  bool _isDisposed = false;
   @override
   void initState() {
     super.initState();
     timeago.setLocaleMessages('fa', timeago.FaMessages());
 
-    // علامت‌گذاری مکالمه به عنوان خوانده شده
+    // اضافه کردن تأخیر برای اطمینان از اینکه widget کاملاً ساخته شده است
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref
-          .read(messageNotifierProvider.notifier)
-          .markAsRead(widget.conversationId);
+      if (mounted) {
+        try {
+          // استفاده از safeMessageHandlerProvider
+          final handler = ref.read(safeMessageHandlerProvider);
+          handler.markAsRead(widget.conversationId);
+        } catch (e) {
+          print('خطا در علامت‌گذاری به عنوان خوانده شده: $e');
+        }
+      }
     });
   }
 
   @override
   void dispose() {
+    _isDisposed = true;
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -96,6 +103,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _sendMessage() async {
+    if (!mounted) return;
+
     final message = _messageController.text.trim();
     if (message.isEmpty && _selectedImage == null) return;
 
@@ -106,24 +115,39 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     // اگر تصویری انتخاب شده باشد
     if (_selectedImage != null) {
-      attachmentUrl = await _uploadImage(_selectedImage!);
-      attachmentType = 'image';
       setState(() {
-        _selectedImage = null;
+        _isUploading = true;
       });
+
+      try {
+        attachmentUrl = await _uploadImage(_selectedImage!);
+        attachmentType = 'image';
+      } catch (e) {
+        print('خطا در آپلود تصویر: $e');
+      } finally {
+        if (mounted) {
+          setState(() {
+            _selectedImage = null;
+            _isUploading = false;
+          });
+        }
+      }
+
+      if (!mounted) return;
     }
 
-    // ارسال پیام
+    // ارسال پیام با استفاده از SafeMessageHandler
     try {
-      await ref.read(messageNotifierProvider.notifier).sendMessage(
-            conversationId: widget.conversationId,
-            content: message,
-            attachmentUrl: attachmentUrl,
-            attachmentType: attachmentType,
-          );
+      final handler = ref.read(safeMessageHandlerProvider);
+      handler.sendMessage(
+        conversationId: widget.conversationId,
+        content: message,
+        attachmentUrl: attachmentUrl,
+        attachmentType: attachmentType,
+      );
 
       // اسکرول به پایین
-      if (_scrollController.hasClients) {
+      if (_scrollController.hasClients && mounted) {
         _scrollController.animateTo(
           0,
           duration: const Duration(milliseconds: 300),
@@ -131,6 +155,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         );
       }
     } catch (e) {
+      print('خطا در ارسال پیام: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('خطا در ارسال پیام: $e')),
@@ -174,53 +199,56 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           // پیام‌ها
           Expanded(
             child: messagesAsync.when(
-              data: (messages) {
-                if (messages.isEmpty) {
-                  return const Center(
-                    child: Text('پیامی وجود ندارد. اولین پیام را ارسال کنید!'),
+                data: (messages) {
+                  if (messages.isEmpty) {
+                    return const Center(
+                      child:
+                          Text('پیامی وجود ندارد. اولین پیام را ارسال کنید!'),
+                    );
+                  }
+
+                  return ListView.builder(
+                    controller: _scrollController,
+                    reverse: true,
+                    itemCount: messages.length,
+                    itemBuilder: (context, index) {
+                      final message = messages[index];
+                      final isMe =
+                          message.senderId == supabase.auth.currentUser!.id;
+
+                      return _buildMessageItem(context, message, isMe);
+                    },
                   );
-                }
-
-                return ListView.builder(
-                  controller: _scrollController,
-                  reverse: true,
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    final message = messages[index];
-                    final isMe =
-                        message.senderId == supabase.auth.currentUser!.id;
-
-                    return _buildMessageItem(context, message, isMe);
-                  },
-                );
-              },
-              loading: () => Center(
-                child: LoadingAnimationWidget.staggeredDotsWave(
-                  color: Theme.of(context).primaryColor,
-                  size: 50,
-                ),
-              ),
-              error: (error, stack) => Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.error_outline,
-                      color: Colors.red,
-                      size: 60,
+                },
+                loading: () => Center(
+                      child: LoadingAnimationWidget.staggeredDotsWave(
+                        color: Theme.of(context).primaryColor,
+                        size: 50,
+                      ),
                     ),
-                    const SizedBox(height: 16),
-                    Text('خطا: $error'),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: () =>
-                          ref.refresh(messagesProvider(widget.conversationId)),
-                      child: const Text('تلاش مجدد'),
+                error: (error, stack) {
+                  print(error);
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          color: Colors.red,
+                          size: 60,
+                        ),
+                        const SizedBox(height: 16),
+                        Text('خطا: $error'),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: () => ref
+                              .refresh(messagesProvider(widget.conversationId)),
+                          child: const Text('تلاش مجدد'),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-            ),
+                  );
+                }),
           ),
 
           // نمایش تصویر انتخاب شده

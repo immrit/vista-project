@@ -32,10 +32,13 @@ class MessageModel {
   });
 
   factory MessageModel.fromJson(Map<String, dynamic> json,
-      {String? currentUserId}) {
+      {required String currentUserId}) {
+    String conversationId =
+        json['conversation_id'] ?? json['conversations_id'] ?? '';
+
     return MessageModel(
       id: json['id'],
-      conversationId: json['conversation_id'],
+      conversationId: conversationId,
       senderId: json['sender_id'],
       content: json['content'],
       createdAt: DateTime.parse(json['created_at']),
@@ -45,7 +48,7 @@ class MessageModel {
           json['edited_at'] != null ? DateTime.parse(json['edited_at']) : null,
       attachmentUrl: json['attachment_url'],
       attachmentType: json['attachment_type'],
-      isMine: currentUserId != null && json['sender_id'] == currentUserId,
+      isMine: json['sender_id'] == currentUserId,
     );
   }
 

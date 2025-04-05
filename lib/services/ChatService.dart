@@ -28,7 +28,7 @@ class ChatService {
     final conversationsResponse = await _supabase
         .from('conversations')
         .select()
-        .inFilter('id', conversationIds) // از inFilter استفاده می‌کنیم
+        .inFilter('id', conversationIds)
         .order('updated_at', ascending: false);
 
     // برای هر مکالمه، شرکت‌کنندگان را دریافت می‌کنیم
@@ -36,21 +36,45 @@ class ChatService {
         await Future.wait(conversationsResponse.map((json) async {
       final conversationId = json['id'] as String;
 
-      // دریافت شرکت‌کنندگان
+      // دریافت شرکت‌کنندگان - اصلاح کوئری
       final participantsJson = await _supabase
           .from('conversation_participants')
-          .select('*, profiles:user_id(*)')
+          .select('*')
           .eq('conversation_id', conversationId);
 
-      final participants = participantsJson
-          .map((e) => ConversationParticipantModel.fromJson(e))
-          .toList();
+      // برای هر شرکت‌کننده، اطلاعات پروفایل را جداگانه دریافت می‌کنیم
+      final participants =
+          await Future.wait(participantsJson.map((participant) async {
+        final userId = participant['user_id'] as String;
+        final profileJson = await _supabase
+            .from('profiles')
+            .select()
+            .eq('id', userId)
+            .maybeSingle();
+
+        final updatedParticipant = {...participant};
+        if (profileJson != null) {
+          updatedParticipant['profile'] = profileJson;
+        }
+
+        return ConversationParticipantModel.fromJson(updatedParticipant);
+      }));
 
       // پیدا کردن کاربر دیگر در چت (برای چت دو نفره)
-      Map<String, dynamic>? otherParticipant;
+      Map<String, dynamic>? otherParticipantData;
+      Map<String, dynamic>? otherParticipantProfile;
+
       for (final participant in participantsJson) {
         if (participant['user_id'] != userId) {
-          otherParticipant = participant;
+          otherParticipantData = participant;
+
+          // دریافت اطلاعات پروفایل کاربر دیگر
+          otherParticipantProfile = await _supabase
+              .from('profiles')
+              .select()
+              .eq('id', participant['user_id'])
+              .maybeSingle();
+
           break;
         }
       }
@@ -74,9 +98,9 @@ class ChatService {
 
       return ConversationModel.fromJson(json, currentUserId: userId).copyWith(
         participants: participants,
-        otherUserName: otherParticipant?['profiles']?['username'] ?? 'کاربر',
-        otherUserAvatar: otherParticipant?['profiles']?['avatar_url'],
-        otherUserId: otherParticipant?['user_id'],
+        otherUserName: otherParticipantProfile?['username'] ?? 'کاربر',
+        otherUserAvatar: otherParticipantProfile?['avatar_url'],
+        otherUserId: otherParticipantData?['user_id'],
         hasUnreadMessages: hasUnreadMessages,
       );
     }));
@@ -89,25 +113,38 @@ class ChatService {
       {int limit = 20, int offset = 0}) async {
     final userId = _supabase.auth.currentUser!.id;
 
-    final messagesResponse = await _supabase
-        .from('messages')
-        .select('*, profiles:sender_id(*)')
-        .eq('conversation_id', conversationId)
-        .order('created_at', ascending: false)
-        .range(offset, offset + limit - 1);
+    try {
+      // بررسی نام ستون در جدول messages
+      final messagesResponse = await _supabase
+          .from('messages')
+          .select() // بدون تلاش برای ارتباط با profiles
+          .eq('conversation_id',
+              conversationId) // از نام ستون صحیح استفاده کنید
+          .order('created_at', ascending: false)
+          .range(offset, offset + limit - 1);
 
-    final messages = messagesResponse.map((json) {
-      final message = MessageModel.fromJson(json, currentUserId: userId);
-      return message.copyWith(
-        senderName: json['profiles']?['username'] ?? 'کاربر',
-        senderAvatar: json['profiles']?['avatar_url'],
-      );
-    }).toList();
+      final messages = await Future.wait(messagesResponse.map((json) async {
+        // برای هر پیام، اطلاعات فرستنده را جداگانه دریافت می‌کنیم
+        final profileResponse = await _supabase
+            .from('profiles')
+            .select()
+            .eq('id', json['sender_id'])
+            .maybeSingle();
 
-    return messages;
+        final message = MessageModel.fromJson(json, currentUserId: userId);
+        return message.copyWith(
+          senderName: profileResponse?['username'] ?? 'کاربر',
+          senderAvatar: profileResponse?['avatar_url'],
+        );
+      }).toList());
+
+      return messages;
+    } catch (e) {
+      print('خطا در دریافت پیام‌ها: $e');
+      rethrow;
+    }
   }
 
-  // ارسال پیام جدید
   Future<MessageModel> sendMessage({
     required String conversationId,
     required String content,
@@ -116,32 +153,51 @@ class ChatService {
   }) async {
     final userId = _supabase.auth.currentUser!.id;
 
-    final response = await _supabase
-        .from('messages')
-        .insert({
-          'conversation_id': conversationId,
-          'sender_id': userId,
-          'content': content,
-          'attachment_url': attachmentUrl,
-          'attachment_type': attachmentType,
-        })
-        .select('*, profiles:sender_id(*)')
-        .single();
+    try {
+      print('ارسال پیام به مکالمه: $conversationId');
+      print('محتوای پیام: $content');
+      print('فرستنده: $userId');
 
-    final message =
-        MessageModel.fromJson(response, currentUserId: userId).copyWith(
-      senderName: response['profiles']?['username'] ?? 'کاربر',
-      senderAvatar: response['profiles']?['avatar_url'],
-    );
+      // ابتدا پیام را بدون select برای رابطه sender_id اضافه می‌کنیم
+      final insertResponse = await _supabase
+          .from('messages')
+          .insert({
+            'conversation_id':
+                conversationId, // مطمئن شوید این نام با نام ستون در دیتابیس مطابقت دارد
+            'sender_id': userId,
+            'content': content,
+            'attachment_url': attachmentUrl,
+            'attachment_type': attachmentType,
+          })
+          .select()
+          .single();
 
-    // همچنین زمان خواندن پیام‌ها را برای فرستنده بروز می‌کنیم
-    await _supabase
-        .from('conversation_participants')
-        .update({'last_read_time': DateTime.now().toIso8601String()})
-        .eq('conversation_id', conversationId)
-        .eq('user_id', userId);
+      // سپس به صورت جداگانه اطلاعات فرستنده را دریافت می‌کنیم
+      final profileResponse = await _supabase
+          .from('profiles')
+          .select()
+          .eq('id', userId)
+          .maybeSingle();
 
-    return message;
+      // ساخت مدل پیام با اطلاعات فرستنده
+      final message =
+          MessageModel.fromJson(insertResponse, currentUserId: userId).copyWith(
+        senderName: profileResponse?['username'] ?? 'کاربر',
+        senderAvatar: profileResponse?['avatar_url'],
+      );
+
+      // بروزرسانی زمان خواندن پیام‌ها
+      await _supabase
+          .from('conversation_participants')
+          .update({'last_read_time': DateTime.now().toIso8601String()})
+          .eq('conversation_id', conversationId)
+          .eq('user_id', userId);
+
+      return message;
+    } catch (e) {
+      print('خطا در ارسال پیام: $e');
+      rethrow;
+    }
   }
 
   Future<String> createOrGetConversation(String otherUserId) async {
@@ -291,23 +347,34 @@ class ChatService {
   }
 
   // گوش دادن به تغییرات پیام‌های یک مکالمه
+// دریافت پیام‌های بلادرنگ یک مکالمه
   Stream<List<MessageModel>> subscribeToMessages(String conversationId) {
     final userId = _supabase.auth.currentUser!.id;
+
+    print('شروع اشتراک به پیام‌های مکالمه: $conversationId');
 
     return _supabase
         .from('messages')
         .stream(primaryKey: ['id'])
         .eq('conversation_id', conversationId)
-        .order('created_at')
-        .map((list) {
-          return list
-              .map((json) => MessageModel.fromJson(json, currentUserId: userId))
-              .toList();
+        .order('created_at', ascending: false)
+        .map((data) {
+          print('دریافت داده‌های جدید از stream: ${data.length} پیام');
+          return data.map((json) {
+            // دریافت اطلاعات فرستنده
+            final message = MessageModel.fromJson(json, currentUserId: userId);
+
+            return message.copyWith(
+              senderName: json['profiles']?['username'] ?? 'کاربر',
+              senderAvatar: json['profiles']?['avatar_url'],
+            );
+          }).toList();
         });
   }
 
-  // گوش دادن به تغییرات مکالمات
+// دریافت مکالمات بلادرنگ
   Stream<List<ConversationModel>> subscribeToConversations() {
+    // بروزرسانی هر 3 ثانیه
     return Stream.periodic(const Duration(seconds: 3))
         .asyncMap((_) => getConversations());
   }
