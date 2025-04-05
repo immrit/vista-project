@@ -11,6 +11,7 @@ class ConversationModel {
   final String? otherUserAvatar;
   final String? otherUserId;
   final bool hasUnreadMessages;
+  final int unreadCount; // تعداد پیام‌های خوانده‌نشده
 
   ConversationModel({
     required this.id,
@@ -23,6 +24,7 @@ class ConversationModel {
     this.otherUserAvatar,
     this.otherUserId,
     this.hasUnreadMessages = false,
+    required this.unreadCount,
   });
 
   factory ConversationModel.fromJson(Map<String, dynamic> json,
@@ -36,9 +38,26 @@ class ConversationModel {
           ? DateTime.parse(json['last_message_time'])
           : null,
       participants: [],
+      unreadCount: json['unreadCount'] ?? 0, // مقدار پیش‌فرض 0
     );
 
     return conversation;
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
+      'last_message': lastMessage,
+      'last_message_time': lastMessageTime?.toIso8601String(),
+      'participants': participants.map((p) => p.toJson()).toList(),
+      'otherUserName': otherUserName,
+      'otherUserAvatar': otherUserAvatar,
+      'otherUserId': otherUserId,
+      'hasUnreadMessages': hasUnreadMessages,
+      'unreadCount': unreadCount,
+    };
   }
 
   ConversationModel copyWith({
@@ -52,6 +71,7 @@ class ConversationModel {
     String? otherUserAvatar,
     String? otherUserId,
     bool? hasUnreadMessages,
+    int? unreadCount,
   }) {
     return ConversationModel(
       id: id ?? this.id,
@@ -64,6 +84,7 @@ class ConversationModel {
       otherUserAvatar: otherUserAvatar ?? this.otherUserAvatar,
       otherUserId: otherUserId ?? this.otherUserId,
       hasUnreadMessages: hasUnreadMessages ?? this.hasUnreadMessages,
+      unreadCount: unreadCount ?? this.unreadCount,
     );
   }
 }
@@ -94,5 +115,16 @@ class ConversationParticipantModel {
       lastReadTime: DateTime.parse(json['last_read_time']),
       isMuted: json['is_muted'] ?? false,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'conversation_id': conversationId,
+      'user_id': userId,
+      'created_at': createdAt.toIso8601String(),
+      'last_read_time': lastReadTime.toIso8601String(),
+      'is_muted': isMuted,
+    };
   }
 }

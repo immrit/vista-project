@@ -68,6 +68,21 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
     super.dispose();
   }
 
+  Future<void> deleteConversation(String conversationId) async {
+    state = const AsyncValue.loading();
+    try {
+      final chatService = ref.read(chatServiceProvider);
+      await chatService.deleteConversation(conversationId);
+
+      // بروزرسانی لیست مکالمات
+      ref.invalidate(conversationsProvider);
+
+      state = const AsyncValue.data(null);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+    }
+  }
+
   Future<void> sendMessage({
     required String conversationId,
     required String content,
@@ -152,16 +167,9 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
 // این کلاس را به chat_provider.dart.dart اضافه کنید
 // در فایل chat_provider.dart اضافه کنید
 class SafeMessageHandler {
-  final MessageNotifier notifier;
+  final MessageNotifier _notifier;
 
-  SafeMessageHandler(this.notifier);
-  Future<void> markAsRead(String conversationId) async {
-    try {
-      await notifier.markAsRead(conversationId);
-    } catch (e) {
-      print('خطا در علامت‌گذاری به عنوان خوانده شده: $e');
-    }
-  }
+  SafeMessageHandler(this._notifier);
 
   Future<void> sendMessage({
     required String conversationId,
@@ -170,7 +178,7 @@ class SafeMessageHandler {
     String? attachmentType,
   }) async {
     try {
-      await notifier.sendMessage(
+      await _notifier.sendMessage(
         conversationId: conversationId,
         content: content,
         attachmentUrl: attachmentUrl,
@@ -178,12 +186,21 @@ class SafeMessageHandler {
       );
     } catch (e) {
       print('خطا در ارسال پیام: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> markAsRead(String conversationId) async {
+    try {
+      await _notifier.markAsRead(conversationId);
+    } catch (e) {
+      print('خطا در علامت‌گذاری به عنوان خوانده‌شده: $e');
+      rethrow;
     }
   }
 }
 
-final safeMessageHandlerProvider =
-    Provider.autoDispose<SafeMessageHandler>((ref) {
+final safeMessageHandlerProvider = Provider<SafeMessageHandler>((ref) {
   final notifier = ref.watch(messageNotifierProvider.notifier);
   return SafeMessageHandler(notifier);
 });

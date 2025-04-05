@@ -255,7 +255,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           if (_selectedImage != null)
             Container(
               padding: const EdgeInsets.all(8),
-              color: Colors.grey[200],
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Color(0xFF2A2A2A)
+                  : Colors.grey[200],
               child: Row(
                 children: [
                   Expanded(
@@ -270,13 +272,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             fit: BoxFit.cover,
                           ),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.close, color: Colors.white),
-                          onPressed: () {
-                            setState(() {
-                              _selectedImage = null;
-                            });
-                          },
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.5),
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            icon: const Icon(Icons.close,
+                                color: Colors.white, size: 18),
+                            onPressed: () {
+                              setState(() {
+                                _selectedImage = null;
+                              });
+                            },
+                          ),
                         ),
                       ],
                     ),
@@ -289,10 +298,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Color(0xFF1A1A1A) // رنگ تیره برای حالت تاریک
+                  : Colors.white,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.grey.withOpacity(0.3),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.black26
+                      : Colors.grey.withOpacity(0.3),
                   spreadRadius: 1,
                   blurRadius: 5,
                   offset: const Offset(0, -3),
@@ -302,7 +315,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             child: Row(
               children: [
                 IconButton(
-                  icon: const Icon(Icons.photo_library),
+                  icon: Icon(
+                    Icons.photo_library,
+                    color: _isUploading
+                        ? Theme.of(context).disabledColor
+                        : Theme.of(context).colorScheme.secondary,
+                  ),
                   onPressed: _isUploading ? null : _pickImage,
                 ),
                 Expanded(
@@ -310,16 +328,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     controller: _messageController,
                     decoration: InputDecoration(
                       hintText: 'پیام خود را بنویسید...',
+                      hintStyle: TextStyle(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.grey[400]
+                            : Colors.grey[600],
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
                         borderSide: BorderSide.none,
                       ),
                       filled: true,
-                      fillColor: Colors.grey[200],
+                      fillColor: Theme.of(context).brightness == Brightness.dark
+                          ? Color(0xFF2D2D2D) // رنگ تیره برای حالت تاریک
+                          : Colors.grey[200],
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 8,
                       ),
+                    ),
+                    style: TextStyle(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white
+                          : Colors.black87,
                     ),
                     maxLines: 4,
                     minLines: 1,
@@ -329,9 +359,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
                 const SizedBox(width: 8),
                 _isUploading
-                    ? const CircularProgressIndicator()
+                    ? CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Theme.of(context).colorScheme.secondary,
+                        ),
+                      )
                     : IconButton(
-                        icon: const Icon(Icons.send),
+                        icon: Icon(
+                          Icons.send,
+                          color: Theme.of(context).colorScheme.secondary,
+                        ),
                         onPressed: _sendMessage,
                       ),
               ],
@@ -344,119 +381,193 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Widget _buildMessageItem(
       BuildContext context, MessageModel message, bool isMe) {
+    final brightness = Theme.of(context).brightness;
+    final isLightMode = brightness == Brightness.light;
+
+    // رنگ‌های حباب پیام براساس حالت روشن/تاریک و فرستنده
+    final myMessageColor = isLightMode
+        ? Theme.of(context).colorScheme.primary
+        : Theme.of(context).colorScheme.primary.withOpacity(0.8);
+
+    final otherMessageColor =
+        isLightMode ? Colors.grey[300] : Color(0xFF383838);
+
+    // رنگ متن با کنتراست مناسب
+    final myTextColor = isLightMode ? Colors.white : Colors.black;
+    final otherTextColor = isLightMode ? Colors.black87 : Colors.white;
+
+    // رنگ اطلاعات اضافی مثل ساعت پیام
+    final myTimeColor =
+        isLightMode ? Colors.white : Colors.black; // واضح‌تر در حالت تاریک
+    final otherTimeColor = isLightMode
+        ? Colors.grey[700]
+        : Colors.grey[300]; // روشن‌تر در حالت تاریک
+
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
+      child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.8,
         ),
-        margin: EdgeInsets.only(
-          left: isMe ? 64 : 8,
-          right: isMe ? 8 : 64,
-          top: 8,
-          bottom: 8,
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: isMe
-              ? Theme.of(context).primaryColor.withOpacity(0.8)
-              : Colors.grey[300],
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // اگر فایل ضمیمه وجود دارد
-            if (message.attachmentUrl != null &&
-                message.attachmentUrl!.isNotEmpty) ...[
-              if (message.attachmentType == 'image')
-                GestureDetector(
-                  onTap: () {
-                    // نمایش تصویر در اندازه بزرگ
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => Scaffold(
-                          appBar: AppBar(
-                            title: const Text('تصویر'),
-                          ),
-                          body: Center(
-                            child: InteractiveViewer(
-                              child: Image.network(message.attachmentUrl!),
+        child: Container(
+          margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Card(
+            margin: EdgeInsets.zero,
+            color: isMe ? myMessageColor : otherMessageColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16).copyWith(
+                bottomRight: isMe ? Radius.circular(4) : Radius.circular(16),
+                bottomLeft: isMe ? Radius.circular(16) : Radius.circular(4),
+              ),
+            ),
+            elevation: isLightMode ? 1 : 2,
+            child: Padding(
+              padding: EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment:
+                    isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                children: [
+                  // اگر پیام دارای پیوست است (مثلاً تصویر)
+                  if (message.attachmentUrl != null &&
+                      message.attachmentUrl!.isNotEmpty &&
+                      message.attachmentType == 'image')
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => Scaffold(
+                              appBar: AppBar(
+                                backgroundColor: Colors.black,
+                                iconTheme: IconThemeData(color: Colors.white),
+                              ),
+                              backgroundColor: Colors.black,
+                              body: Center(
+                                child: InteractiveViewer(
+                                  child: Image.network(
+                                    message.attachmentUrl!,
+                                    loadingBuilder:
+                                        (context, child, loadingProgress) {
+                                      if (loadingProgress == null) return child;
+                                      return Center(
+                                        child: CircularProgressIndicator(
+                                          color: Colors.white,
+                                          value: loadingProgress
+                                                      .expectedTotalBytes !=
+                                                  null
+                                              ? loadingProgress
+                                                      .cumulativeBytesLoaded /
+                                                  loadingProgress
+                                                      .expectedTotalBytes!
+                                              : null,
+                                        ),
+                                      );
+                                    },
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Center(
+                                        child: Icon(Icons.broken_image,
+                                            size: 50, color: Colors.white),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
                             ),
+                          ),
+                        );
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          constraints: BoxConstraints(
+                            maxHeight: 200,
+                            minWidth: 150,
+                          ),
+                          child: Image.network(
+                            message.attachmentUrl!,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Container(
+                                height: 150,
+                                width: 200,
+                                alignment: Alignment.center,
+                                child: CircularProgressIndicator(
+                                  color: isMe
+                                      ? Colors.white
+                                      : Theme.of(context).colorScheme.primary,
+                                  value: loadingProgress.expectedTotalBytes !=
+                                          null
+                                      ? loadingProgress.cumulativeBytesLoaded /
+                                          loadingProgress.expectedTotalBytes!
+                                      : null,
+                                ),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                height: 150,
+                                width: 200,
+                                color: isLightMode
+                                    ? Colors.grey[300]
+                                    : Colors.grey[700],
+                                alignment: Alignment.center,
+                                child: Icon(Icons.broken_image,
+                                    size: 50,
+                                    color: isMe
+                                        ? Colors.white70
+                                        : Colors.grey[500]),
+                              );
+                            },
                           ),
                         ),
                       ),
-                    );
-                  },
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      message.attachmentUrl!,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return Center(
-                          child: CircularProgressIndicator(
-                            value: loadingProgress.expectedTotalBytes != null
-                                ? loadingProgress.cumulativeBytesLoaded /
-                                    loadingProgress.expectedTotalBytes!
-                                : null,
+                    ),
+
+                  // متن پیام (اگر موجود باشد)
+                  if (message.content.isNotEmpty)
+                    Padding(
+                      padding: EdgeInsets.only(
+                        top: message.attachmentUrl != null ? 8 : 0,
+                      ),
+                      child: Text(
+                        message.content,
+                        style: TextStyle(
+                          color: isMe ? myTextColor : otherTextColor,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+
+                  // زمان پیام و وضعیت خوانده شدن
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Text(
+                          _formatMessageTime(message.createdAt),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isMe ? myTimeColor : otherTimeColor,
                           ),
-                        );
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          height: 150,
-                          color: Colors.grey[300],
-                          child: const Center(
-                            child: Icon(Icons.error),
+                        ),
+                        SizedBox(width: 4),
+                        // وضعیت خوانده شدن (فقط برای پیام‌های من)
+                        if (isMe)
+                          Icon(
+                            message.isRead ? Icons.done_all : Icons.done,
+                            size: 14,
+                            color: isMe ? myTimeColor : otherTimeColor,
                           ),
-                        );
-                      },
+                      ],
                     ),
                   ),
-                ),
-              const SizedBox(height: 8),
-            ],
-
-            // محتوای پیام
-            if (message.content.isNotEmpty)
-              Text(
-                message.content,
-                style: TextStyle(
-                  color: isMe ? Colors.white : Colors.black,
-                ),
-              ),
-
-            // زمان پیام
-            Align(
-              alignment: Alignment.bottomRight,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _formatMessageTime(message.createdAt),
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: isMe ? Colors.white70 : Colors.black54,
-                      ),
-                    ),
-                    if (isMe) ...[
-                      const SizedBox(width: 4),
-                      Icon(
-                        message.isRead ? Icons.done_all : Icons.done,
-                        size: 12,
-                        color: message.isRead ? Colors.blue : Colors.white70,
-                      ),
-                    ],
-                  ],
-                ),
+                ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );

@@ -39,29 +39,66 @@ class _ChatConversationsScreenState
         },
         child: conversationsAsync.when(
             data: (conversations) {
+              // حالت بدون مکالمه
               if (conversations.isEmpty) {
                 return Center(
                   child: Column(
-                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Image.asset(
-                        'assets/images/empty_chat.png', // تصویر خالی بودن چت
-                        width: 150,
-                        height: 150,
+                      Container(
+                        padding: EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.chat_bubble_outline,
+                          size: 80,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                       ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'هنوز پیامی ندارید!',
+                      SizedBox(height: 24),
+                      Text(
+                        'هنوز گفتگویی شروع نکرده‌اید',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : Colors.black87,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'با دوستان خود گفتگو کنید',
-                        style: TextStyle(
-                          color: Colors.grey,
+                      SizedBox(height: 12),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        child: Text(
+                          'برای شروع گفتگو، به صفحه کاربران بروید و با کاربر مورد نظر چت کنید',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.grey[400]
+                                    : Colors.grey[600],
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          // ناوبری به صفحه کاربران
+                        },
+                        icon: Icon(Icons.people),
+                        label: Text('مشاهده کاربران'),
+                        style: ElevatedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                     ],
@@ -111,83 +148,195 @@ class _ChatConversationsScreenState
 
   Widget _buildConversationItem(
       BuildContext context, ConversationModel conversation) {
-    return ListTile(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ChatScreen(
-              conversationId: conversation.id,
-              otherUserName: conversation.otherUserName ?? 'کاربر',
-              otherUserAvatar: conversation.otherUserAvatar,
-              otherUserId: conversation.otherUserId ?? '',
-            ),
-          ),
-        ).then((_) {
-          // بروزرسانی لیست مکالمات پس از بازگشت
-          ref.refresh(conversationsProvider);
-        });
-      },
-      leading: CircleAvatar(
-        backgroundImage: conversation.otherUserAvatar != null &&
-                conversation.otherUserAvatar!.isNotEmpty
-            ? NetworkImage(conversation.otherUserAvatar!)
-            : const AssetImage('assets/images/default_avatar.png')
-                as ImageProvider,
-        radius: 28,
-      ),
-      title: Text(
-        conversation.otherUserName ?? 'کاربر',
-        style: TextStyle(
-          fontWeight: conversation.hasUnreadMessages
-              ? FontWeight.bold
-              : FontWeight.normal,
+    return Dismissible(
+      key: Key(conversation.id),
+      direction: DismissDirection.endToStart, // فقط از راست به چپ (برای RTL)
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20.0),
+        color: Colors.red,
+        child: const Icon(
+          Icons.delete,
+          color: Colors.white,
         ),
       ),
-      subtitle: conversation.lastMessage != null
-          ? Text(
-              conversation.lastMessage!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontWeight: conversation.hasUnreadMessages
-                    ? FontWeight.bold
-                    : FontWeight.normal,
-                color: conversation.hasUnreadMessages
-                    ? Theme.of(context).primaryColor
-                    : Colors.grey,
-              ),
-            )
-          : const Text('گفتگوی جدید',
-              style: TextStyle(fontStyle: FontStyle.italic)),
-      trailing: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          if (conversation.lastMessageTime != null)
-            Text(
-              _formatMessageTime(conversation.lastMessageTime!),
-              style: TextStyle(
-                fontSize: 12,
-                color: conversation.hasUnreadMessages
-                    ? Theme.of(context).primaryColor
-                    : Colors.grey,
+      confirmDismiss: (direction) async {
+        return await showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: const Text('حذف گفتگو'),
+              content: const Text('آیا از حذف این گفتگو اطمینان دارید؟'),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('انصراف'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  style: TextButton.styleFrom(foregroundColor: Colors.red),
+                  child: const Text('حذف'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+      onDismissed: (direction) {
+        // حذف گفتگو
+        ref
+            .read(messageNotifierProvider.notifier)
+            .deleteConversation(conversation.id);
+
+        // نمایش پیام موفقیت‌آمیز
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('گفتگو با موفقیت حذف شد'),
+            action: SnackBarAction(
+              label: 'بازگرداندن',
+              onPressed: () {
+                // در اینجا می‌توانید منطق بازگرداندن گفتگو را پیاده‌سازی کنید
+                ref.refresh(conversationsProvider);
+              },
+            ),
+          ),
+        );
+      },
+      child: ListTile(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ChatScreen(
+                conversationId: conversation.id,
+                otherUserName: conversation.otherUserName ?? 'کاربر',
+                otherUserAvatar: conversation.otherUserAvatar,
+                otherUserId: conversation.otherUserId ?? '',
               ),
             ),
-          const SizedBox(height: 4),
-          if (conversation.hasUnreadMessages)
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Theme.of(context).primaryColor,
-                shape: BoxShape.circle,
-              ),
-              child: const Text(
-                '',
-                style: TextStyle(fontSize: 8),
-              ),
+          ).then((_) {
+            // بروزرسانی لیست مکالمات پس از بازگشت
+            ref.refresh(conversationsProvider);
+          });
+        },
+        leading: CircleAvatar(
+          backgroundImage: conversation.otherUserAvatar != null &&
+                  conversation.otherUserAvatar!.isNotEmpty
+              ? NetworkImage(conversation.otherUserAvatar!)
+              : const AssetImage('assets/images/default_avatar.png')
+                  as ImageProvider,
+          radius: 28,
+        ),
+        title: Text(
+          conversation.otherUserName ?? 'کاربر',
+          style: TextStyle(
+            fontWeight: conversation.hasUnreadMessages
+                ? FontWeight.bold
+                : FontWeight.normal,
+          ),
+        ),
+        subtitle: conversation.lastMessage != null
+            ? Text(
+                conversation.lastMessage!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontWeight: conversation.hasUnreadMessages
+                      ? FontWeight.bold
+                      : FontWeight.normal,
+                  color: conversation.hasUnreadMessages
+                      ? Theme.of(context).primaryColor
+                      : Colors.grey,
+                ),
+              )
+            : const Text('گفتگوی جدید',
+                style: TextStyle(fontStyle: FontStyle.italic)),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (conversation.lastMessageTime != null)
+                  Text(
+                    _formatMessageTime(conversation.lastMessageTime!),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: conversation.hasUnreadMessages
+                          ? Theme.of(context).primaryColor
+                          : Colors.grey,
+                    ),
+                  ),
+                const SizedBox(height: 4),
+                if (conversation.hasUnreadMessages)
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).primaryColor,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Text(
+                      '',
+                      style: TextStyle(fontSize: 8),
+                    ),
+                  ),
+              ],
             ),
-        ],
+            // منوی بیشتر
+            PopupMenuButton<String>(
+              onSelected: (value) async {
+                if (value == 'delete') {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('حذف گفتگو'),
+                      content:
+                          const Text('آیا از حذف این گفتگو اطمینان دارید؟'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('انصراف'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          style:
+                              TextButton.styleFrom(foregroundColor: Colors.red),
+                          child: const Text('حذف'),
+                        ),
+                      ],
+                    ),
+                  );
+
+                  if (confirmed == true) {
+                    await ref
+                        .read(messageNotifierProvider.notifier)
+                        .deleteConversation(conversation.id);
+
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('گفتگو با موفقیت حذف شد')),
+                      );
+                    }
+                  }
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text('حذف گفتگو', style: TextStyle(color: Colors.red)),
+                    ],
+                  ),
+                ),
+              ],
+              icon: const Icon(Icons.more_vert),
+            ),
+          ],
+        ),
       ),
     );
   }

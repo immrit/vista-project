@@ -378,4 +378,35 @@ class ChatService {
     return Stream.periodic(const Duration(seconds: 3))
         .asyncMap((_) => getConversations());
   }
+
+  // حذف یک گفتگو
+  Future<void> deleteConversation(String conversationId) async {
+    final userId = _supabase.auth.currentUser!.id;
+
+    // حذف مشارکت کاربر از گفتگو
+    await _supabase
+        .from('conversation_participants')
+        .delete()
+        .eq('conversation_id', conversationId)
+        .eq('user_id', userId);
+
+    // بررسی آیا کاربر دیگری در این گفتگو باقی مانده است
+    final remainingParticipants = await _supabase
+        .from('conversation_participants')
+        .select('id')
+        .eq('conversation_id', conversationId);
+
+    // اگر هیچ شرکت کننده‌ای باقی نمانده، کل گفتگو و پیام‌های آن را حذف کنیم
+    if (remainingParticipants.isEmpty) {
+      // حذف تمام پیام‌های این گفتگو
+      await _supabase
+          .from('messages')
+          .delete()
+          .eq('conversation_id', conversationId);
+
+      // حذف خود گفتگو
+      await _supabase.from('conversations').delete().eq('id', conversationId);
+    }
+  }
 }
+//
