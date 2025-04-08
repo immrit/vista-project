@@ -88,110 +88,123 @@ class _ChatConversationsScreenState
           ref.refresh(conversationsProvider);
         },
         child: conversationsAsync.when(
-            data: (conversations) {
-              // حالت بدون مکالمه
-              if (conversations.isEmpty) {
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        padding: EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withOpacity(0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.chat_bubble_outline,
-                          size: 80,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                      SizedBox(height: 24),
-                      Text(
-                        'هنوز گفتگویی شروع نکرده‌اید',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white
-                              : Colors.black87,
-                        ),
-                      ),
-                      SizedBox(height: 12),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 32),
-                        child: Text(
-                          'برای شروع گفتگو، به صفحه کاربران بروید و با کاربر مورد نظر چت کنید',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.grey[400]
-                                    : Colors.grey[600],
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: 24),
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          // ناوبری به صفحه کاربران
-                        },
-                        icon: Icon(Icons.people),
-                        label: Text('مشاهده کاربران'),
-                        style: ElevatedButton.styleFrom(
-                          padding: EdgeInsets.symmetric(
-                              horizontal: 24, vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }
-
-              return ListView.builder(
-                itemCount: conversations.length,
-                itemBuilder: (context, index) {
-                  final conversation = conversations[index];
-                  return _buildConversationItem(context, conversation);
-                },
-              );
-            },
-            loading: () => Center(
-                  child: LoadingAnimationWidget.staggeredDotsWave(
-                    color: Theme.of(context).primaryColor,
-                    size: 50,
-                  ),
-                ),
-            error: (error, stack) {
-              print(error);
+          data: (conversations) {
+            // حالت بدون مکالمه
+            if (conversations.isEmpty) {
               return Center(
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(
-                      Icons.error_outline,
-                      color: Colors.red,
-                      size: 60,
+                    Container(
+                      padding: EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.chat_bubble_outline,
+                        size: 80,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                     ),
-                    const SizedBox(height: 16),
-                    Text('خطا: $error'),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: () => ref.refresh(conversationsProvider),
-                      child: const Text('تلاش مجدد'),
+                    SizedBox(height: 24),
+                    Text(
+                      'هنوز گفتگویی شروع نکرده‌اید',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white
+                            : Colors.black87,
+                      ),
+                    ),
+                    SizedBox(height: 12),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Text(
+                        'برای شروع گفتگو، به صفحه کاربران بروید و با کاربر مورد نظر چت کنید',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.grey[400]
+                              : Colors.grey[600],
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        // ناوبری به صفحه کاربران
+                      },
+                      icon: Icon(Icons.people),
+                      label: Text('مشاهده کاربران'),
+                      style: ElevatedButton.styleFrom(
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                     ),
                   ],
                 ),
               );
-            }),
+            }
+
+            return ListView.builder(
+              itemCount: conversations.length,
+              itemBuilder: (context, index) {
+                final conversation = conversations[index];
+                return _buildConversationItem(context, conversation);
+              },
+            );
+          },
+          loading: () => Center(
+            child: LoadingAnimationWidget.staggeredDotsWave(
+              color: Theme.of(context).primaryColor,
+              size: 50,
+            ),
+          ),
+          // در بخش error مربوط به لیست مکالمات
+          error: (error, stack) {
+            print('خطای فنی: $error');
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    color: Colors.red,
+                    size: 60,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'مشکلی در دریافت مکالمات پیش آمد',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'لطفاً اتصال اینترنت را بررسی کنید',
+                    style: TextStyle(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.grey[400]
+                          : Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () => ref.refresh(conversationsProvider),
+                    child: const Text('تلاش مجدد'),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -469,7 +482,7 @@ class ChatSearchDelegate extends SearchDelegate<ConversationModel> {
 
             if (filteredConversations.isEmpty) {
               return const Center(
-                child: Text('موردی یافت نشد'),
+                child: Text('هیچ مکالمه‌ای با این مشخصات یافت نشد'),
               );
             }
 

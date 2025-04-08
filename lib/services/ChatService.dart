@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../model/conversation_model.dart';
 import '../model/message_model.dart';
+import '../view/Exeption/app_exceptions.dart';
 import '/main.dart';
 import 'package:rxdart/rxdart.dart';
 
@@ -109,48 +110,14 @@ class ChatService {
     return conversations;
   }
 
-  // // دریافت پیام‌های یک مکالمه
-  // Future<List<MessageModel>> getMessages(String conversationId,
-  //     {int limit = 20, int offset = 0}) async {
-  //   final userId = _supabase.auth.currentUser!.id;
-
-  //   try {
-  //     // بررسی نام ستون در جدول messages
-  //     final messagesResponse = await _supabase
-  //         .from('messages')
-  //         .select() // بدون تلاش برای ارتباط با profiles
-  //         .eq('conversation_id',
-  //             conversationId) // از نام ستون صحیح استفاده کنید
-  //         .order('created_at', ascending: false)
-  //         .range(offset, offset + limit - 1);
-
-  //     final messages = await Future.wait(messagesResponse.map((json) async {
-  //       // برای هر پیام، اطلاعات فرستنده را جداگانه دریافت می‌کنیم
-  //       final profileResponse = await _supabase
-  //           .from('profiles')
-  //           .select()
-  //           .eq('id', json['sender_id'])
-  //           .maybeSingle();
-
-  //       final message = MessageModel.fromJson(json, currentUserId: userId);
-  //       return message.copyWith(
-  //         senderName: profileResponse?['username'] ?? 'کاربر',
-  //         senderAvatar: profileResponse?['avatar_url'],
-  //       );
-  //     }).toList());
-
-  //     return messages;
-  //   } catch (e) {
-  //     print('خطا در دریافت پیام‌ها: $e');
-  //     rethrow;
-  //   }
-  // }
-
   Future<MessageModel> sendMessage({
     required String conversationId,
     required String content,
     String? attachmentUrl,
     String? attachmentType,
+    String? replyToMessageId,
+    String? replyToContent,
+    String? replyToSenderName,
   }) async {
     final userId = _supabase.auth.currentUser!.id;
 
@@ -159,16 +126,17 @@ class ChatService {
       print('محتوای پیام: $content');
       print('فرستنده: $userId');
 
-      // ابتدا پیام را بدون select برای رابطه sender_id اضافه می‌کنیم
       final insertResponse = await _supabase
           .from('messages')
           .insert({
-            'conversation_id':
-                conversationId, // مطمئن شوید این نام با نام ستون در دیتابیس مطابقت دارد
+            'conversation_id': conversationId,
             'sender_id': userId,
             'content': content,
             'attachment_url': attachmentUrl,
             'attachment_type': attachmentType,
+            'reply_to_message_id': replyToMessageId,
+            'reply_to_content': replyToContent,
+            'reply_to_sender_name': replyToSenderName,
           })
           .select()
           .single();
@@ -196,8 +164,10 @@ class ChatService {
 
       return message;
     } catch (e) {
-      print('خطا در ارسال پیام: $e');
-      rethrow;
+      throw AppException(
+        userFriendlyMessage: 'ارسال پیام با مشکل مواجه شد',
+        technicalMessage: 'خطا در ارسال پیام: $e',
+      );
     }
   }
 
@@ -246,8 +216,10 @@ class ChatService {
 
       return conversationId;
     } catch (e) {
-      print('خطا در ایجاد یا دریافت گفتگو: $e');
-      throw Exception('خطا در ایجاد یا دریافت گفتگو');
+      throw AppException(
+        userFriendlyMessage: 'مشکل در ایجاد گفتگو',
+        technicalMessage: 'خطا در createOrGetConversation: $e',
+      );
     }
   }
 
@@ -336,44 +308,6 @@ class ChatService {
   }
 
 // اصلاح متد updateUserOnlineStatus برای بروزرسانی دقیق‌تر
-// به‌روزرسانی زمان آخرین فعالیت کاربر
-  // Future<void> updateUserOnlineStatus() async {
-  //   final userId = _supabase.auth.currentUser?.id;
-  //   if (userId == null) {
-  //     print('updateUserOnlineStatus: کاربر وارد نشده است');
-  //     return;
-  //   }
-
-  //   try {
-  //     // اطمینان حاصل کنید که ستون last_online در جدول profiles وجود دارد
-  //     await _supabase.from('profiles').update({
-  //       'last_online': DateTime.now().toUtc().toIso8601String(),
-  //     }).eq('id', userId);
-  //     print('updateUserOnlineStatus: وضعیت آنلاین کاربر به‌روزرسانی شد');
-  //   } catch (e) {
-  //     print('updateUserOnlineStatus: خطا در به‌روزرسانی وضعیت آنلاین: $e');
-  //   }
-  // }
-
-// دریافت زمان آخرین فعالیت کاربر
-  // Future<DateTime?> getUserLastOnline(String userId) async {
-  //   try {
-  //     // باید از جدول profiles استفاده شود نه user_status
-  //     final response = await _supabase
-  //         .from('profiles')
-  //         .select('last_online')
-  //         .eq('id', userId)
-  //         .maybeSingle();
-
-  //     if (response != null && response['last_online'] != null) {
-  //       return DateTime.parse(response['last_online']);
-  //     }
-  //     return null;
-  //   } catch (e) {
-  //     print('خطا در دریافت زمان آخرین فعالیت: $e');
-  //     return null;
-  //   }
-  // }
 // به‌روزرسانی زمان آخرین فعالیت کاربر
   Future<void> updateUserOnlineStatus() async {
     final userId = _supabase.auth.currentUser?.id;
@@ -708,25 +642,6 @@ class ChatService {
         .eq('user_id', userId);
   }
 
-  // گوش دادن به تغییرات پیام‌های یک مکالمه
-// دریافت پیام‌های بلادرنگ یک مکالمه
-  // Stream<List<MessageModel>> subscribeToMessages(String conversationId) {
-  //   final userId = _supabase.auth.currentUser!.id;
-
-  //   // کاهش تعداد فراخوانی‌های stream با استفاده از distinct و debounceTime
-  //   return _supabase
-  //       .from('messages')
-  //       .stream(primaryKey: ['id'])
-  //       .eq('conversation_id', conversationId)
-  //       .order('created_at', ascending: false)
-  //       .map((data) => data
-  //           .map((json) => MessageModel.fromJson(json, currentUserId: userId))
-  //           .toList())
-  //       .distinct() // جلوگیری از تکرار داده‌های یکسان
-  //       .debounceTime(
-  //           const Duration(milliseconds: 300)); // کاهش فراخوانی‌های مکرر
-  // }
-
 // دریافت مکالمات بلادرنگ
   Stream<List<ConversationModel>> subscribeToConversations() {
     // بروزرسانی هر 3 ثانیه
@@ -819,20 +734,39 @@ class ChatService {
 // بررسی اینکه آیا کاربر بلاک شده است
   Future<bool> isUserBlocked(String userId) async {
     try {
-      // دریافت اطلاعات کاربر فعلی
       final currentUserId = supabase.auth.currentUser!.id;
 
-      // بررسی وجود رکورد بلاک
-      final existingRecord = await supabase
+      // بررسی دو حالت:
+      // 1. آیا کاربر جاری کاربر مقابل را مسدود کرده است؟
+      // 2. آیا کاربر مقابل کاربر جاری را مسدود کرده است؟
+      final blockingRecord = await supabase
           .from('blocked_users')
           .select()
-          .eq('user_id', currentUserId)
-          .eq('blocked_user_id', userId)
+          .or('and(user_id.eq.$currentUserId,blocked_user_id.eq.$userId),and(user_id.eq.$userId,blocked_user_id.eq.$currentUserId)')
           .maybeSingle();
 
-      return existingRecord != null;
+      return blockingRecord != null;
     } catch (e) {
       print('خطا در بررسی وضعیت بلاک کاربر: $e');
+      return false;
+    }
+  }
+
+  Future<bool> isCurrentUserBlockedBy(String userId) async {
+    try {
+      final currentUserId = supabase.auth.currentUser!.id;
+
+      // بررسی آیا کاربر مقابل (userId) کاربر جاری را مسدود کرده است
+      final blockingRecord = await supabase
+          .from('blocked_users')
+          .select()
+          .eq('user_id', userId)
+          .eq('blocked_user_id', currentUserId)
+          .maybeSingle();
+
+      return blockingRecord != null;
+    } catch (e) {
+      print('خطا در بررسی مسدودیت کاربر جاری: $e');
       return false;
     }
   }

@@ -6,6 +6,7 @@ import '../main.dart';
 import '../model/conversation_model.dart';
 import '../model/message_model.dart';
 import '../services/ChatService.dart';
+import '../view/Exeption/app_exceptions.dart';
 
 // سرویس چت
 final chatServiceProvider = Provider<ChatService>((ref) {
@@ -89,10 +90,17 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
       if (_disposed) return;
       state = const AsyncValue.data(null);
     } catch (e, stack) {
-      print('خطا در حذف پیام: $e');
-      if (!_disposed) {
-        state = AsyncValue.error(e, stack);
+      if (e is AppException) {
+        print(e.technicalMessage); // فقط برای توسعه‌دهندگان
+      } else {
+        print('خطای ناشناخته: $e');
       }
+      state = AsyncValue.error(
+          AppException(
+            userFriendlyMessage: 'حذف پیام انجام نشد',
+            technicalMessage: e.toString(),
+          ),
+          stack);
     }
   }
 
@@ -151,6 +159,9 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
     required String content,
     String? attachmentUrl,
     String? attachmentType,
+    String? replyToMessageId,
+    String? replyToContent,
+    String? replyToSenderName,
   }) async {
     if (_disposed) return;
 
@@ -166,6 +177,9 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
         content: content,
         attachmentUrl: attachmentUrl,
         attachmentType: attachmentType,
+        replyToMessageId: replyToMessageId,
+        replyToContent: replyToContent,
+        replyToSenderName: replyToSenderName,
       );
 
       if (_disposed) return;
@@ -286,6 +300,9 @@ class SafeMessageHandler {
     required String content,
     String? attachmentUrl,
     String? attachmentType,
+    String? replyToMessageId,
+    String? replyToContent,
+    String? replyToSenderName,
   }) async {
     try {
       await _notifier.sendMessage(
@@ -293,6 +310,9 @@ class SafeMessageHandler {
         content: content,
         attachmentUrl: attachmentUrl,
         attachmentType: attachmentType,
+        replyToMessageId: replyToMessageId,
+        replyToContent: replyToContent,
+        replyToSenderName: replyToSenderName,
       );
     } catch (e) {
       print('خطا در ارسال پیام: $e');
