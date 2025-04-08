@@ -1,4 +1,8 @@
+import 'dart:async';
+
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../main.dart';
 import '../model/conversation_model.dart';
 import '../model/message_model.dart';
 import '../services/ChatService.dart';
@@ -66,6 +70,65 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
   void dispose() {
     _disposed = true;
     super.dispose();
+  }
+
+  // حذف پیام با امکان حذف برای همه
+  Future<void> deleteMessage(String messageId,
+      {bool forEveryone = false}) async {
+    if (_disposed) return;
+
+    state = const AsyncValue.loading();
+    try {
+      final chatService = ref.read(chatServiceProvider);
+      await chatService.deleteMessage(messageId, forEveryone: forEveryone);
+
+      // بروزرسانی لیست پیام‌ها و مکالمات
+      ref.invalidateSelf();
+      ref.invalidate(conversationsProvider);
+
+      if (_disposed) return;
+      state = const AsyncValue.data(null);
+    } catch (e, stack) {
+      print('خطا در حذف پیام: $e');
+      if (!_disposed) {
+        state = AsyncValue.error(e, stack);
+      }
+    }
+  }
+
+  // پاکسازی کامل مکالمه
+// اضافه کردن متد clearConversation به MessageNotifier
+  Future<void> clearConversation(String conversationId,
+      {bool bothSides = false}) async {
+    state = const AsyncValue.loading();
+    try {
+      final chatService = ref.read(chatServiceProvider);
+      await chatService.clearConversation(conversationId, bothSides: bothSides);
+
+      // بروزرسانی پیام‌ها
+      ref.invalidate(messagesStreamProvider(conversationId));
+      ref.invalidate(conversationsProvider);
+
+      state = const AsyncValue.data(null);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+    }
+  }
+
+  // جستجوی پیام‌ها
+  Future<List<MessageModel>> searchMessages(
+      String conversationId, String query) async {
+    if (_disposed) {
+      return [];
+    }
+
+    try {
+      final chatService = ref.read(chatServiceProvider);
+      return await chatService.searchMessages(conversationId, query);
+    } catch (e) {
+      print('خطا در جستجوی پیام‌ها: $e');
+      rethrow;
+    }
   }
 
   Future<void> deleteConversation(String conversationId) async {
@@ -162,6 +225,65 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
       rethrow;
     }
   }
+
+  // حذف تمام پیام‌های یک مکالمه
+  Future<void> deleteAllMessages(String conversationId,
+      {bool forEveryone = false}) async {
+    final userId = supabase.auth.currentUser!.id;
+
+    try {
+      if (forEveryone) {
+        // حذف تمام پیام‌های مکالمه برای همه
+        await supabase
+            .from('messages')
+            .delete()
+            .eq('conversation_id', conversationId);
+      } else {
+        // ایجاد جدول hidden_messages در دیتابیس اگر وجود ندارد
+        final messages = await supabase
+            .from('messages')
+            .select('id')
+            .eq('conversation_id', conversationId);
+
+        // برای هر پیام، یک رکورد در جدول hidden_messages اضافه می‌کنیم
+        for (var message in messages) {
+          await supabase.from('hidden_messages').upsert({
+            'message_id': message['id'],
+            'user_id': userId, // userId در اینجا از نوع text است
+            'hidden_at': DateTime.now().toIso8601String(),
+          });
+        }
+      }
+    } catch (e) {
+      print('خطا در پاکسازی مکالمه: $e');
+      throw e;
+    }
+  }
+
+  Future<void> blockUser(String userId) async {
+    if (_disposed) return;
+    state = const AsyncValue.loading();
+    try {
+      final chatService = ref.read(chatServiceProvider);
+      await chatService.blockUser(userId);
+      ref.invalidate(conversationsProvider);
+      state = const AsyncValue.data(null);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+    }
+  }
+
+  Future<void> reportUser(String userId, String reason) async {
+    if (_disposed) return;
+    state = const AsyncValue.loading();
+    try {
+      final chatService = ref.read(chatServiceProvider);
+      await chatService.reportUser(userId: 'userId', reason: 'reason');
+      state = const AsyncValue.data(null);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+    }
+  }
 }
 
 // این کلاس را به chat_provider.dart.dart اضافه کنید
@@ -190,6 +312,24 @@ class SafeMessageHandler {
     }
   }
 
+  Future<void> deleteMessage(String messageId, String conversationId) async {
+    try {
+      await _notifier.deleteMessage(messageId);
+    } catch (e) {
+      print('خطا در حذف پیام: $e');
+      rethrow;
+    }
+  }
+
+  // Future<void> clearConversation(String conversationId) async {
+  //   try {
+  //     await _notifier.clearConversation(conversationId);
+  //   } catch (e) {
+  //     print('خطا در پاکسازی مکالمه: $e');
+  //     rethrow;
+  //   }
+  // }
+
   Future<void> markAsRead(String conversationId) async {
     try {
       await _notifier.markAsRead(conversationId);
@@ -204,3 +344,208 @@ final safeMessageHandlerProvider = Provider<SafeMessageHandler>((ref) {
   final notifier = ref.watch(messageNotifierProvider.notifier);
   return SafeMessageHandler(notifier);
 });
+
+// پرووایدر برای وضعیت آنلاین
+// // بهبود استریم وضعیت آنلاین با کاهش فاصله زمانی
+// final userOnlineStatusStreamProvider =
+//     StreamProvider.family<bool, String>((ref, userId) {
+//   return Stream.periodic(const Duration(seconds: 10), (_) async {
+//     final chatService = ref.read(chatServiceProvider);
+//     return await chatService.isUserOnline(userId);
+//   }).asyncMap((future) => future);
+// });
+
+class UserOnlineNotifier {
+  final Ref _ref;
+  Timer? _timer;
+  bool _isDisposed = false;
+
+  UserOnlineNotifier(this._ref) {
+    // ایجاد تایمر برای به‌روزرسانی وضعیت آنلاین هر ۳۰ ثانیه
+    _startTimer();
+
+    // افزودن listener برای مدیریت وضعیت آنلاین هنگام خروج از برنامه
+    WidgetsBinding.instance.addObserver(_AppLifecycleObserver(this));
+
+    // به‌روزرسانی اولیه
+    updateOnlineStatus();
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!_isDisposed) {
+        updateOnlineStatus();
+      }
+    });
+  }
+
+  Future<void> updateOnlineStatus() async {
+    if (_isDisposed) return;
+
+    try {
+      final chatService = _ref.read(chatServiceProvider);
+      await chatService.updateUserOnlineStatus();
+    } catch (e) {
+      print('خطا در به‌روزرسانی وضعیت آنلاین: $e');
+    }
+  }
+
+  // تنظیم وضعیت آفلاین هنگام خروج از برنامه
+  Future<void> setOffline() async {
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId != null) {
+        await supabase.from('profiles').update({
+          'is_online': false,
+          'last_online': DateTime.now().toUtc().toIso8601String(),
+        }).eq('id', userId);
+        print('setOffline: وضعیت کاربر به آفلاین تغییر یافت');
+      }
+    } catch (e) {
+      print('خطا در تنظیم وضعیت آفلاین: $e');
+    }
+  }
+
+  void dispose() {
+    _isDisposed = true;
+    _timer?.cancel();
+    _timer = null;
+  }
+}
+
+// کلاس برای مدیریت چرخه حیات برنامه
+class _AppLifecycleObserver extends WidgetsBindingObserver {
+  final UserOnlineNotifier _notifier;
+
+  _AppLifecycleObserver(this._notifier);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.inactive) {
+      // وقتی برنامه به پس‌زمینه می‌رود یا بسته می‌شود
+      _notifier.setOffline();
+    } else if (state == AppLifecycleState.resumed) {
+      // وقتی برنامه دوباره فعال می‌شود
+      _notifier.updateOnlineStatus();
+    }
+  }
+}
+
+// تغییر پرووایدر برای اضافه کردن WidgetsBinding
+final userOnlineNotifierProvider = Provider<UserOnlineNotifier>((ref) {
+  final notifier = UserOnlineNotifier(ref);
+  ref.onDispose(() => notifier.dispose());
+  return notifier;
+});
+
+// استریم وضعیت آنلاین کاربر - بروزرسانی بیشتر
+final userOnlineStatusStreamProvider =
+    StreamProvider.family<bool, String>((ref, userId) {
+  // استفاده از Supabase Realtime برای دریافت تغییرات آنلاین
+  return supabase
+      .from('profiles')
+      .stream(primaryKey: ['id'])
+      .eq('id', userId)
+      .map((data) {
+        if (data.isEmpty) return false;
+
+        final lastOnline = DateTime.parse(data[0]['last_online'] ?? '');
+        final now = DateTime.now().toUtc();
+        return now.difference(lastOnline).inMinutes < 2;
+      });
+});
+// پرووایدر برای آخرین بازدید
+final userLastOnlineProvider =
+    FutureProvider.family<DateTime?, String>((ref, userId) async {
+  final chatService = ref.watch(chatServiceProvider);
+  return await chatService.getUserLastOnline(userId);
+});
+
+// تنظیم Provider برای بلاک کردن کاربر
+final userBlockStatusProvider =
+    FutureProvider.family<bool, String>((ref, userId) {
+  final chatService = ref.watch(chatServiceProvider);
+  return chatService.isUserBlocked(userId);
+});
+
+// تنظیم Notifier برای اعمال تغییرات روی وضعیت بلاک
+final userBlockNotifierProvider =
+    StateNotifierProvider<UserBlockNotifier, AsyncValue<void>>((ref) {
+  return UserBlockNotifier(ref);
+});
+
+class UserBlockNotifier extends StateNotifier<AsyncValue<void>> {
+  final Ref ref;
+
+  UserBlockNotifier(this.ref) : super(const AsyncValue.data(null));
+
+  Future<void> blockUser(String userId) async {
+    state = const AsyncValue.loading();
+    try {
+      final chatService = ref.read(chatServiceProvider);
+      await chatService.blockUser(userId);
+
+      // بروزرسانی وضعیت بلاک و لیست مکالمات
+      ref.invalidate(userBlockStatusProvider(userId));
+      ref.invalidate(conversationsProvider);
+
+      state = const AsyncValue.data(null);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+      rethrow;
+    }
+  }
+
+  Future<void> unblockUser(String userId) async {
+    state = const AsyncValue.loading();
+    try {
+      final chatService = ref.read(chatServiceProvider);
+      await chatService.unblockUser(userId);
+
+      // بروزرسانی وضعیت بلاک و لیست مکالمات
+      ref.invalidate(userBlockStatusProvider(userId));
+      ref.invalidate(conversationsProvider);
+
+      state = const AsyncValue.data(null);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+      rethrow;
+    }
+  }
+}
+
+// Notifier برای گزارش کاربر
+final userReportNotifierProvider =
+    StateNotifierProvider<UserReportNotifier, AsyncValue<void>>((ref) {
+  return UserReportNotifier(ref);
+});
+
+class UserReportNotifier extends StateNotifier<AsyncValue<void>> {
+  final Ref ref;
+
+  UserReportNotifier(this.ref) : super(const AsyncValue.data(null));
+
+  Future<void> reportUser({
+    required String userId,
+    required String reason,
+    String? additionalInfo,
+  }) async {
+    state = const AsyncValue.loading();
+    try {
+      final chatService = ref.read(chatServiceProvider);
+      await chatService.reportUser(
+        userId: userId,
+        reason: reason,
+        additionalInfo: additionalInfo,
+      );
+
+      state = const AsyncValue.data(null);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+      rethrow;
+    }
+  }
+}

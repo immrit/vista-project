@@ -87,6 +87,21 @@ class ConversationModel {
       unreadCount: unreadCount ?? this.unreadCount,
     );
   }
+
+  static ConversationModel empty() {
+    return ConversationModel(
+      id: '',
+      createdAt: DateTime.fromMillisecondsSinceEpoch(0),
+      updatedAt: DateTime.fromMillisecondsSinceEpoch(0),
+      otherUserName: '',
+      otherUserAvatar: null,
+      otherUserId: '',
+      lastMessage: null,
+      lastMessageTime: null,
+      hasUnreadMessages: false,
+      unreadCount: 0,
+    );
+  }
 }
 
 class ConversationParticipantModel {

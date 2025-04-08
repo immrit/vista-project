@@ -4,7 +4,7 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'package:aws_s3_api/s3-2006-03-01.dart';
-import '../services/cache_manager.dart';
+import 'cache_manager.dart';
 import '/main.dart';
 
 class PostImageUploadService {

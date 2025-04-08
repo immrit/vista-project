@@ -13,6 +13,7 @@ import 'firebase_options.dart';
 import 'model/Hive Model/RecentSearch.dart';
 import 'provider/provider.dart';
 import 'security/security.dart';
+import 'services/ChatService.dart';
 import 'services/deepLink.dart';
 import 'view/util/themes.dart';
 import 'view/screen/Settings/Settings.dart';
@@ -31,6 +32,24 @@ void main() async {
     if (message?.contains('MESA') == false) {
       print(message);
     }
+
+    supabase.auth.onAuthStateChange.listen((data) async {
+      if (data.event == AuthChangeEvent.signedIn) {
+        // به‌روزرسانی وضعیت آنلاین کاربر هنگام ورود
+        await supabase.from('profiles').update({
+          'is_online': true,
+          'last_online': DateTime.now().toUtc().toIso8601String(),
+        }).eq('id', data.session!.user.id);
+      } else if (data.event == AuthChangeEvent.signedOut) {
+        // به‌روزرسانی وضعیت آفلاین کاربر هنگام خروج
+        if (data.session?.user.id != null) {
+          await supabase.from('profiles').update({
+            'is_online': false,
+            'last_online': DateTime.now().toUtc().toIso8601String(),
+          }).eq('id', data.session!.user.id);
+        }
+      }
+    });
   };
 
   // تنظیم orientation
@@ -141,6 +160,13 @@ class _MyAppState extends ConsumerState<MyApp> {
 
     // مدیریت FCM توکن
     _setupFCMToken();
+    supabase.auth.onAuthStateChange.listen((data) {
+      if (data.event == AuthChangeEvent.signedIn) {
+        // به‌روزرسانی وضعیت آنلاین کاربر
+        final chatService = ChatService();
+        chatService.updateUserOnlineStatus();
+      }
+    });
   }
 
   @override

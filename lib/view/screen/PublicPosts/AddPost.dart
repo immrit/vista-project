@@ -6,7 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:dotted_border/dotted_border.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../main.dart';
-import '../../../provider/PostImageUploadService.dart';
+import '../../../services/PostImageUploadService.dart';
 import '../../../provider/provider.dart';
 
 class AddPublicPostScreen extends ConsumerStatefulWidget {

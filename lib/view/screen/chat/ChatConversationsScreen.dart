@@ -24,6 +24,31 @@ class _ChatConversationsScreenState
     timeago.setLocaleMessages('fa', timeago.FaMessages());
   }
 
+// اضافه کردن متغیر برای جستجو
+  final String _searchQuery = '';
+  List<ConversationModel> _filteredConversations = [];
+
+// اضافه کردن متد برای فیلتر کردن گفتگوها
+  void _filterConversations(
+      List<ConversationModel> conversations, String query) {
+    if (query.isEmpty) {
+      _filteredConversations = conversations;
+    } else {
+      _filteredConversations = conversations
+          .where((conversation) =>
+              conversation.otherUserName
+                      ?.toLowerCase()
+                      .contains(query.toLowerCase()) ==
+                  true ||
+              (conversation.lastMessage
+                      ?.toLowerCase()
+                      .contains(query.toLowerCase()) ??
+                  false))
+          .toList();
+    }
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final conversationsAsync = ref.watch(conversationsStreamProvider);
@@ -32,6 +57,31 @@ class _ChatConversationsScreenState
       appBar: AppBar(
         title: const Text('پیام‌ها'),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () {
+              showSearch(
+                  context: context,
+                  delegate: ChatSearchDelegate(
+                      ref: ref,
+                      onConversationSelected: (conversation) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ChatScreen(
+                              conversationId: conversation.id,
+                              otherUserName:
+                                  conversation.otherUserName ?? 'کاربر',
+                              otherUserAvatar: conversation.otherUserAvatar,
+                              otherUserId: conversation.otherUserId ?? '',
+                            ),
+                          ),
+                        );
+                      }));
+            },
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -351,5 +401,110 @@ class _ChatConversationsScreenState
     } else {
       return timeago.format(time, locale: 'fa');
     }
+  }
+}
+
+class ChatSearchDelegate extends SearchDelegate<ConversationModel> {
+  final WidgetRef ref;
+  final Function(ConversationModel) onConversationSelected;
+
+  ChatSearchDelegate({
+    required this.ref,
+    required this.onConversationSelected,
+  });
+
+  @override
+  String get searchFieldLabel => 'جستجو در گفتگوها...';
+
+  @override
+  List<Widget> buildActions(BuildContext context) {
+    return [
+      IconButton(
+        icon: const Icon(Icons.clear),
+        onPressed: () {
+          query = '';
+        },
+      ),
+    ];
+  }
+
+  @override
+  Widget buildLeading(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.arrow_back),
+      onPressed: () {
+        close(context, ConversationModel.empty());
+      },
+    );
+  }
+
+  @override
+  Widget buildResults(BuildContext context) {
+    return _buildSearchResults();
+  }
+
+  @override
+  Widget buildSuggestions(BuildContext context) {
+    return _buildSearchResults();
+  }
+
+  Widget _buildSearchResults() {
+    return Consumer(
+      builder: (context, ref, child) {
+        final conversationsAsync = ref.watch(conversationsProvider);
+
+        return conversationsAsync.when(
+          data: (conversations) {
+            final filteredConversations = conversations
+                .where((conversation) =>
+                    conversation.otherUserName
+                            ?.toLowerCase()
+                            .contains(query.toLowerCase()) ==
+                        true ||
+                    (conversation.lastMessage
+                            ?.toLowerCase()
+                            .contains(query.toLowerCase()) ??
+                        false))
+                .toList();
+
+            if (filteredConversations.isEmpty) {
+              return const Center(
+                child: Text('موردی یافت نشد'),
+              );
+            }
+
+            return ListView.builder(
+              itemCount: filteredConversations.length,
+              itemBuilder: (context, index) {
+                final conversation = filteredConversations[index];
+                return ListTile(
+                  leading: CircleAvatar(
+                    backgroundImage: conversation.otherUserAvatar != null &&
+                            conversation.otherUserAvatar!.isNotEmpty
+                        ? NetworkImage(conversation.otherUserAvatar!)
+                        : const AssetImage('assets/images/default_avatar.png')
+                            as ImageProvider,
+                  ),
+                  title: Text(conversation.otherUserName ?? 'کاربر'),
+                  subtitle: conversation.lastMessage != null
+                      ? Text(
+                          conversation.lastMessage!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        )
+                      : const Text('گفتگوی جدید'),
+                  onTap: () {
+                    onConversationSelected(conversation);
+                    close(context, conversation);
+                  },
+                );
+              },
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (_, __) => const Center(child: Text('خطا در دریافت اطلاعات')),
+        );
+      },
+    );
   }
 }

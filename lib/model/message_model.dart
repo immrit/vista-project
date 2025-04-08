@@ -9,6 +9,10 @@ class MessageModel {
   final DateTime? editedAt;
   final String? attachmentUrl;
   final String? attachmentType;
+  String? replyToMessageId;
+  String? replyToContent;
+  String? replyToSenderId;
+  String? replyToSenderName;
 
   // اطلاعات اضافی برای نمایش
   final String? senderName;

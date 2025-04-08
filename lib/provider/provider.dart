@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../model/SearchResut.dart';
+import '../services/PostImageUploadService.dart';
 import '/model/ProfileModel.dart';
 import '/model/notificationModel.dart';
 import '/model/publicPostModel.dart';
@@ -13,7 +14,6 @@ import '../model/CommentModel.dart';
 import '../model/NotesModel.dart';
 import '../model/UserModel.dart';
 import '../view/util/themes.dart';
-import 'PostImageUploadService.dart';
 
 //check user state
 final authStateProvider = StreamProvider<User?>((ref) {
