@@ -530,40 +530,85 @@ class ChatService {
 
     try {
       if (forEveryone) {
-        // حذف تمام پیام‌های مکالمه برای همه
+        // حذف برای همه شرکت‌کنندگان
+
+        // ابتدا پیام‌ها را از جدول hidden_messages حذف می‌کنیم که به این مکالمه مربوط هستند
+        await _supabase
+            .from('hidden_messages')
+            .delete()
+            .eq('conversation_id', conversationId);
+
+        // سپس پیام‌ها را از جدول messages حذف می‌کنیم
         await _supabase
             .from('messages')
             .delete()
             .eq('conversation_id', conversationId);
+
+        print('تمام پیام‌های مکالمه $conversationId برای همه کاربران حذف شد');
       } else {
-        // ایجاد جدول hidden_messages در دیتابیس اگر وجود ندارد
-        final messages = await _supabase
+        // حذف فقط برای کاربر فعلی (با مخفی کردن پیام‌ها)
+
+        // ابتدا پیام‌های موجود در hidden_messages که قبلاً توسط این کاربر مخفی شده را بررسی می‌کنیم
+        final existingHiddenMessages = await _supabase
+            .from('hidden_messages')
+            .select('message_id')
+            .eq('user_id', userId)
+            .eq('conversation_id', conversationId);
+
+        final hiddenMessageIds = existingHiddenMessages
+            .map((item) => item['message_id'] as String)
+            .toList();
+
+        // پیام‌های مکالمه را دریافت می‌کنیم
+        final messagesResponse = await _supabase
             .from('messages')
             .select('id')
             .eq('conversation_id', conversationId);
 
-        // برای هر پیام، یک رکورد در جدول hidden_messages اضافه می‌کنیم
-        for (var message in messages) {
-          await _supabase.from('hidden_messages').upsert({
-            'message_id': message['id'],
-            'user_id': userId,
-            'hidden_at': DateTime.now().toIso8601String(),
-          });
+        // برای هر پیام که هنوز مخفی نشده، یک رکورد در جدول hidden_messages ایجاد می‌کنیم
+        for (final message in messagesResponse) {
+          final messageId = message['id'] as String;
+
+          // اگر این پیام قبلاً مخفی نشده باشد
+          if (!hiddenMessageIds.contains(messageId)) {
+            await _supabase.from('hidden_messages').insert({
+              'message_id': messageId,
+              'user_id': userId,
+              'conversation_id': conversationId,
+              'hidden_at': DateTime.now().toIso8601String(),
+            });
+          }
         }
+
+        print(
+            'تمام پیام‌های مکالمه $conversationId برای کاربر $userId مخفی شد');
       }
     } catch (e) {
       print('خطا در پاکسازی مکالمه: $e');
-      throw e;
+      rethrow;
     }
   }
 
-// دریافت پیام‌های یک مکالمه (با در نظر گرفتن پیام‌های حذف شده)
+// دریافت پیام‌های یک مکالمه
   Future<List<MessageModel>> getMessages(String conversationId,
       {int limit = 20, int offset = 0}) async {
     final userId = _supabase.auth.currentUser!.id;
 
     try {
-      // دریافت تمام پیام‌های مکالمه
+      // ابتدا لیست پیام‌های مخفی شده برای کاربر را دریافت می‌کنیم
+      final hiddenMessagesResponse = await _supabase
+          .from('hidden_messages')
+          .select('message_id')
+          .eq('user_id', userId)
+          .eq('conversation_id', conversationId);
+
+      // تبدیل به لیست شناسه‌های پیام مخفی شده
+      final hiddenMessageIds =
+          hiddenMessagesResponse.map((e) => e['message_id'] as String).toList();
+
+      print('تعداد پیام‌های مخفی شده: ${hiddenMessageIds.length}');
+
+      // دریافت پیام‌ها با فیلتر کردن پیام‌های مخفی شده
       final messagesResponse = await _supabase
           .from('messages')
           .select()
@@ -571,27 +616,16 @@ class ChatService {
           .order('created_at', ascending: false)
           .range(offset, offset + limit - 1);
 
-      // دریافت شناسه پیام‌های حذف شده توسط کاربر فعلی
-      final deletedMessagesResponse = await _supabase
-          .from('deleted_messages')
-          .select('message_id')
-          .eq('user_id', userId);
-
-      // تبدیل به مجموعه‌ای از شناسه‌های پیام‌های حذف شده
-      final deletedMessageIds = Set<String>.from(
-        deletedMessagesResponse.map((item) => item['message_id'] as String),
-      );
-
-      // فیلتر کردن پیام‌های حذف شده
+      // فیلتر کردن پیام‌های مخفی شده
       final filteredMessages = messagesResponse
-          .where(
-            (json) => !deletedMessageIds.contains(json['id']),
-          )
+          .where((message) => !hiddenMessageIds.contains(message['id']))
           .toList();
 
-      // ایجاد مدل‌ها و دریافت اطلاعات اضافی
+      print(
+          'تعداد پیام‌های دریافتی: ${messagesResponse.length}, تعداد پیام‌های نمایش داده شده: ${filteredMessages.length}');
+
       final messages = await Future.wait(filteredMessages.map((json) async {
-        // دریافت اطلاعات فرستنده
+        // برای هر پیام، اطلاعات فرستنده را جداگانه دریافت می‌کنیم
         final profileResponse = await _supabase
             .from('profiles')
             .select()
@@ -612,50 +646,54 @@ class ChatService {
     }
   }
 
-  // اصلاح متد استریم پیام‌ها برای فیلتر کردن پیام‌های حذف شده
+  // دریافت پیام‌های بلادرنگ یک مکالمه
   Stream<List<MessageModel>> subscribeToMessages(String conversationId) {
     final userId = _supabase.auth.currentUser!.id;
 
     print('شروع اشتراک به پیام‌های مکالمه: $conversationId');
 
-    // ایجاد استریم ترکیبی از پیام‌ها و پیام‌های حذف شده
-    final messagesStream = _supabase
-        .from('messages')
-        .stream(primaryKey: ['id'])
-        .eq('conversation_id', conversationId)
-        .order('created_at', ascending: false);
+    // ابتدا بررسی می‌کنیم چه پیام‌هایی مخفی شده‌اند
+    return Stream.periodic(Duration(seconds: 2)).asyncMap((_) async {
+      // دریافت لیست پیام‌های مخفی شده برای کاربر
+      final hiddenMessagesResponse = await _supabase
+          .from('hidden_messages')
+          .select('message_id')
+          .eq('user_id', userId)
+          .eq('conversation_id', conversationId);
 
-    final deletedMessagesStream = _supabase
-        .from('deleted_messages')
-        .stream(primaryKey: ['id']).eq('user_id', userId);
+      final hiddenMessageIds =
+          hiddenMessagesResponse.map((e) => e['message_id'] as String).toList();
 
-    // ترکیب استریم‌ها و فیلتر کردن پیام‌های حذف شده
-    return Rx.combineLatest2(
-      messagesStream,
-      deletedMessagesStream,
-      (List<Map<String, dynamic>> messages,
-          List<Map<String, dynamic>> deletedMessages) {
-        // تبدیل به مجموعه‌ای از شناسه‌های پیام‌های حذف شده
-        final deletedMessageIds = Set<String>.from(
-          deletedMessages.map((item) => item['message_id'] as String),
+      // دریافت پیام‌ها و فیلتر کردن پیام‌های مخفی شده
+      final messagesResponse = await _supabase
+          .from('messages')
+          .select()
+          .eq('conversation_id', conversationId)
+          .order('created_at', ascending: false);
+
+      // فیلتر کردن پیام‌های مخفی شده
+      final filteredMessages = messagesResponse
+          .where((message) => !hiddenMessageIds.contains(message['id']))
+          .toList();
+
+      // تبدیل به MessageModel
+      final messages = await Future.wait(filteredMessages.map((json) async {
+        // دریافت اطلاعات فرستنده
+        final profileResponse = await _supabase
+            .from('profiles')
+            .select()
+            .eq('id', json['sender_id'])
+            .maybeSingle();
+
+        final message = MessageModel.fromJson(json, currentUserId: userId);
+        return message.copyWith(
+          senderName: profileResponse?['username'] ?? 'کاربر',
+          senderAvatar: profileResponse?['avatar_url'],
         );
+      }));
 
-        // فیلتر کردن پیام‌های حذف شده
-        final filteredMessages = messages
-            .where(
-              (message) => !deletedMessageIds.contains(message['id']),
-            )
-            .toList();
-
-        print(
-            'دریافت ${filteredMessages.length} پیام (${messages.length - filteredMessages.length} پیام حذف شده)');
-
-        // تبدیل به مدل‌های پیام
-        return filteredMessages.map((json) {
-          return MessageModel.fromJson(json, currentUserId: userId);
-        }).toList();
-      },
-    );
+      return messages;
+    });
   }
 
   // علامت‌گذاری همه پیام‌های یک مکالمه به عنوان خوانده شده
@@ -675,25 +713,18 @@ class ChatService {
   // Stream<List<MessageModel>> subscribeToMessages(String conversationId) {
   //   final userId = _supabase.auth.currentUser!.id;
 
-  //   print('شروع اشتراک به پیام‌های مکالمه: $conversationId');
-
+  //   // کاهش تعداد فراخوانی‌های stream با استفاده از distinct و debounceTime
   //   return _supabase
   //       .from('messages')
   //       .stream(primaryKey: ['id'])
   //       .eq('conversation_id', conversationId)
   //       .order('created_at', ascending: false)
-  //       .map((data) {
-  //         print('دریافت داده‌های جدید از stream: ${data.length} پیام');
-  //         return data.map((json) {
-  //           // دریافت اطلاعات فرستنده
-  //           final message = MessageModel.fromJson(json, currentUserId: userId);
-
-  //           return message.copyWith(
-  //             senderName: json['profiles']?['username'] ?? 'کاربر',
-  //             senderAvatar: json['profiles']?['avatar_url'],
-  //           );
-  //         }).toList();
-  //       });
+  //       .map((data) => data
+  //           .map((json) => MessageModel.fromJson(json, currentUserId: userId))
+  //           .toList())
+  //       .distinct() // جلوگیری از تکرار داده‌های یکسان
+  //       .debounceTime(
+  //           const Duration(milliseconds: 300)); // کاهش فراخوانی‌های مکرر
   // }
 
 // دریافت مکالمات بلادرنگ

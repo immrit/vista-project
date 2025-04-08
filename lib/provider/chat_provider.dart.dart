@@ -229,34 +229,22 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
   // حذف تمام پیام‌های یک مکالمه
   Future<void> deleteAllMessages(String conversationId,
       {bool forEveryone = false}) async {
-    final userId = supabase.auth.currentUser!.id;
-
+    state = const AsyncValue.loading();
     try {
-      if (forEveryone) {
-        // حذف تمام پیام‌های مکالمه برای همه
-        await supabase
-            .from('messages')
-            .delete()
-            .eq('conversation_id', conversationId);
-      } else {
-        // ایجاد جدول hidden_messages در دیتابیس اگر وجود ندارد
-        final messages = await supabase
-            .from('messages')
-            .select('id')
-            .eq('conversation_id', conversationId);
+      final chatService = ref.read(chatServiceProvider);
+      await chatService.deleteAllMessages(conversationId,
+          forEveryone: forEveryone);
 
-        // برای هر پیام، یک رکورد در جدول hidden_messages اضافه می‌کنیم
-        for (var message in messages) {
-          await supabase.from('hidden_messages').upsert({
-            'message_id': message['id'],
-            'user_id': userId, // userId در اینجا از نوع text است
-            'hidden_at': DateTime.now().toIso8601String(),
-          });
-        }
-      }
-    } catch (e) {
+      // بروزرسانی لیست مکالمات و پیام‌ها
+      ref.invalidate(messagesProvider(conversationId));
+      ref.invalidate(messagesStreamProvider(conversationId));
+      ref.invalidate(conversationsProvider);
+      ref.invalidate(conversationsStreamProvider);
+
+      state = const AsyncValue.data(null);
+    } catch (e, stack) {
       print('خطا در پاکسازی مکالمه: $e');
-      throw e;
+      state = AsyncValue.error(e, stack);
     }
   }
 

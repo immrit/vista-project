@@ -38,6 +38,7 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
   final Connectivity _connectivity = Connectivity();
   late StreamSubscription<ConnectivityResult> _connectivitySubscription;
   bool _isChecking = false;
+  bool _mounted = true; // اضافه کردن متغیر برای کنترل وضعیت mount
   final _pageStorageKey = const PageStorageKey('public_posts');
   final ScrollController _scrollController = ScrollController();
 
@@ -45,6 +46,7 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
 
   @override
   void dispose() {
+    _mounted = false; // تنظیم وضعیت mount
     _connectivitySubscription.cancel();
     super.dispose();
   }
@@ -55,7 +57,10 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
     _initConnectivity();
     _connectivitySubscription =
         _connectivity.onConnectivityChanged.listen((result) {
-      _updateConnectionStatus(result);
+      if (_mounted) {
+        // چک کردن وضعیت mount
+        _updateConnectionStatus(result);
+      }
     });
 
     // بررسی دوره‌ای وضعیت اتصال
@@ -89,7 +94,7 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
   }
 
   Future<void> _updateConnectionStatus(ConnectivityResult result) async {
-    if (!mounted) return;
+    if (!_mounted) return; // چک کردن وضعیت mount
 
     bool hasInternet = false;
     try {
@@ -102,6 +107,8 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
     } catch (_) {
       hasInternet = false;
     }
+
+    if (!_mounted) return; // چک مجدد وضعیت mount
 
     setState(() {
       _isChecking = false;

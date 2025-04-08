@@ -48,15 +48,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     timeago.setLocaleMessages('fa', timeago.FaMessages());
 
     // علامت‌گذاری مکالمه به عنوان خوانده شده
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    Future.microtask(() {
       ref
           .read(messageNotifierProvider.notifier)
           .markAsRead(widget.conversationId);
-
-      // به‌روزرسانی وضعیت آنلاین کاربر فعلی
       ref.read(userOnlineNotifierProvider).updateOnlineStatus();
-
-      // لاگ وضعیت آنلاین
       _checkOnlineStatus();
     });
   }
@@ -85,9 +81,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   // اضافه کردن متد برای تغییر وضعیت نمایش ایموجی پیکر
   void _toggleEmojiPicker() {
-    setState(() {
-      _showEmojiPicker = !_showEmojiPicker;
-    });
+    if (_messageFocusNode.hasFocus) {
+      _messageFocusNode.unfocus();
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          setState(() => _showEmojiPicker = true);
+        }
+      });
+    } else {
+      setState(() => _showEmojiPicker = !_showEmojiPicker);
+    }
   }
 
 // تابع برای تست وضعیت آنلاین
@@ -882,7 +885,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  // پاکسازی تاریخچه گفتگو با نمایش دیالوگ تایید
+// نمایش دیالوگ تأیید برای پاکسازی مکالمه
   void _showClearConversationDialog(BuildContext context) {
     final isLightMode = Theme.of(context).brightness == Brightness.light;
     bool bothSides = false;
@@ -890,140 +893,141 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          backgroundColor: isLightMode ? Colors.white : Color(0xFF1A1A1A),
-          title: Text(
-            'پاکسازی تاریخچه گفتگو',
-            style: TextStyle(
-              color: isLightMode ? Colors.black87 : Colors.white,
-            ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'آیا مطمئن هستید که می‌خواهید تاریخچه گفتگو با ${widget.otherUserName} را پاک کنید؟ این عمل قابل بازگشت نیست.',
-                style: TextStyle(
-                  color: isLightMode ? Colors.black87 : Colors.white70,
-                ),
+        builder: (context, setState) {
+          return AlertDialog(
+            backgroundColor: isLightMode ? Colors.white : Color(0xFF1A1A1A),
+            title: Text(
+              'پاکسازی تاریخچه گفتگو',
+              style: TextStyle(
+                color: isLightMode ? Colors.black87 : Colors.white,
               ),
-              SizedBox(height: 16),
-              Row(
-                children: [
-                  Checkbox(
-                    value: bothSides,
-                    activeColor: Theme.of(context).colorScheme.primary,
-                    onChanged: (value) {
-                      setState(() {
-                        bothSides = value ?? false;
-                      });
-                    },
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'آیا مطمئن هستید که می‌خواهید تاریخچه گفتگو با ${widget.otherUserName} را پاک کنید؟ این عمل قابل بازگشت نیست.',
+                  style: TextStyle(
+                    color: isLightMode ? Colors.black87 : Colors.white70,
                   ),
-                  Expanded(
-                    child: Text(
-                      'پاکسازی دوطرفه (برای هر دو کاربر)',
-                      style: TextStyle(
-                        color: isLightMode ? Colors.black87 : Colors.white70,
-                        fontSize: 14,
+                ),
+                SizedBox(height: 16),
+                Row(
+                  children: [
+                    Checkbox(
+                      value: bothSides,
+                      activeColor: Theme.of(context).colorScheme.primary,
+                      onChanged: (value) {
+                        setState(() {
+                          bothSides = value ?? false;
+                        });
+                      },
+                    ),
+                    Expanded(
+                      child: Text(
+                        'پاکسازی دوطرفه (برای هر دو کاربر)',
+                        style: TextStyle(
+                          color: isLightMode ? Colors.black87 : Colors.white70,
+                          fontSize: 14,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              if (bothSides)
-                Container(
-                  padding: EdgeInsets.all(8),
-                  margin: EdgeInsets.only(top: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.warning, color: Colors.red, size: 16),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'در این حالت، پیام‌ها برای هر دو طرف حذف می‌شوند!',
-                          style: TextStyle(
-                            color: Colors.red,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                  ],
                 ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                'انصراف',
-                style: TextStyle(
-                  color: isLightMode ? Colors.grey[800] : Colors.grey[300],
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-
-                // نمایش loading snackbar
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Row(
+                if (bothSides)
+                  Container(
+                    padding: EdgeInsets.all(8),
+                    margin: EdgeInsets.only(top: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
                       children: [
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
+                        Icon(Icons.warning, color: Colors.red, size: 16),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'در این حالت، پیام‌ها برای هر دو طرف حذف می‌شوند!',
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontSize: 12,
+                            ),
                           ),
                         ),
-                        SizedBox(width: 12),
-                        Text('در حال پاکسازی گفتگو...'),
                       ],
                     ),
-                    duration: Duration(seconds: 1),
                   ),
-                );
-
-                // پاکسازی گفتگو
-                ref
-                    .read(messageNotifierProvider.notifier)
-                    .clearConversation(widget.conversationId,
-                        bothSides: bothSides)
-                    .then((_) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('تاریخچه گفتگو پاک شد'),
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-
-                  // بروزرسانی لیست پیام‌ها
-                  ref.invalidate(messagesStreamProvider(widget.conversationId));
-                }).catchError((error) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('خطا در پاکسازی گفتگو: $error'),
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                });
-              },
-              child: Text(
-                'پاکسازی',
-                style: TextStyle(color: Colors.red),
-              ),
+              ],
             ),
-          ],
-        ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  'انصراف',
+                  style: TextStyle(
+                    color: isLightMode ? Colors.grey[800] : Colors.grey[300],
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+
+                  // نمایش loading snackbar
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Row(
+                        children: [
+                          SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          ),
+                          SizedBox(width: 12),
+                          Text('در حال پاکسازی گفتگو...'),
+                        ],
+                      ),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+
+                  // حذف پیام‌ها
+                  ref
+                      .read(messageNotifierProvider.notifier)
+                      .deleteAllMessages(widget.conversationId,
+                          forEveryone: bothSides)
+                      .then((_) {
+                    // نمایش پیام موفقیت‌آمیز
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('تاریخچه گفتگو با موفقیت پاک شد'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }).catchError((error) {
+                    // نمایش خطا
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('خطا در پاکسازی گفتگو: $error'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  });
+                },
+                child: Text(
+                  'پاکسازی',
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1039,11 +1043,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     // اگر کیبورد باز است و ایموجی پیکر هم باز است، ایموجی پیکر را ببند
     if (isKeyboardVisible && _showEmojiPicker) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        setState(() {
-          _showEmojiPicker = false;
-        });
-      });
+      _showEmojiPicker = false;
     }
     return SafeArea(
       child: Scaffold(
@@ -1625,6 +1625,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: SafeArea(
+          bottom: true,
+          top: false,
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
             child: Column(
@@ -1716,62 +1718,146 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   void _showDeleteConfirmation(BuildContext context) {
     final isLightMode = Theme.of(context).brightness == Brightness.light;
+    bool bothSides = false;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: isLightMode ? Colors.white : Color(0xFF1A1A1A),
-        title: Text(
-          'پاکسازی تاریخچه گفتگو',
-          style: TextStyle(
-            color: isLightMode ? Colors.black87 : Colors.white,
-          ),
-        ),
-        content: Text(
-          'آیا از پاکسازی تمام پیام‌های این گفتگو اطمینان دارید؟ این عمل قابل بازگشت نیست.',
-          style: TextStyle(
-            color: isLightMode ? Colors.black87 : Colors.white70,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'انصراف',
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            backgroundColor: isLightMode ? Colors.white : Color(0xFF1A1A1A),
+            title: Text(
+              'پاکسازی تاریخچه گفتگو',
               style: TextStyle(
-                color: isLightMode ? Colors.grey[800] : Colors.grey[300],
+                color: isLightMode ? Colors.black87 : Colors.white,
               ),
             ),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-
-              // پاکسازی تمام پیام‌های گفتگو
-              ref
-                  .read(messageNotifierProvider.notifier)
-                  .deleteAllMessages(widget.conversationId)
-                  .then((_) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('تاریخچه گفتگو پاکسازی شد'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'آیا مطمئن هستید که می‌خواهید تاریخچه گفتگو با ${widget.otherUserName} را پاک کنید؟ این عمل قابل بازگشت نیست.',
+                  style: TextStyle(
+                    color: isLightMode ? Colors.black87 : Colors.white70,
                   ),
-                );
-              }).catchError((error) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('خطا در پاکسازی گفتگو: $error'),
-                    backgroundColor: Colors.red,
+                ),
+                SizedBox(height: 16),
+                Row(
+                  children: [
+                    Checkbox(
+                      value: bothSides,
+                      activeColor: Theme.of(context).colorScheme.primary,
+                      onChanged: (value) {
+                        setState(() {
+                          bothSides = value ?? false;
+                        });
+                      },
+                    ),
+                    Expanded(
+                      child: Text(
+                        'پاکسازی دوطرفه (برای هر دو کاربر)',
+                        style: TextStyle(
+                          color: isLightMode ? Colors.black87 : Colors.white70,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (bothSides)
+                  Container(
+                    padding: EdgeInsets.all(8),
+                    margin: EdgeInsets.only(top: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.warning, color: Colors.red, size: 16),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'در این حالت، پیام‌ها برای هر دو طرف حذف می‌شوند!',
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                );
-              });
-            },
-            child: Text(
-              'پاکسازی',
-              style: TextStyle(color: Colors.red),
+              ],
             ),
-          ),
-        ],
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  'انصراف',
+                  style: TextStyle(
+                    color: isLightMode ? Colors.grey[800] : Colors.grey[300],
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+
+                  // نمایش loading snackbar
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Row(
+                        children: [
+                          SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          ),
+                          SizedBox(width: 12),
+                          Text('در حال پاکسازی گفتگو...'),
+                        ],
+                      ),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+
+                  // حذف پیام‌ها
+                  ref
+                      .read(messageNotifierProvider.notifier)
+                      .deleteAllMessages(widget.conversationId,
+                          forEveryone: bothSides)
+                      .then((_) {
+                    // نمایش پیام موفقیت‌آمیز
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('تاریخچه گفتگو با موفقیت پاک شد'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }).catchError((error) {
+                    // نمایش خطا
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('خطا در پاکسازی گفتگو: $error'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  });
+                },
+                child: Text(
+                  'پاکسازی',
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
