@@ -137,18 +137,28 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
     if (_isDownloading) return;
 
     setState(() => _isDownloading = true);
+    debugPrint('شروع دانلود از MusicWaveform: ${widget.musicUrl}');
 
     try {
       final downloadManager = ref.read(musicDownloadManagerProvider.notifier);
 
+      // نمایش شروع دانلود
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('در حال دانلود فایل...'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+
       final filePath = await downloadManager.downloadMusic(
         widget.musicUrl,
         onProgress: (progress) {
-          // تابع پیشرفت دانلود
+          debugPrint('پیشرفت دانلود: ${(progress * 100).toStringAsFixed(1)}%');
         },
       );
 
       if (filePath != null) {
+        debugPrint('دانلود با موفقیت انجام شد: $filePath');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -167,6 +177,7 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
           });
         }
       } else {
+        debugPrint('خطا در دانلود فایل: مسیر خالی برگشت داده شد');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -176,7 +187,9 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
           );
         }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('خطا در دانلود: $e');
+      debugPrint('جزئیات خطا: $stackTrace');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -321,7 +334,7 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
       margin: const EdgeInsets.only(left: 8),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Theme.of(context).primaryColor,
+        // color: Theme.of(context).primaryColor,
         boxShadow: [
           BoxShadow(
             color: Theme.of(context).primaryColor.withOpacity(0.2),
@@ -354,7 +367,7 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
                         ),
                         Icon(
                           Icons.download,
-                          color: Theme.of(context).colorScheme.onPrimary,
+                          // color: Theme.of(context).colorScheme.onPrimary,
                           size: 16,
                         ),
                       ],
@@ -406,23 +419,23 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
                     CircularProgressIndicator(
                       value: downloadProgress,
                       strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        Theme.of(context).primaryColor,
-                      ),
+                      // valueColor: AlwaysStoppedAnimation<Color>(
+                      //   Theme.of(context).primaryColor,
+                      // ),
                     ),
                     Text(
                       '${(downloadProgress * 100).toInt()}%',
                       style: TextStyle(
                         fontSize: 8,
                         fontWeight: FontWeight.bold,
-                        color: Theme.of(context).primaryColor,
+                        // color: Theme.of(context).primaryColor,
                       ),
                     ),
                   ],
                 )
               : Icon(
                   Icons.download_rounded,
-                  color: Theme.of(context).primaryColor,
+                  // color: Theme.of(context).primaryColor,
                   size: 24,
                 ),
         ),
