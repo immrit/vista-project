@@ -1,7 +1,8 @@
 import 'package:Vista/view/screen/PublicPosts/profileScreen.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
-import 'package:flutter/foundation.dart' as foundation;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -11,7 +12,7 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import 'dart:io';
 import '../../../model/message_model.dart';
 import '../../../provider/Chat_provider.dart.dart';
-
+import '../../../services/uploadImageChatService.dart';
 import '../../Exeption/app_exceptions.dart';
 import '../../util/time_utils.dart';
 import '/main.dart';
@@ -44,7 +45,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final FocusNode _messageFocusNode = FocusNode();
   bool _showEmojiPicker = false;
   MessageModel? _replyToMessage;
-  // bool _isBlocked = false;
   bool _isCurrentUserBlocked = false;
   bool _isOtherUserBlocked = false;
 
@@ -70,10 +70,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       final chatService = ref.read(chatServiceProvider);
 
-      // بررسی آیا کاربر جاری کاربر مقابل را مسدود کرده است
       _isOtherUserBlocked = await chatService.isUserBlocked(widget.otherUserId);
-
-      // بررسی آیا کاربر مقابل کاربر جاری را مسدود کرده است
       _isCurrentUserBlocked =
           await chatService.isCurrentUserBlockedBy(widget.otherUserId);
 
@@ -174,14 +171,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
 
     try {
-      final fileName =
-          '${supabase.auth.currentUser!.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final response = await supabase.storage
-          .from('chat_attachments')
-          .upload(fileName, file);
-
-      final imageUrl =
-          supabase.storage.from('chat_attachments').getPublicUrl(fileName);
+      final imageUrl = await ChatImageUploadService.uploadChatImage(
+        file,
+        widget.conversationId,
+      );
 
       return imageUrl;
     } catch (e) {
@@ -190,9 +183,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       );
       return null;
     } finally {
-      setState(() {
-        _isUploading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+        });
+      }
     }
   }
 
@@ -217,7 +212,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       );
       return;
     }
-    // بررسی وضعیت مسدودیت قبل از ارسال
     final chatService = ref.read(chatServiceProvider);
     final isCurrentUserBlocked =
         await chatService.isUserBlocked(widget.otherUserId);
@@ -419,7 +413,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
                 if (mounted) {
                   Navigator.pop(context);
-                  await _checkBlockStatus(); // بررسی مجدد وضعیت
+                  await _checkBlockStatus();
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                         content: Text(isBlocked
@@ -628,157 +622,83 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
-  void _showDeleteMessageDialog(BuildContext context, MessageModel message) {
-    final isMe = message.senderId == supabase.auth.currentUser!.id;
-    final isLightMode = Theme.of(context).brightness == Brightness.light;
+  Future<void> _showDeleteMessageDialog(MessageModel message) async {
+    if (!mounted) return;
 
-    if (!isMe) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('فقط پیام‌های خودتان را می‌توانید حذف کنید'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
+    final isSender = message.senderId == supabase.auth.currentUser?.id;
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
-          bool forEveryone = false;
-
-          return AlertDialog(
-            backgroundColor: isLightMode ? Colors.white : Color(0xFF1A1A1A),
-            title: Text(
-              'حذف پیام',
-              style: TextStyle(
-                color: isLightMode ? Colors.black87 : Colors.white,
+      builder: (context) => AlertDialog(
+        title: Text('حذف پیام'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('پیام را چگونه می‌خواهید حذف کنید؟'),
+            if (isSender) const SizedBox(height: 8),
+            if (isSender)
+              Text(
+                'توجه: حذف برای همه قابل بازگشت نیست.',
+                style: TextStyle(
+                  color: Colors.red[700],
+                  fontSize: 12,
+                ),
               ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('انصراف'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _deleteMessage(message.id, false);
+            },
+            child: Text('حذف برای من'),
+          ),
+          if (isSender)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _deleteMessage(message.id, true);
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red[700],
+              ),
+              child: Text('حذف برای همه'),
             ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'آیا مطمئن هستید که می‌خواهید این پیام را حذف کنید؟',
-                  style: TextStyle(
-                    color: isLightMode ? Colors.black87 : Colors.white70,
-                  ),
-                ),
-                SizedBox(height: 16),
-                Row(
-                  children: [
-                    Checkbox(
-                      value: forEveryone,
-                      activeColor: Theme.of(context).colorScheme.primary,
-                      onChanged: (value) {
-                        setState(() {
-                          forEveryone = value ?? false;
-                        });
-                      },
-                    ),
-                    Expanded(
-                      child: Text(
-                        'حذف برای همه',
-                        style: TextStyle(
-                          color: isLightMode ? Colors.black87 : Colors.white70,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                if (forEveryone)
-                  Container(
-                    padding: EdgeInsets.all(8),
-                    margin: EdgeInsets.only(top: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.warning, color: Colors.red, size: 16),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'در این حالت، پیام برای هر دو طرف حذف می‌شود!',
-                            style: TextStyle(
-                              color: Colors.red,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(
-                  'انصراف',
-                  style: TextStyle(
-                    color: isLightMode ? Colors.grey[800] : Colors.grey[300],
-                  ),
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Row(
-                        children: [
-                          SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          ),
-                          SizedBox(width: 12),
-                          Text('در حال حذف پیام...'),
-                        ],
-                      ),
-                      duration: Duration(milliseconds: 500),
-                    ),
-                  );
-
-                  ref
-                      .read(messageNotifierProvider.notifier)
-                      .deleteMessage(message.id, forEveryone: forEveryone)
-                      .then((_) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('پیام حذف شد'),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  }).catchError((error) {
-                    String errorMessage = 'خطا در حذف پیام';
-                    if (error is AppException) {
-                      errorMessage = error.userFriendlyMessage;
-                    }
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(errorMessage)),
-                    );
-                  });
-                },
-                child: Text(
-                  'حذف',
-                  style: TextStyle(color: Colors.red),
-                ),
-              ),
-            ],
-          );
-        },
+        ],
       ),
     );
+  }
+
+  Future<void> _deleteMessage(String messageId, bool forEveryone) async {
+    try {
+      await ref
+          .read(messageNotifierProvider.notifier)
+          .deleteMessage(messageId, forEveryone: forEveryone);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                forEveryone ? 'پیام برای همه حذف شد' : 'پیام برای شما حذف شد'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در حذف پیام: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _showClearConversationDialog(BuildContext context) {
@@ -1170,19 +1090,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               }
             },
             itemBuilder: (context) => [
-              // PopupMenuItem(
-              //   value: 'search',
-              //   child: Row(
-              //     children: [
-              //       Icon(Icons.search,
-              //           color: Theme.of(context).brightness == Brightness.dark
-              //               ? Colors.white70
-              //               : Colors.black87),
-              //       SizedBox(width: 12),
-              //       Text('جستجو در پیام‌ها'),
-              //     ],
-              //   ),
-              // ),
               PopupMenuItem(
                 value: 'profile',
                 child: Row(
@@ -1313,7 +1220,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _buildMessageInput() {
-    // ابتدا وضعیت مسدودیت را بررسی کنید
     final isCurrentUserBlocked = ref
         .watch(
           userBlockStatusProvider(widget.otherUserId),
@@ -1332,13 +1238,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           orElse: () => false,
         );
 
-    // if (isCurrentUserBlocked || isOtherUserBlocked) {
-    //   return BlockedUserBanner(
-    //     isCurrentUserBlocked: isCurrentUserBlocked,
-    //     userName: widget.otherUserName,
-    //   );
-    // }
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -1352,7 +1251,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // نمایش پیام در حال پاسخ
           if (_replyToMessage != null)
             Container(
               padding: const EdgeInsets.all(8),
@@ -1392,19 +1290,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
           Row(
             children: [
-              // دکمه انتخاب تصویر
               IconButton(
                 onPressed: _pickImage,
                 icon: const Icon(Icons.image),
               ),
-              // دکمه ایموجی
               IconButton(
                 onPressed: _toggleEmojiPicker,
                 icon: Icon(
                   _showEmojiPicker ? Icons.keyboard : Icons.emoji_emotions,
                 ),
               ),
-              // ورودی پیام
               Expanded(
                 child: TextField(
                   controller: _messageController,
@@ -1428,7 +1323,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   ),
                 ),
               ),
-              // دکمه ارسال
               IconButton(
                 onPressed: _isUploading ? null : _sendMessage,
                 icon: _isUploading
@@ -1441,7 +1335,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
             ],
           ),
-          // نمایش تصویر انتخاب شده
           if (_selectedImage != null)
             Stack(
               children: [
@@ -1488,38 +1381,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     final myTimeColor = isLightMode ? Colors.white70 : Colors.black87;
     final otherTimeColor = isLightMode ? Colors.grey[700] : Colors.grey[300];
+    Widget attachmentWidget = const SizedBox.shrink();
 
-    return Slidable(
-      enabled: true,
-      key: ValueKey(message.id),
-      startActionPane: isMe
-          ? null
-          : ActionPane(
-              motion: const DrawerMotion(),
-              children: [
-                SlidableAction(
-                  onPressed: (_) => _setReplyMessage(message),
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                  icon: Icons.reply,
-                  label: 'پاسخ',
-                ),
-              ],
-            ),
-      endActionPane: isMe
-          ? ActionPane(
-              motion: const DrawerMotion(),
-              children: [
-                SlidableAction(
-                  onPressed: (_) => _setReplyMessage(message),
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                  icon: Icons.reply,
-                  label: 'پاسخ',
-                ),
-              ],
-            )
-          : null,
+    if (message.attachmentUrl != null) {
+      if (message.attachmentType?.startsWith('image/') ?? false) {
+        attachmentWidget = _buildImageAttachment(message.attachmentUrl!);
+      }
+    }
+    return GestureDetector(
+      onLongPress: () => _showMessageOptions(context, message, isMe),
       child: Align(
         alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
         child: ConstrainedBox(
@@ -1571,6 +1441,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
+                        attachmentWidget,
                       ],
                     ),
                   ),
@@ -1585,8 +1456,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           message.attachmentUrl!.isNotEmpty &&
                           message.attachmentType == 'image')
                         GestureDetector(
-                          onTap: () {},
-                          child: ClipRRect(),
+                          onTap: () {
+                            _showFullScreenImage(
+                                context, message.attachmentUrl!);
+                          },
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: CachedNetworkImage(
+                              imageUrl: message.attachmentUrl!,
+                              placeholder: (context, url) => SizedBox(
+                                width: 200,
+                                height: 200,
+                                child:
+                                    Center(child: CircularProgressIndicator()),
+                              ),
+                              errorWidget: (context, url, error) =>
+                                  Icon(Icons.error),
+                              width: 200,
+                              height: 200,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
                         ),
                       if (message.content.isNotEmpty)
                         Padding(
@@ -1637,6 +1527,270 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
+  void _showMessageOptions(
+      BuildContext context, MessageModel message, bool isMe) {
+    showModalBottomSheet(
+      context: context,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              if (isMe)
+                ListTile(
+                  leading: Icon(Icons.delete, color: Colors.red),
+                  title: Text('حذف پیام'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showDeleteMessageDialog(message);
+                  },
+                ),
+              ListTile(
+                leading: Icon(Icons.copy, color: Colors.blue),
+                title: Text('کپی پیام'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Clipboard.setData(ClipboardData(text: message.content));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('پیام کپی شد')),
+                  );
+                },
+              ),
+              if (!isMe)
+                ListTile(
+                  leading: Icon(Icons.report, color: Colors.orange),
+                  title: Text('گزارش پیام'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showReportMessageDialog(context, message);
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showReportMessageDialog(BuildContext context, MessageModel message) {
+    final reportReasonController = TextEditingController();
+    String selectedReason = 'محتوای نامناسب';
+
+    final reportReasons = [
+      'محتوای نامناسب',
+      'آزار و اذیت',
+      'اسپم',
+      'جعل هویت',
+      'سایر موارد'
+    ];
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('گزارش پیام'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<String>(
+              value: selectedReason,
+              items: reportReasons.map((reason) {
+                return DropdownMenuItem(
+                  value: reason,
+                  child: Text(reason),
+                );
+              }).toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  selectedReason = value;
+                }
+              },
+              decoration: InputDecoration(
+                labelText: 'دلیل گزارش',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            SizedBox(height: 16),
+            TextField(
+              controller: reportReasonController,
+              decoration: InputDecoration(
+                labelText: 'توضیحات بیشتر (اختیاری)',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('انصراف'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ref
+                  .read(userReportNotifierProvider.notifier)
+                  .reportUser(
+                    userId: message.senderId,
+                    reason: selectedReason,
+                    additionalInfo: reportReasonController.text.trim(),
+                  )
+                  .then((_) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('گزارش پیام ارسال شد')),
+                );
+              }).catchError((error) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('خطا در ارسال گزارش')),
+                );
+              });
+            },
+            child: Text('ارسال گزارش'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _downloadImage(String imageUrl, WidgetRef ref) async {
+    final chatService = ref.read(chatServiceProvider);
+    final downloadNotifier = ref.read(imageDownloadProvider.notifier);
+
+    downloadNotifier.startDownload(imageUrl);
+
+    try {
+      final filePath = await chatService.downloadChatImage(
+        imageUrl,
+        (progress) {
+          downloadNotifier.updateProgress(imageUrl, progress);
+        },
+      );
+
+      downloadNotifier.setDownloaded(imageUrl, filePath);
+    } catch (e) {
+      downloadNotifier.setError(imageUrl, 'خطا در دانلود: $e');
+    }
+  }
+
+  void _showFullScreenImage(BuildContext context, String imagePath) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            iconTheme: const IconThemeData(color: Colors.white),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.file(File(imagePath)),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImageAttachment(String imageUrl) {
+    return Consumer(
+      builder: (context, ref, child) {
+        final downloadStateMap = ref.watch(imageDownloadProvider);
+        final downloadState =
+            downloadStateMap[imageUrl] ?? const ImageDownloadState();
+
+        if (downloadState.isDownloaded && downloadState.path != null) {
+          return GestureDetector(
+            onTap: () => _showFullScreenImage(context, downloadState.path!),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.file(
+                File(downloadState.path!),
+                fit: BoxFit.cover,
+                width: 200,
+                height: 200,
+              ),
+            ),
+          );
+        } else if (downloadState.isDownloading) {
+          return Container(
+            width: 200,
+            height: 200,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(
+                  value: downloadState.progress,
+                  strokeWidth: 3,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '${(downloadState.progress * 100).toStringAsFixed(0)}%',
+                  style: const TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 5),
+                TextButton(
+                  onPressed: () {
+                    ref.read(imageDownloadProvider.notifier).reset(imageUrl);
+                  },
+                  child: const Text('لغو'),
+                ),
+              ],
+            ),
+          );
+        } else {
+          return Container(
+            width: 200,
+            height: 200,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(8),
+              image: DecorationImage(
+                image: NetworkImage(imageUrl),
+                fit: BoxFit.cover,
+                opacity: 0.3,
+              ),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.download_outlined,
+                  size: 40,
+                  color: Colors.grey[700],
+                ),
+                const SizedBox(height: 10),
+                ElevatedButton(
+                  onPressed: () => _downloadImage(imageUrl, ref),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).primaryColor,
+                  ),
+                  child: const Text('دانلود تصویر'),
+                ),
+                if (downloadState.error != null)
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Text(
+                      downloadState.error!,
+                      style: const TextStyle(color: Colors.red, fontSize: 12),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+              ],
+            ),
+          );
+        }
+      },
+    );
+  }
+
   String _formatMessageTime(DateTime time) {
     final now = DateTime.now();
     if (now.difference(time).inDays < 1) {
@@ -1652,7 +1806,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 class BlockedUserBanner extends StatelessWidget {
   final String message;
 
-  const BlockedUserBanner({Key? key, required this.message}) : super(key: key);
+  const BlockedUserBanner({super.key, required this.message});
 
   @override
   Widget build(BuildContext context) {

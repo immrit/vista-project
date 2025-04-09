@@ -84,8 +84,10 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
       await chatService.deleteMessage(messageId, forEveryone: forEveryone);
 
       // بروزرسانی لیست پیام‌ها و مکالمات
-      ref.invalidateSelf();
-      ref.invalidate(conversationsProvider);
+      ref.invalidate(messagesProvider(messageId)); // بروزرسانی پیام‌ها
+      ref.invalidate(
+          messagesStreamProvider(messageId)); // بروزرسانی استریم پیام‌ها
+      ref.invalidate(conversationsProvider); // بروزرسانی مکالمات
 
       if (_disposed) return;
       state = const AsyncValue.data(null);
@@ -105,7 +107,6 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
   }
 
   // پاکسازی کامل مکالمه
-// اضافه کردن متد clearConversation به MessageNotifier
   Future<void> clearConversation(String conversationId,
       {bool bothSides = false}) async {
     state = const AsyncValue.loading();
@@ -557,3 +558,84 @@ class UserReportNotifier extends StateNotifier<AsyncValue<void>> {
     }
   }
 }
+
+class ImageDownloadState {
+  final bool isDownloading;
+  final bool isDownloaded;
+  final double progress;
+  final String? error;
+  final String? path;
+
+  const ImageDownloadState({
+    this.isDownloading = false,
+    this.isDownloaded = false,
+    this.progress = 0.0,
+    this.error,
+    this.path,
+  });
+
+  ImageDownloadState copyWith({
+    bool? isDownloading,
+    bool? isDownloaded,
+    double? progress,
+    String? error,
+    String? path,
+  }) {
+    return ImageDownloadState(
+      isDownloading: isDownloading ?? this.isDownloading,
+      isDownloaded: isDownloaded ?? this.isDownloaded,
+      progress: progress ?? this.progress,
+      error: error ?? this.error,
+      path: path ?? this.path,
+    );
+  }
+}
+
+// نوتیفایر برای مدیریت وضعیت دانلود تصاویر
+class ImageDownloadNotifier
+    extends StateNotifier<Map<String, ImageDownloadState>> {
+  ImageDownloadNotifier() : super({});
+
+  void startDownload(String imageUrl) {
+    state = {
+      ...state,
+      imageUrl: const ImageDownloadState(isDownloading: true, progress: 0.0),
+    };
+  }
+
+  void updateProgress(String imageUrl, double progress) {
+    final currentState = state[imageUrl];
+    if (currentState != null) {
+      state = {
+        ...state,
+        imageUrl: currentState.copyWith(progress: progress),
+      };
+    }
+  }
+
+  void setDownloaded(String imageUrl, String filePath) {
+    state = {
+      ...state,
+      imageUrl:
+          ImageDownloadState(isDownloaded: true, progress: 1.0, path: filePath),
+    };
+  }
+
+  void setError(String imageUrl, String error) {
+    state = {
+      ...state,
+      imageUrl: ImageDownloadState(error: error),
+    };
+  }
+
+  void reset(String imageUrl) {
+    final newState = Map<String, ImageDownloadState>.from(state);
+    newState.remove(imageUrl);
+    state = newState;
+  }
+}
+
+final imageDownloadProvider = StateNotifierProvider<ImageDownloadNotifier,
+    Map<String, ImageDownloadState>>(
+  (ref) => ImageDownloadNotifier(),
+);

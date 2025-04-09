@@ -1,9 +1,15 @@
+import 'dart:io';
+
+import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../model/conversation_model.dart';
 import '../model/message_model.dart';
 import '../view/Exeption/app_exceptions.dart';
 import '/main.dart';
-import 'package:rxdart/rxdart.dart';
+
+import 'uploadImageChatService.dart';
 
 class ChatService {
   final SupabaseClient _supabase = supabase;
@@ -404,16 +410,30 @@ class ChatService {
     final userId = _supabase.auth.currentUser!.id;
 
     try {
+      // اول بررسی می‌کنیم که آیا پیام متعلق به کاربر جاری است یا نه
+      final message = await _supabase
+          .from('messages')
+          .select('sender_id, conversation_id')
+          .eq('id', messageId)
+          .single();
+
+      final isSender = message['sender_id'] == userId;
+
+      if (forEveryone && !isSender) {
+        throw Exception('فقط فرستنده پیام می‌تواند آن را برای همه حذف کند');
+      }
+
       if (forEveryone) {
         // حذف کامل پیام از دیتابیس
         await _supabase.from('messages').delete().eq('id', messageId);
         print('پیام به طور کامل حذف شد: $messageId');
       } else {
-        // برچسب زدن پیام به عنوان حذف شده برای کاربر فعلی
-        await _supabase.from('deleted_messages').insert({
+        // مخفی کردن پیام برای کاربر فعلی
+        await _supabase.from('hidden_messages').upsert({
           'message_id': messageId,
           'user_id': userId,
-          'deleted_at': DateTime.now().toIso8601String(),
+          'conversation_id': message['conversation_id'],
+          'hidden_at': DateTime.now().toIso8601String(),
         });
         print('پیام برای کاربر $userId مخفی شد: $messageId');
       }
@@ -431,6 +451,22 @@ class ChatService {
     try {
       if (bothSides) {
         // حذف تمام پیام‌های مکالمه برای همه
+        final messagesWithImages = await _supabase
+            .from('messages')
+            .select('attachment_url')
+            .eq('conversation_id', conversationId)
+            .neq('attachment_url', '');
+
+        // تبدیل به لیستی از Futureها
+        final deleteFutures = messagesWithImages
+            .where((msg) => msg['attachment_url'] != null)
+            .map((msg) => ChatImageUploadService.deleteChatImage(
+                msg['attachment_url'] as String))
+            .toList();
+
+        await Future.wait(deleteFutures);
+
+        // حذف پیام‌ها از دیتابیس
         await _supabase
             .from('messages')
             .delete()
@@ -453,7 +489,7 @@ class ChatService {
       }
     } catch (e) {
       print('خطا در پاکسازی مکالمه: $e');
-      throw e;
+      throw Exception('پاکسازی مکالمه با خطا مواجه شد: $e');
     }
   }
 
@@ -529,7 +565,7 @@ class ChatService {
     final userId = _supabase.auth.currentUser!.id;
 
     try {
-      // ابتدا لیست پیام‌های مخفی شده برای کاربر را دریافت می‌کنیم
+      // دریافت لیست پیام‌های مخفی شده برای کاربر
       final hiddenMessagesResponse = await _supabase
           .from('hidden_messages')
           .select('message_id')
@@ -539,8 +575,6 @@ class ChatService {
       // تبدیل به لیست شناسه‌های پیام مخفی شده
       final hiddenMessageIds =
           hiddenMessagesResponse.map((e) => e['message_id'] as String).toList();
-
-      print('تعداد پیام‌های مخفی شده: ${hiddenMessageIds.length}');
 
       // دریافت پیام‌ها با فیلتر کردن پیام‌های مخفی شده
       final messagesResponse = await _supabase
@@ -555,9 +589,6 @@ class ChatService {
           .where((message) => !hiddenMessageIds.contains(message['id']))
           .toList();
 
-      print(
-          'تعداد پیام‌های دریافتی: ${messagesResponse.length}, تعداد پیام‌های نمایش داده شده: ${filteredMessages.length}');
-
       final messages = await Future.wait(filteredMessages.map((json) async {
         // برای هر پیام، اطلاعات فرستنده را جداگانه دریافت می‌کنیم
         final profileResponse = await _supabase
@@ -571,7 +602,7 @@ class ChatService {
           senderName: profileResponse?['username'] ?? 'کاربر',
           senderAvatar: profileResponse?['avatar_url'],
         );
-      }).toList());
+      }));
 
       return messages;
     } catch (e) {
@@ -824,6 +855,58 @@ class ChatService {
     } catch (e) {
       print('خطا در جستجوی پیام‌ها: $e');
       rethrow;
+    }
+  }
+
+  Future<String> downloadChatImage(
+      String imageUrl, Function(double) onProgress) async {
+    try {
+      // بررسی آیا تصویر قبلاً دانلود شده است
+      final appDir = await getApplicationDocumentsDirectory();
+      final fileName = path.basename(imageUrl);
+      final filePath = path.join(appDir.path, 'chat_images', fileName);
+      final file = File(filePath);
+
+      // اگر فایل موجود است، مسیر آن را برگردان
+      if (await file.exists()) {
+        return filePath;
+      }
+
+      // ایجاد دایرکتوری اگر وجود نداشته باشد
+      final directory = Directory(path.dirname(filePath));
+      if (!await directory.exists()) {
+        await directory.create(recursive: true);
+      }
+
+      // دانلود فایل با نمایش پیشرفت
+      final response = await http.get(Uri.parse(imageUrl));
+
+      if (response.statusCode != 200) {
+        throw AppException(
+          userFriendlyMessage: 'خطا در دریافت تصویر',
+          technicalMessage: 'خطای HTTP: ${response.statusCode}',
+        );
+      }
+
+      final totalBytes = response.contentLength ?? 0;
+      var downloadedBytes = response.bodyBytes.length;
+
+      // ذخیره فایل
+      await file.writeAsBytes(response.bodyBytes);
+
+      // بروزرسانی وضعیت پیشرفت دانلود
+      if (totalBytes > 0) {
+        final progress = downloadedBytes / totalBytes;
+        onProgress(progress);
+      }
+
+      return filePath;
+    } catch (e) {
+      print('خطا در دانلود تصویر: $e');
+      throw AppException(
+        userFriendlyMessage: 'دانلود تصویر با مشکل مواجه شد',
+        technicalMessage: 'خطا در دانلود تصویر: $e',
+      );
     }
   }
 }
