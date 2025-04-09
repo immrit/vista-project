@@ -196,6 +196,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _replyToMessage = message;
       _messageFocusNode.requestFocus();
     });
+
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   void _cancelReply() {
@@ -1254,9 +1262,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           if (_replyToMessage != null)
             Container(
               padding: const EdgeInsets.all(8),
+              margin: EdgeInsets.only(bottom: 8),
               decoration: BoxDecoration(
-                color: Colors.grey.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(12),
+                border: Border(
+                  left: BorderSide(
+                    color: Theme.of(context).colorScheme.primary,
+                    width: 4,
+                  ),
+                ),
               ),
               child: Row(
                 children: [
@@ -1265,25 +1280,49 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          'در پاسخ به ${_replyToMessage!.senderName}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.reply,
+                              size: 16,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            SizedBox(width: 4),
+                            Text(
+                              'پاسخ به ${_replyToMessage!.senderName}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                          ],
                         ),
+                        SizedBox(height: 4),
                         Text(
                           _replyToMessage!.content,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.color
+                                ?.withOpacity(0.7),
+                          ),
                         ),
                       ],
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, size: 20),
+                    icon: Icon(Icons.close, size: 20),
                     onPressed: _cancelReply,
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 32,
+                    ),
                   ),
                 ],
               ),
@@ -1388,138 +1427,164 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         attachmentWidget = _buildImageAttachment(message.attachmentUrl!);
       }
     }
-    return GestureDetector(
-      onLongPress: () => _showMessageOptions(context, message, isMe),
-      child: Align(
-        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.8,
-          ),
-          child: Card(
-            margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            color: isMe ? myMessageColor : otherMessageColor,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16).copyWith(
-                bottomRight: isMe ? Radius.circular(4) : Radius.circular(16),
-                bottomLeft: isMe ? Radius.circular(16) : Radius.circular(4),
-              ),
-            ),
+    return Slidable(
+      key: Key(message.id),
+      startActionPane: ActionPane(
+        motion: const DrawerMotion(),
+        extentRatio: 0.25,
+        children: [
+          CustomSlidableAction(
+            backgroundColor:
+                Theme.of(context).colorScheme.primary.withOpacity(0.8),
+            foregroundColor: Colors.white,
+            onPressed: (_) => _setReplyMessage(message),
             child: Column(
-              crossAxisAlignment:
-                  isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                if (message.replyToMessageId != null)
-                  Container(
-                    padding: EdgeInsets.all(8),
-                    margin: EdgeInsets.only(bottom: 4),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? Colors.black12
-                          : Colors.white24,
-                      borderRadius: BorderRadius.circular(8),
+                Icon(Icons.reply, size: 20),
+                SizedBox(height: 4),
+                Text(
+                  'پاسخ',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      child: GestureDetector(
+        onLongPress: () => _showMessageOptions(context, message, isMe),
+        child: Align(
+          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.8,
+            ),
+            child: Card(
+              margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              color: isMe ? myMessageColor : otherMessageColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16).copyWith(
+                  bottomRight: isMe ? Radius.circular(4) : Radius.circular(16),
+                  bottomLeft: isMe ? Radius.circular(16) : Radius.circular(4),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment:
+                    isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (message.replyToMessageId != null)
+                    Container(
+                      padding: EdgeInsets.all(8),
+                      margin: EdgeInsets.only(bottom: 4),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.black12
+                            : Colors.white24,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            message.replyToSenderName ?? 'کاربر',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: isMe ? Colors.white70 : Colors.black87,
+                              fontSize: 12,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            message.replyToContent ?? '',
+                            style: TextStyle(
+                              color: isMe ? Colors.white70 : Colors.black87,
+                              fontSize: 12,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          attachmentWidget,
+                        ],
+                      ),
                     ),
+                  Padding(
+                    padding: EdgeInsets.all(12),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: isMe
+                          ? CrossAxisAlignment.end
+                          : CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          message.replyToSenderName ?? 'کاربر',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: isMe ? Colors.white70 : Colors.black87,
-                            fontSize: 12,
+                        if (message.attachmentUrl != null &&
+                            message.attachmentUrl!.isNotEmpty &&
+                            message.attachmentType == 'image')
+                          GestureDetector(
+                            onTap: () {
+                              _showFullScreenImage(
+                                  context, message.attachmentUrl!);
+                            },
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: CachedNetworkImage(
+                                imageUrl: message.attachmentUrl!,
+                                placeholder: (context, url) => SizedBox(
+                                  width: 200,
+                                  height: 200,
+                                  child: Center(
+                                      child: CircularProgressIndicator()),
+                                ),
+                                errorWidget: (context, url, error) =>
+                                    Icon(Icons.error),
+                                width: 200,
+                                height: 200,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ),
+                        if (message.content.isNotEmpty)
+                          Padding(
+                            padding: EdgeInsets.only(
+                              top: message.attachmentUrl != null ? 8 : 0,
+                            ),
+                            child: Text(
+                              message.content,
+                              style: TextStyle(
+                                color: isMe ? myTextColor : otherTextColor,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              Text(
+                                _formatMessageTime(message.createdAt),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: isMe ? myTimeColor : otherTimeColor,
+                                ),
+                              ),
+                              SizedBox(width: 4),
+                              if (isMe)
+                                Icon(
+                                  message.isRead ? Icons.done_all : Icons.done,
+                                  size: 14,
+                                  color: message.isRead
+                                      ? Colors.green
+                                      : (isMe ? myTimeColor : otherTimeColor),
+                                ),
+                            ],
                           ),
                         ),
-                        SizedBox(height: 4),
-                        Text(
-                          message.replyToContent ?? '',
-                          style: TextStyle(
-                            color: isMe ? Colors.white70 : Colors.black87,
-                            fontSize: 12,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        attachmentWidget,
                       ],
                     ),
                   ),
-                Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: isMe
-                        ? CrossAxisAlignment.end
-                        : CrossAxisAlignment.start,
-                    children: [
-                      if (message.attachmentUrl != null &&
-                          message.attachmentUrl!.isNotEmpty &&
-                          message.attachmentType == 'image')
-                        GestureDetector(
-                          onTap: () {
-                            _showFullScreenImage(
-                                context, message.attachmentUrl!);
-                          },
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: CachedNetworkImage(
-                              imageUrl: message.attachmentUrl!,
-                              placeholder: (context, url) => SizedBox(
-                                width: 200,
-                                height: 200,
-                                child:
-                                    Center(child: CircularProgressIndicator()),
-                              ),
-                              errorWidget: (context, url, error) =>
-                                  Icon(Icons.error),
-                              width: 200,
-                              height: 200,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        ),
-                      if (message.content.isNotEmpty)
-                        Padding(
-                          padding: EdgeInsets.only(
-                            top: message.attachmentUrl != null ? 8 : 0,
-                          ),
-                          child: Text(
-                            message.content,
-                            style: TextStyle(
-                              color: isMe ? myTextColor : otherTextColor,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ),
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            Text(
-                              _formatMessageTime(message.createdAt),
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isMe ? myTimeColor : otherTimeColor,
-                              ),
-                            ),
-                            SizedBox(width: 4),
-                            if (isMe)
-                              Icon(
-                                message.isRead ? Icons.done_all : Icons.done,
-                                size: 14,
-                                color: message.isRead
-                                    ? Colors.green
-                                    : (isMe ? myTimeColor : otherTimeColor),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1538,15 +1603,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         return SafeArea(
           child: Wrap(
             children: [
-              if (isMe)
-                ListTile(
-                  leading: Icon(Icons.delete, color: Colors.red),
-                  title: Text('حذف پیام'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showDeleteMessageDialog(message);
-                  },
-                ),
+              ListTile(
+                leading:
+                    Icon(Icons.reply, color: Theme.of(context).primaryColor),
+                title: Text('پاسخ'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _setReplyMessage(message);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.delete, color: Colors.red),
+                title: Text('حذف پیام'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showDeleteMessageDialog(message);
+                },
+              ),
               ListTile(
                 leading: Icon(Icons.copy, color: Colors.blue),
                 title: Text('کپی پیام'),
