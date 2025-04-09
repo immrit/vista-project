@@ -119,14 +119,16 @@ final musicPositionProvider = StateProvider<Duration>((ref) => Duration.zero);
 class MusicPlayerNotifier extends StateNotifier<AsyncValue<Duration>> {
   final Ref _ref;
   Duration? _duration;
+  // اضافه کردن لیست پخش
+  final List<MusicModel> _playlist = [];
+  int _currentIndex = -1;
 
   MusicPlayerNotifier(this._ref) : super(const AsyncValue.data(Duration.zero)) {
     final player = _ref.read(audioPlayerProvider);
     player.processingStateStream.listen((state) {
       if (state == ProcessingState.completed) {
-        player.seek(Duration.zero);
-        player.pause();
-        _ref.read(isPlayingProvider.notifier).state = false;
+        // وقتی آهنگ تمام می‌شود، به آهنگ بعدی برو
+        playNext();
       }
     });
 
@@ -138,18 +140,51 @@ class MusicPlayerNotifier extends StateNotifier<AsyncValue<Duration>> {
       _ref.read(musicDurationProvider.notifier).state = duration;
     });
   }
+  Future<void> stop() async {
+    final player = _ref.read(audioPlayerProvider);
+    try {
+      await player.stop();
+      _ref.read(currentlyPlayingProvider.notifier).state =
+          const AsyncValue.data(null);
+      _ref.read(isPlayingProvider.notifier).state = false;
+      _ref.read(musicPositionProvider.notifier).state = Duration.zero;
+      _ref.read(musicDurationProvider.notifier).state = null;
+      _playlist.clear();
+      _currentIndex = -1;
+    } catch (e) {
+      debugPrint('Error stopping music: $e');
+    }
+  }
 
   Future<void> playMusic(MusicModel music) async {
     final player = _ref.read(audioPlayerProvider);
 
     try {
-      await player.stop();
+      // بررسی اینکه آیا این آهنگ قبلاً در پلی‌لیست اضافه شده است
+      int existingIndex =
+          _playlist.indexWhere((m) => m.musicUrl == music.musicUrl);
 
+      if (existingIndex != -1) {
+        // اگر این آهنگ در حال حاضر درحال پخش است، فقط وضعیت پخش را تغییر دهید
+        if (_currentIndex == existingIndex) {
+          togglePlayPause();
+          return;
+        }
+
+        // در غیر این صورت، به آن آهنگ بروید
+        _currentIndex = existingIndex;
+      } else {
+        // آهنگ را به پلی‌لیست اضافه کنید و آن را بعنوان آهنگ فعلی تنظیم کنید
+        _playlist.add(music);
+        _currentIndex = _playlist.length - 1;
+      }
+
+      await player.stop();
       await player.setUrl(music.musicUrl);
       _duration = player.duration;
 
       _ref.read(currentlyPlayingProvider.notifier).state =
-          AsyncValue.data(music);
+          AsyncValue.data(_playlist[_currentIndex]);
       _ref.read(isPlayingProvider.notifier).state = true;
 
       await player.play();
@@ -161,12 +196,79 @@ class MusicPlayerNotifier extends StateNotifier<AsyncValue<Duration>> {
     }
   }
 
+  // اضافه کردن متد برای پخش آهنگ بعدی
+  Future<void> playNext() async {
+    if (_playlist.isEmpty || _currentIndex >= _playlist.length - 1) {
+      return; // پایان پلی‌لیست
+    }
+
+    _currentIndex++;
+    final player = _ref.read(audioPlayerProvider);
+
+    try {
+      await player.stop();
+      await player.setUrl(_playlist[_currentIndex].musicUrl);
+      _duration = player.duration;
+
+      _ref.read(currentlyPlayingProvider.notifier).state =
+          AsyncValue.data(_playlist[_currentIndex]);
+      _ref.read(isPlayingProvider.notifier).state = true;
+
+      await player.play();
+    } catch (e, stack) {
+      print('Error playing next music: $e');
+      state = AsyncValue.error(e, stack);
+      _ref.read(isPlayingProvider.notifier).state = false;
+    }
+  }
+
+  // اضافه کردن متد برای پخش آهنگ قبلی
+  Future<void> playPrevious() async {
+    if (_playlist.isEmpty || _currentIndex <= 0) {
+      return; // ابتدای پلی‌لیست
+    }
+
+    _currentIndex--;
+    final player = _ref.read(audioPlayerProvider);
+
+    try {
+      await player.stop();
+      await player.setUrl(_playlist[_currentIndex].musicUrl);
+      _duration = player.duration;
+
+      _ref.read(currentlyPlayingProvider.notifier).state =
+          AsyncValue.data(_playlist[_currentIndex]);
+      _ref.read(isPlayingProvider.notifier).state = true;
+
+      await player.play();
+    } catch (e, stack) {
+      print('Error playing previous music: $e');
+      state = AsyncValue.error(e, stack);
+      _ref.read(isPlayingProvider.notifier).state = false;
+    }
+  }
+
+  // اضافه کردن متد برای توقف کامل
+  // void stop() async {
+  //   final player = _ref.read(audioPlayerProvider);
+  //   await player.stop();
+  //   _ref.read(isPlayingProvider.notifier).state = false;
+  //   _ref.read(currentlyPlayingProvider.notifier).state =
+  //       const AsyncValue.data(null);
+  // }
+
   void togglePlayPause() async {
     final player = _ref.read(audioPlayerProvider);
     try {
       if (player.playing) {
         await player.pause();
       } else {
+        // اگر آهنگی در حال پخش نیست، از اولین آهنگ پلی‌لیست شروع کن
+        if (_currentIndex == -1 && _playlist.isNotEmpty) {
+          _currentIndex = 0;
+          await playMusic(_playlist[0]);
+          return;
+        }
         await player.play();
       }
       _ref.read(isPlayingProvider.notifier).state = player.playing;
@@ -247,3 +349,9 @@ final audioPlayerControllerProvider =
 });
 
 final isPlayingProvider = StateProvider<bool>((ref) => false);
+
+// اضافه کردن provider برای لیست پخش
+final playlistProvider = StateProvider<List<MusicModel>>((ref) => []);
+
+// اضافه کردن provider برای شماره آهنگ فعلی
+final currentIndexProvider = StateProvider<int>((ref) => -1);

@@ -16,6 +16,7 @@ import '../../../main.dart';
 import '../../../model/MusicModel.dart';
 import '../../../provider/MusicProvider.dart';
 import '../../util/widgets.dart';
+import '../Music/MiniMusicPlayer.dart';
 import '../Stories/story_system.dart';
 import '../searchPage.dart';
 import '/model/publicPostModel.dart';
@@ -158,141 +159,177 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
         ? Colors.black.withOpacity(0.3)
         : Colors.grey.withOpacity(0.2);
 
-    return DefaultTabController(
-      length: 2,
-      initialIndex: 0,
-      key: _tabControllerKey,
-      child: Scaffold(
-        body: NestedScrollView(
-          headerSliverBuilder: (context, innerBoxIsScrolled) => [
-            SliverAppBar(
-              floating: true,
-              snap: true,
-              // آیکون های سمت چپ (leading) - آیکون اعلان‌ها اینجا قرار می‌گیرد
-              leading: IconButton(
-                icon: _buildNotificationBadge(),
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const NotificationsPage(),
-                    ),
-                  );
-                },
-              ),
-              title: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: _connectionStatus == 'متصل به وای‌فای' ||
-                        _connectionStatus == 'متصل به اینترنت همراه'
-                    ? Text(
-                        "Vista",
-                        style: TextStyle(
-                            fontFamily: 'Bauhaus',
-                            fontWeight: FontWeight.bold,
-                            fontSize: 24),
-                      )
-                    : _buildConnectionStatus(),
-              ),
-              centerTitle: true,
-              bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(65),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: isDarkMode ? Colors.grey[850] : Colors.grey[200],
-                      borderRadius: BorderRadius.circular(25),
-                      boxShadow: [
-                        BoxShadow(
-                          color: shadowColor,
-                          blurRadius: 8,
-                          spreadRadius: 1,
-                          offset: const Offset(0, 2),
+    return Stack(
+      children: [
+        Column(
+          children: [
+            Expanded(
+              child: DefaultTabController(
+                length: 2,
+                initialIndex: 0,
+                key: _tabControllerKey,
+                child: Scaffold(
+                  body: NestedScrollView(
+                    headerSliverBuilder: (context, innerBoxIsScrolled) => [
+                      SliverAppBar(
+                        floating: true,
+                        snap: true,
+                        // آیکون های سمت چپ (leading) - آیکون اعلان‌ها اینجا قرار می‌گیرد
+                        leading: IconButton(
+                          icon: _buildNotificationBadge(),
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => const NotificationsPage(),
+                              ),
+                            );
+                          },
                         ),
+                        title: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          child: _connectionStatus == 'متصل به وای‌فای' ||
+                                  _connectionStatus == 'متصل به اینترنت همراه'
+                              ? Text(
+                                  "Vista",
+                                  style: TextStyle(
+                                      fontFamily: 'Bauhaus',
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 24),
+                                )
+                              : _buildConnectionStatus(),
+                        ),
+                        centerTitle: true,
+                        bottom: PreferredSize(
+                          preferredSize: const Size.fromHeight(65),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: isDarkMode
+                                    ? Colors.grey[850]
+                                    : Colors.grey[200],
+                                borderRadius: BorderRadius.circular(25),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: shadowColor,
+                                    blurRadius: 8,
+                                    spreadRadius: 1,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(25),
+                                child: ButtonsTabBar(
+                                  // تنظیمات ظاهری
+                                  decoration: BoxDecoration(
+                                    gradient: selectedGradient,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: shadowColor,
+                                        blurRadius: 4,
+                                        spreadRadius: 1,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  unselectedDecoration: BoxDecoration(
+                                    color: Colors.transparent,
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 20),
+                                  buttonMargin: const EdgeInsets.all(1),
+                                  height: 46,
+                                  splashColor: isDarkMode
+                                      ? Colors.white12
+                                      : Colors.black12,
+                                  labelStyle: TextStyle(
+                                    color: isDarkMode
+                                        ? Colors.white
+                                        : Colors.black87,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                  unselectedLabelStyle: TextStyle(
+                                    color: isDarkMode
+                                        ? Colors.white70
+                                        : Colors.black54,
+                                    fontWeight: FontWeight.normal,
+                                    fontSize: 14,
+                                  ),
+                                  // انیمیشن نرم برای تغییر تب
+                                  physics: const BouncingScrollPhysics(),
+                                  duration: 300,
+
+                                  tabs: [
+                                    Tab(
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: const [
+                                          Icon(Icons.public, size: 16),
+                                          SizedBox(width: 8),
+                                          Text('همه پست‌ها'),
+                                        ],
+                                      ),
+                                    ),
+                                    Tab(
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: const [
+                                          Icon(Icons.people, size: 16),
+                                          SizedBox(width: 8),
+                                          Text('دنبال‌شده‌ها'),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          height: 135,
+                          child: const StoryBar(),
+                        ),
+                      )
+                    ],
+                    body: const TabBarView(
+                      children: [
+                        _AllPostsTab(),
+                        _FollowingPostsTab(),
                       ],
                     ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(25),
-                      child: ButtonsTabBar(
-                        // تنظیمات ظاهری
-                        decoration: BoxDecoration(
-                          gradient: selectedGradient,
-                          boxShadow: [
-                            BoxShadow(
-                              color: shadowColor,
-                              blurRadius: 4,
-                              spreadRadius: 1,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        unselectedDecoration: BoxDecoration(
-                          color: Colors.transparent,
-                        ),
-                        contentPadding:
-                            const EdgeInsets.symmetric(horizontal: 20),
-                        buttonMargin: const EdgeInsets.all(1),
-                        height: 46,
-                        splashColor:
-                            isDarkMode ? Colors.white12 : Colors.black12,
-                        labelStyle: TextStyle(
-                          color: isDarkMode ? Colors.white : Colors.black87,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                        unselectedLabelStyle: TextStyle(
-                          color: isDarkMode ? Colors.white70 : Colors.black54,
-                          fontWeight: FontWeight.normal,
-                          fontSize: 14,
-                        ),
-                        // انیمیشن نرم برای تغییر تب
-                        physics: const BouncingScrollPhysics(),
-                        duration: 300,
-
-                        tabs: [
-                          Tab(
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
-                                Icon(Icons.public, size: 16),
-                                SizedBox(width: 8),
-                                Text('همه پست‌ها'),
-                              ],
-                            ),
-                          ),
-                          Tab(
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
-                                Icon(Icons.people, size: 16),
-                                SizedBox(width: 8),
-                                Text('دنبال‌شده‌ها'),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
+                  endDrawer:
+                      CustomDrawer(getProfile, currentColor, context, ref),
                 ),
               ),
             ),
-            SliverToBoxAdapter(
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                height: 135,
-                child: const StoryBar(),
-              ),
-            )
+            // فضای خالی برای مینی پلیر
+            Consumer(
+              builder: (context, ref, _) {
+                final currentlyPlaying =
+                    ref.watch(currentlyPlayingProvider).valueOrNull;
+                return SizedBox(height: currentlyPlaying != null ? 60 : 0);
+              },
+            ),
           ],
-          body: const TabBarView(
-            children: [
-              _AllPostsTab(),
-              _FollowingPostsTab(),
-            ],
-          ),
         ),
-        endDrawer: CustomDrawer(getProfile, currentColor, context, ref),
-      ),
+
+        // مینی پلیر
+        const Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: MiniMusicPlayer(),
+        ),
+      ],
     );
   }
 
