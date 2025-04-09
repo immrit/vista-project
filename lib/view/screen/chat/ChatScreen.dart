@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:image_picker/image_picker.dart';
@@ -15,6 +16,9 @@ import '../../../provider/Chat_provider.dart.dart';
 import '../../../services/uploadImageChatService.dart';
 import '../../Exeption/app_exceptions.dart';
 import '../../util/time_utils.dart';
+import '../../util/widgets.dart';
+import 'package:flutter/foundation.dart' as foundation;
+
 import '/main.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -47,6 +51,44 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   MessageModel? _replyToMessage;
   bool _isCurrentUserBlocked = false;
   bool _isOtherUserBlocked = false;
+
+  bool _isSending = false;
+
+  void _toggleEmojiKeyboard() {
+    if (_messageFocusNode.hasFocus) {
+      _messageFocusNode.unfocus();
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          setState(() => _showEmojiPicker = true);
+        }
+      });
+    } else {
+      if (_showEmojiPicker) {
+        _messageFocusNode.requestFocus();
+      }
+      setState(() {
+        _showEmojiPicker = !_showEmojiPicker;
+      });
+    }
+  }
+
+  void _onEmojiSelected(String emoji) {
+    final text = _messageController.text;
+    final selection = _messageController.selection;
+    final cursorPosition = selection.isValid ? selection.start : text.length;
+
+    final newText = text.replaceRange(
+      cursorPosition,
+      selection.isValid ? selection.end : cursorPosition,
+      emoji,
+    );
+
+    _messageController.text = newText;
+    final newPosition = cursorPosition + emoji.length;
+    _messageController.selection = TextSelection.fromPosition(
+      TextPosition(offset: newPosition),
+    );
+  }
 
   @override
   void initState() {
@@ -94,41 +136,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       );
     }
     return const SizedBox.shrink();
-  }
-
-  void _onEmojiSelected(Category? category, Emoji emoji) {
-    final text = _messageController.text;
-    final selection = _messageController.selection;
-
-    if (selection.baseOffset == -1) {
-      _messageController.text = text + emoji.emoji;
-      _messageController.selection = TextSelection.fromPosition(
-        TextPosition(offset: text.length + emoji.emoji.length),
-      );
-    } else {
-      final newText = text.replaceRange(
-        selection.baseOffset,
-        selection.extentOffset,
-        emoji.emoji,
-      );
-      _messageController.text = newText;
-      _messageController.selection = TextSelection.fromPosition(
-        TextPosition(offset: selection.baseOffset + emoji.emoji.length),
-      );
-    }
-  }
-
-  void _toggleEmojiPicker() {
-    if (_messageFocusNode.hasFocus) {
-      _messageFocusNode.unfocus();
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (mounted) {
-          setState(() => _showEmojiPicker = true);
-        }
-      });
-    } else {
-      setState(() => _showEmojiPicker = !_showEmojiPicker);
-    }
   }
 
   Future<void> _checkOnlineStatus() async {
@@ -904,356 +911,355 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _showEmojiPicker = false;
     }
     return SafeArea(
-        child: Scaffold(
-      appBar: AppBar(
-        elevation: 1,
-        titleSpacing: 0,
-        backgroundColor: Theme.of(context).brightness == Brightness.dark
-            ? Color(0xFF1A1A1A)
-            : Colors.white,
-        iconTheme: IconThemeData(
-          color: Theme.of(context).brightness == Brightness.dark
-              ? Colors.white
-              : Colors.black87,
-        ),
-        title: Row(
-          children: [
-            Hero(
-              tag: 'avatar_${widget.otherUserId}',
-              child: Material(
-                type: MaterialType.transparency,
-                child: GestureDetector(
-                  onTap: () {
-                    showDialog(
-                      context: context,
-                      builder: (context) => Dialog(
-                        backgroundColor: Colors.transparent,
-                        elevation: 0,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.network(
-                                widget.otherUserAvatar ?? '',
-                                errorBuilder: (context, error, stackTrace) =>
-                                    Image.asset(
-                                        'assets/images/default_avatar.png'),
-                                height: 250,
-                                width: 250,
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                            SizedBox(height: 16),
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(20),
+      top: false,
+      child: Scaffold(
+        appBar: AppBar(
+          elevation: 1,
+          titleSpacing: 0,
+          backgroundColor: Theme.of(context).brightness == Brightness.dark
+              ? Color(0xFF1A1A1A)
+              : Colors.white,
+          iconTheme: IconThemeData(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white
+                : Colors.black87,
+          ),
+          title: Row(
+            children: [
+              Hero(
+                tag: 'avatar_${widget.otherUserId}',
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: GestureDetector(
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => Dialog(
+                          backgroundColor: Colors.transparent,
+                          elevation: 0,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.network(
+                                  widget.otherUserAvatar ?? '',
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      Image.asset(
+                                          'assets/images/default_avatar.png'),
+                                  height: 250,
+                                  width: 250,
+                                  fit: BoxFit.cover,
                                 ),
                               ),
-                              onPressed: () => Navigator.pop(context),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 8),
-                                child: Text('بستن',
-                                    style: TextStyle(color: Colors.black87)),
+                              SizedBox(height: 16),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                ),
+                                onPressed: () => Navigator.pop(context),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 8),
+                                  child: Text('بستن',
+                                      style: TextStyle(color: Colors.black87)),
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                  child: CircleAvatar(
-                    radius: 20,
-                    backgroundImage: widget.otherUserAvatar != null &&
-                            widget.otherUserAvatar!.isNotEmpty
-                        ? NetworkImage(widget.otherUserAvatar!)
-                        : const AssetImage('assets/images/default_avatar.png')
-                            as ImageProvider,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    widget.otherUserName,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white
-                          : Colors.black87,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Consumer(
-                    builder: (context, ref, child) {
-                      final isOnlineAsync = ref.watch(
-                          userOnlineStatusStreamProvider(widget.otherUserId));
-
-                      return isOnlineAsync.when(
-                        data: (isOnline) {
-                          if (isOnline) {
-                            return Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    color: Colors.green,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                SizedBox(width: 4),
-                                Text(
-                                  'آنلاین',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.green,
-                                  ),
-                                ),
-                              ],
-                            );
-                          } else {
-                            final lastOnlineAsync = ref.watch(
-                                userLastOnlineProvider(widget.otherUserId));
-                            return lastOnlineAsync.when(
-                              data: (lastOnline) {
-                                return Text(
-                                  lastOnline != null
-                                      ? TimeUtils.formatLastSeen(lastOnline)
-                                      : 'آفلاین',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Theme.of(context).brightness ==
-                                            Brightness.dark
-                                        ? Colors.grey[400]
-                                        : Colors.grey[600],
-                                  ),
-                                );
-                              },
-                              loading: () => Text('در حال بارگذاری...',
-                                  style: TextStyle(fontSize: 12)),
-                              error: (_, __) => Text('آفلاین',
-                                  style: TextStyle(
-                                      fontSize: 12, color: Colors.grey)),
-                            );
-                          }
-                        },
-                        loading: () => Text('در حال بارگذاری...',
-                            style: TextStyle(fontSize: 12)),
-                        error: (error, _) {
-                          print('خطا در دریافت وضعیت آنلاین: $error');
-                          return Text('آفلاین',
-                              style:
-                                  TextStyle(fontSize: 12, color: Colors.grey));
-                        },
                       );
                     },
+                    child: CircleAvatar(
+                      radius: 20,
+                      backgroundImage: widget.otherUserAvatar != null &&
+                              widget.otherUserAvatar!.isNotEmpty
+                          ? NetworkImage(widget.otherUserAvatar!)
+                          : const AssetImage('assets/images/default_avatar.png')
+                              as ImageProvider,
+                    ),
                   ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.delete_outline),
-            tooltip: 'پاکسازی تاریخچه گفتگو',
-            onPressed: () => _showClearConversationDialog(context),
-          ),
-          PopupMenuButton<String>(
-            icon: Icon(Icons.more_vert),
-            tooltip: 'گزینه‌های بیشتر',
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            onSelected: (value) {
-              switch (value) {
-                case 'search':
-                  _showSearchDialog(context);
-                  break;
-                case 'block':
-                  _isOtherUserBlocked
-                      ? _showUnblockUserDialog(context)
-                      : _showBlockUserDialog(context);
-                  break;
-                case 'report':
-                  _showReportUserDialog(context);
-                  break;
-                case 'profile':
-                  Navigator.of(context).push(MaterialPageRoute(
-                      builder: (context) => ProfileScreen(
-                          userId: widget.otherUserId,
-                          username: widget.otherUserName)));
-                  break;
-              }
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'profile',
-                child: Row(
-                  children: [
-                    Icon(Icons.person_outline,
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white70
-                            : Colors.black87),
-                    SizedBox(width: 12),
-                    Text('مشاهده پروفایل'),
-                  ],
                 ),
               ),
-              PopupMenuItem(
-                value: 'block',
-                child: Row(
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(_isOtherUserBlocked ? Icons.lock_open : Icons.block,
+                    Text(
+                      widget.otherUserName,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
                         color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white70
-                            : Colors.black87),
-                    SizedBox(width: 12),
-                    Text(_isOtherUserBlocked ? 'رفع مسدودیت' : 'مسدود کردن'),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'report',
-                child: Row(
-                  children: [
-                    Icon(Icons.report_problem_outlined,
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white70
-                            : Colors.black87),
-                    SizedBox(width: 12),
-                    Text('گزارش کاربر'),
+                            ? Colors.white
+                            : Colors.black87,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final isOnlineAsync = ref.watch(
+                            userOnlineStatusStreamProvider(widget.otherUserId));
+
+                        return isOnlineAsync.when(
+                          data: (isOnline) {
+                            if (isOnline) {
+                              return Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                      color: Colors.green,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'آنلاین',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.green,
+                                    ),
+                                  ),
+                                ],
+                              );
+                            } else {
+                              final lastOnlineAsync = ref.watch(
+                                  userLastOnlineProvider(widget.otherUserId));
+                              return lastOnlineAsync.when(
+                                data: (lastOnline) {
+                                  return Text(
+                                    lastOnline != null
+                                        ? TimeUtils.formatLastSeen(lastOnline)
+                                        : 'آفلاین',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.grey[400]
+                                          : Colors.grey[600],
+                                    ),
+                                  );
+                                },
+                                loading: () => Text('در حال بارگذاری...',
+                                    style: TextStyle(fontSize: 12)),
+                                error: (_, __) => Text('آفلاین',
+                                    style: TextStyle(
+                                        fontSize: 12, color: Colors.grey)),
+                              );
+                            }
+                          },
+                          loading: () => Text('در حال بارگذاری...',
+                              style: TextStyle(fontSize: 12)),
+                          error: (error, _) {
+                            print('خطا در دریافت وضعیت آنلاین: $error');
+                            return Text('آفلاین',
+                                style: TextStyle(
+                                    fontSize: 12, color: Colors.grey));
+                          },
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),
             ],
           ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: messagesAsync.when(
-              data: (messages) {
-                if (messages.isEmpty) {
-                  return const Center(
-                    child: Text('پیامی وجود ندارد. اولین پیام را ارسال کنید!'),
-                  );
-                }
-
-                return ListView.builder(
-                  controller: _scrollController,
-                  reverse: true,
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    final message = messages[index];
-                    final isMe =
-                        message.senderId == supabase.auth.currentUser!.id;
-
-                    return _buildMessageItem(context, message, isMe);
-                  },
-                );
-              },
-              loading: () => Center(
-                child: LoadingAnimationWidget.staggeredDotsWave(
-                  color: Theme.of(context).primaryColor,
-                  size: 50,
-                ),
+          actions: [
+            IconButton(
+              icon: Icon(Icons.delete_outline),
+              tooltip: 'پاکسازی تاریخچه گفتگو',
+              onPressed: () => _showClearConversationDialog(context),
+            ),
+            PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert),
+              tooltip: 'گزینه‌های بیشتر',
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
-              error: (error, stack) {
-                return Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+              onSelected: (value) {
+                switch (value) {
+                  case 'search':
+                    _showSearchDialog(context);
+                    break;
+                  case 'block':
+                    _isOtherUserBlocked
+                        ? _showUnblockUserDialog(context)
+                        : _showBlockUserDialog(context);
+                    break;
+                  case 'report':
+                    _showReportUserDialog(context);
+                    break;
+                  case 'profile':
+                    Navigator.of(context).push(MaterialPageRoute(
+                        builder: (context) => ProfileScreen(
+                            userId: widget.otherUserId,
+                            username: widget.otherUserName)));
+                    break;
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'profile',
+                  child: Row(
                     children: [
-                      const Icon(
-                        Icons.signal_wifi_off,
-                        color: Colors.grey,
-                        size: 60,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'اتصال اینترنت برقرار نیست',
-                        style: TextStyle(
-                          fontSize: 16,
+                      Icon(Icons.person_outline,
                           color: Theme.of(context).brightness == Brightness.dark
                               ? Colors.white70
-                              : Colors.grey[700],
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'پیام‌ها در حال حاضر قابل نمایش نیستند',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white54
-                              : Colors.grey[600],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: () => ref.refresh(
-                            messagesStreamProvider(widget.conversationId)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              Theme.of(context).colorScheme.primary,
-                          foregroundColor: Colors.white,
-                        ),
-                        child: const Text('تلاش مجدد'),
-                      ),
+                              : Colors.black87),
+                      SizedBox(width: 12),
+                      Text('مشاهده پروفایل'),
                     ],
                   ),
-                );
-              },
+                ),
+                PopupMenuItem(
+                  value: 'block',
+                  child: Row(
+                    children: [
+                      Icon(_isOtherUserBlocked ? Icons.lock_open : Icons.block,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white70
+                              : Colors.black87),
+                      SizedBox(width: 12),
+                      Text(_isOtherUserBlocked ? 'رفع مسدودیت' : 'مسدود کردن'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'report',
+                  child: Row(
+                    children: [
+                      Icon(Icons.report_problem_outlined,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white70
+                              : Colors.black87),
+                      SizedBox(width: 12),
+                      Text('گزارش کاربر'),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ),
-          if (_isCurrentUserBlocked || _isOtherUserBlocked)
-            _buildBlockedBanner(),
-          if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
-            _buildMessageInput(),
-        ],
+          ],
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: messagesAsync.when(
+                data: (messages) {
+                  if (messages.isEmpty) {
+                    return const Center(
+                      child:
+                          Text('پیامی وجود ندارد. اولین پیام را ارسال کنید!'),
+                    );
+                  }
+
+                  return ListView.builder(
+                    controller: _scrollController,
+                    reverse: true,
+                    itemCount: messages.length,
+                    itemBuilder: (context, index) {
+                      final message = messages[index];
+                      final isMe =
+                          message.senderId == supabase.auth.currentUser!.id;
+
+                      return _buildMessageItem(context, message, isMe);
+                    },
+                  );
+                },
+                loading: () => Center(
+                  child: LoadingAnimationWidget.staggeredDotsWave(
+                    color: Theme.of(context).primaryColor,
+                    size: 50,
+                  ),
+                ),
+                error: (error, stack) {
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.signal_wifi_off,
+                          color: Colors.grey,
+                          size: 60,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'اتصال اینترنت برقرار نیست',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white70
+                                    : Colors.grey[700],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'پیام‌ها در حال حاضر قابل نمایش نیستند',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white54
+                                    : Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: () => ref.refresh(
+                              messagesStreamProvider(widget.conversationId)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                Theme.of(context).colorScheme.primary,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('تلاش مجدد'),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            if (_isCurrentUserBlocked || _isOtherUserBlocked)
+              _buildBlockedBanner(),
+            if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
+              _buildMessageInput(),
+            if (_showEmojiPicker && !isKeyboardVisible)
+              SizedBox(
+                height: 250,
+                child: EmojiPickerWidget(
+                  onEmojiSelected: _onEmojiSelected,
+                  onBackspacePressed: () {
+                    final text = _messageController.text;
+                    if (text.isNotEmpty) {
+                      _messageController.text =
+                          text.substring(0, text.length - 1);
+                    }
+                  },
+                ),
+              ),
+          ],
+        ),
       ),
-    ));
+    );
   }
 
   Widget _buildMessageInput() {
-    final isCurrentUserBlocked = ref
-        .watch(
-          userBlockStatusProvider(widget.otherUserId),
-        )
-        .maybeWhen(
-          data: (isBlocked) => isBlocked,
-          orElse: () => false,
-        );
-
-    final isOtherUserBlocked = ref
-        .watch(
-          userBlockStatusProvider(supabase.auth.currentUser!.id),
-        )
-        .maybeWhen(
-          data: (isBlocked) => isBlocked,
-          orElse: () => false,
-        );
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: Theme.of(context).scaffoldBackgroundColor,
         border: Border(
-          top: BorderSide(
-            color: Colors.grey.withOpacity(0.2),
-          ),
+          top: BorderSide(color: Colors.grey.withOpacity(0.2)),
         ),
       ),
       child: Column(
@@ -1334,30 +1340,41 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 icon: const Icon(Icons.image),
               ),
               IconButton(
-                onPressed: _toggleEmojiPicker,
                 icon: Icon(
                   _showEmojiPicker ? Icons.keyboard : Icons.emoji_emotions,
                 ),
+                onPressed: _toggleEmojiKeyboard,
               ),
               Expanded(
-                child: TextField(
-                  controller: _messageController,
-                  focusNode: _messageFocusNode,
-                  maxLines: null,
-                  textInputAction: TextInputAction.newline,
-                  decoration: InputDecoration(
-                    hintText: 'پیام خود را بنویسید...',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(20),
-                      borderSide: BorderSide.none,
-                    ),
-                    filled: true,
-                    fillColor: Theme.of(context).brightness == Brightness.light
-                        ? Colors.grey[100]
-                        : Colors.grey[800],
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
+                child: Directionality(
+                  textDirection: getTextDirection(_messageController.text),
+                  child: TextField(
+                    controller: _messageController,
+                    focusNode: _messageFocusNode,
+                    onTap: () {
+                      if (_showEmojiPicker) {
+                        setState(() {
+                          _showEmojiPicker = false;
+                        });
+                      }
+                    },
+                    maxLines: null,
+                    textInputAction: TextInputAction.newline,
+                    decoration: InputDecoration(
+                      hintText: 'پیام خود را بنویسید...',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide: BorderSide.none,
+                      ),
+                      filled: true,
+                      fillColor:
+                          Theme.of(context).brightness == Brightness.light
+                              ? Colors.grey[100]
+                              : Colors.grey[800],
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                     ),
                   ),
                 ),
@@ -1547,11 +1564,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             padding: EdgeInsets.only(
                               top: message.attachmentUrl != null ? 8 : 0,
                             ),
-                            child: Text(
-                              message.content,
-                              style: TextStyle(
-                                color: isMe ? myTextColor : otherTextColor,
-                                fontSize: 16,
+                            child: Directionality(
+                              textDirection: getTextDirection(message.content),
+                              child: Text(
+                                message.content,
+                                style: TextStyle(
+                                  color: isMe ? myTextColor : otherTextColor,
+                                  fontSize: 16,
+                                ),
                               ),
                             ),
                           ),
@@ -1902,6 +1922,90 @@ class BlockedUserBanner extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class ChatMessagesShimmer extends StatelessWidget {
+  const ChatMessagesShimmer({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey[300]!,
+      highlightColor: Colors.grey[100]!,
+      child: ListView.builder(
+        reverse: true,
+        itemCount: 12,
+        itemBuilder: (_, index) => Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Row(
+            mainAxisAlignment: index % 2 == 0
+                ? MainAxisAlignment.start
+                : MainAxisAlignment.end,
+            children: [
+              Container(
+                width: 200,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class EmojiPickerWidget extends StatelessWidget {
+  final ValueChanged<String> onEmojiSelected;
+  final VoidCallback onBackspacePressed;
+
+  const EmojiPickerWidget({
+    Key? key,
+    required this.onEmojiSelected,
+    required this.onBackspacePressed,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return SizedBox(
+      height: 250,
+      child: EmojiPicker(
+        onEmojiSelected: (category, emoji) => onEmojiSelected(emoji.emoji),
+        onBackspacePressed: onBackspacePressed,
+        config: Config(
+          height: 256,
+          checkPlatformCompatibility: true,
+          emojiViewConfig: EmojiViewConfig(
+            emojiSizeMax: 28 *
+                (foundation.defaultTargetPlatform == TargetPlatform.iOS
+                    ? 1.2
+                    : 1.0),
+            backgroundColor: Colors.grey,
+          ),
+          skinToneConfig: const SkinToneConfig(),
+          categoryViewConfig: CategoryViewConfig(
+            backgroundColor: Colors.indigo,
+            iconColorSelected: Theme.of(context).colorScheme.primary,
+            indicatorColor: Theme.of(context).colorScheme.primary,
+            tabIndicatorAnimDuration: const Duration(milliseconds: 300),
+          ),
+          bottomActionBarConfig: BottomActionBarConfig(
+            backgroundColor: isDark ? Colors.grey[900] : Colors.grey[50],
+            buttonColor: Theme.of(context).colorScheme.primary,
+          ),
+          searchViewConfig: SearchViewConfig(
+            backgroundColor: Colors.indigo,
+            buttonIconColor: Colors.indigo,
+          ),
+        ),
       ),
     );
   }

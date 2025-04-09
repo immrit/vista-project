@@ -175,16 +175,19 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
                         floating: true,
                         snap: true,
                         // آیکون های سمت چپ (leading) - آیکون اعلان‌ها اینجا قرار می‌گیرد
-                        leading: IconButton(
-                          icon: _buildNotificationBadge(),
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => const NotificationsPage(),
-                              ),
-                            );
-                          },
-                        ),
+                        actions: [
+                          IconButton(
+                            icon: _buildNotificationBadge(),
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const NotificationsPage(),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                         title: AnimatedSwitcher(
                           duration: const Duration(milliseconds: 300),
                           child: _connectionStatus == 'متصل به وای‌فای' ||
@@ -306,8 +309,8 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
                       ],
                     ),
                   ),
-                  endDrawer:
-                      CustomDrawer(getProfile, currentColor, context, ref),
+                  // endDrawer:
+                  //     CustomDrawer(getProfile, currentColor, context, ref),
                 ),
               ),
             ),
@@ -334,6 +337,8 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
   }
 
   Widget _buildNotificationBadge() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
     return badges.Badge(
       showBadge: ref.watch(hasNewNotificationProvider).when(
             data: (hasNewNotification) => hasNewNotification,
@@ -343,10 +348,10 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
       badgeStyle: const badges.BadgeStyle(
         badgeColor: Colors.red,
       ),
-      position: badges.BadgePosition.topEnd(top: -8, end: -8),
+      position: badges.BadgePosition.bottomStart(bottom: -8, start: -8),
       child: Icon(
         Icons.favorite_border,
-        color: Colors.white,
+        color: isDarkMode ? Colors.white : Colors.black,
       ),
     );
   }

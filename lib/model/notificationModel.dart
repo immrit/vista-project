@@ -1,6 +1,13 @@
 import 'dart:convert';
 import 'package:equatable/equatable.dart';
 
+enum VerificationType {
+  none, // بدون نشان
+  blueTick, // نشان آبی (مدیران و ناظران)
+  goldTick, // نشان طلایی (حساب تجاری)
+  blackTick // نشان مشکی (تولیدکنندگان محتوا)
+}
+
 class NotificationModel extends Equatable {
   final String id;
   final String senderId;
@@ -10,10 +17,11 @@ class NotificationModel extends Equatable {
   final String type;
   final String username;
   final bool userIsVerified;
-  final String verificationType; // فیلد جدید
+  // final String verificationType; // فیلد جدید
   final String avatarUrl;
   final String PostId;
   final bool isRead;
+  final VerificationType verificationType;
 
   const NotificationModel({
     required this.id,
@@ -25,9 +33,10 @@ class NotificationModel extends Equatable {
     required this.username,
     required this.avatarUrl,
     required this.userIsVerified,
-    this.verificationType = 'none', // مقدار پیش‌فرض
+    // this.verificationType = 'none', // مقدار پیش‌فرض
     required this.PostId,
     this.isRead = false,
+    this.verificationType = VerificationType.none,
   });
 
   // سازنده از Map با هندلینگ پیشرفته
@@ -46,7 +55,9 @@ class NotificationModel extends Equatable {
         avatarUrl: map['sender']?['avatar_url']?.toString() ?? '',
         userIsVerified: map['sender']?['is_verified'] == true,
         verificationType:
-            map['sender']?['verification_type']?.toString() ?? 'none',
+            _mapVerificationType(map['sender']?['verification_type']),
+        // verificationType:
+        //     map['sender']?['verification_type']?.toString() ?? 'none',
         PostId: map['post_id']?.toString() ?? '',
         isRead: map['is_read'] == true,
       );
@@ -68,6 +79,7 @@ class NotificationModel extends Equatable {
           'username': username,
           'avatar_url': avatarUrl,
           'is_verified': userIsVerified,
+          'verification_type': verificationType.name,
         },
         'post_id': PostId,
         'is_read': isRead,
@@ -84,7 +96,7 @@ class NotificationModel extends Equatable {
     String? username,
     String? avatarUrl,
     bool? userIsVerified,
-    String? verificationType,
+    VerificationType? verificationType, // اضافه کردن به copyWith
     String? PostId,
     bool? isRead,
   }) {
@@ -98,10 +110,29 @@ class NotificationModel extends Equatable {
       username: username ?? this.username,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       userIsVerified: userIsVerified ?? this.userIsVerified,
-      verificationType: verificationType ?? this.verificationType,
+
+      verificationType:
+          verificationType ?? this.verificationType, // اضافه کردن به سازنده
       PostId: PostId ?? this.PostId,
       isRead: isRead ?? this.isRead,
     );
+  }
+
+  static VerificationType _mapVerificationType(dynamic value) {
+    if (value == null) return VerificationType.none;
+    if (value is String) {
+      switch (value) {
+        case 'blueTick':
+          return VerificationType.blueTick;
+        case 'goldTick':
+          return VerificationType.goldTick;
+        case 'blackTick':
+          return VerificationType.blackTick;
+        default:
+          return VerificationType.none;
+      }
+    }
+    return VerificationType.none;
   }
 
   // تبدیل به JSON
@@ -131,4 +162,12 @@ class NotificationModel extends Equatable {
   // متد مقایسه
   bool isSameNotification(NotificationModel other) =>
       id == other.id && content == other.content;
+  bool get hasBlueBadge =>
+      userIsVerified && verificationType == VerificationType.blueTick;
+  bool get hasGoldBadge =>
+      userIsVerified && verificationType == VerificationType.goldTick;
+  bool get hasBlackBadge =>
+      userIsVerified && verificationType == VerificationType.blackTick;
+  bool get hasAnyBadge =>
+      userIsVerified && verificationType != VerificationType.none;
 }

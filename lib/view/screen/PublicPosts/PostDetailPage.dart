@@ -681,8 +681,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                           ),
                           const SizedBox(width: 5),
                           if (comment.isVerified)
-                            const Icon(Icons.verified,
-                                color: Colors.blue, size: 16),
+                            _buildVerificationBadgeComment(comment),
                         ],
                       ),
                       Text(
@@ -776,6 +775,26 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
         ),
       ),
     );
+  }
+
+  Widget _buildVerificationBadgeComment(CommentModel profile) {
+    // نمایش تیک مناسب براساس نوع تأیید
+    if (profile.hasBlueBadge) {
+      return const Icon(Icons.verified, color: Colors.blue, size: 16);
+    } else if (profile.hasGoldBadge) {
+      return const Icon(Icons.verified, color: Colors.amber, size: 16);
+    } else if (profile.hasBlackBadge) {
+      return Container(
+        padding: const EdgeInsets.all(.1), // فاصله باریک برای پس‌زمینه
+        decoration: BoxDecoration(
+          color: Colors.white60, // پس‌زمینه سفید
+          shape: BoxShape.circle, // پس‌زمینه دایره‌ای
+        ),
+        child: const Icon(Icons.verified, color: Colors.black, size: 16),
+      );
+    } else {
+      return const SizedBox.shrink(); // در صورت نداشتن تیک، چیزی نمایش نمی‌دهیم
+    }
   }
 
   void _sendComment() async {

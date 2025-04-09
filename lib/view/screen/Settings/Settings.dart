@@ -20,6 +20,7 @@ class Settings extends ConsumerWidget {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
 
     return SafeArea(
+      top: false,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('تنظیمات'),

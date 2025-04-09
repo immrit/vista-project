@@ -11,11 +11,33 @@ import 'PublicPosts/publicPosts.dart';
 import 'searchPage.dart';
 
 // پرووایدر برای بررسی پیام‌های جدید
+// پرووایدر برای بررسی پیام‌های جدید
 final hasNewMessagesProvider = FutureProvider<bool>((ref) async {
-  // در حالت واقعی، این باید از سوپابیس بخواند
-  await Future.delayed(Duration(milliseconds: 500));
-  return true; // برای نمایش اولیه، نشانگر پیام جدید را نشان می‌دهیم
+  try {
+    // دریافت پیام‌های خوانده نشده از سوپابیس
+    final response = await supabase
+        .from('messages')
+        .select('id')
+        .eq('receiver_id', supabase.auth.currentUser!.id)
+        .eq('read', false)
+        .limit(1);
+
+    // اگر حداقل یک پیام خوانده نشده وجود داشت، true برمی‌گرداند
+    return (response as List).isNotEmpty;
+  } catch (e) {
+    print('خطا در بررسی پیام‌های جدید: $e');
+    return false;
+  }
 });
+// استریم پرووایدر برای مانیتور کردن پیام‌های جدید
+// final newMessagesStreamProvider = StreamProvider<bool>((ref) {
+//   return supabase
+//       .from('messages')
+//       .stream(primaryKey: ['id'])
+//       .eq('receiver_id', supabase.auth.currentUser!.id)
+//       .filter('read', 'eq', false)
+//       .map((data) => data.isNotEmpty);
+// });
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -181,7 +203,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       position: badges.BadgePosition.topEnd(top: -10, end: -10),
       child: Icon(
         icon,
-        color: isSelected ? Theme.of(context).colorScheme.primary : null,
+        // color: isSelected ? Theme.of(context).colorScheme.primary : null,
       ),
     );
   }

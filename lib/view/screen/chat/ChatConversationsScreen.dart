@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import '../../../model/conversation_model.dart';
@@ -163,12 +164,8 @@ class _ChatConversationsScreenState
               },
             );
           },
-          loading: () => Center(
-            child: LoadingAnimationWidget.staggeredDotsWave(
-              color: Theme.of(context).primaryColor,
-              size: 50,
-            ),
-          ),
+          loading: () => const ChatListShimmer(),
+
           // در بخش error مربوط به لیست مکالمات
           error: (error, stack) {
             print('خطای فنی: $error');
@@ -518,6 +515,56 @@ class ChatSearchDelegate extends SearchDelegate<ConversationModel> {
           error: (_, __) => const Center(child: Text('خطا در دریافت اطلاعات')),
         );
       },
+    );
+  }
+}
+
+class ChatListShimmer extends StatelessWidget {
+  const ChatListShimmer({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey[300]!,
+      highlightColor: Colors.grey[100]!,
+      child: ListView.builder(
+        itemCount: 8,
+        itemBuilder: (_, __) => Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 100,
+                      height: 12,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      height: 10,
+                      color: Colors.white,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

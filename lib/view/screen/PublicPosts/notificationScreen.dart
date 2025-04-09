@@ -108,42 +108,24 @@ class _NotificationsPageState extends ConsumerState {
   }
 
 // تابع برای نمایش نشان تأیید
-  Widget _buildVerificationBadge(Map<String, dynamic>? userData) {
-    // بررسی وضعیت تأیید حساب کاربری
-    final bool isVerified = userData?['is_verified'] ?? false;
-    if (!isVerified) {
-      return const SizedBox.shrink();
+  Widget _buildVerificationBadge(NotificationModel profile) {
+    // نمایش تیک مناسب براساس نوع تأیید
+    if (profile.hasBlueBadge) {
+      return const Icon(Icons.verified, color: Colors.blue, size: 16);
+    } else if (profile.hasGoldBadge) {
+      return const Icon(Icons.verified, color: Colors.amber, size: 16);
+    } else if (profile.hasBlackBadge) {
+      return Container(
+        padding: const EdgeInsets.all(.1), // فاصله باریک برای پس‌زمینه
+        decoration: BoxDecoration(
+          color: Colors.white60, // پس‌زمینه سفید
+          shape: BoxShape.circle, // پس‌زمینه دایره‌ای
+        ),
+        child: const Icon(Icons.verified, color: Colors.black, size: 16),
+      );
+    } else {
+      return const SizedBox.shrink(); // در صورت نداشتن تیک، چیزی نمایش نمی‌دهیم
     }
-
-    // بررسی نوع نشان تأیید
-    final String verificationType = userData?['verification_type'] ?? 'none';
-    IconData iconData = Icons.verified;
-    Color iconColor = Colors.blue;
-
-    // تعیین نوع و رنگ آیکون بر اساس نوع نشان
-    switch (verificationType) {
-      case 'blueTick':
-        iconData = Icons.verified;
-        iconColor = Colors.blue;
-        break;
-      case 'goldTick':
-        iconData = Icons.verified;
-        iconColor = Colors.amber;
-        break;
-      case 'blackTick':
-        iconData = Icons.verified;
-        iconColor = const Color(0xFF303030); // رنگ مشکی متمایل به خاکستری تیره
-        break;
-      default:
-        // حالت پیش‌فرض برای پروفایل‌های تأیید شده بدون نوع مشخص
-        iconData = Icons.verified;
-        iconColor = Colors.blue;
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(right: 4.0),
-      child: Icon(iconData, color: iconColor, size: 16),
-    );
   }
 
   @override
@@ -191,11 +173,8 @@ class _NotificationsPageState extends ConsumerState {
                           children: [
                             Text(notification.username),
                             const SizedBox(width: 5),
-                            _buildVerificationBadge({
-                              'is_verified': notification.userIsVerified,
-                              'verification_type':
-                                  notification.verificationType,
-                            }),
+                            if (notification.userIsVerified)
+                              _buildVerificationBadge(notification),
                           ],
                         ),
                         subtitle: Directionality(

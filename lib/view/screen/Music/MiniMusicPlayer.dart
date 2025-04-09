@@ -6,7 +6,7 @@ import '../../../model/MusicModel.dart';
 import '../../../provider/MusicProvider.dart';
 
 class MiniMusicPlayer extends ConsumerStatefulWidget {
-  const MiniMusicPlayer({Key? key}) : super(key: key);
+  const MiniMusicPlayer({super.key});
 
   @override
   ConsumerState<MiniMusicPlayer> createState() => _MiniMusicPlayerState();
@@ -61,10 +61,9 @@ class _MiniMusicPlayerState extends ConsumerState<MiniMusicPlayer>
       }
     }
 
-    final progress =
-        position != null && duration != null && duration.inMilliseconds > 0
-            ? position.inMilliseconds / duration.inMilliseconds
-            : 0.0;
+    final progress = duration != null && duration.inMilliseconds > 0
+        ? position.inMilliseconds / duration.inMilliseconds
+        : 0.0;
 
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 

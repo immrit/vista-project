@@ -1936,3 +1936,38 @@ class HashtagExtractor {
         .toList();
   }
 }
+
+TextDirection detectTextDirection(String text) {
+  final RegExp rtlChars = RegExp(
+      r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]');
+  final RegExp ltrChars = RegExp(r'[A-Za-z]');
+
+  if (rtlChars.hasMatch(text)) {
+    return TextDirection.rtl;
+  } else if (ltrChars.hasMatch(text)) {
+    return TextDirection.ltr;
+  }
+
+  return TextDirection.rtl; // پیش‌فرض RTL
+}
+
+TextDirection getTextDirection(String text) {
+  if (text.isEmpty) return TextDirection.rtl;
+
+  // الگوی تشخیص کاراکترهای فارسی/عربی
+  final RegExp rtlChars = RegExp(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]');
+  // الگوی تشخیص کاراکترهای انگلیسی
+  final RegExp ltrChars = RegExp(r'[A-Za-z]');
+
+  // بررسی اولین کاراکتر غیر فاصله
+  for (int i = 0; i < text.length; i++) {
+    final char = text[i];
+    if (rtlChars.hasMatch(char)) {
+      return TextDirection.rtl;
+    } else if (ltrChars.hasMatch(char)) {
+      return TextDirection.ltr;
+    }
+  }
+
+  return TextDirection.rtl; // پیش‌فرض RTL
+}
