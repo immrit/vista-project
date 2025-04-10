@@ -22,7 +22,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
     final response = await supabase
         .from('notifications')
         .select(
-            '*, sender:profiles!notifications_sender_id_fkey(username, avatar_url, is_verified)')
+            '*, sender:profiles!notifications_sender_id_fkey(username, avatar_url, is_verified  , verification_type)')
         .eq('recipient_id', userId)
         .order('created_at', ascending: false);
 
