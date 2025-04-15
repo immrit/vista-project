@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../DB/conversation_cache_service.dart';
+import '../DB/message_cache_service.dart';
 import '../model/conversation_model.dart';
 import '../model/message_model.dart';
 import '../view/Exeption/app_exceptions.dart';
@@ -13,107 +15,160 @@ import 'uploadImageChatService.dart';
 
 class ChatService {
   final SupabaseClient _supabase = supabase;
+  final ConversationCacheService _conversationCache =
+      ConversationCacheService();
+  final MessageCacheService _messageCache = MessageCacheService();
 
-  // دریافت تمامی مکالمات کاربر فعلی
 // دریافت تمامی مکالمات کاربر فعلی
   Future<List<ConversationModel>> getConversations() async {
     final userId = _supabase.auth.currentUser!.id;
+    final ConversationCacheService conversationCache =
+        ConversationCacheService();
 
-    // دریافت شناسه‌های مکالماتی که کاربر در آنها شرکت دارد
-    final participantsResponse = await _supabase
-        .from('conversation_participants')
-        .select('conversation_id')
-        .eq('user_id', userId);
+    try {
+      // بررسی می‌کنیم که آیا آنلاین هستیم
+      final isOnline = await isDeviceOnline();
 
-    if (participantsResponse.isEmpty) return [];
+      // ابتدا سعی می‌کنیم مکالمات را از کش بگیریم
+      final cachedConversations =
+          await conversationCache.getCachedConversations();
 
-    // تبدیل به لیستی از شناسه‌ها
-    final conversationIds = participantsResponse
-        .map((e) => e['conversation_id'] as String)
-        .toList();
+      // اگر آفلاین هستیم و کش داریم، از کش استفاده می‌کنیم
+      if (!isOnline && cachedConversations.isNotEmpty) {
+        return cachedConversations;
+      }
 
-    // دریافت مکالمات
-    final conversationsResponse = await _supabase
-        .from('conversations')
-        .select()
-        .inFilter('id', conversationIds)
-        .order('updated_at', ascending: false);
+      // در حالت آنلاین، مکالمات را از سرور دریافت می‌کنیم
+      if (isOnline) {
+        // دریافت شناسه‌های مکالماتی که کاربر در آنها شرکت دارد
+        final participantsResponse = await _supabase
+            .from('conversation_participants')
+            .select('conversation_id')
+            .eq('user_id', userId);
 
-    // برای هر مکالمه، شرکت‌کنندگان را دریافت می‌کنیم
-    final conversations =
-        await Future.wait(conversationsResponse.map((json) async {
-      final conversationId = json['id'] as String;
+        if (participantsResponse.isEmpty) return [];
 
-      // دریافت شرکت‌کنندگان - اصلاح کوئری
-      final participantsJson = await _supabase
-          .from('conversation_participants')
-          .select('*')
-          .eq('conversation_id', conversationId);
+        // تبدیل به لیستی از شناسه‌ها
+        final conversationIds = participantsResponse
+            .map((e) => e['conversation_id'] as String)
+            .toList();
 
-      // برای هر شرکت‌کننده، اطلاعات پروفایل را جداگانه دریافت می‌کنیم
-      final participants =
-          await Future.wait(participantsJson.map((participant) async {
-        final userId = participant['user_id'] as String;
-        final profileJson = await _supabase
-            .from('profiles')
+        // دریافت مکالمات
+        final conversationsResponse = await _supabase
+            .from('conversations')
             .select()
-            .eq('id', userId)
-            .maybeSingle();
+            .inFilter('id', conversationIds)
+            .order('updated_at', ascending: false);
 
-        final updatedParticipant = {...participant};
-        if (profileJson != null) {
-          updatedParticipant['profile'] = profileJson;
-        }
+        // برای هر مکالمه، شرکت‌کنندگان را دریافت می‌کنیم
+        final conversations =
+            await Future.wait(conversationsResponse.map((json) async {
+          final conversationId = json['id'] as String;
 
-        return ConversationParticipantModel.fromJson(updatedParticipant);
-      }));
+          // دریافت شرکت‌کنندگان - اصلاح کوئری
+          final participantsJson = await _supabase
+              .from('conversation_participants')
+              .select('*')
+              .eq('conversation_id', conversationId);
 
-      // پیدا کردن کاربر دیگر در چت (برای چت دو نفره)
-      Map<String, dynamic>? otherParticipantData;
-      Map<String, dynamic>? otherParticipantProfile;
+          // برای هر شرکت‌کننده، اطلاعات پروفایل را جداگانه دریافت می‌کنیم
+          final participants =
+              await Future.wait(participantsJson.map((participant) async {
+            final userId = participant['user_id'] as String;
+            final profileJson = await _supabase
+                .from('profiles')
+                .select()
+                .eq('id', userId)
+                .maybeSingle();
 
-      for (final participant in participantsJson) {
-        if (participant['user_id'] != userId) {
-          otherParticipantData = participant;
+            final updatedParticipant = {...participant};
+            if (profileJson != null) {
+              updatedParticipant['profile'] = profileJson;
+            }
 
-          // دریافت اطلاعات پروفایل کاربر دیگر
-          otherParticipantProfile = await _supabase
-              .from('profiles')
-              .select()
-              .eq('id', participant['user_id'])
-              .maybeSingle();
+            return ConversationParticipantModel.fromJson(updatedParticipant);
+          }));
 
-          break;
-        }
+          // پیدا کردن کاربر دیگر در چت (برای چت دو نفره)
+          Map<String, dynamic>? otherParticipantData;
+          Map<String, dynamic>? otherParticipantProfile;
+
+          for (final participant in participantsJson) {
+            if (participant['user_id'] != userId) {
+              otherParticipantData = participant;
+
+              // دریافت اطلاعات پروفایل کاربر دیگر
+              otherParticipantProfile = await _supabase
+                  .from('profiles')
+                  .select()
+                  .eq('id', participant['user_id'])
+                  .maybeSingle();
+
+              break;
+            }
+          }
+
+          // آخرین زمان خواندن پیام توسط کاربر فعلی
+          String? myLastRead;
+          for (final participant in participantsJson) {
+            if (participant['user_id'] == userId) {
+              myLastRead = participant['last_read_time'];
+              break;
+            }
+          }
+
+          // بررسی وجود پیام‌های خوانده نشده
+          bool hasUnreadMessages = false;
+          if (json['last_message_time'] != null && myLastRead != null) {
+            final lastMessageTime = DateTime.parse(json['last_message_time']);
+            final lastReadTime = DateTime.parse(myLastRead);
+            hasUnreadMessages = lastMessageTime.isAfter(lastReadTime);
+          }
+
+          final conversation =
+              ConversationModel.fromJson(json, currentUserId: userId).copyWith(
+            participants: participants,
+            otherUserName: otherParticipantProfile?['username'] ?? 'کاربر',
+            otherUserAvatar: otherParticipantProfile?['avatar_url'],
+            otherUserId: otherParticipantData?['user_id'],
+            hasUnreadMessages: hasUnreadMessages,
+          );
+
+          // ذخیره هر مکالمه در کش
+          await conversationCache.updateConversation(conversation);
+
+          return conversation;
+        }));
+
+        return conversations;
       }
 
-      // آخرین زمان خواندن پیام توسط کاربر فعلی
-      String? myLastRead;
-      for (final participant in participantsJson) {
-        if (participant['user_id'] == userId) {
-          myLastRead = participant['last_read_time'];
-          break;
-        }
+      // اگر آنلاین نیستیم و تا اینجا رسیدیم، از هر کشی که داریم استفاده می‌کنیم
+      return cachedConversations;
+    } catch (e) {
+      // در صورت خطا، اگر کش داریم از آن استفاده می‌کنیم
+      final fallbackCachedConversations =
+          await conversationCache.getCachedConversations();
+      if (fallbackCachedConversations.isNotEmpty) {
+        print('خطا در دریافت مکالمات از سرور. استفاده از کش: $e');
+        return fallbackCachedConversations;
       }
 
-      // بررسی وجود پیام‌های خوانده نشده
-      bool hasUnreadMessages = false;
-      if (json['last_message_time'] != null && myLastRead != null) {
-        final lastMessageTime = DateTime.parse(json['last_message_time']);
-        final lastReadTime = DateTime.parse(myLastRead);
-        hasUnreadMessages = lastMessageTime.isAfter(lastReadTime);
-      }
-
-      return ConversationModel.fromJson(json, currentUserId: userId).copyWith(
-        participants: participants,
-        otherUserName: otherParticipantProfile?['username'] ?? 'کاربر',
-        otherUserAvatar: otherParticipantProfile?['avatar_url'],
-        otherUserId: otherParticipantData?['user_id'],
-        hasUnreadMessages: hasUnreadMessages,
+      throw AppException(
+        userFriendlyMessage: 'دریافت مکالمات با مشکل مواجه شد',
+        technicalMessage: 'خطا در دریافت مکالمات: $e',
       );
-    }));
+    }
+  }
 
-    return conversations;
+// متد کمکی برای بررسی وضعیت آنلاین بودن
+  Future<bool> isDeviceOnline() async {
+    try {
+      final result = await InternetAddress.lookup('example.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } on SocketException catch (_) {
+      return false;
+    }
   }
 
   Future<MessageModel> sendMessage({
@@ -132,6 +187,7 @@ class ChatService {
       print('محتوای پیام: $content');
       print('فرستنده: $userId');
 
+      // ارسال پیام به سرور
       final insertResponse = await _supabase
           .from('messages')
           .insert({
@@ -147,7 +203,7 @@ class ChatService {
           .select()
           .single();
 
-      // سپس به صورت جداگانه اطلاعات فرستنده را دریافت می‌کنیم
+      // دریافت اطلاعات فرستنده
       final profileResponse = await _supabase
           .from('profiles')
           .select()
@@ -160,6 +216,22 @@ class ChatService {
         senderName: profileResponse?['username'] ?? 'کاربر',
         senderAvatar: profileResponse?['avatar_url'],
       );
+
+      // ذخیره پیام در کش
+      await _messageCache.cacheMessage(message);
+
+      // بروزرسانی مکالمه در کش
+      final conversation =
+          await _conversationCache.getConversation(conversationId);
+      if (conversation != null) {
+        final updatedConversation = conversation.copyWith(
+          lastMessage: content,
+          lastMessageTime: DateTime.now(),
+          updatedAt: DateTime.now(),
+          hasUnreadMessages: false, // برای فرستنده پیام خوانده شده است
+        );
+        await _conversationCache.updateConversation(updatedConversation);
+      }
 
       // بروزرسانی زمان خواندن پیام‌ها
       await _supabase
@@ -174,6 +246,169 @@ class ChatService {
         userFriendlyMessage: 'ارسال پیام با مشکل مواجه شد',
         technicalMessage: 'خطا در ارسال پیام: $e',
       );
+    }
+  }
+
+  Future<void> cleanOldCache() async {
+    try {
+      // پاک کردن مکالمات قدیمی‌تر از یک ماه
+      final oneMonthAgo = DateTime.now().subtract(const Duration(days: 30));
+
+      final conversations = await _conversationCache.getCachedConversations();
+      for (final conversation in conversations) {
+        if (conversation.updatedAt.isBefore(oneMonthAgo)) {
+          await _conversationCache.removeConversation(conversation.id);
+          await _messageCache.clearConversationMessages(conversation.id);
+        }
+      }
+    } catch (e) {
+      print('خطا در پاک کردن کش قدیمی: $e');
+    }
+  }
+
+// همگام‌سازی داده‌های کش با سرور
+  Future<void> syncCache() async {
+    try {
+      final isOnline = await isDeviceOnline();
+      if (!isOnline) return;
+
+      // دریافت مکالمات به‌روز
+      await getConversations();
+
+      // سپس برای هر مکالمه، پیام‌های اخیر را دریافت می‌کنیم
+      final conversations = await _conversationCache.getCachedConversations();
+      for (final conversation in conversations) {
+        await getMessages(conversation.id, limit: 20, offset: 0);
+      }
+
+      print('همگام‌سازی کش با موفقیت انجام شد');
+    } catch (e) {
+      print('خطا در همگام‌سازی کش: $e');
+    }
+  }
+
+// لیست پیام‌های در صف ارسال
+  final List<Map<String, dynamic>> _pendingMessages = [];
+
+// ارسال پیام آفلاین
+  Future<MessageModel> sendOfflineMessage({
+    required String conversationId,
+    required String content,
+    String? attachmentUrl,
+    String? attachmentType,
+    String? replyToMessageId,
+    String? replyToContent,
+    String? replyToSenderName,
+  }) async {
+    final userId = _supabase.auth.currentUser!.id;
+
+    try {
+      final isOnline = await isDeviceOnline();
+
+      // ساخت یک پیام موقت با ID موقت
+      final temporaryId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+      final temporaryMessage = MessageModel(
+        id: temporaryId,
+        conversationId: conversationId,
+        senderId: userId,
+        content: content,
+        createdAt: DateTime.now(),
+        attachmentUrl: attachmentUrl,
+        attachmentType: attachmentType,
+        isRead: false,
+        isSent: false, // هنوز ارسال نشده است
+        senderName: 'من', // می‌توانید از اطلاعات کاربر فعلی استفاده کنید
+        senderAvatar: null,
+        isMe: true,
+        replyToMessageId: replyToMessageId,
+        replyToContent: replyToContent,
+        replyToSenderName: replyToSenderName,
+      );
+
+      // ذخیره در کش
+      await _messageCache.cacheMessage(temporaryMessage);
+
+      // بروزرسانی مکالمه در کش
+      final conversation =
+          await _conversationCache.getConversation(conversationId);
+      if (conversation != null) {
+        final updatedConversation = conversation.copyWith(
+          lastMessage: content,
+          lastMessageTime: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+        await _conversationCache.updateConversation(updatedConversation);
+      }
+
+      // اگر آنلاین هستیم، همان لحظه ارسال می‌کنیم
+      if (isOnline) {
+        return await sendMessage(
+          conversationId: conversationId,
+          content: content,
+          attachmentUrl: attachmentUrl,
+          attachmentType: attachmentType,
+          replyToMessageId: replyToMessageId,
+          replyToContent: replyToContent,
+          replyToSenderName: replyToSenderName,
+        );
+      }
+
+      // اگر آفلاین هستیم، به صف اضافه می‌کنیم
+      _pendingMessages.add({
+        'temporaryId': temporaryId,
+        'conversationId': conversationId,
+        'content': content,
+        'attachmentUrl': attachmentUrl,
+        'attachmentType': attachmentType,
+        'replyToMessageId': replyToMessageId,
+        'replyToContent': replyToContent,
+        'replyToSenderName': replyToSenderName,
+      });
+
+      // در صف ذخیره می‌کنیم تا بعداً ارسال شود
+      return temporaryMessage;
+    } catch (e) {
+      print('خطا در ارسال پیام آفلاین: $e');
+      throw AppException(
+        userFriendlyMessage: 'ارسال پیام با مشکل مواجه شد',
+        technicalMessage: 'خطا در ارسال پیام آفلاین: $e',
+      );
+    }
+  }
+
+// ارسال پیام‌های در صف
+  Future<void> sendPendingMessages() async {
+    if (_pendingMessages.isEmpty) return;
+
+    final isOnline = await isDeviceOnline();
+    if (!isOnline) return;
+
+    final pendingMessagesCopy =
+        List<Map<String, dynamic>>.from(_pendingMessages);
+
+    for (final pendingMessage in pendingMessagesCopy) {
+      try {
+        // ارسال پیام به سرور
+        final message = await sendMessage(
+          conversationId: pendingMessage['conversationId'],
+          content: pendingMessage['content'],
+          attachmentUrl: pendingMessage['attachmentUrl'],
+          attachmentType: pendingMessage['attachmentType'],
+          replyToMessageId: pendingMessage['replyToMessageId'],
+          replyToContent: pendingMessage['replyToContent'],
+          replyToSenderName: pendingMessage['replyToSenderName'],
+        );
+
+        // حذف پیام موقت از کش
+        await _messageCache
+            .clearConversationMessages(pendingMessage['conversationId']);
+
+        // حذف از صف
+        _pendingMessages.removeWhere(
+            (msg) => msg['temporaryId'] == pendingMessage['temporaryId']);
+      } catch (e) {
+        print('خطا در ارسال پیام در صف: $e');
+      }
     }
   }
 
@@ -565,49 +800,96 @@ class ChatService {
     final userId = _supabase.auth.currentUser!.id;
 
     try {
-      // دریافت لیست پیام‌های مخفی شده برای کاربر
-      final hiddenMessagesResponse = await _supabase
-          .from('hidden_messages')
-          .select('message_id')
-          .eq('user_id', userId)
-          .eq('conversation_id', conversationId);
+      // بررسی وضعیت آنلاین
+      final isOnline = await isDeviceOnline();
 
-      // تبدیل به لیست شناسه‌های پیام مخفی شده
-      final hiddenMessageIds =
-          hiddenMessagesResponse.map((e) => e['message_id'] as String).toList();
+      // ابتدا از کش استفاده می‌کنیم
+      final cachedMessages = await _messageCache.getConversationMessages(
+        conversationId,
+        limit: limit,
+      );
 
-      // دریافت پیام‌ها با فیلتر کردن پیام‌های مخفی شده
-      final messagesResponse = await _supabase
-          .from('messages')
-          .select()
-          .eq('conversation_id', conversationId)
-          .order('created_at', ascending: false)
-          .range(offset, offset + limit - 1);
+      // اگر آفلاین هستیم و کش داریم، از کش استفاده می‌کنیم
+      if (!isOnline && cachedMessages.isNotEmpty) {
+        return cachedMessages;
+      }
 
-      // فیلتر کردن پیام‌های مخفی شده
-      final filteredMessages = messagesResponse
-          .where((message) => !hiddenMessageIds.contains(message['id']))
-          .toList();
+      // در حالت آنلاین، پیام‌ها را از سرور دریافت می‌کنیم
+      if (isOnline) {
+        // دریافت لیست پیام‌های مخفی شده برای کاربر
+        final hiddenMessagesResponse = await _supabase
+            .from('hidden_messages')
+            .select('message_id')
+            .eq('user_id', userId)
+            .eq('conversation_id', conversationId);
 
-      final messages = await Future.wait(filteredMessages.map((json) async {
-        // برای هر پیام، اطلاعات فرستنده را جداگانه دریافت می‌کنیم
-        final profileResponse = await _supabase
-            .from('profiles')
+        // تبدیل به لیست شناسه‌های پیام مخفی شده
+        final hiddenMessageIds = hiddenMessagesResponse
+            .map((e) => e['message_id'] as String)
+            .toList();
+
+        // دریافت پیام‌ها با فیلتر کردن پیام‌های مخفی شده
+        final messagesResponse = await _supabase
+            .from('messages')
             .select()
-            .eq('id', json['sender_id'])
-            .maybeSingle();
+            .eq('conversation_id', conversationId)
+            .order('created_at', ascending: false)
+            .range(offset, offset + limit - 1);
 
-        final message = MessageModel.fromJson(json, currentUserId: userId);
-        return message.copyWith(
-          senderName: profileResponse?['username'] ?? 'کاربر',
-          senderAvatar: profileResponse?['avatar_url'],
-        );
-      }));
+        // فیلتر کردن پیام‌های مخفی شده
+        final filteredMessages = messagesResponse
+            .where((message) => !hiddenMessageIds.contains(message['id']))
+            .toList();
 
-      return messages;
+        final messages = await Future.wait(filteredMessages.map((json) async {
+          // برای هر پیام، اطلاعات فرستنده را جداگانه دریافت می‌کنیم
+          final profileResponse = await _supabase
+              .from('profiles')
+              .select()
+              .eq('id', json['sender_id'])
+              .maybeSingle();
+
+          final message =
+              MessageModel.fromJson(json, currentUserId: userId).copyWith(
+            senderName: profileResponse?['username'] ?? 'کاربر',
+            senderAvatar: profileResponse?['avatar_url'],
+          );
+
+          // ذخیره پیام در کش
+          await _messageCache.cacheMessage(message);
+
+          return message;
+        }));
+
+        // در حال دریافت اولین صفحه پیام‌ها هستیم (offset=0)
+        // مکالمه را به عنوان خوانده شده علامت‌گذاری می‌کنیم
+        if (offset == 0) {
+          await markConversationAsRead(conversationId);
+        }
+
+        return messages;
+      }
+
+      // اگر آنلاین نیستیم و تا اینجا رسیدیم، از هر کشی که داریم استفاده می‌کنیم
+      return cachedMessages;
     } catch (e) {
+      // در صورت خطا، اگر کش داریم از آن استفاده می‌کنیم
+      final fallbackCachedMessages =
+          await _messageCache.getConversationMessages(
+        conversationId,
+        limit: limit,
+      );
+
+      if (fallbackCachedMessages.isNotEmpty) {
+        print('خطا در دریافت پیام‌ها از سرور. استفاده از کش: $e');
+        return fallbackCachedMessages;
+      }
+
       print('خطا در دریافت پیام‌ها: $e');
-      rethrow;
+      throw AppException(
+        userFriendlyMessage: 'دریافت پیام‌ها با مشکل مواجه شد',
+        technicalMessage: 'خطا در دریافت پیام‌ها: $e',
+      );
     }
   }
 
@@ -662,22 +944,48 @@ class ChatService {
   }
 
   // علامت‌گذاری همه پیام‌های یک مکالمه به عنوان خوانده شده
+// علامت‌گذاری مکالمه به عنوان خوانده شده
   Future<void> markConversationAsRead(String conversationId) async {
     final userId = _supabase.auth.currentUser!.id;
 
-    // بروزرسانی زمان خواندن
-    await _supabase
-        .from('conversation_participants')
-        .update({'last_read_time': DateTime.now().toIso8601String()})
-        .eq('conversation_id', conversationId)
-        .eq('user_id', userId);
+    try {
+      // بروزرسانی زمان خواندن در سرور
+      await _supabase
+          .from('conversation_participants')
+          .update({'last_read_time': DateTime.now().toIso8601String()})
+          .eq('conversation_id', conversationId)
+          .eq('user_id', userId);
+
+      // بروزرسانی وضعیت خوانده شدن مکالمه در کش
+      final conversation =
+          await _conversationCache.getConversation(conversationId);
+      if (conversation != null) {
+        final updatedConversation =
+            conversation.copyWith(hasUnreadMessages: false);
+        await _conversationCache.updateConversation(updatedConversation);
+      }
+    } catch (e) {
+      print('خطا در علامت‌گذاری مکالمه به عنوان خوانده شده: $e');
+    }
   }
 
 // دریافت مکالمات بلادرنگ
   Stream<List<ConversationModel>> subscribeToConversations() {
-    // بروزرسانی هر 3 ثانیه
-    return Stream.periodic(const Duration(seconds: 3))
-        .asyncMap((_) => getConversations());
+    print('📡 شروع گوش دادن به تغییرات مکالمات');
+    final userId = _supabase.auth.currentUser!.id;
+
+    return _supabase
+        .from('conversations')
+        .stream(primaryKey: ['id'])
+        .map((event) async {
+          print('🔔 دریافت تغییرات جدید از سرور');
+          return await getConversations();
+        })
+        .asyncMap((future) => future)
+        .handleError((error) {
+          print('❌ خطا در استریم مکالمات: $error');
+          return [];
+        });
   }
 
   // حذف یک گفتگو
@@ -908,5 +1216,10 @@ class ChatService {
         technicalMessage: 'خطا در دانلود تصویر: $e',
       );
     }
+  }
+
+  // Add a method to refresh the conversations (updates cache by fetching from server)
+  Future<void> refreshConversations() async {
+    await getConversations();
   }
 }

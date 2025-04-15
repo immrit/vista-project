@@ -7,8 +7,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_links/app_links.dart';
+import 'DB/hive_initialize.dart';
 import 'firebase_options.dart';
 import 'model/Hive Model/RecentSearch.dart';
 import 'provider/provider.dart';
@@ -25,8 +27,11 @@ import 'view/screen/ouathUser/welcome.dart';
 import 'view/screen/ouathUser/editeProfile.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  await HiveInitialize.initialize();
 
+  WidgetsFlutterBinding.ensureInitialized();
+  final appDocumentDir = await getApplicationDocumentsDirectory();
+  await Hive.initFlutter(appDocumentDir.path);
   // تنظیم debug print
   debugPrint = (String? message, {int? wrapWidth}) {
     if (message?.contains('MESA') == false) {
@@ -69,7 +74,7 @@ void main() async {
 
   // باز کردن باکس‌ها
   await Hive.openBox('settings');
-  await Hive.openBox<RecentSearch>('recent_searches');
+  // await Hive.openBox<RecentSearch>('recent_searches');
 
   // راه‌اندازی Firebase
   await Firebase.initializeApp(

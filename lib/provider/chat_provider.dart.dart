@@ -8,23 +8,27 @@ import '../model/message_model.dart';
 import '../services/ChatService.dart';
 import '../view/Exeption/app_exceptions.dart';
 
-// سرویس چت
-final chatServiceProvider = Provider<ChatService>((ref) {
-  return ChatService();
-});
-
 // لیست مکالمات
 final conversationsProvider =
     FutureProvider.autoDispose<List<ConversationModel>>((ref) async {
+  print('🔍 درخواست دریافت مکالمات از conversationsProvider');
   final chatService = ref.watch(chatServiceProvider);
-  return chatService.getConversations();
+  final conversations = await chatService.getConversations();
+  print('📥 تعداد مکالمات دریافت شده: ${conversations.length}');
+  return conversations;
 });
 
 // استریم مکالمات برای بروزرسانی خودکار
 final conversationsStreamProvider =
     StreamProvider.autoDispose<List<ConversationModel>>((ref) {
+  print('🔄 شروع استریم مکالمات');
   final chatService = ref.watch(chatServiceProvider);
   return chatService.subscribeToConversations();
+});
+
+// پرووایدر برای سرویس چت
+final chatServiceProvider = Provider<ChatService>((ref) {
+  return ChatService();
 });
 
 // پیام‌های یک مکالمه

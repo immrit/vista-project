@@ -17,12 +17,20 @@ class ChatConversationsScreen extends ConsumerStatefulWidget {
 }
 
 class _ChatConversationsScreenState
-    extends ConsumerState<ChatConversationsScreen> {
+    extends ConsumerState<ChatConversationsScreen>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   @override
   void initState() {
     super.initState();
-    // تنظیم متن‌های فارسی برای timeago
-    timeago.setLocaleMessages('fa', timeago.FaMessages());
+    print('🚀 شروع صفحه مکالمات');
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      print('🔄 درخواست اولیه مکالمات');
+      ref.refresh(conversationsStreamProvider);
+    });
   }
 
 // اضافه کردن متغیر برای جستجو
@@ -52,6 +60,7 @@ class _ChatConversationsScreenState
 
   @override
   Widget build(BuildContext context) {
+    print('🏗️ ساخت مجدد صفحه مکالمات');
     final conversationsAsync = ref.watch(conversationsStreamProvider);
 
     return Scaffold(
@@ -84,124 +93,51 @@ class _ChatConversationsScreenState
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.refresh(conversationsProvider);
-        },
-        child: conversationsAsync.when(
-          data: (conversations) {
-            // حالت بدون مکالمه
-            if (conversations.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.chat_bubble_outline,
-                        size: 80,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                    SizedBox(height: 24),
-                    Text(
-                      'هنوز گفتگویی شروع نکرده‌اید',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white
-                            : Colors.black87,
-                      ),
-                    ),
-                    SizedBox(height: 12),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 32),
-                      child: Text(
-                        'برای شروع گفتگو، به صفحه کاربران بروید و با کاربر مورد نظر چت کنید',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.grey[400]
-                              : Colors.grey[600],
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        // ناوبری به صفحه کاربران
-                      },
-                      icon: Icon(Icons.people),
-                      label: Text('مشاهده کاربران'),
-                      style: ElevatedButton.styleFrom(
-                        padding:
-                            EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }
+      body: conversationsAsync.when(
+        data: (conversations) {
+          print('📋 نمایش ${conversations.length} مکالمه');
+          if (conversations.isEmpty) {
+            return const Center(
+              child: Text('هنوز مکالمه‌ای ندارید'),
+            );
+          }
 
-            return ListView.builder(
+          return RefreshIndicator(
+            onRefresh: () async {
+              print('🔄 بروزرسانی دستی لیست');
+              ref.invalidate(conversationsStreamProvider);
+            },
+            child: ListView.builder(
               itemCount: conversations.length,
               itemBuilder: (context, index) {
                 final conversation = conversations[index];
                 return _buildConversationItem(context, conversation);
               },
-            );
-          },
-          loading: () => const ChatListShimmer(),
-
-          // در بخش error مربوط به لیست مکالمات
-          error: (error, stack) {
-            print('خطای فنی: $error');
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.error_outline,
-                    color: Colors.red,
-                    size: 60,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'مشکلی در دریافت مکالمات پیش آمد',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'لطفاً اتصال اینترنت را بررسی کنید',
-                    style: TextStyle(
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? Colors.grey[400]
-                          : Colors.grey[600],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () => ref.refresh(conversationsProvider),
-                    child: const Text('تلاش مجدد'),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
+            ),
+          );
+        },
+        loading: () {
+          print('⌛ در حال بارگذاری مکالمات');
+          return ChatListShimmer();
+        },
+        error: (error, stack) {
+          print('❌ خطا در نمایش مکالمات: $error');
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('خطا در دریافت مکالمات'),
+                ElevatedButton(
+                  onPressed: () {
+                    print('🔄 تلاش مجدد');
+                    ref.invalidate(conversationsStreamProvider);
+                  },
+                  child: const Text('تلاش مجدد'),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -511,7 +447,7 @@ class ChatSearchDelegate extends SearchDelegate<ConversationModel> {
               },
             );
           },
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => ChatListShimmer(),
           error: (_, __) => const Center(child: Text('خطا در دریافت اطلاعات')),
         );
       },

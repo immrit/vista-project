@@ -18,6 +18,7 @@ import '../../Exeption/app_exceptions.dart';
 import '../../util/time_utils.dart';
 import '../../util/widgets.dart';
 import 'package:flutter/foundation.dart' as foundation;
+import '../../../DB/message_cache_service.dart';
 
 import '/main.dart';
 
@@ -282,17 +283,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
 
     try {
-      final handler = ref.read(safeMessageHandlerProvider);
-      handler.sendMessage(
-        conversationId: widget.conversationId,
-        content: message,
-        attachmentUrl: attachmentUrl,
-        attachmentType: attachmentType,
-        replyToMessageId: _replyToMessage?.id,
-        replyToContent: _replyToMessage?.content,
-        replyToSenderName: _replyToMessage?.senderName,
-      );
+      final isOnline = await chatService.isDeviceOnline();
 
+      if (isOnline) {
+        // ارسال مستقیم پیام در حالت آنلاین
+        final handler = ref.read(safeMessageHandlerProvider);
+        final messageModel = await chatService.sendMessage(
+          conversationId: widget.conversationId,
+          content: message,
+          attachmentUrl: attachmentUrl,
+          attachmentType: attachmentType,
+          replyToMessageId: _replyToMessage?.id,
+          replyToContent: _replyToMessage?.content,
+          replyToSenderName: _replyToMessage?.senderName,
+        );
+        // ذخیره پیام در کش
+        await MessageCacheService().cacheMessage(messageModel);
+      } else {
+        // ارسال پیام در حالت آفلاین (در خود سرویس کش می‌شود)
+        await chatService.sendOfflineMessage(
+          conversationId: widget.conversationId,
+          content: message,
+          attachmentUrl: attachmentUrl,
+          attachmentType: attachmentType,
+          replyToMessageId: _replyToMessage?.id,
+          replyToContent: _replyToMessage?.content,
+          replyToSenderName: _replyToMessage?.senderName,
+        );
+      }
       setState(() {
         _replyToMessage = null;
       });
@@ -901,15 +919,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final messagesAsync =
-        ref.watch(messagesStreamProvider(widget.conversationId));
-
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final isKeyboardVisible = bottomInset > 0;
 
     if (isKeyboardVisible && _showEmojiPicker) {
       _showEmojiPicker = false;
     }
+
+    // ابتدا پیام‌های کش شده را نمایش بده، سپس استریم پیام‌ها را گوش بده
     return SafeArea(
       top: false,
       child: Scaffold(
@@ -1152,79 +1169,142 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         body: Column(
           children: [
             Expanded(
-              child: messagesAsync.when(
-                data: (messages) {
-                  if (messages.isEmpty) {
-                    return const Center(
-                      child:
-                          Text('پیامی وجود ندارد. اولین پیام را ارسال کنید!'),
-                    );
-                  }
-
-                  return ListView.builder(
-                    controller: _scrollController,
-                    reverse: true,
-                    itemCount: messages.length,
-                    itemBuilder: (context, index) {
-                      final message = messages[index];
-                      final isMe =
-                          message.senderId == supabase.auth.currentUser!.id;
-
-                      return _buildMessageItem(context, message, isMe);
+              child: FutureBuilder<List<MessageModel>>(
+                future: MessageCacheService()
+                    .getConversationMessages(widget.conversationId),
+                builder: (context, snapshot) {
+                  // اگر پیام کش شده داریم، همان ابتدا نمایش بده
+                  final cachedMessages = snapshot.data ?? [];
+                  return Consumer(
+                    builder: (context, ref, _) {
+                      final messagesAsync = ref
+                          .watch(messagesStreamProvider(widget.conversationId));
+                      return messagesAsync.when(
+                        data: (messages) {
+                          // اگر پیام جدید آمد، کش را هم آپدیت کن و پیام جدید را نمایش بده
+                          if (messages.isNotEmpty) {
+                            MessageCacheService().cacheMessages(messages);
+                            return ListView.builder(
+                              controller: _scrollController,
+                              reverse: true,
+                              itemCount: messages.length,
+                              itemBuilder: (context, index) {
+                                final message = messages[index];
+                                final isMe = message.senderId ==
+                                    supabase.auth.currentUser?.id;
+                                return _buildMessageItem(
+                                    context, message, isMe);
+                              },
+                            );
+                          }
+                          // اگر پیام سروری نیست، کش را نمایش بده
+                          if (cachedMessages.isNotEmpty) {
+                            return ListView.builder(
+                              controller: _scrollController,
+                              reverse: true,
+                              itemCount: cachedMessages.length,
+                              itemBuilder: (context, index) {
+                                final message = cachedMessages[index];
+                                final isMe = message.senderId ==
+                                    supabase.auth.currentUser?.id;
+                                return _buildMessageItem(
+                                    context, message, isMe);
+                              },
+                            );
+                          }
+                          return const Center(
+                              child: Text(
+                                  'پیامی وجود ندارد. اولین پیام را ارسال کنید!'));
+                        },
+                        loading: () {
+                          // در حالت لودینگ، اگر کش داریم همان را نمایش بده
+                          if (cachedMessages.isNotEmpty) {
+                            return ListView.builder(
+                              controller: _scrollController,
+                              reverse: true,
+                              itemCount: cachedMessages.length,
+                              itemBuilder: (context, index) {
+                                final message = cachedMessages[index];
+                                final isMe = message.senderId ==
+                                    supabase.auth.currentUser?.id;
+                                return _buildMessageItem(
+                                    context, message, isMe);
+                              },
+                            );
+                          }
+                          return Center(
+                            child: LoadingAnimationWidget.staggeredDotsWave(
+                              color: Theme.of(context).primaryColor,
+                              size: 50,
+                            ),
+                          );
+                        },
+                        error: (error, stack) {
+                          // در صورت خطا، کش را نمایش بده
+                          if (cachedMessages.isNotEmpty) {
+                            return ListView.builder(
+                              controller: _scrollController,
+                              reverse: true,
+                              itemCount: cachedMessages.length,
+                              itemBuilder: (context, index) {
+                                final message = cachedMessages[index];
+                                final isMe = message.senderId ==
+                                    supabase.auth.currentUser?.id;
+                                return _buildMessageItem(
+                                    context, message, isMe);
+                              },
+                            );
+                          }
+                          // ...existing code for error UI...
+                          return Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.signal_wifi_off,
+                                  color: Colors.grey,
+                                  size: 60,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'اتصال اینترنت برقرار نیست',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? Colors.white70
+                                        : Colors.grey[700],
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'پیام‌ها در حال حاضر قابل نمایش نیستند',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? Colors.white54
+                                        : Colors.grey[600],
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                ElevatedButton(
+                                  onPressed: () => ref.refresh(
+                                      messagesStreamProvider(
+                                          widget.conversationId)),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor:
+                                        Theme.of(context).colorScheme.primary,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                  child: const Text('تلاش مجدد'),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
                     },
-                  );
-                },
-                loading: () => Center(
-                  child: LoadingAnimationWidget.staggeredDotsWave(
-                    color: Theme.of(context).primaryColor,
-                    size: 50,
-                  ),
-                ),
-                error: (error, stack) {
-                  return Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.signal_wifi_off,
-                          color: Colors.grey,
-                          size: 60,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'اتصال اینترنت برقرار نیست',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.white70
-                                    : Colors.grey[700],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'پیام‌ها در حال حاضر قابل نمایش نیستند',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.white54
-                                    : Colors.grey[600],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: () => ref.refresh(
-                              messagesStreamProvider(widget.conversationId)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                                Theme.of(context).colorScheme.primary,
-                            foregroundColor: Colors.white,
-                          ),
-                          child: const Text('تلاش مجدد'),
-                        ),
-                      ],
-                    ),
                   );
                 },
               ),

@@ -11,7 +11,6 @@ import 'PublicPosts/publicPosts.dart';
 import 'searchPage.dart';
 
 // پرووایدر برای بررسی پیام‌های جدید
-// پرووایدر برای بررسی پیام‌های جدید
 final hasNewMessagesProvider = FutureProvider<bool>((ref) async {
   try {
     // دریافت پیام‌های خوانده نشده از سوپابیس
@@ -29,15 +28,6 @@ final hasNewMessagesProvider = FutureProvider<bool>((ref) async {
     return false;
   }
 });
-// استریم پرووایدر برای مانیتور کردن پیام‌های جدید
-// final newMessagesStreamProvider = StreamProvider<bool>((ref) {
-//   return supabase
-//       .from('messages')
-//       .stream(primaryKey: ['id'])
-//       .eq('receiver_id', supabase.auth.currentUser!.id)
-//       .filter('read', 'eq', false)
-//       .map((data) => data.isNotEmpty);
-// });
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -50,17 +40,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _selectedIndex = 0;
   DateTime? _lastPressed;
 
-  // لیست صفحات با حذف نوتیفیکیشن و اضافه کردن چت
-  final List<Widget> _tabs = [
-    const PublicPostsScreen(), // صفحه پست‌های عمومی
-    const SearchPage(), // صفحه جستجو
-    const AddPublicPostScreen(), // صفحه افزودن پست
-    const ChatConversationsScreen(), // صفحه چت (جدید)
-    ProfileScreen(
-      userId: supabase.auth.currentUser!.id,
-      username: supabase.auth.currentUser!.email!,
-    ), // صفحه پروفایل
-  ];
+  // لیست صفحات با استفاده از late برای اینیشیالایز تنها یکبار
+  late final List<Widget> _tabs;
+
+  @override
+  void initState() {
+    super.initState();
+    // ساخت یکبار صفحات در initState
+    _tabs = [
+      const PublicPostsScreen(), // صفحه پست‌های عمومی
+      const SearchPage(), // صفحه جستجو
+      const AddPublicPostScreen(), // صفحه افزودن پست
+      const ChatConversationsScreen(), // صفحه چت
+      ProfileScreen(
+        userId: supabase.auth.currentUser!.id,
+        username: supabase.auth.currentUser!.email!,
+      ), // صفحه پروفایل
+    ];
+  }
 
   // هندل کردن تغییر تب
   void _onItemTapped(int index) {
@@ -100,12 +97,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // استفاده از watch فقط برای لاگین بررسی وضعیت اعلان‌ها
     final hasNewNotificationAsync = ref.watch(hasNewNotificationProvider);
 
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
-        body: _tabs[_selectedIndex],
+        // استفاده از IndexedStack برای حفظ وضعیت صفحات
+        body: IndexedStack(
+          index: _selectedIndex,
+          children: _tabs,
+        ),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _selectedIndex,
           onDestinationSelected: _onItemTapped,
@@ -150,7 +152,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
               label: '',
             ),
-            // تب چت به جای تب اعلان‌ها
+            // تب چت با بج نمایش پیام‌های جدید
             NavigationDestination(
               icon: _buildMessageBadge(Icons.chat_bubble_outline, false),
               selectedIcon: _buildMessageBadge(Icons.chat_bubble, true),
