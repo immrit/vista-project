@@ -13,6 +13,7 @@ import 'package:app_links/app_links.dart';
 import 'DB/hive_initialize.dart';
 import 'firebase_options.dart';
 import 'model/Hive Model/RecentSearch.dart';
+import 'provider/profile_completion_provider.dart';
 import 'provider/provider.dart';
 import 'security/security.dart';
 import 'services/ChatService.dart';
@@ -133,6 +134,7 @@ ThemeData _getInitialTheme(String savedTheme) {
 }
 
 final supabase = Supabase.instance.client;
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key, required this.initialTheme});
@@ -148,10 +150,12 @@ class _MyAppState extends ConsumerState<MyApp> {
   StreamSubscription? _linkSubscription;
   bool _isLoading = false;
   bool _appInitialized = false;
+  Timer? _profileCheckTimer;
 
   @override
   void dispose() {
     _linkSubscription?.cancel();
+    _profileCheckTimer?.cancel();
     super.dispose();
   }
 
@@ -172,6 +176,7 @@ class _MyAppState extends ConsumerState<MyApp> {
         chatService.updateUserOnlineStatus();
       }
     });
+    _setupProfileCheck();
   }
 
   @override
@@ -317,6 +322,77 @@ class _MyAppState extends ConsumerState<MyApp> {
     }
   }
 
+  void _setupProfileCheck() {
+    // بررسی اولیه
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(profileCompletionProvider.notifier).checkProfileCompletion();
+    });
+
+    // تنظیم تایمر برای بررسی هر دقیقه
+    _profileCheckTimer = Timer.periodic(const Duration(minutes: 7), (_) {
+      if (mounted) {
+        _showProfileCompletionDialog();
+      }
+    });
+  }
+
+  void _showProfileCompletionDialog() async {
+    // برای اطمینان از وجود context صحیح
+    final context = navigatorKey.currentContext;
+    if (context == null) return;
+
+    final isComplete = await ref
+        .read(profileCompletionProvider.notifier)
+        .checkProfileCompletion();
+    if (!isComplete && mounted) {
+      // استفاده از GlobalKey برای دسترسی به context صحیح
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext dialogContext) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          title: const Text(
+            'تکمیل اطلاعات پروفایل',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.person_outline, size: 48, color: Colors.blue),
+              const SizedBox(height: 16),
+              const Text(
+                'لطفاً برای دسترسی به تمام امکانات برنامه، اطلاعات پروفایل خود را تکمیل کنید.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('بعداً'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/editeProfile');
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.blue,
+              ),
+              child: const Text(
+                'تکمیل پروفایل',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ScreenUtilInit(
@@ -331,7 +407,7 @@ class _MyAppState extends ConsumerState<MyApp> {
               title: 'Vista',
               debugShowCheckedModeBanner: false,
               theme: theme,
-              navigatorKey: DeepLinkService.navigatorKey,
+              navigatorKey: navigatorKey, // اضافه کردن navigatorKey
               home: SplashScreen(),
               initialRoute: '/',
               scaffoldMessengerKey: GlobalKey<ScaffoldMessengerState>(),

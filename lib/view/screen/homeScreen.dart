@@ -3,6 +3,7 @@ import 'package:Vista/view/screen/chat/ChatConversationsScreen.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:badges/badges.dart' as badges;
+import '../../provider/profile_completion_provider.dart';
 import '../../provider/provider.dart';
 import '/main.dart';
 import 'PublicPosts/AddPost.dart';
@@ -46,6 +47,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _checkProfileCompletion();
     // ساخت یکبار صفحات در initState
     _tabs = [
       const PublicPostsScreen(), // صفحه پست‌های عمومی
@@ -57,6 +59,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         username: supabase.auth.currentUser!.email!,
       ), // صفحه پروفایل
     ];
+  }
+
+  void _checkProfileCompletion() async {
+    final isComplete = await ref
+        .read(profileCompletionProvider.notifier)
+        .checkProfileCompletion();
+    if (!isComplete && mounted) {
+      // انتقال به صفحه ویرایش پروفایل
+      Navigator.pushNamed(context, '/editeProfile');
+    }
   }
 
   // هندل کردن تغییر تب
