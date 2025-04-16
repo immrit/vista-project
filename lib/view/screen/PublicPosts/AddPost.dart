@@ -36,9 +36,9 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     });
 
     // اضافه کردن انیمیشن ورود با تاخیر
-    Future.delayed(const Duration(milliseconds: 100), () {
-      _focusNode.requestFocus();
-    });
+    // Future.delayed(const Duration(milliseconds: 100), () {
+    //   _focusNode.requestFocus();
+    // });
   }
 
   Color _getCharCountColor() {
@@ -421,7 +421,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: TextField(
           controller: contentController,
-          focusNode: _focusNode,
+          // focusNode: _focusNode,
           maxLines: 7,
           minLines: 3,
           keyboardType: TextInputType.multiline,
