@@ -249,46 +249,84 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     String? attachmentUrl;
     String? attachmentType;
 
-    if (_selectedImage != null) {
-      setState(() {
-        _isUploading = true;
-      });
+    // --- 1. ساخت پیام موقت و افزودن به کش و UI ---
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    final currentUser = supabase.auth.currentUser;
+    final now = DateTime.now();
+    final tempMessage = MessageModel(
+      id: tempId,
+      conversationId: widget.conversationId,
+      senderId: currentUser?.id ?? '',
+      content: message,
+      createdAt: now,
+      attachmentUrl: _selectedImage?.path,
+      attachmentType: _selectedImage != null ? 'image' : null,
+      isRead: false,
+      isSent: false,
+      senderName: currentUser?.userMetadata?['username'] ?? 'من',
+      senderAvatar: currentUser?.userMetadata?['avatar_url'],
+      isMe: true,
+      replyToMessageId: _replyToMessage?.id,
+      replyToContent: _replyToMessage?.content,
+      replyToSenderName: _replyToMessage?.senderName,
+    );
+    // ذخیره پیام موقت در کش Hive و حافظه
+    await MessageCacheService().cacheMessage(tempMessage);
 
-      try {
-        attachmentUrl = await _uploadImage(_selectedImage!);
-        attachmentType = 'image';
-      } catch (e) {
-        String errorMessage = 'ارسال پیام ناموفق بود';
-        if (e is AppException) {
-          errorMessage = e.userFriendlyMessage;
-        } else {
-          errorMessage = 'خطای نامشخص. لطفاً دوباره امتحان کنید';
-        }
+    setState(() {
+      _replyToMessage = null;
+      _selectedImage = null;
+      // فوراً UI را رفرش کن تا پیام موقت نمایش داده شود
+    });
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(errorMessage)),
-          );
-        }
-      } finally {
-        if (mounted) {
-          setState(() {
-            _selectedImage = null;
-            _isUploading = false;
-          });
-        }
-      }
-
-      if (!mounted) return;
+    // اسکرول به پایین
+    if (_scrollController.hasClients && mounted) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
     }
 
+    // --- 2. ارسال پیام به سرور ---
     try {
+      if (_selectedImage != null) {
+        setState(() {
+          _isUploading = true;
+        });
+        try {
+          attachmentUrl = await _uploadImage(_selectedImage!);
+          attachmentType = 'image';
+        } catch (e) {
+          String errorMessage = 'ارسال پیام ناموفق بود';
+          if (e is AppException) {
+            errorMessage = e.userFriendlyMessage;
+          } else {
+            errorMessage = 'خطای نامشخص. لطفاً دوباره امتحان کنید';
+          }
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(errorMessage)),
+            );
+          }
+        } finally {
+          if (mounted) {
+            setState(() {
+              _selectedImage = null;
+              _isUploading = false;
+            });
+          }
+        }
+
+        if (!mounted) return;
+      }
+
       final isOnline = await chatService.isDeviceOnline();
 
+      MessageModel? sentMessage;
       if (isOnline) {
-        // ارسال مستقیم پیام در حالت آنلاین
-        final handler = ref.read(safeMessageHandlerProvider);
-        final messageModel = await chatService.sendMessage(
+        sentMessage = await chatService.sendMessage(
           conversationId: widget.conversationId,
           content: message,
           attachmentUrl: attachmentUrl,
@@ -297,11 +335,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           replyToContent: _replyToMessage?.content,
           replyToSenderName: _replyToMessage?.senderName,
         );
-        // ذخیره پیام در کش
-        await MessageCacheService().cacheMessage(messageModel);
       } else {
-        // ارسال پیام در حالت آفلاین (در خود سرویس کش می‌شود)
-        await chatService.sendOfflineMessage(
+        sentMessage = await chatService.sendOfflineMessage(
           conversationId: widget.conversationId,
           content: message,
           attachmentUrl: attachmentUrl,
@@ -311,23 +346,33 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           replyToSenderName: _replyToMessage?.senderName,
         );
       }
-      setState(() {
-        _replyToMessage = null;
-      });
 
-      _messageController.clear();
-
-      if (_scrollController.hasClients && mounted) {
-        _scrollController.animateTo(
-          0,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
+      // --- 3. جایگزینی پیام موقت با پیام واقعی ---
+      if (sentMessage != null) {
+        await MessageCacheService().replaceTempMessage(
+          widget.conversationId,
+          tempId,
+          sentMessage,
         );
+        // پیام واقعی را از کش مجدداً بخوان و UI را رفرش کن تا وضعیت ساعت به تیک تغییر کند
+        if (mounted) {
+          setState(() {});
+        }
       }
     } catch (e) {
+      // --- 4. اگر خطا رخ داد، وضعیت پیام موقت را به ارسال نشده تغییر بده ---
+      await MessageCacheService().markMessageAsFailed(
+        widget.conversationId,
+        tempId,
+      );
       String errorMessage = 'خطای نامشخص';
       if (e is AppException) {
         errorMessage = e.userFriendlyMessage;
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorMessage)),
+        );
       }
     }
   }
@@ -1173,51 +1218,52 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 future: MessageCacheService()
                     .getConversationMessages(widget.conversationId),
                 builder: (context, snapshot) {
-                  // اگر پیام کش شده داریم، همان ابتدا نمایش بده
                   final cachedMessages = snapshot.data ?? [];
                   return Consumer(
                     builder: (context, ref, _) {
                       final messagesAsync = ref
                           .watch(messagesStreamProvider(widget.conversationId));
                       return messagesAsync.when(
-                        data: (messages) {
-                          // اگر پیام جدید آمد، کش را هم آپدیت کن و پیام جدید را نمایش بده
-                          if (messages.isNotEmpty) {
-                            MessageCacheService().cacheMessages(messages);
-                            return ListView.builder(
-                              controller: _scrollController,
-                              reverse: true,
-                              itemCount: messages.length,
-                              itemBuilder: (context, index) {
-                                final message = messages[index];
-                                final isMe = message.senderId ==
-                                    supabase.auth.currentUser?.id;
-                                return _buildMessageItem(
-                                    context, message, isMe);
-                              },
-                            );
+                        data: (messagesFromServer) {
+                          // ترکیب پیام‌های کش شده (موقت) و پیام‌های سرور
+                          List<MessageModel> allMessages = [];
+                          // پیام‌های موقت: پیام‌هایی که id آنها با temp_ شروع می‌شود یا isSent=false
+                          final tempMessages = cachedMessages
+                              .where((m) =>
+                                  m.id.startsWith('temp_') || m.isSent == false)
+                              .toList();
+                          // پیام‌های سرور: پیام‌هایی که id آنها temp_ نیست
+                          final serverMessages = messagesFromServer
+                              .where((m) => !m.id.startsWith('temp_'))
+                              .toList();
+                          // حذف پیام‌های تکراری (بر اساس id)
+                          final tempIds = tempMessages.map((m) => m.id).toSet();
+                          final filteredServerMessages = serverMessages
+                              .where((m) => !tempIds.contains(m.id))
+                              .toList();
+                          allMessages = [
+                            ...tempMessages,
+                            ...filteredServerMessages
+                          ];
+
+                          if (allMessages.isEmpty) {
+                            return const Center(
+                                child: Text(
+                                    'پیامی وجود ندارد. اولین پیام را ارسال کنید!'));
                           }
-                          // اگر پیام سروری نیست، کش را نمایش بده
-                          if (cachedMessages.isNotEmpty) {
-                            return ListView.builder(
-                              controller: _scrollController,
-                              reverse: true,
-                              itemCount: cachedMessages.length,
-                              itemBuilder: (context, index) {
-                                final message = cachedMessages[index];
-                                final isMe = message.senderId ==
-                                    supabase.auth.currentUser?.id;
-                                return _buildMessageItem(
-                                    context, message, isMe);
-                              },
-                            );
-                          }
-                          return const Center(
-                              child: Text(
-                                  'پیامی وجود ندارد. اولین پیام را ارسال کنید!'));
+                          return ListView.builder(
+                            controller: _scrollController,
+                            reverse: true,
+                            itemCount: allMessages.length,
+                            itemBuilder: (context, index) {
+                              final message = allMessages[index];
+                              final isMe = message.senderId ==
+                                  supabase.auth.currentUser?.id;
+                              return _buildMessageItem(context, message, isMe);
+                            },
+                          );
                         },
                         loading: () {
-                          // در حالت لودینگ، اگر کش داریم همان را نمایش بده
                           if (cachedMessages.isNotEmpty) {
                             return ListView.builder(
                               controller: _scrollController,
@@ -1240,7 +1286,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           );
                         },
                         error: (error, stack) {
-                          // در صورت خطا، کش را نمایش بده
                           if (cachedMessages.isNotEmpty) {
                             return ListView.builder(
                               controller: _scrollController,
@@ -1255,7 +1300,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               },
                             );
                           }
-                          // ...existing code for error UI...
                           return Center(
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
@@ -1517,13 +1561,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     final myTimeColor = isLightMode ? Colors.white70 : Colors.black87;
     final otherTimeColor = isLightMode ? Colors.grey[700] : Colors.grey[300];
+
     Widget attachmentWidget = const SizedBox.shrink();
 
+    // نمایش عکس پیام موقت (هنوز آپلود نشده)
     if (message.attachmentUrl != null) {
-      if (message.attachmentType?.startsWith('image/') ?? false) {
+      if (message.isSent == false && message.attachmentType == 'image') {
+        // پیام موقت: عکس از فایل محلی
+        attachmentWidget = Padding(
+          padding: const EdgeInsets.only(top: 8.0),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.file(
+              File(message.attachmentUrl!),
+              width: 200,
+              height: 200,
+              fit: BoxFit.cover,
+            ),
+          ),
+        );
+      } else if (message.attachmentType?.startsWith('image/') ?? false) {
+        // پیام واقعی: عکس از اینترنت
         attachmentWidget = _buildImageAttachment(message.attachmentUrl!);
       }
     }
+
     return Slidable(
       key: Key(message.id),
       startActionPane: ActionPane(
@@ -1613,32 +1675,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           ? CrossAxisAlignment.end
                           : CrossAxisAlignment.start,
                       children: [
+                        // نمایش عکس پیام (موقت یا واقعی)
                         if (message.attachmentUrl != null &&
                             message.attachmentUrl!.isNotEmpty &&
                             message.attachmentType == 'image')
-                          GestureDetector(
-                            onTap: () {
-                              _showFullScreenImage(
-                                  context, message.attachmentUrl!);
-                            },
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: CachedNetworkImage(
-                                imageUrl: message.attachmentUrl!,
-                                placeholder: (context, url) => SizedBox(
-                                  width: 200,
-                                  height: 200,
-                                  child: Center(
-                                      child: CircularProgressIndicator()),
-                                ),
-                                errorWidget: (context, url, error) =>
-                                    Icon(Icons.error),
-                                width: 200,
-                                height: 200,
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                          ),
+                          attachmentWidget,
                         if (message.content.isNotEmpty)
                           Padding(
                             padding: EdgeInsets.only(
@@ -1670,13 +1711,41 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               ),
                               SizedBox(width: 4),
                               if (isMe)
-                                Icon(
-                                  message.isRead ? Icons.done_all : Icons.done,
-                                  size: 14,
-                                  color: message.isRead
-                                      ? Colors.green
-                                      : (isMe ? myTimeColor : otherTimeColor),
-                                ),
+                                // فقط اگر پیام توسط کاربر فعلی ارسال شده و isSent=false و id پیام temp است، ساعت و دکمه ارسال مجدد نمایش بده
+                                (!message.isSent &&
+                                        message.id.startsWith('temp_'))
+                                    ? Row(
+                                        children: [
+                                          Icon(
+                                            Icons.access_time,
+                                            size: 14,
+                                            color: Colors.grey,
+                                          ),
+                                          SizedBox(width: 2),
+                                          GestureDetector(
+                                            onTap: () async {
+                                              await _retrySendMessage(message);
+                                            },
+                                            child: Icon(
+                                              Icons.refresh,
+                                              size: 16,
+                                              color: Colors.grey,
+                                            ),
+                                          ),
+                                        ],
+                                      )
+                                    // اگر پیام ارسال شده یا پیام واقعی است، تیک نمایش بده
+                                    : Icon(
+                                        message.isRead
+                                            ? Icons.done_all
+                                            : Icons.done,
+                                        size: 14,
+                                        color: message.isRead
+                                            ? Colors.green
+                                            : (isMe
+                                                ? myTimeColor
+                                                : otherTimeColor),
+                                      ),
                             ],
                           ),
                         ),
@@ -1690,6 +1759,83 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
       ),
     );
+  }
+
+  // ارسال مجدد پیام موقت (retry)
+  Future<void> _retrySendMessage(MessageModel message) async {
+    // فقط پیام‌هایی که ارسال نشده‌اند
+    if (message.isSent == false) {
+      // اگر پیام عکس داشت و فایلش پاک شده بود، خطا بده
+      if (message.attachmentType == 'image' &&
+          message.attachmentUrl != null &&
+          !File(message.attachmentUrl!).existsSync()) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('فایل تصویر یافت نشد!')),
+        );
+        return;
+      }
+      // ارسال مجدد پیام (تقریباً مشابه _sendMessage)
+      String? attachmentUrl;
+      String? attachmentType;
+      if (message.attachmentType == 'image' && message.attachmentUrl != null) {
+        setState(() => _isUploading = true);
+        try {
+          attachmentUrl = await _uploadImage(File(message.attachmentUrl!));
+          attachmentType = 'image';
+        } catch (e) {
+          setState(() => _isUploading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('ارسال تصویر ناموفق بود')),
+          );
+          return;
+        }
+        setState(() => _isUploading = false);
+      }
+      final chatService = ref.read(chatServiceProvider);
+      try {
+        final isOnline = await chatService.isDeviceOnline();
+        MessageModel? sentMessage;
+        if (isOnline) {
+          sentMessage = await chatService.sendMessage(
+            conversationId: message.conversationId,
+            content: message.content,
+            attachmentUrl: attachmentUrl,
+            attachmentType: attachmentType,
+            replyToMessageId: message.replyToMessageId,
+            replyToContent: message.replyToContent,
+            replyToSenderName: message.replyToSenderName,
+          );
+        } else {
+          sentMessage = await chatService.sendOfflineMessage(
+            conversationId: message.conversationId,
+            content: message.content,
+            attachmentUrl: attachmentUrl,
+            attachmentType: attachmentType,
+            replyToMessageId: message.replyToMessageId,
+            replyToContent: message.replyToContent,
+            replyToSenderName: message.replyToSenderName,
+          );
+        }
+        // جایگزینی پیام موقت با پیام واقعی
+        await MessageCacheService().replaceTempMessage(
+          message.conversationId,
+          message.id,
+          sentMessage!,
+        );
+        // فوراً UI را رفرش کن تا وضعیت ساعت به تیک تغییر کند
+        if (mounted) {
+          setState(() {});
+        }
+      } catch (e) {
+        await MessageCacheService().markMessageAsFailed(
+          message.conversationId,
+          message.id,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('ارسال مجدد پیام ناموفق بود')),
+        );
+      }
+    }
   }
 
   void _showMessageOptions(

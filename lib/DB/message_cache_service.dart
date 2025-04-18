@@ -197,6 +197,44 @@ class MessageCacheService {
     }
   }
 
+  // جایگزینی پیام موقت با پیام واقعی (بر اساس tempId)
+  Future<void> replaceTempMessage(
+      String conversationId, String tempId, MessageModel realMessage) async {
+    await initialize();
+
+    // حذف پیام موقت از کش حافظه و Hive
+    if (_memoryCache.containsKey(conversationId)) {
+      _memoryCache[conversationId]!.removeWhere((m) => m.id == tempId);
+    }
+    final tempKey = '${conversationId}_$tempId';
+    await _box?.delete(tempKey);
+
+    // افزودن پیام واقعی
+    await cacheMessage(realMessage);
+  }
+
+  // علامت‌گذاری پیام موقت به عنوان ارسال نشده (در صورت خطا)
+  Future<void> markMessageAsFailed(String conversationId, String tempId) async {
+    await initialize();
+    // در کش حافظه
+    if (_memoryCache.containsKey(conversationId)) {
+      final idx =
+          _memoryCache[conversationId]!.indexWhere((m) => m.id == tempId);
+      if (idx != -1) {
+        final failed =
+            _memoryCache[conversationId]![idx].copyWith(isSent: false);
+        _memoryCache[conversationId]![idx] = failed;
+      }
+    }
+    // در Hive
+    final tempKey = '${conversationId}_$tempId';
+    final hiveModel = _box?.get(tempKey);
+    if (hiveModel != null) {
+      hiveModel.isSent = false;
+      await _box?.put(tempKey, hiveModel);
+    }
+  }
+
   // حذف پیام‌های یک مکالمه
   Future<void> clearConversationMessages(String conversationId) async {
     await initialize();
