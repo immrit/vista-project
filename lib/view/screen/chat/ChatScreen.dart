@@ -2433,7 +2433,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   String _formatMessageHour(DateTime time) {
-    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    // تبدیل زمان به ساعت تهران (UTC+3:30)
+    final tehranOffset = const Duration(hours: 3, minutes: 30);
+    final tehranTime = time.toUtc().add(tehranOffset);
+    return '${tehranTime.hour.toString().padLeft(2, '0')}:${tehranTime.minute.toString().padLeft(2, '0')}';
   }
 }
 
