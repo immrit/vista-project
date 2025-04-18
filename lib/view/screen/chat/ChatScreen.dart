@@ -255,14 +255,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _replyToMessage = message;
       _messageFocusNode.requestFocus();
     });
-
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    }
+    // اسکرول خودکار به بالا را حذف کردیم
   }
 
   void _cancelReply() {
@@ -359,15 +352,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _selectedImage = null;
       _messageController.clear();
     });
-
-    // اسکرول به پایین
-    if (_scrollController.hasClients && mounted) {
-      _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    }
 
     // --- 2. ارسال پیام به سرور ---
     try {
@@ -1009,23 +993,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  void _scrollToFirstUnread(List<MessageModel> messages) async {
-    final currentUserId = supabase.auth.currentUser?.id;
-    final firstUnreadIndex = messages
-        .lastIndexWhere((msg) => !msg.isRead && msg.senderId != currentUserId);
+  // void _scrollToFirstUnread(List<MessageModel> messages) async {
+  //   final currentUserId = supabase.auth.currentUser?.id;
+  //   final firstUnreadIndex = messages
+  //       .lastIndexWhere((msg) => !msg.isRead && msg.senderId != currentUserId);
 
-    if (firstUnreadIndex != -1 && _scrollController.hasClients) {
-      // چون لیست reverse است، باید به اندیس معکوس اسکرول کنیم
-      final position =
-          (messages.length - 1 - firstUnreadIndex) * 72.0; // تقریبی
-      await Future.delayed(const Duration(milliseconds: 300));
-      _scrollController.animateTo(
-        position,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
-      );
-    }
-  }
+  //   if (firstUnreadIndex != -1 && _scrollController.hasClients) {
+  //     // چون لیست reverse است، باید به اندیس معکوس اسکرول کنیم
+  //     final position =
+  //         (messages.length - 1 - firstUnreadIndex) * 72.0; // تقریبی
+  //     await Future.delayed(const Duration(milliseconds: 300));
+  //     _scrollController.animateTo(
+  //       position,
+  //       duration: const Duration(milliseconds: 400),
+  //       curve: Curves.easeInOut,
+  //     );
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -1304,26 +1288,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               final serverMessages = messagesFromServer
                                   .where((m) => !m.id.startsWith('temp_'))
                                   .toList();
-                              // حذف پیام‌های تکراری (بر اساس id)
-                              final tempIds =
-                                  tempMessages.map((m) => m.id).toSet();
-                              final filteredServerMessages = serverMessages
-                                  .where((m) => !tempIds.contains(m.id))
+
+                              // حذف پیام‌های temp که پیام واقعی‌شان آمده
+                              final serverIds =
+                                  serverMessages.map((m) => m.id).toSet();
+                              final filteredTempMessages = tempMessages
+                                  .where((m) => !serverIds.contains(m.id))
                                   .toList();
+
                               allMessages = [
-                                ...tempMessages,
-                                ...filteredServerMessages
+                                ...serverMessages,
+                                ...filteredTempMessages
                               ];
+
+                              // مرتب‌سازی بر اساس زمان (جدیدترین بالا)
+                              allMessages.sort(
+                                  (a, b) => b.createdAt.compareTo(a.createdAt));
 
                               if (allMessages.isEmpty) {
                                 return const Center(
                                     child: Text(
                                         'پیامی وجود ندارد. اولین پیام را ارسال کنید!'));
                               }
-                              // نمایش پیام‌ها با جداکننده تاریخ
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                _scrollToFirstUnread(allMessages);
-                              });
+
                               return ListView.builder(
                                 controller: _scrollController,
                                 reverse: true,

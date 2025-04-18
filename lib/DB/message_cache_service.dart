@@ -65,10 +65,54 @@ class MessageCacheService {
   // بروزرسانی چند پیام در یک زمان
   Future<void> cacheMessages(List<MessageModel> messages) async {
     if (messages.isEmpty) return;
+    await initialize();
 
+    // پیام‌های جدید را بر اساس conversationId گروه‌بندی کن
+    final Map<String, List<MessageModel>> grouped = {};
     for (final message in messages) {
-      await cacheMessage(message);
+      grouped.putIfAbsent(message.conversationId, () => []).add(message);
     }
+
+    for (final entry in grouped.entries) {
+      final conversationId = entry.key;
+      final newMessages = entry.value;
+
+      // حذف پیام‌های temp که پیام واقعی‌شان آمده
+      if (_memoryCache.containsKey(conversationId)) {
+        final tempIds = newMessages
+            .map((m) => m.id)
+            .where((id) => id.startsWith('temp_'))
+            .toSet();
+        _memoryCache[conversationId]!
+            .removeWhere((m) => tempIds.contains(m.id));
+      }
+
+      // حذف پیام temp با همان id پیام واقعی
+      for (final msg in newMessages) {
+        await replaceTempIfExists(msg.conversationId, msg.id, msg);
+      }
+
+      // اضافه یا جایگزین کردن پیام‌ها
+      for (final message in newMessages) {
+        await cacheMessage(message);
+      }
+    }
+  }
+
+  // اگر پیام temp با همین id وجود داشت، حذف و پیام واقعی را جایگزین کن
+  Future<void> replaceTempIfExists(
+      String conversationId, String messageId, MessageModel realMessage) async {
+    await initialize();
+    // حذف از کش حافظه
+    if (_memoryCache.containsKey(conversationId)) {
+      _memoryCache[conversationId]!
+          .removeWhere((m) => m.id == messageId && m.id.startsWith('temp_'));
+    }
+    // حذف از Hive
+    final tempKey = '${conversationId}_$messageId';
+    await _box?.delete(tempKey);
+    // پیام واقعی را اضافه کن
+    await cacheMessage(realMessage);
   }
 
   // دریافت پیام‌های یک مکالمه
