@@ -250,6 +250,20 @@ class MessageCacheService {
     }
   }
 
+  // حذف یک پیام خاص از کش
+  Future<void> clearMessage(String conversationId, String messageId) async {
+    await initialize();
+
+    // Remove from memory cache
+    if (_memoryCache.containsKey(conversationId)) {
+      _memoryCache[conversationId]!.removeWhere((m) => m.id == messageId);
+    }
+
+    // Remove from Hive
+    final key = '${conversationId}_$messageId';
+    await _box?.delete(key);
+  }
+
   // پاک کردن تمام کش
   Future<void> clearAllCache() async {
     await initialize();

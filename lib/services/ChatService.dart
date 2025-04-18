@@ -125,6 +125,30 @@ class ChatService {
             hasUnreadMessages = lastMessageTime.isAfter(lastReadTime);
           }
 
+          // دریافت آخرین پیام غیر مخفی
+          final lastMessageQuery = await _supabase
+              .from('messages')
+              .select()
+              .eq('conversation_id', conversationId)
+              .not(
+                  'id',
+                  'in',
+                  (await _supabase
+                          .from('hidden_messages')
+                          .select('message_id')
+                          .eq('user_id', userId))
+                      .map((e) => e['message_id'])
+                      .toList())
+              .order('created_at', ascending: false)
+              .limit(1)
+              .maybeSingle();
+
+          // اگر پیامی وجود داشت، آن را در json قرار بده
+          if (lastMessageQuery != null) {
+            json['last_message'] = lastMessageQuery['content'];
+            json['last_message_time'] = lastMessageQuery['created_at'];
+          }
+
           final conversation =
               ConversationModel.fromJson(json, currentUserId: userId).copyWith(
             participants: participants,
@@ -186,22 +210,30 @@ class ChatService {
       print('ارسال پیام به مکالمه: $conversationId');
       print('محتوای پیام: $content');
       print('فرستنده: $userId');
+      print('attachmentUrl: $attachmentUrl'); // اضافه شد برای دیباگ
+      print('attachmentType: $attachmentType'); // اضافه شد برای دیباگ
+
+      // اطمینان از اینکه اگر attachmentUrl مقدار ندارد، فیلد را null بفرستیم
+      final insertMap = {
+        'conversation_id': conversationId,
+        'sender_id': userId,
+        'content': content,
+        'attachment_url': (attachmentUrl != null && attachmentUrl.isNotEmpty)
+            ? attachmentUrl
+            : null,
+        'attachment_type': (attachmentType != null && attachmentType.isNotEmpty)
+            ? attachmentType
+            : null,
+        'reply_to_message_id': replyToMessageId,
+        'reply_to_content': replyToContent,
+        'reply_to_sender_name': replyToSenderName,
+      };
+
+      print('insertMap: $insertMap'); // دیباگ
 
       // ارسال پیام به سرور
-      final insertResponse = await _supabase
-          .from('messages')
-          .insert({
-            'conversation_id': conversationId,
-            'sender_id': userId,
-            'content': content,
-            'attachment_url': attachmentUrl,
-            'attachment_type': attachmentType,
-            'reply_to_message_id': replyToMessageId,
-            'reply_to_content': replyToContent,
-            'reply_to_sender_name': replyToSenderName,
-          })
-          .select()
-          .single();
+      final insertResponse =
+          await _supabase.from('messages').insert(insertMap).select().single();
 
       // دریافت اطلاعات فرستنده
       final profileResponse = await _supabase
@@ -645,13 +677,13 @@ class ChatService {
     final userId = _supabase.auth.currentUser!.id;
 
     try {
-      // اول بررسی می‌کنیم که آیا پیام متعلق به کاربر جاری است یا نه
       final message = await _supabase
           .from('messages')
           .select('sender_id, conversation_id')
           .eq('id', messageId)
           .single();
 
+      final conversationId = message['conversation_id'];
       final isSender = message['sender_id'] == userId;
 
       if (forEveryone && !isSender) {
@@ -659,73 +691,82 @@ class ChatService {
       }
 
       if (forEveryone) {
-        // حذف کامل پیام از دیتابیس
         await _supabase.from('messages').delete().eq('id', messageId);
-        print('پیام به طور کامل حذف شد: $messageId');
       } else {
-        // مخفی کردن پیام برای کاربر فعلی
         await _supabase.from('hidden_messages').upsert({
           'message_id': messageId,
           'user_id': userId,
-          'conversation_id': message['conversation_id'],
+          'conversation_id': conversationId,
           'hidden_at': DateTime.now().toIso8601String(),
         });
-        print('پیام برای کاربر $userId مخفی شد: $messageId');
       }
+
+      // پاکسازی فوری کش پیام
+      await _messageCache.clearMessage(conversationId, messageId);
+
+      // بروزرسانی آخرین پیام مکالمه
+      final hiddenMessages = await _supabase
+          .from('hidden_messages')
+          .select('message_id')
+          .eq('user_id', userId);
+
+      final hiddenMessageIds =
+          hiddenMessages.map((e) => e['message_id']).toList();
+
+      final lastMessage = await _supabase
+          .from('messages')
+          .select()
+          .eq('conversation_id', conversationId)
+          .not('id', 'in', hiddenMessageIds)
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      if (lastMessage != null) {
+        await _supabase.from('conversations').update({
+          'last_message': lastMessage['content'],
+          'last_message_time': lastMessage['created_at'],
+        }).eq('id', conversationId);
+      }
+
+      // بروزرسانی کش مکالمه
+      await refreshConversation(conversationId);
+
+      // بروزرسانی فوری لیست مکالمات (برای UI)
+      await _conversationCache.clearCache();
+      await getConversations();
     } catch (e) {
       print('خطا در حذف پیام: $e');
       rethrow;
     }
   }
 
-// اضافه کردن متد پاکسازی تاریخچه گفتگو با قابلیت حذف برای همه یا فقط برای کاربر فعلی
-  Future<void> clearConversation(String conversationId,
-      {bool bothSides = false}) async {
-    final userId = _supabase.auth.currentUser!.id;
-
+  // Add new helper method to refresh a specific conversation
+  Future<void> refreshConversation(String conversationId) async {
     try {
-      if (bothSides) {
-        // حذف تمام پیام‌های مکالمه برای همه
-        final messagesWithImages = await _supabase
-            .from('messages')
-            .select('attachment_url')
-            .eq('conversation_id', conversationId)
-            .neq('attachment_url', '');
+      final conversationResponse = await _supabase
+          .from('conversations')
+          .select()
+          .eq('id', conversationId)
+          .single();
 
-        // تبدیل به لیستی از Futureها
-        final deleteFutures = messagesWithImages
-            .where((msg) => msg['attachment_url'] != null)
-            .map((msg) => ChatImageUploadService.deleteChatImage(
-                msg['attachment_url'] as String))
-            .toList();
-
-        await Future.wait(deleteFutures);
-
-        // حذف پیام‌ها از دیتابیس
-        await _supabase
-            .from('messages')
-            .delete()
-            .eq('conversation_id', conversationId);
-      } else {
-        // فقط برای کاربر فعلی پیام‌ها را مخفی کن (با استفاده از جدول hidden_messages)
-        final messages = await _supabase
-            .from('messages')
-            .select('id')
-            .eq('conversation_id', conversationId);
-
-        // برای هر پیام، یک رکورد در جدول hidden_messages اضافه می‌کنیم
-        for (var message in messages) {
-          await _supabase.from('hidden_messages').upsert({
-            'message_id': message['id'],
-            'user_id': userId,
-            'hidden_at': DateTime.now().toIso8601String(),
-          });
-        }
+      if (conversationResponse != null) {
+        final userId = _supabase.auth.currentUser!.id;
+        final conversation =
+            await _getConversationWithDetails(conversationResponse, userId);
+        await _conversationCache.updateConversation(conversation);
       }
     } catch (e) {
-      print('خطا در پاکسازی مکالمه: $e');
-      throw Exception('پاکسازی مکالمه با خطا مواجه شد: $e');
+      print('خطا در بروزرسانی مکالمه: $e');
     }
+  }
+
+  // Helper method to get conversation with details
+  Future<ConversationModel> _getConversationWithDetails(
+      Map<String, dynamic> conversationData, String userId) async {
+    // ... کد موجود از متد getConversations برای دریافت جزئیات مکالمه ...
+    // این متد را از بخش مربوطه در getConversations کپی کنید
+    return ConversationModel.fromJson(conversationData, currentUserId: userId);
   }
 
   // حذف تمام پیام‌های یک مکالمه
@@ -735,59 +776,36 @@ class ChatService {
 
     try {
       if (forEveryone) {
-        // حذف برای همه شرکت‌کنندگان
-
-        // ابتدا پیام‌ها را از جدول hidden_messages حذف می‌کنیم که به این مکالمه مربوط هستند
-        await _supabase
-            .from('hidden_messages')
-            .delete()
-            .eq('conversation_id', conversationId);
-
-        // سپس پیام‌ها را از جدول messages حذف می‌کنیم
+        // Delete messages for everyone
         await _supabase
             .from('messages')
             .delete()
             .eq('conversation_id', conversationId);
 
-        print('تمام پیام‌های مکالمه $conversationId برای همه کاربران حذف شد');
+        // Clear all messages from cache
+        await _messageCache.clearConversationMessages(conversationId);
       } else {
-        // حذف فقط برای کاربر فعلی (با مخفی کردن پیام‌ها)
-
-        // ابتدا پیام‌های موجود در hidden_messages که قبلاً توسط این کاربر مخفی شده را بررسی می‌کنیم
-        final existingHiddenMessages = await _supabase
-            .from('hidden_messages')
-            .select('message_id')
-            .eq('user_id', userId)
-            .eq('conversation_id', conversationId);
-
-        final hiddenMessageIds = existingHiddenMessages
-            .map((item) => item['message_id'] as String)
-            .toList();
-
-        // پیام‌های مکالمه را دریافت می‌کنیم
-        final messagesResponse = await _supabase
+        // Hide messages only for current user
+        final messages = await _supabase
             .from('messages')
             .select('id')
             .eq('conversation_id', conversationId);
 
-        // برای هر پیام که هنوز مخفی نشده، یک رکورد در جدول hidden_messages ایجاد می‌کنیم
-        for (final message in messagesResponse) {
-          final messageId = message['id'] as String;
-
-          // اگر این پیام قبلاً مخفی نشده باشد
-          if (!hiddenMessageIds.contains(messageId)) {
-            await _supabase.from('hidden_messages').insert({
-              'message_id': messageId,
-              'user_id': userId,
-              'conversation_id': conversationId,
-              'hidden_at': DateTime.now().toIso8601String(),
-            });
-          }
+        for (final message in messages) {
+          await _supabase.from('hidden_messages').upsert({
+            'message_id': message['id'],
+            'user_id': userId,
+            'conversation_id': conversationId,
+            'hidden_at': DateTime.now().toIso8601String(),
+          });
         }
 
-        print(
-            'تمام پیام‌های مکالمه $conversationId برای کاربر $userId مخفی شد');
+        // Clear messages from local cache
+        await _messageCache.clearConversationMessages(conversationId);
       }
+
+      // Update conversation in cache
+      await _conversationCache.removeConversation(conversationId);
     } catch (e) {
       print('خطا در پاکسازی مکالمه: $e');
       rethrow;
@@ -897,50 +915,43 @@ class ChatService {
   Stream<List<MessageModel>> subscribeToMessages(String conversationId) {
     final userId = _supabase.auth.currentUser!.id;
 
-    print('شروع اشتراک به پیام‌های مکالمه: $conversationId');
+    return _supabase
+        .from('messages')
+        .stream(primaryKey: ['id'])
+        .eq('conversation_id', conversationId)
+        .order('created_at')
+        .asyncMap((messages) async {
+          final hiddenMessages = await _supabase
+              .from('hidden_messages')
+              .select('message_id')
+              .eq('user_id', userId)
+              .eq('conversation_id', conversationId);
 
-    // ابتدا بررسی می‌کنیم چه پیام‌هایی مخفی شده‌اند
-    return Stream.periodic(Duration(seconds: 2)).asyncMap((_) async {
-      // دریافت لیست پیام‌های مخفی شده برای کاربر
-      final hiddenMessagesResponse = await _supabase
-          .from('hidden_messages')
-          .select('message_id')
-          .eq('user_id', userId)
-          .eq('conversation_id', conversationId);
+          final hiddenIds =
+              hiddenMessages.map((e) => e['message_id'] as String).toSet();
 
-      final hiddenMessageIds =
-          hiddenMessagesResponse.map((e) => e['message_id'] as String).toList();
+          final visibleMessages =
+              messages.where((msg) => !hiddenIds.contains(msg['id']));
 
-      // دریافت پیام‌ها و فیلتر کردن پیام‌های مخفی شده
-      final messagesResponse = await _supabase
-          .from('messages')
-          .select()
-          .eq('conversation_id', conversationId)
-          .order('created_at', ascending: false);
+          final messageModels =
+              await Future.wait(visibleMessages.map((json) async {
+            final profileResponse = await _supabase
+                .from('profiles')
+                .select()
+                .eq('id', json['sender_id'])
+                .maybeSingle();
 
-      // فیلتر کردن پیام‌های مخفی شده
-      final filteredMessages = messagesResponse
-          .where((message) => !hiddenMessageIds.contains(message['id']))
-          .toList();
+            final message = MessageModel.fromJson(json, currentUserId: userId);
+            return message.copyWith(
+              senderName: profileResponse?['username'] ?? 'کاربر',
+              senderAvatar: profileResponse?['avatar_url'],
+            );
+          }));
 
-      // تبدیل به MessageModel
-      final messages = await Future.wait(filteredMessages.map((json) async {
-        // دریافت اطلاعات فرستنده
-        final profileResponse = await _supabase
-            .from('profiles')
-            .select()
-            .eq('id', json['sender_id'])
-            .maybeSingle();
+          await _messageCache.cacheMessages(messageModels);
 
-        final message = MessageModel.fromJson(json, currentUserId: userId);
-        return message.copyWith(
-          senderName: profileResponse?['username'] ?? 'کاربر',
-          senderAvatar: profileResponse?['avatar_url'],
-        );
-      }));
-
-      return messages;
-    });
+          return messageModels;
+        });
   }
 
   // علامت‌گذاری همه پیام‌های یک مکالمه به عنوان خوانده شده
@@ -1221,5 +1232,64 @@ class ChatService {
   // Add a method to refresh the conversations (updates cache by fetching from server)
   Future<void> refreshConversations() async {
     await getConversations();
+  }
+
+  Future<void> clearConversation(String conversationId,
+      {bool bothSides = false}) async {
+    final userId = _supabase.auth.currentUser!.id;
+
+    try {
+      if (bothSides) {
+        // حذف تمام پیام‌های مکالمه برای همه
+        final messagesWithImages = await _supabase
+            .from('messages')
+            .select('attachment_url')
+            .eq('conversation_id', conversationId)
+            .neq('attachment_url', '');
+
+        // تبدیل به لیستی از Futureها
+        final deleteFutures = messagesWithImages
+            .where((msg) => msg['attachment_url'] != null)
+            .map((msg) => ChatImageUploadService.deleteChatImage(
+                msg['attachment_url'] as String))
+            .toList();
+
+        await Future.wait(deleteFutures);
+
+        // حذف پیام‌ها از دیتابیس
+        await _supabase
+            .from('messages')
+            .delete()
+            .eq('conversation_id', conversationId);
+
+        // پاکسازی کش پیام‌های این مکالمه
+        await _messageCache.clearConversationMessages(conversationId);
+      } else {
+        // فقط برای کاربر فعلی پیام‌ها را مخفی کن (با استفاده از جدول hidden_messages)
+        final messages = await _supabase
+            .from('messages')
+            .select('id')
+            .eq('conversation_id', conversationId);
+
+        // برای هر پیام، یک رکورد در جدول hidden_messages اضافه می‌کنیم
+        for (var message in messages) {
+          await _supabase.from('hidden_messages').upsert({
+            'message_id': message['id'],
+            'user_id': userId,
+            'conversation_id': conversationId,
+            'hidden_at': DateTime.now().toIso8601String(),
+          });
+        }
+
+        // پاکسازی کش پیام‌های این مکالمه
+        await _messageCache.clearConversationMessages(conversationId);
+      }
+
+      // پاکسازی کش مکالمه
+      await _conversationCache.removeConversation(conversationId);
+    } catch (e) {
+      print('خطا در پاکسازی مکالمه: $e');
+      throw Exception('پاکسازی مکالمه با خطا مواجه شد: $e');
+    }
   }
 }

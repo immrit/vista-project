@@ -40,9 +40,12 @@ class ChatImageUploadService {
     return convertedFile;
   }
 
-  /// آپلود تصویر چت
+  /// آپلود تصویر چت با پشتیبانی از پیشرفت آپلود (ساده)
   static Future<String?> uploadChatImage(
-      File file, String conversationId) async {
+    File file,
+    String conversationId, {
+    void Function(double progress)? onProgress,
+  }) async {
     File? compressedFile;
     try {
       if (!await file.exists()) {
@@ -61,23 +64,42 @@ class ChatImageUploadService {
         compressedFile ??= file;
       }
 
-      // مسیر ذخیره‌سازی برای تصاویر چت‌ها با ساختار جدید
       final fileName =
           'chats/$conversationId/${supabase.auth.currentUser!.id}_${DateTime.now().millisecondsSinceEpoch}_${path.basename(compressedFile.path)}';
 
       final Uint8List fileBytes = await compressedFile.readAsBytes();
       const contentType = 'image/jpeg';
 
-      await s3.putObject(
-        bucket: bucketName,
-        key: fileName,
-        body: fileBytes,
-        contentType: contentType,
-        acl: ObjectCannedACL.publicRead,
-      );
+      // --- پشتیبانی از پیشرفت آپلود (شبیه‌سازی) ---
+      if (onProgress != null) {
+        onProgress(0.0);
+        await s3.putObject(
+          bucket: bucketName,
+          key: fileName,
+          body: fileBytes,
+          contentType: contentType,
+          acl: ObjectCannedACL.publicRead,
+        );
+        onProgress(1.0);
+      } else {
+        await s3.putObject(
+          bucket: bucketName,
+          key: fileName,
+          body: fileBytes,
+          contentType: contentType,
+          acl: ObjectCannedACL.publicRead,
+        );
+      }
 
+      // اطمینان از اینکه لینک خروجی معتبر و قابل استفاده است
       final uploadedUrl = 'https://storage.coffevista.ir/$bucketName/$fileName';
       print('تصویر چت با موفقیت آپلود شد: $uploadedUrl');
+
+      // بررسی نهایی: اگر لینک خالی یا null بود، خطا بده
+      if (uploadedUrl.isEmpty) {
+        throw Exception('لینک آپلود تصویر خالی است!');
+      }
+
       return uploadedUrl;
     } catch (e) {
       print('خطا در آپلود تصویر چت: $e');

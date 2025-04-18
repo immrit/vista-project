@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../DB/message_cache_service.dart';
 import '../main.dart';
 import '../model/conversation_model.dart';
 import '../model/message_model.dart';
@@ -35,6 +36,28 @@ final chatServiceProvider = Provider<ChatService>((ref) {
 final messagesProvider = FutureProvider.family
     .autoDispose<List<MessageModel>, String>((ref, conversationId) async {
   final chatService = ref.watch(chatServiceProvider);
+  final messageCache = MessageCacheService();
+
+  // ابتدا پیام‌های کش را بازگردان
+  final cachedMessages =
+      await messageCache.getConversationMessages(conversationId);
+
+  // اگر کش داریم، فوراً آن را نشان بده
+  if (cachedMessages.isNotEmpty) {
+    // بروزرسانی از سرور را در پس‌زمینه انجام بده
+    ref.listenSelf((previous, next) {
+      chatService.getMessages(conversationId).then((serverMessages) {
+        if (serverMessages.isNotEmpty) {
+          // اگر پیام‌های جدید از سرور آمد، کش را بروزرسانی کن
+          messageCache.cacheMessages(serverMessages);
+        }
+      });
+    });
+
+    return cachedMessages;
+  }
+
+  // اگر کش نداریم، از سرور دریافت کن
   return chatService.getMessages(conversationId);
 });
 
@@ -87,26 +110,18 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
       final chatService = ref.read(chatServiceProvider);
       await chatService.deleteMessage(messageId, forEveryone: forEveryone);
 
-      // بروزرسانی لیست پیام‌ها و مکالمات
-      ref.invalidate(messagesProvider(messageId)); // بروزرسانی پیام‌ها
-      ref.invalidate(
-          messagesStreamProvider(messageId)); // بروزرسانی استریم پیام‌ها
-      ref.invalidate(conversationsProvider); // بروزرسانی مکالمات
+      // بروزرسانی فوری پیام‌ها و مکالمات
+      ref.invalidate(messagesStreamProvider);
+      ref.invalidate(conversationsProvider);
+      ref.invalidate(conversationsStreamProvider);
 
-      if (_disposed) return;
-      state = const AsyncValue.data(null);
-    } catch (e, stack) {
-      if (e is AppException) {
-        print(e.technicalMessage); // فقط برای توسعه‌دهندگان
-      } else {
-        print('خطای ناشناخته: $e');
+      if (!_disposed) {
+        state = const AsyncValue.data(null);
       }
-      state = AsyncValue.error(
-          AppException(
-            userFriendlyMessage: 'حذف پیام انجام نشد',
-            technicalMessage: e.toString(),
-          ),
-          stack);
+    } catch (e, stack) {
+      if (!_disposed) {
+        state = AsyncValue.error(e, stack);
+      }
     }
   }
 

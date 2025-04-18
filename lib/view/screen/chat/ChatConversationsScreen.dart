@@ -61,7 +61,8 @@ class _ChatConversationsScreenState
   @override
   Widget build(BuildContext context) {
     print('🏗️ ساخت مجدد صفحه مکالمات');
-    final conversationsAsync = ref.watch(conversationsStreamProvider);
+    // استفاده از conversationsProvider برای نمایش سریع‌تر کش
+    final conversationsAsync = ref.watch(conversationsProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -105,6 +106,7 @@ class _ChatConversationsScreenState
           return RefreshIndicator(
             onRefresh: () async {
               print('🔄 بروزرسانی دستی لیست');
+              ref.invalidate(conversationsProvider);
               ref.invalidate(conversationsStreamProvider);
             },
             child: ListView.builder(
@@ -130,6 +132,7 @@ class _ChatConversationsScreenState
                 ElevatedButton(
                   onPressed: () {
                     print('🔄 تلاش مجدد');
+                    ref.invalidate(conversationsProvider);
                     ref.invalidate(conversationsStreamProvider);
                   },
                   child: const Text('تلاش مجدد'),

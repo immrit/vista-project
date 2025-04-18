@@ -54,6 +54,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isCurrentUserBlocked = false;
   bool _isOtherUserBlocked = false;
   bool _showScrollToBottom = false;
+  double _uploadProgress = 0.0; // درصد پیشرفت آپلود عکس
 
   bool _isSending = false;
 
@@ -202,27 +203,51 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Future<String?> _uploadImage(File file) async {
     setState(() {
       _isUploading = true;
+      _uploadProgress = 0.0;
     });
 
     try {
+      // شبیه‌سازی پیشرفت آپلود (در صورت نیاز، سرویس آپلود را تغییر بده تا progress بدهد)
       final imageUrl = await ChatImageUploadService.uploadChatImage(
         file,
         widget.conversationId,
+        onProgress: (progress) {
+          setState(() {
+            _uploadProgress = progress;
+          });
+        },
       );
 
       return imageUrl;
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطا در آپلود تصویر: $e')),
-      );
+      await _showErrorDialog('خطا در آپلود تصویر: $e');
       return null;
     } finally {
       if (mounted) {
         setState(() {
           _isUploading = false;
+          _uploadProgress = 0.0;
         });
       }
     }
+  }
+
+  // نمایش دیالوگ خطا
+  Future<void> _showErrorDialog(String message) async {
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('خطا', style: TextStyle(color: Colors.red)),
+        content: Text(message),
+        actions: [
+          TextButton(
+            child: const Text('باشه'),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
+      ),
+    );
   }
 
   void _setReplyMessage(MessageModel message) {
@@ -268,12 +293,43 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
 
     final message = _messageController.text.trim();
-    if (message.isEmpty && _selectedImage == null) return;
 
-    _messageController.clear();
-
+    // --- تغییر مهم: متغیر attachmentUrl و attachmentType باید قبل از پاک کردن _selectedImage مقداردهی شوند ---
     String? attachmentUrl;
     String? attachmentType;
+
+    // اگر عکس انتخاب شده است، اول آپلود کن و لینک را بگیر
+    if (_selectedImage != null) {
+      setState(() {
+        _isUploading = true;
+      });
+      try {
+        attachmentUrl = await _uploadImage(_selectedImage!);
+        attachmentType = 'image';
+      } catch (e) {
+        String errorMessage = 'ارسال پیام ناموفق بود';
+        if (e is AppException) {
+          errorMessage = e.userFriendlyMessage;
+        } else {
+          errorMessage = 'خطای نامشخص. لطفاً دوباره امتحان کنید';
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(errorMessage)),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isUploading = false;
+          });
+        }
+      }
+      if (!mounted) return;
+    }
+
+    // اگر هیچ متن و هیچ عکس نداریم، پیام ارسال نشود
+    if (message.isEmpty && attachmentUrl == null) return;
 
     // --- 1. ساخت پیام موقت و افزودن به کش و UI ---
     final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
@@ -296,13 +352,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       replyToContent: _replyToMessage?.content,
       replyToSenderName: _replyToMessage?.senderName,
     );
-    // ذخیره پیام موقت در کش Hive و حافظه
     await MessageCacheService().cacheMessage(tempMessage);
 
     setState(() {
       _replyToMessage = null;
       _selectedImage = null;
-      // فوراً UI را رفرش کن تا پیام موقت نمایش داده شود
+      _messageController.clear();
     });
 
     // اسکرول به پایین
@@ -316,38 +371,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     // --- 2. ارسال پیام به سرور ---
     try {
-      if (_selectedImage != null) {
-        setState(() {
-          _isUploading = true;
-        });
-        try {
-          attachmentUrl = await _uploadImage(_selectedImage!);
-          attachmentType = 'image';
-        } catch (e) {
-          String errorMessage = 'ارسال پیام ناموفق بود';
-          if (e is AppException) {
-            errorMessage = e.userFriendlyMessage;
-          } else {
-            errorMessage = 'خطای نامشخص. لطفاً دوباره امتحان کنید';
-          }
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(errorMessage)),
-            );
-          }
-        } finally {
-          if (mounted) {
-            setState(() {
-              _selectedImage = null;
-              _isUploading = false;
-            });
-          }
-        }
-
-        if (!mounted) return;
-      }
-
       final isOnline = await chatService.isDeviceOnline();
 
       MessageModel? sentMessage;
@@ -357,9 +380,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           content: message,
           attachmentUrl: attachmentUrl,
           attachmentType: attachmentType,
-          replyToMessageId: _replyToMessage?.id,
-          replyToContent: _replyToMessage?.content,
-          replyToSenderName: _replyToMessage?.senderName,
+          replyToMessageId: tempMessage.replyToMessageId,
+          replyToContent: tempMessage.replyToContent,
+          replyToSenderName: tempMessage.replyToSenderName,
         );
       } else {
         sentMessage = await chatService.sendOfflineMessage(
@@ -367,9 +390,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           content: message,
           attachmentUrl: attachmentUrl,
           attachmentType: attachmentType,
-          replyToMessageId: _replyToMessage?.id,
-          replyToContent: _replyToMessage?.content,
-          replyToSenderName: _replyToMessage?.senderName,
+          replyToMessageId: tempMessage.replyToMessageId,
+          replyToContent: tempMessage.replyToContent,
+          replyToSenderName: tempMessage.replyToSenderName,
         );
       }
 
@@ -380,13 +403,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           tempId,
           sentMessage,
         );
-        // پیام واقعی را از کش مجدداً بخوان و UI را رفرش کن تا وضعیت ساعت به تیک تغییر کند
         if (mounted) {
           setState(() {});
         }
       }
     } catch (e) {
-      // --- 4. اگر خطا رخ داد، وضعیت پیام موقت را به ارسال نشده تغییر بده ---
       await MessageCacheService().markMessageAsFailed(
         widget.conversationId,
         tempId,
@@ -1692,21 +1713,56 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               children: [
                 Container(
                   margin: const EdgeInsets.all(8),
-                  height: 100,
+                  height: 120,
+                  width: 120,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: Theme.of(context).colorScheme.primary,
+                        width: 1.2),
                     image: DecorationImage(
                       image: FileImage(_selectedImage!),
                       fit: BoxFit.cover,
                     ),
                   ),
+                  child: _isUploading
+                      ? Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.35),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                CircularProgressIndicator(
+                                  value: _uploadProgress > 0
+                                      ? _uploadProgress
+                                      : null,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '${(_uploadProgress * 100).toStringAsFixed(0)}%',
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : null,
                 ),
                 Positioned(
                   top: 0,
                   right: 0,
                   child: IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white),
-                    onPressed: () => setState(() => _selectedImage = null),
+                    icon:
+                        const Icon(Icons.close, color: Colors.white, size: 22),
+                    onPressed: _isUploading
+                        ? null
+                        : () => setState(() => _selectedImage = null),
                   ),
                 ),
               ],
@@ -1736,27 +1792,77 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     Widget attachmentWidget = const SizedBox.shrink();
 
-    // نمایش عکس پیام موقت (هنوز آپلود نشده)
-    if (message.attachmentUrl != null) {
-      if (message.isSent == false && message.attachmentType == 'image') {
-        // پیام موقت: عکس از فایل محلی
+    // نمایش عکس پیام (موقت یا واقعی)
+    if (message.attachmentUrl != null &&
+        message.attachmentUrl!.isNotEmpty &&
+        message.attachmentType == 'image') {
+      final url = message.attachmentUrl!;
+      if (url.startsWith('/') && File(url).existsSync()) {
+        // فایل لوکال
         attachmentWidget = Padding(
           padding: const EdgeInsets.only(top: 8.0),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: Image.file(
-              File(message.attachmentUrl!),
+              File(url),
               width: 200,
               height: 200,
               fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => Container(
+                width: 200,
+                height: 200,
+                color: Colors.grey[300],
+                child: const Icon(Icons.broken_image,
+                    size: 40, color: Colors.grey),
+              ),
             ),
           ),
         );
-      } else if (message.attachmentType?.startsWith('image/') ?? false) {
-        // پیام واقعی: عکس از اینترنت
-        attachmentWidget = _buildImageAttachment(message.attachmentUrl!);
+      } else if (url.startsWith('http')) {
+        // لینک اینترنتی: ابتدا سعی کن مستقیم نمایش بده، اگر خطا داشت برو سراغ دانلود و کش
+        attachmentWidget = Padding(
+          padding: const EdgeInsets.only(top: 8.0),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.network(
+              url,
+              width: 200,
+              height: 200,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return Container(
+                  width: 200,
+                  height: 200,
+                  color: Colors.grey[300],
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      value: progress.expectedTotalBytes != null
+                          ? progress.cumulativeBytesLoaded /
+                              (progress.expectedTotalBytes ?? 1)
+                          : null,
+                    ),
+                  ),
+                );
+              },
+              errorBuilder: (context, error, stackTrace) {
+                // اگر خطا داشت، سیستم دانلود و کش را فعال کن
+                return _buildImageAttachment(url);
+              },
+            ),
+          ),
+        );
       }
     }
+
+    // پیام موقت: رنگ متفاوت یا شفافیت
+    final bool isTemp = !message.isSent && message.id.startsWith('temp_');
+    final double opacity = isTemp ? 0.6 : 1.0;
+    final Color? tempColor = isTemp
+        ? (isMe
+            ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
+            : Colors.grey[400]?.withOpacity(0.5))
+        : null;
 
     return Slidable(
       key: Key(message.id),
@@ -1791,153 +1897,161 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             constraints: BoxConstraints(
               maxWidth: MediaQuery.of(context).size.width * 0.8,
             ),
-            child: Card(
-              margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              color: isMe ? myMessageColor : otherMessageColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16).copyWith(
-                  bottomRight: isMe ? Radius.circular(4) : Radius.circular(16),
-                  bottomLeft: isMe ? Radius.circular(16) : Radius.circular(4),
+            child: Opacity(
+              opacity: opacity,
+              child: Card(
+                margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                color: tempColor ?? (isMe ? myMessageColor : otherMessageColor),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16).copyWith(
+                    bottomRight:
+                        isMe ? Radius.circular(4) : Radius.circular(16),
+                    bottomLeft: isMe ? Radius.circular(16) : Radius.circular(4),
+                  ),
                 ),
-              ),
-              child: Column(
-                crossAxisAlignment:
-                    isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (message.replyToMessageId != null)
-                    Container(
-                      padding: EdgeInsets.all(8),
-                      margin: EdgeInsets.only(bottom: 4),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.black12
-                            : Colors.white24,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            message.replyToSenderName ?? 'کاربر',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: isMe ? Colors.white70 : Colors.black87,
-                              fontSize: 12,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            message.replyToContent ?? '',
-                            style: TextStyle(
-                              color: isMe ? Colors.white70 : Colors.black87,
-                              fontSize: 12,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          attachmentWidget,
-                        ],
-                      ),
-                    ),
-                  Padding(
-                    padding: EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: isMe
-                          ? CrossAxisAlignment.end
-                          : CrossAxisAlignment.start,
-                      children: [
-                        // نمایش عکس پیام (موقت یا واقعی)
-                        if (message.attachmentUrl != null &&
-                            message.attachmentUrl!.isNotEmpty &&
-                            message.attachmentType == 'image')
-                          attachmentWidget,
-                        if (message.content.isNotEmpty)
-                          Padding(
-                            padding: EdgeInsets.only(
-                              top: message.attachmentUrl != null ? 8 : 0,
-                            ),
-                            child: Directionality(
-                              textDirection: getTextDirection(message.content),
-                              child: Text(
-                                message.content,
-                                style: TextStyle(
-                                  color: isMe ? myTextColor : otherTextColor,
-                                  fontSize: 16,
-                                ),
+                child: Column(
+                  crossAxisAlignment:
+                      isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (message.replyToMessageId != null)
+                      Container(
+                        padding: EdgeInsets.all(8),
+                        margin: EdgeInsets.only(bottom: 4),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.black12
+                              : Colors.white24,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              message.replyToSenderName ?? 'کاربر',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: isMe ? Colors.white70 : Colors.black87,
+                                fontSize: 12,
                               ),
                             ),
-                          ),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: isMe ? Colors.white24 : Colors.black12,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
+                            SizedBox(height: 4),
+                            Text(
+                              message.replyToContent ?? '',
+                              style: TextStyle(
+                                color: isMe ? Colors.white70 : Colors.black87,
+                                fontSize: 12,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            attachmentWidget,
+                          ],
+                        ),
+                      ),
+                    Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: isMe
+                            ? CrossAxisAlignment.end
+                            : CrossAxisAlignment.start,
+                        children: [
+                          // نمایش عکس پیام (موقت یا واقعی)
+                          if (message.attachmentUrl != null &&
+                              message.attachmentUrl!.isNotEmpty &&
+                              message.attachmentType == 'image')
+                            attachmentWidget,
+                          if (message.content.isNotEmpty)
+                            Padding(
+                              padding: EdgeInsets.only(
+                                top: message.attachmentUrl != null ? 8 : 0,
+                              ),
+                              child: Directionality(
+                                textDirection:
+                                    getTextDirection(message.content),
                                 child: Text(
-                                  _formatMessageHour(message.createdAt),
+                                  message.content,
                                   style: TextStyle(
-                                    fontSize: 11,
-                                    color: isMe ? myTimeColor : otherTimeColor,
-                                    fontWeight: FontWeight.w500,
+                                    color: isMe ? myTextColor : otherTextColor,
+                                    fontSize: 16,
                                   ),
                                 ),
                               ),
-                              SizedBox(width: 4),
-                              if (isMe)
-                                // فقط اگر پیام توسط کاربر فعلی ارسال شده و isSent=false و id پیام temp است، ساعت و دکمه ارسال مجدد نمایش بده
-                                (!message.isSent &&
-                                        message.id.startsWith('temp_'))
-                                    ? Row(
-                                        children: [
-                                          Icon(
-                                            Icons.access_time,
-                                            size: 14,
-                                            color: isLightMode
-                                                ? Colors.white24
-                                                : Colors.black,
-                                          ),
-                                          SizedBox(width: 2),
-                                          GestureDetector(
-                                            onTap: () async {
-                                              await _retrySendMessage(message);
-                                            },
-                                            child: Icon(
-                                              Icons.refresh,
-                                              size: 16,
+                            ),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        isMe ? Colors.white24 : Colors.black12,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    _formatMessageHour(message.createdAt),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color:
+                                          isMe ? myTimeColor : otherTimeColor,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: 4),
+                                if (isMe)
+                                  // فقط اگر پیام توسط کاربر فعلی ارسال شده و isSent=false و id پیام temp است، ساعت و دکمه ارسال مجدد نمایش بده
+                                  (!message.isSent &&
+                                          message.id.startsWith('temp_'))
+                                      ? Row(
+                                          children: [
+                                            Icon(
+                                              Icons.access_time,
+                                              size: 14,
                                               color: isLightMode
                                                   ? Colors.white24
                                                   : Colors.black,
                                             ),
-                                          ),
-                                        ],
-                                      )
-                                    // اگر پیام ارسال شده یا پیام واقعی است، تیک نمایش بده
-                                    : Icon(
-                                        message.isRead
-                                            ? Icons.done_all
-                                            : Icons.done,
-                                        size: 14,
-                                        color: message.isRead
-                                            ? Colors.blue
-                                            : (isMe
-                                                ? myTimeColor
-                                                : otherTimeColor),
-                                      ),
-                            ],
+                                            SizedBox(width: 2),
+                                            GestureDetector(
+                                              onTap: () async {
+                                                await _retrySendMessage(
+                                                    message);
+                                              },
+                                              child: Icon(
+                                                Icons.refresh,
+                                                size: 16,
+                                                color: isLightMode
+                                                    ? Colors.white24
+                                                    : Colors.black,
+                                              ),
+                                            ),
+                                          ],
+                                        )
+                                      // اگر پیام ارسال شده یا پیام واقعی است، تیک نمایش بده
+                                      : Icon(
+                                          message.isRead
+                                              ? Icons.done_all
+                                              : Icons.done,
+                                          size: 14,
+                                          color: message.isRead
+                                              ? Colors.blue
+                                              : (isMe
+                                                  ? myTimeColor
+                                                  : otherTimeColor),
+                                        ),
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -2200,6 +2314,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _buildImageAttachment(String imageUrl) {
+    // اگر فایل لوکال وجود دارد، مستقیم نمایش بده
+    if (imageUrl.startsWith('/') && File(imageUrl).existsSync()) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.file(
+          File(imageUrl),
+          fit: BoxFit.cover,
+          width: 200,
+          height: 200,
+        ),
+      );
+    }
+
+    // اگر لینک اینترنتی است، از سیستم دانلود و کش استفاده کن
     return Consumer(
       builder: (context, ref, child) {
         final downloadStateMap = ref.watch(imageDownloadProvider);
@@ -2250,6 +2378,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
           );
         } else {
+          // اگر هنوز دانلود نشده، پیش‌نمایش و دکمه دانلود نمایش بده
           return Container(
             width: 200,
             height: 200,
