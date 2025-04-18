@@ -149,6 +149,29 @@ class ChatService {
             json['last_message_time'] = lastMessageQuery['created_at'];
           }
 
+          // محاسبه تعداد پیام‌های خوانده‌نشده
+          int unreadCount = 0;
+          if (myLastRead != null) {
+            final unreadMessages = await _supabase
+                .from('messages')
+                .select('id, created_at')
+                .eq('conversation_id', conversationId)
+                .gt('created_at', myLastRead);
+
+            // فیلتر پیام‌های مخفی شده
+            final hiddenMessages = await _supabase
+                .from('hidden_messages')
+                .select('message_id')
+                .eq('user_id', userId)
+                .eq('conversation_id', conversationId);
+
+            final hiddenIds =
+                hiddenMessages.map((e) => e['message_id'] as String).toSet();
+            unreadCount = unreadMessages
+                .where((msg) => !hiddenIds.contains(msg['id']))
+                .length;
+          }
+
           final conversation =
               ConversationModel.fromJson(json, currentUserId: userId).copyWith(
             participants: participants,
@@ -156,6 +179,7 @@ class ChatService {
             otherUserAvatar: otherParticipantProfile?['avatar_url'],
             otherUserId: otherParticipantData?['user_id'],
             hasUnreadMessages: hasUnreadMessages,
+            unreadCount: unreadCount,
           );
 
           // ذخیره هر مکالمه در کش

@@ -244,7 +244,7 @@ class _ChatConversationsScreenState
                       ? FontWeight.bold
                       : FontWeight.normal,
                   color: conversation.hasUnreadMessages
-                      ? Theme.of(context).primaryColor
+                      ? Colors.grey
                       : Colors.grey,
                 ),
               )
@@ -268,16 +268,23 @@ class _ChatConversationsScreenState
                     ),
                   ),
                 const SizedBox(height: 4),
-                if (conversation.hasUnreadMessages)
+                // شمارنده پیام‌های خوانده‌نشده
+                if (conversation.unreadCount != null &&
+                    conversation.unreadCount! > 0)
                   Container(
-                    padding: const EdgeInsets.all(6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).primaryColor,
-                      shape: BoxShape.circle,
+                      color: Theme.of(context).colorScheme.primary,
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Text(
-                      '',
-                      style: TextStyle(fontSize: 8),
+                    child: Text(
+                      '${conversation.unreadCount}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
               ],

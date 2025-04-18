@@ -1009,6 +1009,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
+  void _scrollToFirstUnread(List<MessageModel> messages) async {
+    final currentUserId = supabase.auth.currentUser?.id;
+    final firstUnreadIndex = messages
+        .lastIndexWhere((msg) => !msg.isRead && msg.senderId != currentUserId);
+
+    if (firstUnreadIndex != -1 && _scrollController.hasClients) {
+      // چون لیست reverse است، باید به اندیس معکوس اسکرول کنیم
+      final position =
+          (messages.length - 1 - firstUnreadIndex) * 72.0; // تقریبی
+      await Future.delayed(const Duration(milliseconds: 300));
+      _scrollController.animateTo(
+        position,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
@@ -1303,6 +1321,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                         'پیامی وجود ندارد. اولین پیام را ارسال کنید!'));
                               }
                               // نمایش پیام‌ها با جداکننده تاریخ
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                _scrollToFirstUnread(allMessages);
+                              });
                               return ListView.builder(
                                 controller: _scrollController,
                                 reverse: true,

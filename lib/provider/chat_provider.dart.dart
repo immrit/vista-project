@@ -24,7 +24,24 @@ final conversationsStreamProvider =
     StreamProvider.autoDispose<List<ConversationModel>>((ref) {
   print('🔄 شروع استریم مکالمات');
   final chatService = ref.watch(chatServiceProvider);
-  return chatService.subscribeToConversations();
+
+  // استریم تغییرات مکالمات و پیام‌ها را ترکیب کن
+  final conversationsStream = chatService.subscribeToConversations();
+  final userId = supabase.auth.currentUser?.id;
+
+  // استریم پیام‌های جدید (فقط پیام‌هایی که کاربر در آن مکالمه عضو است)
+  final messagesStream = supabase
+      .from('messages')
+      .stream(primaryKey: ['id']).order('created_at', ascending: false);
+
+  // هر بار که پیام جدیدی آمد، conversations را invalidate کن
+  messagesStream.listen((event) {
+    print('🔔 پیام جدید یا تغییر پیام دریافت شد');
+    ref.invalidate(conversationsProvider);
+  });
+
+  // استریم مکالمات را برگردان
+  return conversationsStream;
 });
 
 // پرووایدر برای سرویس چت
