@@ -244,8 +244,12 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
 
       if (_disposed) return;
 
-      // بروزرسانی مکالمات
+      // بروزرسانی مکالمات و پیام‌ها
       ref.invalidate(conversationsProvider);
+      ref.invalidate(messagesProvider(conversationId));
+      ref.invalidate(messagesStreamProvider(conversationId));
+
+      print('مکالمه با موفقیت به عنوان خوانده شده علامت‌گذاری شد');
     } catch (e) {
       print('خطا در علامت‌گذاری به عنوان خوانده شده: $e');
     }

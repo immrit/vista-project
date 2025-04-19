@@ -111,6 +111,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _checkOnlineStatus();
     });
     _scrollController.addListener(_handleScrollToBottomBtn);
+
+    // علامت‌گذاری پیام‌ها به عنوان خوانده شده هنگام ورود به صفحه
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final safeHandler = ref.read(safeMessageHandlerProvider);
+      safeHandler.markAsRead(widget.conversationId);
+      print(
+          'علامت‌گذاری پیام‌های مکالمه ${widget.conversationId} به عنوان خوانده شده');
+    });
   }
 
   Future<void> _checkBlockStatus() async {
@@ -1020,6 +1028,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _showEmojiPicker = false;
     }
 
+    // --- اضافه شد: گوش دادن به تغییرات استریم پیام‌ها و بروزرسانی UI ---
+    ref.watch(messagesStreamProvider(widget.conversationId));
+
     // ابتدا پیام‌های کش شده را نمایش بده، سپس استریم پیام‌ها را گوش بده
     return SafeArea(
       top: false,
@@ -1670,35 +1681,62 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
                 onPressed: _toggleEmojiKeyboard,
               ),
+              // --- تغییر: تکست‌فیلد با اسکرول افقی و ارتفاع ثابت ---
               Expanded(
-                child: Directionality(
-                  textDirection: getTextDirection(_messageController.text),
-                  child: TextField(
-                    controller: _messageController,
-                    focusNode: _messageFocusNode,
-                    onTap: () {
-                      if (_showEmojiPicker) {
-                        setState(() {
-                          _showEmojiPicker = false;
-                        });
-                      }
-                    },
-                    maxLines: null,
-                    textInputAction: TextInputAction.newline,
-                    decoration: InputDecoration(
-                      hintText: 'پیام خود را بنویسید...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        borderSide: BorderSide.none,
-                      ),
-                      filled: true,
-                      fillColor:
-                          Theme.of(context).brightness == Brightness.light
-                              ? Colors.grey[100]
-                              : Colors.grey[800],
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
+                child: Container(
+                  constraints: const BoxConstraints(
+                    minHeight: 40,
+                    maxHeight: 80, // ارتفاع ثابت یا محدود
+                  ),
+                  alignment: Alignment.center,
+                  child: Scrollbar(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.vertical,
+                      reverse: true,
+                      child: TextField(
+                        controller: _messageController,
+                        focusNode: _messageFocusNode,
+                        onTap: () {
+                          if (_showEmojiPicker) {
+                            setState(() {
+                              _showEmojiPicker = false;
+                            });
+                          }
+                        },
+                        maxLines: null,
+                        minLines: 1,
+                        // --- اضافه شد: محدودیت ارتفاع و اسکرول ---
+                        expands: false,
+                        keyboardType: TextInputType.multiline,
+                        textInputAction: TextInputAction.newline,
+                        decoration: InputDecoration(
+                          hintText: 'پیام خود را بنویسید...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(20),
+                            borderSide: BorderSide.none,
+                          ),
+                          filled: true,
+                          fillColor:
+                              Theme.of(context).brightness == Brightness.light
+                                  ? Colors.grey[100]
+                                  : Colors.grey[800],
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                        ),
+                        textDirection:
+                            getTextDirection(_messageController.text),
+                        // --- اضافه شد: اسکرول خودکار به پایین هنگام تایپ ---
+                        onChanged: (val) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            // اسکرول به پایین
+                            final scrollController =
+                                PrimaryScrollController.of(context);
+                            scrollController?.jumpTo(
+                                scrollController.position.maxScrollExtent);
+                          });
+                        },
                       ),
                     ),
                   ),

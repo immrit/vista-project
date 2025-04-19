@@ -954,6 +954,27 @@ class ChatService {
           final hiddenIds =
               hiddenMessages.map((e) => e['message_id'] as String).toSet();
 
+          // دریافت همه شرکت‌کنندگان مکالمه
+          final participants = await _supabase
+              .from('conversation_participants')
+              .select('user_id,last_read_time')
+              .eq('conversation_id', conversationId);
+
+          // پیدا کردن کاربر مقابل و زمان آخرین خواندن او
+          String? otherUserId;
+          String? otherUserLastRead;
+          for (final p in participants) {
+            if (p['user_id'] != userId) {
+              otherUserId = p['user_id'];
+              otherUserLastRead = p['last_read_time'];
+              break;
+            }
+          }
+          DateTime? otherLastReadTime;
+          if (otherUserLastRead != null) {
+            otherLastReadTime = DateTime.tryParse(otherUserLastRead);
+          }
+
           final visibleMessages =
               messages.where((msg) => !hiddenIds.contains(msg['id']));
 
@@ -965,14 +986,67 @@ class ChatService {
                 .eq('id', json['sender_id'])
                 .maybeSingle();
 
-            final message = MessageModel.fromJson(json, currentUserId: userId);
-            return message.copyWith(
+            // منطق تعیین isRead برای پیام‌های ارسالی کاربر فعلی
+            bool isRead = json['is_read'] ?? false;
+            if (json['sender_id'] == userId && otherLastReadTime != null) {
+              final msgTime = DateTime.tryParse(json['created_at'] ?? '');
+              if (msgTime != null && !msgTime.isAfter(otherLastReadTime)) {
+                isRead = true;
+              }
+            }
+
+            final message =
+                MessageModel.fromJson(json, currentUserId: userId).copyWith(
               senderName: profileResponse?['username'] ?? 'کاربر',
               senderAvatar: profileResponse?['avatar_url'],
+              isRead: isRead,
             );
+
+            return message;
           }));
 
+          // --- کش را همیشه با پیام‌های جدید جایگزین کن (نه فقط اضافه) ---
+          await _messageCache.clearConversationMessages(conversationId);
           await _messageCache.cacheMessages(messageModels);
+
+          // اگر پیام جدیدی از طرف مقابل آمد، مکالمه را به عنوان خوانده شده علامت‌گذاری کن
+          final hasUnreadFromOther =
+              messageModels.any((m) => m.senderId != userId && !m.isRead);
+          if (hasUnreadFromOther) {
+            await markConversationAsRead(conversationId);
+
+            // بعد از علامت‌گذاری، کش را دوباره آپدیت کن تا وضعیت isRead پیام‌ها فوراً در کش هم sync شود
+            final refreshedMessages = await _supabase
+                .from('messages')
+                .select()
+                .eq('conversation_id', conversationId)
+                .order('created_at');
+            final refreshedModels = await Future.wait(refreshedMessages
+                .where((msg) => !hiddenIds.contains(msg['id']))
+                .map((json) async {
+              final profileResponse = await _supabase
+                  .from('profiles')
+                  .select()
+                  .eq('id', json['sender_id'])
+                  .maybeSingle();
+              bool isRead = json['is_read'] ?? false;
+              if (json['sender_id'] == userId && otherLastReadTime != null) {
+                final msgTime = DateTime.tryParse(json['created_at'] ?? '');
+                if (msgTime != null && !msgTime.isAfter(otherLastReadTime)) {
+                  isRead = true;
+                }
+              }
+              return MessageModel.fromJson(json, currentUserId: userId)
+                  .copyWith(
+                senderName: profileResponse?['username'] ?? 'کاربر',
+                senderAvatar: profileResponse?['avatar_url'],
+                isRead: isRead,
+              );
+            }));
+            await _messageCache.clearConversationMessages(conversationId);
+            await _messageCache.cacheMessages(refreshedModels);
+            return refreshedModels;
+          }
 
           return messageModels;
         });
@@ -981,26 +1055,45 @@ class ChatService {
   // علامت‌گذاری همه پیام‌های یک مکالمه به عنوان خوانده شده
 // علامت‌گذاری مکالمه به عنوان خوانده شده
   Future<void> markConversationAsRead(String conversationId) async {
-    final userId = _supabase.auth.currentUser!.id;
-
     try {
-      // بروزرسانی زمان خواندن در سرور
-      await _supabase
-          .from('conversation_participants')
-          .update({'last_read_time': DateTime.now().toIso8601String()})
-          .eq('conversation_id', conversationId)
-          .eq('user_id', userId);
+      final currentUserId = supabase.auth.currentUser!.id;
 
-      // بروزرسانی وضعیت خوانده شدن مکالمه در کش
-      final conversation =
-          await _conversationCache.getConversation(conversationId);
-      if (conversation != null) {
-        final updatedConversation =
-            conversation.copyWith(hasUnreadMessages: false);
-        await _conversationCache.updateConversation(updatedConversation);
+      // دریافت پیام‌های نخوانده‌ی مکالمه
+      final unreadMessages = await supabase
+          .from('messages')
+          .select('id')
+          .eq('conversation_id', conversationId)
+          .eq('is_read', false)
+          .neq('sender_id', currentUserId); // فقط پیام‌هایی که برای من هستند
+
+      if (unreadMessages.isEmpty) {
+        print('پیام نخوانده‌ای برای علامت‌گذاری وجود ندارد');
+        return; // اگر پیام نخوانده‌ای نیست، کاری انجام نده
       }
+
+      print(
+          'در حال علامت‌گذاری ${unreadMessages.length} پیام به عنوان خوانده شده');
+
+      // به‌روزرسانی در سرور
+      await supabase
+          .from('messages')
+          .update({'is_read': true})
+          .eq('conversation_id', conversationId)
+          .eq('is_read', false)
+          .neq('sender_id', currentUserId);
+
+      // به‌روزرسانی در کش محلی برای هر پیام
+      for (final message in unreadMessages) {
+        await _messageCache.updateMessageStatus(conversationId, message['id'],
+            isRead: true);
+        print('پیام ${message['id']} به عنوان خوانده شده علامت‌گذاری شد');
+      }
+
+      print(
+          'تمام پیام‌های مکالمه به عنوان خوانده‌شده علامت‌گذاری شدند: $conversationId');
     } catch (e) {
-      print('خطا در علامت‌گذاری مکالمه به عنوان خوانده شده: $e');
+      print('خطا در علامت‌گذاری مکالمه به عنوان خوانده‌شده: $e');
+      rethrow;
     }
   }
 
