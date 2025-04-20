@@ -10,24 +10,25 @@ import 'PublicPosts/AddPost.dart';
 import 'PublicPosts/profileScreen.dart';
 import 'PublicPosts/publicPosts.dart';
 import 'searchPage.dart';
+import '../../provider/chat_provider.dart.dart';
 
-// پرووایدر برای بررسی پیام‌های جدید
-final hasNewMessagesProvider = FutureProvider<bool>((ref) async {
-  try {
-    // دریافت پیام‌های خوانده نشده از سوپابیس
-    final response = await supabase
-        .from('messages')
-        .select('id')
-        .eq('receiver_id', supabase.auth.currentUser!.id)
-        .eq('read', false)
-        .limit(1);
+// استریم تعداد پیام‌های خوانده‌نشده (سریع و به‌روز)
+final unreadMessagesCountProvider = StreamProvider<int>((ref) {
+  final userId = supabase.auth.currentUser?.id;
+  if (userId == null) return const Stream.empty();
 
-    // اگر حداقل یک پیام خوانده نشده وجود داشت، true برمی‌گرداند
-    return (response as List).isNotEmpty;
-  } catch (e) {
-    print('خطا در بررسی پیام‌های جدید: $e');
-    return false;
-  }
+  // فقط پیام‌هایی که is_read=false و فرستنده کاربر فعلی نیست (یعنی پیام دریافتی و خوانده‌نشده)
+  return supabase
+      .from('messages')
+      .stream(primaryKey: ['id'])
+      .eq('is_read', false)
+      .map((messages) => messages
+          .where((msg) =>
+              msg['sender_id'] != userId &&
+              // اگر پیام حذف شده یا مخفی شده برای کاربر فعلی دارید، اینجا هم باید چک شود
+              // (مثلاً msg['is_hidden'] != true)
+              true)
+          .length);
 });
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -109,8 +110,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // استفاده از watch فقط برای لاگین بررسی وضعیت اعلان‌ها
-    final hasNewNotificationAsync = ref.watch(hasNewNotificationProvider);
+    // فعال کردن Provider سراسری نوتیفیکیشن چت (در پس‌زمینه)
+    ref.watch(globalChatNotificationProvider);
+
+    // استریم تعداد پیام‌های خوانده‌نشده
+    final unreadCountAsync = ref.watch(unreadMessagesCountProvider);
 
     return WillPopScope(
       onWillPop: _onWillPop,
@@ -166,8 +170,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
             // تب چت با بج نمایش پیام‌های جدید
             NavigationDestination(
-              icon: _buildMessageBadge(Icons.chat_bubble_outline, false),
-              selectedIcon: _buildMessageBadge(Icons.chat_bubble, true),
+              icon: _buildMessageBadge(
+                  Icons.chat_bubble_outline, false, unreadCountAsync),
+              selectedIcon:
+                  _buildMessageBadge(Icons.chat_bubble, true, unreadCountAsync),
               label: '',
             ),
             const NavigationDestination(
@@ -203,22 +209,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  // تابع برای نمایش بج پیام جدید
-  Widget _buildMessageBadge(IconData icon, bool isSelected) {
-    return badges.Badge(
-      showBadge: ref.watch(hasNewMessagesProvider).when(
-            data: (hasNewMessages) => hasNewMessages,
-            loading: () => false,
-            error: (_, __) => false,
-          ),
-      badgeStyle: const badges.BadgeStyle(
-        badgeColor: Colors.red,
-      ),
-      position: badges.BadgePosition.topEnd(top: -10, end: -10),
-      child: Icon(
-        icon,
-        // color: isSelected ? Theme.of(context).colorScheme.primary : null,
-      ),
-    );
+  // تابع برای نمایش بج پیام جدید (سریع و فقط برای پیام‌های خوانده‌نشده)
+  Widget _buildMessageBadge(
+      IconData icon, bool isSelected, AsyncValue<int> unreadCountAsync) {
+    final unreadCount = unreadCountAsync.value ?? 0;
+    return unreadCount > 0
+        ? badges.Badge(
+            badgeContent: Text(
+              unreadCount > 99 ? '99+' : unreadCount.toString(),
+              style: const TextStyle(color: Colors.white, fontSize: 10),
+            ),
+            badgeStyle: const badges.BadgeStyle(badgeColor: Colors.red),
+            position: badges.BadgePosition.topEnd(top: -10, end: -10),
+            child: Icon(
+              icon,
+              color: isSelected ? Theme.of(context).colorScheme.primary : null,
+            ),
+          )
+        : Icon(
+            icon,
+            color: isSelected ? Theme.of(context).colorScheme.primary : null,
+          );
   }
 }

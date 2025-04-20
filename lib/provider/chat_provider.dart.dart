@@ -506,6 +506,26 @@ final userOnlineStatusStreamProvider =
         return now.difference(lastOnline).inMinutes < 2;
       });
 });
+
+// مجموع تعداد پیام‌های خوانده‌نشده از لیست مکالمات (برای بج آیکون)
+final totalUnreadMessagesProvider = StreamProvider<int>((ref) {
+  final userId = supabase.auth.currentUser?.id;
+  if (userId == null) return Stream.value(0);
+
+  return ref.watch(conversationsStreamProvider).when(
+        data: (conversations) {
+          // جمع تمام پیام‌های خوانده‌نشده از همه مکالمات
+          final total = conversations.fold<int>(
+            0,
+            (sum, conversation) => sum + (conversation.unreadCount ?? 0),
+          );
+          return Stream.value(total);
+        },
+        loading: () => Stream.value(0),
+        error: (_, __) => Stream.value(0),
+      );
+});
+
 // پرووایدر برای آخرین بازدید
 final userLastOnlineProvider =
     FutureProvider.family<DateTime?, String>((ref, userId) async {
@@ -679,3 +699,22 @@ final imageDownloadProvider = StateNotifierProvider<ImageDownloadNotifier,
     Map<String, ImageDownloadState>>(
   (ref) => ImageDownloadNotifier(),
 );
+
+// Provider برای listen همه مکالمات و نمایش نوتیفیکیشن پیام جدید
+final globalChatNotificationProvider = Provider<void>((ref) {
+  // دریافت لیست مکالمات
+  final conversationsAsync = ref.watch(conversationsProvider);
+
+  conversationsAsync.whenData((conversations) {
+    for (final conversation in conversations) {
+      // برای هر مکالمه، استریم پیام‌ها را watch کن
+      ref.listen<AsyncValue<List<MessageModel>>>(
+        messagesStreamProvider(conversation.id),
+        (previous, next) {
+          // فقط کافی است که استریم فعال باشد تا ChatService.subscribeToMessages اجرا شود
+          // منطق نمایش نوتیفیکیشن در خود ChatService است
+        },
+      );
+    }
+  });
+});

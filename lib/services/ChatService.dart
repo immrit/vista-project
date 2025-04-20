@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../DB/conversation_cache_service.dart';
 import '../DB/message_cache_service.dart';
 import '../model/conversation_model.dart';
@@ -18,6 +19,13 @@ class ChatService {
   final ConversationCacheService _conversationCache =
       ConversationCacheService();
   final MessageCacheService _messageCache = MessageCacheService();
+
+  // متغیر static برای نگهداری conversationId فعال و آخرین messageId دیده‌شده
+  static String? activeConversationId;
+  static String? lastNotifiedMessageId;
+
+  // نگهداری لیست پیام‌هایی که نوتیفیکیشن گرفته‌اند (در یک session)
+  static final Set<String> _notifiedMessageIds = {};
 
 // دریافت تمامی مکالمات کاربر فعلی
   Future<List<ConversationModel>> getConversations() async {
@@ -154,9 +162,10 @@ class ChatService {
           if (myLastRead != null) {
             final unreadMessages = await _supabase
                 .from('messages')
-                .select('id, created_at')
+                .select('id')
                 .eq('conversation_id', conversationId)
-                .gt('created_at', myLastRead);
+                .gt('created_at', myLastRead)
+                .neq('sender_id', userId); // فقط پیام‌های دریافتی
 
             // فیلتر پیام‌های مخفی شده
             final hiddenMessages = await _supabase
@@ -167,6 +176,7 @@ class ChatService {
 
             final hiddenIds =
                 hiddenMessages.map((e) => e['message_id'] as String).toSet();
+
             unreadCount = unreadMessages
                 .where((msg) => !hiddenIds.contains(msg['id']))
                 .length;
@@ -1002,6 +1012,39 @@ class ChatService {
               isRead: isRead,
             );
 
+            // فقط پیام دریافتی و خوانده‌نشده و جدید نوتیفیکیشن بگیرد
+            if (message.senderId != userId &&
+                !message.isRead &&
+                (ChatService.activeConversationId != conversationId) &&
+                !_notifiedMessageIds.contains(message.id)) {
+              _notifiedMessageIds.add(message.id);
+
+              String bodyText = message.content.isNotEmpty
+                  ? message.content
+                  : (message.attachmentType == 'image'
+                      ? 'یک تصویر ارسال شد'
+                      : 'پیام جدید');
+              if (bodyText.length > 60) {
+                bodyText = bodyText.substring(0, 57) + '...';
+              }
+
+              flutterLocalNotificationsPlugin.show(
+                DateTime.now().millisecondsSinceEpoch % 100000,
+                '${message.senderName ?? "کاربر"} پیام جدید داد',
+                bodyText,
+                const NotificationDetails(
+                  android: AndroidNotificationDetails(
+                    'chat_messages',
+                    'پیام‌های چت',
+                    channelDescription: 'اعلان پیام‌های جدید چت',
+                    importance: Importance.high,
+                    priority: Priority.high,
+                    icon: '@mipmap/ic_launcher',
+                  ),
+                ),
+              );
+            }
+
             return message;
           }));
 
@@ -1050,6 +1093,39 @@ class ChatService {
 
           return messageModels;
         });
+  }
+
+  // Helper method to show notification
+  void _showMessageNotification(
+      Map<String, dynamic> messageData, Map<String, dynamic>? senderProfile) {
+    final content = messageData['content'] ?? '';
+    final senderName = senderProfile?['username'] ?? 'کاربر';
+
+    String bodyText = content.isNotEmpty
+        ? content
+        : (messageData['attachment_type'] == 'image'
+            ? 'یک تصویر ارسال شد'
+            : 'پیام جدید');
+
+    if (bodyText.length > 60) {
+      bodyText = bodyText.substring(0, 57) + '...';
+    }
+
+    flutterLocalNotificationsPlugin.show(
+      DateTime.now().millisecondsSinceEpoch % 100000,
+      '$senderName پیام جدید داد',
+      bodyText,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'chat_messages',
+          'پیام‌های چت',
+          channelDescription: 'اعلان پیام‌های جدید چت',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+        ),
+      ),
+    );
   }
 
   // علامت‌گذاری همه پیام‌های یک مکالمه به عنوان خوانده شده

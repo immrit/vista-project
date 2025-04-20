@@ -10,6 +10,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_links/app_links.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'DB/hive_initialize.dart';
 import 'firebase_options.dart';
 import 'model/Hive Model/RecentSearch.dart';
@@ -26,6 +27,32 @@ import 'view/screen/ouathUser/resetPassword.dart';
 import 'view/screen/ouathUser/signupUser.dart';
 import 'view/screen/ouathUser/welcome.dart';
 import 'view/screen/ouathUser/editeProfile.dart';
+
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
+
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // نمایش نوتیفیکیشن پیام جدید در پس‌زمینه/ترمینیت
+  if (message.data['type'] == 'chat_message') {
+    final senderName = message.data['sender_name'] ?? 'کاربر';
+    final content = message.data['content'] ?? 'پیام جدید';
+    await flutterLocalNotificationsPlugin.show(
+      DateTime.now().millisecondsSinceEpoch % 100000,
+      '$senderName پیام جدید داد',
+      content.length > 60 ? '${content.substring(0, 57)}...' : content,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'chat_messages',
+          'پیام‌های چت',
+          channelDescription: 'اعلان پیام‌های جدید چت',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+        ),
+      ),
+    );
+  }
+}
 
 void main() async {
   await HiveInitialize.initialize();
@@ -82,6 +109,9 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
+  // هندلر پس‌زمینه FCM
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
   try {
     // راه‌اندازی Supabase
     await Supabase.initialize(
@@ -105,6 +135,27 @@ void main() async {
   var box = Hive.box('settings');
   String savedTheme = box.get('selectedTheme', defaultValue: 'light');
   ThemeData initialTheme = _getInitialTheme(savedTheme);
+
+  // مقداردهی اولیه flutter_local_notifications و ساخت کانال
+  const AndroidInitializationSettings initializationSettingsAndroid =
+      AndroidInitializationSettings('@mipmap/ic_launcher');
+  final InitializationSettings initializationSettings = InitializationSettings(
+    android: initializationSettingsAndroid,
+    // اگر iOS نیاز دارید، اضافه کنید
+  );
+  await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+
+  const AndroidNotificationChannel chatChannel = AndroidNotificationChannel(
+    'chat_messages', // id
+    'پیام‌های چت', // name
+    description: 'اعلان پیام‌های جدید چت',
+    importance: Importance.high,
+    showBadge: true,
+  );
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(chatChannel);
 
   runApp(
     ProviderScope(
@@ -177,6 +228,29 @@ class _MyAppState extends ConsumerState<MyApp> {
       }
     });
     _setupProfileCheck();
+
+    // هندلر FCM در فورگراند و بکگراند
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      if (message.data['type'] == 'chat_message') {
+        final senderName = message.data['sender_name'] ?? 'کاربر';
+        final content = message.data['content'] ?? 'پیام جدید';
+        flutterLocalNotificationsPlugin.show(
+          DateTime.now().millisecondsSinceEpoch % 100000,
+          '$senderName پیام جدید داد',
+          content.length > 60 ? '${content.substring(0, 57)}...' : content,
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'chat_messages',
+              'پیام‌های چت',
+              channelDescription: 'اعلان پیام‌های جدید چت',
+              importance: Importance.high,
+              priority: Priority.high,
+              icon: '@mipmap/ic_launcher',
+            ),
+          ),
+        );
+      }
+    });
   }
 
   @override

@@ -20,6 +20,7 @@ import '../../util/time_utils.dart';
 import '../../util/widgets.dart';
 import 'package:flutter/foundation.dart' as foundation;
 import '../../../DB/message_cache_service.dart';
+import '../../../services/ChatService.dart';
 
 import '/main.dart';
 
@@ -119,6 +120,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       print(
           'علامت‌گذاری پیام‌های مکالمه ${widget.conversationId} به عنوان خوانده شده');
     });
+    // هنگام ورود به صفحه چت، conversationId فعال را تنظیم کن
+    ChatService.activeConversationId = widget.conversationId;
   }
 
   Future<void> _checkBlockStatus() async {
@@ -192,6 +195,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _scrollController.removeListener(_handleScrollToBottomBtn);
     _scrollController.dispose();
     _messageFocusNode.dispose();
+    // هنگام خروج از صفحه چت، conversationId فعال را پاک کن
+    if (ChatService.activeConversationId == widget.conversationId) {
+      ChatService.activeConversationId = null;
+    }
     super.dispose();
   }
 
