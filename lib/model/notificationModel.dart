@@ -1,12 +1,6 @@
-import 'dart:convert';
 import 'package:equatable/equatable.dart';
 
-enum VerificationType {
-  none, // بدون نشان
-  blueTick, // نشان آبی (مدیران و ناظران)
-  goldTick, // نشان طلایی (حساب تجاری)
-  blackTick // نشان مشکی (تولیدکنندگان محتوا)
-}
+enum VerificationType { none, blueTick, goldTick, blackTick }
 
 class NotificationModel extends Equatable {
   final String id;
@@ -17,7 +11,6 @@ class NotificationModel extends Equatable {
   final String type;
   final String username;
   final bool userIsVerified;
-  // final String verificationType; // فیلد جدید
   final String avatarUrl;
   final String PostId;
   final bool isRead;
@@ -29,99 +22,40 @@ class NotificationModel extends Equatable {
     required this.recipientId,
     required this.content,
     required this.createdAt,
-    this.type = 'general',
+    required this.type,
     required this.username,
-    required this.avatarUrl,
     required this.userIsVerified,
-    // this.verificationType = 'none', // مقدار پیش‌فرض
+    required this.avatarUrl,
     required this.PostId,
-    this.isRead = false,
-    this.verificationType = VerificationType.none,
+    required this.isRead,
+    required this.verificationType,
   });
 
-  // سازنده از Map با هندلینگ پیشرفته
+  bool get hasBlueBadge => verificationType == VerificationType.blueTick;
+  bool get hasGoldBadge => verificationType == VerificationType.goldTick;
+  bool get hasBlackBadge => verificationType == VerificationType.blackTick;
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'sender_id': senderId,
+      'recipient_id': recipientId,
+      'content': content,
+      'created_at': createdAt.toIso8601String(),
+      'type': type,
+      'username': username,
+      'user_is_verified': userIsVerified,
+      'avatar_url': avatarUrl,
+      'post_id': PostId,
+      'is_read': isRead,
+      'verification_type': verificationType.toString().split('.').last,
+    };
+  }
+
   factory NotificationModel.fromMap(Map<String, dynamic> map) {
-    try {
-      return NotificationModel(
-        id: (map['id'] ?? '').toString(),
-        senderId: (map['sender_id'] ?? '').toString(),
-        recipientId: (map['recipient_id'] ?? '').toString(),
-        content: (map['content'] ?? '❤️').toString(),
-        createdAt: map['created_at'] is String
-            ? DateTime.tryParse(map['created_at']) ?? DateTime.now()
-            : DateTime.now(),
-        type: (map['type'] ?? 'general').toString(),
-        username: map['sender']?['username']?.toString() ?? 'Unknown',
-        avatarUrl: map['sender']?['avatar_url']?.toString() ?? '',
-        userIsVerified: map['sender']?['is_verified'] == true,
-        verificationType:
-            _mapVerificationType(map['sender']?['verification_type']),
-        // verificationType:
-        //     map['sender']?['verification_type']?.toString() ?? 'none',
-        PostId: map['post_id']?.toString() ?? '',
-        isRead: map['is_read'] == true,
-      );
-    } catch (e) {
-      print('Error parsing notification: $e');
-      rethrow;
-    }
-  }
-
-  // تبدیل به Map با ساختار کامل
-  Map<String, dynamic> toMap() => {
-        'id': id,
-        'sender_id': senderId,
-        'recipient_id': recipientId,
-        'content': content,
-        'created_at': createdAt.toIso8601String(),
-        'type': type,
-        'profiles': {
-          'username': username,
-          'avatar_url': avatarUrl,
-          'is_verified': userIsVerified,
-          'verification_type': verificationType.name,
-        },
-        'post_id': PostId,
-        'is_read': isRead,
-      };
-
-  // متد copyWith برای تغییرات ایمن
-  NotificationModel copyWith({
-    String? id,
-    String? senderId,
-    String? recipientId,
-    String? content,
-    DateTime? createdAt,
-    String? notificationType,
-    String? username,
-    String? avatarUrl,
-    bool? userIsVerified,
-    VerificationType? verificationType, // اضافه کردن به copyWith
-    String? PostId,
-    bool? isRead,
-  }) {
-    return NotificationModel(
-      id: id ?? this.id,
-      senderId: senderId ?? this.senderId,
-      recipientId: recipientId ?? this.recipientId,
-      content: content ?? this.content,
-      createdAt: createdAt ?? this.createdAt,
-      type: notificationType ?? type,
-      username: username ?? this.username,
-      avatarUrl: avatarUrl ?? this.avatarUrl,
-      userIsVerified: userIsVerified ?? this.userIsVerified,
-
-      verificationType:
-          verificationType ?? this.verificationType, // اضافه کردن به سازنده
-      PostId: PostId ?? this.PostId,
-      isRead: isRead ?? this.isRead,
-    );
-  }
-
-  static VerificationType _mapVerificationType(dynamic value) {
-    if (value == null) return VerificationType.none;
-    if (value is String) {
-      switch (value) {
+    VerificationType parseVerificationType(dynamic value) {
+      if (value == null) return VerificationType.none;
+      switch (value.toString()) {
         case 'blueTick':
           return VerificationType.blueTick;
         case 'goldTick':
@@ -132,42 +66,112 @@ class NotificationModel extends Equatable {
           return VerificationType.none;
       }
     }
-    return VerificationType.none;
+
+    String getSenderId() {
+      if (map.containsKey('sender_id')) return map['sender_id'];
+      return '';
+    }
+
+    String getUsername() {
+      if (map.containsKey('username')) return map['username'] ?? '';
+      if (map.containsKey('sender') && map['sender'] != null) {
+        final senderMap = map['sender'] as Map<String, dynamic>;
+        return senderMap['username'] ?? '';
+      }
+      return '';
+    }
+
+    String getAvatarUrl() {
+      if (map.containsKey('avatar_url')) return map['avatar_url'] ?? '';
+      if (map.containsKey('sender') && map['sender'] != null) {
+        final senderMap = map['sender'] as Map<String, dynamic>;
+        return senderMap['avatar_url'] ?? '';
+      }
+      return '';
+    }
+
+    bool getUserIsVerified() {
+      if (map.containsKey('user_is_verified'))
+        return map['user_is_verified'] ?? false;
+      if (map.containsKey('sender') && map['sender'] != null) {
+        final senderMap = map['sender'] as Map<String, dynamic>;
+        return senderMap['is_verified'] ?? false;
+      }
+      return false;
+    }
+
+    VerificationType getVerificationType() {
+      if (map.containsKey('verification_type')) {
+        return parseVerificationType(map['verification_type']);
+      }
+      if (map.containsKey('sender') && map['sender'] != null) {
+        final senderMap = map['sender'] as Map<String, dynamic>;
+        return parseVerificationType(senderMap['verification_type']);
+      }
+      return VerificationType.none;
+    }
+
+    return NotificationModel(
+      id: map['id'] ?? '',
+      senderId: getSenderId(),
+      recipientId: map['recipient_id'] ?? '',
+      content: map['content'] ?? '',
+      createdAt:
+          DateTime.parse(map['created_at'] ?? DateTime.now().toIso8601String()),
+      type: map['type'] ?? '',
+      username: getUsername(),
+      userIsVerified: getUserIsVerified(),
+      avatarUrl: getAvatarUrl(),
+      PostId: map['post_id'] ?? '',
+      isRead: map['is_read'] ?? false,
+      verificationType: getVerificationType(),
+    );
   }
 
-  // تبدیل به JSON
-  String toJson() => json.encode(toMap());
+  // اضافه کردن متد copyWith برای بروزرسانی آسان اعلان‌ها
+  NotificationModel copyWith({
+    String? id,
+    String? senderId,
+    String? recipientId,
+    String? content,
+    DateTime? createdAt,
+    String? type,
+    String? username,
+    bool? userIsVerified,
+    String? avatarUrl,
+    String? PostId,
+    bool? isRead,
+    VerificationType? verificationType,
+  }) {
+    return NotificationModel(
+      id: id ?? this.id,
+      senderId: senderId ?? this.senderId,
+      recipientId: recipientId ?? this.recipientId,
+      content: content ?? this.content,
+      createdAt: createdAt ?? this.createdAt,
+      type: type ?? this.type,
+      username: username ?? this.username,
+      userIsVerified: userIsVerified ?? this.userIsVerified,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      PostId: PostId ?? this.PostId,
+      isRead: isRead ?? this.isRead,
+      verificationType: verificationType ?? this.verificationType,
+    );
+  }
 
-  // از JSON
-  factory NotificationModel.fromJson(String source) =>
-      NotificationModel.fromMap(json.decode(source));
-
-  // Override equals و hashCode از طریق Equatable
   @override
-  List<Object?> get props =>
-      [id, senderId, recipientId, content, createdAt, type];
-
-  // toString برای لاگ و دیباگ
-  @override
-  String toString() => '''
-    Notification(
-      id: $id, 
-      sender: $senderId, 
-      content: $content, 
-      type: $type, 
-      postid: $PostId,
-      read: $isRead
-    )''';
-
-  // متد مقایسه
-  bool isSameNotification(NotificationModel other) =>
-      id == other.id && content == other.content;
-  bool get hasBlueBadge =>
-      userIsVerified && verificationType == VerificationType.blueTick;
-  bool get hasGoldBadge =>
-      userIsVerified && verificationType == VerificationType.goldTick;
-  bool get hasBlackBadge =>
-      userIsVerified && verificationType == VerificationType.blackTick;
-  bool get hasAnyBadge =>
-      userIsVerified && verificationType != VerificationType.none;
+  List<Object> get props => [
+        id,
+        senderId,
+        recipientId,
+        content,
+        createdAt,
+        type,
+        username,
+        userIsVerified,
+        avatarUrl,
+        PostId,
+        isRead,
+        verificationType,
+      ];
 }

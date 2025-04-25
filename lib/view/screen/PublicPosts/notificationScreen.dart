@@ -1,53 +1,16 @@
 import 'dart:async';
 
+import 'package:Vista/provider/notification_providers.dart';
+import 'package:buttons_tabbar/buttons_tabbar.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:timeago/timeago.dart' as timeago;
 import '../../../main.dart';
 import '../../../model/notificationModel.dart';
 import '/view/screen/PublicPosts/profileScreen.dart';
-import '../../../provider/provider.dart';
 import '../../util/const.dart';
 import 'PostDetailPage.dart';
-
-class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
-  NotificationsNotifier() : super([]);
-
-  Future<void> fetchNotifications() async {
-    final userId = supabase.auth.currentUser?.id;
-    if (userId == null) {
-      throw Exception("User not logged in");
-    }
-
-    final response = await supabase
-        .from('notifications')
-        .select(
-            '*, sender:profiles!notifications_sender_id_fkey(username, avatar_url, is_verified  , verification_type)')
-        .eq('recipient_id', userId)
-        .order('created_at', ascending: false);
-
-    final notifications =
-        response.map((item) => NotificationModel.fromMap(item)).toList();
-
-    state = notifications;
-  }
-
-  Future<void> deleteAllNotifications() async {
-    final userId = supabase.auth.currentUser?.id;
-    if (userId == null) {
-      throw Exception("User not logged in");
-    }
-
-    await supabase.from('notifications').delete().eq('recipient_id', userId);
-
-    state = [];
-  }
-}
-
-final notificationsProvider = StateNotifierProvider.autoDispose<
-    NotificationsNotifier, List<NotificationModel>>((ref) {
-  return NotificationsNotifier()..fetchNotifications();
-});
 
 class NotificationsPage extends ConsumerStatefulWidget {
   const NotificationsPage({super.key});
@@ -58,13 +21,17 @@ class NotificationsPage extends ConsumerStatefulWidget {
 
 class _NotificationsPageState extends ConsumerState {
   bool _isDisposed = false;
+  bool _isLoading = true;
   StreamSubscription? _notificationListener;
 
   @override
   void initState() {
     super.initState();
-    _markNotificationsAsRead();
-    _listenToNotifications();
+    // تنظیم زبان فارسی برای timeago
+    timeago.setLocaleMessages('fa', timeago.FaMessages());
+
+    // بارگذاری اولیه اعلان‌ها
+    _initData();
   }
 
   @override
@@ -74,24 +41,27 @@ class _NotificationsPageState extends ConsumerState {
     super.dispose();
   }
 
-  Future _markNotificationsAsRead() async {
-    final userId = supabase.auth.currentUser?.id;
-    if (userId == null || _isDisposed) return;
+  Future<void> _initData() async {
+    if (_isDisposed) return;
 
-    try {
-      await supabase
-          .from('notifications')
-          .update({'is_read': true})
-          .eq('recipient_id', userId)
-          .eq('is_read', false);
+    setState(() {
+      _isLoading = true;
+    });
 
-      if (!_isDisposed) {
-        ref.invalidate(notificationsProvider);
-        ref.invalidate(hasNewNotificationProvider);
-      }
-    } catch (e) {
-      print('Error marking notifications as read: $e');
+    await ref.read(notificationsProvider.notifier).fetchNotifications();
+    await _markNotificationsAsRead();
+    _listenToNotifications();
+
+    if (!_isDisposed) {
+      setState(() {
+        _isLoading = false;
+      });
     }
+  }
+
+  Future _markNotificationsAsRead() async {
+    if (_isDisposed) return;
+    await ref.read(notificationsProvider.notifier).markAllAsRead();
   }
 
   void _listenToNotifications() {
@@ -102,55 +72,173 @@ class _NotificationsPageState extends ConsumerState {
         .from('notifications')
         .stream(primaryKey: ['id']).listen((data) {
       if (!_isDisposed) {
-        ref.invalidate(notificationsProvider);
+        ref.read(notificationsProvider.notifier).fetchNotifications();
       }
     });
   }
 
-// تابع برای نمایش نشان تأیید
-  Widget _buildVerificationBadge(NotificationModel profile) {
-    // نمایش تیک مناسب براساس نوع تأیید
-    if (profile.hasBlueBadge) {
-      return const Icon(Icons.verified, color: Colors.blue, size: 16);
-    } else if (profile.hasGoldBadge) {
-      return const Icon(Icons.verified, color: Colors.amber, size: 16);
-    } else if (profile.hasBlackBadge) {
+  // تابع برای نمایش نشان تأیید
+  Widget _buildVerificationBadge(NotificationModel notification) {
+    if (notification.hasBlueBadge) {
       return Container(
-        padding: const EdgeInsets.all(.1), // فاصله باریک برای پس‌زمینه
-        decoration: BoxDecoration(
-          color: Colors.white60, // پس‌زمینه سفید
-          shape: BoxShape.circle, // پس‌زمینه دایره‌ای
+        margin: const EdgeInsets.only(right: 4),
+        child: const Icon(Icons.verified, color: Colors.blue, size: 16),
+      );
+    } else if (notification.hasGoldBadge) {
+      return Container(
+        margin: const EdgeInsets.only(right: 4),
+        child: const Icon(Icons.verified, color: Colors.amber, size: 16),
+      );
+    } else if (notification.hasBlackBadge) {
+      return Container(
+        margin: const EdgeInsets.only(right: 4),
+        padding: const EdgeInsets.all(.1),
+        decoration: const BoxDecoration(
+          color: Colors.white60,
+          shape: BoxShape.circle,
         ),
         child: const Icon(Icons.verified, color: Colors.black, size: 16),
       );
     } else {
-      return const SizedBox.shrink(); // در صورت نداشتن تیک، چیزی نمایش نمی‌دهیم
+      return const SizedBox.shrink();
     }
   }
 
-  @override
-  bool get wantKeepAlive => true;
+  // تابع برای نمایش آیکون مناسب برای هر نوع اعلان
+  IconData _getNotificationIcon(String type) {
+    switch (type) {
+      case 'like':
+        return Icons.favorite;
+      case 'new_comment':
+        return Icons.comment;
+      case 'follow':
+        return Icons.person_add;
+      case 'mention':
+        return Icons.alternate_email;
+      case 'comment_reply':
+        return Icons.reply;
+      default:
+        return Icons.notifications;
+    }
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    final notifications = ref.watch(notificationsProvider);
+  // تابع برای نمایش رنگ آیکون هر نوع اعلان
+  Color _getNotificationIconColor(String type) {
+    switch (type) {
+      case 'like':
+        return Colors.red;
+      case 'new_comment':
+        return Colors.blue;
+      case 'follow':
+        return Colors.green;
+      case 'mention':
+        return Colors.purple;
+      case 'comment_reply':
+        return Colors.orange;
+      default:
+        return Colors.grey;
+    }
+  }
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('اعلان‌ها')),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(notificationsProvider);
-        },
-        child: notifications.isEmpty
-            ? const Center(child: Text('اعلان جدیدی وجود ندارد'))
-            : ListView.builder(
-                itemCount: notifications.length,
-                itemBuilder: (context, index) {
-                  final notification = notifications[index];
-                  return Column(
-                    children: [
-                      ListTile(
-                        leading: GestureDetector(
+  // تابع برای نمایش زمان اعلان به صورت نسبی (مثلا "۲ ساعت پیش")
+  String _getTimeAgo(DateTime createdAt) {
+    return timeago.format(createdAt, locale: 'fa');
+  }
+
+  // تابع برای نمایش اعلان‌ها
+  Widget _buildNotificationsList(
+      BuildContext context, List<NotificationModel> notifications) {
+    if (_isLoading) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text(
+              'در حال بارگذاری اعلان‌ها...',
+              style: TextStyle(fontSize: 16, color: Colors.grey),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (notifications.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.notifications_off_outlined,
+              size: 64,
+              color: Colors.grey,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'اعلانی وجود ندارد',
+              style: TextStyle(fontSize: 16, color: Colors.grey),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => _initData(),
+              child: const Text('بررسی مجدد'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: notifications.length,
+      itemBuilder: (context, index) {
+        final notification = notifications[index];
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          color: notification.isRead
+              ? Colors.transparent
+              : Colors.blue.withOpacity(0.05),
+          child: Card(
+            elevation: 0,
+            margin: const EdgeInsets.symmetric(
+              horizontal: 8,
+              vertical: 4,
+            ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () {
+                if (notification.type == 'like' ||
+                    notification.type == 'new_comment' ||
+                    notification.type == 'mention' ||
+                    notification.type == 'comment_reply') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => PostDetailsPage(
+                        postId: notification.PostId,
+                      ),
+                    ),
+                  );
+                } else if (notification.type == 'follow') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ProfileScreen(
+                        userId: notification.senderId,
+                        username: notification.username,
+                      ),
+                    ),
+                  );
+                }
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Stack(
+                      children: [
+                        GestureDetector(
                           onTap: () {
                             Navigator.push(
                               context,
@@ -162,124 +250,257 @@ class _NotificationsPageState extends ConsumerState {
                               ),
                             );
                           },
-                          child: CircleAvatar(
-                            backgroundImage: notification.avatarUrl.isEmpty
-                                ? const AssetImage(defaultAvatarUrl)
-                                : CachedNetworkImageProvider(
-                                    notification.avatarUrl),
+                          child: Hero(
+                            tag: 'avatar-${notification.senderId}',
+                            child: CircleAvatar(
+                              radius: 24,
+                              backgroundColor: Colors.grey[200],
+                              backgroundImage: notification.avatarUrl.isEmpty
+                                  ? const AssetImage(defaultAvatarUrl)
+                                  : CachedNetworkImageProvider(
+                                      notification.avatarUrl) as ImageProvider,
+                            ),
                           ),
                         ),
-                        title: Row(
-                          children: [
-                            Text(notification.username),
-                            const SizedBox(width: 5),
-                            if (notification.userIsVerified)
-                              _buildVerificationBadge(notification),
-                          ],
-                        ),
-                        subtitle: Directionality(
-                          textDirection: TextDirection.rtl,
-                          child: Text(notification.content,
-                              maxLines: 1, overflow: TextOverflow.ellipsis),
-                        ),
-                        trailing: Icon(
-                          notification.isRead
-                              ? Icons.check_circle
-                              : Icons.check_circle_outline,
-                          color: notification.isRead
-                              ? Colors.green
-                              : const Color.fromARGB(255, 137, 127, 127),
-                        ),
-                        onTap: () {
-                          if (notification.type == 'like' ||
-                              notification.type == 'new_comment' ||
-                              notification.type == 'mention' ||
-                              notification.type == 'comment_reply') {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => PostDetailsPage(
-                                    postId: notification.PostId),
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color:
+                                  _getNotificationIconColor(notification.type),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color:
+                                    Theme.of(context).scaffoldBackgroundColor,
+                                width: 2,
                               ),
-                            );
-                            ref.invalidate(
-                                commentsProvider(notification.PostId));
-                          }
-                        },
-                      ),
-                      Divider(
-                        endIndent: 20,
-                        indent: 20,
-                        color: Colors.grey[200],
-                      ),
-                    ],
-                  );
-                },
-              ),
-      ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton(
-            heroTag: 'delete_notifications',
-            mini: true,
-            backgroundColor: Colors.red,
-            onPressed: () async {
-              if (_isDisposed) return;
-
-              final shouldDelete = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Directionality(
-                    textDirection: TextDirection.rtl,
-                    child: Text('آیا از حذف اعلان‌ها اطمینان دارید؟'),
-                  ),
-                  content: const Directionality(
-                    textDirection: TextDirection.rtl,
-                    child: Text('تمامی اعلان‌های شما حذف خواهند شد.'),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('لغو'),
+                            ),
+                            child: Icon(
+                              _getNotificationIcon(notification.type),
+                              size: 12,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: const Text('حذف'),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                notification.username,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              if (notification.userIsVerified)
+                                _buildVerificationBadge(notification),
+                              const Spacer(),
+                              Text(
+                                _getTimeAgo(notification.createdAt),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            notification.content,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
-              );
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 
-              if (shouldDelete == true && !_isDisposed) {
-                try {
+  @override
+  Widget build(BuildContext context) {
+    final notifications = ref.watch(notificationsProvider);
+    final unreadCount = ref.watch(unreadNotificationCountProvider);
+
+    // لیست تب‌ها برای نمایش
+    final tabs = [
+      {'type': 'all', 'title': 'همه'},
+      {'type': 'like', 'title': 'لایک‌ها'},
+      {'type': 'new_comment', 'title': 'نظرات'},
+      {'type': 'follow', 'title': 'فالوها'},
+      {'type': 'comment_reply', 'title': 'پاسخ‌ها'},
+      {'type': 'mention', 'title': 'منشن‌ها'},
+    ];
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('اعلان‌ها'),
+            if (unreadCount > 0)
+              Text(
+                '$unreadCount اعلان خوانده نشده',
+                style: const TextStyle(fontSize: 12),
+              ),
+          ],
+        ),
+        actions: [
+          if (notifications.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.check_circle_outline),
+              tooltip: 'خواندن همه',
+              onPressed: () => _markNotificationsAsRead(),
+            ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await _initData();
+        },
+        child: DefaultTabController(
+          length: tabs.length,
+          child: Column(
+            children: [
+              ButtonsTabBar(
+                backgroundColor: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.black
+                    : Colors.black,
+                borderWidth: 1,
+                borderColor: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white
+                    : Colors.black,
+                radius: 12,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                unselectedBackgroundColor:
+                    Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF222222)
+                        : Colors.white,
+                unselectedBorderColor:
+                    Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white.withOpacity(0.3)
+                        : Colors.black.withOpacity(0.3),
+                labelStyle: TextStyle(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white // تم تاریک: متن مشکی روی زمینه سفید
+                      : Colors.black, // تم روشن: متن سفید روی زمینه مشکی
+                  fontWeight: FontWeight.bold,
+                ),
+                unselectedLabelStyle: TextStyle(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white.withOpacity(
+                          0.9) // تم تاریک: متن سفید برای تب‌های غیرفعال
+                      : Colors.black.withOpacity(
+                          0.9), // تم روشن: متن مشکی برای تب‌های غیرفعال
+                  fontWeight: FontWeight.normal,
+                ),
+                tabs: tabs.map((tab) {
+                  final count = ref.watch(
+                      notificationCountByTypeProvider(tab['type'] as String?));
+                  final isDark =
+                      Theme.of(context).brightness == Brightness.dark;
+                  return Tab(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (count > 0) ...[
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.black : Colors.white,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              count.toString(),
+                              style: TextStyle(
+                                color: isDark ? Colors.white : Colors.black,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                        SizedBox(
+                          width: 1.5,
+                        ),
+                        Text(tab['title'] as String),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+              Expanded(
+                child: TabBarView(
+                  children: tabs.map((tab) {
+                    final filteredNotifications = tab['type'] == 'all'
+                        ? notifications
+                        : notifications
+                            .where((n) => n.type == tab['type'])
+                            .toList();
+                    return _buildNotificationsList(
+                        context, filteredNotifications);
+                  }).toList(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      floatingActionButton: notifications.isNotEmpty
+          ? FloatingActionButton(
+              heroTag: 'delete_notifications',
+              mini: true,
+              backgroundColor: Colors.red,
+              tooltip: 'پاک کردن همه اعلان‌ها',
+              onPressed: () async {
+                if (_isDisposed) return;
+
+                final shouldDelete = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('حذف اعلان‌ها'),
+                        content: const Text(
+                            'آیا از حذف تمامی اعلان‌ها اطمینان دارید؟'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('انصراف'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.red,
+                            ),
+                            child: const Text('حذف'),
+                          ),
+                        ],
+                      ),
+                    ) ??
+                    false;
+
+                if (shouldDelete && !_isDisposed) {
                   await ref
                       .read(notificationsProvider.notifier)
                       .deleteAllNotifications();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('همه اعلان‌ها حذف شدند')),
-                  );
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('خطا در حذف اعلان‌ها: $e')),
-                  );
+                  ref.invalidate(hasNewNotificationProvider);
                 }
-              }
-            },
-            child: const Icon(Icons.delete),
-          ),
-          const SizedBox(height: 10),
-          FloatingActionButton(
-            heroTag: 'refresh_notifications',
-            onPressed: () {
-              if (!_isDisposed) {
-                ref.invalidate(notificationsProvider);
-              }
-            },
-            child: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+              },
+              child: const Icon(Icons.delete_outline),
+            )
+          : null,
     );
   }
 }

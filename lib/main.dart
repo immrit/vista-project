@@ -47,7 +47,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           channelDescription: 'اعلان پیام‌های جدید چت',
           importance: Importance.high,
           priority: Priority.high,
-          icon: '@mipmap/ic_launcher',
+          icon: '@drawable/ic_launcher',
         ),
       ),
     );
@@ -138,7 +138,7 @@ void main() async {
 
   // مقداردهی اولیه flutter_local_notifications و ساخت کانال
   const AndroidInitializationSettings initializationSettingsAndroid =
-      AndroidInitializationSettings('@mipmap/ic_launcher');
+      AndroidInitializationSettings('@drawable/ic_notification');
   final InitializationSettings initializationSettings = InitializationSettings(
     android: initializationSettingsAndroid,
     // اگر iOS نیاز دارید، اضافه کنید
@@ -242,10 +242,13 @@ class _MyAppState extends ConsumerState<MyApp> {
             android: AndroidNotificationDetails(
               'chat_messages',
               'پیام‌های چت',
+              color: Color(
+                  0xff3a0088), // this is background color for transparent App Icon
               channelDescription: 'اعلان پیام‌های جدید چت',
               importance: Importance.high,
               priority: Priority.high,
-              icon: '@mipmap/ic_launcher',
+              styleInformation: BigTextStyleInformation(''),
+              icon: '@drawable/ic_notification',
             ),
           ),
         );

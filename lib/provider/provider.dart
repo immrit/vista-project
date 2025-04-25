@@ -11,7 +11,6 @@ import '/model/notificationModel.dart';
 import '/model/publicPostModel.dart';
 import '../main.dart';
 import '../model/CommentModel.dart';
-import '../model/NotesModel.dart';
 import '../model/UserModel.dart';
 import '../view/util/themes.dart';
 
@@ -70,15 +69,6 @@ final profileUpdateProvider =
   if (response != null) {
     throw Exception('Failed to update profile');
   }
-});
-
-//fetch notes
-final notesProvider = FutureProvider<List<Note>>((ref) async {
-  final userId = supabase.auth.currentSession!.user.id;
-  final response = await supabase.from('Notes').select().eq('user_id', userId);
-
-  final data = response as List<dynamic>;
-  return data.map((e) => Note.fromMap(e as Map<String, dynamic>)).toList();
 });
 
 //update pass
