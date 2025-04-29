@@ -16,11 +16,18 @@ class MessageCacheService {
   // کش حافظه برای دسترسی سریع‌تر به پیام‌ها
   final Map<String, List<MessageModel>> _memoryCache = {};
 
+  // کش تاریخ‌های پیام هر مکالمه (date dividers) در حافظه
+  final Map<String, List<DateTime>> _dateDividersCache = {};
+
   Box<MessageHiveModel>? _box;
 
+  // Box برای ذخیره تاریخ‌ها در Hive
+  Box<List>? _dateBox;
+
   Future<void> initialize() async {
-    if (_box != null) return;
-    _box = await Hive.openBox<MessageHiveModel>(_boxName);
+    if (_box != null && _dateBox != null) return;
+    _box ??= await Hive.openBox<MessageHiveModel>(_boxName);
+    _dateBox ??= await Hive.openBox<List>('message_dates');
   }
 
   // ذخیره یک پیام در کش
@@ -60,6 +67,21 @@ class MessageCacheService {
     if (_memoryCache[message.conversationId]!.length > CACHE_LIMIT) {
       _memoryCache[message.conversationId]!.removeLast();
     }
+
+    // بعد از اضافه کردن پیام، تاریخ‌های جدید را بروزرسانی کن (سریع و فقط اگر لازم بود)
+    final dateKey =
+        '${message.createdAt.year}-${message.createdAt.month}-${message.createdAt.day}';
+    final cachedDates = _dateDividersCache[message.conversationId] ?? [];
+    if (!cachedDates.any((d) =>
+        d.year == message.createdAt.year &&
+        d.month == message.createdAt.month &&
+        d.day == message.createdAt.day)) {
+      _dateDividersCache[message.conversationId] = [
+        ...cachedDates,
+        DateTime(message.createdAt.year, message.createdAt.month,
+            message.createdAt.day)
+      ];
+    }
   }
 
   // بروزرسانی چند پیام در یک زمان
@@ -95,6 +117,12 @@ class MessageCacheService {
       // اضافه یا جایگزین کردن پیام‌ها
       for (final message in newMessages) {
         await cacheMessage(message);
+      }
+
+      // بعد از اضافه کردن پیام‌ها، تاریخ‌های جدید را بروزرسانی کن
+      if (_memoryCache.containsKey(conversationId)) {
+        await _updateDateDividers(
+            conversationId, _memoryCache[conversationId]!);
       }
     }
   }
@@ -292,6 +320,9 @@ class MessageCacheService {
         await _box!.delete(key);
       }
     }
+
+    // هنگام پاکسازی پیام‌های یک مکالمه، کش تاریخ را هم پاک کن
+    _dateDividersCache.remove(conversationId);
   }
 
   // حذف یک پیام خاص از کش
@@ -314,5 +345,62 @@ class MessageCacheService {
 
     await _box!.clear();
     _memoryCache.clear();
+
+    // هنگام پاکسازی کل کش، کش تاریخ را هم پاک کن
+    _dateDividersCache.clear();
+  }
+
+  // گرفتن لیست تاریخ‌های پیام (date divider) برای یک مکالمه
+  List<DateTime> getDateDividers(String conversationId) {
+    // اول از کش حافظه
+    if (_dateDividersCache.containsKey(conversationId)) {
+      return _dateDividersCache[conversationId]!;
+    }
+    // اگر در کش حافظه نبود، از Hive پیام‌ها را بخوان و تاریخ‌ها را استخراج کن
+    final box = _box;
+    if (box == null) return [];
+    final datesSet = <String>{};
+    for (final key in box.keys) {
+      if (key.toString().startsWith('${conversationId}_')) {
+        final hiveModel = box.get(key);
+        if (hiveModel != null) {
+          final date = hiveModel.createdAt;
+          final dateKey = '${date.year}-${date.month}-${date.day}';
+          datesSet.add(dateKey);
+        }
+      }
+    }
+    // تبدیل به لیست DateTime و مرتب‌سازی
+    final dates = datesSet.map((s) {
+      final parts = s.split('-');
+      return DateTime(
+          int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+    }).toList()
+      ..sort((a, b) => b.compareTo(a)); // جدیدترین بالا
+    _dateDividersCache[conversationId] = dates;
+    return dates;
+  }
+
+  // ذخیره تاریخ‌های جدید برای یک مکالمه (در حافظه و Hive)
+  Future<void> _updateDateDividers(
+      String conversationId, List<MessageModel> messages) async {
+    await initialize();
+    final dates = <DateTime>[];
+    DateTime? lastDate;
+    // پیام‌ها باید بر اساس زمان صعودی مرتب شوند تا تاریخ‌ها درست استخراج شوند
+    final sorted = List<MessageModel>.from(messages)
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    for (final msg in sorted) {
+      final msgDate =
+          DateTime(msg.createdAt.year, msg.createdAt.month, msg.createdAt.day);
+      if (lastDate == null || !msgDate.isAtSameMomentAs(lastDate)) {
+        dates.add(msgDate);
+        lastDate = msgDate;
+      }
+    }
+    _dateDividersCache[conversationId] = dates;
+    // ذخیره در Hive (به صورت لیست String)
+    await _dateBox?.put(
+        conversationId, dates.map((d) => d.toIso8601String()).toList());
   }
 }

@@ -1,8 +1,13 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 Future<String> getIpAddress() async {
+  if (kIsWeb) {
+    return 'web-client'; // یا هر مقدار پیش‌فرضی که می‌خواهید
+  }
+
   final response =
       await http.get(Uri.parse('https://api.ipify.org?format=json'));
   if (response.statusCode == 200) {
@@ -14,6 +19,10 @@ Future<String> getIpAddress() async {
 }
 
 Future<void> updateIpAddress() async {
+  if (kIsWeb) {
+    return; // روی وب هیچ کاری انجام نده
+  }
+
   try {
     final ipAddress = await getIpAddress();
 

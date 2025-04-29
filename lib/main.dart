@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io' show Platform; // اضافه کن
+import 'package:Vista/DB/conversation_cache_service.dart';
 import 'package:Vista/view/screen/SplashScreen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -19,6 +21,7 @@ import 'provider/provider.dart';
 import 'security/security.dart';
 import 'services/ChatService.dart';
 import 'services/deepLink.dart';
+import 'view/screen/chat/ChatScreen.dart';
 import 'view/util/themes.dart';
 import 'view/screen/Settings/Settings.dart';
 import 'view/screen/homeScreen.dart';
@@ -27,40 +30,187 @@ import 'view/screen/ouathUser/resetPassword.dart';
 import 'view/screen/ouathUser/signupUser.dart';
 import 'view/screen/ouathUser/welcome.dart';
 import 'view/screen/ouathUser/editeProfile.dart';
+import 'package:flutter/foundation.dart' show kIsWeb; // اضافه کن
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
+/// هندل پاسخ به اعلان
+Future<void> notificationResponseHandler(NotificationResponse response) async {
+  // دکمه پاسخ
+  if (response.actionId == 'reply') {
+    final replyText = response.input;
+    final conversationId = response.payload;
+    if (replyText != null &&
+        conversationId != null &&
+        conversationId.isNotEmpty) {
+      // ارسال پیام به سرور
+      try {
+        // فرض: ChatService و supabase مقداردهی شده‌اند
+        await ChatService().sendMessage(
+          conversationId: conversationId,
+          content: replyText,
+        );
+        // اگر برنامه باز است، صفحه چت را به‌روزرسانی کن
+        // (اختیاری: اگر صفحه چت باز است، می‌توانی یک event بفرستی)
+      } catch (e) {
+        print('خطا در ارسال پاسخ سریع: $e');
+      }
+    }
+  } else {
+    // کلیک روی نوتیفیکیشن: conversationId در payload
+    final conversationId = response.payload;
+    if (conversationId != null && conversationId.isNotEmpty) {
+      // باز کردن صفحه چت مربوطه
+      navigatorKey.currentState?.pushNamed(
+        '/chat',
+        arguments: conversationId,
+      );
+    }
+  }
+}
+
+/// پیام های پوش پس زمینه و ترمینیتد
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // نمایش نوتیفیکیشن پیام جدید در پس‌زمینه/ترمینیت
-  if (message.data['type'] == 'chat_message') {
-    final senderName = message.data['sender_name'] ?? 'کاربر';
-    final content = message.data['content'] ?? 'پیام جدید';
+  await _handleIncomingNotification(message, fromBackground: true);
+}
+
+/// تابع مرکزی هندل همه اعلان‌ها
+Future<void> _handleIncomingNotification(RemoteMessage message,
+    {bool fromBackground = false}) async {
+  final data = message.data;
+  final String? type = data['type'];
+  final notification = message.notification;
+  String? title;
+  String? body;
+
+  if (type == 'chat_message') {
+    title = 'پیام جدید از ${data['sender_name'] ?? 'کاربر'}';
+    body = data['content'] ?? 'پیام جدید';
+    final conversationId = data['conversation_id'] ?? '';
+    const AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails('chat_messages', 'پیام‌های چت',
+            channelDescription: 'اعلان پیام‌های جدید چت',
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: '@drawable/ic_notification',
+            actions: <AndroidNotificationAction>[
+          AndroidNotificationAction(
+            'reply',
+            'پاسخ',
+            inputs: [AndroidNotificationActionInput()],
+            showsUserInterface: true,
+          ),
+        ]);
+    const NotificationDetails notificationDetails =
+        NotificationDetails(android: androidDetails);
+
     await flutterLocalNotificationsPlugin.show(
       DateTime.now().millisecondsSinceEpoch % 100000,
-      '$senderName پیام جدید داد',
-      content.length > 60 ? '${content.substring(0, 57)}...' : content,
+      title,
+      body!.length > 60 ? '${body.substring(0, 57)}...' : body,
+      notificationDetails,
+      payload: conversationId,
+    );
+    return;
+  }
+
+  // انواع شبکه اجتماعی (مطابق دیتابیس: new_comment, like, comment_reply, follow)
+  if (type == 'like' ||
+      type == 'new_comment' ||
+      type == 'comment_reply' ||
+      type == 'follow') {
+    // استخراج نام کاربر ارسال‌کننده (در دیتابیس: sender_id، اما معمولا در FCM باید username یا actor_name هم ارسال شود)
+    final senderName = data['actor_name'] ??
+        data['sender_name'] ??
+        data['username'] ??
+        data['sender_username'] ??
+        data['sender'] ??
+        "یک کاربر";
+    final commentText = data['comment_text'] ?? data['content'] ?? '';
+    switch (type) {
+      case 'like':
+        title = 'لایک جدید';
+        body = '$senderName پست شما را پسندید';
+        break;
+      case 'new_comment':
+        title = 'کامنت جدید!';
+        body =
+            '$senderName برای پست شما کامنت گذاشت${commentText.isNotEmpty ? ': $commentText' : ''}';
+        break;
+      case 'comment_reply':
+        title = 'پاسخ به کامنت شما';
+        body =
+            '$senderName به نظر شما پاسخ داد${commentText.isNotEmpty ? ': $commentText' : ''}';
+        break;
+      case 'follow':
+        title = 'دنبال‌کننده جدید!';
+        body = '$senderName شما را دنبال کرد';
+        break;
+      default:
+        title = 'اعلان جدید';
+        body = notification?.body ?? data['content'] ?? '';
+    }
+
+    const AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
+      'social_notify',
+      'اعلان اجتماعی',
+      channelDescription: 'اعلان‌های اجتماعی (لایک، کامنت، دنبال‌کننده و ...)',
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: '@drawable/ic_notification',
+    );
+
+    const NotificationDetails notificationDetails =
+        NotificationDetails(android: androidDetails);
+
+    await flutterLocalNotificationsPlugin.show(
+      DateTime.now().millisecondsSinceEpoch % 100000,
+      title,
+      body!.length > 60 ? '${body.substring(0, 57)}...' : body,
+      notificationDetails,
+      payload: data['post_id'] ??
+          data['comment_id'] ??
+          data['parent_comment_id'] ??
+          '',
+    );
+    return;
+  }
+
+  // اگر نوع ناشناخته یا نوتیف عادی بود:
+  if (notification != null) {
+    await flutterLocalNotificationsPlugin.show(
+      DateTime.now().millisecondsSinceEpoch % 100000,
+      notification.title ?? 'اعلان',
+      notification.body ?? '',
       const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'chat_messages',
-          'پیام‌های چت',
-          channelDescription: 'اعلان پیام‌های جدید چت',
-          importance: Importance.high,
-          priority: Priority.high,
-          icon: '@drawable/ic_launcher',
-        ),
+        android: AndroidNotificationDetails('general', 'اعلان عمومی',
+            channelDescription: 'پیغام‌های عمومی',
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: '@drawable/ic_notification'),
       ),
     );
   }
 }
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 void main() async {
   await HiveInitialize.initialize();
 
   WidgetsFlutterBinding.ensureInitialized();
-  final appDocumentDir = await getApplicationDocumentsDirectory();
-  await Hive.initFlutter(appDocumentDir.path);
-  // تنظیم debug print
+
+  // فقط برای غیر وب مسیر را ست کن
+  if (!kIsWeb) {
+    final appDocumentDir = await getApplicationDocumentsDirectory();
+    await Hive.initFlutter(appDocumentDir.path);
+  } else {
+    await Hive.initFlutter();
+  }
+
+  // debugPrint و احراز وضعیت آنلاین/آفلاین پروفایل
   debugPrint = (String? message, {int? wrapWidth}) {
     if (message?.contains('MESA') == false) {
       print(message);
@@ -68,13 +218,12 @@ void main() async {
 
     supabase.auth.onAuthStateChange.listen((data) async {
       if (data.event == AuthChangeEvent.signedIn) {
-        // به‌روزرسانی وضعیت آنلاین کاربر هنگام ورود
+        // کاربر آنلاین
         await supabase.from('profiles').update({
           'is_online': true,
           'last_online': DateTime.now().toUtc().toIso8601String(),
         }).eq('id', data.session!.user.id);
       } else if (data.event == AuthChangeEvent.signedOut) {
-        // به‌روزرسانی وضعیت آفلاین کاربر هنگام خروج
         if (data.session?.user.id != null) {
           await supabase.from('profiles').update({
             'is_online': false,
@@ -85,24 +234,17 @@ void main() async {
     });
   };
 
-  // تنظیم orientation
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-  // راه‌اندازی Hive
+  // راه اندازی Hive
   await Hive.initFlutter();
-
-  // ثبت adapter ها
   if (!Hive.isAdapterRegistered(2)) {
     Hive.registerAdapter(SearchTypeAdapter()); // typeId: 2
   }
-
   if (!Hive.isAdapterRegistered(1)) {
     Hive.registerAdapter(RecentSearchAdapter()); // typeId: 1
   }
-
-  // باز کردن باکس‌ها
   await Hive.openBox('settings');
-  // await Hive.openBox<RecentSearch>('recent_searches');
 
   // راه‌اندازی Firebase
   await Firebase.initializeApp(
@@ -128,34 +270,86 @@ void main() async {
     print('Supabase initialization error: $e');
   }
 
-  // بروزرسانی IP
-  await updateIpAddress();
+  // بروزرسانی IP فقط روی غیر وب
+  if (!kIsWeb) {
+    await updateIpAddress();
+  }
 
   // تنظیم تم
   var box = Hive.box('settings');
   String savedTheme = box.get('selectedTheme', defaultValue: 'light');
   ThemeData initialTheme = _getInitialTheme(savedTheme);
 
-  // مقداردهی اولیه flutter_local_notifications و ساخت کانال
+  // راه اندازی flutter_local_notifications و ساخت کانال‌ها:
   const AndroidInitializationSettings initializationSettingsAndroid =
       AndroidInitializationSettings('@drawable/ic_notification');
   final InitializationSettings initializationSettings = InitializationSettings(
     android: initializationSettingsAndroid,
-    // اگر iOS نیاز دارید، اضافه کنید
   );
-  await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+  await flutterLocalNotificationsPlugin.initialize(
+    initializationSettings,
+    onDidReceiveNotificationResponse: notificationResponseHandler,
+  );
 
+  // چت کانال
   const AndroidNotificationChannel chatChannel = AndroidNotificationChannel(
-    'chat_messages', // id
-    'پیام‌های چت', // name
+    'chat_messages',
+    'پیام‌های چت',
     description: 'اعلان پیام‌های جدید چت',
     importance: Importance.high,
     showBadge: true,
   );
+  // سوشیال کانال
+  const AndroidNotificationChannel socialChannel = AndroidNotificationChannel(
+    'social_notify',
+    'اعلان اجتماعی',
+    description: 'اعلان‌های اجتماعی (لایک، کامنت و ...)',
+    importance: Importance.high,
+    showBadge: true,
+  );
+
   await flutterLocalNotificationsPlugin
       .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>()
       ?.createNotificationChannel(chatChannel);
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(socialChannel);
+
+  // هندل اعلان‌های دریافتی وقتی برنامه باز است (foreground)
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+    final type = message.data['type'];
+    // فقط برای اعلان‌های غیر از پیام چت، نوتیفیکیشن لوکال نمایش بده
+    if (type != null && type != 'chat_message') {
+      // اگر notification وجود دارد، از آن استفاده کن (برای نمایش اعلان)
+      if (message.notification != null) {
+        await flutterLocalNotificationsPlugin.show(
+          DateTime.now().millisecondsSinceEpoch % 100000,
+          message.notification!.title ?? 'اعلان',
+          message.notification!.body ?? '',
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'social_notify',
+              'اعلان اجتماعی',
+              channelDescription: 'اعلان‌های اجتماعی (لایک، کامنت و ...)',
+              importance: Importance.high,
+              priority: Priority.high,
+              icon: '@drawable/ic_notification',
+            ),
+          ),
+          payload: message.data['post_id'] ??
+              message.data['comment_id'] ??
+              message.data['parent_comment_id'] ??
+              '',
+        );
+      } else {
+        // اگر notification وجود ندارد، از منطق قبلی استفاده کن
+        await _handleIncomingNotification(message);
+      }
+    }
+    // اگر type == 'chat_message' هیچ نوتیفیکیشن لوکالی نمایش داده نشود
+  });
 
   runApp(
     ProviderScope(
@@ -185,7 +379,6 @@ ThemeData _getInitialTheme(String savedTheme) {
 }
 
 final supabase = Supabase.instance.client;
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key, required this.initialTheme});
@@ -236,9 +429,9 @@ class _MyAppState extends ConsumerState<MyApp> {
         final content = message.data['content'] ?? 'پیام جدید';
         flutterLocalNotificationsPlugin.show(
           DateTime.now().millisecondsSinceEpoch % 100000,
-          '$senderName پیام جدید داد',
+          'پیام جدید از $senderName',
           content.length > 60 ? '${content.substring(0, 57)}...' : content,
-          const NotificationDetails(
+          NotificationDetails(
             android: AndroidNotificationDetails(
               'chat_messages',
               'پیام‌های چت',
@@ -249,8 +442,69 @@ class _MyAppState extends ConsumerState<MyApp> {
               priority: Priority.high,
               styleInformation: BigTextStyleInformation(''),
               icon: '@drawable/ic_notification',
+              actions: <AndroidNotificationAction>[
+                AndroidNotificationAction(
+                  'reply',
+                  'پاسخ',
+                  inputs: [AndroidNotificationActionInput()],
+                  showsUserInterface: true,
+                ),
+              ],
             ),
           ),
+          payload: message.data['conversation_id'] ?? '',
+        );
+      }
+      // --- Social notification types ---
+      else if (message.data['type'] == 'like' ||
+          message.data['type'] == 'follow' ||
+          message.data['type'] == 'comment' ||
+          message.data['type'] == 'reply_comment') {
+        final type = message.data['type'];
+        final actor = message.data['actor'] ?? 'کاربر';
+        final postTitle = message.data['post_title'] ?? '';
+        final commentText = message.data['comment_text'] ?? '';
+        String title = '';
+        String body = '';
+
+        switch (type) {
+          case 'like':
+            title = 'لایک جدید';
+            body =
+                '$actor پست شما را پسندید${postTitle.isNotEmpty ? ': $postTitle' : ''}';
+            break;
+          case 'follow':
+            title = 'دنبال‌کننده جدید';
+            body = '$actor شما را دنبال کرد';
+            break;
+          case 'comment':
+            title = 'نظر جدید';
+            body =
+                '$actor برای پست شما نظر گذاشت${commentText.isNotEmpty ? ': $commentText' : ''}';
+            break;
+          case 'reply_comment':
+            title = 'پاسخ به نظر شما';
+            body =
+                '$actor به نظر شما پاسخ داد${commentText.isNotEmpty ? ': $commentText' : ''}';
+            break;
+        }
+
+        flutterLocalNotificationsPlugin.show(
+          DateTime.now().millisecondsSinceEpoch % 100000,
+          title,
+          body,
+          NotificationDetails(
+            android: AndroidNotificationDetails(
+              'social_notifications',
+              'اعلان‌های شبکه اجتماعی',
+              channelDescription:
+                  'اعلان رویدادهای اجتماعی (لایک، دنبال، کامنت)',
+              importance: Importance.high,
+              priority: Priority.high,
+              icon: '@drawable/ic_notification',
+            ),
+          ),
+          payload: message.data['payload'] ?? '',
         );
       }
     });
@@ -500,6 +754,29 @@ class _MyAppState extends ConsumerState<MyApp> {
                               as String? ??
                           '',
                     ),
+                '/chat': (context) {
+                  final conversationId =
+                      ModalRoute.of(context)?.settings.arguments as String?;
+                  // اگر conversationId وجود داشت، صفحه چت را باز کن
+                  if (conversationId != null) {
+                    // مقداردهی اطلاعات کاربر مقابل از کش مکالمات
+                    // فرض: ConversationCacheService و ConversationModel را ایمپورت کرده‌ای
+                    final conversation = ConversationCacheService()
+                        .getConversationSync(conversationId);
+                    final otherUserName =
+                        conversation?.otherUserName ?? 'کاربر';
+                    final otherUserId = conversation?.otherUserId ?? '';
+                    final otherUserAvatar = conversation?.otherUserAvatar;
+                    return ChatScreen(
+                      conversationId: conversationId,
+                      otherUserName: otherUserName,
+                      otherUserId: otherUserId,
+                      otherUserAvatar: otherUserAvatar,
+                    );
+                  }
+                  // اگر conversationId نبود، یک صفحه خالی یا ارور نمایش بده
+                  return Scaffold(body: Center(child: Text('مکالمه یافت نشد')));
+                },
               },
               // builder: (context, child) {
               //   return Directionality(

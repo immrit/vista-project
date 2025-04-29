@@ -1288,6 +1288,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         .getConversationMessages(widget.conversationId),
                     builder: (context, snapshot) {
                       final cachedMessages = snapshot.data ?? [];
+                      // --- اضافه شد: دریافت کش تاریخ‌های پیام ---
+                      final dateDividers = MessageCacheService()
+                          .getDateDividers(widget.conversationId);
                       return Consumer(
                         builder: (context, ref, _) {
                           final messagesAsync = ref.watch(
@@ -1329,6 +1332,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                         'پیامی وجود ندارد. اولین پیام را ارسال کنید!'));
                               }
 
+                              // --- استفاده از کش تاریخ برای نمایش جداکننده تاریخ ---
                               return ListView.builder(
                                 controller: _scrollController,
                                 reverse: true,
@@ -1339,15 +1343,38 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                       supabase.auth.currentUser?.id;
                                   // جداکننده تاریخ
                                   bool showDateDivider = false;
-                                  if (index == allMessages.length - 1) {
-                                    showDateDivider = true;
-                                  } else {
-                                    final prevMsg = allMessages[index + 1];
-                                    if (!_isSameDay(
-                                        message.createdAt, prevMsg.createdAt)) {
+                                  final msgDate = DateTime(
+                                      message.createdAt.year,
+                                      message.createdAt.month,
+                                      message.createdAt.day);
+
+                                  if (dateDividers.isNotEmpty) {
+                                    // اگر این پیام اولین پیام از یک روز است (در لیست معکوس)
+                                    if (index == allMessages.length - 1) {
                                       showDateDivider = true;
+                                    } else {
+                                      final prevMsg = allMessages[index + 1];
+                                      final prevDate = DateTime(
+                                          prevMsg.createdAt.year,
+                                          prevMsg.createdAt.month,
+                                          prevMsg.createdAt.day);
+                                      if (msgDate != prevDate) {
+                                        showDateDivider = true;
+                                      }
+                                    }
+                                  } else {
+                                    // fallback: منطق قبلی
+                                    if (index == allMessages.length - 1) {
+                                      showDateDivider = true;
+                                    } else {
+                                      final prevMsg = allMessages[index + 1];
+                                      if (!_isSameDay(message.createdAt,
+                                          prevMsg.createdAt)) {
+                                        showDateDivider = true;
+                                      }
                                     }
                                   }
+                                  // اگر باید جداکننده نمایش داده شود، تاریخ را به صورت فارسی نمایش بده
                                   return Column(
                                     children: [
                                       if (showDateDivider)

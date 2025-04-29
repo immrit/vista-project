@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../model/SearchResut.dart';
 import '../services/PostImageUploadService.dart';
 import '/model/ProfileModel.dart';
@@ -671,6 +672,17 @@ class SupabaseService {
       return ProfileModel.fromMap(profileMap);
     }).toList();
   }
+
+  // اضافه کن: متد چک آنلاین بودن که روی وب همیشه true برمی‌گرداند
+  Future<bool> isDeviceOnline() async {
+    if (kIsWeb) {
+      // روی وب همیشه آنلاین فرض کن
+      return true;
+    }
+    // اگر نیاز به چک آنلاین بودن داری، اینجا قرار بده (مثلاً با http.get یا connectivity_plus)
+    // یا فقط return true;
+    return true;
+  }
 }
 
 // Provider برای سرویس Supabase
@@ -682,54 +694,54 @@ final supabaseServiceProvider = Provider<SupabaseService>((ref) {
 
 //Provider برای سرویس و Notifier
 
-class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
-  NotificationsNotifier() : super([]);
+// class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
+//   NotificationsNotifier() : super([]);
 
-  // متد حذف تمامی اعلان‌ها
-  Future<void> deleteAllNotifications() async {
-    try {
-      final userId = supabase.auth.currentUser?.id;
+//   // متد حذف تمامی اعلان‌ها
+//   Future<void> deleteAllNotifications() async {
+//     try {
+//       final userId = supabase.auth.currentUser?.id;
 
-      if (userId == null) {
-        throw Exception("User not logged in");
-      }
+//       if (userId == null) {
+//         throw Exception("User not logged in");
+//       }
 
-      // حذف تمامی اعلان‌های کاربر فعلی
-      await supabase.from('notifications').delete().eq('recipient_id', userId);
+//       // حذف تمامی اعلان‌های کاربر فعلی
+//       await supabase.from('notifications').delete().eq('recipient_id', userId);
 
-      // بروزرسانی وضعیت (حذف همه اعلان‌ها از لیست)
-      state = [];
-    } catch (e) {
-      print("Error deleting notifications: $e");
-      throw Exception("Failed to delete notifications");
-    }
-  }
+//       // بروزرسانی وضعیت (حذف همه اعلان‌ها از لیست)
+//       state = [];
+//     } catch (e) {
+//       print("Error deleting notifications: $e");
+//       throw Exception("Failed to delete notifications");
+//     }
+//   }
 
-  Future<void> fetchNotifications() async {
-    final userId = supabase.auth.currentUser?.id; // گرفتن شناسه کاربر فعلی
+//   Future<void> fetchNotifications() async {
+//     final userId = supabase.auth.currentUser?.id; // گرفتن شناسه کاربر فعلی
 
-    if (userId == null) {
-      throw Exception("User not logged in");
-    }
+//     if (userId == null) {
+//       throw Exception("User not logged in");
+//     }
 
-    final response = await supabase
-        .from('notifications')
-        .select(
-            '*, sender:profiles!notifications_sender_id_fkey(username, avatar_url , is_verified)')
-        .eq('recipient_id', userId) // استفاده از شناسه کاربر فعلی
-        .order('created_at', ascending: false);
+//     final response = await supabase
+//         .from('notifications')
+//         .select(
+//             '*, sender:profiles!notifications_sender_id_fkey(username, avatar_url , is_verified)')
+//         .eq('recipient_id', userId) // استفاده از شناسه کاربر فعلی
+//         .order('created_at', ascending: false);
 
-    final notifications =
-        response.map((item) => NotificationModel.fromMap(item)).toList();
-    state = notifications;
-  }
-}
+//     final notifications =
+//         response.map((item) => NotificationModel.fromMap(item)).toList();
+//     state = notifications;
+//   }
+// }
 
-final notificationsProvider =
-    StateNotifierProvider<NotificationsNotifier, List<NotificationModel>>(
-        (ref) {
-  return NotificationsNotifier()..fetchNotifications();
-});
+// final notificationsProvider =
+//     StateNotifierProvider<NotificationsNotifier, List<NotificationModel>>(
+//         (ref) {
+//   return NotificationsNotifier()..fetchNotifications();
+// });
 
 // سرویس Supabase برای گزارش پست‌ها
 

@@ -5,6 +5,7 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../DB/conversation_cache_service.dart';
 import '../DB/message_cache_service.dart';
 import '../model/conversation_model.dart';
@@ -35,7 +36,7 @@ class ChatService {
 
     try {
       // بررسی می‌کنیم که آیا آنلاین هستیم
-      final isOnline = await isDeviceOnline();
+      final isOnline = kIsWeb ? true : await isDeviceOnline();
 
       // ابتدا سعی می‌کنیم مکالمات را از کش بگیریم
       final cachedConversations =
@@ -221,6 +222,10 @@ class ChatService {
 
 // متد کمکی برای بررسی وضعیت آنلاین بودن
   Future<bool> isDeviceOnline() async {
+    if (kIsWeb) {
+      // روی وب همیشه آنلاین فرض کن
+      return true;
+    }
     try {
       final result = await InternetAddress.lookup('example.com');
       return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
@@ -246,6 +251,15 @@ class ChatService {
       print('فرستنده: $userId');
       print('attachmentUrl: $attachmentUrl'); // اضافه شد برای دیباگ
       print('attachmentType: $attachmentType'); // اضافه شد برای دیباگ
+
+      // اطمینان از آنلاین بودن فقط روی موبایل/دسکتاپ
+      final isOnline = await isDeviceOnline();
+      if (!isOnline) {
+        throw AppException(
+          userFriendlyMessage: 'اتصال اینترنت برقرار نیست',
+          technicalMessage: 'ارسال پیام در حالت آفلاین مجاز نیست',
+        );
+      }
 
       // اطمینان از اینکه اگر attachmentUrl مقدار ندارد، فیلد را null بفرستیم
       final insertMap = {
