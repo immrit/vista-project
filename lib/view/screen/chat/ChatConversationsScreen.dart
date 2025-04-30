@@ -4,7 +4,7 @@ import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import '../../../model/conversation_model.dart';
-import '../../../provider/Chat_provider.dart.dart';
+import '../../../provider/chat_provider.dart';
 
 import 'ChatScreen.dart';
 

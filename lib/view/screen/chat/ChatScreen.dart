@@ -13,7 +13,7 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import 'dart:io';
 import 'package:shamsi_date/shamsi_date.dart';
 import '../../../model/message_model.dart';
-import '../../../provider/Chat_provider.dart.dart';
+import '../../../provider/chat_provider.dart';
 import '../../../services/uploadImageChatService.dart';
 import '../../Exeption/app_exceptions.dart';
 import '../../util/time_utils.dart';
