@@ -1761,16 +1761,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         ),
                         textDirection:
                             getTextDirection(_messageController.text),
-                        // --- اضافه شد: اسکرول خودکار به پایین هنگام تایپ ---
-                        onChanged: (val) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            // اسکرول به پایین
-                            final scrollController =
-                                PrimaryScrollController.of(context);
-                            scrollController?.jumpTo(
-                                scrollController.position.maxScrollExtent);
-                          });
-                        },
                       ),
                     ),
                   ),

@@ -10,7 +10,7 @@ import 'PublicPosts/AddPost.dart';
 import 'PublicPosts/profileScreen.dart';
 import 'PublicPosts/publicPosts.dart';
 import 'searchPage.dart';
-import '../../provider/chat_provider.dart.dart';
+import '../../provider/chat_provider.dart';
 
 // استریم تعداد پیام‌های خوانده‌نشده (سریع و به‌روز)
 final unreadMessagesCountProvider = StreamProvider<int>((ref) {
@@ -212,23 +212,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // تابع برای نمایش بج پیام جدید (سریع و فقط برای پیام‌های خوانده‌نشده)
   Widget _buildMessageBadge(
       IconData icon, bool isSelected, AsyncValue<int> unreadCountAsync) {
-    final unreadCount = unreadCountAsync.value ?? 0;
-    return unreadCount > 0
-        ? badges.Badge(
-            badgeContent: Text(
-              unreadCount > 99 ? '99+' : unreadCount.toString(),
-              style: const TextStyle(color: Colors.white, fontSize: 10),
-            ),
-            badgeStyle: const badges.BadgeStyle(badgeColor: Colors.red),
-            position: badges.BadgePosition.topEnd(top: -10, end: -10),
-            child: Icon(
-              icon,
-              color: isSelected ? Theme.of(context).colorScheme.primary : null,
-            ),
-          )
-        : Icon(
-            icon,
-            color: isSelected ? Theme.of(context).colorScheme.primary : null,
-          );
+    // فقط آیکون را نمایش بده، بج را حذف کن
+    return Icon(
+      icon,
+      color: isSelected ? Theme.of(context).colorScheme.primary : null,
+    );
   }
 }

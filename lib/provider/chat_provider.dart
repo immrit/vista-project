@@ -514,7 +514,7 @@ final totalUnreadMessagesProvider = StreamProvider<int>((ref) {
 
   return ref.watch(conversationsStreamProvider).when(
         data: (conversations) {
-          // جمع تمام پیام‌های خوانده‌نشده از همه مکالمات
+          // جمع فقط پیام‌های خوانده‌نشده واقعی
           final total = conversations.fold<int>(
             0,
             (sum, conversation) => sum + (conversation.unreadCount ?? 0),

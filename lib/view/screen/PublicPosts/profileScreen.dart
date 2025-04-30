@@ -9,7 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../model/MusicModel.dart';
 import '../../../provider/MusicProvider.dart';
-import '../../../provider/chat_provider.dart.dart';
+import '../../../provider/chat_provider.dart';
 import '../../util/const.dart';
 import '../../util/widgets.dart';
 import '../chat/ChatScreen.dart';
