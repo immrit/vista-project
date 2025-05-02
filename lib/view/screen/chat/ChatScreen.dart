@@ -21,6 +21,7 @@ import '../../util/widgets.dart';
 import 'package:flutter/foundation.dart' as foundation;
 import '../../../DB/message_cache_service.dart';
 import '../../../services/ChatService.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '/main.dart';
 
@@ -47,6 +48,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final imagePicker = ImagePicker();
   File? _selectedImage;
+  Uint8List? _selectedImageBytes; // برای وب
+  String? _selectedImageName; // برای وب
   bool _isUploading = false;
   bool _isDisposed = false;
   final FocusNode _messageFocusNode = FocusNode();
@@ -209,30 +212,48 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
 
     if (pickedFile != null) {
-      setState(() {
-        _selectedImage = File(pickedFile.path);
-      });
+      if (kIsWeb) {
+        final bytes = await pickedFile.readAsBytes();
+        setState(() {
+          _selectedImage = null;
+          _selectedImageBytes = bytes;
+          _selectedImageName = pickedFile.name;
+        });
+      } else {
+        setState(() {
+          _selectedImage = File(pickedFile.path);
+          _selectedImageBytes = null;
+          _selectedImageName = null;
+        });
+      }
     }
   }
 
-  Future<String?> _uploadImage(File file) async {
+  Future<String?> _uploadImage(dynamic fileOrBytes) async {
     setState(() {
       _isUploading = true;
       _uploadProgress = 0.0;
     });
 
     try {
-      // شبیه‌سازی پیشرفت آپلود (در صورت نیاز، سرویس آپلود را تغییر بده تا progress بدهد)
-      final imageUrl = await ChatImageUploadService.uploadChatImage(
-        file,
-        widget.conversationId,
-        onProgress: (progress) {
-          setState(() {
-            _uploadProgress = progress;
-          });
-        },
-      );
-
+      String? imageUrl;
+      if (kIsWeb && fileOrBytes is Uint8List && _selectedImageName != null) {
+        imageUrl = await ChatImageUploadService.uploadChatImageWeb(
+          fileOrBytes,
+          _selectedImageName!,
+          widget.conversationId,
+        );
+      } else if (fileOrBytes is File) {
+        imageUrl = await ChatImageUploadService.uploadChatImage(
+          fileOrBytes,
+          widget.conversationId,
+          onProgress: (progress) {
+            setState(() {
+              _uploadProgress = progress;
+            });
+          },
+        );
+      }
       return imageUrl;
     } catch (e) {
       await _showErrorDialog('خطا در آپلود تصویر: $e');
@@ -307,12 +328,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     String? attachmentType;
 
     // اگر عکس انتخاب شده است، اول آپلود کن و لینک را بگیر
-    if (_selectedImage != null) {
+    if ((kIsWeb && _selectedImageBytes != null && _selectedImageName != null) ||
+        (_selectedImage != null)) {
       setState(() {
         _isUploading = true;
       });
       try {
-        attachmentUrl = await _uploadImage(_selectedImage!);
+        if (kIsWeb &&
+            _selectedImageBytes != null &&
+            _selectedImageName != null) {
+          attachmentUrl = await _uploadImage(_selectedImageBytes);
+        } else if (_selectedImage != null) {
+          attachmentUrl = await _uploadImage(_selectedImage!);
+        }
         attachmentType = 'image';
       } catch (e) {
         String errorMessage = 'ارسال پیام ناموفق بود';
@@ -349,8 +377,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       senderId: currentUser?.id ?? '',
       content: message,
       createdAt: now,
-      attachmentUrl: _selectedImage?.path,
-      attachmentType: _selectedImage != null ? 'image' : null,
+      attachmentUrl:
+          kIsWeb && _selectedImageBytes != null ? null : _selectedImage?.path,
+      attachmentType:
+          (kIsWeb && _selectedImageBytes != null) || _selectedImage != null
+              ? 'image'
+              : null,
       isRead: false,
       isSent: false,
       senderName: currentUser?.userMetadata?['username'] ?? 'من',
@@ -365,6 +397,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     setState(() {
       _replyToMessage = null;
       _selectedImage = null;
+      _selectedImageBytes = null;
+      _selectedImageName = null;
       _messageController.clear();
     });
 
@@ -1778,7 +1812,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
             ],
           ),
-          if (_selectedImage != null)
+          if (_selectedImage != null || (kIsWeb && _selectedImageBytes != null))
             Stack(
               children: [
                 Container(
@@ -1791,7 +1825,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         color: Theme.of(context).colorScheme.primary,
                         width: 1.2),
                     image: DecorationImage(
-                      image: FileImage(_selectedImage!),
+                      image: kIsWeb && _selectedImageBytes != null
+                          ? MemoryImage(_selectedImageBytes!)
+                          : FileImage(_selectedImage!),
                       fit: BoxFit.cover,
                     ),
                   ),
@@ -1832,7 +1868,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         const Icon(Icons.close, color: Colors.white, size: 22),
                     onPressed: _isUploading
                         ? null
-                        : () => setState(() => _selectedImage = null),
+                        : () => setState(() {
+                              _selectedImage = null;
+                              _selectedImageBytes = null;
+                              _selectedImageName = null;
+                            }),
                   ),
                 ),
               ],

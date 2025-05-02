@@ -70,6 +70,33 @@ class StoryImageUploadService {
     }
   }
 
+  /// آپلود تصویر استوری در وب (بدون استفاده از File)
+  static Future<String?> uploadStoryImageWeb(
+      Uint8List fileBytes, String fileName) async {
+    try {
+      const contentType = 'image/jpeg';
+      final userId = supabase.auth.currentUser!.id;
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final s3FileName = 'stories/$userId/${timestamp}_$fileName';
+
+      await s3.putObject(
+        bucket: bucketName,
+        key: s3FileName,
+        body: fileBytes,
+        contentType: contentType,
+        acl: ObjectCannedACL.publicRead,
+      );
+
+      final uploadedUrl =
+          'https://storage.coffevista.ir/$bucketName/$s3FileName';
+      print('تصویر استوری با موفقیت آپلود شد: $uploadedUrl');
+      return uploadedUrl;
+    } catch (e) {
+      print('خطا در آپلود تصویر استوری (وب): $e');
+      throw Exception('آپلود تصویر استوری به شکست خورد');
+    }
+  }
+
   /// فشرده‌سازی تصویر
   static Future<File?> compressImage(File file) async {
     try {

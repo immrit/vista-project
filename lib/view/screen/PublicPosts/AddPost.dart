@@ -1,10 +1,12 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:dotted_border/dotted_border.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../../main.dart';
 import '../../../services/PostImageUploadService.dart';
 import '../../../provider/provider.dart';
@@ -22,6 +24,8 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   static const int maxCharLength = 300;
   int remainingChars = maxCharLength;
   File? _selectedImage;
+  Uint8List? _selectedImageBytes; // برای وب
+  String? _selectedImageName; // برای وب
   File? _selectedMusic;
   String? _musicFileName;
   final FocusNode _focusNode = FocusNode();
@@ -64,9 +68,20 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     );
 
     if (image != null) {
-      setState(() {
-        _selectedImage = File(image.path);
-      });
+      if (kIsWeb) {
+        final bytes = await image.readAsBytes();
+        setState(() {
+          _selectedImage = null;
+          _selectedImageBytes = bytes;
+          _selectedImageName = image.name;
+        });
+      } else {
+        setState(() {
+          _selectedImage = File(image.path);
+          _selectedImageBytes = null;
+          _selectedImageName = null;
+        });
+      }
     }
   }
 
@@ -112,7 +127,10 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       String? musicUrl;
 
       // آپلود تصویر در صورت انتخاب
-      if (_selectedImage != null) {
+      if (kIsWeb && _selectedImageBytes != null && _selectedImageName != null) {
+        imageUrl = await PostImageUploadService.uploadPostImageWeb(
+            _selectedImageBytes!, _selectedImageName!);
+      } else if (_selectedImage != null) {
         imageUrl =
             await PostImageUploadService.uploadPostImage(_selectedImage!);
       }
@@ -232,7 +250,8 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                         const SizedBox(height: 16),
 
                         // پیش‌نمایش تصویر
-                        if (_selectedImage != null)
+                        if (_selectedImage != null ||
+                            _selectedImageBytes != null)
                           _buildImagePreview(isDarkMode)
                         else
                           _buildMediaUploadSection(isDarkMode, primaryColor),
@@ -442,76 +461,153 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   }
 
   Widget _buildImagePreview(bool isDarkMode) {
-    return Hero(
-      tag: 'post-image',
-      child: Card(
-        clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Stack(
-          children: [
-            // تصویر
-            Image.file(
-              _selectedImage!,
-              width: double.infinity,
-              fit: BoxFit.cover,
-              height: 250,
-            ),
-            // دکمه حذف
-            Positioned(
-              top: 8,
-              right: 8,
-              child: Material(
-                color: Colors.black45,
-                borderRadius: BorderRadius.circular(20),
-                child: InkWell(
-                  onTap: () => setState(() => _selectedImage = null),
+    if (kIsWeb && _selectedImageBytes != null) {
+      // نمایش تصویر انتخاب شده در وب
+      return Hero(
+        tag: 'post-image',
+        child: Card(
+          clipBehavior: Clip.antiAlias,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Stack(
+            children: [
+              Image.memory(
+                _selectedImageBytes!,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                height: 250,
+              ),
+              // دکمه حذف
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Material(
+                  color: Colors.black45,
                   borderRadius: BorderRadius.circular(20),
-                  child: const Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: Icon(Icons.close, color: Colors.white, size: 18),
+                  child: InkWell(
+                    onTap: () => setState(() => _selectedImageBytes = null),
+                    borderRadius: BorderRadius.circular(20),
+                    child: const Padding(
+                      padding: EdgeInsets.all(8.0),
+                      child: Icon(Icons.close, color: Colors.white, size: 18),
+                    ),
                   ),
                 ),
               ),
-            ),
-            // دکمه‌های ویرایش
-            Positioned(
-              bottom: 8,
-              left: 8,
-              child: Row(
-                children: [
-                  Material(
-                    color: Colors.black45,
-                    borderRadius: BorderRadius.circular(20),
-                    child: InkWell(
-                      onTap: () => _pickImage(),
+              // دکمه‌های ویرایش
+              Positioned(
+                bottom: 8,
+                left: 8,
+                child: Row(
+                  children: [
+                    Material(
+                      color: Colors.black45,
                       borderRadius: BorderRadius.circular(20),
-                      child: const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Icon(Icons.edit, color: Colors.white, size: 18),
+                      child: InkWell(
+                        onTap: () => _pickImage(),
+                        borderRadius: BorderRadius.circular(20),
+                        child: const Padding(
+                          padding: EdgeInsets.all(8.0),
+                          child:
+                              Icon(Icons.edit, color: Colors.white, size: 18),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Material(
-                    color: Colors.black45,
-                    borderRadius: BorderRadius.circular(20),
-                    child: InkWell(
-                      onTap: () => _pickImage(source: ImageSource.camera),
+                    const SizedBox(width: 8),
+                    Material(
+                      color: Colors.black45,
                       borderRadius: BorderRadius.circular(20),
-                      child: const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Icon(Icons.camera_alt,
-                            color: Colors.white, size: 18),
+                      child: InkWell(
+                        onTap: () => _pickImage(source: ImageSource.camera),
+                        borderRadius: BorderRadius.circular(20),
+                        child: const Padding(
+                          padding: EdgeInsets.all(8.0),
+                          child: Icon(Icons.camera_alt,
+                              color: Colors.white, size: 18),
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
-      ).animate().scale(duration: const Duration(milliseconds: 300)),
-    );
+            ],
+          ),
+        ).animate().scale(duration: const Duration(milliseconds: 300)),
+      );
+    } else if (_selectedImage != null) {
+      // ...existing code for mobile...
+      return Hero(
+        tag: 'post-image',
+        child: Card(
+          // ...existing code...
+          child: Stack(
+            children: [
+              Image.file(
+                _selectedImage!,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                height: 250,
+              ),
+              // دکمه حذف
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Material(
+                  color: Colors.black45,
+                  borderRadius: BorderRadius.circular(20),
+                  child: InkWell(
+                    onTap: () => setState(() => _selectedImage = null),
+                    borderRadius: BorderRadius.circular(20),
+                    child: const Padding(
+                      padding: EdgeInsets.all(8.0),
+                      child: Icon(Icons.close, color: Colors.white, size: 18),
+                    ),
+                  ),
+                ),
+              ),
+              // دکمه‌های ویرایش
+              Positioned(
+                bottom: 8,
+                left: 8,
+                child: Row(
+                  children: [
+                    Material(
+                      color: Colors.black45,
+                      borderRadius: BorderRadius.circular(20),
+                      child: InkWell(
+                        onTap: () => _pickImage(),
+                        borderRadius: BorderRadius.circular(20),
+                        child: const Padding(
+                          padding: EdgeInsets.all(8.0),
+                          child:
+                              Icon(Icons.edit, color: Colors.white, size: 18),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Material(
+                      color: Colors.black45,
+                      borderRadius: BorderRadius.circular(20),
+                      child: InkWell(
+                        onTap: () => _pickImage(source: ImageSource.camera),
+                        borderRadius: BorderRadius.circular(20),
+                        child: const Padding(
+                          padding: EdgeInsets.all(8.0),
+                          child: Icon(Icons.camera_alt,
+                              color: Colors.white, size: 18),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ).animate().scale(duration: const Duration(milliseconds: 300)),
+      );
+    } else {
+      return const SizedBox.shrink();
+    }
   }
 
   Widget _buildMediaUploadSection(bool isDarkMode, Color primaryColor) {

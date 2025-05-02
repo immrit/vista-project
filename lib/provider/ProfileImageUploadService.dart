@@ -102,6 +102,42 @@ class ProfileImageUploadService {
     }
   }
 
+  // متد مخصوص آپلود تصویر در وب (بدون استفاده از File)
+  static Future<String?> uploadImageWeb(
+      Uint8List fileBytes, String fileName) async {
+    try {
+      // فقط پسوند فایل را بررسی می‌کنیم
+      final extension = path.extension(fileName).toLowerCase();
+      print('نوع فایل ورودی (وب): $extension');
+
+      // همیشه با نوع 'image/jpeg' کار می‌کنیم
+      const contentType = 'image/jpeg';
+
+      final userId = supabase.auth.currentUser!.id;
+      final s3FileName =
+          'avatars/${userId}_${DateTime.now().millisecondsSinceEpoch}_$fileName';
+
+      print('Content-Type: $contentType');
+      print('File size: ${fileBytes.length} bytes');
+
+      await s3.putObject(
+        bucket: bucketName,
+        key: s3FileName,
+        body: fileBytes,
+        contentType: contentType,
+        acl: ObjectCannedACL.publicRead,
+      );
+
+      final uploadedUrl =
+          'https://storage.coffevista.ir/$bucketName/$s3FileName';
+      print('تصویر با موفقیت آپلود شد: $uploadedUrl');
+      return uploadedUrl;
+    } catch (e) {
+      print('خطا در آپلود فایل (وب): $e');
+      throw Exception('آپلود تصویر به ArvanCloud شکست خورد');
+    }
+  }
+
   static Future<bool> deleteImage(String fileUrl) async {
     try {
       final uri = Uri.parse(fileUrl);

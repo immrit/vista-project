@@ -90,6 +90,35 @@ class PostImageUploadService {
     }
   }
 
+  // متد مخصوص آپلود تصویر در وب (بدون استفاده از File)
+  static Future<String?> uploadPostImageWeb(
+      Uint8List fileBytes, String fileName) async {
+    try {
+      // همیشه با نوع 'image/jpeg' کار می‌کنیم
+      const contentType = 'image/jpeg';
+
+      final userId = supabase.auth.currentUser!.id;
+      final s3FileName =
+          'posts/${userId}_${DateTime.now().millisecondsSinceEpoch}_$fileName';
+
+      await s3.putObject(
+        bucket: bucketName,
+        key: s3FileName,
+        body: fileBytes,
+        contentType: contentType,
+        acl: ObjectCannedACL.publicRead,
+      );
+
+      final uploadedUrl =
+          'https://storage.coffevista.ir/$bucketName/$s3FileName';
+      print('تصویر پست با موفقیت آپلود شد: $uploadedUrl');
+      return uploadedUrl;
+    } catch (e) {
+      print('خطا در آپلود تصویر پست (وب): $e');
+      throw Exception('آپلود تصویر پست به شکست خورد');
+    }
+  }
+
   static Future<bool> deletePostImage(String fileUrl) async {
     try {
       final uri = Uri.parse(fileUrl);

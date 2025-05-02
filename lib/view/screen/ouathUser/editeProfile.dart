@@ -1,9 +1,11 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shamsi_date/shamsi_date.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../../main.dart';
 import '../../../provider/provider.dart';
 import '../../../provider/ProfileImageUploadService.dart';
@@ -336,15 +338,25 @@ class _EditProfileState extends ConsumerState<EditProfile> {
       );
 
       if (pickedFile != null) {
-        final File imageFile = File(pickedFile.path);
-
-        if (await imageFile.exists()) {
+        if (kIsWeb) {
+          // نسخه وب: فقط با bytes کار می‌کنیم و File استفاده نمی‌شود
+          final bytes = await pickedFile.readAsBytes();
           setState(() {
-            _imageFile = imageFile;
+            _imageFile =
+                null; // برای نمایش تصویر باید راهکار جداگانه‌ای برای وب پیاده شود
           });
-          await _uploadImage(imageFile);
+          await _uploadImageWeb(bytes, pickedFile.name);
         } else {
-          throw Exception('فایل انتخاب شده در مسیر مورد نظر یافت نشد');
+          // نسخه موبایل
+          final File imageFile = File(pickedFile.path);
+          if (await imageFile.exists()) {
+            setState(() {
+              _imageFile = imageFile;
+            });
+            await _uploadImage(imageFile);
+          } else {
+            throw Exception('فایل انتخاب شده در مسیر مورد نظر یافت نشد');
+          }
         }
       }
     } catch (e) {
@@ -354,6 +366,53 @@ class _EditProfileState extends ConsumerState<EditProfile> {
         );
       }
       print('Error picking image: $e');
+    }
+  }
+
+  // متد مخصوص آپلود تصویر در وب
+  Future<void> _uploadImageWeb(Uint8List bytes, String fileName) async {
+    try {
+      setState(() => _isLoading = true);
+
+      // بررسی سایز فایل (محدودیت 5 مگابایت)
+      if (bytes.length > 5 * 1024 * 1024) {
+        throw Exception('حجم فایل بیشتر از حد مجاز است');
+      }
+
+      // آپلود تصویر به ArvanCloud
+      final imageUrl =
+          await ProfileImageUploadService.uploadImageWeb(bytes, fileName);
+
+      if (imageUrl == null) {
+        throw Exception('آپلود تصویر به ArvanCloud شکست خورد');
+      }
+
+      // به‌روزرسانی URL تصویر در پروفایل کاربر در Supabase
+      final supabase = ref.read(supabaseClientProvider);
+      final user = supabase.auth.currentUser;
+
+      if (user == null) {
+        throw Exception('کاربر وارد نشده است');
+      }
+
+      await supabase
+          .from('profiles')
+          .update({'avatar_url': imageUrl}).eq('id', user.id);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تصویر با موفقیت آپلود شد')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در آپلود تصویر: $e')),
+        );
+      }
+      print('Error uploading image: $e');
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 

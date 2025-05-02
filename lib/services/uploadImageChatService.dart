@@ -115,6 +115,37 @@ class ChatImageUploadService {
     }
   }
 
+  // متد مخصوص آپلود تصویر چت در وب (بدون استفاده از File)
+  static Future<String?> uploadChatImageWeb(
+    Uint8List fileBytes,
+    String fileName,
+    String conversationId,
+  ) async {
+    try {
+      const contentType = 'image/jpeg';
+
+      final userId = supabase.auth.currentUser!.id;
+      final s3FileName =
+          'chats/$conversationId/${userId}_${DateTime.now().millisecondsSinceEpoch}_$fileName';
+
+      await s3.putObject(
+        bucket: bucketName,
+        key: s3FileName,
+        body: fileBytes,
+        contentType: contentType,
+        acl: ObjectCannedACL.publicRead,
+      );
+
+      final uploadedUrl =
+          'https://storage.coffevista.ir/$bucketName/$s3FileName';
+      print('تصویر چت با موفقیت آپلود شد: $uploadedUrl');
+      return uploadedUrl;
+    } catch (e) {
+      print('خطا در آپلود تصویر چت (وب): $e');
+      throw Exception('آپلود تصویر چت شکست خورد: $e');
+    }
+  }
+
   /// حذف تصویر چت
   static Future<bool> deleteChatImage(String fileUrl) async {
     try {
