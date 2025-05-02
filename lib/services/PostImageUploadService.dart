@@ -253,4 +253,100 @@ class PostImageUploadService {
         return 'audio/mpeg';
     }
   }
+
+  static Future<String?> uploadVideoFile(File file) async {
+    try {
+      // بررسی سایز فایل (حداکثر ۵۰ مگابایت)
+      final fileSize = await file.length();
+      final maxSize = 50 * 1024 * 1024; // 50MB
+      if (fileSize > maxSize) {
+        throw Exception('حجم فایل ویدیو باید کمتر از ۵۰ مگابایت باشد');
+      }
+
+      // بررسی فرمت فایل
+      final extension = path.extension(file.path).toLowerCase();
+      if (!_isValidVideoFormat(extension)) {
+        throw Exception('فقط فایل‌های mp4، mov و mkv پشتیبانی می‌شوند');
+      }
+
+      // ساخت نام منحصر به فرد برای فایل
+      final fileName = 'videos/${supabase.auth.currentUser!.id}'
+          '_${DateTime.now().millisecondsSinceEpoch}$extension';
+
+      // آپلود به آروان
+      await s3.putObject(
+        bucket: bucketName,
+        key: fileName,
+        body: await file.readAsBytes(),
+        contentType: _getVideoContentType(extension),
+        acl: ObjectCannedACL.publicRead,
+        metadata: {'originalName': path.basename(file.path)},
+      );
+
+      final url = 'https://storage.coffevista.ir/$bucketName/$fileName';
+      print("Uploaded video file URL: $url");
+
+      // تست دسترسی به فایل
+      final response = await http.head(Uri.parse(url));
+      print("File access test status code: ${response.statusCode}");
+
+      return url;
+    } catch (e) {
+      print("Video upload error: $e");
+      rethrow;
+    }
+  }
+
+  static Future<String?> uploadVideoFileWeb(
+      Uint8List fileBytes, String fileName) async {
+    try {
+      final extension = path.extension(fileName).toLowerCase();
+      if (!_isValidVideoFormat(extension)) {
+        throw Exception('فقط فایل‌های mp4، mov و mkv پشتیبانی می‌شوند');
+      }
+
+      // بررسی سایز فایل (حداکثر ۵۰ مگابایت)
+      if (fileBytes.length > 50 * 1024 * 1024) {
+        throw Exception('حجم فایل ویدیو باید کمتر از ۵۰ مگابایت باشد');
+      }
+
+      // ساخت نام منحصر به فرد برای فایل
+      final s3FileName = 'videos/${supabase.auth.currentUser!.id}'
+          '_${DateTime.now().millisecondsSinceEpoch}_$fileName';
+
+      // آپلود به آروان
+      await s3.putObject(
+        bucket: bucketName,
+        key: s3FileName,
+        body: fileBytes,
+        contentType: _getVideoContentType(extension),
+        acl: ObjectCannedACL.publicRead,
+      );
+
+      final url = 'https://storage.coffevista.ir/$bucketName/$s3FileName';
+      print("Uploaded video file URL: $url");
+
+      return url;
+    } catch (e) {
+      print("Video upload error: $e");
+      rethrow;
+    }
+  }
+
+  static bool _isValidVideoFormat(String extension) {
+    return ['.mp4', '.mov', '.mkv'].contains(extension);
+  }
+
+  static String _getVideoContentType(String extension) {
+    switch (extension) {
+      case '.mp4':
+        return 'video/mp4';
+      case '.mov':
+        return 'video/quicktime';
+      case '.mkv':
+        return 'video/x-matroska';
+      default:
+        return 'video/mp4';
+    }
+  }
 }

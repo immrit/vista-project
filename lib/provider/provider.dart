@@ -545,13 +545,14 @@ class SupabaseService {
       // دریافت اطلاعات پست برای پیدا کردن URL های فایل‌ها
       final post = await supabase
           .from('posts')
-          .select('image_url, music_url')
+          .select('image_url, music_url  , video_url  ')
           .eq('id', postId)
           .single();
 
       final mediaUrls = [
         post['image_url'],
         post['music_url'],
+        post['video_url'],
       ].where((url) => url != null && url.isNotEmpty).toList();
 
       // حذف تمام فایل‌ها از آروان کلاود

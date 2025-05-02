@@ -10,6 +10,7 @@ class PublicPostModel extends Equatable {
   final String fullName;
   final String content;
   final String? imageUrl;
+  final String? videoUrl; // افزودن فیلد videoUrl برای ویدیوها
   final DateTime createdAt;
   final String username;
   final String avatarUrl;
@@ -17,7 +18,7 @@ class PublicPostModel extends Equatable {
   int likeCount;
   bool isLiked;
   final bool isVerified;
-  final VerificationType verificationType; // اضافه کردن نوع نشان تأیید
+  final VerificationType verificationType;
   int commentCount;
   final String? musicUrl;
   final String? title;
@@ -28,14 +29,14 @@ class PublicPostModel extends Equatable {
     required this.fullName,
     required this.content,
     this.imageUrl,
+    this.videoUrl, // افزودن پارامتر videoUrl
     required this.createdAt,
     required this.username,
     this.avatarUrl = '',
     this.likeCount = 0,
     this.isLiked = false,
     this.isVerified = false,
-    this.verificationType =
-        VerificationType.none, // پارامتر جدید با مقدار پیش‌فرض
+    this.verificationType = VerificationType.none,
     this.commentCount = 0,
     List<String>? hashtags,
     this.musicUrl,
@@ -53,21 +54,24 @@ class PublicPostModel extends Equatable {
 
   // متد سازنده از Map
   factory PublicPostModel.fromMap(Map<String, dynamic> map) {
-    print(
-        "Music URL from API: ${map['music_url']}"); // اضافه کردن این خط برای دیباگ
+    print("Music URL from API: ${map['music_url']}");
+    print("Video URL from API: ${map['video_url']}"); // لاگ برای دیباگ ویدیو
+
     return PublicPostModel(
       id: _parseString(map, 'id'),
       userId: _parseString(map, 'user_id'),
       fullName: _parseString(map, 'full_name'),
       content: _parseString(map, 'content'),
       imageUrl: _parseString(map, 'image_url', defaultValue: ""),
+      videoUrl: _parseString(map, 'video_url',
+          defaultValue: ""), // پارس کردن video_url
       createdAt: _parseDateTime(map, 'created_at'),
       username: _parseUsername(map),
       avatarUrl: _parseAvatarUrl(map),
       likeCount: _parseInt(map, 'like_count'),
       isLiked: _parseBool(map, 'is_liked'),
       isVerified: _parseVerified(map),
-      verificationType: _parseVerificationType(map), // پارس کردن نوع نشان
+      verificationType: _parseVerificationType(map),
       commentCount: _parseInt(map, 'comment_count'),
       hashtags: _parseHashtags(map),
       musicUrl: _parseString(map, 'music_url', defaultValue: ""),
@@ -117,7 +121,6 @@ class PublicPostModel extends Equatable {
     return map['profiles']?['is_verified'] ?? false;
   }
 
-  // اضافه کردن متد برای پارس کردن نوع نشان
   static VerificationType _parseVerificationType(Map<String, dynamic> map) {
     final verificationType = map['profiles']?['verification_type'];
     if (verificationType != null) {
@@ -147,13 +150,14 @@ class PublicPostModel extends Equatable {
       'user_id': userId,
       'content': content,
       'image_url': imageUrl,
+      'video_url': videoUrl, // افزودن ویدیو به Map
       'created_at': createdAt.toIso8601String(),
       'profiles': {
         'username': username,
         'full_name': fullName,
         'avatar_url': avatarUrl,
         'is_verified': isVerified,
-        'verification_type': verificationType.name, // اضافه کردن نوع نشان
+        'verification_type': verificationType.name,
       },
       'like_count': likeCount,
       'is_liked': isLiked,
@@ -175,13 +179,14 @@ class PublicPostModel extends Equatable {
     String? fullName,
     String? content,
     String? imageUrl,
+    String? videoUrl, // افزودن پارامتر videoUrl به copyWith
     DateTime? createdAt,
     String? username,
     String? avatarUrl,
     int? likeCount,
     bool? isLiked,
     bool? isVerified,
-    VerificationType? verificationType, // اضافه کردن به پارامترهای copyWith
+    VerificationType? verificationType,
     int? commentCount,
     List<String>? hashtags,
     String? musicUrl,
@@ -193,14 +198,14 @@ class PublicPostModel extends Equatable {
       fullName: fullName ?? this.fullName,
       content: content ?? this.content,
       imageUrl: imageUrl ?? this.imageUrl,
+      videoUrl: videoUrl ?? this.videoUrl, // افزودن ویدیو به copyWith
       createdAt: createdAt ?? this.createdAt,
       username: username ?? this.username,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       likeCount: likeCount ?? this.likeCount,
       isLiked: isLiked ?? this.isLiked,
       isVerified: isVerified ?? this.isVerified,
-      verificationType: verificationType ??
-          this.verificationType, // اضافه کردن به پیاده‌سازی copyWith
+      verificationType: verificationType ?? this.verificationType,
       commentCount: commentCount ?? this.commentCount,
       hashtags: hashtags ?? this.hashtags,
       musicUrl: musicUrl ?? this.musicUrl,
@@ -217,13 +222,14 @@ class PublicPostModel extends Equatable {
       fullName: $fullName, 
       content: $content, 
       imageUrl: $imageUrl,
+      videoUrl: $videoUrl, // افزودن ویدیو به toString
       createdAt: $createdAt, 
       username: $username, 
       avatarUrl: $avatarUrl, 
       likeCount: $likeCount, 
       isLiked: $isLiked, 
       isVerified: $isVerified, 
-      verificationType: $verificationType, // اضافه کردن نوع نشان به متد toString
+      verificationType: $verificationType,
       commentCount: $commentCount,
       hashtags: $hashtags,
       musicUrl: $musicUrl,
@@ -238,20 +244,21 @@ class PublicPostModel extends Equatable {
         fullName,
         content,
         imageUrl,
+        videoUrl, // افزودن ویدیو به props
         createdAt,
         username,
         avatarUrl,
         likeCount,
         isLiked,
         isVerified,
-        verificationType, // اضافه کردن نوع نشان به props
+        verificationType,
         commentCount,
         hashtags,
         musicUrl,
         title,
       ];
 
-  // اضافه کردن متدهای کمکی برای بررسی نوع نشان
+  // متدهای کمکی
   bool get hasBlueBadge =>
       isVerified && verificationType == VerificationType.blueTick;
   bool get hasGoldBadge =>
@@ -260,4 +267,10 @@ class PublicPostModel extends Equatable {
       isVerified && verificationType == VerificationType.blackTick;
   bool get hasAnyBadge =>
       isVerified && verificationType != VerificationType.none;
+
+  // متدهای کمکی برای تشخیص نوع پست
+  bool get hasVideo => videoUrl != null && videoUrl!.isNotEmpty;
+  bool get hasImage => imageUrl != null && imageUrl!.isNotEmpty;
+  bool get hasMusic => musicUrl != null && musicUrl!.isNotEmpty;
+  bool get isTextOnly => !hasVideo && !hasImage && !hasMusic;
 }

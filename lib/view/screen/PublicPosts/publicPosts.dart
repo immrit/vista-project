@@ -16,6 +16,7 @@ import '../../../main.dart';
 import '../../../model/MusicModel.dart';
 import '../../../provider/MusicProvider.dart';
 import '../../util/widgets.dart';
+import '../../widgets/CustomVideoPlayer.dart';
 import '../Music/MiniMusicPlayer.dart';
 import '../Stories/story_system.dart';
 import '../searchPage.dart';
@@ -738,8 +739,19 @@ Widget _buildPostItem(
             _buildHashtags(post.hashtags, context),
           ],
 
-          // نمایش تصویر اگر پست دارای imageUrl باشد - با استایل و انیمیشن بهبود یافته
-          if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
+          // نمایش ویدیو اگر پست دارای videoUrl باشد
+          if (post.videoUrl != null && post.videoUrl!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12.0),
+              child: CustomVideoPlayer(
+                videoUrl: post.videoUrl!,
+                username: post.username,
+              ),
+            ),
+          ]
+          // نمایش تصویر اگر پست دارای imageUrl باشد
+          else if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
             const SizedBox(height: 8),
             GestureDetector(
               onTap: () {
@@ -783,6 +795,7 @@ Widget _buildPostItem(
               ),
             ),
           ],
+
           const SizedBox(height: 8),
 
           // ردیف دکمه‌های لایک، کامنت و اشتراک - با انیمیشن بهبود یافته
@@ -1560,3 +1573,193 @@ class _ConnectionStatusBarState extends State<ConnectionStatusBar>
     );
   }
 }
+
+// // کلاس نمایش ویدیو در پست
+// class VideoPostWidget extends StatefulWidget {
+//   final String videoUrl;
+
+//   const VideoPostWidget({Key? key, required this.videoUrl}) : super(key: key);
+
+//   @override
+//   State<VideoPostWidget> createState() => _VideoPostWidgetState();
+// }
+
+// class _VideoPostWidgetState extends State<VideoPostWidget> {
+//   VideoPlayerController? _videoPlayerController;
+//   ChewieController? _chewieController;
+//   bool _isInitialized = false;
+
+//   @override
+//   void initState() {
+//     super.initState();
+//     _initializeVideoPlayer();
+//   }
+
+//   Future<void> _initializeVideoPlayer() async {
+//     try {
+//       _videoPlayerController =
+//           VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl));
+//       await _videoPlayerController!.initialize();
+
+//       _chewieController = ChewieController(
+//         videoPlayerController: _videoPlayerController!,
+//         autoPlay: false,
+//         looping: false,
+//         aspectRatio: _videoPlayerController!.value.aspectRatio,
+//         allowFullScreen: true,
+//         allowPlaybackSpeedChanging: true,
+//         placeholder: Center(
+//           child: CircularProgressIndicator(),
+//         ),
+//         materialProgressColors: ChewieProgressColors(
+//           playedColor: Colors.red,
+//           handleColor: Colors.red,
+//           backgroundColor: Colors.grey,
+//           bufferedColor: Colors.grey.shade400,
+//         ),
+//         allowMuting: true,
+//         fullScreenByDefault: false,
+//         showOptions: false,
+//         showControlsOnInitialize: false,
+//       );
+
+//       if (mounted) {
+//         setState(() {
+//           _isInitialized = true;
+//         });
+//       }
+//     } catch (e) {
+//       print('Error initializing video player: $e');
+//     }
+//   }
+
+//   @override
+//   void dispose() {
+//     _videoPlayerController?.dispose();
+//     _chewieController?.dispose();
+//     super.dispose();
+//   }
+
+//   void _openFullScreen() {
+//     Navigator.of(context).push(
+//       MaterialPageRoute(
+//         builder: (_) => FullScreenVideoPage(videoUrl: widget.videoUrl),
+//       ),
+//     );
+//   }
+
+//   @override
+//   Widget build(BuildContext context) {
+//     return GestureDetector(
+//       onTap: _openFullScreen,
+//       child: Container(
+//         constraints: BoxConstraints(maxHeight: 400),
+//         child: _isInitialized
+//             ? ClipRRect(
+//                 borderRadius: BorderRadius.circular(8),
+//                 child: Chewie(controller: _chewieController!),
+//               )
+//             : AspectRatio(
+//                 aspectRatio: 16 / 9,
+//                 child: Container(
+//                   color: Colors.black87,
+//                   child: const Center(
+//                     child: CircularProgressIndicator(),
+//                   ),
+//                 ),
+//               ),
+//       ),
+//     );
+//   }
+// }
+
+// // --- صفحه نمایش تمام‌صفحه ویدیو ---
+// class FullScreenVideoPage extends StatefulWidget {
+//   final String videoUrl;
+//   const FullScreenVideoPage({Key? key, required this.videoUrl})
+//       : super(key: key);
+
+//   @override
+//   State<FullScreenVideoPage> createState() => _FullScreenVideoPageState();
+// }
+
+// class _FullScreenVideoPageState extends State<FullScreenVideoPage> {
+//   late VideoPlayerController _controller;
+//   ChewieController? _chewieController;
+//   bool _isReady = false;
+
+//   @override
+//   void initState() {
+//     super.initState();
+//     _init();
+//   }
+
+//   Future<void> _init() async {
+//     // قفل کردن به حالت portraitUp و landscape
+//     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+//     await SystemChrome.setPreferredOrientations([
+//       DeviceOrientation.portraitUp,
+//       DeviceOrientation.landscapeLeft,
+//       DeviceOrientation.landscapeRight,
+//     ]);
+//     _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl));
+//     await _controller.initialize();
+//     _chewieController = ChewieController(
+//       videoPlayerController: _controller,
+//       autoPlay: true,
+//       looping: false,
+//       allowFullScreen: false,
+//       allowPlaybackSpeedChanging: true,
+//       aspectRatio: _controller.value.aspectRatio,
+//       showControlsOnInitialize: true,
+//       materialProgressColors: ChewieProgressColors(
+//         playedColor: Colors.red,
+//         handleColor: Colors.red,
+//         backgroundColor: Colors.grey,
+//         bufferedColor: Colors.grey.shade400,
+//       ),
+//     );
+//     setState(() {
+//       _isReady = true;
+//     });
+//   }
+
+//   @override
+//   void dispose() {
+//     _chewieController?.dispose();
+//     _controller.dispose();
+//     // بازگرداندن orientation به حالت پیش‌فرض
+//     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+//     SystemChrome.setPreferredOrientations([
+//       DeviceOrientation.portraitUp,
+//       DeviceOrientation.portraitDown,
+//     ]);
+//     super.dispose();
+//   }
+
+//   @override
+//   Widget build(BuildContext context) {
+//     return Scaffold(
+//       backgroundColor: Colors.black,
+//       body: Stack(
+//         children: [
+//           Center(
+//             child: _isReady && _chewieController != null
+//                 ? Chewie(controller: _chewieController!)
+//                 : const Center(child: CircularProgressIndicator()),
+//           ),
+//           Positioned(
+//             top: 36,
+//             right: 16,
+//             child: SafeArea(
+//               child: IconButton(
+//                 icon: const Icon(Icons.close, color: Colors.white, size: 32),
+//                 onPressed: () => Navigator.of(context).pop(),
+//               ),
+//             ),
+//           ),
+//         ],
+//       ),
+//     );
+//   }
+// }

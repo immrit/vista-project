@@ -12,6 +12,7 @@ import '../../../provider/MusicProvider.dart';
 import '../../../provider/chat_provider.dart';
 import '../../util/const.dart';
 import '../../util/widgets.dart';
+import '../../widgets/CustomVideoPlayer.dart';
 import '../chat/ChatScreen.dart';
 import '/main.dart';
 import '../../../model/ProfileModel.dart';
@@ -526,6 +527,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               );
             },
           ),
+        const SizedBox(height: 8),
         if (post.hashtags.isNotEmpty) ...[
           const SizedBox(height: 8),
           Wrap(
@@ -590,7 +592,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           // Content and Music section
           _buildPostContent(post, context),
           // Image section
-          if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
+          if (post.videoUrl != null && post.videoUrl!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12.0),
+              child: CustomVideoPlayer(
+                videoUrl: post.videoUrl!,
+                username: post.username,
+              ),
+            ),
+          ]
+          // نمایش تصویر اگر پست دارای imageUrl باشد
+          else if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
             const SizedBox(height: 8),
             GestureDetector(
               onTap: () => _showFullScreenImage(context, post.imageUrl!),

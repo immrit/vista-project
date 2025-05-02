@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:dotted_border/dotted_border.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:video_player/video_player.dart';
 import '../../../main.dart';
 import '../../../services/PostImageUploadService.dart';
 import '../../../provider/provider.dart';
@@ -28,7 +29,11 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   String? _selectedImageName; // برای وب
   File? _selectedMusic;
   String? _musicFileName;
+  File? _selectedVideo;
+  Uint8List? _selectedVideoBytes; // برای وب
+  String? _selectedVideoName; // برای وب
   final FocusNode _focusNode = FocusNode();
+  VideoPlayerController? _videoPlayerController; // کنترلر ویدیو
 
   @override
   void initState() {
@@ -85,6 +90,60 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     }
   }
 
+  Future<void> _pickVideo() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.video,
+      allowMultiple: false,
+    );
+
+    if (result != null) {
+      if (kIsWeb) {
+        setState(() {
+          _selectedVideo = null;
+          _selectedVideoBytes = result.files.single.bytes;
+          _selectedVideoName = result.files.single.name;
+          _selectedImage = null;
+          _selectedImageBytes = null;
+          _selectedImageName = null;
+        });
+        await _initializeVideoPlayerWeb(
+            _selectedVideoBytes!, _selectedVideoName!);
+      } else {
+        setState(() {
+          _selectedVideo = File(result.files.single.path!);
+          _selectedVideoBytes = null;
+          _selectedVideoName = null;
+          _selectedImage = null;
+          _selectedImageBytes = null;
+          _selectedImageName = null;
+        });
+        await _initializeVideoPlayerMobile(_selectedVideo!);
+      }
+    }
+  }
+
+  Future<void> _initializeVideoPlayerMobile(File file) async {
+    _videoPlayerController?.dispose();
+    _videoPlayerController = VideoPlayerController.file(file);
+    await _videoPlayerController!.initialize();
+    setState(() {});
+  }
+
+  Future<void> _initializeVideoPlayerWeb(Uint8List bytes, String name) async {
+    _videoPlayerController?.dispose();
+    if (kIsWeb) {
+      // فقط در وب: ساخت blob و url
+      // برای جلوگیری از خطا در پلتفرم‌های غیر وب، این کد را فقط در وب اجرا کن
+      // ignore: undefined_prefixed_name
+      final blob = await _createWebBlob(bytes);
+      // ignore: undefined_prefixed_name
+      final url = _createWebObjectUrl(blob);
+      _videoPlayerController = VideoPlayerController.network(url);
+      await _videoPlayerController!.initialize();
+      setState(() {});
+    }
+  }
+
   Future<void> _pickMusicFile() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.audio,
@@ -108,8 +167,12 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       return;
     }
 
-    if (content.isEmpty && _selectedImage == null && _selectedMusic == null) {
-      _showSnackBar('لطفاً متن، تصویر یا موزیکی برای ارسال پست انتخاب کنید');
+    if (content.isEmpty &&
+        _selectedImage == null &&
+        _selectedMusic == null &&
+        _selectedVideo == null) {
+      _showSnackBar(
+          'لطفاً متن، تصویر، ویدیو یا موزیکی برای ارسال پست انتخاب کنید');
       return;
     }
 
@@ -125,6 +188,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     try {
       String? imageUrl;
       String? musicUrl;
+      String? videoUrl;
 
       // آپلود تصویر در صورت انتخاب
       if (kIsWeb && _selectedImageBytes != null && _selectedImageName != null) {
@@ -133,6 +197,15 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       } else if (_selectedImage != null) {
         imageUrl =
             await PostImageUploadService.uploadPostImage(_selectedImage!);
+      }
+
+      // آپلود ویدیو در صورت انتخاب
+      if (kIsWeb && _selectedVideoBytes != null && _selectedVideoName != null) {
+        videoUrl = await PostImageUploadService.uploadVideoFileWeb(
+            _selectedVideoBytes!, _selectedVideoName!);
+      } else if (_selectedVideo != null) {
+        videoUrl =
+            await PostImageUploadService.uploadVideoFile(_selectedVideo!);
       }
 
       // آپلود موزیک در صورت انتخاب
@@ -146,6 +219,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
         'user_id': supabase.auth.currentUser!.id,
         'content': content,
         if (imageUrl != null) 'image_url': imageUrl,
+        if (videoUrl != null) 'video_url': videoUrl,
         if (musicUrl != null) 'music_url': musicUrl,
         'created_at': DateTime.now().toIso8601String(),
       };
@@ -191,6 +265,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   void dispose() {
     contentController.dispose();
     _focusNode.dispose();
+    _videoPlayerController?.dispose(); // آزادسازی کنترلر ویدیو
     super.dispose();
   }
 
@@ -248,6 +323,174 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                             textColor, secondaryTextColor, cardColor),
 
                         const SizedBox(height: 16),
+                        // افزودن دکمه انتخاب ویدیو
+                        if (_selectedVideo == null &&
+                            _selectedVideoBytes == null &&
+                            _selectedImage == null &&
+                            _selectedImageBytes == null)
+                          Row(
+                            children: [
+                              Expanded(
+                                child: InkWell(
+                                  onTap: _pickImage,
+                                  child: DottedBorder(
+                                    borderType: BorderType.RRect,
+                                    radius: const Radius.circular(8),
+                                    color: secondaryTextColor,
+                                    dashPattern: const [6, 3],
+                                    child: Container(
+                                      height: 50,
+                                      alignment: Alignment.center,
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.photo_library_outlined,
+                                              color: secondaryTextColor),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'افزودن تصویر',
+                                            style: TextStyle(
+                                                color: secondaryTextColor),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: InkWell(
+                                  onTap: _pickVideo,
+                                  child: DottedBorder(
+                                    borderType: BorderType.RRect,
+                                    radius: const Radius.circular(8),
+                                    color: secondaryTextColor,
+                                    dashPattern: const [6, 3],
+                                    child: Container(
+                                      height: 50,
+                                      alignment: Alignment.center,
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.videocam_outlined,
+                                              color: secondaryTextColor),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'افزودن ویدیو',
+                                            style: TextStyle(
+                                                color: secondaryTextColor),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+
+                        // نمایش پیش‌نمایش ویدیو انتخاب شده
+                        if (_selectedVideo != null ||
+                            _selectedVideoBytes != null)
+                          Container(
+                            margin: const EdgeInsets.only(top: 16),
+                            decoration: BoxDecoration(
+                              color: cardColor,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                ClipRRect(
+                                  borderRadius: const BorderRadius.vertical(
+                                      top: Radius.circular(8)),
+                                  child: Container(
+                                    height: 200,
+                                    color: Colors.black87,
+                                    child: _videoPlayerController != null &&
+                                            _videoPlayerController!
+                                                .value.isInitialized
+                                        ? Stack(
+                                            alignment: Alignment.center,
+                                            children: [
+                                              AspectRatio(
+                                                aspectRatio:
+                                                    _videoPlayerController!
+                                                        .value.aspectRatio,
+                                                child: VideoPlayer(
+                                                    _videoPlayerController!),
+                                              ),
+                                              GestureDetector(
+                                                onTap: () {
+                                                  setState(() {
+                                                    if (_videoPlayerController!
+                                                        .value.isPlaying) {
+                                                      _videoPlayerController!
+                                                          .pause();
+                                                    } else {
+                                                      _videoPlayerController!
+                                                          .play();
+                                                    }
+                                                  });
+                                                },
+                                                child: Icon(
+                                                  _videoPlayerController!
+                                                          .value.isPlaying
+                                                      ? Icons.pause_circle
+                                                      : Icons.play_circle_fill,
+                                                  size: 64,
+                                                  color: Colors.white
+                                                      .withOpacity(0.8),
+                                                ),
+                                              ),
+                                            ],
+                                          )
+                                        : Center(
+                                            child: Icon(
+                                              Icons.play_circle_fill,
+                                              size: 64,
+                                              color:
+                                                  Colors.white.withOpacity(0.8),
+                                            ),
+                                          ),
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 8),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          'ویدیو انتخاب شده: ${_selectedVideoName ?? _selectedVideo?.path.split('/').last ?? 'ویدیو'}',
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.close, size: 20),
+                                        onPressed: () {
+                                          setState(() {
+                                            _selectedVideo = null;
+                                            _selectedVideoBytes = null;
+                                            _selectedVideoName = null;
+                                            _videoPlayerController?.dispose();
+                                            _videoPlayerController = null;
+                                          });
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ).animate().fadeIn().slideY(begin: 0.2, end: 0),
 
                         // پیش‌نمایش تصویر
                         if (_selectedImage != null ||
@@ -658,6 +901,15 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                   isDarkMode: isDarkMode,
                 ),
                 const SizedBox(width: 16),
+                // دکمه افزودن ویدیو
+                _buildMediaButton(
+                  icon: Icons.videocam_outlined,
+                  label: 'ویدیو',
+                  onTap: _pickVideo,
+                  primaryColor: primaryColor,
+                  isDarkMode: isDarkMode,
+                ),
+                const SizedBox(width: 16),
                 // دکمه افزودن موزیک
                 _buildMediaButton(
                   icon: Icons.music_note,
@@ -868,3 +1120,30 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     );
   }
 }
+
+Future<dynamic> _createWebBlob(Uint8List bytes) async {
+  if (kIsWeb) {
+    // ignore: avoid_web_libraries_in_flutter
+    return Future.value(
+      // ignore: undefined_prefixed_name
+      (await importJsLibrary('dart:html')).callMethod('Blob', [
+        [bytes]
+      ]),
+    );
+  }
+  return null;
+}
+
+String _createWebObjectUrl(dynamic blob) {
+  if (kIsWeb && blob != null) {
+    // ignore: avoid_web_libraries_in_flutter
+    // ignore: undefined_prefixed_name
+    return (importJsLibrary('dart:html'))
+        .callMethod('Url')
+        .callMethod('createObjectUrlFromBlob', [blob]);
+  }
+  return '';
+}
+
+// این تابع فقط برای جلوگیری از خطا است و در وب مقدار واقعی را برمی‌گرداند.
+dynamic importJsLibrary(String name) => throw UnsupportedError('Web only');
