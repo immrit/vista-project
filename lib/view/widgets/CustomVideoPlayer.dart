@@ -44,25 +44,29 @@ class CustomVideoPlayer extends StatefulWidget {
 }
 
 class _CustomVideoPlayerState extends State<CustomVideoPlayer>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   late VideoPlayerController _controller;
   bool _isInitialized = false;
   bool _isPlaying = false;
   bool _isMuted = true;
   bool _isBuffering = false;
-  bool _isVisible = false;
+
+  // برای انیمیشن پخش/مکث
   bool _isAnimating = false;
 
-  // برای موقعیت پخش
-  Duration _currentPosition = Duration.zero;
-  Duration _videoDuration = Duration.zero;
-
-  // برای دابل‌تپ لایک
+  // برای نمایش دابل تپ لایک
   bool _showLikeAnim = false;
   Timer? _likeAnimTimer;
 
-  // برای تشخیص اسکرول
-  double _lastVisibleFraction = 0.0;
+  // بهبود عملکرد موقعیت پخش
+  Duration _currentPosition = Duration.zero;
+  Duration _videoDuration = Duration.zero;
+
+  // برای تشخیص نمایش
+  bool _isVisible = false;
+
+  @override
+  bool get wantKeepAlive => true; // برای جلوگیری از بازیافت ویجت در ListView
 
   @override
   void initState() {
@@ -73,6 +77,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
 
   @override
   void dispose() {
+    _controller.removeListener(_videoListener);
     _controller.dispose();
     _likeAnimTimer?.cancel();
     super.dispose();
@@ -101,6 +106,11 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
         });
 
         _controller.addListener(_videoListener);
+
+        // بعد از آماده‌سازی، بررسی کنید آیا باید پخش شود یا خیر
+        if (widget.autoplay && _isVisible) {
+          _playVideo();
+        }
       }
     } catch (e) {
       print('خطا در بارگذاری ویدیو: $e');
@@ -115,7 +125,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
   void _videoListener() {
     if (!mounted) return;
 
-    // به‌روزرسانی وضعیت پخش
+    // بررسی وضعیت پخش
     final isPlaying = _controller.value.isPlaying;
     if (isPlaying != _isPlaying) {
       setState(() {
@@ -123,7 +133,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
       });
     }
 
-    // به‌روزرسانی وضعیت بافرینگ
+    // بررسی وضعیت بافرینگ
     final isBuffering = _controller.value.isBuffering;
     if (isBuffering != _isBuffering) {
       setState(() {
@@ -219,33 +229,31 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
 
   @override
   Widget build(BuildContext context) {
-    // استفاده از VisibilityDetector برای تشخیص دقیق نمایش
+    super.build(
+        context); // این فراخوانی برای AutomaticKeepAliveClientMixin لازم است
+
     return VisibilityDetector(
-      key: Key('video-${widget.videoUrl}'),
+      key: ValueKey('video-${widget.videoUrl}-${widget.postId ?? ""}'),
       onVisibilityChanged: (visibilityInfo) {
         final visibleFraction = visibilityInfo.visibleFraction;
 
-        // اگر درصد نمایش تغییر کرده است، آن را ذخیره می‌کنیم
-        if (visibleFraction != _lastVisibleFraction) {
-          _lastVisibleFraction = visibleFraction;
+        // وضعیت قابل مشاهده بودن را چاپ کنید (برای دیباگ)
+        print(
+            'Video visibility: $visibleFraction (${widget.postId ?? "no-id"})');
 
-          // اگر بیش از 70% ویدیو قابل مشاهده است، آن را به عنوان قابل مشاهده علامت‌گذاری می‌کنیم
-          final newIsVisible = visibleFraction > 0.7;
+        // اگر بیش از 50% نمایش داده می‌شود، آن را قابل مشاهده در نظر بگیرید
+        final newIsVisible = visibleFraction > 0.5;
 
-          if (newIsVisible != _isVisible) {
-            setState(() {
-              _isVisible = newIsVisible;
-            });
+        if (newIsVisible != _isVisible) {
+          setState(() {
+            _isVisible = newIsVisible;
+          });
 
-            // اگر قابل مشاهده شده و autoplay فعال است، پخش را شروع می‌کنیم
-            if (_isVisible &&
-                widget.autoplay &&
-                _isInitialized &&
-                !_isPlaying) {
-              _playVideo();
-            } else if (!_isVisible && _isPlaying) {
-              _pauseVideo();
-            }
+          // اگر قابل مشاهده است و autoplay فعال است و آماده است، پخش کنید
+          if (newIsVisible && widget.autoplay && _isInitialized) {
+            _playVideo();
+          } else if (!newIsVisible && _isPlaying) {
+            _pauseVideo();
           }
         }
       },
@@ -255,27 +263,42 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
         child: Stack(
           alignment: Alignment.center,
           children: [
-            // ویدیو
-            Container(
-              width: double.infinity,
-              child: _isInitialized
-                  ? AspectRatio(
-                      aspectRatio: _controller.value.aspectRatio,
-                      child: VideoPlayer(_controller),
-                    )
-                  : Container(
-                      color: Colors.black,
-                      height: 250,
-                      child: const Center(
-                        child: CircularProgressIndicator(),
-                      ),
+            // ویدیو پلیر
+            _isInitialized
+                ? AspectRatio(
+                    aspectRatio: _controller.value.aspectRatio,
+                    child: VideoPlayer(_controller),
+                  )
+                : Container(
+                    color: Colors.black,
+                    height: 250,
+                    child: const Center(
+                      child: CircularProgressIndicator(),
                     ),
-            ),
+                  ),
 
             // نشانگر بافرینگ
             if (_isBuffering)
               const Center(
                 child: CircularProgressIndicator(color: Colors.white),
+              ),
+
+            // دکمه پخش در صورتی که ویدیو در حال پخش نیست و در حال بافرینگ هم نیست
+            if (!_isPlaying && !_isBuffering && _isInitialized)
+              Center(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.3),
+                    shape: BoxShape.circle,
+                  ),
+                  padding: const EdgeInsets.all(16),
+                  child: Icon(
+                    Icons.play_arrow,
+                    color: Colors.white.withOpacity(0.9),
+                    size: 48,
+                    semanticLabel: 'پخش ویدیو',
+                  ),
+                ),
               ),
 
             // انیمیشن لایک
@@ -300,20 +323,24 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
 
             // آیکون پخش/مکث در وسط صفحه (موقع تپ)
             if (_isAnimating)
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.4),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  _isPlaying ? Icons.pause : Icons.play_arrow,
-                  color: Colors.white,
-                  size: 32,
+              AnimatedOpacity(
+                opacity: _isAnimating ? 0.7 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.4),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    _isPlaying ? Icons.pause : Icons.play_arrow,
+                    color: Colors.white,
+                    size: 40,
+                  ),
                 ),
               ),
 
-            // دکمه صدا
+            // دکمه خاموش/روشن کردن صدا
             Positioned(
               top: 8,
               right: 8,
@@ -322,8 +349,8 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.5),
-                    shape: BoxShape.circle,
+                    color: Colors.black.withOpacity(0.6),
+                    borderRadius: BorderRadius.circular(4),
                   ),
                   child: Icon(
                     _isMuted ? Icons.volume_off : Icons.volume_up,
@@ -348,7 +375,8 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
                             _videoDuration.inMilliseconds
                         : 0.0,
                     backgroundColor: Colors.white.withOpacity(0.3),
-                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.red),
+                    valueColor:
+                        const AlwaysStoppedAnimation<Color>(Colors.white),
                     minHeight: 3,
                   ),
                 ),

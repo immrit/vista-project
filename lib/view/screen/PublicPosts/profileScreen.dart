@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 import '../../../model/MusicModel.dart';
 import '../../../provider/MusicProvider.dart';
 import '../../../provider/chat_provider.dart';
@@ -585,61 +586,73 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           // Content and Music section
           _buildPostContent(post, context),
           // Image section
+          // ... existing code ...
           if (post.videoUrl != null && post.videoUrl!.isNotEmpty) ...[
             const SizedBox(height: 8),
             ClipRRect(
               borderRadius: BorderRadius.circular(12.0),
-              child: CustomVideoPlayer(
-                videoUrl: post.videoUrl!,
-                autoplay: false, // در صفحه پروفایل بهتر است پخش خودکار نباشد
-                muted: true,
-                maxHeight: 350,
-                showProgress: true,
-                looping: false,
-                postId: post.id,
-                username: post.username,
-                likeCount: post.likeCount,
-                commentCount: post.commentCount,
-                isLiked: post.isLiked,
-                onLike: () async {
-                  try {
-                    await ref.read(supabaseServiceProvider).toggleLike(
-                          postId: post.id!,
-                          ownerId: post.userId!,
-                          ref: ref,
+              child: VisibilityDetector(
+                key: Key('profile_video_${post.id}'),
+                onVisibilityChanged: (visibilityInfo) {
+                  // فقط برای لاگ: میزان قابل مشاهده بودن
+                  print(
+                      'Video ${post.id} visibility: ${visibilityInfo.visibleFraction}');
+                },
+                child: CustomVideoPlayer(
+                  key: ValueKey('video_player_${post.id}'),
+                  videoUrl: post.videoUrl!,
+                  autoplay: true,
+                  muted: true,
+                  showProgress: true,
+                  looping: true,
+                  postId: post.id,
+                  username: post.username,
+                  likeCount: post.likeCount,
+                  commentCount: post.commentCount,
+                  isLiked: post.isLiked,
+                  onLike: () async {
+                    try {
+                      await ref.read(supabaseServiceProvider).toggleLike(
+                            postId: post.id!,
+                            ownerId: post.userId!,
+                            ref: ref,
+                          );
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('خطا در لایک پست: $e')),
                         );
-                  } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('خطا در لایک پست: $e')),
-                      );
+                      }
                     }
-                  }
-                },
-                onComment: () => showCommentsBottomSheet(context, post.id, ref),
-                onTap: () {
-                  // استخراج لیست پست‌های ویدیویی
-                  final profile = ref.read(userProfileProvider(widget.userId));
-                  final videoPosts = profile?.posts
-                          .where((p) =>
-                              p.videoUrl != null && p.videoUrl!.isNotEmpty)
-                          .toList() ??
-                      [];
-                  final initialIndex =
-                      videoPosts.indexWhere((p) => p.id == post.id);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ReelsScreen(
-                        posts: videoPosts,
-                        initialIndex: initialIndex < 0 ? 0 : initialIndex,
+                  },
+                  onComment: () =>
+                      showCommentsBottomSheet(context, post.id, ref),
+                  onTap: () {
+                    // استخراج لیست پست‌های ویدیویی
+                    final profile =
+                        ref.read(userProfileProvider(widget.userId));
+                    final videoPosts = profile?.posts
+                            .where((p) =>
+                                p.videoUrl != null && p.videoUrl!.isNotEmpty)
+                            .toList() ??
+                        [];
+                    final initialIndex =
+                        videoPosts.indexWhere((p) => p.id == post.id);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ReelsScreen(
+                          posts: videoPosts,
+                          initialIndex: initialIndex < 0 ? 0 : initialIndex,
+                        ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ),
           ],
+
           // نمایش تصویر اگر پست دارای imageUrl باشد
           if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
             const SizedBox(height: 8),
