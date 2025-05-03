@@ -587,61 +587,61 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           // Image section
           if (post.videoUrl != null && post.videoUrl!.isNotEmpty) ...[
             const SizedBox(height: 8),
-            GestureDetector(
-              onTap: () {
-                // استخراج لیست پست‌های ویدیویی
-                final profile = ref.read(userProfileProvider(widget.userId));
-                final videoPosts = profile?.posts
-                        .where(
-                            (p) => p.videoUrl != null && p.videoUrl!.isNotEmpty)
-                        .toList() ??
-                    [];
-                final initialIndex =
-                    videoPosts.indexWhere((p) => p.id == post.id);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ReelsScreen(
-                      posts: videoPosts,
-                      initialIndex: initialIndex < 0 ? 0 : initialIndex,
-                    ),
-                  ),
-                );
-              },
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12.0),
-                child: AspectRatio(
-                  aspectRatio: 9 / 16,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      // تصویر کاور یا یک رنگ مشکی ساده
-                      post.imageUrl != null && post.imageUrl!.isNotEmpty
-                          ? CachedNetworkImage(
-                              imageUrl: post.imageUrl!,
-                              fit: BoxFit.cover,
-                            )
-                          : Container(color: Colors.black87),
-                      // آیکون پخش وسط
-                      Center(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.black54,
-                            shape: BoxShape.circle,
-                          ),
-                          padding: const EdgeInsets.all(16),
-                          child: const Icon(Icons.play_arrow_rounded,
-                              color: Colors.white, size: 48),
-                        ),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12.0),
+              child: CustomVideoPlayer(
+                videoUrl: post.videoUrl!,
+                autoplay: false, // در صفحه پروفایل بهتر است پخش خودکار نباشد
+                muted: true,
+                maxHeight: 350,
+                showProgress: true,
+                looping: false,
+                postId: post.id,
+                username: post.username,
+                likeCount: post.likeCount,
+                commentCount: post.commentCount,
+                isLiked: post.isLiked,
+                onLike: () async {
+                  try {
+                    await ref.read(supabaseServiceProvider).toggleLike(
+                          postId: post.id!,
+                          ownerId: post.userId!,
+                          ref: ref,
+                        );
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('خطا در لایک پست: $e')),
+                      );
+                    }
+                  }
+                },
+                onComment: () => showCommentsBottomSheet(context, post.id, ref),
+                onTap: () {
+                  // استخراج لیست پست‌های ویدیویی
+                  final profile = ref.read(userProfileProvider(widget.userId));
+                  final videoPosts = profile?.posts
+                          .where((p) =>
+                              p.videoUrl != null && p.videoUrl!.isNotEmpty)
+                          .toList() ??
+                      [];
+                  final initialIndex =
+                      videoPosts.indexWhere((p) => p.id == post.id);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ReelsScreen(
+                        posts: videoPosts,
+                        initialIndex: initialIndex < 0 ? 0 : initialIndex,
                       ),
-                    ],
-                  ),
-                ),
+                    ),
+                  );
+                },
               ),
             ),
-          ]
+          ],
           // نمایش تصویر اگر پست دارای imageUrl باشد
-          else if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
+          if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
             const SizedBox(height: 8),
             GestureDetector(
               onTap: () => _showFullScreenImage(context, post.imageUrl!),

@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
-import 'dart:math' as math;
+import '../../main.dart'; // اضافه کردن import
 
-import '../../main.dart';
 import '../../model/publicPostModel.dart';
 import '../../provider/provider.dart';
-import '../util/widgets.dart';
 import 'ReelsVideoPlayer.dart';
 
 class ReelsScreen extends ConsumerStatefulWidget {
@@ -27,16 +24,13 @@ class ReelsScreen extends ConsumerStatefulWidget {
 
 class _ReelsScreenState extends ConsumerState<ReelsScreen> {
   late PageController _pageController;
-  int _currentIndex = 0;
-  bool _isLoading = false;
-  late SupabaseService _supabaseService;
+  late int _currentIndex;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
     _pageController = PageController(initialPage: _currentIndex);
-    _supabaseService = SupabaseService(supabase);
   }
 
   @override
@@ -45,122 +39,111 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
     super.dispose();
   }
 
-  void _onPageChanged(int index) {
-    if (index == widget.posts.length - 1) {
-      _loadMorePosts();
-    }
-    setState(() {
-      _currentIndex = index;
-    });
-  }
-
-  Future<void> _loadMorePosts() async {
-    if (_isLoading) return;
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    // برای لود کردن پست‌های بیشتر
-    await ref.read(publicPostsProvider.notifier).loadMorePosts();
-
-    setState(() {
-      _isLoading = false;
-    });
-  }
-
-  void _likePost(PublicPostModel post) async {
+  void _onLikePost(PublicPostModel post) async {
     try {
-      await _supabaseService.toggleLike(
-        postId: post.id,
-        ownerId: post.userId,
-        ref: ref,
-      );
+      await ref.read(supabaseServiceProvider).toggleLike(
+            postId: post.id!,
+            ownerId: post.userId!,
+            ref: ref,
+          );
     } catch (e) {
-      print('خطا در لایک کردن پست: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطا در لایک کردن پست')),
-      );
+      print('خطا در لایک پست: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در لایک پست')),
+        );
+      }
     }
   }
 
-  void _sharePost(PublicPostModel post) {
-    String shareText = "ویدیوی جالب از ${post.username}";
-    if (post.title != null && post.title!.isNotEmpty) {
-      shareText += ": ${post.title}";
-    }
-
-    Share.share('$shareText\n\nاین ویدیو را در اپلیکیشن ما مشاهده کنید!');
+  void _onCommentPost(PublicPostModel post) {
+    // نمایش دیالوگ نظر
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.9,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+          ),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('نظرات',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 18)),
+                    IconButton(
+                      icon: Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(),
+              // اینجا می‌توانید لیست نظرات را نمایش دهید
+              Expanded(
+                child: Center(
+                  child: Text('بخش نظرات به زودی فعال می‌شود'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
-  void _showComments(PublicPostModel post) {
-    // استفاده از ویجت موجود برای نمایش کامنت‌ها
-    showCommentsBottomSheet(context, post.id, ref);
+  void _onSharePost(PublicPostModel post) {
+    final url = post.videoUrl ?? 'https://yourdomain.com/post/${post.id}';
+    Share.share('این پست را ببینید: $url');
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // صفحه اصلی ریلز با اسکرول عمودی
-          PageView.builder(
-            controller: _pageController,
-            scrollDirection: Axis.vertical,
-            onPageChanged: _onPageChanged,
-            itemCount: widget.posts.length,
-            itemBuilder: (context, index) {
-              final post = widget.posts[index];
-              if (post.videoUrl == null || post.videoUrl!.isEmpty) {
-                // اگر ویدیو نداشت، یک صفحه خالی یا خطا نمایش دهید
-                return Center(
-                  child: Text(
-                    'این پست ویدیو ندارد',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                );
-              }
-
-              return ReelsVideoPlayer(
-                post: post,
-                isActive: index == _currentIndex,
-                onLike: () => _likePost(post),
-                onComment: () => _showComments(post),
-                onShare: () => _sharePost(post),
-              );
-            },
-          ),
-
-          // دکمه بازگشت
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 10,
-            left: 16,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
-                shape: BoxShape.circle,
-              ),
-              child: IconButton(
-                icon: Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ),
-          ),
-
-          // نشانگر لودینگ
-          if (_isLoading)
-            Positioned(
-              bottom: 70,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              ),
-            ),
-        ],
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: Text(
+          'ریلز',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: PageView.builder(
+        controller: _pageController,
+        scrollDirection: Axis.vertical,
+        itemCount: widget.posts.length,
+        onPageChanged: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        itemBuilder: (context, index) {
+          final post = widget.posts[index];
+          return ReelsVideoPlayer(
+            post: post,
+            isActive: index == _currentIndex,
+            onLike: () => _onLikePost(post),
+            onComment: () => _onCommentPost(post),
+            onShare: () => _onSharePost(post),
+          );
+        },
       ),
     );
   }
