@@ -364,7 +364,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
         const SizedBox(width: 20),
         GestureDetector(
-          onTap: () => _buildPostsList,
+          onTap: null,
           child: Padding(
             padding: const EdgeInsets.only(right: 20),
             child: Column(
@@ -609,8 +609,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   likeCount: post.likeCount,
                   commentCount: post.commentCount,
                   isLiked: post.isLiked,
+                  title: post.title,
+                  content: post.content, // اضافه کردن محتوای پست
                   onLike: () async {
-                    // ... existing code ...
+                    _toggleLike(post);
                   },
                   onComment: () =>
                       showCommentsBottomSheet(context, post.id, ref),

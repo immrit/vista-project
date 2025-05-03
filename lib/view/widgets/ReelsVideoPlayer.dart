@@ -49,6 +49,9 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
   bool _showVolumeControl = false;
   Timer? _volumeControlTimer;
 
+  // برای نمایش کپشن قابل گسترش
+  bool _isCaptionExpanded = false;
+
   @override
   void initState() {
     super.initState();
@@ -375,32 +378,54 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
                           fontSize: 16,
                         ),
                       ),
-                      SizedBox(width: 8),
-                      Container(
-                        padding:
-                            EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          border:
-                              Border.all(color: Colors.white.withOpacity(0.5)),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          'دنبال کردن',
-                          style: TextStyle(color: Colors.white, fontSize: 12),
-                        ),
-                      ),
                     ],
                   ),
-                  SizedBox(height: 8),
-
-                  // کپشن یا توضیحات
-                  if (widget.post.title != null &&
-                      widget.post.title!.isNotEmpty)
-                    Text(
-                      widget.post.title!,
-                      style: TextStyle(color: Colors.white, fontSize: 14),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                  // کپشن با قابلیت گسترش
+                  if (widget.post.content != null &&
+                      widget.post.content.isNotEmpty)
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _isCaptionExpanded = !_isCaptionExpanded;
+                        });
+                      },
+                      child: Container(
+                        margin: EdgeInsets.only(top: 8),
+                        child: RichText(
+                          maxLines: _isCaptionExpanded ? null : 2,
+                          overflow: _isCaptionExpanded
+                              ? TextOverflow.visible
+                              : TextOverflow.ellipsis,
+                          text: TextSpan(
+                            children: [
+                              // TextSpan(
+                              //   text: "${widget.post.username ?? 'کاربر'} ",
+                              //   style: const TextStyle(
+                              //     color: Colors.white,
+                              //     fontWeight: FontWeight.bold,
+                              //     fontSize: 14,
+                              //   ),
+                              // ),
+                              TextSpan(
+                                text: widget.post.content,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              if (!_isCaptionExpanded &&
+                                  widget.post.content.length > 50)
+                                TextSpan(
+                                  text: " ... بیشتر",
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.7),
+                                    fontSize: 14,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                 ],
               ),

@@ -21,6 +21,8 @@ class CustomVideoPlayer extends StatefulWidget {
   final Function? onLike;
   final Function? onComment;
   final Function(Duration)? onVideoPositionTap;
+  final String? title; // این پارامتر را نگه می‌داریم اما استفاده نمی‌کنیم
+  final String? content; // این پارامتر را نگه می‌داریم اما استفاده نمی‌کنیم
 
   const CustomVideoPlayer({
     Key? key,
@@ -39,6 +41,8 @@ class CustomVideoPlayer extends StatefulWidget {
     this.onLike,
     this.onComment,
     this.onVideoPositionTap,
+    this.title,
+    this.content,
   }) : super(key: key);
 
   @override
@@ -66,6 +70,9 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
 
   // برای تشخیص نمایش
   bool _isVisible = false;
+
+  // برای مدیریت وضعیت کپشن
+  bool _isCaptionExpanded = false;
 
   @override
   bool get wantKeepAlive => true; // برای جلوگیری از بازیافت ویجت در ListView
