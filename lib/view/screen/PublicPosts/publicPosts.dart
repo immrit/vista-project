@@ -17,6 +17,7 @@ import '../../../model/MusicModel.dart';
 import '../../../provider/MusicProvider.dart';
 import '../../util/widgets.dart';
 import '../../widgets/CustomVideoPlayer.dart';
+import '../../widgets/ReelsScreen.dart';
 import '../Music/MiniMusicPlayer.dart';
 import '../Stories/story_system.dart';
 import '../searchPage.dart';
@@ -742,11 +743,56 @@ Widget _buildPostItem(
           // نمایش ویدیو اگر پست دارای videoUrl باشد
           if (post.videoUrl != null && post.videoUrl!.isNotEmpty) ...[
             const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12.0),
-              child: CustomVideoPlayer(
-                videoUrl: post.videoUrl!,
-                username: post.username,
+            GestureDetector(
+              onTap: () {
+                // استخراج لیست پست‌های ویدیویی
+                final profile = ref.read(userProfileProvider(post.userId));
+                final videoPosts = profile?.posts
+                        .where(
+                            (p) => p.videoUrl != null && p.videoUrl!.isNotEmpty)
+                        .toList() ??
+                    [];
+                final initialIndex =
+                    videoPosts.indexWhere((p) => p.id == post.id);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ReelsScreen(
+                      posts: videoPosts,
+                      initialIndex: initialIndex < 0 ? 0 : initialIndex,
+                    ),
+                  ),
+                );
+              },
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12.0),
+                child: AspectRatio(
+                  aspectRatio: 9 / 16,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // تصویر کاور یا یک رنگ مشکی ساده
+                      post.imageUrl != null && post.imageUrl!.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: post.imageUrl!,
+                              fit: BoxFit.cover,
+                            )
+                          : Container(color: Colors.black87),
+                      // آیکون پخش وسط
+                      Center(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            shape: BoxShape.circle,
+                          ),
+                          padding: const EdgeInsets.all(16),
+                          child: const Icon(Icons.play_arrow_rounded,
+                              color: Colors.white, size: 48),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ]

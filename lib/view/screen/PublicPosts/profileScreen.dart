@@ -23,6 +23,7 @@ import 'followers and followings/FollowersScreen.dart';
 import 'followers and followings/FollowingScreen.dart';
 import '../ouathUser/editeProfile.dart';
 import 'publicPosts.dart';
+import '../../widgets/ReelsScreen.dart'; // اضافه کن اگر نیست
 
 class ProfileScreen extends ConsumerStatefulWidget {
   final String userId;
@@ -318,73 +319,65 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Widget _buildProfileDetails(ProfileModel profile) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(profile.fullName,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-        if (profile.bio != null) ...[
-          const SizedBox(height: 10),
-          Directionality(
-              textDirection: TextDirection.rtl, child: Text(profile.bio!)),
-        ],
-        const SizedBox(height: 20),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            GestureDetector(
-              onTap: () {
-                Navigator.of(context).push(MaterialPageRoute(
-                    builder: (context) =>
-                        FollowingScreen(userId: widget.userId)));
-              },
-              child: Padding(
-                padding: const EdgeInsets.only(left: 20),
-                child: Column(
-                  children: [
-                    Text(' ${profile.followingCount}',
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
-                    const Text('دنبال شونده ها ',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 20),
-            GestureDetector(
-              onTap: () {
-                Navigator.of(context).push(MaterialPageRoute(
-                    builder: (context) =>
-                        FollowersScreen(userId: widget.userId)));
-              },
-              child: Column(
-                children: [
-                  Text(' ${profile.followersCount}',
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                  const Text('دنبال کنندگان',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-                ],
-              ),
-            ),
-            const SizedBox(width: 20),
-            GestureDetector(
-              onTap: () => _buildPostsList,
-              child: Padding(
-                padding: const EdgeInsets.only(right: 20),
-                child: Column(
-                  children: [
-                    Text(' ${profile.posts.length}',
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
-                    const Text(' پست‌ها',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(profile.fullName,
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+      if (profile.bio != null) ...[
+        const SizedBox(height: 10),
+        Directionality(
+            textDirection: TextDirection.rtl, child: Text(profile.bio!)),
       ],
-    );
+      const SizedBox(height: 20),
+      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        GestureDetector(
+          onTap: () {
+            Navigator.of(context).push(MaterialPageRoute(
+                builder: (context) => FollowingScreen(userId: widget.userId)));
+          },
+          child: Padding(
+            padding: const EdgeInsets.only(left: 20),
+            child: Column(
+              children: [
+                Text(' ${profile.followingCount}',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                const Text('دنبال شونده ها ',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 20),
+        GestureDetector(
+          onTap: () {
+            Navigator.of(context).push(MaterialPageRoute(
+                builder: (context) => FollowersScreen(userId: widget.userId)));
+          },
+          child: Column(
+            children: [
+              Text(' ${profile.followersCount}',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              const Text('دنبال کنندگان',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ),
+        const SizedBox(width: 20),
+        GestureDetector(
+          onTap: () => _buildPostsList,
+          child: Padding(
+            padding: const EdgeInsets.only(right: 20),
+            child: Column(
+              children: [
+                Text(' ${profile.posts.length}',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                const Text(' پست‌ها',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+        )
+      ])
+    ]);
   }
 
   SliverList _buildPostsList(ProfileModel profile) {
@@ -594,11 +587,56 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           // Image section
           if (post.videoUrl != null && post.videoUrl!.isNotEmpty) ...[
             const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12.0),
-              child: CustomVideoPlayer(
-                videoUrl: post.videoUrl!,
-                username: post.username,
+            GestureDetector(
+              onTap: () {
+                // استخراج لیست پست‌های ویدیویی
+                final profile = ref.read(userProfileProvider(widget.userId));
+                final videoPosts = profile?.posts
+                        .where(
+                            (p) => p.videoUrl != null && p.videoUrl!.isNotEmpty)
+                        .toList() ??
+                    [];
+                final initialIndex =
+                    videoPosts.indexWhere((p) => p.id == post.id);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ReelsScreen(
+                      posts: videoPosts,
+                      initialIndex: initialIndex < 0 ? 0 : initialIndex,
+                    ),
+                  ),
+                );
+              },
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12.0),
+                child: AspectRatio(
+                  aspectRatio: 9 / 16,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // تصویر کاور یا یک رنگ مشکی ساده
+                      post.imageUrl != null && post.imageUrl!.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: post.imageUrl!,
+                              fit: BoxFit.cover,
+                            )
+                          : Container(color: Colors.black87),
+                      // آیکون پخش وسط
+                      Center(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            shape: BoxShape.circle,
+                          ),
+                          padding: const EdgeInsets.all(16),
+                          child: const Icon(Icons.play_arrow_rounded,
+                              color: Colors.white, size: 48),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ]

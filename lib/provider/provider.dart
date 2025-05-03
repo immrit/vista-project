@@ -1732,6 +1732,38 @@ class FollowingPostsNotifier
   Future<void> loadMorePosts() async {
     await _loadMorePosts();
   }
+
+  void likePost(String postId) async {
+    final currentPosts = state.value ?? [];
+    final postIndex = currentPosts.indexWhere((post) => post.id == postId);
+
+    if (postIndex == -1) return;
+
+    final post = currentPosts[postIndex];
+    final ownerId = post.userId;
+
+    try {
+      // ابتدا وضعیت لایک را در UI تغییر می‌دهیم
+      final updatedPost = post.copyWith(
+        isLiked: !post.isLiked,
+        likeCount: post.isLiked ? post.likeCount - 1 : post.likeCount + 1,
+      );
+
+      final updatedPosts = [...currentPosts];
+      updatedPosts[postIndex] = updatedPost;
+      state = AsyncValue.data(updatedPosts);
+
+      // سپس درخواست به سرور ارسال می‌کنیم
+      await supabase.functions.invoke('toggle-like', body: {
+        'post_id': postId,
+        'owner_id': ownerId,
+      });
+    } catch (e, stackTrace) {
+      print('خطا در لایک کردن پست: $e');
+      // در صورت خطا، وضعیت قبلی را برمی‌گردانیم
+      state = AsyncValue.data(currentPosts);
+    }
+  }
 }
 
 final fetchFollowingPostsProvider = StateNotifierProvider<
