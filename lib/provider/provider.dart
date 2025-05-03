@@ -2012,3 +2012,7 @@ final currentUserProvider = FutureProvider<Map<String, dynamic>>((ref) async {
       await supabase.from('profiles').select().eq('id', userId).single();
   return response;
 });
+final videoPositionProvider =
+    StateProvider.family<Duration, String>((ref, videoId) {
+  return Duration.zero;
+});

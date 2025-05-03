@@ -12,6 +12,8 @@ class ReelsVideoPlayer extends StatefulWidget {
   final VoidCallback onLike;
   final VoidCallback onComment;
   final VoidCallback onShare;
+  final Duration? initialPosition;
+  final Function(Duration)? onPositionChanged;
 
   const ReelsVideoPlayer({
     Key? key,
@@ -20,6 +22,8 @@ class ReelsVideoPlayer extends StatefulWidget {
     required this.onLike,
     required this.onComment,
     required this.onShare,
+    this.initialPosition, // پارامتر جدید
+    this.onPositionChanged, // اضافه کردن پارامتر جدید
   }) : super(key: key);
 
   @override
@@ -75,7 +79,10 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
       _videoDuration = _controller.value.duration;
 
       _controller.setLooping(true);
-
+      // تنظیم موقعیت اولیه اگر تعریف شده باشد
+      if (widget.initialPosition != null) {
+        await _controller.seekTo(widget.initialPosition!);
+      }
       if (mounted) {
         setState(() {
           _isInitialized = true;
@@ -111,6 +118,8 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
       setState(() {
         _currentPosition = position;
       });
+      // فراخوانی callback برای اطلاع از تغییر موقعیت
+      widget.onPositionChanged?.call(position);
     }
   }
 

@@ -586,7 +586,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           // Content and Music section
           _buildPostContent(post, context),
           // Image section
-          // ... existing code ...
           if (post.videoUrl != null && post.videoUrl!.isNotEmpty) ...[
             const SizedBox(height: 8),
             ClipRRect(
@@ -611,24 +610,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   commentCount: post.commentCount,
                   isLiked: post.isLiked,
                   onLike: () async {
-                    try {
-                      await ref.read(supabaseServiceProvider).toggleLike(
-                            postId: post.id!,
-                            ownerId: post.userId!,
-                            ref: ref,
-                          );
-                    } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('خطا در لایک پست: $e')),
-                        );
-                      }
-                    }
+                    // ... existing code ...
                   },
                   onComment: () =>
                       showCommentsBottomSheet(context, post.id, ref),
+                  onVideoPositionTap: (position) {
+                    ref
+                        .read(videoPositionProvider(post.id ?? '').notifier)
+                        .state = position;
+                  },
                   onTap: () {
-                    // استخراج لیست پست‌های ویدیویی
                     final profile =
                         ref.read(userProfileProvider(widget.userId));
                     final videoPosts = profile?.posts
@@ -638,12 +629,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         [];
                     final initialIndex =
                         videoPosts.indexWhere((p) => p.id == post.id);
+
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => ReelsScreen(
                           posts: videoPosts,
                           initialIndex: initialIndex < 0 ? 0 : initialIndex,
+                          initialPositions: {
+                            post.id ?? '':
+                                ref.read(videoPositionProvider(post.id ?? '')),
+                          },
                         ),
                       ),
                     );

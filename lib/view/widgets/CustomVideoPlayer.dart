@@ -20,6 +20,7 @@ class CustomVideoPlayer extends StatefulWidget {
   final bool? isLiked;
   final Function? onLike;
   final Function? onComment;
+  final Function(Duration)? onVideoPositionTap;
 
   const CustomVideoPlayer({
     Key? key,
@@ -37,6 +38,7 @@ class CustomVideoPlayer extends StatefulWidget {
     this.isLiked,
     this.onLike,
     this.onComment,
+    this.onVideoPositionTap,
   }) : super(key: key);
 
   @override
@@ -258,7 +260,16 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
         }
       },
       child: GestureDetector(
-        onTap: widget.onTap ?? _togglePlay,
+        onTap: widget.onTap != null
+            ? () {
+                // اگر onVideoPositionTap تعریف شده باشد، موقعیت فعلی را پاس می‌دهیم
+                if (widget.onVideoPositionTap != null) {
+                  widget.onVideoPositionTap!(_currentPosition);
+                }
+                // اجرای onTap اصلی
+                widget.onTap!();
+              }
+            : _togglePlay,
         onDoubleTap: _showLikeAnimation,
         child: Stack(
           alignment: Alignment.center,

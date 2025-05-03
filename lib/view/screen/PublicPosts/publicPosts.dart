@@ -12,6 +12,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 import '../../../main.dart';
 import '../../../model/MusicModel.dart';
 import '../../../provider/MusicProvider.dart';
@@ -743,61 +744,70 @@ Widget _buildPostItem(
           // نمایش ویدیو اگر پست دارای videoUrl باشد
           if (post.videoUrl != null && post.videoUrl!.isNotEmpty) ...[
             const SizedBox(height: 8),
-            GestureDetector(
-              onTap: () {
-                // استخراج لیست پست‌های ویدیویی
-                final profile = ref.read(userProfileProvider(post.userId));
-                final videoPosts = profile?.posts
-                        .where(
-                            (p) => p.videoUrl != null && p.videoUrl!.isNotEmpty)
-                        .toList() ??
-                    [];
-                final initialIndex =
-                    videoPosts.indexWhere((p) => p.id == post.id);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ReelsScreen(
-                      posts: videoPosts,
-                      initialIndex: initialIndex < 0 ? 0 : initialIndex,
-                    ),
-                  ),
-                );
-              },
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12.0),
-                child: AspectRatio(
-                  aspectRatio: 9 / 16,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      // تصویر کاور یا یک رنگ مشکی ساده
-                      post.imageUrl != null && post.imageUrl!.isNotEmpty
-                          ? CachedNetworkImage(
-                              imageUrl: post.imageUrl!,
-                              fit: BoxFit.cover,
-                            )
-                          : Container(color: Colors.black87),
-                      // آیکون پخش وسط
-                      Center(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.black54,
-                            shape: BoxShape.circle,
-                          ),
-                          padding: const EdgeInsets.all(16),
-                          child: const Icon(Icons.play_arrow_rounded,
-                              color: Colors.white, size: 48),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12.0),
+              child: VisibilityDetector(
+                key: Key('profile_video_${post.id}'),
+                onVisibilityChanged: (visibilityInfo) {
+                  // فقط برای لاگ: میزان قابل مشاهده بودن
+                  print(
+                      'Video ${post.id} visibility: ${visibilityInfo.visibleFraction}');
+                },
+                child: CustomVideoPlayer(
+                  key: ValueKey('video_player_${post.id}'),
+                  videoUrl: post.videoUrl!,
+                  autoplay: true,
+                  muted: true,
+                  showProgress: true,
+                  looping: true,
+                  postId: post.id,
+                  username: post.username,
+                  likeCount: post.likeCount,
+                  commentCount: post.commentCount,
+                  isLiked: post.isLiked,
+                  onLike: () async {
+                    try {
+                      await ref.read(supabaseServiceProvider).toggleLike(
+                            postId: post.id!,
+                            ownerId: post.userId!,
+                            ref: ref,
+                          );
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('خطا در لایک پست: $e')),
+                        );
+                      }
+                    }
+                  },
+                  onComment: () =>
+                      showCommentsBottomSheet(context, post.id, ref),
+                  onTap: () {
+                    // استخراج لیست پست‌های ویدیویی
+                    final profile = ref.read(userProfileProvider(post.userId));
+                    final videoPosts = profile?.posts
+                            .where((p) =>
+                                p.videoUrl != null && p.videoUrl!.isNotEmpty)
+                            .toList() ??
+                        [];
+                    final initialIndex =
+                        videoPosts.indexWhere((p) => p.id == post.id);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ReelsScreen(
+                          posts: videoPosts,
+                          initialIndex: initialIndex < 0 ? 0 : initialIndex,
                         ),
                       ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
               ),
             ),
-          ]
+          ],
           // نمایش تصویر اگر پست دارای imageUrl باشد
-          else if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
+          if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
             const SizedBox(height: 8),
             GestureDetector(
               onTap: () {
