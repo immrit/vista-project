@@ -70,8 +70,9 @@ class PublicPostModel extends Equatable {
       avatarUrl: _parseAvatarUrl(map),
       likeCount: _parseInt(map, 'like_count'),
       isLiked: _parseBool(map, 'is_liked'),
-      isVerified: _parseVerified(map),
-      verificationType: _parseVerificationType(map),
+      isVerified: map['is_verified'] ?? false,
+      verificationType:
+          _parseVerificationType(map), // <-- فقط همین خط تغییر کند
       commentCount: _parseInt(map, 'comment_count'),
       hashtags: _parseHashtags(map),
       musicUrl: _parseString(map, 'music_url', defaultValue: ""),
@@ -122,18 +123,18 @@ class PublicPostModel extends Equatable {
   }
 
   static VerificationType _parseVerificationType(Map<String, dynamic> map) {
-    final verificationType = map['profiles']?['verification_type'];
-    if (verificationType != null) {
-      try {
-        return VerificationType.values.firstWhere(
-          (type) => type.name == verificationType.toString(),
-          orElse: () => VerificationType.none,
-        );
-      } catch (e) {
-        return VerificationType.none;
-      }
+    final dynamic raw =
+        map['verification_type'] ?? map['profiles']?['verification_type'];
+    if (raw == null) return VerificationType.none;
+    final String value = raw.toString();
+    try {
+      return VerificationType.values.firstWhere(
+        (type) => type.name == value,
+        orElse: () => VerificationType.none,
+      );
+    } catch (_) {
+      return VerificationType.none;
     }
-    return VerificationType.none;
   }
 
   static List<String> _parseHashtags(Map<String, dynamic> map) {

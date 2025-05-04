@@ -609,8 +609,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   likeCount: post.likeCount,
                   commentCount: post.commentCount,
                   isLiked: post.isLiked,
-                  title: post.title,
                   content: post.content, // اضافه کردن محتوای پست
+                  isVerified: post.isVerified, // حتما از post
+                  verificationType: post.verificationType, // حتما از post
                   onLike: () async {
                     _toggleLike(post);
                   },

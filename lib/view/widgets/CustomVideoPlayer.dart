@@ -1,9 +1,13 @@
 import 'dart:async';
+import 'package:Vista/view/widgets/VideoPlayerConfig.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../model/ProfileModel.dart';
 
 class CustomVideoPlayer extends StatefulWidget {
   final String videoUrl;
@@ -23,6 +27,8 @@ class CustomVideoPlayer extends StatefulWidget {
   final Function(Duration)? onVideoPositionTap;
   final String? title; // این پارامتر را نگه می‌داریم اما استفاده نمی‌کنیم
   final String? content; // این پارامتر را نگه می‌داریم اما استفاده نمی‌کنیم
+  final bool isVerified;
+  final VerificationType verificationType;
 
   const CustomVideoPlayer({
     Key? key,
@@ -43,6 +49,8 @@ class CustomVideoPlayer extends StatefulWidget {
     this.onVideoPositionTap,
     this.title,
     this.content,
+    this.isVerified = false,
+    this.verificationType = VerificationType.none,
   }) : super(key: key);
 
   @override
@@ -52,6 +60,8 @@ class CustomVideoPlayer extends StatefulWidget {
 class _CustomVideoPlayerState extends State<CustomVideoPlayer>
     with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   late VideoPlayerController _controller;
+  final VideoPlayerConfig _config = VideoPlayerConfig();
+  bool _isFullScreen = false;
   bool _isInitialized = false;
   bool _isPlaying = false;
   bool _isMuted = true;
@@ -75,13 +85,24 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
   bool _isCaptionExpanded = false;
 
   @override
-  bool get wantKeepAlive => true; // برای جلوگیری از بازیافت ویجت در ListView
+  bool get wantKeepAlive {
+    // Smart keep-alive based on video engagement
+    return _isInitialized && _playCount > 3;
+  }
+
+  int _playCount = 0;
+  bool _isDataSaverMode = false;
 
   @override
   void initState() {
     super.initState();
-    _isMuted = widget.muted;
+    _loadConfig();
     _initializePlayer();
+  }
+
+  Future<void> _loadConfig() async {
+    _isDataSaverMode = await _config.getDataSaverMode();
+    setState(() {});
   }
 
   @override
@@ -94,9 +115,15 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
 
   Future<void> _initializePlayer() async {
     try {
-      _controller = VideoPlayerController.networkUrl(
-        Uri.parse(widget.videoUrl),
-      );
+      final file =
+          await _config.videoCacheManager.getSingleFile(widget.videoUrl);
+
+      _controller = VideoPlayerController.file(file);
+
+      if (_isDataSaverMode) {
+        // Set low quality for data saver mode
+        // Implementation depends on your video source
+      }
 
       setState(() {
         _isBuffering = true;
@@ -114,7 +141,15 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
           _isBuffering = false;
         });
 
-        _controller.addListener(_videoListener);
+        _controller.addListener(() {
+          // Track play count for smart keep-alive
+          if (_controller.value.isPlaying && !_isPlaying) {
+            _playCount++;
+          }
+          _isPlaying = _controller.value.isPlaying;
+
+          _videoListener();
+        });
 
         // بعد از آماده‌سازی، بررسی کنید آیا باید پخش شود یا خیر
         if (widget.autoplay && _isVisible) {
@@ -236,11 +271,61 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
     return "$minutes:$seconds";
   }
 
+  void _toggleFullScreen() {
+    setState(() {
+      _isFullScreen = !_isFullScreen;
+    });
+
+    if (_isFullScreen) {
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
+    } else {
+      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(
         context); // این فراخوانی برای AutomaticKeepAliveClientMixin لازم است
 
+    return Theme(
+      data: Theme.of(context).copyWith(
+        // Support Material 3 theming
+        colorScheme: Theme.of(context).colorScheme,
+      ),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+        child: _isFullScreen ? _buildFullScreenPlayer() : _buildNormalPlayer(),
+      ),
+    );
+  }
+
+  Widget _buildFullScreenPlayer() {
+    return Scaffold(
+      body: Stack(
+        children: [
+          // ...existing video player stack...
+          Positioned(
+            top: 16,
+            right: 16,
+            child: IconButton(
+              icon: const Icon(Icons.fullscreen_exit),
+              onPressed: _toggleFullScreen,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNormalPlayer() {
     return VisibilityDetector(
       key: ValueKey('video-${widget.videoUrl}-${widget.postId ?? ""}'),
       onVisibilityChanged: (visibilityInfo) {

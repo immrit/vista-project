@@ -6,6 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../../main.dart';
 import '../../../provider/provider.dart';
 import '../../util/themes.dart';
+import '../../widgets/VideoPlayerConfig.dart';
 import '../ouathUser/updatePassword.dart';
 import 'ContactUs.dart';
 import 'TermsAndConditions.dart';
@@ -161,6 +162,42 @@ class Settings extends ConsumerWidget {
                       ),
 
                       const SizedBox(height: 16),
+
+                      // بخش تنظیمات پخش ویدیو
+                      _buildSectionHeader(
+                          'تنظیمات پخش ویدیو', Icons.play_circle_outline),
+                      Card(
+                        margin: const EdgeInsets.symmetric(vertical: 8.0),
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          children: [
+                            SwitchListTile(
+                              title: const Text('حالت ذخیره داده'),
+                              subtitle: const Text('پخش ویدیو با کیفیت پایین'),
+                              value: ref.watch(dataSaverProvider),
+                              onChanged: (value) {
+                                ref.read(dataSaverProvider.notifier).state =
+                                    value;
+                                VideoPlayerConfig().setDataSaverMode(value);
+                              },
+                            ),
+                            const Divider(height: 1),
+                            SwitchListTile(
+                              title: const Text('تنظیم خودکار کیفیت'),
+                              subtitle: const Text('بر اساس سرعت اینترنت'),
+                              value: ref.watch(autoQualityProvider),
+                              onChanged: (value) {
+                                ref.read(autoQualityProvider.notifier).state =
+                                    value;
+                                VideoPlayerConfig().setAutoQuality(value);
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),

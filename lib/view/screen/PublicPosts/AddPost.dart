@@ -11,6 +11,7 @@ import 'package:video_player/video_player.dart';
 import '../../../main.dart';
 import '../../../services/PostImageUploadService.dart';
 import '../../../provider/provider.dart';
+import '../../widgets/VideoTrimmer.dart';
 
 class AddPublicPostScreen extends ConsumerStatefulWidget {
   const AddPublicPostScreen({super.key});
@@ -109,15 +110,42 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
         await _initializeVideoPlayerWeb(
             _selectedVideoBytes!, _selectedVideoName!);
       } else {
-        setState(() {
-          _selectedVideo = File(result.files.single.path!);
-          _selectedVideoBytes = null;
-          _selectedVideoName = null;
-          _selectedImage = null;
-          _selectedImageBytes = null;
-          _selectedImageName = null;
-        });
-        await _initializeVideoPlayerMobile(_selectedVideo!);
+        final file = File(result.files.single.path!);
+
+        // نمایش صفحه برش ویدیو
+        // if (mounted) {
+        //   final trimmedVideo = await Navigator.push<File>(
+        //     context,
+        //     MaterialPageRoute(
+        //       builder: (context) => CustomVideoTrimmer(
+        //         videoFile: file,
+        //         onVideoSaved: (trimmedFile) {
+        //           setState(() {
+        //             _selectedVideo = trimmedFile;
+        //             _selectedVideoBytes = null;
+        //             _selectedVideoName = null;
+        //             _selectedImage = null;
+        //             _selectedImageBytes = null;
+        //             _selectedImageName = null;
+        //           });
+        //           _initializeVideoPlayerMobile(_selectedVideo!);
+        //         },
+        //       ),
+        //     ),
+        //   );
+
+        //   if (trimmedVideo != null) {
+        //     setState(() {
+        //       _selectedVideo = trimmedVideo;
+        //       _selectedVideoBytes = null;
+        //       _selectedVideoName = null;
+        //       _selectedImage = null;
+        //       _selectedImageBytes = null;
+        //       _selectedImageName = null;
+        //     });
+        //     await _initializeVideoPlayerMobile(_selectedVideo!);
+        //   }
+        // }
       }
     }
   }
@@ -328,169 +356,108 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                             _selectedVideoBytes == null &&
                             _selectedImage == null &&
                             _selectedImageBytes == null)
-                          Row(
-                            children: [
-                              Expanded(
-                                child: InkWell(
-                                  onTap: _pickImage,
-                                  child: DottedBorder(
-                                    borderType: BorderType.RRect,
-                                    radius: const Radius.circular(8),
-                                    color: secondaryTextColor,
-                                    dashPattern: const [6, 3],
-                                    child: Container(
-                                      height: 50,
-                                      alignment: Alignment.center,
-                                      child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          Icon(Icons.photo_library_outlined,
-                                              color: secondaryTextColor),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            'افزودن تصویر',
-                                            style: TextStyle(
-                                                color: secondaryTextColor),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: InkWell(
-                                  onTap: _pickVideo,
-                                  child: DottedBorder(
-                                    borderType: BorderType.RRect,
-                                    radius: const Radius.circular(8),
-                                    color: secondaryTextColor,
-                                    dashPattern: const [6, 3],
-                                    child: Container(
-                                      height: 50,
-                                      alignment: Alignment.center,
-                                      child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          Icon(Icons.videocam_outlined,
-                                              color: secondaryTextColor),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            'افزودن ویدیو',
-                                            style: TextStyle(
-                                                color: secondaryTextColor),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
 
-                        // نمایش پیش‌نمایش ویدیو انتخاب شده
-                        if (_selectedVideo != null ||
-                            _selectedVideoBytes != null)
-                          Container(
-                            margin: const EdgeInsets.only(top: 16),
-                            decoration: BoxDecoration(
-                              color: cardColor,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                ClipRRect(
-                                  borderRadius: const BorderRadius.vertical(
-                                      top: Radius.circular(8)),
-                                  child: Container(
-                                    height: 200,
-                                    color: Colors.black87,
-                                    child: _videoPlayerController != null &&
-                                            _videoPlayerController!
-                                                .value.isInitialized
-                                        ? Stack(
-                                            alignment: Alignment.center,
-                                            children: [
-                                              AspectRatio(
-                                                aspectRatio:
-                                                    _videoPlayerController!
-                                                        .value.aspectRatio,
-                                                child: VideoPlayer(
-                                                    _videoPlayerController!),
-                                              ),
-                                              GestureDetector(
-                                                onTap: () {
-                                                  setState(() {
-                                                    if (_videoPlayerController!
-                                                        .value.isPlaying) {
+                          // نمایش پیش‌نمایش ویدیو انتخاب شده
+                          if (_selectedVideo != null ||
+                              _selectedVideoBytes != null)
+                            Container(
+                              margin: const EdgeInsets.only(top: 16),
+                              decoration: BoxDecoration(
+                                color: cardColor,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: const BorderRadius.vertical(
+                                        top: Radius.circular(8)),
+                                    child: Container(
+                                      height: 200,
+                                      color: Colors.black87,
+                                      child: _videoPlayerController != null &&
+                                              _videoPlayerController!
+                                                  .value.isInitialized
+                                          ? Stack(
+                                              alignment: Alignment.center,
+                                              children: [
+                                                AspectRatio(
+                                                  aspectRatio:
                                                       _videoPlayerController!
-                                                          .pause();
-                                                    } else {
-                                                      _videoPlayerController!
-                                                          .play();
-                                                    }
-                                                  });
-                                                },
-                                                child: Icon(
-                                                  _videoPlayerController!
-                                                          .value.isPlaying
-                                                      ? Icons.pause_circle
-                                                      : Icons.play_circle_fill,
-                                                  size: 64,
-                                                  color: Colors.white
-                                                      .withOpacity(0.8),
+                                                          .value.aspectRatio,
+                                                  child: VideoPlayer(
+                                                      _videoPlayerController!),
                                                 ),
+                                                GestureDetector(
+                                                  onTap: () {
+                                                    setState(() {
+                                                      if (_videoPlayerController!
+                                                          .value.isPlaying) {
+                                                        _videoPlayerController!
+                                                            .pause();
+                                                      } else {
+                                                        _videoPlayerController!
+                                                            .play();
+                                                      }
+                                                    });
+                                                  },
+                                                  child: Icon(
+                                                    _videoPlayerController!
+                                                            .value.isPlaying
+                                                        ? Icons.pause_circle
+                                                        : Icons
+                                                            .play_circle_fill,
+                                                    size: 64,
+                                                    color: Colors.white
+                                                        .withOpacity(0.8),
+                                                  ),
+                                                ),
+                                              ],
+                                            )
+                                          : Center(
+                                              child: Icon(
+                                                Icons.play_circle_fill,
+                                                size: 64,
+                                                color: Colors.white
+                                                    .withOpacity(0.8),
                                               ),
-                                            ],
-                                          )
-                                        : Center(
-                                            child: Icon(
-                                              Icons.play_circle_fill,
-                                              size: 64,
-                                              color:
-                                                  Colors.white.withOpacity(0.8),
                                             ),
-                                          ),
+                                    ),
                                   ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 8),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          'ویدیو انتخاب شده: ${_selectedVideoName ?? _selectedVideo?.path.split('/').last ?? 'ویدیو'}',
-                                          style: const TextStyle(
-                                            fontSize: 13,
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 8),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            'ویدیو انتخاب شده: ${_selectedVideoName ?? _selectedVideo?.path.split('/').last ?? 'ویدیو'}',
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
                                           ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(Icons.close, size: 20),
-                                        onPressed: () {
-                                          setState(() {
-                                            _selectedVideo = null;
-                                            _selectedVideoBytes = null;
-                                            _selectedVideoName = null;
-                                            _videoPlayerController?.dispose();
-                                            _videoPlayerController = null;
-                                          });
-                                        },
-                                      ),
-                                    ],
+                                        IconButton(
+                                          icon:
+                                              const Icon(Icons.close, size: 20),
+                                          onPressed: () {
+                                            setState(() {
+                                              _selectedVideo = null;
+                                              _selectedVideoBytes = null;
+                                              _selectedVideoName = null;
+                                              _videoPlayerController?.dispose();
+                                              _videoPlayerController = null;
+                                            });
+                                          },
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              ],
-                            ),
-                          ).animate().fadeIn().slideY(begin: 0.2, end: 0),
+                                ],
+                              ),
+                            ).animate().fadeIn().slideY(begin: 0.2, end: 0),
 
                         // پیش‌نمایش تصویر
                         if (_selectedImage != null ||

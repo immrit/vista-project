@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:Vista/view/util/widgets.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import '../../model/publicPostModel.dart';
@@ -56,6 +57,33 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
   void initState() {
     super.initState();
     _initializePlayer();
+    // برای دیباگ وضعیت تیک تأیید
+    print('Username: ${widget.post.username}');
+    print('Is Verified: ${widget.post.isVerified}');
+    print('Has Blue Badge: ${widget.post.hasBlueBadge}');
+    print('Has Gold Badge: ${widget.post.hasGoldBadge}');
+    print('Has Black Badge: ${widget.post.hasBlackBadge}');
+    _fetchVerificationType();
+  }
+
+  String? _directVerificationType;
+
+  Future<void> _fetchVerificationType() async {
+    try {
+      final response = await Supabase.instance.client
+          .from('profiles')
+          .select('verification_type')
+          .eq('username', widget.post.username)
+          .single();
+
+      setState(() {
+        _directVerificationType = response['verification_type'];
+      });
+
+      print('Direct verification type from API: $_directVerificationType');
+    } catch (e) {
+      print('Error fetching verification type: $e');
+    }
   }
 
   @override
@@ -370,13 +398,21 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
                             : null,
                       ),
                       SizedBox(width: 8),
-                      Text(
-                        widget.post.username ?? "کاربر",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
+                      Row(
+                        children: [
+                          Text(
+                            widget.post.username ?? "کاربر",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          if (widget.post.isVerified) ...[
+                            SizedBox(width: 4),
+                            _buildVerificationBadge(),
+                          ],
+                        ],
                       ),
                     ],
                   ),
@@ -398,14 +434,6 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
                               : TextOverflow.ellipsis,
                           text: TextSpan(
                             children: [
-                              // TextSpan(
-                              //   text: "${widget.post.username ?? 'کاربر'} ",
-                              //   style: const TextStyle(
-                              //     color: Colors.white,
-                              //     fontWeight: FontWeight.bold,
-                              //     fontSize: 14,
-                              //   ),
-                              // ),
                               TextSpan(
                                 text: widget.post.content,
                                 style: const TextStyle(
@@ -500,5 +528,36 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
         ],
       ),
     );
+  }
+
+  Widget _buildVerificationBadge() {
+    if (!widget.post.isVerified) return const SizedBox.shrink();
+
+    // دریافت نوع تیک تأیید
+    // final verificationType = widget.post.verificationType;
+
+    // برای دیباگ
+    // print('Verification Type for ${widget.post.username}: $verificationType');
+    final verificationType =
+        _directVerificationType ?? widget.post.verificationType;
+
+    switch (verificationType) {
+      case 'goldTick':
+        return const Icon(Icons.verified, color: Colors.amber, size: 14);
+      case 'blueTick':
+        return const Icon(Icons.verified, color: Colors.blue, size: 14);
+      case 'blackTick':
+        return Container(
+          padding: const EdgeInsets.all(.1),
+          decoration: const BoxDecoration(
+            color: Colors.white60,
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.verified, color: Colors.black, size: 12),
+        );
+      default:
+        // اگر نوع تیک مشخص نباشد، تیک آبی نمایش داده می‌شود
+        return const Icon(Icons.verified, color: Colors.blue, size: 14);
+    }
   }
 }

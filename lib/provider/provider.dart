@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../model/SearchResut.dart';
 import '../services/PostImageUploadService.dart';
+import '../view/widgets/VideoPlayerConfig.dart';
 import '/model/ProfileModel.dart';
 import '/model/notificationModel.dart';
 import '/model/publicPostModel.dart';
@@ -150,6 +151,8 @@ final fetchPublicPosts = FutureProvider<List<PublicPostModel>>((ref) async {
         'avatar_url': avatarUrl,
         'is_verified': isVerified,
         'comment_count': commentCount,
+        'verification_type':
+            profile['verification_type'], // اضافه کردن verification_type
       });
     }).toList();
   } catch (e) {
@@ -235,6 +238,8 @@ class PublicPostsNotifier
           'avatar_url': post['profiles']['avatar_url'] ?? '',
           'is_verified': post['profiles']['is_verified'] ?? false,
           'comment_count': comments.length,
+          'verification_type': post['profiles']
+              ['verification_type'], // اضافه کردن verification_type
         });
       }).toList();
 
@@ -1308,6 +1313,8 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
           'avatar_url': post['profiles']['avatar_url'] ?? '',
           'is_verified': post['profiles']['is_verified'] ?? false,
           'comment_count': comments.length,
+          'verification_type': post['profiles']
+              ['verification_type'], // اضافه کردن verification_type
         });
       }).toList();
 
@@ -1702,6 +1709,8 @@ class FollowingPostsNotifier
           'avatar_url': profile['avatar_url'] ?? '',
           'is_verified': profile['is_verified'] ?? false,
           'comment_count': comments.length,
+          'verification_type':
+              profile['verification_type'], // اضافه کردن verification_type
         });
       }).toList();
 
@@ -2016,3 +2025,78 @@ final videoPositionProvider =
     StateProvider.family<Duration, String>((ref, videoId) {
   return Duration.zero;
 });
+
+// Video Player Settings Providers
+final dataSaverProvider = StateProvider<bool>((ref) => false);
+final autoQualityProvider = StateProvider<bool>((ref) => true);
+final videoQualityProvider = StateProvider<String>((ref) => 'auto');
+
+final videoPlayerConfigProvider = Provider<VideoPlayerConfig>((ref) {
+  return VideoPlayerConfig();
+});
+
+// Video Position Cache Provider
+final videoPositionsProvider =
+    StateProvider.family<Duration, String>((ref, videoId) {
+  return Duration.zero;
+});
+
+// Video Player Theme Provider
+final videoPlayerThemeProvider = Provider<VideoPlayerTheme>((ref) {
+  final isDark = ref.watch(themeProvider).brightness == Brightness.dark;
+  return VideoPlayerTheme(
+    isDark: isDark,
+    accentColor: isDark ? Colors.white : Colors.black,
+    backgroundColor: isDark ? Colors.black : Colors.white,
+  );
+});
+
+class VideoPlayerTheme {
+  final bool isDark;
+  final Color accentColor;
+  final Color backgroundColor;
+
+  VideoPlayerTheme({
+    required this.isDark,
+    required this.accentColor,
+    required this.backgroundColor,
+  });
+}
+
+// Video Playback State Provider
+final playbackStateProvider =
+    StateProvider.family<PlaybackState, String>((ref, videoId) {
+  return PlaybackState();
+});
+
+class PlaybackState {
+  final bool isPlaying;
+  final bool isBuffering;
+  final bool isMuted;
+  final Duration position;
+  final Duration duration;
+
+  PlaybackState({
+    this.isPlaying = false,
+    this.isBuffering = false,
+    this.isMuted = false,
+    this.position = Duration.zero,
+    this.duration = Duration.zero,
+  });
+
+  PlaybackState copyWith({
+    bool? isPlaying,
+    bool? isBuffering,
+    bool? isMuted,
+    Duration? position,
+    Duration? duration,
+  }) {
+    return PlaybackState(
+      isPlaying: isPlaying ?? this.isPlaying,
+      isBuffering: isBuffering ?? this.isBuffering,
+      isMuted: isMuted ?? this.isMuted,
+      position: position ?? this.position,
+      duration: duration ?? this.duration,
+    );
+  }
+}
