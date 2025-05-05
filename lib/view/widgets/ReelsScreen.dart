@@ -91,18 +91,50 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
     }
   }
 
-  Future<void> _likePost(PublicPostModel post) async {
+  Future<void> _likeReel(PublicPostModel reel) async {
     try {
-      await _supabaseService.toggleLike(
-        postId: post.id!,
-        ownerId: post.userId!,
-        ref: ref,
+      // Optimistic update - بروزرسانی فوری UI
+      final updatedReel = reel.copyWith(
+        isLiked: !reel.isLiked,
+        likeCount: reel.isLiked ? reel.likeCount - 1 : reel.likeCount + 1,
       );
+
+      // بروزرسانی state محلی
+      setState(() {
+        final index = widget.posts.indexWhere((post) => post.id == reel.id);
+        if (index != -1) {
+          widget.posts[index] = updatedReel;
+        }
+      });
+
+      // بروزرسانی state عمومی
+      ref.read(publicPostsProvider.notifier).updatePost(updatedReel);
+
+      // ارسال درخواست به سرور
+      await ref.read(supabaseServiceProvider).toggleLike(
+            postId: reel.id!,
+            ownerId: reel.userId!,
+            ref: ref,
+          );
     } catch (e) {
-      print('خطا در لایک کردن پست: $e');
+      // در صورت خطا، برگرداندن تغییرات
+      final revertedReel = reel.copyWith(
+        isLiked: reel.isLiked,
+        likeCount: reel.likeCount,
+      );
+
+      setState(() {
+        final index = widget.posts.indexWhere((post) => post.id == reel.id);
+        if (index != -1) {
+          widget.posts[index] = revertedReel;
+        }
+      });
+
+      ref.read(publicPostsProvider.notifier).updatePost(revertedReel);
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا در لایک کردن پست')),
+          const SnackBar(content: Text('خطا در ثبت لایک')),
         );
       }
     }
@@ -227,7 +259,7 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
               return ReelsVideoPlayer(
                 post: post,
                 isActive: index == _currentIndex,
-                onLike: () => _likePost(post),
+                onLike: () => _likeReel(post),
                 onComment: () => _showComments(post),
                 onShare: () => _sharePost(post),
                 initialPosition: initialPosition, // پاس دادن موقعیت اولیه

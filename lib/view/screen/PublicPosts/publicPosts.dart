@@ -765,25 +765,27 @@ Widget _buildPostItem(
                   likeCount: post.likeCount,
                   commentCount: post.commentCount,
                   isLiked: post.isLiked,
+                  content: post.content, // اضافه کردن محتوای پست
+                  isVerified: post.isVerified, // حتما از post
+                  verificationType: post.verificationType, // حتما از post
                   onLike: () async {
-                    try {
-                      await ref.read(supabaseServiceProvider).toggleLike(
-                            postId: post.id!,
-                            ownerId: post.userId!,
-                            ref: ref,
-                          );
-                    } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('خطا در لایک پست: $e')),
+                    post.isLiked = !post.isLiked;
+                    post.likeCount += post.isLiked ? 1 : -1;
+                    (context as Element).markNeedsBuild();
+                    await ref.watch(supabaseServiceProvider).toggleLike(
+                          postId: post.id,
+                          ownerId: post.userId,
+                          ref: ref,
                         );
-                      }
-                    }
                   },
                   onComment: () =>
                       showCommentsBottomSheet(context, post.id, ref),
+                  onVideoPositionTap: (position) {
+                    ref
+                        .read(videoPositionProvider(post.id ?? '').notifier)
+                        .state = position;
+                  },
                   onTap: () {
-                    // استخراج لیست پست‌های ویدیویی
                     final profile = ref.read(userProfileProvider(post.userId));
                     final videoPosts = profile?.posts
                             .where((p) =>
@@ -792,12 +794,17 @@ Widget _buildPostItem(
                         [];
                     final initialIndex =
                         videoPosts.indexWhere((p) => p.id == post.id);
+
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => ReelsScreen(
                           posts: videoPosts,
                           initialIndex: initialIndex < 0 ? 0 : initialIndex,
+                          initialPositions: {
+                            post.id ?? '':
+                                ref.read(videoPositionProvider(post.id ?? '')),
+                          },
                         ),
                       ),
                     );
@@ -806,6 +813,7 @@ Widget _buildPostItem(
               ),
             ),
           ],
+
           // نمایش تصویر اگر پست دارای imageUrl باشد
           if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
             const SizedBox(height: 8),

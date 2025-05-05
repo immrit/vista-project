@@ -5,9 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../model/publicPostModel.dart';
+import '../../provider/provider.dart';
 
-class ReelsVideoPlayer extends StatefulWidget {
+class ReelsVideoPlayer extends ConsumerStatefulWidget {
   final PublicPostModel post;
   final bool isActive;
   final VoidCallback onLike;
@@ -23,41 +25,36 @@ class ReelsVideoPlayer extends StatefulWidget {
     required this.onLike,
     required this.onComment,
     required this.onShare,
-    this.initialPosition, // پارامتر جدید
-    this.onPositionChanged, // اضافه کردن پارامتر جدید
+    this.initialPosition,
+    this.onPositionChanged,
   }) : super(key: key);
 
   @override
-  State<ReelsVideoPlayer> createState() => _ReelsVideoPlayerState();
+  ConsumerState<ReelsVideoPlayer> createState() => _ReelsVideoPlayerState();
 }
 
-class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
+class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer>
     with SingleTickerProviderStateMixin {
   late VideoPlayerController _controller;
   bool _isInitialized = false;
   bool _isPlaying = false;
   bool _isMuted = false;
 
-  // برای نمایش لایک دابل تپ
   bool _showLikeAnim = false;
   Timer? _likeAnimTimer;
 
-  // بهبود عملکرد نمایش زمان
   Duration _currentPosition = Duration.zero;
   Duration _videoDuration = Duration.zero;
 
-  // نمایش حجم صدا
   bool _showVolumeControl = false;
   Timer? _volumeControlTimer;
 
-  // برای نمایش کپشن قابل گسترش
   bool _isCaptionExpanded = false;
 
   @override
   void initState() {
     super.initState();
     _initializePlayer();
-    // برای دیباگ وضعیت تیک تأیید
     print('Username: ${widget.post.username}');
     print('Is Verified: ${widget.post.isVerified}');
     print('Has Blue Badge: ${widget.post.hasBlueBadge}');
@@ -90,7 +87,6 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
   void didUpdateWidget(ReelsVideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // وقتی صفحه تغییر می‌کند، پخش یا توقف ویدیو
     if (widget.isActive != oldWidget.isActive) {
       if (widget.isActive) {
         _playVideo();
@@ -110,7 +106,6 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
       _videoDuration = _controller.value.duration;
 
       _controller.setLooping(true);
-      // تنظیم موقعیت اولیه اگر تعریف شده باشد
       if (widget.initialPosition != null) {
         await _controller.seekTo(widget.initialPosition!);
       }
@@ -119,12 +114,10 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
           _isInitialized = true;
         });
 
-        // اگر این ویدیو اکتیو است، پخش کن
         if (widget.isActive) {
           _playVideo();
         }
 
-        // تنظیم لیسنر‌ها
         _controller.addListener(_videoListener);
       }
     } catch (e) {
@@ -135,7 +128,6 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
   void _videoListener() {
     if (!mounted) return;
 
-    // به‌روزرسانی وضعیت پخش
     final isPlaying = _controller.value.isPlaying;
     if (isPlaying != _isPlaying) {
       setState(() {
@@ -143,13 +135,11 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
       });
     }
 
-    // به‌روز رسانی موقعیت پخش
     final position = _controller.value.position;
     if (position != _currentPosition) {
       setState(() {
         _currentPosition = position;
       });
-      // فراخوانی callback برای اطلاع از تغییر موقعیت
       widget.onPositionChanged?.call(position);
     }
   }
@@ -219,6 +209,26 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
     return "$minutes:$seconds";
   }
 
+  void _handleLike() async {
+    try {
+      await ref.read(supabaseServiceProvider).toggleLike(
+            postId: widget.post.id!,
+            ownerId: widget.post.userId!,
+            ref: ref,
+          );
+
+      // نمایش انیمیشن لایک فقط اگه نیاز هست
+      _showLikeAnimation();
+    } catch (e) {
+      debugPrint('Error toggling like: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در ثبت لایک: $e')),
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
     _controller.removeListener(_videoListener);
@@ -236,7 +246,6 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // پخش کننده ویدیو
           _isInitialized
               ? Center(
                   child: AspectRatio(
@@ -247,11 +256,7 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
               : Center(
                   child: CircularProgressIndicator(color: Colors.white),
                 ),
-
-          // لایه تاریک روی ویدیو
           Container(color: Colors.black.withOpacity(0.3)),
-
-          // انیمیشن لایک
           if (_showLikeAnim)
             Center(
               child: AnimatedOpacity(
@@ -274,8 +279,6 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
                 ),
               ),
             ),
-
-          // نمایش وضعیت صدا
           if (_showVolumeControl)
             Positioned(
               right: 16,
@@ -302,19 +305,16 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
                 ),
               ),
             ),
-
-          // دکمه‌های تعاملی در سمت راست
           Positioned(
             right: 12,
             bottom: MediaQuery.of(context).size.height * 0.15,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // دکمه لایک
                 Column(
                   children: [
                     IconButton(
-                      onPressed: widget.onLike,
+                      onPressed: _handleLike,
                       icon: Icon(
                         widget.post.isLiked
                             ? Icons.favorite
@@ -325,18 +325,18 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
                     ),
                     Text(
                       widget.post.likeCount.toString(),
-                      style: TextStyle(color: Colors.white),
+                      style: const TextStyle(color: Colors.white),
                     ),
                   ],
                 ),
                 SizedBox(height: 16),
-
-                // دکمه کامنت
                 Column(
                   children: [
                     IconButton(
-                      onPressed: widget.onComment,
-                      icon: Icon(
+                      onPressed: () {
+                        showCommentsBottomSheet(context, widget.post.id!, ref);
+                      },
+                      icon: const Icon(
                         Icons.comment,
                         color: Colors.white,
                         size: 32,
@@ -349,8 +349,6 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
                   ],
                 ),
                 SizedBox(height: 16),
-
-                // دکمه اشتراک‌گذاری
                 IconButton(
                   onPressed: widget.onShare,
                   icon: Icon(
@@ -360,8 +358,6 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
                   ),
                 ),
                 SizedBox(height: 16),
-
-                // دکمه صدا
                 IconButton(
                   onPressed: _toggleMute,
                   icon: Icon(
@@ -373,19 +369,16 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
               ],
             ),
           ),
-
-          // اطلاعات کاربر و کپشن در پایین صفحه (بالای نوار پیشرفت)
           Positioned(
             left: 0,
             right: 0,
-            bottom: 50, // مقداری فضا برای خط زمان
+            bottom: 50,
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // اطلاعات نویسنده پست
                   Row(
                     children: [
                       CircleAvatar(
@@ -416,7 +409,6 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
                       ),
                     ],
                   ),
-                  // کپشن با قابلیت گسترش
                   if (widget.post.content != null &&
                       widget.post.content.isNotEmpty)
                     GestureDetector(
@@ -459,8 +451,6 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
               ),
             ),
           ),
-
-          // نوار پیشرفت ویدیو در پایین
           Positioned(
             left: 0,
             right: 0,
@@ -470,7 +460,6 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // پیشرفت ویدیو
                   Row(
                     children: [
                       Text(
@@ -509,8 +498,6 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
               ),
             ),
           ),
-
-          // نشانگر پخش/توقف در وسط
           if (!_isPlaying)
             Center(
               child: Container(
@@ -533,11 +520,6 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
   Widget _buildVerificationBadge() {
     if (!widget.post.isVerified) return const SizedBox.shrink();
 
-    // دریافت نوع تیک تأیید
-    // final verificationType = widget.post.verificationType;
-
-    // برای دیباگ
-    // print('Verification Type for ${widget.post.username}: $verificationType');
     final verificationType =
         _directVerificationType ?? widget.post.verificationType;
 
@@ -556,7 +538,6 @@ class _ReelsVideoPlayerState extends State<ReelsVideoPlayer>
           child: const Icon(Icons.verified, color: Colors.black, size: 12),
         );
       default:
-        // اگر نوع تیک مشخص نباشد، تیک آبی نمایش داده می‌شود
         return const Icon(Icons.verified, color: Colors.blue, size: 14);
     }
   }

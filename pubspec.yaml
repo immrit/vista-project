@@ -94,6 +94,7 @@ dependencies:
   timeline_tile: ^2.0.0
   timelines_plus: ^1.0.6
   url_launcher: ^6.3.1
+  video_compress: ^3.1.4
   video_player: ^2.8.1
   visibility_detector: ^0.4.0+2
   voice_message_package: ^2.2.1
