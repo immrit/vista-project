@@ -96,7 +96,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   SliverAppBar _buildSliverAppBar(ProfileModel profile, dynamic getprofile,
       ThemeData currentcolor, dynamic isCurrentUserProfile) {
     return SliverAppBar(
-      expandedHeight: 320,
+      expandedHeight: 370,
       backgroundColor: Brightness.dark == Theme.of(context).brightness
           ? Colors.grey[900]
           : null,
@@ -319,14 +319,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return '${jalaliDate.year}/${jalaliDate.month}/${jalaliDate.day}';
   }
 
+// ... existing code ...
   Widget _buildProfileDetails(ProfileModel profile) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(profile.fullName,
           style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
       if (profile.bio != null) ...[
         const SizedBox(height: 10),
-        Directionality(
-            textDirection: TextDirection.rtl, child: Text(profile.bio!)),
+        ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: 80),
+          child: SingleChildScrollView(
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: Text(
+                profile.bio!,
+                overflow: TextOverflow.fade,
+              ),
+            ),
+          ),
+        ),
       ],
       const SizedBox(height: 20),
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -380,6 +391,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ])
     ]);
   }
+// ... existing code ...
 
   SliverList _buildPostsList(ProfileModel profile) {
     return SliverList(

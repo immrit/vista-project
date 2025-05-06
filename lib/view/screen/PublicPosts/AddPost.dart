@@ -204,8 +204,8 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       _videoPlayerController = VideoPlayerController.file(file);
       await _videoPlayerController!.initialize();
       await _videoPlayerController!.setLooping(true);
-      _videoPlayerController!.play();
-      setState(() {});
+      await _videoPlayerController!.play(); // پخش ویدیو
+      setState(() {}); // اعمال تغییرات در UI
     } catch (e) {
       debugPrint('Error initializing video player: $e');
       _showError('خطا در بارگذاری ویدیو');
@@ -226,17 +226,21 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   }
 
   Future<void> _initializeVideoPlayerWeb(Uint8List bytes, String name) async {
-    _videoPlayerController?.dispose();
-    if (kIsWeb) {
-      // فقط در وب: ساخت blob و url
-      // برای جلوگیری از خطا در پلتفرم‌های غیر وب، این کد را فقط در وب اجرا کن
-      // ignore: undefined_prefixed_name
-      final blob = await _createWebBlob(bytes);
-      // ignore: undefined_prefixed_name
-      final url = _createWebObjectUrl(blob);
-      _videoPlayerController = VideoPlayerController.network(url);
-      await _videoPlayerController!.initialize();
-      setState(() {});
+    try {
+      await _videoPlayerController?.dispose();
+      if (kIsWeb) {
+        // فقط در وب: ساخت blob و url
+        final blob = await _createWebBlob(bytes);
+        final url = _createWebObjectUrl(blob);
+        _videoPlayerController = VideoPlayerController.network(url);
+        await _videoPlayerController!.initialize();
+        await _videoPlayerController!.setLooping(true);
+        await _videoPlayerController!.play(); // پخش ویدیو
+        setState(() {}); // اعمال تغییرات در UI
+      }
+    } catch (e) {
+      debugPrint('Error initializing web video player: $e');
+      _showError('خطا در بارگذاری ویدیو');
     }
   }
 
@@ -252,6 +256,152 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
         _musicFileName = result.files.single.name;
       });
     }
+  }
+
+  Widget _buildVideoPreview() {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // نمایش ویدیو
+          AspectRatio(
+            aspectRatio: _videoPlayerController!.value.aspectRatio,
+            child: VideoPlayer(_videoPlayerController!),
+          ),
+
+          // دکمه پخش/توقف
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  if (_videoPlayerController!.value.isPlaying) {
+                    _videoPlayerController!.pause();
+                  } else {
+                    _videoPlayerController!.play();
+                  }
+                });
+              },
+              child: Container(
+                color: Colors.transparent,
+                child: Center(
+                  child: AnimatedOpacity(
+                    opacity:
+                        _videoPlayerController!.value.isPlaying ? 0.0 : 0.7,
+                    duration: const Duration(milliseconds: 300),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.black38,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        _videoPlayerController!.value.isPlaying
+                            ? Icons.pause
+                            : Icons.play_arrow,
+                        color: Colors.white,
+                        size: 40,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // دکمه حذف
+          Positioned(
+            top: 10,
+            right: 10,
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  _videoPlayerController?.pause();
+                  _videoPlayerController?.dispose();
+                  _videoPlayerController = null;
+                  _selectedVideo = null;
+                  _selectedVideoBytes = null;
+                  _selectedVideoName = null;
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.6),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.close,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+            ),
+          ),
+
+          // دکمه قطع/وصل صدا - این قسمت را اضافه کردیم
+          Positioned(
+            top: 10,
+            left: 10,
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  _videoPlayerController!.setVolume(
+                      _videoPlayerController!.value.volume > 0 ? 0.0 : 1.0);
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.6),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  _videoPlayerController!.value.volume > 0
+                      ? Icons.volume_up
+                      : Icons.volume_off,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+            ),
+          ),
+
+          // نشانگر برش خورده
+          Positioned(
+            bottom: 10,
+            left: 10,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Row(
+                children: const [
+                  Icon(Icons.cut, color: Colors.white, size: 16),
+                  SizedBox(width: 4),
+                  Text(
+                    'برش خورده',
+                    style: TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _addPost() async {
@@ -415,10 +565,17 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                         const SizedBox(height: 16),
 
                         // فیلد متن
+
                         _buildContentTextField(
                             textColor, secondaryTextColor, cardColor),
 
                         const SizedBox(height: 16),
+
+// اضافه کردن ویجت پیش‌نمایش ویدیو
+                        if (_videoPlayerController != null &&
+                            _videoPlayerController!.value.isInitialized)
+                          _buildVideoPreview(),
+
                         // افزودن دکمه انتخاب ویدیو
                         if (_selectedVideo == null &&
                             _selectedVideoBytes == null &&
@@ -813,7 +970,6 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
         ).animate().scale(duration: const Duration(milliseconds: 300)),
       );
     } else if (_selectedImage != null) {
-      // ...existing code for mobile...
       return Hero(
         tag: 'post-image',
         child: Card(

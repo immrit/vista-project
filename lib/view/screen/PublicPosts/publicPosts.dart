@@ -867,18 +867,25 @@ Widget _buildPostItem(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
               // دکمه لایک با انیمیشن
-              LikeButton(
-                isLiked: post.isLiked,
-                likeCount: post.likeCount,
-                onTap: () async {
-                  post.isLiked = !post.isLiked;
-                  post.likeCount += post.isLiked ? 1 : -1;
-                  (context as Element).markNeedsBuild();
-                  await ref.watch(supabaseServiceProvider).toggleLike(
-                        postId: post.id,
-                        ownerId: post.userId,
-                        ref: ref,
-                      );
+              Consumer(
+                builder: (context, ref, child) {
+                  final isLiked =
+                      ref.watch(likeStateProvider)[post.id] ?? post.isLiked;
+                  final likeCount = post.likeCount +
+                      (isLiked != post.isLiked ? (isLiked ? 1 : -1) : 0);
+
+                  return LikeButton(
+                    key: ValueKey('like_${post.id}'),
+                    isLiked: isLiked,
+                    likeCount: likeCount,
+                    onTap: () async {
+                      await ref.read(supabaseServiceProvider).toggleLike(
+                            postId: post.id!,
+                            ownerId: post.userId!,
+                            ref: ref,
+                          );
+                    },
+                  );
                 },
               ),
               const SizedBox(width: 16),
@@ -1416,11 +1423,21 @@ class _LikeButtonState extends State<LikeButton>
             );
           },
         ),
-        Text(
-          widget.likeCount.toString(),
-          style: TextStyle(
-            fontWeight: widget.isLiked ? FontWeight.bold : FontWeight.normal,
-            color: widget.isLiked ? Colors.red : null,
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          transitionBuilder: (child, animation) {
+            return ScaleTransition(
+              scale: animation,
+              child: child,
+            );
+          },
+          child: Text(
+            widget.likeCount.toString(),
+            key: ValueKey<int>(widget.likeCount),
+            style: TextStyle(
+              fontWeight: widget.isLiked ? FontWeight.bold : FontWeight.normal,
+              color: widget.isLiked ? Colors.red : null,
+            ),
           ),
         ),
       ],

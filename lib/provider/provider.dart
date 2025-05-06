@@ -290,6 +290,70 @@ class PublicPostsNotifier
       }
     });
   }
+
+  void updatePostLike(String postId, bool isLiked) {
+    state.whenData((posts) {
+      final index = posts.indexWhere((post) => post.id == postId);
+      if (index != -1) {
+        final updatedPost = posts[index].copyWith(
+          isLiked: isLiked,
+          likeCount:
+              isLiked ? posts[index].likeCount + 1 : posts[index].likeCount - 1,
+        );
+        final newPosts = List<PublicPostModel>.from(posts);
+        newPosts[index] = updatedPost;
+        state = AsyncValue.data(newPosts);
+      }
+    });
+  }
+
+  Future<void> toggleLike({
+    required String postId,
+    required String ownerId,
+    required WidgetRef ref,
+  }) async {
+    try {
+      state.whenData((posts) {
+        final index = posts.indexWhere((post) => post.id == postId);
+        if (index != -1) {
+          final post = posts[index];
+          final newIsLiked = !post.isLiked;
+
+          // Optimistic update
+          updatePostLike(postId, newIsLiked);
+
+          // Update global like state
+          ref
+              .read(likeStateProvider.notifier)
+              .updateLikeState(postId, newIsLiked);
+        }
+      });
+
+      // Server update
+      await supabase.from('likes').upsert(
+        {
+          'post_id': postId,
+          'user_id': supabase.auth.currentUser?.id,
+          'owner_id': ownerId,
+          'created_at': DateTime.now().toIso8601String(),
+        },
+        onConflict: 'post_id, user_id',
+      );
+    } catch (e) {
+      // Revert on error
+      state.whenData((posts) {
+        final index = posts.indexWhere((post) => post.id == postId);
+        if (index != -1) {
+          final post = posts[index];
+          updatePostLike(postId, !post.isLiked);
+          ref
+              .read(likeStateProvider.notifier)
+              .updateLikeState(postId, !post.isLiked);
+        }
+      });
+      rethrow;
+    }
+  }
 }
 
 final publicPostsProvider = StateNotifierProvider<PublicPostsNotifier,
@@ -351,46 +415,75 @@ class SupabaseService {
     required String ownerId,
     required WidgetRef ref,
   }) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
     try {
-      // اعتبارسنجی ورودی‌ها
-      if (postId.isEmpty || ownerId.isEmpty) {
-        throw ArgumentError('شناسه‌های ورودی نمی‌توانند خالی باشند');
+      // 1. ابتدا دریافت وضعیت فعلی پست
+      final currentPosts =
+          ref.read(publicPostsProvider.notifier).state.value ?? [];
+      final postIndex = currentPosts.indexWhere((post) => post.id == postId);
+
+      if (postIndex == -1) return;
+
+      final currentPost = currentPosts[postIndex];
+      final newIsLiked = !currentPost.isLiked;
+
+      // 2. آپدیت Optimistic در UI
+      final updatedPost = currentPost.copyWith(
+        isLiked: newIsLiked,
+        likeCount:
+            newIsLiked ? currentPost.likeCount + 1 : currentPost.likeCount - 1,
+      );
+
+      // 3. آپدیت همزمان در تمام provider ها
+      ref.read(publicPostsProvider.notifier).updatePost(updatedPost);
+      ref.read(likeStateProvider.notifier).updateLikeState(postId, newIsLiked);
+
+      if (ref.exists(userProfileProvider(ownerId))) {
+        ref.read(userProfileProvider(ownerId).notifier).updatePost(updatedPost);
       }
 
-      final userId = _validateUser();
-
-      // اعتبارسنجی UUID ها
-      [postId, ownerId, userId].forEach(_validateUUID);
-
-      // بررسی وضعیت فعلی لایک
-      final existingLike = await _checkExistingLike(postId, userId);
-
-      // اعمال تغییرات در دیتابیس
-      if (existingLike == null) {
+      // 4. ارسال به سرور
+      if (newIsLiked) {
         await supabase.from('likes').insert({
           'post_id': postId,
           'user_id': userId,
           'owner_id': ownerId,
-          'created_at': DateTime.now().toIso8601String(),
         });
+
+        if (userId != ownerId) {
+          await supabase.from('notifications').insert({
+            'recipient_id': ownerId,
+            'sender_id': userId,
+            'post_id': postId,
+            'type': 'like',
+            'content': '⭐',
+            'is_read': false,
+          });
+        }
       } else {
         await supabase
             .from('likes')
             .delete()
             .eq('post_id', postId)
             .eq('user_id', userId);
-      }
 
-      // بروزرسانی UI
-      ref.invalidate(fetchPublicPosts);
-    } on AuthException catch (e) {
-      print('خطای احراز هویت: ${e.message}');
-      rethrow;
-    } on ArgumentError catch (e) {
-      print('خطای اعتبارسنجی: ${e.message}');
-      rethrow;
+        if (userId != ownerId) {
+          await supabase
+              .from('notifications')
+              .delete()
+              .eq('recipient_id', ownerId)
+              .eq('sender_id', userId)
+              .eq('post_id', postId)
+              .eq('type', 'like');
+        }
+      }
     } catch (e) {
-      print('خطا در toggleLike: $e');
+      // 5. در صورت خطا، برگرداندن تغییرات
+      ref.invalidate(publicPostsProvider);
+      ref.invalidate(likeStateProvider);
+      debugPrint('Error in toggleLike: $e');
       rethrow;
     }
   }

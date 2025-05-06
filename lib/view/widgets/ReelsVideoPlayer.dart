@@ -33,12 +33,12 @@ class ReelsVideoPlayer extends ConsumerStatefulWidget {
   ConsumerState<ReelsVideoPlayer> createState() => _ReelsVideoPlayerState();
 }
 
-class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer>
-    with SingleTickerProviderStateMixin {
-  late VideoPlayerController _controller;
+class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
+  VideoPlayerController? _controller;
   bool _isInitialized = false;
   bool _isPlaying = false;
-  bool _isMuted = false;
+  bool _isVisible = false;
+  bool _isMuted = true;
 
   bool _showLikeAnim = false;
   Timer? _likeAnimTimer;
@@ -54,7 +54,7 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer>
   @override
   void initState() {
     super.initState();
-    _initializePlayer();
+    _initializeVideo();
     print('Username: ${widget.post.username}');
     print('Is Verified: ${widget.post.isVerified}');
     print('Has Blue Badge: ${widget.post.hasBlueBadge}');
@@ -88,100 +88,68 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer>
     super.didUpdateWidget(oldWidget);
 
     if (widget.isActive != oldWidget.isActive) {
-      if (widget.isActive) {
-        _playVideo();
-      } else {
-        _pauseVideo();
-      }
+      _handleActiveStateChange();
     }
   }
 
-  Future<void> _initializePlayer() async {
+  Future<void> _initializeVideo() async {
+    if (widget.post.videoUrl == null || widget.post.videoUrl!.isEmpty) return;
+
+    _controller = VideoPlayerController.network(widget.post.videoUrl!);
+
     try {
-      _controller = VideoPlayerController.networkUrl(
-        Uri.parse(widget.post.videoUrl!),
-      );
+      await _controller?.initialize();
 
-      await _controller.initialize();
-      _videoDuration = _controller.value.duration;
-
-      _controller.setLooping(true);
-      if (widget.initialPosition != null) {
-        await _controller.seekTo(widget.initialPosition!);
-      }
       if (mounted) {
         setState(() {
           _isInitialized = true;
         });
 
-        if (widget.isActive) {
-          _playVideo();
+        // اگر initialPosition وجود داشت، به آن موقعیت برو
+        if (widget.initialPosition != null) {
+          _controller?.seekTo(widget.initialPosition!);
         }
 
-        _controller.addListener(_videoListener);
+        _controller?.setLooping(true);
+        _controller?.setVolume(_isMuted ? 0.0 : 1.0);
+
+        if (_isVisible && widget.isActive) {
+          _controller?.play();
+          _isPlaying = true;
+        }
       }
     } catch (e) {
-      print('خطا در بارگذاری ویدیو ریلز: $e');
+      print('Error initializing video: $e');
     }
   }
 
-  void _videoListener() {
-    if (!mounted) return;
-
-    final isPlaying = _controller.value.isPlaying;
-    if (isPlaying != _isPlaying) {
-      setState(() {
-        _isPlaying = isPlaying;
-      });
-    }
-
-    final position = _controller.value.position;
-    if (position != _currentPosition) {
-      setState(() {
-        _currentPosition = position;
-      });
-      widget.onPositionChanged?.call(position);
-    }
-  }
-
-  void _playVideo() {
+  void _handleActiveStateChange() {
     if (!_isInitialized) return;
-    _controller.play();
-    setState(() {
-      _isPlaying = true;
-    });
-  }
 
-  void _pauseVideo() {
-    if (!_isInitialized) return;
-    _controller.pause();
-    setState(() {
-      _isPlaying = false;
-    });
-  }
-
-  void _togglePlayPause() {
-    if (_isPlaying) {
-      _pauseVideo();
+    if (widget.isActive && _isVisible) {
+      _controller?.play();
+      setState(() => _isPlaying = true);
     } else {
-      _playVideo();
+      _controller?.pause();
+      setState(() => _isPlaying = false);
     }
+  }
+
+  void _togglePlay() {
+    if (!_isInitialized) return;
+
+    setState(() {
+      _isPlaying = !_isPlaying;
+      _isPlaying ? _controller?.play() : _controller?.pause();
+    });
   }
 
   void _toggleMute() {
+    if (!_isInitialized) return;
+
     setState(() {
       _isMuted = !_isMuted;
-      _controller.setVolume(_isMuted ? 0.0 : 1.0);
-
-      _showVolumeControl = true;
-      _volumeControlTimer?.cancel();
-      _volumeControlTimer = Timer(const Duration(seconds: 2), () {
-        if (mounted) {
-          setState(() {
-            _showVolumeControl = false;
-          });
-        }
-      });
+      _controller?.setVolume(_isMuted ? 0.0 : 1.0);
     });
   }
 
@@ -250,8 +218,7 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer>
 
   @override
   void dispose() {
-    _controller.removeListener(_videoListener);
-    _controller.dispose();
+    _controller?.dispose();
     _likeAnimTimer?.cancel();
     _volumeControlTimer?.cancel();
     super.dispose();
@@ -260,7 +227,7 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer>
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: _togglePlayPause,
+      onTap: _togglePlay,
       onDoubleTap: () {
         _handleLike(); // مستقیم از _handleLike استفاده کنید
       },
@@ -270,8 +237,8 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer>
           _isInitialized
               ? Center(
                   child: AspectRatio(
-                    aspectRatio: _controller.value.aspectRatio,
-                    child: VideoPlayer(_controller),
+                    aspectRatio: _controller!.value.aspectRatio,
+                    child: VideoPlayer(_controller!),
                   ),
                 )
               : Center(
@@ -503,7 +470,7 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer>
                             activeColor: Colors.white,
                             inactiveColor: Colors.white.withOpacity(0.5),
                             onChanged: (value) {
-                              _controller.seekTo(
+                              _controller?.seekTo(
                                   Duration(milliseconds: value.toInt()));
                             },
                           ),

@@ -59,7 +59,7 @@ class CustomVideoPlayer extends StatefulWidget {
 
 class _CustomVideoPlayerState extends State<CustomVideoPlayer>
     with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
-  late VideoPlayerController _controller;
+  VideoPlayerController? _controller; // تغییر به nullable
   final VideoPlayerConfig _config = VideoPlayerConfig();
   bool _isFullScreen = false;
   bool _isInitialized = false;
@@ -107,8 +107,8 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
 
   @override
   void dispose() {
-    _controller.removeListener(_videoListener);
-    _controller.dispose();
+    _controller?.removeListener(_videoListener);
+    _controller?.dispose();
     _likeAnimTimer?.cancel();
     super.dispose();
   }
@@ -117,47 +117,38 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
     try {
       final file =
           await _config.videoCacheManager.getSingleFile(widget.videoUrl);
-
       _controller = VideoPlayerController.file(file);
 
+      await _controller?.initialize();
+
+      if (_controller == null) return;
+
       if (_isDataSaverMode) {
-        // Set low quality for data saver mode
-        // Implementation depends on your video source
+        // تنظیمات کیفیت پایین برای حالت ذخیره دیتا
       }
 
-      setState(() {
-        _isBuffering = true;
-      });
-
-      await _controller.initialize();
-
-      _videoDuration = _controller.value.duration;
-      _controller.setLooping(widget.looping);
-      _controller.setVolume(_isMuted ? 0.0 : 1.0);
-
       if (mounted) {
+        setState(() {
+          _isBuffering = true;
+        });
+
+        _videoDuration = _controller!.value.duration;
+        await _controller?.setLooping(widget.looping);
+        await _controller?.setVolume(_isMuted ? 0.0 : 1.0);
+
         setState(() {
           _isInitialized = true;
           _isBuffering = false;
         });
 
-        _controller.addListener(() {
-          // Track play count for smart keep-alive
-          if (_controller.value.isPlaying && !_isPlaying) {
-            _playCount++;
-          }
-          _isPlaying = _controller.value.isPlaying;
+        _controller?.addListener(_videoListener);
 
-          _videoListener();
-        });
-
-        // بعد از آماده‌سازی، بررسی کنید آیا باید پخش شود یا خیر
         if (widget.autoplay && _isVisible) {
           _playVideo();
         }
       }
     } catch (e) {
-      print('خطا در بارگذاری ویدیو: $e');
+      print('Error initializing player: $e');
       if (mounted) {
         setState(() {
           _isBuffering = false;
@@ -167,10 +158,10 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
   }
 
   void _videoListener() {
-    if (!mounted) return;
+    if (!mounted || _controller == null) return;
 
     // بررسی وضعیت پخش
-    final isPlaying = _controller.value.isPlaying;
+    final isPlaying = _controller!.value.isPlaying;
     if (isPlaying != _isPlaying) {
       setState(() {
         _isPlaying = isPlaying;
@@ -178,7 +169,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
     }
 
     // بررسی وضعیت بافرینگ
-    final isBuffering = _controller.value.isBuffering;
+    final isBuffering = _controller!.value.isBuffering;
     if (isBuffering != _isBuffering) {
       setState(() {
         _isBuffering = isBuffering;
@@ -186,7 +177,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
     }
 
     // به‌روزرسانی موقعیت پخش
-    final currentPosition = _controller.value.position;
+    final currentPosition = _controller!.value.position;
     if (currentPosition != _currentPosition) {
       setState(() {
         _currentPosition = currentPosition;
@@ -195,9 +186,9 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
   }
 
   void _playVideo() {
-    if (!_isInitialized) return;
+    if (!_isInitialized || _controller == null) return;
 
-    _controller.play();
+    _controller?.play();
     setState(() {
       _isPlaying = true;
       _isAnimating = true;
@@ -213,9 +204,9 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
   }
 
   void _pauseVideo() {
-    if (!_isInitialized) return;
+    if (!_isInitialized || _controller == null) return;
 
-    _controller.pause();
+    _controller?.pause();
     setState(() {
       _isPlaying = false;
       _isAnimating = true;
@@ -241,7 +232,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
   void _toggleMute() {
     setState(() {
       _isMuted = !_isMuted;
-      _controller.setVolume(_isMuted ? 0.0 : 1.0);
+      _controller!.setVolume(_isMuted ? 0.0 : 1.0);
     });
   }
 
@@ -369,8 +360,8 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
             // ویدیو پلیر
             _isInitialized
                 ? AspectRatio(
-                    aspectRatio: _controller.value.aspectRatio,
-                    child: VideoPlayer(_controller),
+                    aspectRatio: _controller!.value.aspectRatio,
+                    child: VideoPlayer(_controller!),
                   )
                 : Container(
                     color: Colors.black,
