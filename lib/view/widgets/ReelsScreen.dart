@@ -259,7 +259,14 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
               return ReelsVideoPlayer(
                 post: post,
                 isActive: index == _currentIndex,
-                onLike: () => _likeReel(post),
+                onLike: () {
+                  // این تابع فقط برای آگاهی ReelsScreen از تغییر لایک است
+                  // اینجا نباید عملیات لایک دوباره انجام شود
+                  // می‌توانید وضعیت پست را از provider بخوانید و UI را آپدیت کنید
+                  setState(() {
+                    // آپدیت UI صفحه ReelsScreen در صورت نیاز
+                  });
+                },
                 onComment: () => _showComments(post),
                 onShare: () => _sharePost(post),
                 initialPosition: initialPosition, // پاس دادن موقعیت اولیه

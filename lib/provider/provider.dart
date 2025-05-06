@@ -346,46 +346,56 @@ class SupabaseService {
   //     throw Exception('خطا در جستجوی پست‌ها: $e');
   //   }
   // }
-
-  Future<void> toggleLike(
-      {required String postId,
-      required String ownerId,
-      required WidgetRef ref}) async {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId == null) return;
+  Future<void> toggleLike({
+    required String postId,
+    required String ownerId,
+    required WidgetRef ref,
+  }) async {
     try {
-      final likeResult = await Supabase.instance.client
-          .from('likes')
-          .select()
-          .eq('post_id', postId)
-          .eq('user_id', userId)
-          .maybeSingle();
+      // اعتبارسنجی ورودی‌ها
+      if (postId.isEmpty || ownerId.isEmpty) {
+        throw ArgumentError('شناسه‌های ورودی نمی‌توانند خالی باشند');
+      }
 
-      if (likeResult != null) {
-        // Already liked: Dislike (delete)
-        await Supabase.instance.client
+      final userId = _validateUser();
+
+      // اعتبارسنجی UUID ها
+      [postId, ownerId, userId].forEach(_validateUUID);
+
+      // بررسی وضعیت فعلی لایک
+      final existingLike = await _checkExistingLike(postId, userId);
+
+      // اعمال تغییرات در دیتابیس
+      if (existingLike == null) {
+        await supabase.from('likes').insert({
+          'post_id': postId,
+          'user_id': userId,
+          'owner_id': ownerId,
+          'created_at': DateTime.now().toIso8601String(),
+        });
+      } else {
+        await supabase
             .from('likes')
             .delete()
             .eq('post_id', postId)
             .eq('user_id', userId);
-      } else {
-        // Not yet liked: Like (insert)
-        await Supabase.instance.client.from('likes').insert({
-          'post_id': postId,
-          'user_id': userId,
-          'owner_id': ownerId,
-        });
       }
 
-      // Refresh state
+      // بروزرسانی UI
       ref.invalidate(fetchPublicPosts);
+    } on AuthException catch (e) {
+      print('خطای احراز هویت: ${e.message}');
+      rethrow;
+    } on ArgumentError catch (e) {
+      print('خطای اعتبارسنجی: ${e.message}');
+      rethrow;
     } catch (e) {
       print('خطا در toggleLike: $e');
       rethrow;
     }
   }
 
-// متد اعتبارسنجی UUID
+  // متد اعتبارسنجی UUID
   void _validateUUID(String uuid) {
     final uuidRegex = RegExp(
         r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
@@ -2116,38 +2126,19 @@ class ReelsNotifier extends StateNotifier<List<PublicPostModel>> {
 }
 
 // provider سراسری ریلزها
-final reelsProvider =
-    StateNotifierProvider<ReelsNotifier, List<PublicPostModel>>(
-  (ref) => ReelsNotifier(),
-);
+final likeStateProvider =
+    StateNotifierProvider<LikeStateNotifier, Map<String, bool>>((ref) {
+  return LikeStateNotifier();
+});
 
-Future<void> toggleReelLike({
-  required PublicPostModel reel,
-  required WidgetRef ref,
-}) async {
-  // optimistic update
-  final updatedReel = reel.copyWith(
-    isLiked: !reel.isLiked,
-    likeCount: reel.isLiked ? reel.likeCount - 1 : reel.likeCount + 1,
-  );
+class LikeStateNotifier extends StateNotifier<Map<String, bool>> {
+  LikeStateNotifier() : super({});
 
-  ref.read(reelsProvider.notifier).updateReel(updatedReel);
+  void updateLikeState(String postId, bool isLiked) {
+    state = {...state, postId: isLiked};
+  }
 
-  try {
-    if (updatedReel.isLiked) {
-      await supabase.from('likes').insert({
-        'post_id': updatedReel.id,
-        'user_id': supabase.auth.currentUser!.id,
-      });
-    } else {
-      await supabase
-          .from('likes')
-          .delete()
-          .eq('post_id', updatedReel.id)
-          .eq('user_id', supabase.auth.currentUser!.id);
-    }
-  } catch (e) {
-    print('خطا در لایک ریلز: $e');
-    // می‌تونی rollback optimistic update هم بزنی اگر خواستی
+  bool isPostLiked(String postId) {
+    return state[postId] ?? false;
   }
 }

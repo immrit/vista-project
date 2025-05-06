@@ -547,6 +547,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Widget _buildPostItem(ProfileModel profile, PublicPostModel post) {
+    final isLiked = ref.watch(likeStateProvider)[post.id] ?? post.isLiked;
+
     return Padding(
       padding: const EdgeInsets.all(12),
       child: Column(
@@ -699,7 +701,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         IconButton(
           icon: Icon(post.isLiked ? Icons.favorite : Icons.favorite_border,
               color: post.isLiked ? Colors.red : null),
-          onPressed: () => _toggleLike(post),
+          onPressed: () => _handleLike(post),
         ),
         Text('${post.likeCount}'),
       ],
@@ -720,6 +722,42 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget _buildShareButton(PublicPostModel post) {
     return IconButton(
         icon: const Icon(Icons.share), onPressed: () => _sharePost(post));
+  }
+
+  void _handleLike(PublicPostModel post) async {
+    try {
+      final currentLikeState = !post.isLiked;
+
+      // آپدیت وضعیت در provider
+      ref
+          .read(likeStateProvider.notifier)
+          .updateLikeState(post.id!, currentLikeState);
+
+      // آپدیت مدل پست
+      setState(() {
+        post.isLiked = currentLikeState;
+        post.likeCount += currentLikeState ? 1 : -1;
+      });
+
+      // ارسال به سرور
+      await ref.watch(supabaseServiceProvider).toggleLike(
+            postId: post.id,
+            ownerId: post.userId,
+            ref: ref,
+          );
+    } catch (e) {
+      // برگرداندن وضعیت در صورت خطا
+      final previousLikeState = post.isLiked;
+      ref
+          .read(likeStateProvider.notifier)
+          .updateLikeState(post.id!, previousLikeState);
+
+      setState(() {
+        post.isLiked = previousLikeState;
+        post.likeCount += previousLikeState ? 1 : -1;
+      });
+      debugPrint('Error in handleLike: e');
+    }
   }
 
   void _toggleLike(PublicPostModel post) async {

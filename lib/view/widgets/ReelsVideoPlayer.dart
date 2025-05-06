@@ -186,7 +186,7 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer>
   }
 
   void _showLikeAnimation() {
-    widget.onLike();
+    // حذف فراخوانی widget.onLike() از اینجا
 
     _likeAnimTimer?.cancel();
     setState(() {
@@ -211,21 +211,40 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer>
 
   void _handleLike() async {
     try {
-      await ref.read(supabaseServiceProvider).toggleLike(
-            postId: widget.post.id!,
-            ownerId: widget.post.userId!,
+      final currentLikeState = !widget.post.isLiked;
+
+      // آپدیت وضعیت لایک در provider
+      ref
+          .read(likeStateProvider.notifier)
+          .updateLikeState(widget.post.id!, currentLikeState);
+
+      // آپدیت UI محلی
+      setState(() {
+        widget.post.isLiked = currentLikeState;
+        widget.post.likeCount += currentLikeState ? 1 : -1;
+      });
+
+      // نمایش انیمیشن لایک
+      _showLikeAnimation();
+
+      // ارسال به سرور
+      await ref.watch(supabaseServiceProvider).toggleLike(
+            postId: widget.post.id,
+            ownerId: widget.post.userId,
             ref: ref,
           );
-
-      // نمایش انیمیشن لایک فقط اگه نیاز هست
-      _showLikeAnimation();
     } catch (e) {
-      debugPrint('Error toggling like: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا در ثبت لایک: $e')),
-        );
-      }
+      // در صورت خطا، UI را به حالت قبل برمی‌گردانیم
+      final previousLikeState = !widget.post.isLiked;
+      ref
+          .read(likeStateProvider.notifier)
+          .updateLikeState(widget.post.id!, previousLikeState);
+
+      setState(() {
+        widget.post.isLiked = previousLikeState;
+        widget.post.likeCount += previousLikeState ? 1 : -1;
+      });
+      debugPrint('Error in handleLike: $e');
     }
   }
 
@@ -242,7 +261,9 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer>
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: _togglePlayPause,
-      onDoubleTap: _showLikeAnimation,
+      onDoubleTap: () {
+        _handleLike(); // مستقیم از _handleLike استفاده کنید
+      },
       child: Stack(
         fit: StackFit.expand,
         children: [
