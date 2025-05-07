@@ -116,33 +116,51 @@ class ChatImageUploadService {
   }
 
   // متد مخصوص آپلود تصویر چت در وب (بدون استفاده از File)
-  static Future<String?> uploadChatImageWeb(
+  static Future<String> uploadChatImageWeb(
     Uint8List fileBytes,
     String fileName,
     String conversationId,
   ) async {
     try {
+      print('Starting web image upload...');
+
+      // حذف کاراکترهای غیرمجاز از نام فایل
+      final sanitizedFileName =
+          fileName.replaceAll(RegExp(r'[^\w\s\-\.]'), '_');
+
       const contentType = 'image/jpeg';
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('User not authenticated');
 
-      final userId = supabase.auth.currentUser!.id;
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      // ساخت نام فایل ساده‌تر و امن‌تر
       final s3FileName =
-          'chats/$conversationId/${userId}_${DateTime.now().millisecondsSinceEpoch}_$fileName';
+          'chats/$conversationId/${userId}_${timestamp}_$sanitizedFileName';
 
-      await s3.putObject(
-        bucket: bucketName,
-        key: s3FileName,
-        body: fileBytes,
-        contentType: contentType,
-        acl: ObjectCannedACL.publicRead,
-      );
+      print('Uploading to S3 with key: $s3FileName');
 
-      final uploadedUrl =
-          'https://storage.coffevista.ir/$bucketName/$s3FileName';
-      print('تصویر چت با موفقیت آپلود شد: $uploadedUrl');
-      return uploadedUrl;
+      try {
+        await s3.putObject(
+          bucket: bucketName,
+          key: s3FileName,
+          body: fileBytes,
+          contentType: contentType,
+          acl: ObjectCannedACL.publicRead,
+          // تنظیمات CORS برای وب
+        );
+
+        final uploadedUrl =
+            'https://storage.coffevista.ir/$bucketName/$s3FileName';
+        print('Web image upload successful: $uploadedUrl');
+
+        return uploadedUrl;
+      } catch (e) {
+        print('S3 upload error: $e');
+        throw Exception('S3 upload failed: $e');
+      }
     } catch (e) {
-      print('خطا در آپلود تصویر چت (وب): $e');
-      throw Exception('آپلود تصویر چت شکست خورد: $e');
+      print('Error in uploadChatImageWeb: $e');
+      throw Exception('Failed to upload chat image: $e');
     }
   }
 

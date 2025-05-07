@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -24,6 +25,8 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
   Size? _imageSize;
   bool _isLoading = false;
   bool _isSaving = false;
+  Uint8List? _imageBytes; // برای ذخیره داده‌های تصویر در وب
+
   final GlobalKey _canvasKey = GlobalKey();
   final List<StoryElement> _elements = [];
   StoryElement? _selectedElement;
@@ -291,7 +294,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
   }
 
   Future<void> _pickImage() async {
-    if (!mounted) return; // اطمینان از اینکه ویجت هنوز متصل است
+    if (!mounted) return;
 
     final ImagePicker picker = ImagePicker();
     try {
@@ -300,34 +303,38 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
       );
 
       if (pickedFile != null && mounted) {
-        // بررسی مجدد mounted پس از عملیات async
         setState(() {
-          _imageFile = File(pickedFile.path);
           _isLoading = true;
         });
-        await _loadImage();
+
+        // روش سازگار با وب برای خواندن تصویر
+        if (kIsWeb) {
+          final bytes = await pickedFile.readAsBytes();
+          await _loadImageFromBytes(bytes);
+        } else {
+          _imageFile = File(pickedFile.path);
+          await _loadImage();
+        }
       }
     } catch (e) {
       if (mounted) {
-        // بررسی mounted قبل از نمایش خطا
-        _showErrorMessage('خطا در انتخاب تصویر: $e');
+        _showErrorMessage('خطا در انتخاب تصویر: e');
       }
     }
   }
 
-  Future<void> _loadImage() async {
-    if (!mounted) return; // اطمینان از اینکه ویجت هنوز متصل است
+  Future<void> _loadImageFromBytes(Uint8List bytes) async {
+    if (!mounted) return;
 
     try {
       setState(() {
         _isLoading = true;
       });
 
-      final bytes = await _imageFile!.readAsBytes();
       final codec = await ui.instantiateImageCodec(bytes);
       final frameInfo = await codec.getNextFrame();
 
-      if (!mounted) return; // بررسی مجدد mounted بعد از عملیات async
+      if (!mounted) return;
 
       // محاسبه سایز تصویر
       final image = frameInfo.image;
@@ -336,15 +343,37 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
       setState(() {
         _loadedImage = image;
         _imageSize = imageSize;
+        // ذخیره بایت‌ها برای استفاده بعدی
+        _imageBytes = bytes;
         _isLoading = false;
       });
     } catch (e) {
       if (mounted) {
-        // بررسی mounted قبل از نمایش خطا
         setState(() {
           _isLoading = false;
         });
-        _showErrorMessage('خطا در بارگذاری تصویر: $e');
+        _showErrorMessage('خطا در بارگذاری تصویر: e');
+      }
+    }
+  }
+
+  Future<void> _loadImage() async {
+    if (!mounted) return;
+
+    try {
+      setState(() {
+        _isLoading = true;
+      });
+
+      // روش متفاوت برای خواندن فایل در موبایل
+      final bytes = await _imageFile!.readAsBytes();
+      await _loadImageFromBytes(bytes);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        _showErrorMessage('خطا در بارگذاری تصویر: e');
       }
     }
   }
@@ -385,7 +414,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
       // بازگشت از صفحه ویرایشگر با داده‌های تصویر
       Navigator.pop(context, pngBytes);
     } catch (e) {
-      _showErrorMessage('خطا در ذخیره استوری: ${e.toString()}');
+      _showErrorMessage('خطا در ذخیره استوری: {e.toString()}');
     } finally {
       setState(() {
         _isSaving = false;
@@ -741,35 +770,116 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
 
   Widget _buildCanvas() {
     if (_loadedImage == null) {
-      return const Center(
-        child: Text(
-          'تصویری انتخاب نشده است',
-          style: TextStyle(color: Colors.white),
+      return Container(
+        color: Colors.black,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.image_not_supported_outlined,
+                color: Colors.white.withOpacity(0.6),
+                size: 64,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'تصویری انتخاب نشده است',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.8),
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.add_photo_alternate),
+                label: const Text('انتخاب تصویر'),
+                style: ElevatedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  backgroundColor: Colors.blue[700],
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: _pickImage,
+              ),
+            ],
+          ),
         ),
       );
     }
 
-    return SizedBox.expand(
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // تصویر پس‌زمینه با فیلتر
-          _buildBackgroundImage(),
+    return LayoutBuilder(builder: (context, constraints) {
+      final screenSize = Size(constraints.maxWidth, constraints.maxHeight);
+      final calculatedSize = _imageSize != null
+          ? _calculateFitSize(_imageSize!, screenSize)
+          : screenSize;
 
-          // لایه‌های ترسیم
-          CustomPaint(
-            painter: DrawingPainter(points: _drawingPoints),
-            size: Size.infinite,
-          ),
+      return Container(
+        color: Colors.black,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // 1. تصویر پس‌زمینه تار شده
+            Positioned.fill(
+              child: ImageFiltered(
+                imageFilter: ui.ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                child: Transform.scale(
+                  scale: 1.2,
+                  child: kIsWeb && _imageBytes != null
+                      ? Image.memory(
+                          _imageBytes!,
+                          fit: BoxFit.cover,
+                        )
+                      : _imageFile != null
+                          ? Image.file(
+                              _imageFile!,
+                              fit: BoxFit.cover,
+                            )
+                          : Container(color: Colors.black),
+                ),
+              ),
+            ),
 
-          // المان‌های افزوده شده
-          ..._buildElementsLayer(),
+            // 2. تصویر اصلی با فیلتر
+            Center(
+              child: SizedBox(
+                width: calculatedSize.width,
+                height: calculatedSize.height,
+                child: ColorFiltered(
+                  colorFilter: _filters[_currentFilter]!,
+                  child: kIsWeb && _imageBytes != null
+                      ? Image.memory(
+                          _imageBytes!,
+                          fit: BoxFit.contain,
+                        )
+                      : _imageFile != null
+                          ? Image.file(
+                              _imageFile!,
+                              fit: BoxFit.contain,
+                            )
+                          : Container(color: Colors.black),
+                ),
+              ),
+            ),
 
-          // لایه ترسیم
-          if (_isDrawingMode) _buildDrawingLayer(),
-        ],
-      ),
-    );
+            // 3. لایه نقاشی
+            Positioned.fill(
+              child: CustomPaint(
+                painter: DrawingPainter(points: _drawingPoints),
+                size: Size.infinite,
+              ),
+            ),
+
+            // 4. لایه المان‌های اضافه شده (متن و غیره)
+            ..._buildElementsLayer(),
+
+            // 5. لایه ترسیم فعال (زمانی که حالت نقاشی فعال است)
+            if (_isDrawingMode) _buildDrawingLayer(),
+          ],
+        ),
+      );
+    });
   }
 
   Widget _buildBackgroundImage() {

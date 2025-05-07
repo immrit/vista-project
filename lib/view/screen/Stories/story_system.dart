@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -256,14 +257,25 @@ class StoryService {
     }
   }
 
-  Future<void> uploadImageStory(File imageFile) async {
+  Future<void> uploadImageStory(dynamic imageData) async {
     try {
-      _validateImageFile(imageFile);
+      if (kIsWeb) {
+        if (imageData is! Uint8List) {
+          throw Exception('فرمت تصویر برای وب نامعتبر است');
+        }
+        _validateWebImageData(imageData);
+      } else {
+        if (imageData is! File) {
+          throw Exception('فرمت تصویر برای موبایل نامعتبر است');
+        }
+        _validateImageFile(imageData);
+      }
+
       final userId = _client.auth.currentUser?.id;
       if (userId == null) throw Exception('User not authenticated');
 
       final imageUrl =
-          await StoryImageUploadService.uploadStoryImage(imageFile);
+          await StoryImageUploadService.uploadStoryImage(imageData);
       if (imageUrl == null) throw Exception('Failed to upload image');
 
       final storyId = _uuid.v4();
@@ -277,10 +289,18 @@ class StoryService {
             DateTime.now().add(const Duration(hours: 24)).toIso8601String(),
       }).select();
 
-      print('Story created with ID: $storyId');
+      print('Story created with ID: storyId');
     } catch (e) {
-      print('Error uploading story: $e');
+      print('Error uploading story: e');
       rethrow;
+    }
+  }
+
+  void _validateWebImageData(Uint8List data) {
+    // اعتبارسنجی سایز تصویر در وب
+    final sizeInMB = data.length / (1024 * 1024);
+    if (sizeInMB > 15) {
+      throw Exception('حداکثر سایز فایل ۱۵ مگابایت است');
     }
   }
 

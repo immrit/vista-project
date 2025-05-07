@@ -4,7 +4,12 @@ import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:photo_view/photo_view.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:loading_animation_widget/loading_animation_widget.dart';
@@ -23,6 +28,7 @@ import '../../../DB/message_cache_service.dart';
 import '../../../services/ChatService.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
+import '../../widgets/web files/image_downloader.dart';
 import '/main.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -206,26 +212,32 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _pickImage() async {
-    final pickedFile = await imagePicker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 70,
-    );
+    try {
+      final pickedFile = await imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 70,
+      );
 
-    if (pickedFile != null) {
-      if (kIsWeb) {
-        final bytes = await pickedFile.readAsBytes();
-        setState(() {
-          _selectedImage = null;
-          _selectedImageBytes = bytes;
-          _selectedImageName = pickedFile.name;
-        });
-      } else {
-        setState(() {
-          _selectedImage = File(pickedFile.path);
-          _selectedImageBytes = null;
-          _selectedImageName = null;
-        });
+      if (pickedFile != null) {
+        if (kIsWeb) {
+          final bytes = await pickedFile.readAsBytes();
+          setState(() {
+            _selectedImageBytes = bytes;
+            _selectedImageName = pickedFile.name;
+            _selectedImage = null;
+          });
+          print('Web Image selected: ${_selectedImageName}'); // Debug log
+        } else {
+          setState(() {
+            _selectedImage = File(pickedFile.path);
+            _selectedImageBytes = null;
+            _selectedImageName = null;
+          });
+        }
       }
+    } catch (e) {
+      print('Error picking image: $e');
+      _showErrorDialog('خطا در انتخاب تصویر');
     }
   }
 
@@ -1901,16 +1913,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final otherTimeColor = isLightMode ? Colors.grey[700] : Colors.grey[300];
 
     Widget attachmentWidget = const SizedBox.shrink();
+    void _showImageViewer(String url) {
+      _showFullScreenImage(context, url);
+    }
 
-    // نمایش عکس پیام (موقت یا واقعی)
+// بخش مربوط به نمایش عکس پیام را اصلاح کنید
     if (message.attachmentUrl != null &&
         message.attachmentUrl!.isNotEmpty &&
         message.attachmentType == 'image') {
       final url = message.attachmentUrl!;
+
+      Widget imageWidget;
       if (url.startsWith('/') && File(url).existsSync()) {
-        // فایل لوکال
-        attachmentWidget = Padding(
-          padding: const EdgeInsets.only(top: 8.0),
+        // تصویر لوکال
+        imageWidget = GestureDetector(
+          onTap: () => _showFullScreenImage(context, url),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: Image.file(
@@ -1929,42 +1946,43 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         );
       } else if (url.startsWith('http')) {
-        // لینک اینترنتی: ابتدا سعی کن مستقیم نمایش بده، اگر خطا داشت برو سراغ دانلود و کش
-        attachmentWidget = Padding(
-          padding: const EdgeInsets.only(top: 8.0),
+        // تصویر نتورک
+        imageWidget = GestureDetector(
+          onTap: () => _showFullScreenImage(context, url),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: Image.network(
-              url,
+            child: CachedNetworkImage(
+              imageUrl: url,
               width: 200,
               height: 200,
               fit: BoxFit.cover,
-              loadingBuilder: (context, child, progress) {
-                if (progress == null) return child;
-                return Container(
-                  width: 200,
-                  height: 200,
-                  color: Colors.grey[300],
-                  child: Center(
-                    child: CircularProgressIndicator(
-                      value: progress.expectedTotalBytes != null
-                          ? progress.cumulativeBytesLoaded /
-                              (progress.expectedTotalBytes ?? 1)
-                          : null,
-                    ),
-                  ),
-                );
-              },
-              errorBuilder: (context, error, stackTrace) {
-                // اگر خطا داشت، سیستم دانلود و کش را فعال کن
-                return _buildImageAttachment(url);
-              },
+              placeholder: (context, url) => Container(
+                width: 200,
+                height: 200,
+                color: Colors.grey[300],
+                child: const Center(
+                  child: CircularProgressIndicator(),
+                ),
+              ),
+              errorWidget: (context, url, error) => Container(
+                width: 200,
+                height: 200,
+                color: Colors.grey[300],
+                child: const Icon(Icons.broken_image,
+                    size: 40, color: Colors.grey),
+              ),
             ),
           ),
         );
+      } else {
+        imageWidget = const SizedBox.shrink();
       }
-    }
 
+      attachmentWidget = Padding(
+        padding: const EdgeInsets.only(top: 8.0),
+        child: imageWidget,
+      );
+    }
     // پیام موقت: رنگ متفاوت یا شفافیت
     final bool isTemp = !message.isSent && message.id.startsWith('temp_');
     final double opacity = isTemp ? 0.6 : 1.0;
@@ -2402,23 +2420,105 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
-  void _showFullScreenImage(BuildContext context, String imagePath) {
+  void _showFullScreenImage(BuildContext context, String imageUrl) {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => Scaffold(
-          backgroundColor: Colors.black,
-          appBar: AppBar(
-            backgroundColor: Colors.black,
-            iconTheme: const IconThemeData(color: Colors.white),
-          ),
-          body: Center(
-            child: InteractiveViewer(
-              minScale: 0.5,
-              maxScale: 4.0,
-              child: Image.file(File(imagePath)),
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black87,
+        pageBuilder: (BuildContext context, _, __) {
+          return Scaffold(
+            backgroundColor: Colors.transparent,
+            appBar: AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              leading: IconButton(
+                icon: Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+              ),
+              actions: [
+                // دکمه اشتراک‌گذاری
+                IconButton(
+                  icon: Icon(Icons.share, color: Colors.white),
+                  onPressed: () {
+                    if (imageUrl.startsWith('http')) {
+                      Share.share(imageUrl);
+                    } else {
+                      // Share.shareXFiles([imageUrl]);
+                    }
+                  },
+                ),
+                // دکمه دانلود
+                IconButton(
+                  icon: Icon(Icons.download, color: Colors.white),
+                  onPressed: () async {
+                    if (imageUrl.startsWith('http')) {
+                      final status = await Permission.storage.request();
+                      if (status.isGranted) {
+                        final directory =
+                            await getApplicationDocumentsDirectory();
+                        final fileName =
+                            "image_{DateTime.now().millisecondsSinceEpoch}.jpg";
+                        final path = "{directory.path}/fileName";
+
+                        try {
+                          final response = await http.get(Uri.parse(imageUrl));
+                          final file = File(path);
+                          await file.writeAsBytes(response.bodyBytes);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('تصویر دانلود شد')),
+                          );
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('خطا در دانلود تصویر')),
+                          );
+                        }
+                      }
+                    }
+                  },
+                ),
+              ],
             ),
-          ),
-        ),
+            body: Center(
+              child: GestureDetector(
+                onVerticalDragEnd: (details) {
+                  // اگر کاربر به سمت بالا یا پایین کشید، صفحه بسته شود
+                  if (details.velocity.pixelsPerSecond.dy.abs() > 200) {
+                    Navigator.pop(context);
+                  }
+                },
+                child: PhotoView(
+                  imageProvider: imageUrl.startsWith('http')
+                      ? CachedNetworkImageProvider(imageUrl) as ImageProvider
+                      : FileImage(File(imageUrl)),
+                  minScale: PhotoViewComputedScale.contained,
+                  maxScale: PhotoViewComputedScale.covered * 3,
+                  backgroundDecoration: BoxDecoration(
+                    color: Colors.transparent,
+                  ),
+                  loadingBuilder: (context, event) => Center(
+                    child: SizedBox(
+                      width: 30,
+                      height: 30,
+                      child: CircularProgressIndicator(
+                        value: event == null
+                            ? 0
+                            : event.cumulativeBytesLoaded /
+                                (event.expectedTotalBytes ?? 1),
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(
+            opacity: animation,
+            child: child,
+          );
+        },
       ),
     );
   }
@@ -2650,6 +2750,80 @@ class EmojiPickerWidget extends StatelessWidget {
           searchViewConfig: SearchViewConfig(
             backgroundColor: Colors.indigo,
             buttonIconColor: Colors.indigo,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ImageFullscreenViewer extends StatelessWidget {
+  final String imageUrl;
+  final String heroTag;
+  const ImageFullscreenViewer(
+      {super.key, required this.imageUrl, required this.heroTag});
+
+  Future<void> _shareImage(BuildContext context) async {
+    try {
+      if (kIsWeb) {
+        // وب: فقط url رو share کن (دانلود مستقیم ممکن نیست)
+        Share.share(imageUrl);
+      } else {
+        final response = await http.get(Uri.parse(imageUrl));
+        final bytes = response.bodyBytes;
+        final tempDir = await getTemporaryDirectory();
+        final tempPath = '{tempDir.path}/shared_image.jpg';
+        final file = File(tempPath);
+        await file.writeAsBytes(bytes);
+        await Share.shareXFiles([XFile(tempPath)]);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در اشتراک‌گذاری: e')),
+      );
+    }
+  }
+
+  Future<void> _downloadImage(BuildContext context, String imageUrl) async {
+    if (kIsWeb) {
+      downloadImageOnWeb(imageUrl);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('دانلود آغاز شد')),
+      );
+      return;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download_rounded),
+            color: Colors.white,
+            onPressed: () => _downloadImage(context, imageUrl),
+            tooltip: 'دانلود تصویر',
+          ),
+          IconButton(
+            icon: const Icon(Icons.share),
+            color: Colors.white,
+            onPressed: () => _shareImage(context),
+            tooltip: 'اشتراک‌گذاری',
+          ),
+        ],
+      ),
+      body: Center(
+        child: Hero(
+          tag: heroTag,
+          child: PhotoView(
+            imageProvider: NetworkImage(imageUrl),
+            backgroundDecoration: const BoxDecoration(color: Colors.black),
+            minScale: PhotoViewComputedScale.contained,
+            maxScale: PhotoViewComputedScale.covered * 2,
+            heroAttributes: PhotoViewHeroAttributes(tag: heroTag),
           ),
         ),
       ),
