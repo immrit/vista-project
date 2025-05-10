@@ -2235,3 +2235,41 @@ class LikeStateNotifier extends StateNotifier<Map<String, bool>> {
     return state[postId] ?? false;
   }
 }
+
+// Provider to get the current user's UserModel based on profileProvider
+final userProvider = Provider<UserModel?>((ref) {
+  // به profileProvider گوش می‌دهیم تا داده‌های پروفایل را دریافت کنیم
+  final profileDataAsync = ref
+      .watch(profileProvider); // این یک AsyncValue<Map<String, dynamic>?> است
+
+  // با استفاده از .when وضعیت‌های مختلف profileDataAsync (داده، لودینگ، خطا) را مدیریت می‌کنیم
+  return profileDataAsync.when(
+    data: (dataMap) {
+      // dataMap همان Map<String, dynamic>? است که از profileProvider می‌آید
+      if (dataMap != null) {
+        try {
+          // داده‌های map را به UserModel تبدیل می‌کنیم
+          return UserModel.fromMap(dataMap);
+        } catch (e, stackTrace) {
+          // اگر در تبدیل map به UserModel خطایی رخ دهد (مثلاً فیلدهای مورد نیاز وجود نداشته باشند)
+          debugPrint('خطا در تبدیل اطلاعات پروفایل به UserModel: $e');
+          debugPrint('StackTrace: $stackTrace');
+          debugPrint('اطلاعات پروفایل دریافتی: $dataMap');
+          return null; // در صورت خطا، null برمی‌گردانیم
+        }
+      }
+      return null; // اگر dataMap خود null باشد (مثلاً پروفایل پیدا نشده)
+    },
+    loading: () {
+      // اگر profileProvider در حال بارگذاری اطلاعات باشد
+      return null;
+    },
+    error: (error, stackTrace) {
+      // اگر خطایی در profileProvider رخ داده باشد
+      debugPrint(
+          'خطا در profileProvider هنگام تلاش برای خواندن توسط userProvider: $error');
+      debugPrint('StackTrace: $stackTrace');
+      return null;
+    },
+  );
+});

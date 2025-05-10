@@ -1,7 +1,12 @@
 buildscript {
+    ext.kotlin_version = '1.9.20'
     repositories {
         google()
         mavenCentral() // added repository
+    }
+        dependencies {
+        classpath 'com.android.tools.build:gradle:7.3.0' // یا نسخه Android Gradle Plugin شما
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
 

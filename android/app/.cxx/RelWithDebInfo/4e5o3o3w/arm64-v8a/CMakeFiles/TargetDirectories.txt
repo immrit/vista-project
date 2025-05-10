@@ -1,0 +1,2 @@
+F:/vista/android/app/.cxx/RelWithDebInfo/4e5o3o3w/arm64-v8a/CMakeFiles/edit_cache.dir
+F:/vista/android/app/.cxx/RelWithDebInfo/4e5o3o3w/arm64-v8a/CMakeFiles/rebuild_cache.dir

@@ -55,13 +55,41 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
   void initState() {
     super.initState();
     _initializeVideo();
-    print('Username: ${widget.post.username}');
-    print('Is Verified: ${widget.post.isVerified}');
-    print('Has Blue Badge: ${widget.post.hasBlueBadge}');
-    print('Has Gold Badge: ${widget.post.hasGoldBadge}');
-    print('Has Black Badge: ${widget.post.hasBlackBadge}');
-    _fetchVerificationType();
+
+    // اضافه کردن listener برای آپدیت موقعیت ویدیو
+    _controller?.addListener(() {
+      if (mounted) {
+        setState(() {
+          _currentPosition = _controller?.value.position ?? Duration.zero;
+          _videoDuration = _controller?.value.duration ?? Duration.zero;
+        });
+
+        // اطلاع‌رسانی به parent widget
+        if (widget.onPositionChanged != null) {
+          widget.onPositionChanged!(_currentPosition);
+        }
+      }
+    });
+    _fetchVerificationType(); // فراخوانی تابع برای دریافت نوع تأیید
   }
+
+  // Widget _buildProgressBar() {
+  //   return Positioned(
+  //     bottom: 0,
+  //     left: 0,
+  //     right: 0,
+  //     child: Container(
+  //       height: 2,
+  //       child: LinearProgressIndicator(
+  //         value: _videoDuration.inSeconds > 0
+  //             ? _currentPosition.inSeconds / _videoDuration.inSeconds
+  //             : 0,
+  //         backgroundColor: Colors.white.withOpacity(0.2),
+  //         valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+  //       ),
+  //     ),
+  //   );
+  // }
 
   String? _directVerificationType;
 

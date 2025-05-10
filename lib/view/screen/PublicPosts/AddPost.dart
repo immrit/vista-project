@@ -9,9 +9,11 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:video_player/video_player.dart';
 import '../../../main.dart';
+import '../../../model/UserModel.dart';
 import '../../../services/PostImageUploadService.dart';
 import '../../../provider/provider.dart';
 import '../../widgets/CustomVideoTrimmer.dart';
+import '../../widgets/YourVideoTrimmerPage .dart';
 
 class AddPublicPostScreen extends ConsumerStatefulWidget {
   const AddPublicPostScreen({super.key});
@@ -93,6 +95,19 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
 
   Future<void> _pickVideo() async {
     try {
+      final UserModel? currentUser = ref.read(userProvider);
+      Duration videoMaxDuration =
+          const Duration(minutes: 1); // پیش‌فرض برای کاربران عادی
+
+      // بررسی نوع کاربر برای تعیین محدودیت زمانی
+      if (currentUser != null &&
+          currentUser.verificationType != VerificationType.none) {
+        videoMaxDuration = const Duration(minutes: 2); // برای کاربران نشان‌دار
+      }
+
+      debugPrint(
+          'Video max duration for user type ${currentUser?.verificationType}: $videoMaxDuration');
+
       final result = await FilePicker.platform.pickFiles(
         type: FileType.video,
         allowMultiple: false,
@@ -100,87 +115,80 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
 
       if (result != null) {
         if (kIsWeb) {
+          // ------------- نسخه وب: بدون برش، مستقیم به پیش‌نمایش -------------
           final videoBytes = result.files.single.bytes!;
           final videoName = result.files.single.name;
 
-          // Create a blob URL for web
-          final blobUrl = await _createVideoBlobUrl(videoBytes);
-
-          if (mounted) {
-            // استفاده مستقیم از نتیجه برگشتی با await
-            final dynamic trimmedResult = await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => CustomVideoTrimmer(
-                  videoFile: blobUrl,
-                  onVideoSaved: (File file) {
-                    // این callback دیگر استفاده نمی‌شود ولی برای سازگاری نگه می‌داریم
-                  },
-                  isWeb: true,
-                ),
-              ),
-            );
-
-            // بررسی نتیجه برگشتی
-            if (trimmedResult != null) {
-              setState(() {
-                _selectedVideo = null;
-                _selectedVideoBytes = videoBytes;
-                _selectedVideoName = videoName;
-                _selectedImage = null;
-                _selectedImageBytes = null;
-                _selectedImageName = null;
-              });
-              _initializeVideoPlayerWeb(
-                  _selectedVideoBytes!, _selectedVideoName!);
-            }
+          setState(() {
+            _selectedVideo = null;
+            _selectedVideoBytes = videoBytes;
+            _selectedVideoName = videoName;
+            _selectedImage = null; // پاک کردن انتخاب‌های دیگر
+            _selectedImageBytes = null;
+            _selectedImageName = null;
+            _selectedMusic = null;
+            _musicFileName = null;
+          });
+          // مقداردهی اولیه ویدیو پلیر برای وب با بایت‌های انتخاب شده
+          if (_videoPlayerController != null) {
+            await _videoPlayerController!
+                .dispose(); // dispose قبلی اگر وجود داشت
           }
+          await _initializeVideoPlayerWeb(
+              videoBytes, videoName); // تابع خودت برای نمایش در وب
+          debugPrint('Video selected on web. No trimming. Ready for preview.');
         } else {
-          final file = File(result.files.single.path!);
-          debugPrint('Original video path: ${file.path}');
+          // ------------- نسخه موبایل (اندروید): استفاده از video_trimmer -------------
+          final originalFile = File(result.files.single.path!);
 
           if (mounted) {
-            // صفحه برش ویدیو با await و دریافت مستقیم نتیجه
-            final File? trimmedFile = await Navigator.push<File>(
+            // فرض می‌کنیم یک صفحه جدید یا ویجت برای video_trimmer داری
+            // و video_trimmer مسیر فایل برش خورده رو برمی‌گردونه
+            final String? trimmedPath = await Navigator.push<String?>(
               context,
               MaterialPageRoute(
-                builder: (context) => CustomVideoTrimmer(
-                  videoFile: file,
-                  onVideoSaved: (File file) {
-                    // این callback دیگر استفاده نمی‌شود ولی برای سازگاری نگه می‌داریم
-                  },
-                  isWeb: false,
+                builder: (context) => YourVideoTrimmerPage(
+                  // صفحه‌ای که video_trimmer رو در خودش داره
+                  videoFile: originalFile,
+                  maxDuration: videoMaxDuration,
                 ),
               ),
             );
 
-            if (trimmedFile != null && trimmedFile.existsSync()) {
-              debugPrint('Received trimmed video: ${trimmedFile.path}');
-
-              setState(() {
-                _selectedVideo = trimmedFile;
-                _selectedVideoBytes = null;
-                _selectedVideoName = trimmedFile.path.split('/').last;
-                _selectedImage = null;
-                _selectedImageBytes = null;
-                _selectedImageName = null;
-                _videoPlayerController?.dispose();
-                _videoPlayerController = null;
-              });
-
-              // راه‌اندازی مجدد پلیر با تاخیر
-              await Future.delayed(const Duration(milliseconds: 300));
-              await _initializeVideoPlayerMobile(trimmedFile);
+            if (trimmedPath != null && trimmedPath.isNotEmpty) {
+              final File trimmedFile = File(trimmedPath);
+              if (await trimmedFile.exists()) {
+                setState(() {
+                  _selectedVideo = trimmedFile;
+                  _selectedVideoName = trimmedFile.path.split('/').last;
+                  _selectedVideoBytes = null; // چون فایل داریم، بایت لازم نیست
+                  _selectedImage = null; // پاک کردن انتخاب‌های دیگر
+                  _selectedImageBytes = null;
+                  _selectedImageName = null;
+                  _selectedMusic = null;
+                  _musicFileName = null;
+                });
+                if (_videoPlayerController != null) {
+                  await _videoPlayerController!.dispose();
+                }
+                await _initializeVideoPlayerMobile(
+                    trimmedFile); // تابع خودت برای نمایش در موبایل
+                debugPrint(
+                    'Video trimmed and selected on mobile: ${trimmedFile.path}');
+              } else {
+                _showError('فایل برش خورده ویدیو پیدا نشد.');
+                debugPrint('Trimmed video file does not exist: $trimmedPath');
+              }
             } else {
-              debugPrint('No valid trimmed video received');
-              _showError('خطا در دریافت ویدیوی برش خورده');
+              // کاربر ممکن است از صفحه برش بدون ذخیره خارج شود
+              debugPrint('Video trimming cancelled or failed.');
             }
           }
         }
       }
-    } catch (e) {
-      debugPrint('Error in _pickVideo: $e');
-      _showError('خطا در انتخاب ویدیو');
+    } catch (e, s) {
+      debugPrint('Error picking/trimming video: $e\n$s');
+      _showError('خطایی در انتخاب یا پردازش ویدیو رخ داد: $e');
     }
   }
 

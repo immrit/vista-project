@@ -420,7 +420,7 @@ class _MyAppState extends ConsumerState<MyApp> {
         chatService.updateUserOnlineStatus();
       }
     });
-    _setupProfileCheck();
+    // _setupProfileCheck();
 
     // هندلر FCM در فورگراند و بکگراند
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -653,76 +653,76 @@ class _MyAppState extends ConsumerState<MyApp> {
     }
   }
 
-  void _setupProfileCheck() {
-    // بررسی اولیه
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(profileCompletionProvider.notifier).checkProfileCompletion();
-    });
+  // void _setupProfileCheck() {
+  //   // بررسی اولیه
+  //   WidgetsBinding.instance.addPostFrameCallback((_) {
+  //     ref.read(profileCompletionProvider.notifier).checkProfileCompletion();
+  //   });
 
-    // تنظیم تایمر برای بررسی هر دقیقه
-    _profileCheckTimer = Timer.periodic(const Duration(minutes: 7), (_) {
-      if (mounted) {
-        _showProfileCompletionDialog();
-      }
-    });
-  }
+  //   // تنظیم تایمر برای بررسی هر دقیقه
+  //   _profileCheckTimer = Timer.periodic(const Duration(minutes: 7), (_) {
+  //     if (mounted) {
+  //       _showProfileCompletionDialog();
+  //     }
+  //   });
+  // }
 
-  void _showProfileCompletionDialog() async {
-    // برای اطمینان از وجود context صحیح
-    final context = navigatorKey.currentContext;
-    if (context == null) return;
+  // void _showProfileCompletionDialog() async {
+  //   // برای اطمینان از وجود context صحیح
+  //   final context = navigatorKey.currentContext;
+  //   if (context == null) return;
 
-    final isComplete = await ref
-        .read(profileCompletionProvider.notifier)
-        .checkProfileCompletion();
-    if (!isComplete && mounted) {
-      // استفاده از GlobalKey برای دسترسی به context صحیح
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (BuildContext dialogContext) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          title: const Text(
-            'تکمیل اطلاعات پروفایل',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.person_outline, size: 48, color: Colors.blue),
-              const SizedBox(height: 16),
-              const Text(
-                'لطفاً برای دسترسی به تمام امکانات برنامه، اطلاعات پروفایل خود را تکمیل کنید.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('بعداً'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/editeProfile');
-              },
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.blue,
-              ),
-              child: const Text(
-                'تکمیل پروفایل',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-  }
+  //   final isComplete = await ref
+  //       .read(profileCompletionProvider.notifier)
+  //       .checkProfileCompletion();
+  //   if (!isComplete && mounted) {
+  //     // استفاده از GlobalKey برای دسترسی به context صحیح
+  //     showDialog(
+  //       context: context,
+  //       barrierDismissible: false,
+  //       builder: (BuildContext dialogContext) => AlertDialog(
+  //         shape:
+  //             RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+  //         title: const Text(
+  //           'تکمیل اطلاعات پروفایل',
+  //           textAlign: TextAlign.center,
+  //           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+  //         ),
+  //         content: Column(
+  //           mainAxisSize: MainAxisSize.min,
+  //           children: [
+  //             const Icon(Icons.person_outline, size: 48, color: Colors.blue),
+  //             const SizedBox(height: 16),
+  //             const Text(
+  //               'لطفاً برای دسترسی به تمام امکانات برنامه، اطلاعات پروفایل خود را تکمیل کنید.',
+  //               textAlign: TextAlign.center,
+  //               style: TextStyle(fontSize: 14),
+  //             ),
+  //           ],
+  //         ),
+  //         actions: [
+  //           TextButton(
+  //             onPressed: () => Navigator.pop(context),
+  //             child: const Text('بعداً'),
+  //           ),
+  //           FilledButton(
+  //             onPressed: () {
+  //               Navigator.pop(context);
+  //               Navigator.pushNamed(context, '/editeProfile');
+  //             },
+  //             style: FilledButton.styleFrom(
+  //               backgroundColor: Colors.blue,
+  //             ),
+  //             child: const Text(
+  //               'تکمیل پروفایل',
+  //               style: TextStyle(color: Colors.white),
+  //             ),
+  //           ),
+  //         ],
+  //       ),
+  //     );
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {

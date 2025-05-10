@@ -5,9 +5,9 @@ import 'package:flutter/foundation.dart';
 // Enum برای نوع تایید
 enum VerificationType {
   none, // بدون نشان
-  blueTick, // نشان آبی (مدیران و ناظران)
-  goldTick, // نشان طلایی (حساب تجاری)
-  blackTick // نشان مشکی (تولیدکنندگان محتوا)
+  blueTick, // نشان آبی
+  goldTick, // نشان طلایی
+  blackTick // نشان مشکی
 }
 
 @immutable
