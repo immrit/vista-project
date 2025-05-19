@@ -666,6 +666,14 @@ class _VerificationBadgeStoreState
         'animation': true,
       },
       {
+        'title': 'ویدیوهای طولانی‌تر',
+        'description':
+            'با داشتن نشان ویژه، می‌توانید کلیپ‌های ویدیویی تا ۲ دقیقه آپلود کنید، در حالی که کاربران عادی محدود به ۱ دقیقه هستند.',
+        'icon': Icons.video_collection_rounded,
+        'color': Colors.red,
+        'animation': false,
+      },
+      {
         'title': 'اولویت در جستجو',
         'description':
             'حساب‌های کاربری دارای نشان ویژه در نتایج جستجو در اولویت قرار می‌گیرند.',

@@ -590,8 +590,15 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                                 final filtered = ref.watch(
                                     filteredNotificationsProvider(
                                         tab['type'] as String));
-                                return _buildNotificationsList(
-                                    context, filtered);
+                                return RefreshIndicator(
+                                  onRefresh: () async {
+                                    await ref
+                                        .read(notificationsProvider.notifier)
+                                        .fetchNotifications();
+                                  },
+                                  child: _buildNotificationsList(
+                                      context, filtered),
+                                );
                               },
                             ),
                           )

@@ -224,142 +224,145 @@ class _YourVideoTrimmerPageState extends State<YourVideoTrimmerPage> {
     return PopScope(
       canPop:
           !Navigator.of(context).userGestureInProgress && !_progressVisibility,
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        appBar: AppBar(
-          title: const Text('برش ویدیو',
-              style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      child: SafeArea(
+        bottom: true,
+        child: Scaffold(
           backgroundColor: Colors.black,
-          elevation: 0,
-          actions: [
-            if (!_progressVisibility)
-              Container(
-                margin: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.blue.shade400, Colors.blue.shade600],
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.check, color: Colors.white),
-                  onPressed: _saveVideo,
-                ),
-              ),
-          ],
-        ),
-        body: Center(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Column(
-              children: <Widget>[
-                // اضافه کردن نمایش وضعیت کاربر در ابتدای لیست
-                _buildUserBadgeInfo(),
-
-                // نمایشگر پیشرفت
-                if (_progressVisibility)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: const LinearProgressIndicator(
-                      backgroundColor: Colors.grey,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
-                      minHeight: 6,
-                    ),
-                  ),
-
-                // پیش‌نمایش ویدیو
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                          color: Colors.blue.withOpacity(0.3), width: 2),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: VideoViewer(trimmer: _trimmer),
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // تایم لاین برش
+          appBar: AppBar(
+            title: const Text('برش ویدیو',
+                style: TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.bold)),
+            backgroundColor: Colors.black,
+            elevation: 0,
+            actions: [
+              if (!_progressVisibility)
                 Container(
+                  margin: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade900,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  padding: const EdgeInsets.all(16),
-                  child: TrimViewer(
-                    trimmer: _trimmer,
-                    viewerHeight: 60,
-                    viewerWidth: MediaQuery.of(context).size.width - 64,
-                    maxVideoLength: widget.maxDuration,
-                    durationStyle: DurationStyle.FORMAT_MM_SS,
-                    editorProperties: TrimEditorProperties(
-                      borderPaintColor: Colors.blue,
-                      borderWidth: 4,
-                      borderRadius: 5,
-                      circlePaintColor: Colors.white,
-                      scrubberWidth: 2,
-                    ),
-                    areaProperties: TrimAreaProperties.edgeBlur(
-                      thumbnailQuality: 75,
-                    ),
-                    onChangeStart: (value) => _startValue = value,
-                    onChangeEnd: (value) => _endValue = value,
-                    onChangePlaybackState: (value) =>
-                        setState(() => _isPlaying = value),
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // دکمه پخش/توقف
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
                     gradient: LinearGradient(
                       colors: [Colors.blue.shade400, Colors.blue.shade600],
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.blue.withOpacity(0.3),
-                        blurRadius: 12,
-                        spreadRadius: 2,
-                      )
-                    ],
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () async {
-                        bool playbackState =
-                            await _trimmer.videoPlaybackControl(
-                          startValue: _startValue,
-                          endValue: _endValue,
-                        );
-                        setState(() => _isPlaying = playbackState);
-                      },
-                      customBorder: const CircleBorder(),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Icon(
-                          _isPlaying ? Icons.pause : Icons.play_arrow,
-                          size: 44,
-                          color: Colors.white,
+                  child: IconButton(
+                    icon: const Icon(Icons.check, color: Colors.white),
+                    onPressed: _saveVideo,
+                  ),
+                ),
+            ],
+          ),
+          body: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Column(
+                children: <Widget>[
+                  // اضافه کردن نمایش وضعیت کاربر در ابتدای لیست
+                  _buildUserBadgeInfo(),
+
+                  // نمایشگر پیشرفت
+                  if (_progressVisibility)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: const LinearProgressIndicator(
+                        backgroundColor: Colors.grey,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                        minHeight: 6,
+                      ),
+                    ),
+
+                  // پیش‌نمایش ویدیو
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                            color: Colors.blue.withOpacity(0.3), width: 2),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: VideoViewer(trimmer: _trimmer),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // تایم لاین برش
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade900,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.all(16),
+                    child: TrimViewer(
+                      trimmer: _trimmer,
+                      viewerHeight: 60,
+                      viewerWidth: MediaQuery.of(context).size.width - 64,
+                      maxVideoLength: widget.maxDuration,
+                      durationStyle: DurationStyle.FORMAT_MM_SS,
+                      editorProperties: TrimEditorProperties(
+                        borderPaintColor: Colors.blue,
+                        borderWidth: 4,
+                        borderRadius: 5,
+                        circlePaintColor: Colors.white,
+                        scrubberWidth: 2,
+                      ),
+                      areaProperties: TrimAreaProperties.edgeBlur(
+                        thumbnailQuality: 75,
+                      ),
+                      onChangeStart: (value) => _startValue = value,
+                      onChangeEnd: (value) => _endValue = value,
+                      onChangePlaybackState: (value) =>
+                          setState(() => _isPlaying = value),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // دکمه پخش/توقف
+                  Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: [Colors.blue.shade400, Colors.blue.shade600],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.blue.withOpacity(0.3),
+                          blurRadius: 12,
+                          spreadRadius: 2,
+                        )
+                      ],
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () async {
+                          bool playbackState =
+                              await _trimmer.videoPlaybackControl(
+                            startValue: _startValue,
+                            endValue: _endValue,
+                          );
+                          setState(() => _isPlaying = playbackState);
+                        },
+                        customBorder: const CircleBorder(),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Icon(
+                            _isPlaying ? Icons.pause : Icons.play_arrow,
+                            size: 44,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
 
-                const SizedBox(height: 20),
-              ],
+                  const SizedBox(height: 20),
+                ],
+              ),
             ),
           ),
         ),

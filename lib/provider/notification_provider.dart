@@ -128,6 +128,26 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
           callback: (payload) async {
             final newData = payload.newRecord as Map<String, dynamic>;
             var notif = NotificationModel.fromMap(newData);
+            try {
+              final senderData = await supabase
+                  .from('profiles')
+                  .select(
+                      'username, avatar_url, is_verified, verification_type')
+                  .eq('id', newData['sender_id'])
+                  .single();
+
+              // ترکیب اطلاعات اعلان با پروفایل
+              final completeData = {...newData, 'sender': senderData};
+
+              var notif = NotificationModel.fromMap(completeData);
+              if (!state.any((n) => n.id == notif.id)) {
+                state = [notif, ...state];
+                await _showLocalNotification(notif);
+              }
+            } catch (e) {
+              print('خطا در دریافت اطلاعات فرستنده: $e');
+            }
+
             if (!state.any((n) => n.id == notif.id)) {
               // برای اطمینان، پروفایل کامل را دوباره بگیر
               if (notif.username == null || notif.avatarUrl == null) {

@@ -2437,16 +2437,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
               actions: [
                 // دکمه اشتراک‌گذاری
-                IconButton(
-                  icon: Icon(Icons.share, color: Colors.white),
-                  onPressed: () {
-                    if (imageUrl.startsWith('http')) {
-                      Share.share(imageUrl);
-                    } else {
-                      // Share.shareXFiles([imageUrl]);
-                    }
-                  },
-                ),
+                // IconButton(
+                //   icon: Icon(Icons.share, color: Colors.white),
+                //   onPressed: () {
+                //     if (imageUrl.startsWith('http')) {
+                //       Share.share(imageUrl);
+                //     } else {
+                //       // Share.shareXFiles([imageUrl]);
+                //     }
+                //   },
+                // ),
                 // دکمه دانلود
                 IconButton(
                   icon: Icon(Icons.download, color: Colors.white),

@@ -410,6 +410,7 @@ class _AllPostsPaginatedTab extends ConsumerWidget {
                   ref.refresh(publicPostsProvider);
                   ref.refresh(fetchFollowingPostsProvider);
                   ref.refresh(storyUsersProvider);
+                  ref.refresh(commentNotifierProvider);
                 },
                 icon: const Icon(Icons.refresh_rounded),
                 label: const Text('تلاش مجدد'),
@@ -879,11 +880,22 @@ Widget _buildPostItem(
                     isLiked: isLiked,
                     likeCount: likeCount,
                     onTap: () async {
-                      await ref.read(supabaseServiceProvider).toggleLike(
-                            postId: post.id!,
-                            ownerId: post.userId!,
-                            ref: ref,
-                          );
+                      // --- اضافه کردن آپدیت optimistic ---
+                      ref
+                          .read(likeStateProvider.notifier)
+                          .updateLikeState(post.id, !isLiked);
+                      try {
+                        await ref.read(supabaseServiceProvider).toggleLike(
+                              postId: post.id!,
+                              ownerId: post.userId!,
+                              ref: ref,
+                            );
+                      } catch (e) {
+                        // اگر خطا رخ داد، state را به حالت قبل برگردان
+                        ref
+                            .read(likeStateProvider.notifier)
+                            .updateLikeState(post.id, isLiked);
+                      }
                     },
                   );
                 },

@@ -217,96 +217,100 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
   Widget build(BuildContext context) {
     super.build(context); // لازم برای AutomaticKeepAliveClientMixin
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // صفحه اصلی ریلز با اسکرول عمودی
-          PageView.builder(
-            controller: _pageController,
-            scrollDirection: Axis.vertical,
-            onPageChanged: _onPageChanged,
-            itemCount: widget.posts.length,
-            itemBuilder: (context, index) {
-              final post = widget.posts[index];
-              if (post.videoUrl == null || post.videoUrl!.isEmpty) {
-                // اگر ویدیو نداشت، یک صفحه خالی یا خطا نمایش دهید
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.videocam_off, color: Colors.white70, size: 48),
-                      SizedBox(height: 16),
-                      Text(
-                        'این پست ویدیو ندارد',
-                        style: TextStyle(color: Colors.white70),
-                      ),
-                    ],
-                  ),
+    return SafeArea(
+      bottom: true,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          children: [
+            // صفحه اصلی ریلز با اسکرول عمودی
+            PageView.builder(
+              controller: _pageController,
+              scrollDirection: Axis.vertical,
+              onPageChanged: _onPageChanged,
+              itemCount: widget.posts.length,
+              itemBuilder: (context, index) {
+                final post = widget.posts[index];
+                if (post.videoUrl == null || post.videoUrl!.isEmpty) {
+                  // اگر ویدیو نداشت، یک صفحه خالی یا خطا نمایش دهید
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.videocam_off,
+                            color: Colors.white70, size: 48),
+                        SizedBox(height: 16),
+                        Text(
+                          'این پست ویدیو ندارد',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                // موقعیت اولیه ویدیو را پاس می‌دهیم (اگر وجود داشته باشد)
+                Duration? initialPosition;
+                final postId = post.id ?? '';
+
+                if (widget.initialPositions.containsKey(postId)) {
+                  initialPosition = widget.initialPositions[postId];
+                  print(
+                      'بارگذاری ویدیو $postId با موقعیت اولیه: $initialPosition');
+                }
+
+                return ReelsVideoPlayer(
+                  post: post,
+                  isActive: index == _currentIndex,
+                  onLike: () {
+                    // این تابع فقط برای آگاهی ReelsScreen از تغییر لایک است
+                    // اینجا نباید عملیات لایک دوباره انجام شود
+                    // می‌توانید وضعیت پست را از provider بخوانید و UI را آپدیت کنید
+                    setState(() {
+                      // آپدیت UI صفحه ReelsScreen در صورت نیاز
+                    });
+                  },
+                  onComment: () => _showComments(post),
+                  onShare: () => _sharePost(post),
+                  initialPosition: initialPosition, // پاس دادن موقعیت اولیه
+                  onPositionChanged: (position) {
+                    // ذخیره موقعیت فعلی برای استفاده بعدی
+                    _saveVideoPosition(postId, position);
+                  },
+                  autoPlayInFeed: true, // در صفحه ریلز، پخش خودکار فعال است
                 );
-              }
-
-              // موقعیت اولیه ویدیو را پاس می‌دهیم (اگر وجود داشته باشد)
-              Duration? initialPosition;
-              final postId = post.id ?? '';
-
-              if (widget.initialPositions.containsKey(postId)) {
-                initialPosition = widget.initialPositions[postId];
-                print(
-                    'بارگذاری ویدیو $postId با موقعیت اولیه: $initialPosition');
-              }
-
-              return ReelsVideoPlayer(
-                post: post,
-                isActive: index == _currentIndex,
-                onLike: () {
-                  // این تابع فقط برای آگاهی ReelsScreen از تغییر لایک است
-                  // اینجا نباید عملیات لایک دوباره انجام شود
-                  // می‌توانید وضعیت پست را از provider بخوانید و UI را آپدیت کنید
-                  setState(() {
-                    // آپدیت UI صفحه ReelsScreen در صورت نیاز
-                  });
-                },
-                onComment: () => _showComments(post),
-                onShare: () => _sharePost(post),
-                initialPosition: initialPosition, // پاس دادن موقعیت اولیه
-                onPositionChanged: (position) {
-                  // ذخیره موقعیت فعلی برای استفاده بعدی
-                  _saveVideoPosition(postId, position);
-                },
-              );
-            },
-          ),
-
-          // دکمه بازگشت
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 10,
-            left: 16,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
-                shape: BoxShape.circle,
-              ),
-              child: IconButton(
-                icon: Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
-              ),
+              },
             ),
-          ),
-
-          // نشانگر لودینگ
-          if (_isLoading)
+            // دکمه بازگشت
             Positioned(
-              bottom: 70,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              top: MediaQuery.of(context).padding.top + 10,
+              left: 16,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.5),
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  icon: Icon(Icons.arrow_back, color: Colors.white),
+                  onPressed: () => Navigator.pop(context),
                 ),
               ),
             ),
-        ],
+
+            // نشانگر لودینگ
+            if (_isLoading)
+              Positioned(
+                bottom: 70,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

@@ -17,6 +17,7 @@ class ReelsVideoPlayer extends ConsumerStatefulWidget {
   final VoidCallback onShare;
   final Duration? initialPosition;
   final Function(Duration)? onPositionChanged;
+  final bool autoPlayInFeed; // پارامتر جدید
 
   const ReelsVideoPlayer({
     Key? key,
@@ -27,6 +28,7 @@ class ReelsVideoPlayer extends ConsumerStatefulWidget {
     required this.onShare,
     this.initialPosition,
     this.onPositionChanged,
+    this.autoPlayInFeed = false, // مقدار پیش‌فرض false
   }) : super(key: key);
 
   @override
@@ -39,16 +41,12 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
   bool _isPlaying = false;
   bool _isVisible = false;
   bool _isMuted = true;
-
   bool _showLikeAnim = false;
   Timer? _likeAnimTimer;
-
   Duration _currentPosition = Duration.zero;
   Duration _videoDuration = Duration.zero;
-
   bool _showVolumeControl = false;
   Timer? _volumeControlTimer;
-
   bool _isCaptionExpanded = false;
 
   @override
@@ -72,24 +70,6 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
     });
     _fetchVerificationType(); // فراخوانی تابع برای دریافت نوع تأیید
   }
-
-  // Widget _buildProgressBar() {
-  //   return Positioned(
-  //     bottom: 0,
-  //     left: 0,
-  //     right: 0,
-  //     child: Container(
-  //       height: 2,
-  //       child: LinearProgressIndicator(
-  //         value: _videoDuration.inSeconds > 0
-  //             ? _currentPosition.inSeconds / _videoDuration.inSeconds
-  //             : 0,
-  //         backgroundColor: Colors.white.withOpacity(0.2),
-  //         valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-  //       ),
-  //     ),
-  //   );
-  // }
 
   String? _directVerificationType;
 
@@ -254,281 +234,306 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: _togglePlay,
-      onDoubleTap: () {
-        _handleLike(); // مستقیم از _handleLike استفاده کنید
+    return VisibilityDetector(
+      key: Key('video-${widget.post.id}'),
+      onVisibilityChanged: (visibilityInfo) {
+        final visiblePercentage = visibilityInfo.visibleFraction * 100;
+        setState(() {
+          _isVisible = visiblePercentage > 50;
+        });
+
+        // فقط در صفحه ریلز، ویدیو را به صورت خودکار پخش کنیم
+        // از autoPlayInFeed استفاده می‌کنیم تا در لیست پست‌ها کنترل داشته باشیم
+        if (_isVisible && widget.isActive && widget.autoPlayInFeed) {
+          _controller?.play();
+          setState(() {
+            _isPlaying = true;
+          });
+        } else if (!_isVisible || !widget.isActive) {
+          _controller?.pause();
+          setState(() {
+            _isPlaying = false;
+          });
+        }
       },
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          _isInitialized
-              ? Center(
-                  child: AspectRatio(
-                    aspectRatio: _controller!.value.aspectRatio,
-                    child: VideoPlayer(_controller!),
+      child: GestureDetector(
+        onTap: _togglePlay,
+        onDoubleTap: () {
+          _handleLike(); // مستقیم از _handleLike استفاده کنید
+        },
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            _isInitialized
+                ? Center(
+                    child: AspectRatio(
+                      aspectRatio: _controller!.value.aspectRatio,
+                      child: VideoPlayer(_controller!),
+                    ),
+                  )
+                : Center(
+                    child: CircularProgressIndicator(color: Colors.white),
                   ),
-                )
-              : Center(
-                  child: CircularProgressIndicator(color: Colors.white),
-                ),
-          Container(color: Colors.black.withOpacity(0.3)),
-          if (_showLikeAnim)
-            Center(
-              child: AnimatedOpacity(
-                opacity: _showLikeAnim ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 300),
-                child: TweenAnimationBuilder<double>(
-                  tween: Tween<double>(begin: 0.5, end: 1.5),
-                  duration: const Duration(milliseconds: 400),
-                  curve: Curves.elasticOut,
-                  builder: (context, value, child) {
-                    return Transform.scale(
-                      scale: value,
-                      child: Icon(
-                        Icons.favorite,
-                        color: Colors.red,
-                        size: 100,
-                      ),
-                    );
-                  },
+            Container(color: Colors.black.withOpacity(0.3)),
+            if (_showLikeAnim)
+              Center(
+                child: AnimatedOpacity(
+                  opacity: _showLikeAnim ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0.5, end: 1.5),
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.elasticOut,
+                    builder: (context, value, child) {
+                      return Transform.scale(
+                        scale: value,
+                        child: Icon(
+                          Icons.favorite,
+                          color: Colors.red,
+                          size: 100,
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
-            ),
-          if (_showVolumeControl)
-            Positioned(
-              right: 16,
-              top: MediaQuery.of(context).size.height / 2 - 40,
-              child: Container(
-                padding: EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.6),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      _isMuted ? Icons.volume_off : Icons.volume_up,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                    SizedBox(width: 8),
-                    Text(
-                      _isMuted ? "بی‌صدا" : "باصدا",
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          Positioned(
-            right: 12,
-            bottom: MediaQuery.of(context).size.height * 0.15,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Column(
-                  children: [
-                    IconButton(
-                      onPressed: _handleLike,
-                      icon: Icon(
-                        widget.post.isLiked
-                            ? Icons.favorite
-                            : Icons.favorite_border,
-                        color: widget.post.isLiked ? Colors.red : Colors.white,
-                        size: 32,
-                      ),
-                    ),
-                    Text(
-                      widget.post.likeCount.toString(),
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 16),
-                Column(
-                  children: [
-                    IconButton(
-                      onPressed: () {
-                        showCommentsBottomSheet(context, widget.post.id!, ref);
-                      },
-                      icon: const Icon(
-                        Icons.comment,
-                        color: Colors.white,
-                        size: 32,
-                      ),
-                    ),
-                    Text(
-                      widget.post.commentCount.toString(),
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 16),
-                IconButton(
-                  onPressed: widget.onShare,
-                  icon: Icon(
-                    Icons.share,
-                    color: Colors.white,
-                    size: 32,
+            if (_showVolumeControl)
+              Positioned(
+                right: 16,
+                top: MediaQuery.of(context).size.height / 2 - 40,
+                child: Container(
+                  padding: EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.6),
+                    borderRadius: BorderRadius.circular(20),
                   ),
-                ),
-                SizedBox(height: 16),
-                IconButton(
-                  onPressed: _toggleMute,
-                  icon: Icon(
-                    _isMuted ? Icons.volume_off : Icons.volume_up,
-                    color: Colors.white,
-                    size: 32,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 50,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
+                  child: Row(
                     children: [
-                      CircleAvatar(
-                        radius: 20,
-                        backgroundImage: widget.post.avatarUrl != null
-                            ? NetworkImage(widget.post.avatarUrl!)
-                            : null,
-                        child: widget.post.avatarUrl == null
-                            ? Icon(Icons.person, color: Colors.white)
-                            : null,
+                      Icon(
+                        _isMuted ? Icons.volume_off : Icons.volume_up,
+                        color: Colors.white,
+                        size: 24,
                       ),
                       SizedBox(width: 8),
-                      Row(
-                        children: [
-                          Text(
-                            widget.post.username ?? "کاربر",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          if (widget.post.isVerified) ...[
-                            SizedBox(width: 4),
-                            _buildVerificationBadge(),
-                          ],
-                        ],
+                      Text(
+                        _isMuted ? "بی‌صدا" : "باصدا",
+                        style: TextStyle(color: Colors.white),
                       ),
                     ],
                   ),
-                  if (widget.post.content != null &&
-                      widget.post.content.isNotEmpty)
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _isCaptionExpanded = !_isCaptionExpanded;
-                        });
-                      },
-                      child: Container(
-                        margin: EdgeInsets.only(top: 8),
-                        child: RichText(
-                          maxLines: _isCaptionExpanded ? null : 2,
-                          overflow: _isCaptionExpanded
-                              ? TextOverflow.visible
-                              : TextOverflow.ellipsis,
-                          text: TextSpan(
-                            children: [
-                              TextSpan(
-                                text: widget.post.content,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                ),
+                ),
+              ),
+            Positioned(
+              right: 12,
+              bottom: MediaQuery.of(context).size.height * 0.15,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Column(
+                    children: [
+                      IconButton(
+                        onPressed: _handleLike,
+                        icon: Icon(
+                          widget.post.isLiked
+                              ? Icons.favorite
+                              : Icons.favorite_border,
+                          color:
+                              widget.post.isLiked ? Colors.red : Colors.white,
+                          size: 32,
+                        ),
+                      ),
+                      Text(
+                        widget.post.likeCount.toString(),
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 16),
+                  Column(
+                    children: [
+                      IconButton(
+                        onPressed: () {
+                          showCommentsBottomSheet(
+                              context, widget.post.id!, ref);
+                        },
+                        icon: const Icon(
+                          Icons.comment,
+                          color: Colors.white,
+                          size: 32,
+                        ),
+                      ),
+                      Text(
+                        widget.post.commentCount.toString(),
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 16),
+                  IconButton(
+                    onPressed: widget.onShare,
+                    icon: Icon(
+                      Icons.share,
+                      color: Colors.white,
+                      size: 32,
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                  IconButton(
+                    onPressed: _toggleMute,
+                    icon: Icon(
+                      _isMuted ? Icons.volume_off : Icons.volume_up,
+                      color: Colors.white,
+                      size: 32,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 50,
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 20,
+                          backgroundImage: widget.post.avatarUrl != null
+                              ? NetworkImage(widget.post.avatarUrl!)
+                              : null,
+                          child: widget.post.avatarUrl == null
+                              ? Icon(Icons.person, color: Colors.white)
+                              : null,
+                        ),
+                        SizedBox(width: 8),
+                        Row(
+                          children: [
+                            Text(
+                              widget.post.username ?? "کاربر",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
                               ),
-                              if (!_isCaptionExpanded &&
-                                  widget.post.content.length > 50)
+                            ),
+                            if (widget.post.isVerified) ...[
+                              SizedBox(width: 4),
+                              _buildVerificationBadge(),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+                    if (widget.post.content != null &&
+                        widget.post.content.isNotEmpty)
+                      GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _isCaptionExpanded = !_isCaptionExpanded;
+                          });
+                        },
+                        child: Container(
+                          margin: EdgeInsets.only(top: 8),
+                          child: RichText(
+                            maxLines: _isCaptionExpanded ? null : 2,
+                            overflow: _isCaptionExpanded
+                                ? TextOverflow.visible
+                                : TextOverflow.ellipsis,
+                            text: TextSpan(
+                              children: [
                                 TextSpan(
-                                  text: " ... بیشتر",
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.7),
+                                  text: widget.post.content,
+                                  style: const TextStyle(
+                                    color: Colors.white,
                                     fontSize: 14,
                                   ),
                                 ),
-                            ],
+                                if (!_isCaptionExpanded &&
+                                    widget.post.content.length > 50)
+                                  TextSpan(
+                                    text: " ... بیشتر",
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.7),
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Container(
-              padding: EdgeInsets.only(left: 16, right: 16, bottom: 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        _getFormattedDuration(_currentPosition),
-                        style: TextStyle(color: Colors.white, fontSize: 12),
-                      ),
-                      Expanded(
-                        child: SliderTheme(
-                          data: SliderThemeData(
-                            trackHeight: 2,
-                            thumbShape:
-                                RoundSliderThumbShape(enabledThumbRadius: 6),
-                            overlayShape:
-                                RoundSliderOverlayShape(overlayRadius: 12),
-                          ),
-                          child: Slider(
-                            value: _currentPosition.inMilliseconds.toDouble(),
-                            min: 0.0,
-                            max: _videoDuration.inMilliseconds.toDouble(),
-                            activeColor: Colors.white,
-                            inactiveColor: Colors.white.withOpacity(0.5),
-                            onChanged: (value) {
-                              _controller?.seekTo(
-                                  Duration(milliseconds: value.toInt()));
-                            },
-                          ),
-                        ),
-                      ),
-                      Text(
-                        _getFormattedDuration(_videoDuration),
-                        style: TextStyle(color: Colors.white, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (!_isPlaying)
-            Center(
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
               child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.3),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.play_arrow,
-                  color: Colors.white,
-                  size: 60,
+                padding: EdgeInsets.only(left: 16, right: 16, bottom: 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          _getFormattedDuration(_currentPosition),
+                          style: TextStyle(color: Colors.white, fontSize: 12),
+                        ),
+                        Expanded(
+                          child: SliderTheme(
+                            data: SliderThemeData(
+                              trackHeight: 2,
+                              thumbShape:
+                                  RoundSliderThumbShape(enabledThumbRadius: 6),
+                              overlayShape:
+                                  RoundSliderOverlayShape(overlayRadius: 12),
+                            ),
+                            child: Slider(
+                              value: _currentPosition.inMilliseconds.toDouble(),
+                              min: 0.0,
+                              max: _videoDuration.inMilliseconds.toDouble(),
+                              activeColor: Colors.white,
+                              inactiveColor: Colors.white.withOpacity(0.5),
+                              onChanged: (value) {
+                                _controller?.seekTo(
+                                    Duration(milliseconds: value.toInt()));
+                              },
+                            ),
+                          ),
+                        ),
+                        Text(
+                          _getFormattedDuration(_videoDuration),
+                          style: TextStyle(color: Colors.white, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),
-        ],
+            if (!_isPlaying)
+              Center(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.3),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.play_arrow,
+                    color: Colors.white,
+                    size: 60,
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

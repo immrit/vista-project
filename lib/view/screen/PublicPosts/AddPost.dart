@@ -37,6 +37,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   String? _selectedVideoName; // برای وب
   final FocusNode _focusNode = FocusNode();
   VideoPlayerController? _videoPlayerController; // کنترلر ویدیو
+  dynamic _html;
 
   @override
   void initState() {
@@ -47,10 +48,24 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       });
     });
 
-    // اضافه کردن انیمیشن ورود با تاخیر
-    // Future.delayed(const Duration(milliseconds: 100), () {
-    //   _focusNode.requestFocus();
-    // });
+    if (kIsWeb) {
+      _initializeWebSpecificCode();
+    }
+
+    contentController.addListener(() {
+      setState(() {
+        remainingChars = maxCharLength - contentController.text.length;
+      });
+    });
+  }
+
+// این تابع را خارج از کلاس قرار دهید
+  void _initializeWebSpecificCode() {
+    // در زمان اجرا، فقط برای وب این کد را اجرا می‌کند
+    if (kIsWeb) {
+      // ignore: avoid_web_libraries_in_flutter
+      _html = Uri.parse('dart:html');
+    }
   }
 
   Color _getCharCountColor() {
@@ -96,17 +111,18 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   Future<void> _pickVideo() async {
     try {
       final UserModel? currentUser = ref.read(userProvider);
-      Duration videoMaxDuration =
-          const Duration(minutes: 1); // پیش‌فرض برای کاربران عادی
-
-      // بررسی نوع کاربر برای تعیین محدودیت زمانی
-      if (currentUser != null &&
-          currentUser.verificationType != VerificationType.none) {
-        videoMaxDuration = const Duration(minutes: 2); // برای کاربران نشان‌دار
+      if (currentUser == null) {
+        _showError('اطلاعات کاربر در دسترس نیست. لطفاً دوباره وارد شوید.');
+        return;
       }
 
+      // محدودیت زمانی بر اساس نوع کاربر
+      final Duration maxDuration = currentUser.hasAnyBadge
+          ? const Duration(minutes: 2) // کاربر ویژه: ۲ دقیقه
+          : const Duration(minutes: 1); // کاربر عادی: ۱ دقیقه
+
       debugPrint(
-          'Video max duration for user type ${currentUser?.verificationType}: $videoMaxDuration');
+          'محدودیت زمانی برای کاربر ${currentUser.email}: ${maxDuration.inMinutes} دقیقه');
 
       final result = await FilePicker.platform.pickFiles(
         type: FileType.video,
@@ -129,28 +145,46 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
             _selectedMusic = null;
             _musicFileName = null;
           });
-          // مقداردهی اولیه ویدیو پلیر برای وب با بایت‌های انتخاب شده
-          if (_videoPlayerController != null) {
-            await _videoPlayerController!
-                .dispose(); // dispose قبلی اگر وجود داشت
+
+          try {
+            // مقداردهی اولیه ویدیو پلیر برای وب با بایت‌های انتخاب شده
+            if (_videoPlayerController != null) {
+              await _videoPlayerController!
+                  .dispose(); // dispose قبلی اگر وجود داشت
+            }
+
+            // به جای استفاده از _initializeVideoPlayerWeb، از کد سازگار با تمام پلتفرم‌ها استفاده می‌کنیم
+            _videoPlayerController = VideoPlayerController.networkUrl(
+              Uri.dataFromBytes(videoBytes, mimeType: 'video/mp4'),
+            );
+
+            await _videoPlayerController!.initialize();
+            // اگر می‌خواهید ویدیو به صورت خودکار پخش شود
+            // await _videoPlayerController!.play();
+
+            if (mounted) {
+              setState(() {});
+            }
+          } catch (e) {
+            debugPrint('Error initializing video player: $e');
+            _showError('خطا در بارگذاری ویدیو: $e');
           }
-          await _initializeVideoPlayerWeb(
-              videoBytes, videoName); // تابع خودت برای نمایش در وب
-          debugPrint('Video selected on web. No trimming. Ready for preview.');
+
+          debugPrint('ویدیو در نسخه وب انتخاب شد. بدون برش، آماده پیش‌نمایش.');
+
+          // نمایش اطلاعات کاربر و محدودیت زمانی در یک اسنک‌بار
+          _showUserBadgeInfo(currentUser);
         } else {
           // ------------- نسخه موبایل (اندروید): استفاده از video_trimmer -------------
           final originalFile = File(result.files.single.path!);
 
           if (mounted) {
-            // فرض می‌کنیم یک صفحه جدید یا ویجت برای video_trimmer داری
-            // و video_trimmer مسیر فایل برش خورده رو برمی‌گردونه
             final String? trimmedPath = await Navigator.push<String?>(
               context,
               MaterialPageRoute(
                 builder: (context) => YourVideoTrimmerPage(
-                  // صفحه‌ای که video_trimmer رو در خودش داره
                   videoFile: originalFile,
-                  maxDuration: videoMaxDuration,
+                  maxDuration: maxDuration,
                 ),
               ),
             );
@@ -168,28 +202,141 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                   _selectedMusic = null;
                   _musicFileName = null;
                 });
-                if (_videoPlayerController != null) {
-                  await _videoPlayerController!.dispose();
+
+                try {
+                  if (_videoPlayerController != null) {
+                    await _videoPlayerController!.dispose();
+                  }
+                  _videoPlayerController =
+                      VideoPlayerController.file(trimmedFile);
+                  await _videoPlayerController!.initialize();
+                  // اگر می‌خواهید ویدیو به صورت خودکار پخش شود
+                  // await _videoPlayerController!.play();
+
+                  if (mounted) {
+                    setState(() {});
+                  }
+                } catch (e) {
+                  debugPrint('Error initializing video player: $e');
+                  _showError('خطا در بارگذاری ویدیو: $e');
                 }
-                await _initializeVideoPlayerMobile(
-                    trimmedFile); // تابع خودت برای نمایش در موبایل
+
                 debugPrint(
-                    'Video trimmed and selected on mobile: ${trimmedFile.path}');
+                    'ویدیو در موبایل برش خورد و انتخاب شد: ${trimmedFile.path}');
               } else {
                 _showError('فایل برش خورده ویدیو پیدا نشد.');
-                debugPrint('Trimmed video file does not exist: $trimmedPath');
+                debugPrint('فایل ویدیوی برش خورده وجود ندارد: $trimmedPath');
               }
             } else {
-              // کاربر ممکن است از صفحه برش بدون ذخیره خارج شود
-              debugPrint('Video trimming cancelled or failed.');
+              debugPrint('برش ویدیو لغو شد یا با خطا مواجه شد.');
             }
           }
         }
       }
     } catch (e, s) {
-      debugPrint('Error picking/trimming video: $e\n$s');
+      debugPrint('خطا در انتخاب/برش ویدیو: $e\n$s');
       _showError('خطایی در انتخاب یا پردازش ویدیو رخ داد: $e');
     }
+  }
+
+// تابع نمایش خطا
+  void _showError(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
+  }
+
+// نمایش اطلاعات کاربر و نشان او در اسنک‌بار
+  void _showUserBadgeInfo(UserModel user) {
+    if (!mounted) return;
+
+    Map<String, dynamic> badgeInfo = _getUserBadgeInfo(user);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: badgeInfo['primaryColor'],
+        duration: const Duration(seconds: 5),
+        content: Row(
+          children: [
+            Icon(badgeInfo['icon'], color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    badgeInfo['title'],
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    badgeInfo['subtitle'],
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            if (!user.hasAnyBadge)
+              TextButton(
+                onPressed: () {
+                  Navigator.pushNamed(context, '/verification-badge-store');
+                },
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                ),
+                child: const Text('ارتقا حساب',
+                    style: TextStyle(color: Colors.blue)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+// دریافت اطلاعات نشان کاربر (مشابه کد YourVideoTrimmerPage)
+  Map<String, dynamic> _getUserBadgeInfo(UserModel user) {
+    if (user.isVerified) {
+      switch (user.verificationType) {
+        case VerificationType.blueTick:
+          return {
+            'primaryColor': Colors.blue.shade600,
+            'secondaryColor': Colors.blue.shade900,
+            'icon': Icons.verified,
+            'title': 'کاربر مدیر',
+            'subtitle': 'محدودیت آپلود: ۲ دقیقه',
+          };
+        case VerificationType.goldTick:
+          return {
+            'primaryColor': Colors.amber.shade600,
+            'secondaryColor': Colors.amber.shade900,
+            'icon': Icons.workspace_premium,
+            'title': 'حساب تجاری',
+            'subtitle': 'محدودیت آپلود: ۲ دقیقه',
+          };
+        case VerificationType.blackTick:
+          return {
+            'primaryColor': Colors.grey.shade800,
+            'secondaryColor': Colors.black,
+            'icon': Icons.verified_user,
+            'title': 'تولیدکننده محتوا',
+            'subtitle': 'محدودیت آپلود: ۲ دقیقه',
+          };
+        default:
+          break;
+      }
+    }
+
+    return {
+      'primaryColor': Colors.blue.shade600,
+      'secondaryColor': Colors.blue.shade800,
+      'icon': Icons.person_outline,
+      'title': 'کاربر عادی',
+      'subtitle': 'محدودیت آپلود: ۱ دقیقه',
+    };
   }
 
   Future<String> _createVideoBlobUrl(Uint8List bytes) async {
@@ -220,18 +367,18 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     }
   }
 
-  void _showError(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.redAccent,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
-  }
+  // void _showError(String message) {
+  //   if (!mounted) return;
+  //   ScaffoldMessenger.of(context).showSnackBar(
+  //     SnackBar(
+  //       content: Text(message),
+  //       backgroundColor: Colors.redAccent,
+  //       behavior: SnackBarBehavior.floating,
+  //       margin: const EdgeInsets.all(8),
+  //       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+  //     ),
+  //   );
+  // }
 
   Future<void> _initializeVideoPlayerWeb(Uint8List bytes, String name) async {
     try {
