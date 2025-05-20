@@ -84,7 +84,8 @@ class _ChatConversationsScreenState
                               conversationId: conversation.id,
                               otherUserName:
                                   conversation.otherUserName ?? 'کاربر',
-                              otherUserAvatar: conversation.otherUserAvatar,
+                              otherUserAvatar: conversation.otherUserAvatar ??
+                                  'lib/view/util/images/default-avatar.jpg',
                               otherUserId: conversation.otherUserId ?? '',
                             ),
                           ),

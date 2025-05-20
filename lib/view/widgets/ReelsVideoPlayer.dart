@@ -237,6 +237,7 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
     return VisibilityDetector(
       key: Key('video-${widget.post.id}'),
       onVisibilityChanged: (visibilityInfo) {
+        if (!mounted) return; // مهم!
         final visiblePercentage = visibilityInfo.visibleFraction * 100;
         setState(() {
           _isVisible = visiblePercentage > 50;

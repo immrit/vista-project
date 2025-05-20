@@ -19,6 +19,7 @@ class Settings extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final getprofile = ref.watch(profileProvider);
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final autoPlay = ref.watch(autoPlayProvider);
 
     return SafeArea(
       top: false,
@@ -194,6 +195,18 @@ class Settings extends ConsumerWidget {
                                     value;
                                 VideoPlayerConfig().setAutoQuality(value);
                               },
+                            ),
+                            const Divider(height: 1),
+                            SwitchListTile(
+                              title: Text('پخش خودکار ویدیو'),
+                              subtitle: Text(
+                                  'در صورت غیرفعال بودن، ویدیوها به صورت خودکار پخش نمی‌شوند'),
+                              value: autoPlay,
+                              onChanged: (val) {
+                                ref.read(autoPlayProvider.notifier).set(val);
+                              },
+                              secondary:
+                                  Icon(Icons.play_circle_filled_outlined),
                             ),
                           ],
                         ),

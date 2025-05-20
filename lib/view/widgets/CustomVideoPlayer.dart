@@ -379,18 +379,27 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
 
             // دکمه پخش در صورتی که ویدیو در حال پخش نیست و در حال بافرینگ هم نیست
             if (!_isPlaying && !_isBuffering && _isInitialized)
-              Center(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.3),
-                    shape: BoxShape.circle,
-                  ),
-                  padding: const EdgeInsets.all(16),
-                  child: Icon(
-                    Icons.play_arrow,
-                    color: Colors.white.withOpacity(0.9),
-                    size: 48,
-                    semanticLabel: 'پخش ویدیو',
+              AbsorbPointer(
+                absorbing: false, // رویدادها را جذب نمی‌کند
+                child: GestureDetector(
+                  onTap: () {
+                    // فقط پخش ویدیو بدون رفتن به صفحه ریلز
+                    _togglePlay();
+                  },
+                  child: Center(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.3),
+                        shape: BoxShape.circle,
+                      ),
+                      padding: const EdgeInsets.all(16),
+                      child: Icon(
+                        Icons.play_arrow,
+                        color: Colors.white.withOpacity(0.9),
+                        size: 48,
+                        semanticLabel: 'پخش ویدیو',
+                      ),
+                    ),
                   ),
                 ),
               ),

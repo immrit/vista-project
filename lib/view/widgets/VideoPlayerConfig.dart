@@ -1,6 +1,6 @@
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+// import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class VideoPlayerConfig {
   static const String _qualityKey = 'video_quality';
@@ -8,6 +8,7 @@ class VideoPlayerConfig {
   static const String _autoQualityKey = 'auto_quality';
   static const String _volumeKey = 'volume';
   static const String _lastPlayedPositionPrefix = 'video_position_';
+  static const String _autoPlayKey = 'video_auto_play';
 
   // Singleton instance
   static final VideoPlayerConfig _instance = VideoPlayerConfig._internal();
@@ -76,5 +77,16 @@ class VideoPlayerConfig {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(
         '$_lastPlayedPositionPrefix$videoId', position.inMilliseconds);
+  }
+
+  Future<bool> getAutoPlay() async {
+    final prefs = await SharedPreferences.getInstance();
+    // پیش‌فرض: فعال باشد (اگر قبلاً ست نشده)
+    return prefs.getBool(_autoPlayKey) ?? true;
+  }
+
+  Future<void> setAutoPlay(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_autoPlayKey, enabled);
   }
 }

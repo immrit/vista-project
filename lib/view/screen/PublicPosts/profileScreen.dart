@@ -54,6 +54,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final currentUser = ref.watch(authProvider);
     final getprofile = ref.watch(profileProvider);
     final currentcolor = ref.watch(themeProvider);
+    final autoPlay = ref.watch(autoPlayProvider);
+
     final isCurrentUserProfile = profileState != null &&
         currentUser != null &&
         profileState.id == currentUser.id;
@@ -614,7 +616,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 child: CustomVideoPlayer(
                   key: ValueKey('video_player_${post.id}'),
                   videoUrl: post.videoUrl!,
-                  autoplay: true,
+                  autoplay: ref.watch(autoPlayProvider),
                   muted: true,
                   showProgress: true,
                   looping: true,

@@ -2259,3 +2259,22 @@ final userProvider = Provider<UserModel?>((ref) {
     },
   );
 });
+
+final autoPlayProvider = StateNotifierProvider<AutoPlayNotifier, bool>((ref) {
+  return AutoPlayNotifier();
+});
+
+class AutoPlayNotifier extends StateNotifier<bool> {
+  AutoPlayNotifier() : super(true) {
+    _load();
+  }
+  void _load() async {
+    final value = await VideoPlayerConfig().getAutoPlay();
+    state = value;
+  }
+
+  void set(bool value) async {
+    state = value;
+    await VideoPlayerConfig().setAutoPlay(value);
+  }
+}

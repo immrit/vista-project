@@ -147,6 +147,8 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
     super.build(context);
     final currentColor = ref.watch(themeProvider);
     final getProfile = ref.watch(profileProvider);
+    final autoPlay = ref.watch(autoPlayProvider);
+
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
     // تعریف رنگ‌ها و سایه‌ها با gradient
@@ -757,7 +759,7 @@ Widget _buildPostItem(
                 child: CustomVideoPlayer(
                   key: ValueKey('video_player_${post.id}'),
                   videoUrl: post.videoUrl!,
-                  autoplay: true,
+                  autoplay: ref.watch(autoPlayProvider),
                   muted: true,
                   showProgress: true,
                   looping: true,
