@@ -13,6 +13,10 @@ class MessageCacheService {
   static const int CACHE_LIMIT =
       50; // محدودیت تعداد پیام‌های کش شده در هر مکالمه
 
+  // بهبود مدیریت کش برای عملکرد بهتر
+  static const int MAX_CACHE_AGE_HOURS = 24;
+  static const int MAX_MESSAGES_PER_CONVERSATION = 100;
+
   // کش حافظه برای دسترسی سریع‌تر به پیام‌ها
   final Map<String, List<MessageModel>> _memoryCache = {};
 
@@ -402,5 +406,59 @@ class MessageCacheService {
     // ذخیره در Hive (به صورت لیست String)
     await _dateBox?.put(
         conversationId, dates.map((d) => d.toIso8601String()).toList());
+  }
+
+  // افزودن متد جدید برای همگام‌سازی هوشمند با سرور
+  Future<void> smartSync(
+      String conversationId, List<MessageModel> serverMessages) async {
+    await initialize();
+
+    // حذف پیام‌های قدیمی از کش
+    await _cleanOldCache();
+
+    // دریافت پیام‌های موقت
+    final cachedMessages = await getConversationMessages(conversationId);
+    final tempMessages =
+        cachedMessages.where((m) => m.id.startsWith('temp_')).toList();
+
+    // حذف پیام‌های غیر موقت فعلی
+    for (final key in _box!.keys) {
+      if (key.toString().startsWith('${conversationId}_') &&
+          !key.toString().contains('temp_')) {
+        await _box!.delete(key);
+      }
+    }
+
+    // اضافه کردن پیام‌های جدید سرور
+    await cacheMessages(serverMessages);
+
+    // بازگرداندن پیام‌های موقت
+    await cacheMessages(tempMessages);
+
+    // بروزرسانی کش حافظه
+    _memoryCache[conversationId] = [...serverMessages, ...tempMessages]
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    // محدود کردن تعداد پیام‌های کش شده
+    if (_memoryCache[conversationId]!.length > MAX_MESSAGES_PER_CONVERSATION) {
+      _memoryCache[conversationId] = _memoryCache[conversationId]!
+          .take(MAX_MESSAGES_PER_CONVERSATION)
+          .toList();
+    }
+  }
+
+  Future<void> _cleanOldCache() async {
+    final now = DateTime.now();
+    final keys = _box!.keys.toList();
+
+    for (final key in keys) {
+      final message = _box!.get(key);
+      if (message != null) {
+        final messageAge = now.difference(message.createdAt);
+        if (messageAge.inHours > MAX_CACHE_AGE_HOURS) {
+          await _box!.delete(key);
+        }
+      }
+    }
   }
 }

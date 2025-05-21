@@ -24,12 +24,12 @@ class ConversationModel {
     this.otherUserAvatar,
     this.otherUserId,
     this.hasUnreadMessages = false,
-    required this.unreadCount,
+    this.unreadCount = 0, // مقدار پیش‌فرض 0 برای جلوگیری از null
   });
 
   factory ConversationModel.fromJson(Map<String, dynamic> json,
       {String? currentUserId}) {
-    final conversation = ConversationModel(
+    return ConversationModel(
       id: json['id'],
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: DateTime.parse(json['updated_at']),
@@ -37,11 +37,16 @@ class ConversationModel {
       lastMessageTime: json['last_message_time'] != null
           ? DateTime.parse(json['last_message_time'])
           : null,
-      participants: [],
-      unreadCount: json['unreadCount'] ?? 0, // مقدار پیش‌فرض 0
+      participants: json['participants'] != null
+          ? List<ConversationParticipantModel>.from(json['participants']
+              .map((x) => ConversationParticipantModel.fromJson(x)))
+          : [],
+      otherUserName: json['otherUserName'],
+      otherUserAvatar: json['otherUserAvatar'],
+      otherUserId: json['otherUserId'],
+      hasUnreadMessages: json['hasUnreadMessages'] ?? false,
+      unreadCount: json['unreadCount'] ?? 0, // استفاده از ?? برای مقدار پیش‌فرض
     );
-
-    return conversation;
   }
 
   Map<String, dynamic> toJson() {
@@ -99,7 +104,7 @@ class ConversationModel {
       lastMessage: null,
       lastMessageTime: null,
       hasUnreadMessages: false,
-      unreadCount: 0,
+      unreadCount: 0, // اضافه کردن مقدار پیش‌فرض
     );
   }
 }

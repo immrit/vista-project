@@ -30,6 +30,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../../widgets/web files/image_downloader.dart';
 import '/main.dart';
+import 'chat_input_box.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String conversationId;
@@ -68,42 +69,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   bool _isSending = false;
 
-  void _toggleEmojiKeyboard() {
-    if (_messageFocusNode.hasFocus) {
-      _messageFocusNode.unfocus();
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (mounted) {
-          setState(() => _showEmojiPicker = true);
-        }
-      });
-    } else {
-      if (_showEmojiPicker) {
-        _messageFocusNode.requestFocus();
-      }
-      setState(() {
-        _showEmojiPicker = !_showEmojiPicker;
-      });
-    }
-  }
-
-  void _onEmojiSelected(String emoji) {
-    final text = _messageController.text;
-    final selection = _messageController.selection;
-    final cursorPosition = selection.isValid ? selection.start : text.length;
-
-    final newText = text.replaceRange(
-      cursorPosition,
-      selection.isValid ? selection.end : cursorPosition,
-      emoji,
-    );
-
-    _messageController.text = newText;
-    final newPosition = cursorPosition + emoji.length;
-    _messageController.selection = TextSelection.fromPosition(
-      TextPosition(offset: newPosition),
-    );
-  }
-
   @override
   void initState() {
     super.initState();
@@ -131,6 +96,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
     // هنگام ورود به صفحه چت، conversationId فعال را تنظیم کن
     ChatService.activeConversationId = widget.conversationId;
+
+    // اضافه کردن لیسنر برای مدیریت بهتر کیبورد
+    WidgetsBinding.instance.addObserver(
+      _KeyboardVisibilityObserver(
+        onShow: () {
+          if (_showEmojiPicker) setState(() => _showEmojiPicker = false);
+        },
+        onHide: () {
+          // اگر کیبورد بسته شد و ایموجی پیکر نمایش داده نشده، فوکس را از دست بدهیم
+          if (!_showEmojiPicker) _messageFocusNode.unfocus();
+        },
+      ),
+    );
+
+    // پیش‌لود کش برای عملکرد سریع‌تر
+    _preloadCache();
+  }
+
+  Future<void> _preloadCache() async {
+    await MessageCacheService().initialize();
+    await MessageCacheService().getConversationMessages(widget.conversationId);
   }
 
   Future<void> _checkBlockStatus() async {
@@ -313,159 +299,44 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _sendMessage() async {
-    if (_isCurrentUserBlocked) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('شما مسدود شده‌اید و نمی‌توانید پیام ارسال کنید')),
-      );
-      return;
-    }
-    final chatService = ref.read(chatServiceProvider);
-    final isCurrentUserBlocked =
-        await chatService.isUserBlocked(widget.otherUserId);
-
-    if (isCurrentUserBlocked) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(
-                'شما توسط ${widget.otherUserName} مسدود شده‌اید و نمی‌توانید پیام ارسال کنید')),
-      );
-      return;
-    }
+    if (_isCurrentUserBlocked || _isSending) return;
 
     final message = _messageController.text.trim();
+    if (message.isEmpty &&
+        _selectedImage == null &&
+        _selectedImageBytes == null) return;
 
-    // --- تغییر مهم: متغیر attachmentUrl و attachmentType باید قبل از پاک کردن _selectedImage مقداردهی شوند ---
-    String? attachmentUrl;
-    String? attachmentType;
+    setState(() => _isSending = true);
 
-    // اگر عکس انتخاب شده است، اول آپلود کن و لینک را بگیر
-    if ((kIsWeb && _selectedImageBytes != null && _selectedImageName != null) ||
-        (_selectedImage != null)) {
-      setState(() {
-        _isUploading = true;
-      });
-      try {
-        if (kIsWeb &&
-            _selectedImageBytes != null &&
-            _selectedImageName != null) {
-          attachmentUrl = await _uploadImage(_selectedImageBytes);
-        } else if (_selectedImage != null) {
-          attachmentUrl = await _uploadImage(_selectedImage!);
-        }
-        attachmentType = 'image';
-      } catch (e) {
-        String errorMessage = 'ارسال پیام ناموفق بود';
-        if (e is AppException) {
-          errorMessage = e.userFriendlyMessage;
-        } else {
-          errorMessage = 'خطای نامشخص. لطفاً دوباره امتحان کنید';
-        }
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(errorMessage)),
-          );
-        }
-      } finally {
-        if (mounted) {
-          setState(() {
-            _isUploading = false;
-          });
-        }
-      }
-      if (!mounted) return;
-    }
-
-    // اگر هیچ متن و هیچ عکس نداریم، پیام ارسال نشود
-    if (message.isEmpty && attachmentUrl == null) return;
-
-    // --- 1. ساخت پیام موقت و افزودن به کش و UI ---
-    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
-    final currentUser = supabase.auth.currentUser;
-    final now = DateTime.now();
-    final tempMessage = MessageModel(
-      id: tempId,
-      conversationId: widget.conversationId,
-      senderId: currentUser?.id ?? '',
-      content: message,
-      createdAt: now,
-      attachmentUrl:
-          kIsWeb && _selectedImageBytes != null ? null : _selectedImage?.path,
-      attachmentType:
-          (kIsWeb && _selectedImageBytes != null) || _selectedImage != null
-              ? 'image'
-              : null,
-      isRead: false,
-      isSent: false,
-      senderName: currentUser?.userMetadata?['username'] ?? 'من',
-      senderAvatar: currentUser?.userMetadata?['avatar_url'],
-      isMe: true,
-      replyToMessageId: _replyToMessage?.id,
-      replyToContent: _replyToMessage?.content,
-      replyToSenderName: _replyToMessage?.senderName,
-    );
-    await MessageCacheService().cacheMessage(tempMessage);
-
-    setState(() {
-      _replyToMessage = null;
-      _selectedImage = null;
-      _selectedImageBytes = null;
-      _selectedImageName = null;
-      _messageController.clear();
-    });
-
-    // --- 2. ارسال پیام به سرور ---
     try {
-      final isOnline = await chatService.isDeviceOnline();
+      // ارسال پیام با استفاده از یک کلاس کمکی جدید
+      await MessageSender(
+        ref: ref,
+        conversationId: widget.conversationId,
+        message: message,
+        selectedImage: _selectedImage,
+        selectedImageBytes: _selectedImageBytes,
+        selectedImageName: _selectedImageName,
+        replyToMessage: _replyToMessage,
+        onProgress: (progress) {
+          setState(() => _uploadProgress = progress);
+        },
+      ).send();
 
-      MessageModel? sentMessage;
-      if (isOnline) {
-        sentMessage = await chatService.sendMessage(
-          conversationId: widget.conversationId,
-          content: message,
-          attachmentUrl: attachmentUrl,
-          attachmentType: attachmentType,
-          replyToMessageId: tempMessage.replyToMessageId,
-          replyToContent: tempMessage.replyToContent,
-          replyToSenderName: tempMessage.replyToSenderName,
-        );
-      } else {
-        sentMessage = await chatService.sendOfflineMessage(
-          conversationId: widget.conversationId,
-          content: message,
-          attachmentUrl: attachmentUrl,
-          attachmentType: attachmentType,
-          replyToMessageId: tempMessage.replyToMessageId,
-          replyToContent: tempMessage.replyToContent,
-          replyToSenderName: tempMessage.replyToSenderName,
-        );
-      }
-
-      // --- 3. جایگزینی پیام موقت با پیام واقعی ---
-      if (sentMessage != null) {
-        await MessageCacheService().replaceTempMessage(
-          widget.conversationId,
-          tempId,
-          sentMessage,
-        );
-        if (mounted) {
-          setState(() {});
-        }
-      }
+      // پاک کردن فیلدها
+      setState(() {
+        _messageController.clear();
+        _selectedImage = null;
+        _selectedImageBytes = null;
+        _selectedImageName = null;
+        _replyToMessage = null;
+      });
     } catch (e) {
-      await MessageCacheService().markMessageAsFailed(
-        widget.conversationId,
-        tempId,
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در ارسال پیام: $e')),
       );
-      String errorMessage = 'خطای نامشخص';
-      if (e is AppException) {
-        errorMessage = e.userFriendlyMessage;
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage)),
-        );
-      }
+    } finally {
+      if (mounted) setState(() => _isSending = false);
     }
   }
 
@@ -1072,6 +943,42 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   //   }
   // }
 
+  void _toggleEmojiKeyboard() {
+    if (_showEmojiPicker) {
+      // اگر ایموجی پیکر باز است، آن را ببند و فوکوس را به TextField بده
+      setState(() => _showEmojiPicker = false);
+      FocusScope.of(context).requestFocus(_messageFocusNode);
+    } else {
+      // اگر کیبورد باز است، آن را ببند و بعد ایموجی پیکر را باز کن
+      if (_messageFocusNode.hasFocus) {
+        _messageFocusNode.unfocus();
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) setState(() => _showEmojiPicker = true);
+        });
+      } else {
+        setState(() => _showEmojiPicker = true);
+      }
+    }
+  }
+
+  void _onEmojiSelected(String emoji) {
+    final text = _messageController.text;
+    final selection = _messageController.selection;
+    final cursorPosition = selection.isValid ? selection.start : text.length;
+
+    final newText = text.replaceRange(
+      cursorPosition,
+      selection.isValid ? selection.end : cursorPosition,
+      emoji,
+    );
+
+    _messageController.text = newText;
+    final newPosition = cursorPosition + emoji.length;
+    _messageController.selection = TextSelection.fromPosition(
+      TextPosition(offset: newPosition),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
@@ -1669,227 +1576,103 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
+  // جایگزینی _buildMessageInput با استفاده از ChatInputBox
   Widget _buildMessageInput() {
+    return ChatInputBox(
+      messageController: _messageController,
+      messageFocusNode: _messageFocusNode,
+      showEmojiPicker: _showEmojiPicker,
+      toggleEmojiPicker: _toggleEmojiKeyboard,
+      pickImage: _pickImage,
+      sendMessage: _sendMessage,
+      onEmojiSelected: _onEmojiSelected,
+      isUploading: _isUploading,
+      selectedImagePreview:
+          _selectedImage != null || (kIsWeb && _selectedImageBytes != null)
+              ? _buildImagePreview()
+              : null,
+    );
+  }
+
+  Widget _buildImagePreview() {
+    return Stack(
+      children: [
+        Container(
+          margin: const EdgeInsets.all(8),
+          height: 120,
+          width: 120,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.primary,
+              width: 1.2,
+            ),
+            image: DecorationImage(
+              image: kIsWeb && _selectedImageBytes != null
+                  ? MemoryImage(_selectedImageBytes!)
+                  : FileImage(_selectedImage!) as ImageProvider,
+              fit: BoxFit.cover,
+            ),
+          ),
+          child: _isUploading ? _buildUploadProgress() : null,
+        ),
+        Positioned(
+          top: 0,
+          right: 0,
+          child: _buildCloseButton(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUploadProgress() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        border: Border(
-          top: BorderSide(color: Colors.grey.withOpacity(0.2)),
+        color: Colors.black.withOpacity(0.35),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(
+              value: _uploadProgress > 0 ? _uploadProgress : null,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${(_uploadProgress * 100).toStringAsFixed(0)}%',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
         ),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (_replyToMessage != null)
-            Container(
-              padding: const EdgeInsets.all(8),
-              margin: EdgeInsets.only(bottom: 8),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(12),
-                border: Border(
-                  left: BorderSide(
-                    color: Theme.of(context).colorScheme.primary,
-                    width: 4,
-                  ),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.reply,
-                              size: 16,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                            SizedBox(width: 4),
-                            Text(
-                              'پاسخ به ${_replyToMessage!.senderName}',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          _replyToMessage!.content,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.color
-                                ?.withOpacity(0.7),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.close, size: 20),
-                    onPressed: _cancelReply,
-                    padding: EdgeInsets.zero,
-                    constraints: BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 32,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          Row(
-            children: [
-              IconButton(
-                onPressed: _pickImage,
-                icon: const Icon(Icons.image),
-              ),
-              IconButton(
-                icon: Icon(
-                  _showEmojiPicker ? Icons.keyboard : Icons.emoji_emotions,
-                ),
-                onPressed: _toggleEmojiKeyboard,
-              ),
-              // --- تغییر: تکست‌فیلد با اسکرول افقی و ارتفاع ثابت ---
-              Expanded(
-                child: Container(
-                  constraints: const BoxConstraints(
-                    minHeight: 40,
-                    maxHeight: 80, // ارتفاع ثابت یا محدود
-                  ),
-                  alignment: Alignment.center,
-                  child: Scrollbar(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.vertical,
-                      reverse: true,
-                      child: TextField(
-                        controller: _messageController,
-                        focusNode: _messageFocusNode,
-                        onTap: () {
-                          if (_showEmojiPicker) {
-                            setState(() {
-                              _showEmojiPicker = false;
-                            });
-                          }
-                        },
-                        maxLines: null,
-                        minLines: 1,
-                        // --- اضافه شد: محدودیت ارتفاع و اسکرول ---
-                        expands: false,
-                        keyboardType: TextInputType.multiline,
-                        textInputAction: TextInputAction.newline,
-                        decoration: InputDecoration(
-                          hintText: 'پیام خود را بنویسید...',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(20),
-                            borderSide: BorderSide.none,
-                          ),
-                          filled: true,
-                          fillColor:
-                              Theme.of(context).brightness == Brightness.light
-                                  ? Colors.grey[100]
-                                  : Colors.grey[800],
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                        ),
-                        textDirection:
-                            getTextDirection(_messageController.text),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              IconButton(
-                onPressed: _isUploading ? null : _sendMessage,
-                icon: _isUploading
-                    ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.send),
-              ),
-            ],
-          ),
-          if (_selectedImage != null || (kIsWeb && _selectedImageBytes != null))
-            Stack(
-              children: [
-                Container(
-                  margin: const EdgeInsets.all(8),
-                  height: 120,
-                  width: 120,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color: Theme.of(context).colorScheme.primary,
-                        width: 1.2),
-                    image: DecorationImage(
-                      image: kIsWeb && _selectedImageBytes != null
-                          ? MemoryImage(_selectedImageBytes!)
-                          : FileImage(_selectedImage!),
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                  child: _isUploading
-                      ? Container(
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.35),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                CircularProgressIndicator(
-                                  value: _uploadProgress > 0
-                                      ? _uploadProgress
-                                      : null,
-                                  color: Theme.of(context).colorScheme.primary,
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '${(_uploadProgress * 100).toStringAsFixed(0)}%',
-                                  style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                      : null,
-                ),
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  child: IconButton(
-                    icon:
-                        const Icon(Icons.close, color: Colors.white, size: 22),
-                    onPressed: _isUploading
-                        ? null
-                        : () => setState(() {
-                              _selectedImage = null;
-                              _selectedImageBytes = null;
-                              _selectedImageName = null;
-                            }),
-                  ),
-                ),
-              ],
-            ),
-        ],
+    );
+  }
+
+  Widget _buildCloseButton() {
+    return Material(
+      color: Colors.black.withOpacity(0.5),
+      shape: const CircleBorder(),
+      child: IconButton(
+        icon: const Icon(Icons.close, color: Colors.white, size: 22),
+        onPressed: _isUploading
+            ? null
+            : () => setState(() {
+                  _selectedImage = null;
+                  _selectedImageBytes = null;
+                  _selectedImageName = null;
+                }),
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(
+          minWidth: 32,
+          minHeight: 32,
+        ),
       ),
     );
   }
@@ -2827,6 +2610,147 @@ class ImageFullscreenViewer extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// کلاس کمکی برای مدیریت Keyboard Visibility
+class _KeyboardVisibilityObserver extends WidgetsBindingObserver {
+  final VoidCallback onShow;
+  final VoidCallback onHide;
+  bool _isKeyboardVisible = false;
+
+  _KeyboardVisibilityObserver({required this.onShow, required this.onHide});
+
+  @override
+  void didChangeMetrics() {
+    final bottomInset = WidgetsBinding.instance.window.viewInsets.bottom;
+    final isKeyboardVisible = bottomInset > 0;
+
+    if (_isKeyboardVisible != isKeyboardVisible) {
+      _isKeyboardVisible = isKeyboardVisible;
+      if (isKeyboardVisible) {
+        onShow();
+      } else {
+        onHide();
+      }
+    }
+  }
+}
+
+// کلاس کمکی برای ارسال پیام
+class MessageSender {
+  final WidgetRef ref;
+  final String conversationId;
+  final String message;
+  final File? selectedImage;
+  final Uint8List? selectedImageBytes;
+  final String? selectedImageName;
+  final MessageModel? replyToMessage;
+  final Function(double)? onProgress;
+
+  MessageSender({
+    required this.ref,
+    required this.conversationId,
+    required this.message,
+    this.selectedImage,
+    this.selectedImageBytes,
+    this.selectedImageName,
+    this.replyToMessage,
+    this.onProgress,
+  });
+
+  Future<void> send() async {
+    final chatService = ref.read(chatServiceProvider);
+    final messageCache = MessageCacheService();
+
+    String? attachmentUrl;
+    String? attachmentType;
+
+    // آپلود تصویر با مدیریت پیشرفت
+    if (selectedImage != null ||
+        (selectedImageBytes != null && selectedImageName != null)) {
+      attachmentUrl = await _uploadImage();
+      attachmentType = 'image';
+    }
+
+    // ایجاد پیام موقت
+    final tempMessage = await _createTempMessage(attachmentUrl, attachmentType);
+    await messageCache.cacheMessage(tempMessage);
+
+    // ارسال پیام به سرور
+    try {
+      final isOnline = await chatService.isDeviceOnline();
+      final sentMessage = isOnline
+          ? await chatService.sendMessage(
+              conversationId: conversationId,
+              content: message,
+              attachmentUrl: attachmentUrl,
+              attachmentType: attachmentType,
+              replyToMessageId: replyToMessage?.id,
+              replyToContent: replyToMessage?.content,
+              replyToSenderName: replyToMessage?.senderName,
+            )
+          : await chatService.sendOfflineMessage(
+              conversationId: conversationId,
+              content: message,
+              attachmentUrl: attachmentUrl,
+              attachmentType: attachmentType,
+              replyToMessageId: replyToMessage?.id,
+              replyToContent: replyToMessage?.content,
+              replyToSenderName: replyToMessage?.senderName,
+            );
+
+      // جایگزینی پیام موقت با پیام واقعی
+      await messageCache.replaceTempMessage(
+        conversationId,
+        tempMessage.id,
+        sentMessage,
+      );
+    } catch (e) {
+      await messageCache.markMessageAsFailed(conversationId, tempMessage.id);
+      throw e;
+    }
+  }
+
+  Future<String?> _uploadImage() async {
+    if (kIsWeb && selectedImageBytes != null && selectedImageName != null) {
+      return await ChatImageUploadService.uploadChatImageWeb(
+        selectedImageBytes!,
+        selectedImageName!,
+        conversationId,
+      );
+    } else if (selectedImage != null) {
+      return await ChatImageUploadService.uploadChatImage(
+        selectedImage!,
+        conversationId,
+        onProgress: onProgress,
+      );
+    }
+    return null;
+  }
+
+  Future<MessageModel> _createTempMessage(
+      String? attachmentUrl, String? attachmentType) async {
+    final currentUser = supabase.auth.currentUser!;
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+
+    return MessageModel(
+      id: tempId,
+      conversationId: conversationId,
+      senderId: currentUser.id,
+      content: message,
+      createdAt: DateTime.now(),
+      attachmentUrl: attachmentUrl,
+      attachmentType: attachmentType,
+      isRead: false,
+      isSent: false,
+      senderName: currentUser.userMetadata?['username'] ?? 'من',
+      senderAvatar: currentUser.userMetadata?['avatar_url'],
+      isMe: true,
+      replyToMessageId: replyToMessage?.id,
+      replyToContent: replyToMessage?.content,
+      replyToSenderName: replyToMessage?.senderName,
     );
   }
 }

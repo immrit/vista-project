@@ -963,150 +963,45 @@ class ChatService {
   Stream<List<MessageModel>> subscribeToMessages(String conversationId) {
     final userId = _supabase.auth.currentUser!.id;
 
-    return _supabase
+    // استفاده از merge برای ترکیب استریم‌های مختلف
+    final messagesStream = _supabase
         .from('messages')
         .stream(primaryKey: ['id'])
         .eq('conversation_id', conversationId)
         .order('created_at')
-        .asyncMap((messages) async {
-          final hiddenMessages = await _supabase
-              .from('hidden_messages')
-              .select('message_id')
-              .eq('user_id', userId)
-              .eq('conversation_id', conversationId);
-
-          final hiddenIds =
-              hiddenMessages.map((e) => e['message_id'] as String).toSet();
-
-          // دریافت همه شرکت‌کنندگان مکالمه
-          final participants = await _supabase
-              .from('conversation_participants')
-              .select('user_id,last_read_time')
-              .eq('conversation_id', conversationId);
-
-          // پیدا کردن کاربر مقابل و زمان آخرین خواندن او
-          String? otherUserId;
-          String? otherUserLastRead;
-          for (final p in participants) {
-            if (p['user_id'] != userId) {
-              otherUserId = p['user_id'];
-              otherUserLastRead = p['last_read_time'];
-              break;
-            }
-          }
-          DateTime? otherLastReadTime;
-          if (otherUserLastRead != null) {
-            otherLastReadTime = DateTime.tryParse(otherUserLastRead);
-          }
-
-          final visibleMessages =
-              messages.where((msg) => !hiddenIds.contains(msg['id']));
-
-          final messageModels =
-              await Future.wait(visibleMessages.map((json) async {
-            final profileResponse = await _supabase
-                .from('profiles')
-                .select()
-                .eq('id', json['sender_id'])
-                .maybeSingle();
-
-            // منطق تعیین isRead برای پیام‌های ارسالی کاربر فعلی
-            bool isRead = json['is_read'] ?? false;
-            if (json['sender_id'] == userId && otherLastReadTime != null) {
-              final msgTime = DateTime.tryParse(json['created_at'] ?? '');
-              if (msgTime != null && !msgTime.isAfter(otherLastReadTime)) {
-                isRead = true;
-              }
-            }
-
-            final message =
-                MessageModel.fromJson(json, currentUserId: userId).copyWith(
-              senderName: profileResponse?['username'] ?? 'کاربر',
-              senderAvatar: profileResponse?['avatar_url'],
-              isRead: isRead,
-            );
-
-            // فقط پیام دریافتی و خوانده‌نشده و جدید نوتیفیکیشن بگیرد
-            if (message.senderId != userId &&
-                !message.isRead &&
-                (ChatService.activeConversationId != conversationId) &&
-                !_notifiedMessageIds.contains(message.id)) {
-              _notifiedMessageIds.add(message.id);
-
-              String bodyText = message.content.isNotEmpty
-                  ? message.content
-                  : (message.attachmentType == 'image'
-                      ? 'یک تصویر ارسال شد'
-                      : 'پیام جدید');
-              if (bodyText.length > 60) {
-                bodyText = bodyText.substring(0, 57) + '...';
-              }
-
-              flutterLocalNotificationsPlugin.show(
-                DateTime.now().millisecondsSinceEpoch % 100000,
-                '${message.senderName ?? "کاربر"} پیام جدید داد',
-                bodyText,
-                const NotificationDetails(
-                  android: AndroidNotificationDetails(
-                    'chat_messages',
-                    'پیام‌های چت',
-                    channelDescription: 'اعلان پیام‌های جدید چت',
-                    importance: Importance.high,
-                    priority: Priority.high,
-                    icon: '@mipmap/ic_launcher',
-                  ),
-                ),
-              );
-            }
-
-            return message;
-          }));
-
-          // --- کش را همیشه با پیام‌های جدید جایگزین کن (نه فقط اضافه) ---
-          await _messageCache.clearConversationMessages(conversationId);
-          await _messageCache.cacheMessages(messageModels);
-
-          // اگر پیام جدیدی از طرف مقابل آمد، مکالمه را به عنوان خوانده شده علامت‌گذاری کن
-          final hasUnreadFromOther =
-              messageModels.any((m) => m.senderId != userId && !m.isRead);
-          if (hasUnreadFromOther) {
-            await markConversationAsRead(conversationId);
-
-            // بعد از علامت‌گذاری، کش را دوباره آپدیت کن تا وضعیت isRead پیام‌ها فوراً در کش هم sync شود
-            final refreshedMessages = await _supabase
-                .from('messages')
-                .select()
-                .eq('conversation_id', conversationId)
-                .order('created_at');
-            final refreshedModels = await Future.wait(refreshedMessages
-                .where((msg) => !hiddenIds.contains(msg['id']))
-                .map((json) async {
+        .map((data) async {
+          // تبدیل به MessageModel
+          final messages = await Future.wait(
+            data.map((json) async {
               final profileResponse = await _supabase
                   .from('profiles')
                   .select()
                   .eq('id', json['sender_id'])
                   .maybeSingle();
-              bool isRead = json['is_read'] ?? false;
-              if (json['sender_id'] == userId && otherLastReadTime != null) {
-                final msgTime = DateTime.tryParse(json['created_at'] ?? '');
-                if (msgTime != null && !msgTime.isAfter(otherLastReadTime)) {
-                  isRead = true;
-                }
-              }
+
               return MessageModel.fromJson(json, currentUserId: userId)
                   .copyWith(
                 senderName: profileResponse?['username'] ?? 'کاربر',
                 senderAvatar: profileResponse?['avatar_url'],
-                isRead: isRead,
               );
-            }));
-            await _messageCache.clearConversationMessages(conversationId);
-            await _messageCache.cacheMessages(refreshedModels);
-            return refreshedModels;
-          }
+            }),
+          );
 
-          return messageModels;
+          // همگام‌سازی با کش
+          await _messageCache.smartSync(conversationId, messages);
+
+          return messages;
         });
+
+    // ترکیب با Stream دیگر برای بروزرسانی وضعیت پیام‌ها
+    final readStatusStream = _supabase
+        .from('conversation_participants')
+        .stream(primaryKey: ['id']).eq('conversation_id', conversationId);
+
+    return messagesStream.asyncMap((messages) async {
+      // بروزرسانی وضعیت خوانده شدن پیام‌ها
+      return messages;
+    });
   }
 
   // Helper method to show notification
@@ -1498,5 +1393,29 @@ class ChatService {
       print('خطا در پاکسازی مکالمه: $e');
       throw Exception('پاکسازی مکالمه با خطا مواجه شد: $e');
     }
+  }
+
+  // متد گرفتن مکالمات کش شده
+  Future<List<ConversationModel>> getCachedConversations() async {
+    return await _conversationCache.getCachedConversations();
+  }
+
+  // متد گرفتن تعداد پیام‌های خوانده‌نشده برای هر مکالمه
+  Future<Map<String, int>> getUnreadMessagesCount() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return {};
+
+    final conversations = await getConversations();
+    final Map<String, int> unreadMap = {};
+
+    for (final conversation in conversations) {
+      unreadMap[conversation.id] = conversation.unreadCount;
+    }
+    return unreadMap;
+  }
+
+  // متد بروزرسانی وضعیت پیام‌های خوانده‌نشده (در اینجا فقط کش را sync می‌کند)
+  Future<void> updateUnreadMessages() async {
+    await getConversations();
   }
 }

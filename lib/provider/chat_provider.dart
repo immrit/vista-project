@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../DB/message_cache_service.dart';
 import '../main.dart';
@@ -718,3 +719,116 @@ final globalChatNotificationProvider = Provider<void>((ref) {
     }
   });
 });
+
+// Provider ترکیبی برای نمایش بهتر مکالمات
+final combinedConversationsProvider =
+    Provider<AsyncValue<List<ConversationModel>>>((ref) {
+  final streamAsync = ref.watch(conversationsStreamProvider);
+  final cachedAsync = ref.watch(conversationsProvider);
+
+  // اگر استریم در حال لود است ولی کش داریم، از کش استفاده کن
+  if (streamAsync.isLoading && cachedAsync.hasValue) {
+    return cachedAsync;
+  }
+
+  // در غیر این صورت از استریم استفاده کن
+  return streamAsync;
+});
+
+// تنظیم مجدد پرووایدر برای بروزرسانی وضعیت خوانده شدن پیام‌ها
+final unreadMessagesProvider = StreamProvider<Map<String, int>>((ref) {
+  final chatService = ref.watch(chatServiceProvider);
+  final userId = supabase.auth.currentUser?.id;
+
+  if (userId == null) {
+    return Stream.value({});
+  }
+
+  // Subscribe to messages table for real-time updates
+  return supabase
+      .from('messages')
+      .stream(primaryKey: ['id'])
+      .order('created_at')
+      .map((data) async {
+        // گروه‌بندی پیام‌های خوانده نشده بر اساس مکالمه
+        final Map<String, int> unreadCounts = {};
+
+        for (final message in data) {
+          if (!message['is_read'] && message['recipient_id'] == userId) {
+            final conversationId = message['conversation_id'];
+            unreadCounts[conversationId] =
+                (unreadCounts[conversationId] ?? 0) + 1;
+          }
+        }
+
+        return unreadCounts;
+      })
+      .asyncMap((future) => future);
+});
+
+// اضافه کردن پرووایدر جدید برای مدیریت بهتر نوتیفیکیشن‌ها
+final chatNotificationProvider = Provider<void>((ref) {
+  ref.listen<AsyncValue<Map<String, int>>>(
+    unreadMessagesProvider,
+    (previous, next) {
+      next.whenData((unreadCounts) {
+        for (final conversationId in unreadCounts.keys) {
+          final prevCount = previous?.value?[conversationId] ?? 0;
+          final newCount = unreadCounts[conversationId] ?? 0;
+          if (newCount > prevCount) {
+            // نمایش نوتیفیکیشن فقط اگر پیام جدید آمده باشد
+            flutterLocalNotificationsPlugin.show(
+              DateTime.now().millisecondsSinceEpoch % 100000,
+              'پیام جدید',
+              'شما $newCount پیام خوانده نشده دارید',
+              const NotificationDetails(
+                android: AndroidNotificationDetails(
+                  'chat_messages',
+                  'پیام‌های چت',
+                  channelDescription: 'اعلان پیام‌های جدید چت',
+                  importance: Importance.high,
+                  priority: Priority.high,
+                  icon: '@drawable/ic_notification',
+                ),
+              ),
+              payload: conversationId,
+            );
+          }
+        }
+      });
+    },
+  );
+});
+
+// Provider برای مدیریت وضعیت مکالمات
+final conversationStateProvider =
+    StateNotifierProvider<ConversationStateNotifier, AsyncValue<void>>((ref) {
+  return ConversationStateNotifier(ref);
+});
+
+class ConversationStateNotifier extends StateNotifier<AsyncValue<void>> {
+  final Ref ref;
+
+  ConversationStateNotifier(this.ref) : super(const AsyncValue.data(null));
+
+  Future<void> refreshConversations() async {
+    state = const AsyncValue.loading();
+    try {
+      final chatService = ref.read(chatServiceProvider);
+      await chatService.refreshConversations();
+      state = const AsyncValue.data(null);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+    }
+  }
+
+  Future<void> markAsRead(String conversationId) async {
+    try {
+      final chatService = ref.read(chatServiceProvider);
+      await chatService.markConversationAsRead(conversationId);
+      refreshConversations();
+    } catch (e) {
+      print('خطا در علامت‌گذاری به عنوان خوانده شده: $e');
+    }
+  }
+}

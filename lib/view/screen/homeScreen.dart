@@ -215,7 +215,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // فقط آیکون را نمایش بده، بج را حذف کن
     return Icon(
       icon,
-      color: isSelected ? Theme.of(context).colorScheme.primary : null,
+      // color: isSelected ? Theme.of(context).colorScheme.primary : null,
     );
   }
 }
