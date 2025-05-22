@@ -1,11 +1,17 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:loading_animation_widget/loading_animation_widget.dart';
+import '../../../model/channel_model.dart';
 import '../../../model/conversation_model.dart';
+import '../../../provider/channel_provider.dart';
 import '../../../provider/chat_provider.dart';
 
+import '../../../provider/combined_chat_provider.dart';
+import '../channel/ChannelScreen.dart';
+import '../channel/CreateChannelScreen.dart';
 import 'ChatScreen.dart';
 
 class ChatConversationsScreen extends ConsumerStatefulWidget {
@@ -32,6 +38,11 @@ class _ChatConversationsScreenState
       print('🔄 درخواست اولیه مکالمات');
       await _syncConversations();
     });
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   // متد جدید برای همگام‌سازی مکالمات
@@ -84,9 +95,7 @@ class _ChatConversationsScreenState
 
   @override
   Widget build(BuildContext context) {
-    print('🏗️ ساخت مجدد صفحه مکالمات');
-    // استفاده از Provider ترکیبی برای نمایش بهتر
-    final conversationsAsync = ref.watch(combinedConversationsProvider);
+    super.build(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -97,75 +106,216 @@ class _ChatConversationsScreenState
             icon: const Icon(Icons.search),
             onPressed: () {
               showSearch(
-                  context: context,
-                  delegate: ChatSearchDelegate(
-                      ref: ref,
-                      onConversationSelected: (conversation) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ChatScreen(
-                              conversationId: conversation.id,
-                              otherUserName:
-                                  conversation.otherUserName ?? 'کاربر',
-                              otherUserAvatar: conversation.otherUserAvatar ??
-                                  'lib/view/util/images/default-avatar.jpg',
-                              otherUserId: conversation.otherUserId ?? '',
-                            ),
-                          ),
-                        );
-                      }));
+                context: context,
+                delegate: ChatSearchDelegate(
+                  ref: ref,
+                  onConversationSelected: _navigateToChat,
+                ),
+              );
             },
+          ),
+          IconButton(
+            icon: const Icon(Icons.add),
+            onPressed: () => _showCreateOptions(context),
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _syncConversations,
-        child: conversationsAsync.when(
-          data: (conversations) {
-            print('📋 نمایش ${conversations.length} مکالمه');
-            if (conversations.isEmpty) {
-              return const Center(
-                child: Text('هنوز مکالمه‌ای ندارید'),
-              );
-            }
+      body: _buildCombinedList(),
+    );
+  }
 
-            return ListView.builder(
-              itemCount: conversations.length,
-              itemBuilder: (context, index) {
-                final conversation = conversations[index];
-                return _buildConversationItem(
+  Widget _buildCombinedList() {
+    return Consumer(
+      builder: (context, ref, child) {
+        final conversationsAsync = ref.watch(combinedConversationsProvider);
+        final channelsAsync = ref.watch(channelsProvider);
+
+        return RefreshIndicator(
+          onRefresh: () async {
+            await _syncConversations();
+            ref.refresh(channelsProvider);
+          },
+          child: CustomScrollView(
+            slivers: [
+              // بخش کانال‌ها
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'کانال‌ها',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const CreateChannelScreen(),
+                          ),
+                        ),
+                        child: const Text('ایجاد کانال'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              channelsAsync.when(
+                data: (channels) => channels.isEmpty
+                    ? const SliverToBoxAdapter(child: SizedBox())
+                    : SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) =>
+                              _buildChannelItem(channels[index]),
+                          childCount: channels.length,
+                        ),
+                      ),
+                loading: () => const SliverToBoxAdapter(
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (error, _) => SliverToBoxAdapter(
+                  child: Center(child: Text('خطا: $error')),
+                ),
+              ),
+
+              // جداکننده
+              const SliverToBoxAdapter(
+                child: Divider(thickness: 1.5),
+              ),
+
+              // بخش گفتگوها
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Row(
+                    children: const [
+                      Text(
+                        'گفتگوها',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              conversationsAsync.when(
+                data: (conversations) => conversations.isEmpty
+                    ? const SliverToBoxAdapter(
+                        child: Center(child: Text('گفتگویی وجود ندارد')),
+                      )
+                    : SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) => _buildConversationItem(
+                            context,
+                            conversations[index],
+                            onTap: () => _navigateToChat(conversations[index]),
+                          ),
+                          childCount: conversations.length,
+                        ),
+                      ),
+                loading: () => const SliverToBoxAdapter(
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (error, _) => SliverToBoxAdapter(
+                  child: Center(child: Text('خطا: $error')),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showCreateOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(15)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.person_add),
+              title: const Text('گفتگوی جدید'),
+              onTap: () {
+                Navigator.pop(context);
+                // نمایش دیالوگ انتخاب کاربر برای گفتگو
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.campaign),
+              title: const Text('ایجاد کانال'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
                   context,
-                  conversation,
-                  onTap: () => _navigateToChat(conversation),
+                  MaterialPageRoute(
+                    builder: (context) => const CreateChannelScreen(),
+                  ),
                 );
               },
-            );
-          },
-          loading: () {
-            print('⌛ در حال بارگذاری مکالمات');
-            return ChatListShimmer();
-          },
-          error: (error, stack) {
-            print('❌ خطا در نمایش مکالمات: $error');
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('خطا در دریافت مکالمات'),
-                  ElevatedButton(
-                    onPressed: () {
-                      print('🔄 تلاش مجدد');
-                      ref.invalidate(conversationsProvider);
-                      ref.invalidate(conversationsStreamProvider);
-                    },
-                    child: const Text('تلاش مجدد'),
-                  ),
-                ],
-              ),
-            );
-          },
+            ),
+          ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildChannelItem(ChannelModel channel) {
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundImage: channel.avatarUrl != null
+            ? CachedNetworkImageProvider(channel.avatarUrl!)
+            : null,
+        child: channel.avatarUrl == null
+            ? Text(channel.name[0].toUpperCase())
+            : null,
+      ),
+      title: Text(channel.name),
+      subtitle: Text(channel.lastMessage ?? 'کانال خالی'),
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (channel.lastMessageTime != null)
+            Text(
+              _formatMessageTime(channel.lastMessageTime!),
+              style: const TextStyle(fontSize: 12),
+            ),
+          const SizedBox(height: 4),
+          if (!channel.isSubscribed)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'عضویت',
+                style: TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ),
+        ],
+      ),
+      onTap: () => _navigateToChannel(channel),
+    );
+  }
+
+  void _navigateToChannel(ChannelModel channel) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChannelScreen(channel: channel),
       ),
     );
   }
@@ -468,6 +618,101 @@ class ChatSearchDelegate extends SearchDelegate<ConversationModel> {
           },
           loading: () => ChatListShimmer(),
           error: (_, __) => const Center(child: Text('خطا در دریافت اطلاعات')),
+        );
+      },
+    );
+  }
+}
+
+class ChannelSearchDelegate extends SearchDelegate<ChannelModel> {
+  final WidgetRef ref;
+  final Function(ChannelModel) onChannelSelected;
+
+  ChannelSearchDelegate({
+    required this.ref,
+    required this.onChannelSelected,
+  });
+
+  @override
+  String get searchFieldLabel => 'جستجو در کانال‌ها...';
+
+  @override
+  List<Widget> buildActions(BuildContext context) {
+    return [
+      IconButton(
+        icon: const Icon(Icons.clear),
+        onPressed: () {
+          query = '';
+        },
+      ),
+    ];
+  }
+
+  @override
+  Widget buildLeading(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.arrow_back),
+      onPressed: () => close(context, ChannelModel.empty()),
+    );
+  }
+
+  @override
+  Widget buildResults(BuildContext context) {
+    return _buildSearchResults();
+  }
+
+  @override
+  Widget buildSuggestions(BuildContext context) {
+    return _buildSearchResults();
+  }
+
+  Widget _buildSearchResults() {
+    return Consumer(
+      builder: (context, ref, child) {
+        final channelsAsync = ref.watch(channelsProvider);
+
+        return channelsAsync.when(
+          data: (channels) {
+            final filteredChannels = channels
+                .where((channel) =>
+                    channel.name.toLowerCase().contains(query.toLowerCase()) ||
+                    (channel.description
+                            ?.toLowerCase()
+                            .contains(query.toLowerCase()) ??
+                        false))
+                .toList();
+
+            if (filteredChannels.isEmpty) {
+              return const Center(
+                child: Text('هیچ کانالی با این مشخصات یافت نشد'),
+              );
+            }
+
+            return ListView.builder(
+              itemCount: filteredChannels.length,
+              itemBuilder: (context, index) {
+                final channel = filteredChannels[index];
+                return ListTile(
+                  leading: CircleAvatar(
+                    backgroundImage: channel.avatarUrl != null
+                        ? CachedNetworkImageProvider(channel.avatarUrl!)
+                        : null,
+                    child: channel.avatarUrl == null
+                        ? Text(channel.name[0].toUpperCase())
+                        : null,
+                  ),
+                  title: Text(channel.name),
+                  subtitle: Text(channel.description ?? ''),
+                  onTap: () {
+                    onChannelSelected(channel);
+                    close(context, channel);
+                  },
+                );
+              },
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (_, __) => const Center(child: Text('خطا در جستجو')),
         );
       },
     );
