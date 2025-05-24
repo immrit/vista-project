@@ -1591,6 +1591,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _selectedImage != null || (kIsWeb && _selectedImageBytes != null)
               ? _buildImagePreview()
               : null,
+      // پارامترهای اختیاری (اگر نیاز دارید)
+      isSending: _isSending, // اگر متغیر _isSending دارید
+      uploadProgress: _uploadProgress, // اگر progress دارید
+      replyToMessage: _replyToMessage?.content, // اگر reply دارید
+      replyToUser: _replyToMessage?.senderName,
+      onReplyCancel: () {
+        setState(() {
+          _replyToMessage = null;
+        });
+      },
     );
   }
 

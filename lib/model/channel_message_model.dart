@@ -33,6 +33,7 @@ class ChannelMessageModel {
 
   factory ChannelMessageModel.fromJson(Map<String, dynamic> json,
       {String? currentUserId}) {
+    print('Parsing message JSON: $json'); // Debug log
     return ChannelMessageModel(
       id: json['id'],
       channelId: json['channel_id'],

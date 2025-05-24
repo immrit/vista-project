@@ -447,48 +447,39 @@ class ChannelService {
     bool forceRefresh = false,
   }) async {
     try {
+      print('Fetching messages for channel $channelId'); // Debug log
       final userId = _supabase.auth.currentUser!.id;
 
       // بررسی عضویت در کانال
       final permissions = await getUserPermissions(channelId);
-      if (permissions['isMember']!) {
+      if (!permissions['isMember']!) {
         throw Exception('شما عضو این کانال نیستید');
       }
 
       // چک کردن کش
       if (!forceRefresh && before == null) {
         final cachedMessages = await _cache.getChannelMessages(channelId);
+        print(
+            'Loaded ${cachedMessages.length} messages from cache'); // Debug log
         if (cachedMessages.isNotEmpty) {
-          print('${cachedMessages.length} پیام از کش بارگذاری شد');
-
-          // آپدیت در پس‌زمینه
           _refreshMessagesInBackground(channelId, limit);
-
           return cachedMessages;
         }
       }
 
-      // دریافت از سرور با join
+      // دریافت از سرور
       final messages =
           await _fetchMessagesFromServer(channelId, limit, before, userId);
+      print('Fetched ${messages.length} messages from server'); // Debug log
 
-      // کش کردن (فقط اگر before نباشه)
+      // کش کردن
       if (before == null) {
         await _cache.cacheChannelMessages(channelId, messages);
       }
 
       return messages;
     } catch (e) {
-      print('خطا در دریافت پیام‌ها: $e');
-
-      // در صورت خطا، کش رو برگردون
-      if (before == null) {
-        final cachedMessages = await _cache.getChannelMessages(channelId);
-        if (cachedMessages.isNotEmpty) {
-          return cachedMessages;
-        }
-      }
-
+      print('Error fetching messages: $e'); // Debug log
       rethrow;
     }
   }

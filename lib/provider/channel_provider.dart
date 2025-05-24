@@ -27,7 +27,10 @@ final channelMessagesProvider =
     FutureProvider.family<List<ChannelMessageModel>, String>(
         (ref, channelId) async {
   final channelService = ref.read(channelServiceProvider);
-  return await channelService.getChannelMessages(channelId);
+  final messages = await channelService.getChannelMessages(channelId);
+  print(
+      'Fetched ${messages.length} messages for channel $channelId'); // Debug log
+  return messages;
 });
 
 // نوتیفایر برای مدیریت عملیات‌های کانال
