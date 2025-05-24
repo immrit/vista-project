@@ -29,8 +29,8 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen> {
   bool _isUploading = false;
   File? _selectedImage;
   Uint8List? _selectedImageBytes;
-  bool _isCurrentUserBlocked = false;
-  bool _isOtherUserBlocked = false;
+  String? _replyToMessageId;
+  ChannelMessageModel? _replyToMessage;
 
   @override
   void initState() {
@@ -51,11 +51,9 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // مقدار memberRole رو پرینت می‌کنیم برای دیباگ
-    print('Current member role: ${widget.channel.memberRole}');
-
-    // شرط رو ساده‌تر می‌کنیم
-    final canPost = widget.channel.memberRole != null;
+    final canPost = widget.channel.memberRole == 'owner' ||
+        widget.channel.memberRole == 'admin' ||
+        widget.channel.memberRole == 'member';
 
     return Scaffold(
       appBar: AppBar(
@@ -76,6 +74,11 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen> {
           subtitle: Text('${widget.channel.memberCount} عضو'),
         ),
         actions: [
+          // دکمه رفرش
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => _refreshChannel(),
+          ),
           IconButton(
             icon: const Icon(Icons.info_outline),
             onPressed: () => Navigator.push(
@@ -90,20 +93,60 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen> {
       ),
       body: Column(
         children: [
+          // نمایش پیام reply
+          if (_replyToMessage != null) _buildReplyPreview(),
           Expanded(
             child: _buildMessagesList(),
           ),
-          // فقط شرط canPost رو چک می‌کنیم
           if (canPost) _buildMessageInput(),
         ],
       ),
-      // اضافه کردن FAB برای ارسال پست جدید برای ادمین‌ها
-      // floatingActionButton: canPost
-      //     ? FloatingActionButton(
-      //         onPressed: () => _showPostDialog(),
-      //         child: const Icon(Icons.post_add),
-      //       )
-      //     : null,
+    );
+  }
+
+  Widget _buildReplyPreview() {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      margin: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(8),
+        border: Border(
+          right: BorderSide(color: Theme.of(context).primaryColor, width: 3),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'پاسخ به ${_replyToMessage!.senderName}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).primaryColor,
+                  ),
+                ),
+                Text(
+                  _replyToMessage!.content,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () {
+              setState(() {
+                _replyToMessage = null;
+                _replyToMessageId = null;
+              });
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -115,13 +158,25 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen> {
 
         return messagesAsync.when(
           data: (messages) {
+            if (messages.isEmpty) {
+              return const Center(child: Text('هنوز پیامی ارسال نشده است.'));
+            }
+
             return ListView.builder(
               controller: _scrollController,
               reverse: true,
               itemCount: messages.length,
               itemBuilder: (context, index) {
                 final message = messages[index];
-                return _buildMessageItem(message);
+                return ListTile(
+                  title: Text(message.senderName ?? 'ناشناس'),
+                  subtitle: Text(message.content),
+                  leading: message.senderAvatar != null
+                      ? CircleAvatar(
+                          backgroundImage: NetworkImage(message.senderAvatar!),
+                        )
+                      : const CircleAvatar(child: Icon(Icons.person)),
+                );
               },
             );
           },
@@ -134,130 +189,129 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen> {
     );
   }
 
-  Widget _buildMessageItem(ChannelMessageModel message) {
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundImage: message.senderAvatar != null
-            ? CachedNetworkImageProvider(message.senderAvatar!)
-            : null,
-        child: message.senderAvatar == null
-            ? Text(message.senderName?[0].toUpperCase() ?? 'U')
-            : null,
-      ),
-      title: Text(message.senderName ?? 'کاربر'),
-      subtitle: Text(message.content),
-      trailing: Text(
-        _formatMessageTime(message.createdAt),
-        style: const TextStyle(fontSize: 12),
-      ),
-    );
-  }
-
   Widget _buildMessageInput() {
-    return ChatInputBox(
-      messageController: _messageController,
-      messageFocusNode: _messageFocusNode,
-      showEmojiPicker: _showEmojiPicker,
-      toggleEmojiPicker: _toggleEmojiKeyboard,
-      pickImage: _pickImage,
-      sendMessage: _sendMessage,
-      onEmojiSelected: _onEmojiSelected,
-      isUploading: _isUploading,
-      selectedImagePreview:
-          _selectedImage != null || (kIsWeb && _selectedImageBytes != null)
-              ? _buildImagePreview()
-              : null,
-    );
-  }
-
-  void _sendMessage() {
-    final content = _messageController.text.trim();
-    if (content.isEmpty) return;
-
-    ref.read(channelProvider.notifier).sendMessage(
-          channelId: widget.channel.id,
-          content: content,
-        );
-
-    _messageController.clear();
-  }
-
-  // اضافه کردن دیالوگ ارسال پست
-  void _showPostDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('ارسال محتوای جدید'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _messageController,
-              maxLines: 5,
-              decoration: const InputDecoration(
-                hintText: 'متن پست...',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.image),
-                  onPressed: () {
-                    // اضافه کردن تصویر
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.link),
-                  onPressed: () {
-                    // اضافه کردن لینک
-                  },
-                ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('انصراف'),
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 4,
+            offset: const Offset(0, -2),
           ),
-          ElevatedButton(
-            onPressed: () {
-              if (_messageController.text.trim().isNotEmpty) {
-                _sendMessage();
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('ارسال'),
+        ],
+      ),
+      child: Column(
+        children: [
+          // پیش‌نمایش تصویر
+          if (_selectedImage != null || _selectedImageBytes != null)
+            _buildImagePreview(),
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.image),
+                onPressed: _pickImage,
+              ),
+              Expanded(
+                child: TextField(
+                  controller: _messageController,
+                  focusNode: _messageFocusNode,
+                  decoration: const InputDecoration(
+                    hintText: 'پیام خود را بنویسید...',
+                    border: OutlineInputBorder(),
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  maxLines: null,
+                  onSubmitted: (_) => _sendMessage(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: _isUploading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.send),
+                onPressed: _isUploading ? null : _sendMessage,
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  void _toggleEmojiKeyboard() {
+  Future<void> _sendMessage() async {
+    if (_messageController.text.trim().isEmpty &&
+        _selectedImage == null &&
+        _selectedImageBytes == null) {
+      return;
+    }
+
     setState(() {
-      _showEmojiPicker = !_showEmojiPicker;
-      if (_showEmojiPicker) {
-        _messageFocusNode.unfocus();
-      } else {
-        _messageFocusNode.requestFocus();
-      }
+      _isUploading = true;
     });
+
+    try {
+      await ref.read(channelNotifierProvider.notifier).sendMessage(
+            channelId: widget.channel.id,
+            content: _messageController.text.trim(),
+            replyToMessageId: _replyToMessageId,
+          );
+
+      _messageController.clear();
+      setState(() {
+        _selectedImage = null;
+        _selectedImageBytes = null;
+        _replyToMessage = null;
+        _replyToMessageId = null;
+      });
+
+      // اسکرول به پایین
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در ارسال پیام: $e')),
+        );
+      }
+    } finally {
+      setState(() {
+        _isUploading = false;
+      });
+    }
   }
 
-  void _onEmojiSelected(String emoji) {
-    final text = _messageController.text;
-    final selection = _messageController.selection;
-    final newText = text.replaceRange(selection.start, selection.end, emoji);
-    _messageController.text = newText;
-    _messageController.selection = TextSelection.fromPosition(
-      TextPosition(offset: selection.baseOffset + emoji.length),
-    );
+  Future<void> _refreshChannel() async {
+    try {
+      await ref
+          .read(channelNotifierProvider.notifier)
+          .refreshChannel(widget.channel.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('کانال بروزرسانی شد')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در بروزرسانی: $e')),
+        );
+      }
+    }
   }
 
+  // ... باقی متدها مثل _pickImage، _buildImagePreview، _formatMessageTime
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     try {
@@ -297,21 +351,34 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen> {
       ),
       child: Stack(
         children: [
-          if (_selectedImage != null)
-            Image.file(_selectedImage!, fit: BoxFit.cover)
-          else if (_selectedImageBytes != null)
-            Image.memory(_selectedImageBytes!, fit: BoxFit.cover),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: _selectedImage != null
+                ? Image.file(_selectedImage!,
+                    fit: BoxFit.cover, width: 100, height: 100)
+                : _selectedImageBytes != null
+                    ? Image.memory(_selectedImageBytes!,
+                        fit: BoxFit.cover, width: 100, height: 100)
+                    : Container(),
+          ),
           Positioned(
-            top: 0,
-            right: 0,
-            child: IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: () {
+            top: 4,
+            right: 4,
+            child: GestureDetector(
+              onTap: () {
                 setState(() {
                   _selectedImage = null;
                   _selectedImageBytes = null;
                 });
               },
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(
+                  color: Colors.black54,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.close, color: Colors.white, size: 16),
+              ),
             ),
           ),
         ],
@@ -330,5 +397,13 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen> {
     } else {
       return 'چند لحظه پیش';
     }
+  }
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    _scrollController.dispose();
+    _messageFocusNode.dispose();
+    super.dispose();
   }
 }

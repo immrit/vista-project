@@ -19,6 +19,7 @@ class _CreateChannelScreenState extends ConsumerState<CreateChannelScreen> {
   final _usernameController = TextEditingController();
   bool _isPrivate = false;
   File? _selectedImage;
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -29,36 +30,77 @@ class _CreateChannelScreenState extends ConsumerState<CreateChannelScreen> {
   }
 
   Future<void> _selectImage() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() {
-        _selectedImage = File(pickedFile.path);
-      });
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 80,
+      );
+
+      if (pickedFile != null) {
+        setState(() {
+          _selectedImage = File(pickedFile.path);
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در انتخاب تصویر: $e')),
+      );
     }
   }
 
-  void _createChannel() async {
-    if (_formKey.currentState?.validate() ?? false) {
-      try {
-        await ref.read(channelProvider.notifier).createChannel(
-              name: _nameController.text,
-              description: _descriptionController.text,
-              username: _usernameController.text,
-              isPrivate: _isPrivate,
-              avatarFile: _selectedImage,
-            );
+  void _removeImage() {
+    setState(() {
+      _selectedImage = null;
+    });
+  }
 
-        if (mounted) {
-          Navigator.of(context).pop();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('کانال با موفقیت ایجاد شد')),
+  Future<void> _createChannel() async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await ref.read(channelNotifierProvider.notifier).createChannel(
+            name: _nameController.text.trim(),
+            description: _descriptionController.text.trim().isEmpty
+                ? null
+                : _descriptionController.text.trim(),
+            username: _usernameController.text.trim(),
+            isPrivate: _isPrivate,
+            avatarFile: _selectedImage,
           );
-        }
-      } catch (e) {
+
+      if (mounted) {
+        // رفرش لیست کانال‌ها
+        ref.invalidate(channelsProvider);
+
+        Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا در ایجاد کانال: $e')),
+          const SnackBar(
+            content: Text('کانال با موفقیت ایجاد شد'),
+            backgroundColor: Colors.green,
+          ),
         );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در ایجاد کانال: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }
@@ -68,81 +110,249 @@ class _CreateChannelScreenState extends ConsumerState<CreateChannelScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('ایجاد کانال جدید'),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        actions: [
+          TextButton(
+            onPressed: _isLoading ? null : _createChannel,
+            child: _isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text(
+                    'ایجاد',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              GestureDetector(
-                onTap: _selectImage,
-                child: Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    shape: BoxShape.circle,
-                    image: _selectedImage != null
-                        ? DecorationImage(
-                            image: FileImage(_selectedImage!),
-                            fit: BoxFit.cover,
-                          )
-                        : null,
-                  ),
-                  child: _selectedImage == null
-                      ? const Icon(Icons.add_photo_alternate, size: 40)
-                      : null,
+              // آواتار کانال
+              Center(
+                child: Stack(
+                  children: [
+                    GestureDetector(
+                      onTap: _selectImage,
+                      child: Container(
+                        width: 120,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Theme.of(context).primaryColor,
+                            width: 2,
+                          ),
+                          image: _selectedImage != null
+                              ? DecorationImage(
+                                  image: FileImage(_selectedImage!),
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
+                        ),
+                        child: _selectedImage == null
+                            ? Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.add_photo_alternate,
+                                    size: 40,
+                                    color: Colors.grey[600],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'افزودن تصویر',
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : null,
+                      ),
+                    ),
+                    if (_selectedImage != null)
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: GestureDetector(
+                          onTap: _removeImage,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.close,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
+
+              // نام کانال
               TextFormField(
                 controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'نام کانال',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: 'نام کانال *',
+                  hintText: 'مثال: کانال تکنولوژی',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  prefixIcon: const Icon(Icons.tag),
                 ),
                 validator: (value) {
-                  if (value?.isEmpty ?? true) {
+                  if (value?.trim().isEmpty ?? true) {
                     return 'لطفاً نام کانال را وارد کنید';
+                  }
+                  if (value!.trim().length < 3) {
+                    return 'نام کانال باید حداقل ۳ کاراکتر باشد';
                   }
                   return null;
                 },
+                textInputAction: TextInputAction.next,
               ),
               const SizedBox(height: 16),
-              TextFormField(
-                controller: _descriptionController,
-                decoration: const InputDecoration(
-                  labelText: 'توضیحات',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 3,
-              ),
-              const SizedBox(height: 16),
+
+              // یوزرنیم کانال
               TextFormField(
                 controller: _usernameController,
-                decoration: const InputDecoration(
-                  labelText: 'نام کاربری کانال (اختیاری)',
-                  border: OutlineInputBorder(),
-                  prefix: Text('@'),
+                decoration: InputDecoration(
+                  labelText: 'یوزرنیم کانال *',
+                  hintText: 'مثال: tech_channel',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  prefixIcon: const Icon(Icons.alternate_email),
+                  helperText: 'فقط حروف انگلیسی، اعداد و _ مجاز است',
                 ),
+                validator: (value) {
+                  if (value?.trim().isEmpty ?? true) {
+                    return 'لطفاً یوزرنیم کانال را وارد کنید';
+                  }
+                  if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value!.trim())) {
+                    return 'یوزرنیم فقط می‌تواند شامل حروف انگلیسی، اعداد و _ باشد';
+                  }
+                  if (value.trim().length < 3) {
+                    return 'یوزرنیم باید حداقل ۳ کاراکتر باشد';
+                  }
+                  return null;
+                },
+                textInputAction: TextInputAction.next,
               ),
               const SizedBox(height: 16),
-              SwitchListTile(
-                title: const Text('کانال خصوصی'),
-                subtitle: const Text(
-                  'کانال‌های خصوصی فقط با دعوت قابل دسترسی هستند',
+
+              // توضیحات
+              TextFormField(
+                controller: _descriptionController,
+                decoration: InputDecoration(
+                  labelText: 'توضیحات (اختیاری)',
+                  hintText: 'توضیح کوتاهی درباره کانال...',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  prefixIcon: const Icon(Icons.description),
+                  alignLabelWithHint: true,
                 ),
-                value: _isPrivate,
-                onChanged: (value) => setState(() => _isPrivate = value),
+                maxLines: 3,
+                maxLength: 200,
+                textInputAction: TextInputAction.done,
+              ),
+              const SizedBox(height: 16),
+
+              // تنظیمات حریم خصوصی
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'تنظیمات حریم خصوصی',
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                      ),
+                      const SizedBox(height: 8),
+                      SwitchListTile(
+                        title: const Text('کانال خصوصی'),
+                        subtitle: Text(
+                          _isPrivate
+                              ? 'فقط افراد دعوت شده می‌توانند عضو شوند'
+                              : 'همه می‌توانند کانال را پیدا کرده و عضو شوند',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 12,
+                          ),
+                        ),
+                        value: _isPrivate,
+                        onChanged: (value) {
+                          setState(() {
+                            _isPrivate = value;
+                          });
+                        },
+                        secondary: Icon(
+                          _isPrivate ? Icons.lock : Icons.public,
+                          color: _isPrivate ? Colors.orange : Colors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
               const SizedBox(height: 24),
+
+              // دکمه ایجاد
               ElevatedButton(
-                onPressed: _createChannel,
+                onPressed: _isLoading ? null : _createChannel,
                 style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 50),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
-                child: const Text('ایجاد کانال'),
+                child: _isLoading
+                    ? const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          SizedBox(width: 12),
+                          Text('در حال ایجاد...'),
+                        ],
+                      )
+                    : const Text(
+                        'ایجاد کانال',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
             ],
           ),
