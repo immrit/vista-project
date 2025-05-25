@@ -24,7 +24,8 @@ class ChannelScreen extends ConsumerStatefulWidget {
   ConsumerState<ChannelScreen> createState() => _ChannelScreenState();
 }
 
-class _ChannelScreenState extends ConsumerState<ChannelScreen> {
+class _ChannelScreenState extends ConsumerState<ChannelScreen>
+    with TickerProviderStateMixin {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _messageFocusNode = FocusNode();
