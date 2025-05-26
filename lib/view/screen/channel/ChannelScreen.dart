@@ -146,9 +146,12 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen>
   }
 
   Widget _buildChannelInitial() {
+    final String initial = widget.channel.name.isNotEmpty
+        ? widget.channel.name[0].toUpperCase()
+        : '#';
     return Center(
       child: Text(
-        widget.channel.name[0].toUpperCase(),
+        initial,
         style: const TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.bold,
@@ -279,7 +282,8 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen>
 
                 return Column(
                   children: [
-                    if (showDateHeader) _buildDateHeader(message.createdAt),
+                    if (showDateHeader && message.createdAt != null)
+                      _buildDateHeader(message.createdAt!),
                     _buildMessageBubble(message),
                   ],
                 );
@@ -369,21 +373,36 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen>
   }
 
   bool _shouldShowDateHeader(List<ChannelMessageModel> messages, int index) {
-    if (index == messages.length - 1) return true;
-
     final currentMessage = messages[index];
-    final nextMessage = messages[index + 1];
 
+    // اگر تاریخ پیام فعلی null است، هدر را نمایش نده
+    if (currentMessage.createdAt == null) {
+      return false;
+    }
+
+    // برای آخرین پیام در لیست (قدیمی‌ترین پیام)، همیشه هدر تاریخ را نشان بده (اگر تاریخش null نیست)
+    if (index == messages.length - 1) {
+      return true;
+    }
+
+    final nextMessage = messages[index + 1];
+    // اگر تاریخ پیام بعدی null است، برای پیام فعلی هدر تاریخ را نشان بده (چون گروه تاریخ عوض می‌شود)
+    if (nextMessage.createdAt == null) {
+      return true;
+    }
+
+    // حالا که مطمئن هستیم createdAt ها null نیستند، می‌توانیم به year, month, day دسترسی پیدا کنیم.
     final currentDate = DateTime(
-      currentMessage.createdAt.year,
-      currentMessage.createdAt.month,
-      currentMessage.createdAt.day,
+      currentMessage
+          .createdAt!.year, // استفاده از ! امن است چون null بودن چک شده
+      currentMessage.createdAt!.month,
+      currentMessage.createdAt!.day,
     );
 
     final nextDate = DateTime(
-      nextMessage.createdAt.year,
-      nextMessage.createdAt.month,
-      nextMessage.createdAt.day,
+      nextMessage.createdAt!.year, // استفاده از ! امن است
+      nextMessage.createdAt!.month,
+      nextMessage.createdAt!.day,
     );
 
     return !currentDate.isAtSameMomentAs(nextDate);
@@ -737,13 +756,15 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen>
                 );
               },
             ),
-            if (isMyMessage || canPost)
+            if (message.senderId == supabase.auth.currentUser?.id ||
+                widget.channel.memberRole == 'owner')
               ListTile(
                 leading: const Icon(Icons.delete, color: Colors.red),
-                title: const Text('حذف', style: TextStyle(color: Colors.red)),
-                onTap: () {
+                title:
+                    const Text('حذف پیام', style: TextStyle(color: Colors.red)),
+                onTap: () async {
                   Navigator.pop(context);
-                  _deleteMessage(message.id);
+                  await _deleteMessage(message.id);
                 },
               ),
             const SizedBox(height: 16),
@@ -753,33 +774,26 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen>
     );
   }
 
-  void _deleteMessage(String messageId) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('حذف پیام'),
-        content:
-            const Text('آیا مطمئن هستید که می‌خواهید این پیام را حذف کنید؟'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('انصراف', style: TextStyle(color: Colors.grey[600])),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // اینجا باید از سرویس حذف پیام استفاده کنیم
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('حذف'),
-          ),
-        ],
-      ),
-    );
+  Future<void> _deleteMessage(String messageId) async {
+    try {
+      await ref
+          .read(channelNotifierProvider.notifier)
+          .deleteMessage(messageId, widget.channel.id);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('پیام حذف شد'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('خطا: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Widget _buildMessageInput() {

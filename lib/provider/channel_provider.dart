@@ -24,20 +24,20 @@ final channelProvider =
 
 // پرووایدر برای دریافت پیام‌های کانال
 final channelMessagesProvider =
-    FutureProvider.family<List<ChannelMessageModel>, String>(
-        (ref, channelId) async {
-  final channelService = ref.read(channelServiceProvider);
-  final messages = await channelService.getChannelMessages(channelId);
-  print(
-      'Fetched ${messages.length} messages for channel $channelId'); // Debug log
-  return messages;
-});
+    StreamProvider.family<List<ChannelMessageModel>, String>(
+  (ref, channelId) {
+    final channelService = ref.read(channelServiceProvider);
+    return channelService.getChannelMessagesStream(channelId);
+  },
+);
 
 // نوتیفایر برای مدیریت عملیات‌های کانال
 class ChannelNotifier extends StateNotifier<AsyncValue<void>> {
   final ChannelService _channelService;
+  final Ref ref;
 
-  ChannelNotifier(this._channelService) : super(const AsyncValue.data(null));
+  ChannelNotifier(this._channelService, this.ref)
+      : super(const AsyncValue.data(null));
 
   Future<ChannelModel> createChannel({
     required String name,
@@ -63,6 +63,20 @@ class ChannelNotifier extends StateNotifier<AsyncValue<void>> {
     }
   }
 
+  Future<void> deleteMessage(String messageId, String channelId) async {
+    try {
+      await _channelService.deleteMessage(messageId, channelId);
+
+      // آپدیت stream
+      ref.invalidate(channelMessagesProvider(channelId));
+
+      print('پیام با موفقیت حذف شد');
+    } catch (e) {
+      print('خطا در حذف پیام: $e');
+      rethrow;
+    }
+  }
+
   // ✅ بروزرسانی متد sendMessage
   Future<ChannelMessageModel> sendMessage({
     required String channelId,
@@ -71,12 +85,17 @@ class ChannelNotifier extends StateNotifier<AsyncValue<void>> {
     File? imageFile,
   }) async {
     try {
-      return await _channelService.sendMessage(
+      final message = await _channelService.sendMessage(
         channelId: channelId,
         content: content,
         replyToMessageId: replyToMessageId,
         imageFile: imageFile,
       );
+
+      // ✅ دیگه نیازی به invalidate نیست - stream خودکار بروزرسانی می‌شه!
+      print('پیام ارسال شد - stream خودکار بروزرسانی می‌شه');
+
+      return message;
     } catch (e) {
       print('خطا در ارسال پیام: $e');
       rethrow;
@@ -162,5 +181,5 @@ class ChannelNotifier extends StateNotifier<AsyncValue<void>> {
 
 final channelNotifierProvider =
     StateNotifierProvider<ChannelNotifier, AsyncValue<void>>((ref) {
-  return ChannelNotifier(ref.read(channelServiceProvider));
+  return ChannelNotifier(ref.read(channelServiceProvider), ref);
 });

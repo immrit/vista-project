@@ -439,6 +439,30 @@ class ChannelService {
     }
   }
 
+  Stream<List<ChannelMessageModel>> getChannelMessagesStream(String channelId) {
+    try {
+      return _supabase
+          .from('channel_messages')
+          .stream(primaryKey: ['id'])
+          .eq('channel_id', channelId)
+          .order('created_at', ascending: false) // جدیدترین اول
+          .map((data) {
+            final messages = data.map((json) {
+              return ChannelMessageModel.fromJson(json);
+            }).toList();
+
+            // کش کردن پیام‌ها
+            _cache.cacheChannelMessages(channelId, messages);
+
+            print('Real-time: ${messages.length} پیام دریافت شد');
+            return messages;
+          });
+    } catch (e) {
+      print('خطا در stream پیام‌ها: $e');
+      return Stream.error(e);
+    }
+  }
+
   // دریافت پیام‌های کانال با کش (تطبیق با جدول profiles)
   Future<List<ChannelMessageModel>> getChannelMessages(
     String channelId, {
@@ -712,7 +736,7 @@ class ChannelService {
       final permissions = await getUserPermissions(channelId);
       final isOwner = messageInfo['sender_id'] == userId;
 
-      if (!isOwner && permissions['canDeleteMessages']!) {
+      if (!isOwner && !permissions['canDeleteMessage']!) {
         throw Exception('شما مجاز به حذف این پیام نیستید');
       }
 
@@ -732,6 +756,35 @@ class ChannelService {
       print('خطا در حذف پیام: $e');
       rethrow;
     }
+  }
+
+  Future<List<ChannelMessageModel>> _fetchChannelMessages(
+      String channelId) async {
+    final response = await _supabase
+        .from('channel_messages')
+        .select('''
+        id,
+        content,
+        sender_id,
+        channel_id,
+        image_url,
+        reply_to_message_id,
+        created_at,
+        updated_at,
+        profiles!inner(
+          id,
+          username,
+          full_name,
+          avatar_url
+        )
+      ''')
+        .eq('channel_id', channelId)
+        .order('created_at',
+            ascending: false); // ✅ تغییر به false برای جدیدترین اول
+
+    return response.map<ChannelMessageModel>((data) {
+      return ChannelMessageModel.fromJson(data);
+    }).toList();
   }
 
   // جستجو در پیام‌ها

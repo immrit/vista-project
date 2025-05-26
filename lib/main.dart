@@ -9,6 +9,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:intl/date_symbol_data_local.dart';
+
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_links/app_links.dart';
@@ -31,6 +33,7 @@ import 'view/screen/ouathUser/signupUser.dart';
 import 'view/screen/ouathUser/welcome.dart';
 import 'view/screen/ouathUser/editeProfile.dart';
 import 'package:flutter/foundation.dart' show kIsWeb; // اضافه کن
+import 'package:intl/intl.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -199,8 +202,12 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   await HiveInitialize.initialize();
+  await initializeDateFormatting('fa', null);
 
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize date formatting for all locales
+  await initializeDateFormatting('fa', null); // اضافه کنید
 
   // فقط برای غیر وب مسیر را ست کن
   if (!kIsWeb) {
