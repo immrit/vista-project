@@ -68,6 +68,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   double _uploadProgress = 0.0; // درصد پیشرفت آپلود عکس
 
   bool _isSending = false;
+  final MessageCacheService _messageCache =
+      MessageCacheService(); // اضافه کردن این خط
 
   @override
   void initState() {
@@ -299,44 +301,48 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _sendMessage() async {
-    if (_isCurrentUserBlocked || _isSending) return;
+    if (_isCurrentUserBlocked) return;
 
     final message = _messageController.text.trim();
     if (message.isEmpty &&
         _selectedImage == null &&
         _selectedImageBytes == null) return;
 
-    setState(() => _isSending = true);
+    // پاک کردن محتوای پیام و تصویر قبل از ارسال
+    final tempMessage = message;
+    final tempImage = _selectedImage;
+    final tempImageBytes = _selectedImageBytes;
+    final tempImageName = _selectedImageName;
+    final tempReplyMessage = _replyToMessage;
+
+    // پاک کردن فوری فیلدها
+    setState(() {
+      _messageController.clear();
+      _selectedImage = null;
+      _selectedImageBytes = null;
+      _selectedImageName = null;
+      _replyToMessage = null;
+    });
 
     try {
-      // ارسال پیام با استفاده از یک کلاس کمکی جدید
-      await MessageSender(
-        ref: ref,
-        conversationId: widget.conversationId,
-        message: message,
-        selectedImage: _selectedImage,
-        selectedImageBytes: _selectedImageBytes,
-        selectedImageName: _selectedImageName,
-        replyToMessage: _replyToMessage,
-        onProgress: (progress) {
-          setState(() => _uploadProgress = progress);
-        },
-      ).send();
-
-      // پاک کردن فیلدها
-      setState(() {
-        _messageController.clear();
-        _selectedImage = null;
-        _selectedImageBytes = null;
-        _selectedImageName = null;
-        _replyToMessage = null;
-      });
+      // ارسال پیام
+      await ref.read(messageNotifierProvider.notifier).sendMessage(
+            conversationId: widget.conversationId,
+            content: tempMessage,
+            attachmentUrl: tempImage?.path ??
+                (tempImageBytes != null ? 'temp_image' : null),
+            attachmentType:
+                (tempImage != null || tempImageBytes != null) ? 'image' : null,
+            replyToMessageId: tempReplyMessage?.id,
+            replyToContent: tempReplyMessage?.content,
+            replyToSenderName: tempReplyMessage?.senderName,
+          );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطا در ارسال پیام: $e')),
-      );
-    } finally {
-      if (mounted) setState(() => _isSending = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در ارسال پیام: $e')),
+        );
+      }
     }
   }
 
@@ -1786,199 +1792,204 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         : null;
 
     return Slidable(
-      key: Key(message.id),
-      startActionPane: ActionPane(
-        motion: const DrawerMotion(),
-        extentRatio: 0.25,
-        children: [
-          CustomSlidableAction(
-            backgroundColor:
-                Theme.of(context).colorScheme.primary.withOpacity(0.8),
-            foregroundColor: Colors.white,
-            onPressed: (_) => _setReplyMessage(message),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.reply, size: 20),
-                SizedBox(height: 4),
-                Text(
-                  'پاسخ',
-                  style: TextStyle(fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-      child: GestureDetector(
-        onLongPress: () => _showMessageOptions(context, message, isMe),
-        child: Align(
-          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.8,
-            ),
-            child: Opacity(
-              opacity: opacity,
-              child: Card(
-                margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                color: tempColor ?? (isMe ? myMessageColor : otherMessageColor),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16).copyWith(
-                    bottomRight:
-                        isMe ? Radius.circular(4) : Radius.circular(16),
-                    bottomLeft: isMe ? Radius.circular(16) : Radius.circular(4),
+        key: Key(message.id),
+        startActionPane: ActionPane(
+          motion: const DrawerMotion(),
+          extentRatio: 0.25,
+          children: [
+            CustomSlidableAction(
+              backgroundColor:
+                  Theme.of(context).colorScheme.primary.withOpacity(0.8),
+              foregroundColor: Colors.white,
+              onPressed: (_) => _setReplyMessage(message),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.reply, size: 20),
+                  SizedBox(height: 4),
+                  Text(
+                    'پاسخ',
+                    style: TextStyle(fontSize: 12),
                   ),
-                ),
-                child: Column(
-                  crossAxisAlignment:
-                      isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (message.replyToMessageId != null)
-                      Container(
-                        padding: EdgeInsets.all(8),
-                        margin: EdgeInsets.only(bottom: 4),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.black12
-                              : Colors.white24,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              message.replyToSenderName ?? 'کاربر',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: isMe ? Colors.white70 : Colors.black87,
-                                fontSize: 12,
-                              ),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              message.replyToContent ?? '',
-                              style: TextStyle(
-                                color: isMe ? Colors.white70 : Colors.black87,
-                                fontSize: 12,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            attachmentWidget,
-                          ],
-                        ),
-                      ),
-                    Padding(
-                      padding: EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: isMe
-                            ? CrossAxisAlignment.end
-                            : CrossAxisAlignment.start,
-                        children: [
-                          // نمایش عکس پیام (موقت یا واقعی)
-                          if (message.attachmentUrl != null &&
-                              message.attachmentUrl!.isNotEmpty &&
-                              message.attachmentType == 'image')
-                            attachmentWidget,
-                          if (message.content.isNotEmpty)
-                            Padding(
-                              padding: EdgeInsets.only(
-                                top: message.attachmentUrl != null ? 8 : 0,
-                              ),
-                              child: Directionality(
-                                textDirection:
-                                    getTextDirection(message.content),
-                                child: Text(
-                                  message.content,
-                                  style: TextStyle(
-                                    color: isMe ? myTextColor : otherTextColor,
-                                    fontSize: 16,
-                                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        child: GestureDetector(
+          onLongPress: () => _showMessageOptions(context, message, isMe),
+          child: Align(
+            alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.8,
+              ),
+              child: Opacity(
+                opacity: opacity,
+                child: Card(
+                  margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  color:
+                      tempColor ?? (isMe ? myMessageColor : otherMessageColor),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16).copyWith(
+                      bottomRight:
+                          isMe ? Radius.circular(4) : Radius.circular(16),
+                      bottomLeft:
+                          isMe ? Radius.circular(16) : Radius.circular(4),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: isMe
+                        ? CrossAxisAlignment.end
+                        : CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (message.replyToMessageId != null)
+                        Container(
+                          padding: EdgeInsets.all(8),
+                          margin: EdgeInsets.only(bottom: 4),
+                          decoration: BoxDecoration(
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.black12
+                                    : Colors.white24,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                message.replyToSenderName ?? 'کاربر',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: isMe ? Colors.white70 : Colors.black87,
+                                  fontSize: 12,
                                 ),
                               ),
-                            ),
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        isMe ? Colors.white24 : Colors.black12,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
+                              SizedBox(height: 4),
+                              Text(
+                                message.replyToContent ?? '',
+                                style: TextStyle(
+                                  color: isMe ? Colors.white70 : Colors.black87,
+                                  fontSize: 12,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              attachmentWidget,
+                            ],
+                          ),
+                        ),
+                      Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: isMe
+                              ? CrossAxisAlignment.end
+                              : CrossAxisAlignment.start,
+                          children: [
+                            // نمایش عکس پیام (موقت یا واقعی)
+                            if (message.attachmentUrl != null &&
+                                message.attachmentUrl!.isNotEmpty &&
+                                message.attachmentType == 'image')
+                              attachmentWidget,
+                            if (message.content.isNotEmpty)
+                              Padding(
+                                padding: EdgeInsets.only(
+                                  top: message.attachmentUrl != null ? 8 : 0,
+                                ),
+                                child: Directionality(
+                                  textDirection:
+                                      getTextDirection(message.content),
                                   child: Text(
-                                    _formatMessageHour(message.createdAt),
+                                    message.content,
                                     style: TextStyle(
-                                      fontSize: 11,
                                       color:
-                                          isMe ? myTimeColor : otherTimeColor,
-                                      fontWeight: FontWeight.w500,
+                                          isMe ? myTextColor : otherTextColor,
+                                      fontSize: 16,
                                     ),
                                   ),
                                 ),
-                                SizedBox(width: 4),
-                                if (isMe)
-                                  // فقط اگر پیام توسط کاربر فعلی ارسال شده و isSent=false و id پیام temp است، ساعت و دکمه ارسال مجدد نمایش بده
-                                  (!message.isSent &&
-                                          message.id.startsWith('temp_'))
-                                      ? Row(
-                                          children: [
-                                            Icon(
-                                              Icons.access_time,
-                                              size: 14,
-                                              color: isLightMode
-                                                  ? Colors.white24
-                                                  : Colors.black,
-                                            ),
-                                            SizedBox(width: 2),
-                                            GestureDetector(
-                                              onTap: () async {
-                                                await _retrySendMessage(
-                                                    message);
-                                              },
-                                              child: Icon(
-                                                Icons.refresh,
-                                                size: 16,
+                              ),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: isMe
+                                          ? Colors.white24
+                                          : Colors.black12,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      _formatMessageHour(message.createdAt),
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color:
+                                            isMe ? myTimeColor : otherTimeColor,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: 4),
+                                  if (isMe)
+                                    // فقط اگر پیام توسط کاربر فعلی ارسال شده و isSent=false و id پیام temp است، ساعت و دکمه ارسال مجدد نمایش بده
+                                    (!message.isSent &&
+                                            message.id.startsWith('temp_'))
+                                        ? Row(
+                                            children: [
+                                              Icon(
+                                                Icons.access_time,
+                                                size: 14,
                                                 color: isLightMode
                                                     ? Colors.white24
                                                     : Colors.black,
                                               ),
-                                            ),
-                                          ],
-                                        )
-                                      // اگر پیام ارسال شده یا پیام واقعی است، تیک نمایش بده
-                                      : Icon(
-                                          message.isRead
-                                              ? Icons.done_all
-                                              : Icons.done,
-                                          size: 14,
-                                          color: message.isRead
-                                              ? Colors.blue
-                                              : (isMe
-                                                  ? myTimeColor
-                                                  : otherTimeColor),
-                                        ),
-                              ],
+                                              SizedBox(width: 2),
+                                              GestureDetector(
+                                                onTap: () async {
+                                                  await _retrySendMessage(
+                                                      message);
+                                                },
+                                                child: Icon(
+                                                  Icons.refresh,
+                                                  size: 16,
+                                                  color: isLightMode
+                                                      ? Colors.white24
+                                                      : Colors.black,
+                                                ),
+                                              ),
+                                            ],
+                                          )
+                                        // اگر پیام ارسال شده یا پیام واقعی است، تیک نمایش بده
+                                        : Icon(
+                                            message.isRead
+                                                ? Icons.done_all
+                                                : Icons.done,
+                                            size: 14,
+                                            color: message.isRead
+                                                ? Colors.blue
+                                                : (isMe
+                                                    ? myTimeColor
+                                                    : otherTimeColor),
+                                          ),
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ),
-    );
+        ));
   }
 
   // ارسال مجدد پیام موقت (retry)

@@ -111,6 +111,8 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
 
   final Ref ref;
   bool _disposed = false;
+  final MessageCacheService _messageCache =
+      MessageCacheService(); // اضافه کردن این خط
 
   @override
   void dispose() {
@@ -203,14 +205,54 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
   }) async {
     if (_disposed) return;
 
-    state = const AsyncValue.loading();
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    final currentUser = supabase.auth.currentUser!;
+
+    // ایجاد پیام موقت
+    final tempMessage = MessageModel.temporary(
+      tempId: tempId,
+      conversationId: conversationId,
+      senderId: currentUser.id,
+      content: content,
+      attachmentUrl: attachmentUrl,
+      attachmentType: attachmentType,
+      replyToMessageId: replyToMessageId,
+      replyToContent: replyToContent,
+      replyToSenderName: replyToSenderName,
+      senderName: currentUser.userMetadata?['username'],
+      senderAvatar: currentUser.userMetadata?['avatar_url'],
+    );
+
+    // ذخیره پیام موقت در کش و نمایش فوری آن
+    await _messageCache.cacheMessage(tempMessage);
+    ref.invalidate(messagesProvider(conversationId));
+
+    // ارسال به سرور در پس‌زمینه
+    unawaited(_sendMessageToServer(
+      tempMessage: tempMessage,
+      conversationId: conversationId,
+      content: content,
+      attachmentUrl: attachmentUrl,
+      attachmentType: attachmentType,
+      replyToMessageId: replyToMessageId,
+      replyToContent: replyToContent,
+      replyToSenderName: replyToSenderName,
+    ));
+  }
+
+  Future<void> _sendMessageToServer({
+    required MessageModel tempMessage,
+    required String conversationId,
+    required String content,
+    String? attachmentUrl,
+    String? attachmentType,
+    String? replyToMessageId,
+    String? replyToContent,
+    String? replyToSenderName,
+  }) async {
     try {
       final chatService = ref.read(chatServiceProvider);
-
-      // اضافه کردن لاگ برای تشخیص مشکل
-      print('MessageNotifier: ارسال پیام به $conversationId');
-
-      await chatService.sendMessage(
+      final serverMessage = await chatService.sendMessage(
         conversationId: conversationId,
         content: content,
         attachmentUrl: attachmentUrl,
@@ -218,21 +260,19 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
         replyToMessageId: replyToMessageId,
         replyToContent: replyToContent,
         replyToSenderName: replyToSenderName,
+        localId: tempMessage.id,
       );
 
-      if (_disposed) return;
+      await _messageCache.replaceTempMessage(
+        conversationId,
+        tempMessage.id,
+        serverMessage,
+      );
 
-      // بروزرسانی پیام‌ها
       ref.invalidate(messagesProvider(conversationId));
-      ref.invalidate(conversationsProvider);
-
-      if (_disposed) return;
-      state = const AsyncValue.data(null);
-    } catch (e, stack) {
-      print('MessageNotifier: خطا در ارسال پیام: $e');
-      if (!_disposed) {
-        state = AsyncValue.error(e, stack);
-      }
+    } catch (e) {
+      await _messageCache.markMessageAsFailed(conversationId, tempMessage.id);
+      print('خطا در ارسال پیام: $e');
     }
   }
 

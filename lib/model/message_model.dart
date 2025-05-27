@@ -14,6 +14,8 @@ class MessageModel {
   final String? replyToMessageId;
   final String? replyToContent;
   final String? replyToSenderName;
+  final bool isPending;
+  final String? localId;
 
   MessageModel({
     required this.id,
@@ -31,6 +33,8 @@ class MessageModel {
     this.replyToMessageId,
     this.replyToContent,
     this.replyToSenderName,
+    this.isPending = false,
+    this.localId,
   });
 
   factory MessageModel.fromJson(Map<String, dynamic> json,
@@ -57,6 +61,40 @@ class MessageModel {
     );
   }
 
+  factory MessageModel.temporary({
+    required String tempId,
+    required String conversationId,
+    required String senderId,
+    required String content,
+    String? attachmentUrl,
+    String? attachmentType,
+    String? replyToMessageId,
+    String? replyToContent,
+    String? replyToSenderName,
+    String? senderName,
+    String? senderAvatar,
+  }) {
+    return MessageModel(
+      id: tempId,
+      conversationId: conversationId,
+      senderId: senderId,
+      content: content,
+      createdAt: DateTime.now(),
+      attachmentUrl: attachmentUrl,
+      attachmentType: attachmentType,
+      isRead: false,
+      isSent: false,
+      isPending: true,
+      localId: tempId,
+      senderName: senderName ?? 'من',
+      senderAvatar: senderAvatar,
+      isMe: true,
+      replyToMessageId: replyToMessageId,
+      replyToContent: replyToContent,
+      replyToSenderName: replyToSenderName,
+    );
+  }
+
   MessageModel copyWith({
     String? id,
     String? conversationId,
@@ -73,6 +111,8 @@ class MessageModel {
     String? replyToMessageId,
     String? replyToContent,
     String? replyToSenderName,
+    bool? isPending,
+    String? localId,
   }) {
     return MessageModel(
       id: id ?? this.id,
@@ -90,6 +130,8 @@ class MessageModel {
       replyToMessageId: replyToMessageId ?? this.replyToMessageId,
       replyToContent: replyToContent ?? this.replyToContent,
       replyToSenderName: replyToSenderName ?? this.replyToSenderName,
+      isPending: isPending ?? this.isPending,
+      localId: localId ?? this.localId,
     );
   }
 }

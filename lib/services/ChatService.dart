@@ -242,89 +242,58 @@ class ChatService {
     String? replyToMessageId,
     String? replyToContent,
     String? replyToSenderName,
+    String? localId, // اضافه کردن پارامتر localId
   }) async {
-    final userId = _supabase.auth.currentUser!.id;
+    if (_supabase.auth.currentUser == null) {
+      throw AppException(
+        userFriendlyMessage: 'کاربر وارد نشده است',
+        technicalMessage: 'No authenticated user',
+      );
+    }
 
     try {
-      print('ارسال پیام به مکالمه: $conversationId');
-      print('محتوای پیام: $content');
-      print('فرستنده: $userId');
-      print('attachmentUrl: $attachmentUrl'); // اضافه شد برای دیباگ
-      print('attachmentType: $attachmentType'); // اضافه شد برای دیباگ
+      final userId = _supabase.auth.currentUser!.id;
 
-      // اطمینان از آنلاین بودن فقط روی موبایل/دسکتاپ
-      final isOnline = await isDeviceOnline();
-      if (!isOnline) {
-        throw AppException(
-          userFriendlyMessage: 'اتصال اینترنت برقرار نیست',
-          technicalMessage: 'ارسال پیام در حالت آفلاین مجاز نیست',
-        );
-      }
-
-      // اطمینان از اینکه اگر attachmentUrl مقدار ندارد، فیلد را null بفرستیم
-      final insertMap = {
+      // ساخت داده‌های پیام
+      final messageData = {
         'conversation_id': conversationId,
         'sender_id': userId,
         'content': content,
-        'attachment_url': (attachmentUrl != null && attachmentUrl.isNotEmpty)
-            ? attachmentUrl
-            : null,
-        'attachment_type': (attachmentType != null && attachmentType.isNotEmpty)
-            ? attachmentType
-            : null,
+        'attachment_url': attachmentUrl,
+        'attachment_type': attachmentType,
         'reply_to_message_id': replyToMessageId,
         'reply_to_content': replyToContent,
         'reply_to_sender_name': replyToSenderName,
+        'local_id': localId,
+        'is_sent': true,
+        'is_pending': false,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
       };
 
-      print('insertMap: $insertMap'); // دیباگ
+      print('📝 ارسال پیام به سرور: $messageData');
 
       // ارسال پیام به سرور
-      final insertResponse =
-          await _supabase.from('messages').insert(insertMap).select().single();
-
-      // دریافت اطلاعات فرستنده
-      final profileResponse = await _supabase
-          .from('profiles')
+      final response = await _supabase
+          .from('messages')
+          .insert(messageData)
           .select()
-          .eq('id', userId)
-          .maybeSingle();
+          .single();
 
-      // ساخت مدل پیام با اطلاعات فرستنده
-      final message =
-          MessageModel.fromJson(insertResponse, currentUserId: userId).copyWith(
-        senderName: profileResponse?['username'] ?? 'کاربر',
-        senderAvatar: profileResponse?['avatar_url'],
+      print('✅ پیام با موفقیت ارسال شد');
+
+      // دریافت اطلاعات پروفایل کاربر
+      final profileResponse =
+          await _supabase.from('profiles').select().eq('id', userId).single();
+
+      return MessageModel.fromJson(response, currentUserId: userId).copyWith(
+        senderName: profileResponse['username'] ?? 'کاربر',
+        senderAvatar: profileResponse['avatar_url'],
       );
-
-      // ذخیره پیام در کش
-      await _messageCache.cacheMessage(message);
-
-      // بروزرسانی مکالمه در کش
-      final conversation =
-          await _conversationCache.getConversation(conversationId);
-      if (conversation != null) {
-        final updatedConversation = conversation.copyWith(
-          lastMessage: content,
-          lastMessageTime: DateTime.now(),
-          updatedAt: DateTime.now(),
-          hasUnreadMessages: false, // برای فرستنده پیام خوانده شده است
-        );
-        await _conversationCache.updateConversation(updatedConversation);
-      }
-
-      // بروزرسانی زمان خواندن پیام‌ها
-      await _supabase
-          .from('conversation_participants')
-          .update({'last_read_time': DateTime.now().toIso8601String()})
-          .eq('conversation_id', conversationId)
-          .eq('user_id', userId);
-
-      return message;
     } catch (e) {
+      print('❌ خطا در ارسال پیام: $e');
       throw AppException(
         userFriendlyMessage: 'ارسال پیام با مشکل مواجه شد',
-        technicalMessage: 'خطا در ارسال پیام: $e',
+        technicalMessage: 'Error in sendMessage: $e',
       );
     }
   }
