@@ -223,9 +223,10 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
       senderAvatar: currentUser.userMetadata?['avatar_url'],
     );
 
-    // ذخیره پیام موقت در کش و نمایش فوری آن
-    await _messageCache.cacheMessage(tempMessage);
-    ref.invalidate(messagesProvider(conversationId));
+    // اضافه کردن پیام موقت به StateNotifier و کش حافظه
+    ref
+        .read(conversationMessagesProvider(conversationId).notifier)
+        .addTempMessage(tempMessage);
 
     // ارسال به سرور در پس‌زمینه
     unawaited(_sendMessageToServer(
@@ -263,15 +264,15 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
         localId: tempMessage.id,
       );
 
-      await _messageCache.replaceTempMessage(
-        conversationId,
-        tempMessage.id,
-        serverMessage,
-      );
-
-      ref.invalidate(messagesProvider(conversationId));
+      // فقط همان پیام temp را جایگزین کن
+      ref
+          .read(conversationMessagesProvider(conversationId).notifier)
+          .replaceTempWithReal(tempMessage.id, serverMessage);
     } catch (e) {
-      await _messageCache.markMessageAsFailed(conversationId, tempMessage.id);
+      // پیام temp را failed کن
+      ref
+          .read(conversationMessagesProvider(conversationId).notifier)
+          .markTempFailed(tempMessage.id);
       print('خطا در ارسال پیام: $e');
     }
   }
@@ -872,3 +873,57 @@ class ConversationStateNotifier extends StateNotifier<AsyncValue<void>> {
     }
   }
 }
+
+// --- اضافه کنید: StateNotifier برای پیام‌های هر مکالمه ---
+class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
+  final String conversationId;
+  final MessageCacheService _cacheService = MessageCacheService();
+
+  ConversationMessagesNotifier(this.conversationId) : super([]) {
+    _init();
+  }
+
+  Future<void> _init() async {
+    final cached = await _cacheService.getConversationMessages(conversationId);
+    state = [...cached];
+  }
+
+  void addTempMessage(MessageModel message) {
+    state = [message, ...state];
+    _cacheService.cacheMessage(message);
+  }
+
+  void replaceTempWithReal(String tempId, MessageModel realMessage) {
+    state = [
+      for (final m in state)
+        if (m.id == tempId) realMessage else m
+    ];
+    _cacheService.replaceTempMessage(conversationId, tempId, realMessage);
+  }
+
+  void markTempFailed(String tempId) {
+    state = [
+      for (final m in state)
+        if (m.id == tempId) m.copyWith(isSent: false) else m
+    ];
+    _cacheService.markMessageAsFailed(conversationId, tempId);
+  }
+
+  Future<void> refreshFromServer(ChatService chatService) async {
+    final serverMessages = await chatService.getMessages(conversationId);
+    // حذف پیام‌های temp که پیام واقعی‌شان آمده
+    final serverIds = serverMessages.map((m) => m.id).toSet();
+    final tempMessages = state
+        .where((m) => m.id.startsWith('temp_') && !serverIds.contains(m.id))
+        .toList();
+    state = [...serverMessages, ...tempMessages]
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    await _cacheService.cacheMessages(serverMessages);
+  }
+}
+
+// --- Provider جدید برای پیام‌های هر مکالمه ---
+final conversationMessagesProvider = StateNotifierProvider.family
+    .autoDispose<ConversationMessagesNotifier, List<MessageModel>, String>(
+  (ref, conversationId) => ConversationMessagesNotifier(conversationId),
+);

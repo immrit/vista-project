@@ -1242,198 +1242,58 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             Column(
               children: [
                 Expanded(
-                  child: FutureBuilder<List<MessageModel>>(
-                    future: MessageCacheService()
-                        .getConversationMessages(widget.conversationId),
-                    builder: (context, snapshot) {
-                      final cachedMessages = snapshot.data ?? [];
-                      // --- اضافه شد: دریافت کش تاریخ‌های پیام ---
-                      final dateDividers = MessageCacheService()
-                          .getDateDividers(widget.conversationId);
-                      return Consumer(
-                        builder: (context, ref, _) {
-                          final messagesAsync = ref.watch(
-                              messagesStreamProvider(widget.conversationId));
-                          return messagesAsync.when(
-                            data: (messagesFromServer) {
-                              // ترکیب پیام‌های کش شده (موقت) و پیام‌های سرور
-                              List<MessageModel> allMessages = [];
-                              // پیام‌های موقت: پیام‌هایی که id آنها با temp_ شروع می‌شود یا isSent=false
-                              final tempMessages = cachedMessages
-                                  .where((m) =>
-                                      m.id.startsWith('temp_') ||
-                                      m.isSent == false)
-                                  .toList();
-                              // پیام‌های سرور: پیام‌هایی که id آنها temp_ نیست
-                              final serverMessages = messagesFromServer
-                                  .where((m) => !m.id.startsWith('temp_'))
-                                  .toList();
+                  child: ref
+                          .watch(conversationMessagesProvider(
+                              widget.conversationId))
+                          .isEmpty
+                      ? const Center(
+                          child: Text(
+                              'پیامی وجود ندارد. اولین پیام را ارسال کنید!'))
+                      : ListView.builder(
+                          controller: _scrollController,
+                          reverse: true,
+                          itemCount: ref
+                              .watch(conversationMessagesProvider(
+                                  widget.conversationId))
+                              .length,
+                          itemBuilder: (context, index) {
+                            final message = ref.watch(
+                                conversationMessagesProvider(
+                                    widget.conversationId))[index];
+                            final isMe = message.senderId ==
+                                supabase.auth.currentUser?.id;
+                            // جداکننده تاریخ
+                            bool showDateDivider = false;
+                            final msgDate = DateTime(message.createdAt.year,
+                                message.createdAt.month, message.createdAt.day);
 
-                              // حذف پیام‌های temp که پیام واقعی‌شان آمده
-                              final serverIds =
-                                  serverMessages.map((m) => m.id).toSet();
-                              final filteredTempMessages = tempMessages
-                                  .where((m) => !serverIds.contains(m.id))
-                                  .toList();
-
-                              allMessages = [
-                                ...serverMessages,
-                                ...filteredTempMessages
-                              ];
-
-                              // مرتب‌سازی بر اساس زمان (جدیدترین بالا)
-                              allMessages.sort(
-                                  (a, b) => b.createdAt.compareTo(a.createdAt));
-
-                              if (allMessages.isEmpty) {
-                                return const Center(
-                                    child: Text(
-                                        'پیامی وجود ندارد. اولین پیام را ارسال کنید!'));
+                            // اگر این پیام اولین پیام از یک روز است (در لیست معکوس)
+                            if (index ==
+                                ref
+                                        .watch(conversationMessagesProvider(
+                                            widget.conversationId))
+                                        .length -
+                                    1) {
+                              showDateDivider = true;
+                            } else {
+                              final prevMsg = ref.watch(
+                                  conversationMessagesProvider(
+                                      widget.conversationId))[index + 1];
+                              if (!_isSameDay(
+                                  message.createdAt, prevMsg.createdAt)) {
+                                showDateDivider = true;
                               }
-
-                              // --- استفاده از کش تاریخ برای نمایش جداکننده تاریخ ---
-                              return ListView.builder(
-                                controller: _scrollController,
-                                reverse: true,
-                                itemCount: allMessages.length,
-                                itemBuilder: (context, index) {
-                                  final message = allMessages[index];
-                                  final isMe = message.senderId ==
-                                      supabase.auth.currentUser?.id;
-                                  // جداکننده تاریخ
-                                  bool showDateDivider = false;
-                                  final msgDate = DateTime(
-                                      message.createdAt.year,
-                                      message.createdAt.month,
-                                      message.createdAt.day);
-
-                                  if (dateDividers.isNotEmpty) {
-                                    // اگر این پیام اولین پیام از یک روز است (در لیست معکوس)
-                                    if (index == allMessages.length - 1) {
-                                      showDateDivider = true;
-                                    } else {
-                                      final prevMsg = allMessages[index + 1];
-                                      final prevDate = DateTime(
-                                          prevMsg.createdAt.year,
-                                          prevMsg.createdAt.month,
-                                          prevMsg.createdAt.day);
-                                      if (msgDate != prevDate) {
-                                        showDateDivider = true;
-                                      }
-                                    }
-                                  } else {
-                                    // fallback: منطق قبلی
-                                    if (index == allMessages.length - 1) {
-                                      showDateDivider = true;
-                                    } else {
-                                      final prevMsg = allMessages[index + 1];
-                                      if (!_isSameDay(message.createdAt,
-                                          prevMsg.createdAt)) {
-                                        showDateDivider = true;
-                                      }
-                                    }
-                                  }
-                                  // اگر باید جداکننده نمایش داده شود، تاریخ را به صورت فارسی نمایش بده
-                                  return Column(
-                                    children: [
-                                      if (showDateDivider)
-                                        _buildDateDivider(message.createdAt),
-                                      _buildMessageItem(context, message, isMe),
-                                    ],
-                                  );
-                                },
-                              );
-                            },
-                            loading: () {
-                              if (cachedMessages.isNotEmpty) {
-                                return ListView.builder(
-                                  controller: _scrollController,
-                                  reverse: true,
-                                  itemCount: cachedMessages.length,
-                                  itemBuilder: (context, index) {
-                                    final message = cachedMessages[index];
-                                    final isMe = message.senderId ==
-                                        supabase.auth.currentUser?.id;
-                                    return _buildMessageItem(
-                                        context, message, isMe);
-                                  },
-                                );
-                              }
-                              return Center(
-                                child: LoadingAnimationWidget.staggeredDotsWave(
-                                  color: Theme.of(context).primaryColor,
-                                  size: 50,
-                                ),
-                              );
-                            },
-                            error: (error, stack) {
-                              if (cachedMessages.isNotEmpty) {
-                                return ListView.builder(
-                                  controller: _scrollController,
-                                  reverse: true,
-                                  itemCount: cachedMessages.length,
-                                  itemBuilder: (context, index) {
-                                    final message = cachedMessages[index];
-                                    final isMe = message.senderId ==
-                                        supabase.auth.currentUser?.id;
-                                    return _buildMessageItem(
-                                        context, message, isMe);
-                                  },
-                                );
-                              }
-                              return Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.signal_wifi_off,
-                                      color: Colors.grey,
-                                      size: 60,
-                                    ),
-                                    const SizedBox(height: 16),
-                                    Text(
-                                      'اتصال اینترنت برقرار نیست',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        color: Theme.of(context).brightness ==
-                                                Brightness.dark
-                                            ? Colors.white70
-                                            : Colors.grey[700],
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'پیام‌ها در حال حاضر قابل نمایش نیستند',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: Theme.of(context).brightness ==
-                                                Brightness.dark
-                                            ? Colors.white54
-                                            : Colors.grey[600],
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    ElevatedButton(
-                                      onPressed: () => ref.refresh(
-                                          messagesStreamProvider(
-                                              widget.conversationId)),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Theme.of(context)
-                                            .colorScheme
-                                            .primary,
-                                        foregroundColor: Colors.white,
-                                      ),
-                                      child: const Text('تلاش مجدد'),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      );
-                    },
-                  ),
+                            }
+                            // اگر باید جداکننده نمایش داده شود، تاریخ را به صورت فارسی نمایش بده
+                            return Column(
+                              children: [
+                                if (showDateDivider)
+                                  _buildDateDivider(message.createdAt),
+                                _buildMessageItem(context, message, isMe),
+                              ],
+                            );
+                          },
+                        ),
                 ),
                 if (_isCurrentUserBlocked || _isOtherUserBlocked)
                   _buildBlockedBanner(),
