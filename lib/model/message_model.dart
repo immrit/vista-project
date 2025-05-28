@@ -16,6 +16,7 @@ class MessageModel {
   final String? replyToSenderName;
   final bool isPending;
   final String? localId;
+  final int retryCount; // اضافه کنید
 
   MessageModel({
     required this.id,
@@ -35,6 +36,7 @@ class MessageModel {
     this.replyToSenderName,
     this.isPending = false,
     this.localId,
+    this.retryCount = 0, // مقدار پیش‌فرض
   });
 
   factory MessageModel.fromJson(Map<String, dynamic> json,
@@ -73,6 +75,7 @@ class MessageModel {
     String? replyToSenderName,
     String? senderName,
     String? senderAvatar,
+    int retryCount = 0, // اضافه کنید
   }) {
     return MessageModel(
       id: tempId,
@@ -92,6 +95,7 @@ class MessageModel {
       replyToMessageId: replyToMessageId,
       replyToContent: replyToContent,
       replyToSenderName: replyToSenderName,
+      retryCount: retryCount,
     );
   }
 
@@ -113,6 +117,7 @@ class MessageModel {
     String? replyToSenderName,
     bool? isPending,
     String? localId,
+    int? retryCount, // اضافه کنید
   }) {
     return MessageModel(
       id: id ?? this.id,
@@ -132,6 +137,7 @@ class MessageModel {
       replyToSenderName: replyToSenderName ?? this.replyToSenderName,
       isPending: isPending ?? this.isPending,
       localId: localId ?? this.localId,
+      retryCount: retryCount ?? this.retryCount,
     );
   }
 }

@@ -1644,6 +1644,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
     // پیام موقت: رنگ متفاوت یا شفافیت
     final bool isTemp = !message.isSent && message.id.startsWith('temp_');
+    final bool isFailed = isTemp && message.retryCount >= 3;
     final double opacity = isTemp ? 0.6 : 1.0;
     final Color? tempColor = isTemp
         ? (isMe
@@ -1798,16 +1799,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                   SizedBox(width: 4),
                                   if (isMe)
                                     // فقط اگر پیام توسط کاربر فعلی ارسال شده و isSent=false و id پیام temp است، ساعت و دکمه ارسال مجدد نمایش بده
-                                    (!message.isSent &&
-                                            message.id.startsWith('temp_'))
+                                    isFailed
                                         ? Row(
                                             children: [
                                               Icon(
-                                                Icons.access_time,
+                                                Icons.error_outline,
                                                 size: 14,
-                                                color: isLightMode
-                                                    ? Colors.white24
-                                                    : Colors.black,
+                                                color: Colors.red,
                                               ),
                                               SizedBox(width: 2),
                                               GestureDetector(
@@ -1818,25 +1816,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                                 child: Icon(
                                                   Icons.refresh,
                                                   size: 16,
-                                                  color: isLightMode
-                                                      ? Colors.white24
-                                                      : Colors.black,
+                                                  color: Colors.red,
                                                 ),
                                               ),
                                             ],
                                           )
-                                        // اگر پیام ارسال شده یا پیام واقعی است، تیک نمایش بده
-                                        : Icon(
-                                            message.isRead
-                                                ? Icons.done_all
-                                                : Icons.done,
-                                            size: 14,
-                                            color: message.isRead
-                                                ? Colors.blue
-                                                : (isMe
-                                                    ? myTimeColor
-                                                    : otherTimeColor),
-                                          ),
+                                        : (!message.isSent &&
+                                                message.id.startsWith('temp_'))
+                                            ? Icon(
+                                                Icons.access_time,
+                                                size: 14,
+                                                color: isLightMode
+                                                    ? Colors.white24
+                                                    : Colors.black,
+                                              )
+                                            : Icon(
+                                                message.isRead
+                                                    ? Icons.done_all
+                                                    : Icons.done,
+                                                size: 14,
+                                                color: message.isRead
+                                                    ? Colors.blue
+                                                    : (isMe
+                                                        ? myTimeColor
+                                                        : otherTimeColor),
+                                              ),
                                 ],
                               ),
                             ),

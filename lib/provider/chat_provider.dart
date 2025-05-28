@@ -194,6 +194,8 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
     }
   }
 
+  static const int maxRetry = 3;
+
   Future<void> sendMessage({
     required String conversationId,
     required String content,
@@ -208,7 +210,6 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
     final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
     final currentUser = supabase.auth.currentUser!;
 
-    // ایجاد پیام موقت
     final tempMessage = MessageModel.temporary(
       tempId: tempId,
       conversationId: conversationId,
@@ -221,15 +222,15 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
       replyToSenderName: replyToSenderName,
       senderName: currentUser.userMetadata?['username'],
       senderAvatar: currentUser.userMetadata?['avatar_url'],
+      retryCount: 0, // مقدار اولیه
     );
 
-    // اضافه کردن پیام موقت به StateNotifier و کش حافظه
     ref
         .read(conversationMessagesProvider(conversationId).notifier)
         .addTempMessage(tempMessage);
 
-    // ارسال به سرور در پس‌زمینه
-    unawaited(_sendMessageToServer(
+    // تلاش برای ارسال پیام با منطق retry
+    unawaited(_trySendWithRetry(
       tempMessage: tempMessage,
       conversationId: conversationId,
       content: content,
@@ -238,10 +239,11 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
       replyToMessageId: replyToMessageId,
       replyToContent: replyToContent,
       replyToSenderName: replyToSenderName,
+      retryCount: 0,
     ));
   }
 
-  Future<void> _sendMessageToServer({
+  Future<void> _trySendWithRetry({
     required MessageModel tempMessage,
     required String conversationId,
     required String content,
@@ -250,6 +252,7 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
     String? replyToMessageId,
     String? replyToContent,
     String? replyToSenderName,
+    required int retryCount,
   }) async {
     try {
       final chatService = ref.read(chatServiceProvider);
@@ -263,17 +266,34 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
         replyToSenderName: replyToSenderName,
         localId: tempMessage.id,
       );
-
-      // فقط همان پیام temp را جایگزین کن
       ref
           .read(conversationMessagesProvider(conversationId).notifier)
           .replaceTempWithReal(tempMessage.id, serverMessage);
     } catch (e) {
-      // پیام temp را failed کن
-      ref
-          .read(conversationMessagesProvider(conversationId).notifier)
-          .markTempFailed(tempMessage.id);
-      print('خطا در ارسال پیام: $e');
+      if (retryCount < maxRetry - 1) {
+        // افزایش شمارنده و تلاش مجدد بعد از کمی تاخیر
+        final updatedTemp = tempMessage.copyWith(retryCount: retryCount + 1);
+        ref
+            .read(conversationMessagesProvider(conversationId).notifier)
+            .replaceTempWithReal(tempMessage.id, updatedTemp);
+        await Future.delayed(const Duration(seconds: 2));
+        unawaited(_trySendWithRetry(
+          tempMessage: updatedTemp,
+          conversationId: conversationId,
+          content: content,
+          attachmentUrl: attachmentUrl,
+          attachmentType: attachmentType,
+          replyToMessageId: replyToMessageId,
+          replyToContent: replyToContent,
+          replyToSenderName: replyToSenderName,
+          retryCount: retryCount + 1,
+        ));
+      } else {
+        // اگر به سقف رسید failed کن
+        ref
+            .read(conversationMessagesProvider(conversationId).notifier)
+            .markTempFailed(tempMessage.id);
+      }
     }
   }
 
