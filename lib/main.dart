@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io' show Platform; // اضافه کن
 import 'package:Vista/DB/conversation_cache_service.dart';
 import 'package:Vista/view/screen/SplashScreen.dart';
+import 'package:Vista/view/util/const.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -262,12 +263,14 @@ void main() async {
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
   try {
+    await initializeSupabaseWithFailover();
+
     // راه‌اندازی Supabase
-    await Supabase.initialize(
-        url: 'https://api.coffevista.ir:8443',
-        anonKey:
-            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE',
-        debug: true);
+    // await Supabase.initialize(
+    //     url: 'https://api.coffevista.ir:8443',
+    //     anonKey:
+    //         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE',
+    //     debug: true);
 
     final response =
         await Supabase.instance.client.from('profiles').select().single();

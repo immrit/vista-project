@@ -945,5 +945,47 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
 // --- Provider جدید برای پیام‌های هر مکالمه ---
 final conversationMessagesProvider = StateNotifierProvider.family
     .autoDispose<ConversationMessagesNotifier, List<MessageModel>, String>(
-  (ref, conversationId) => ConversationMessagesNotifier(conversationId),
+  (ref, conversationId) {
+    final notifier = ConversationMessagesNotifier(conversationId);
+
+    // --- اضافه شد: گوش دادن به استریم Supabase برای بروزرسانی سریع ---
+    final userId = supabase.auth.currentUser?.id;
+    if (userId != null) {
+      final sub = supabase
+          .from('messages')
+          .stream(primaryKey: ['id'])
+          .eq('conversation_id', conversationId)
+          .order('created_at', ascending: false)
+          .listen((data) async {
+            // پیام‌های جدید را به MessageModel تبدیل کن
+            final messages = data
+                .map((json) {
+                  return MessageModel.fromJson(json, currentUserId: userId);
+                })
+                // فقط پیام‌های temp را نگه دار اگر senderId == userId (فرستنده فعلی)
+                .where((m) => !m.id.startsWith('temp_') || m.senderId == userId)
+                .toList();
+
+            // حذف پیام‌های temp که پیام واقعی‌شان آمده
+            final serverIds = messages.map((m) => m.id).toSet();
+            final tempMessages = notifier.state
+                .where((m) =>
+                    m.id.startsWith('temp_') &&
+                    !serverIds.contains(m.id) &&
+                    m.senderId == userId)
+                .toList();
+
+            // بروزرسانی state و کش
+            notifier.state = [...messages, ...tempMessages]
+              ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+            await notifier._cacheService.cacheMessages(messages);
+          });
+
+      ref.onDispose(() {
+        sub.cancel();
+      });
+    }
+
+    return notifier;
+  },
 );

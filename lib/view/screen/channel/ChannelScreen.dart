@@ -169,6 +169,14 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen>
         final sortedMessages = List<ChannelMessageModel>.from(messages)
           ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
+        // اضافه کردن این بخش برای اسکرول به پایین پس از بارگذاری پیام‌ها
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          // اطمینان از اینکه ویجت هنوز در درخت ویجت‌ها وجود دارد و کنترلر اسکرول کلاینت دارد
+          if (mounted && _scrollController.hasClients) {
+            _scrollToBottom();
+          }
+        });
+
         return ListView.builder(
           controller: _scrollController,
           reverse: false, // مهم: باید false باشد
