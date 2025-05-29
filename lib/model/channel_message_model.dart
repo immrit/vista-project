@@ -10,6 +10,12 @@ class ChannelMessageModel {
   final String? replyToMessageId;
   final String? replyToContent;
   final String? replyToSenderName;
+  final String? imageUrl;
+  final String messageType;
+  final DateTime? updatedAt;
+  final bool isEdited;
+  final bool isDeleted;
+  final String? deletedBy;
   final String? senderName;
   final String? senderAvatar;
   final bool isMe;
@@ -26,6 +32,12 @@ class ChannelMessageModel {
     this.replyToMessageId,
     this.replyToContent,
     this.replyToSenderName,
+    this.imageUrl,
+    this.messageType = 'text',
+    this.updatedAt,
+    this.isEdited = false,
+    this.isDeleted = false,
+    this.deletedBy,
     this.senderName,
     this.senderAvatar,
     required this.isMe,
@@ -34,6 +46,9 @@ class ChannelMessageModel {
   factory ChannelMessageModel.fromJson(Map<String, dynamic> json,
       {String? currentUserId}) {
     print('Parsing message JSON: $json'); // Debug log
+    print('Is Deleted from JSON: ${json['is_deleted']}');
+    print('Is Edited from JSON: ${json['is_edited']}');
+
     return ChannelMessageModel(
       id: json['id'],
       channelId: json['channel_id'],
@@ -46,6 +61,14 @@ class ChannelMessageModel {
       replyToMessageId: json['reply_to_message_id'],
       replyToContent: json['reply_to_content'],
       replyToSenderName: json['reply_to_sender_name'],
+      imageUrl: json['image_url'],
+      messageType: json['message_type'] ?? 'text',
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'])
+          : null,
+      isEdited: json['is_edited'] ?? false,
+      isDeleted: json['is_deleted'] ?? false,
+      deletedBy: json['deleted_by'],
       senderName: json['sender_name'],
       senderAvatar: json['sender_avatar'],
       isMe: currentUserId != null && json['sender_id'] == currentUserId,
@@ -65,6 +88,12 @@ class ChannelMessageModel {
       'reply_to_message_id': replyToMessageId,
       'reply_to_content': replyToContent,
       'reply_to_sender_name': replyToSenderName,
+      'image_url': imageUrl,
+      'message_type': messageType,
+      'updated_at': updatedAt?.toIso8601String(),
+      'is_edited': isEdited,
+      'is_deleted': isDeleted,
+      'deleted_by': deletedBy,
       'sender_name': senderName,
       'sender_avatar': senderAvatar,
     };
@@ -82,6 +111,12 @@ class ChannelMessageModel {
     String? replyToMessageId,
     String? replyToContent,
     String? replyToSenderName,
+    String? imageUrl,
+    String? messageType,
+    DateTime? updatedAt,
+    bool? isEdited,
+    bool? isDeleted,
+    String? deletedBy,
     String? senderName,
     String? senderAvatar,
     bool? isMe,
@@ -98,9 +133,26 @@ class ChannelMessageModel {
       replyToMessageId: replyToMessageId ?? this.replyToMessageId,
       replyToContent: replyToContent ?? this.replyToContent,
       replyToSenderName: replyToSenderName ?? this.replyToSenderName,
+      imageUrl: imageUrl ?? this.imageUrl,
+      messageType: messageType ?? this.messageType,
+      updatedAt: updatedAt ?? this.updatedAt,
+      isEdited: isEdited ?? this.isEdited,
+      isDeleted: isDeleted ?? this.isDeleted,
+      deletedBy: deletedBy ?? this.deletedBy,
       senderName: senderName ?? this.senderName,
       senderAvatar: senderAvatar ?? this.senderAvatar,
       isMe: isMe ?? this.isMe,
+    );
+  }
+
+  static ChannelMessageModel empty() {
+    return ChannelMessageModel(
+      id: '',
+      channelId: '',
+      senderId: '',
+      content: '',
+      createdAt: DateTime.now(),
+      isMe: false,
     );
   }
 }

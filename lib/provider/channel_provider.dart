@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../main.dart';
 import '../model/channel_model.dart';
 import '../model/channel_message_model.dart';
 import '../services/channel_service.dart';
@@ -59,6 +60,27 @@ class ChannelNotifier extends StateNotifier<AsyncValue<void>> {
       return channel;
     } catch (e, stack) {
       state = AsyncValue.error(e, stack);
+      rethrow;
+    }
+  }
+
+  // ✏️ ویرایش پیام
+  Future<void> editMessage({
+    required String messageId,
+    required String channelId,
+    required String newContent,
+  }) async {
+    state = const AsyncValue.loading();
+    try {
+      await _channelService.editMessage(messageId, channelId, newContent);
+
+      // پاک کردن حالت ویرایش
+      ref.read(editingMessageProvider.notifier).state = null;
+      ref.read(editingContentProvider.notifier).state = '';
+
+      state = const AsyncValue.data(null);
+    } catch (e) {
+      state = AsyncValue.error(e, StackTrace.current);
       rethrow;
     }
   }
@@ -177,9 +199,158 @@ class ChannelNotifier extends StateNotifier<AsyncValue<void>> {
       rethrow;
     }
   }
+
+  // 🎯 شروع ویرایش پیام
+  void startEditingMessage(String messageId, String currentContent) {
+    ref.read(editingMessageProvider.notifier).state = messageId;
+    ref.read(editingContentProvider.notifier).state = currentContent;
+  }
+
+  // 🎯 لغو ویرایش
+  void cancelEditing() {
+    ref.read(editingMessageProvider.notifier).state = null;
+    ref.read(editingContentProvider.notifier).state = '';
+  }
+
+  // 🎯 تنظیم پیام برای reply
+  void setReplyToMessage(ChannelMessageModel? message) {
+    ref.read(replyToMessageProvider.notifier).state = message;
+  }
+
+  // 🎯 لغو reply
+  void cancelReply() {
+    ref.read(replyToMessageProvider.notifier).state = null;
+  }
 }
 
 final channelNotifierProvider =
     StateNotifierProvider<ChannelNotifier, AsyncValue<void>>((ref) {
   return ChannelNotifier(ref.read(channelServiceProvider), ref);
 });
+
+class EditMessageNotifier
+    extends StateNotifier<AsyncValue<ChannelMessageModel?>> {
+  final ChannelService _channelService;
+  final Ref _ref;
+
+  EditMessageNotifier(this._channelService, this._ref)
+      : super(const AsyncValue.data(null));
+
+  void resetState() {
+    state = const AsyncValue.data(null);
+  }
+}
+
+final editMessageNotifierProvider = StateNotifierProvider<EditMessageNotifier,
+    AsyncValue<ChannelMessageModel?>>(
+  (ref) {
+    final channelService = ref.read(channelServiceProvider);
+    return EditMessageNotifier(channelService, ref);
+  },
+);
+
+// StateNotifier برای مدیریت حذف پیام
+class DeleteMessageNotifier extends StateNotifier<AsyncValue<bool>> {
+  final ChannelService _channelService;
+  final Ref _ref;
+
+  DeleteMessageNotifier(this._channelService, this._ref)
+      : super(const AsyncValue.data(false));
+
+  Future<void> deleteMessage(String messageId, String channelId) async {
+    state = const AsyncValue.loading();
+
+    try {
+      await _channelService.deleteMessage(messageId, channelId);
+
+      state = const AsyncValue.data(true);
+
+      // رفرش کردن لیست پیام‌ها
+      _ref.invalidate(channelMessagesProvider(channelId));
+
+      print('پیام با موفقیت حذف شد');
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+      print('خطا در حذف پیام: $e');
+      rethrow;
+    }
+  }
+
+  void resetState() {
+    state = const AsyncValue.data(false);
+  }
+}
+
+// پروایدر برای مدیریت حالت ویرایش پیام
+final editingMessageProvider = StateProvider<String?>((ref) => null);
+
+// پروایدر برای مدیریت محتوای ویرایش
+final editingContentProvider = StateProvider<String>((ref) => '');
+
+// پروایدر برای مدیریت حالت reply
+final replyToMessageProvider =
+    StateProvider<ChannelMessageModel?>((ref) => null);
+final deleteMessageNotifierProvider =
+    StateNotifierProvider<DeleteMessageNotifier, AsyncValue<bool>>(
+  (ref) {
+    final channelService = ref.read(channelServiceProvider);
+    return DeleteMessageNotifier(channelService, ref);
+  },
+);
+
+// Provider برای چک کردن مجوزات پیام
+final messagePermissionsProvider =
+    FutureProvider.family<Map<String, bool>, Map<String, String>>(
+  (ref, params) async {
+    final channelService = ref.read(channelServiceProvider);
+    final messageId = params['messageId']!;
+    final channelId = params['channelId']!;
+    final userId = params['userId']!;
+
+    try {
+      // بررسی مجوزات کانال
+      final channelPermissions =
+          await channelService.getUserPermissions(channelId);
+
+      // گرفتن اطلاعات پیام
+      final messageInfo = await supabase
+          .from('channel_messages')
+          .select('sender_id, is_deleted, image_url, created_at')
+          .eq('id', messageId)
+          .eq('channel_id', channelId)
+          .maybeSingle();
+
+      if (messageInfo == null) {
+        return {
+          'canEdit': false,
+          'canDelete': false,
+          'canReply': false,
+        };
+      }
+
+      final isOwner = messageInfo['sender_id'] == userId;
+      final isDeleted = messageInfo['is_deleted'] == true;
+      final hasImage = messageInfo['image_url'] != null;
+
+      // بررسی محدودیت زمانی برای ویرایش (48 ساعت)
+      final createdAt = DateTime.parse(messageInfo['created_at']);
+      final isWithinEditTime =
+          DateTime.now().difference(createdAt).inHours <= 48;
+
+      return {
+        'canEdit': isOwner && !isDeleted && !hasImage && isWithinEditTime,
+        'canDelete':
+            isOwner || (channelPermissions['canDeleteMessage'] ?? false),
+        'canReply':
+            !isDeleted && (channelPermissions['canSendMessage'] ?? false),
+      };
+    } catch (e) {
+      print('خطا در بررسی مجوزات پیام: $e');
+      return {
+        'canEdit': false,
+        'canDelete': false,
+        'canReply': false,
+      };
+    }
+  },
+);

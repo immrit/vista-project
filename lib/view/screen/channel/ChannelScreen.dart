@@ -36,6 +36,9 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen>
   File? _selectedImage;
   Uint8List? _selectedImageBytes;
   ChannelMessageModel? _replyToMessage;
+  final FocusNode _editFocusNode = FocusNode(); // فوکوس جدید برای ویرایش
+  final TextEditingController _editController =
+      TextEditingController(); // کنترلر جدید برای ویرایش
 
   @override
   void initState() {
@@ -60,6 +63,7 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen>
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final isKeyboardVisible = bottomInset > 0;
+    final replyToMessage = ref.watch(replyToMessageProvider);
 
     if (isKeyboardVisible && _showEmojiPicker) {
       _showEmojiPicker = false;
@@ -71,11 +75,601 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen>
       appBar: _buildAppBar(),
       body: Column(
         children: [
+          // نمایش بنر reply
+          if (replyToMessage != null) _buildReplyBanner(replyToMessage),
+
           Expanded(child: _buildMessagesList()),
+
           if (canPost) _buildChatInputBox(),
         ],
       ),
     );
+  }
+
+  // 💬 بنر نمایش پیام reply
+  Widget _buildReplyBanner(ChannelMessageModel replyMessage) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDarkMode ? const Color(0xFF2C2C2E) : const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(12),
+        border: Border(
+          right: BorderSide(
+            color: Colors.blue.shade500,
+            width: 3,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.reply,
+            size: 16,
+            color: Colors.blue.shade500,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'پاسخ به ${replyMessage.senderName ?? widget.channel.name}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.blue.shade500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  replyMessage.content.isNotEmpty
+                      ? replyMessage.content
+                      : (replyMessage.attachmentUrl != null
+                          ? '📷 تصویر'
+                          : 'پیام خالی'),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () {
+              ref.read(channelNotifierProvider.notifier).cancelReply();
+            },
+            icon: Icon(
+              Icons.close,
+              size: 18,
+              color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessagesList() {
+    final messagesAsync = ref.watch(channelMessagesProvider(widget.channel.id));
+
+    return messagesAsync.when(
+      data: (messages) {
+        if (messages.isEmpty) {
+          return _buildEmptyState();
+        }
+
+        // پیام‌ها را از قدیمی به جدید مرتب کن
+        final sortedMessages = List<ChannelMessageModel>.from(messages)
+          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+        return ListView.builder(
+          controller: _scrollController,
+          reverse: false, // مهم: باید false باشد
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          itemCount: sortedMessages.length,
+          itemBuilder: (context, index) {
+            final message = sortedMessages[index];
+            final previousMessage =
+                index > 0 ? sortedMessages[index - 1] : null;
+            final showDateDivider =
+                _isFirstMessageOfDay(message, previousMessage);
+
+            return Column(
+              children: [
+                if (showDateDivider) _buildDateDivider(message.createdAt),
+                Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  child: _buildMessageItem(message),
+                ),
+              ],
+            );
+          },
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, stack) => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Colors.red.shade400,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'خطا در بارگذاری پیام‌ها',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.red.shade600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              error.toString(),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.red.shade500,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () {
+                ref.invalidate(channelMessagesProvider(widget.channel.id));
+              },
+              child: const Text('تلاش مجدد'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade500,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessageItem(ChannelMessageModel message) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final editingMessageId = ref.watch(editingMessageProvider);
+    final isEditing = editingMessageId == message.id;
+
+    return GestureDetector(
+      onLongPress: () => _showMessageOptions(message),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // آواتار کانال خارج از حباب
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.blue.shade500,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.blue.withOpacity(0.3),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: widget.channel.avatarUrl != null
+                ? ClipOval(
+                    child: CachedNetworkImage(
+                      imageUrl: widget.channel.avatarUrl!,
+                      fit: BoxFit.cover,
+                      errorWidget: (context, url, error) =>
+                          _buildChannelInitialSmall(),
+                    ),
+                  )
+                : _buildChannelInitialSmall(),
+          ),
+
+          const SizedBox(width: 8),
+
+          // حباب پیام با لبه
+          Expanded(
+            child: Container(
+              margin: const EdgeInsets.only(right: 8),
+              child: CustomPaint(
+                painter: MessageBubblePainter(
+                  color: isDarkMode ? const Color(0xFF1C1C1E) : Colors.white,
+                  isDarkMode: isDarkMode,
+                ),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // هدر پیام
+                      Row(
+                        children: [
+                          Text(
+                            widget.channel.name,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                              color: Colors.blue.shade600,
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade500,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'کانال',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            _formatTime(message.createdAt),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDarkMode
+                                  ? Colors.grey[500]
+                                  : Colors.grey[500],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // پیام پاسخ داده شده
+                      if (message.replyToMessageId != null)
+                        _buildReplyMessage(message),
+
+                      // محتوای پیام یا ورودی ویرایش
+                      if (isEditing)
+                        _buildEditingInput(message)
+                      else ...[
+                        // محتوای پیام
+                        if (message.content.isNotEmpty)
+                          Text(
+                            message.content,
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: isDarkMode
+                                  ? Colors.grey[100]
+                                  : Colors.black87,
+                              height: 1.6,
+                              fontWeight: FontWeight.w400,
+                              letterSpacing: -0.1,
+                            ),
+                          ),
+
+                        // نمایش وضعیت ویرایش
+                        if (message.isEdited)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              'ویرایش شده',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isDarkMode
+                                    ? Colors.grey[500]
+                                    : Colors.grey[600],
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ),
+                      ],
+
+                      // تصویر پیام
+                      if (message.attachmentUrl != null && !isEditing)
+                        _buildMessageImage(message.attachmentUrl!),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 🔧 ورودی ویرایش پیام
+  Widget _buildEditingInput(ChannelMessageModel message) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDarkMode
+            ? Colors.blue.shade900.withOpacity(0.3)
+            : Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.blue.shade200,
+          width: 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          TextField(
+            controller: _editController,
+            focusNode: _editFocusNode,
+            maxLines: null,
+            style: TextStyle(
+              fontSize: 16,
+              color: isDarkMode ? Colors.white : Colors.black87,
+            ),
+            decoration: InputDecoration(
+              hintText: 'پیام خود را ویرایش کنید...',
+              hintStyle: TextStyle(
+                color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+              ),
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () {
+                  ref.read(channelNotifierProvider.notifier).cancelEditing();
+                  _editController.clear();
+                },
+                child: Text(
+                  'لغو',
+                  style: TextStyle(
+                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: () async {
+                  if (_editController.text.trim().isNotEmpty) {
+                    try {
+                      await ref
+                          .read(channelNotifierProvider.notifier)
+                          .editMessage(
+                            messageId: message.id,
+                            channelId: widget.channel.id,
+                            newContent: _editController.text.trim(),
+                          );
+                      _editController.clear();
+
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('پیام ویرایش شد')),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('خطا در ویرایش: $e')),
+                        );
+                      }
+                    }
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue.shade500,
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
+                child: const Text('ذخیره'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 📋 منوی گزینه‌های پیام
+  void _showMessageOptions(ChannelMessageModel message) {
+    final currentUserId = supabase.auth.currentUser?.id;
+    final isOwner = message.senderId == currentUserId;
+    final canDelete = isOwner || widget.channel.memberRole == 'owner';
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // دسته
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.grey[400],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+
+            // گزینه پاسخ
+            ListTile(
+              leading: const Icon(Icons.reply),
+              title: const Text('پاسخ'),
+              onTap: () {
+                Navigator.pop(context);
+                ref
+                    .read(channelNotifierProvider.notifier)
+                    .setReplyToMessage(message);
+                _messageFocusNode.requestFocus();
+              },
+            ),
+
+            // گزینه کپی
+            ListTile(
+              leading: const Icon(Icons.copy),
+              title: const Text('کپی'),
+              onTap: () {
+                Navigator.pop(context);
+                if (message.content.isNotEmpty) {
+                  Clipboard.setData(ClipboardData(text: message.content));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('متن کپی شد')),
+                  );
+                }
+              },
+            ),
+
+            // گزینه ویرایش (فقط برای صاحب پیام)
+            if (isOwner && message.content.isNotEmpty) ...[
+              ListTile(
+                leading: const Icon(Icons.edit),
+                title: const Text('ویرایش'),
+                onTap: () {
+                  Navigator.pop(context);
+                  ref
+                      .read(channelNotifierProvider.notifier)
+                      .startEditingMessage(message.id, message.content);
+                  _editController.text = message.content;
+
+                  // اسکرول به پیام و فوکوس
+                  Future.delayed(const Duration(milliseconds: 100), () {
+                    _editFocusNode.requestFocus();
+                  });
+                },
+              ),
+            ],
+
+            // گزینه حذف
+            if (canDelete) ...[
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('حذف', style: TextStyle(color: Colors.red)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showDeleteConfirmation(message);
+                },
+              ),
+            ],
+
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ❌ تایید حذف پیام
+  void _showDeleteConfirmation(ChannelMessageModel message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('حذف پیام'),
+        content:
+            const Text('آیا مطمئن هستید که می‌خواهید این پیام را حذف کنید؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('لغو'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                await ref
+                    .read(channelNotifierProvider.notifier)
+                    .deleteMessage(message.id, widget.channel.id);
+
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('پیام حذف شد')),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('خطا در حذف پیام: $e')),
+                  );
+                }
+              }
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ... existing code برای سایر متدها ...
+
+  Future<void> _sendMessage() async {
+    final content = _messageController.text.trim();
+    final replyToMessage = ref.read(replyToMessageProvider);
+
+    if (content.isEmpty &&
+        _selectedImage == null &&
+        _selectedImageBytes == null) {
+      return;
+    }
+
+    setState(() => _isSending = true);
+
+    try {
+      await ref.read(channelNotifierProvider.notifier).sendMessage(
+            channelId: widget.channel.id,
+            content: content,
+            imageFile: _selectedImage,
+            replyToMessageId: replyToMessage?.id, // اضافه کردن reply
+          );
+
+      _messageController.clear();
+      _selectedImage = null;
+      _selectedImageBytes = null;
+
+      // پاک کردن reply
+      ref.read(channelNotifierProvider.notifier).cancelReply();
+
+      _scrollToBottom();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در ارسال پیام: $e')),
+        );
+      }
+    } finally {
+      setState(() => _isSending = false);
+    }
   }
 
   PreferredSizeWidget _buildAppBar() {
@@ -202,135 +796,6 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen>
     );
   }
 
-  Widget _buildMessagesList() {
-    return Consumer(
-      builder: (context, ref, child) {
-        final messagesAsync =
-            ref.watch(channelMessagesProvider(widget.channel.id));
-
-        return messagesAsync.when(
-          data: (messages) {
-            if (messages.isEmpty) {
-              return _buildEmptyState();
-            }
-
-            return ListView.builder(
-              controller: _scrollController,
-              reverse: true,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              itemCount: messages.length,
-              itemBuilder: (context, index) {
-                final message = messages[index];
-                final isFirstMessageOfDay = _isFirstMessageOfDay(
-                  message,
-                  index < messages.length - 1 ? messages[index + 1] : null,
-                );
-
-                return Column(
-                  children: [
-                    if (isFirstMessageOfDay)
-                      _buildDateDivider(message.createdAt),
-                    _buildMessageItem(message),
-                    const SizedBox(height: 16),
-                  ],
-                );
-              },
-            );
-          },
-          loading: () => Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade500,
-                    borderRadius: BorderRadius.circular(25),
-                  ),
-                  child: const Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2.5,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'در حال بارگذاری پیام‌ها...',
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          error: (error, stackTrace) => Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(40),
-                  ),
-                  child: Icon(
-                    Icons.error_outline_rounded,
-                    size: 40,
-                    color: Colors.red.shade400,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  'خطا در بارگذاری پیام‌ها',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[800],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'لطفاً دوباره تلاش کنید',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                ElevatedButton.icon(
-                  onPressed: () =>
-                      ref.refresh(channelMessagesProvider(widget.channel.id)),
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('تلاش مجدد'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade500,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   bool _isFirstMessageOfDay(
       ChannelMessageModel current, ChannelMessageModel? previous) {
     if (previous == null) return true;
@@ -409,137 +874,6 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen>
             child: Container(
               height: 1,
               color: isDarkMode ? Colors.grey[700] : Colors.grey[300],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMessageItem(ChannelMessageModel message) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-
-    return GestureDetector(
-      onLongPress: () => _showMessageOptions(message),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // آواتار کانال خارج از حباب
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.blue.shade500,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.blue.withOpacity(0.3),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: widget.channel.avatarUrl != null
-                ? ClipOval(
-                    child: CachedNetworkImage(
-                      imageUrl: widget.channel.avatarUrl!,
-                      fit: BoxFit.cover,
-                      errorWidget: (context, url, error) =>
-                          _buildChannelInitialSmall(),
-                    ),
-                  )
-                : _buildChannelInitialSmall(),
-          ),
-
-          const SizedBox(width: 8),
-
-          // حباب پیام با لبه
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.only(right: 8),
-              child: CustomPaint(
-                painter: MessageBubblePainter(
-                  color: isDarkMode ? const Color(0xFF1C1C1E) : Colors.white,
-                  isDarkMode: isDarkMode,
-                ),
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // هدر پیام
-                      Row(
-                        children: [
-                          Text(
-                            widget.channel.name,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
-                              color: Colors.blue.shade600,
-                              letterSpacing: -0.2,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade500,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              'کانال',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                                letterSpacing: 0.3,
-                              ),
-                            ),
-                          ),
-                          const Spacer(),
-                          Text(
-                            _formatTime(message.createdAt),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: isDarkMode
-                                  ? Colors.grey[500]
-                                  : Colors.grey[500],
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      // پیام پاسخ داده شده
-                      if (message.replyToMessageId != null)
-                        _buildReplyMessage(message),
-
-                      // محتوای پیام
-                      if (message.content.isNotEmpty)
-                        Text(
-                          message.content,
-                          style: TextStyle(
-                            fontSize: 16,
-                            color:
-                                isDarkMode ? Colors.grey[100] : Colors.black87,
-                            height: 1.6,
-                            fontWeight: FontWeight.w400,
-                            letterSpacing: -0.1,
-                          ),
-                        ),
-
-                      // تصویر پیام
-                      if (message.attachmentUrl != null)
-                        _buildMessageImage(message.attachmentUrl!),
-                    ],
-                  ),
-                ),
-              ),
             ),
           ),
         ],
@@ -728,10 +1062,11 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen>
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            replyToMessage.content.isNotEmpty
-                                ? replyToMessage.content
+                            (replyToMessage.content != null &&
+                                    replyToMessage.content!.isNotEmpty)
+                                ? replyToMessage.content!
                                 : (replyToMessage.attachmentUrl != null
-                                    ? '📷 تصویر'
+                                    ? '📷 تصویر' // Display icon if it's an image reply
                                     : 'پیام خالی'),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
@@ -800,8 +1135,6 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen>
       },
     );
   }
-
-// ... existing code ...
 
   void _scrollToMessage(String messageId) async {
     final messagesAsync = ref.read(channelMessagesProvider(widget.channel.id));
@@ -907,64 +1240,14 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen>
     );
   }
 
-  // ... existing code ...
-
-  void _showMessageOptions(ChannelMessageModel message) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: isDarkMode ? const Color(0xFF1C1C1E) : Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 50,
-              height: 5,
-              decoration: BoxDecoration(
-                color: isDarkMode ? Colors.grey[600] : Colors.grey[300],
-                borderRadius: BorderRadius.circular(3),
-              ),
-            ),
-            const SizedBox(height: 24),
-            _buildBottomSheetOption(
-              icon: Icons.reply_rounded,
-              title: 'پاسخ',
-              color: Colors.blue,
-              onTap: () {
-                Navigator.pop(context);
-                setState(() => _replyToMessage = message);
-              },
-            ),
-            _buildBottomSheetOption(
-              icon: Icons.copy_rounded,
-              title: 'کپی متن',
-              color: Colors.grey,
-              onTap: () {
-                Navigator.pop(context);
-                Clipboard.setData(ClipboardData(text: message.content));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('متن پیام کپی شد'),
-                    backgroundColor: Colors.green.shade600,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 16),
-          ],
-        ),
-      ),
-    );
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   Widget _buildBottomSheetOption({
@@ -1181,59 +1464,13 @@ class _ChannelScreenState extends ConsumerState<ChannelScreen>
     }
   }
 
-  void _sendMessage() async {
-    if (_messageController.text.trim().isEmpty &&
-        _selectedImage == null &&
-        _selectedImageBytes == null) {
-      return;
-    }
-
-    setState(() => _isSending = true);
-    final content = _messageController.text.trim();
-
-    try {
-      await ref.read(channelNotifierProvider.notifier).sendMessage(
-            channelId: widget.channel.id,
-            content: content,
-            replyToMessageId: _replyToMessage?.id,
-            imageFile: _selectedImage,
-          );
-
-      _messageController.clear();
-      setState(() {
-        _selectedImage = null;
-        _selectedImageBytes = null;
-        _replyToMessage = null;
-        _isSending = false;
-      });
-
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          0,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    } catch (e) {
-      setState(() => _isSending = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطا در ارسال پیام: $e'),
-          backgroundColor: Colors.red.shade600,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      );
-    }
-  }
-
   @override
   void dispose() {
     _messageController.dispose();
+    _editController.dispose(); // dispose کردن کنترلر جدید
     _scrollController.dispose();
     _messageFocusNode.dispose();
+    _editFocusNode.dispose(); // dispose کردن فوکوس جدید
     super.dispose();
   }
 }
