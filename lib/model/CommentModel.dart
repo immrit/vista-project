@@ -76,15 +76,16 @@ class CommentModel {
       isVerified: map['profiles']?['is_verified'] as bool? ?? false,
       verificationType: _mapVerificationType(
           map['profiles']?['verification_type']), // اضافه کردن دریافت نوع تیک
-
-      postOwnerId: map['post_owner_id'] as String? ?? '',
-      parentCommentId: map['parent_comment_id'] as String?,
+      postOwnerId:
+          map['owner_id'] as String? ?? '', // Updated from 'post_owner_id'
+      parentCommentId: map['parent_comment_id'] as String?, // Ensure nullable
       replies: (map['replies'] as List?)
               ?.map((replyMap) => CommentModel.fromMap(replyMap))
               .toList() ??
-          [],
+          [], // Ensure replies are mapped
     );
   }
+
   static VerificationType _mapVerificationType(dynamic value) {
     if (value == null) return VerificationType.none;
     if (value is String) {

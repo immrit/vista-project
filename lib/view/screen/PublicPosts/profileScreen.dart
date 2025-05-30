@@ -1,4 +1,5 @@
 import 'package:Vista/view/screen/searchPage.dart';
+import 'package:Vista/view/util/comments_bottom_sheet.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -631,8 +632,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   onLike: () async {
                     _toggleLike(post);
                   },
-                  onComment: () =>
-                      showCommentsBottomSheet(context, post.id, ref),
+                  onComment: () => showCommentsBottomSheet2(context,
+                      postId: post.id!, postTitle: post.title!),
                   onVideoPositionTap: (position) {
                     ref
                         .read(videoPositionProvider(post.id ?? '').notifier)
@@ -812,7 +813,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   void _showComments(PublicPostModel post) {
-    showCommentsBottomSheet(context, post.id, ref);
+    showCommentsBottomSheet2(context, postId: post.id!, postTitle: post.title!);
   }
 
   void _sharePost(PublicPostModel post) {

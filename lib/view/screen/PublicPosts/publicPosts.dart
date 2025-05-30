@@ -1,4 +1,5 @@
 import 'package:Vista/view/screen/PublicPosts/PostDetailPage.dart';
+import 'package:Vista/view/util/comments_bottom_sheet.dart';
 import 'package:badges/badges.dart' as badges;
 import 'package:buttons_tabbar/buttons_tabbar.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -909,7 +910,8 @@ Widget _buildPostItem(
                   IconButton(
                     icon: const Icon(Icons.comment_outlined),
                     onPressed: () {
-                      showCommentsBottomSheet(context, post.id, ref);
+                      showCommentsBottomSheet2(context,
+                          postId: post.id!, postTitle: post.title!);
                     },
                   ),
                   Text(

@@ -54,8 +54,8 @@ class PublicPostModel extends Equatable {
 
   // متد سازنده از Map
   factory PublicPostModel.fromMap(Map<String, dynamic> map) {
-    print("Music URL from API: ${map['music_url']}");
-    print("Video URL from API: ${map['video_url']}"); // لاگ برای دیباگ ویدیو
+    // print("Music URL from API: ${map['music_url']}");
+    // print("Video URL from API: ${map['video_url']}"); // لاگ برای دیباگ ویدیو
 
     return PublicPostModel(
       id: _parseString(map, 'id'),
