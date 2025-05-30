@@ -555,18 +555,22 @@ final userOnlineNotifierProvider = Provider<UserOnlineNotifier>((ref) {
 // استریم وضعیت آنلاین کاربر - بروزرسانی بیشتر
 final userOnlineStatusStreamProvider =
     StreamProvider.family<bool, String>((ref, userId) {
-  // استفاده از Supabase Realtime برای دریافت تغییرات آنلاین
-  return supabase
-      .from('profiles')
-      .stream(primaryKey: ['id'])
-      .eq('id', userId)
-      .map((data) {
-        if (data.isEmpty) return false;
+  final chatService = ref.watch(chatServiceProvider);
 
-        final lastOnline = DateTime.parse(data[0]['last_online'] ?? '');
-        final now = DateTime.now().toUtc();
-        return now.difference(lastOnline).inMinutes < 2;
-      });
+  // Retry logic for Realtime subscription
+  Stream<bool> retryStream(int retries) async* {
+    for (int attempt = 0; attempt < retries; attempt++) {
+      try {
+        yield await chatService.isUserOnline(userId);
+        return; // Exit loop on success
+      } catch (e) {
+        if (attempt == retries - 1) rethrow; // Rethrow on final attempt
+        await Future.delayed(const Duration(seconds: 2)); // Retry delay
+      }
+    }
+  }
+
+  return retryStream(3); // Retry up to 3 times
 });
 
 // مجموع تعداد پیام‌های خوانده‌نشده از لیست مکالمات (برای بج آیکون)
@@ -680,6 +684,20 @@ class UserReportNotifier extends StateNotifier<AsyncValue<void>> {
     }
   }
 }
+
+// شمارش پیام‌های خوانده‌نشده برای یک مکالمه
+final unreadMessageCountProvider =
+    FutureProvider.family<int, String>((ref, conversationId) async {
+  final messageCache = MessageCacheService();
+  return await messageCache.countUnreadMessages(conversationId);
+});
+
+// حذف پیام‌های قدیمی‌تر از یک تاریخ خاص
+final deleteOldMessagesProvider =
+    FutureProvider.family<void, DateTime>((ref, date) async {
+  final messageCache = MessageCacheService();
+  await messageCache.deleteMessagesOlderThan(date);
+});
 
 class ImageDownloadState {
   final bool isDownloading;

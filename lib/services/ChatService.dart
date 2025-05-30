@@ -957,7 +957,7 @@ class ChatService {
           );
 
           // همگام‌سازی با کش
-          await _messageCache.smartSync(conversationId, messages);
+          await _syncMessagesWithCache(conversationId, messages);
 
           return messages;
         });
@@ -971,6 +971,32 @@ class ChatService {
       // بروزرسانی وضعیت خوانده شدن پیام‌ها
       return messages;
     });
+  }
+
+  // متد کمکی برای همگام‌سازی پیام‌های دریافتی از استریم با کش
+  Future<void> _syncMessagesWithCache(
+      String conversationId, List<MessageModel> newMessages) async {
+    // فقط پیام‌های جدید را کش کن
+    // برای پیام‌های موجود در کش، وضعیت‌ها (مثل is_read) نباید با پیام‌های جدید جایگزین شوند
+    // این منطق پیچیده‌تر از درج صرف است
+
+    // ایدی پیام‌های موجود در کش
+    final cachedMessageIds =
+        (await _messageCache.getConversationMessages(conversationId))
+            .map((m) => m.id)
+            .toSet();
+
+    // پیام‌های جدیدی که در کش نیستند
+    final messagesToCache =
+        newMessages.where((m) => !cachedMessageIds.contains(m.id)).toList();
+
+    if (messagesToCache.isNotEmpty) {
+      await _messageCache.cacheMessages(messagesToCache);
+    }
+
+    // TODO: Handle updates for existing messages (e.g., is_read status) if needed.
+    // Currently, markConversationAsRead handles is_read updates.
+    // Other updates (like edits, deletes) are handled via stream or separate calls.
   }
 
   // Helper method to show notification
@@ -1386,5 +1412,17 @@ class ChatService {
   // متد بروزرسانی وضعیت پیام‌های خوانده‌نشده (در اینجا فقط کش را sync می‌کند)
   Future<void> updateUnreadMessages() async {
     await getConversations();
+  }
+
+  // شمارش پیام‌های خوانده‌نشده برای یک مکالمه
+  Future<int> countUnreadMessages(String conversationId) async {
+    final messageCache = MessageCacheService();
+    return await messageCache.countUnreadMessages(conversationId);
+  }
+
+  // حذف پیام‌های قدیمی‌تر از یک تاریخ خاص
+  Future<void> deleteOldMessages(DateTime date) async {
+    final messageCache = MessageCacheService();
+    await messageCache.deleteMessagesOlderThan(date);
   }
 }

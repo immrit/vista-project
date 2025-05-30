@@ -1,464 +1,292 @@
-// message_cache_service.dart
-import 'package:hive/hive.dart';
-import 'package:hive_flutter/hive_flutter.dart';
-import '../model/Hive Model/message_hive_model.dart';
+import 'package:drift/drift.dart';
+import 'package:drift/native.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 import '../model/message_model.dart';
 
-class MessageCacheService {
-  static final MessageCacheService _instance = MessageCacheService._internal();
-  factory MessageCacheService() => _instance;
-  MessageCacheService._internal();
+part 'message_cache_service.g.dart';
 
-  static const String _boxName = 'messages';
-  static const int CACHE_LIMIT =
-      50; // محدودیت تعداد پیام‌های کش شده در هر مکالمه
+// تعریف جدول پیام‌ها
+class CachedMessages extends Table {
+  TextColumn get id => text()(); // message id (ممکن است temp_ باشد)
+  TextColumn get conversationId => text()();
+  TextColumn get senderId => text()();
+  TextColumn get content => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  TextColumn get attachmentUrl => text().nullable()();
+  TextColumn get attachmentType => text().nullable()();
+  BoolColumn get isRead => boolean().withDefault(const Constant(false))();
+  BoolColumn get isSent => boolean().withDefault(const Constant(true))();
+  TextColumn get senderName => text().nullable()();
+  TextColumn get senderAvatar => text().nullable()();
+  BoolColumn get isMe => boolean().withDefault(const Constant(false))();
+  TextColumn get replyToMessageId => text().nullable()();
+  TextColumn get replyToContent => text().nullable()();
+  TextColumn get replyToSenderName => text().nullable()();
+  BoolColumn get isPending => boolean().withDefault(const Constant(false))();
+  TextColumn get localId => text().nullable()();
+  IntColumn get retryCount => integer().withDefault(const Constant(0))();
 
-  // بهبود مدیریت کش برای عملکرد بهتر
-  static const int MAX_CACHE_AGE_HOURS = 24;
-  static const int MAX_MESSAGES_PER_CONVERSATION = 100;
+  @override
+  Set<Column> get primaryKey => {id, conversationId};
+}
 
-  // کش حافظه برای دسترسی سریع‌تر به پیام‌ها
-  final Map<String, List<MessageModel>> _memoryCache = {};
+// تعریف دیتابیس Drift
+@DriftDatabase(tables: [CachedMessages])
+class MessageCacheDatabase extends _$MessageCacheDatabase {
+  MessageCacheDatabase() : super(_openConnection());
 
-  // کش تاریخ‌های پیام هر مکالمه (date dividers) در حافظه
-  final Map<String, List<DateTime>> _dateDividersCache = {};
+  @override
+  int get schemaVersion => 1;
 
-  Box<MessageHiveModel>? _box;
+  // --- اضافه شد: ایندکس برای ستون‌های پرکاربرد ---
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) async {
+          await m.createAll();
+          await customStatement(
+              'CREATE INDEX IF NOT EXISTS idx_conversation_id ON cached_messages (conversation_id);');
+          await customStatement(
+              'CREATE INDEX IF NOT EXISTS idx_created_at ON cached_messages (created_at);');
+        },
+      );
 
-  // Box برای ذخیره تاریخ‌ها در Hive
-  Box<List>? _dateBox;
-
-  Future<void> initialize() async {
-    if (_box != null && _dateBox != null) return;
-    _box ??= await Hive.openBox<MessageHiveModel>(_boxName);
-    _dateBox ??= await Hive.openBox<List>('message_dates');
-  }
-
-  // ذخیره یک پیام در کش
+  // درج یا بروزرسانی پیام
   Future<void> cacheMessage(MessageModel message) async {
-    await initialize();
-
-    // تبدیل به مدل Hive
-    final hiveModel = MessageHiveModel.fromModel(message);
-
-    // ساخت کلید مرکب: conversationId + messageId
-    final key = '${message.conversationId}_${message.id}';
-
-    // ذخیره در Hive
-    await _box!.put(key, hiveModel);
-
-    // بروزرسانی کش حافظه
-    if (!_memoryCache.containsKey(message.conversationId)) {
-      _memoryCache[message.conversationId] = [];
-    }
-
-    // حذف پیام قبلی با همین آیدی (اگر وجود داشته باشد)
-    _memoryCache[message.conversationId]!
-        .removeWhere((m) => m.id == message.id);
-
-    // اضافه کردن پیام جدید به لیست (با مرتب‌سازی بر اساس زمان)
-    int index = 0;
-    while (index < _memoryCache[message.conversationId]!.length &&
-        _memoryCache[message.conversationId]![index]
-            .createdAt
-            .isAfter(message.createdAt)) {
-      index++;
-    }
-
-    _memoryCache[message.conversationId]!.insert(index, message);
-
-    // حفظ محدودیت تعداد
-    if (_memoryCache[message.conversationId]!.length > CACHE_LIMIT) {
-      _memoryCache[message.conversationId]!.removeLast();
-    }
-
-    // بعد از اضافه کردن پیام، تاریخ‌های جدید را بروزرسانی کن (سریع و فقط اگر لازم بود)
-    final dateKey =
-        '${message.createdAt.year}-${message.createdAt.month}-${message.createdAt.day}';
-    final cachedDates = _dateDividersCache[message.conversationId] ?? [];
-    if (!cachedDates.any((d) =>
-        d.year == message.createdAt.year &&
-        d.month == message.createdAt.month &&
-        d.day == message.createdAt.day)) {
-      _dateDividersCache[message.conversationId] = [
-        ...cachedDates,
-        DateTime(message.createdAt.year, message.createdAt.month,
-            message.createdAt.day)
-      ];
-    }
+    await into(cachedMessages).insertOnConflictUpdate(_toCompanion(message));
   }
 
-  // بروزرسانی چند پیام در یک زمان
+  // درج یا بروزرسانی چند پیام
   Future<void> cacheMessages(List<MessageModel> messages) async {
     if (messages.isEmpty) return;
-    await initialize();
-
-    // پیام‌های جدید را بر اساس conversationId گروه‌بندی کن
-    final Map<String, List<MessageModel>> grouped = {};
-    for (final message in messages) {
-      grouped.putIfAbsent(message.conversationId, () => []).add(message);
-    }
-
-    for (final entry in grouped.entries) {
-      final conversationId = entry.key;
-      final newMessages = entry.value;
-
-      // حذف پیام‌های temp که پیام واقعی‌شان آمده
-      if (_memoryCache.containsKey(conversationId)) {
-        final tempIds = newMessages
-            .map((m) => m.id)
-            .where((id) => id.startsWith('temp_'))
-            .toSet();
-        _memoryCache[conversationId]!
-            .removeWhere((m) => tempIds.contains(m.id));
-      }
-
-      // حذف پیام temp با همان id پیام واقعی
-      for (final msg in newMessages) {
-        await replaceTempIfExists(msg.conversationId, msg.id, msg);
-      }
-
-      // اضافه یا جایگزین کردن پیام‌ها
-      for (final message in newMessages) {
-        await cacheMessage(message);
-      }
-
-      // بعد از اضافه کردن پیام‌ها، تاریخ‌های جدید را بروزرسانی کن
-      if (_memoryCache.containsKey(conversationId)) {
-        await _updateDateDividers(
-            conversationId, _memoryCache[conversationId]!);
-      }
-    }
+    await batch((batch) {
+      batch.insertAllOnConflictUpdate(
+        cachedMessages,
+        messages.map(_toCompanion).toList(),
+      );
+    });
   }
 
-  // اگر پیام temp با همین id وجود داشت، حذف و پیام واقعی را جایگزین کن
-  Future<void> replaceTempIfExists(
-      String conversationId, String messageId, MessageModel realMessage) async {
-    await initialize();
-    // حذف از کش حافظه
-    if (_memoryCache.containsKey(conversationId)) {
-      _memoryCache[conversationId]!
-          .removeWhere((m) => m.id == messageId && m.id.startsWith('temp_'));
+  // دریافت پیام‌های یک مکالمه (جدیدترین بالا)
+  Future<List<MessageModel>> getConversationMessages(String conversationId,
+      {int limit = 50, DateTime? before}) async {
+    final query = select(cachedMessages)
+      ..where((tbl) => tbl.conversationId.equals(conversationId))
+      ..orderBy([
+        (tbl) =>
+            OrderingTerm(expression: tbl.createdAt, mode: OrderingMode.desc)
+      ])
+      ..limit(limit);
+
+    if (before != null) {
+      query.where((tbl) => tbl.createdAt.isSmallerThanValue(before));
     }
-    // حذف از Hive
-    final tempKey = '${conversationId}_$messageId';
-    await _box?.delete(tempKey);
-    // پیام واقعی را اضافه کن
-    await cacheMessage(realMessage);
+
+    final rows = await query.get();
+    return rows.map<MessageModel>(_fromRow).toList();
   }
 
-  // دریافت پیام‌های یک مکالمه
-  Future<List<MessageModel>> getConversationMessages(
-    String conversationId, {
-    int limit = 50,
-    DateTime? before,
-  }) async {
-    await initialize();
-
-    // بررسی کش حافظه
-    if (_memoryCache.containsKey(conversationId)) {
-      if (before == null) {
-        // اگر 'before' مشخص نشده، آخرین پیام‌ها را برگردان (محدود به limit)
-        return _memoryCache[conversationId]!.take(limit).toList();
-      } else {
-        // فقط پیام‌های قبل از تاریخ مشخص شده
-        return _memoryCache[conversationId]!
-            .where((m) => m.createdAt.isBefore(before))
-            .take(limit)
-            .toList();
-      }
-    }
-
-    // اگر در کش حافظه نیست، از Hive بخوان
-    // ابتدا تمام پیام‌های مربوط به این مکالمه را بیابیم
-    final List<MessageModel> messages = [];
-
-    // فیلتر کردن پیام‌های مربوط به این مکالمه
-    for (final key in _box!.keys) {
-      if (key.toString().startsWith('${conversationId}_')) {
-        final hiveModel = _box!.get(key);
-        if (hiveModel != null) {
-          final message = hiveModel.toModel();
-          if (before == null || message.createdAt.isBefore(before)) {
-            messages.add(message);
-          }
-        }
-      }
-    }
-
-    // مرتب‌سازی بر اساس زمان (جدیدترین در ابتدا)
-    messages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
-    // محدود کردن تعداد نتایج
-    final result = messages.take(limit).toList();
-
-    // ذخیره در کش حافظه
-    _memoryCache[conversationId] = result;
-
-    return result;
+  // دریافت پیام‌های یک مکالمه بر اساس local_id
+  Future<MessageModel?> getMessageByLocalId(
+      String conversationId, String localId) async {
+    final row = await (select(cachedMessages)
+          ..where((tbl) =>
+              tbl.conversationId.equals(conversationId) &
+              tbl.localId.equals(localId)))
+        .getSingleOrNull();
+    return row != null ? _fromRow(row) : null;
   }
 
   // دریافت یک پیام خاص
   Future<MessageModel?> getMessage(
       String conversationId, String messageId) async {
-    await initialize();
-
-    // ابتدا از کش حافظه بررسی می‌کنیم
-    if (_memoryCache.containsKey(conversationId)) {
-      final cached = _memoryCache[conversationId]!.firstWhere(
-        (m) => m.id == messageId,
-        orElse: () => throw Exception('پیام یافت نشد'),
-      );
-      if (cached != null) return cached;
-    }
-
-    // اگر در کش حافظه نیست، از Hive بخوان
-    final key = '${conversationId}_$messageId';
-    final hiveModel = _box!.get(key);
-
-    if (hiveModel != null) {
-      return hiveModel.toModel();
-    }
-
-    return null;
+    final row = await (select(cachedMessages)
+          ..where((tbl) =>
+              tbl.conversationId.equals(conversationId) &
+              tbl.id.equals(messageId)))
+        .getSingleOrNull();
+    return row != null ? _fromRow(row) : null;
   }
 
-  // بروزرسانی وضعیت یک پیام
+  // بروزرسانی وضعیت پیام
   Future<void> updateMessageStatus(
     String conversationId,
     String messageId, {
     bool? isRead,
     bool? isSent,
   }) async {
-    await initialize();
-
-    // دریافت پیام
-    final key = '${conversationId}_$messageId';
-    final hiveModel = _box!.get(key);
-
-    if (hiveModel != null) {
-      // بروزرسانی وضعیت
-      if (isRead != null) hiveModel.isRead = isRead;
-      if (isSent != null) hiveModel.isSent = isSent;
-
-      // ذخیره مجدد
-      await _box!.put(key, hiveModel);
-
-      // بروزرسانی کش حافظه
-      if (_memoryCache.containsKey(conversationId)) {
-        final index =
-            _memoryCache[conversationId]!.indexWhere((m) => m.id == messageId);
-        if (index >= 0) {
-          final message = _memoryCache[conversationId]![index];
-          final updatedMessage = MessageModel(
-            id: message.id,
-            conversationId: message.conversationId,
-            senderId: message.senderId,
-            content: message.content,
-            createdAt: message.createdAt,
-            attachmentUrl: message.attachmentUrl,
-            attachmentType: message.attachmentType,
-            isRead: isRead ?? message.isRead,
-            isSent: isSent ?? message.isSent,
-            senderName: message.senderName,
-            senderAvatar: message.senderAvatar,
-            isMe: message.isMe,
-            replyToMessageId: message.replyToMessageId,
-            replyToContent: message.replyToContent,
-            replyToSenderName: message.replyToSenderName,
-          );
-          _memoryCache[conversationId]![index] = updatedMessage;
-        }
-      }
-    }
+    final updates = CachedMessagesCompanion(
+      isRead: isRead != null ? Value(isRead) : const Value.absent(),
+      isSent: isSent != null ? Value(isSent) : const Value.absent(),
+    );
+    await (update(cachedMessages)
+          ..where((tbl) =>
+              tbl.conversationId.equals(conversationId) &
+              tbl.id.equals(messageId)))
+        .write(updates);
   }
 
-  // جایگزینی پیام موقت با پیام واقعی (بر اساس tempId)
+  // جایگزینی پیام temp با پیام واقعی
   Future<void> replaceTempMessage(
       String conversationId, String tempId, MessageModel realMessage) async {
-    await initialize();
-
-    // حذف پیام موقت از کش حافظه و Hive
-    if (_memoryCache.containsKey(conversationId)) {
-      _memoryCache[conversationId]!.removeWhere((m) => m.id == tempId);
-    }
-    final tempKey = '${conversationId}_$tempId';
-    await _box?.delete(tempKey);
-
-    // افزودن پیام واقعی
+    await (delete(cachedMessages)
+          ..where((tbl) =>
+              tbl.conversationId.equals(conversationId) &
+              tbl.id.equals(tempId)))
+        .go();
     await cacheMessage(realMessage);
   }
 
-  // علامت‌گذاری پیام موقت به عنوان ارسال نشده (در صورت خطا)
+  // علامت‌گذاری پیام temp به عنوان failed
   Future<void> markMessageAsFailed(String conversationId, String tempId) async {
-    await initialize();
-    // در کش حافظه
-    if (_memoryCache.containsKey(conversationId)) {
-      final idx =
-          _memoryCache[conversationId]!.indexWhere((m) => m.id == tempId);
-      if (idx != -1) {
-        final failed =
-            _memoryCache[conversationId]![idx].copyWith(isSent: false);
-        _memoryCache[conversationId]![idx] = failed;
-      }
-    }
-    // در Hive
-    final tempKey = '${conversationId}_$tempId';
-    final hiveModel = _box?.get(tempKey);
-    if (hiveModel != null) {
-      hiveModel.isSent = false;
-      await _box?.put(tempKey, hiveModel);
-    }
+    await (update(cachedMessages)
+          ..where((tbl) =>
+              tbl.conversationId.equals(conversationId) &
+              tbl.id.equals(tempId)))
+        .write(const CachedMessagesCompanion(isSent: Value(false)));
   }
 
   // حذف پیام‌های یک مکالمه
   Future<void> clearConversationMessages(String conversationId) async {
-    await initialize();
-
-    // حذف از کش حافظه
-    _memoryCache.remove(conversationId);
-
-    // حذف از Hive
-    for (final key in _box!.keys) {
-      if (key.toString().startsWith('${conversationId}_')) {
-        await _box!.delete(key);
-      }
-    }
-
-    // هنگام پاکسازی پیام‌های یک مکالمه، کش تاریخ را هم پاک کن
-    _dateDividersCache.remove(conversationId);
+    await (delete(cachedMessages)
+          ..where((tbl) => tbl.conversationId.equals(conversationId)))
+        .go();
   }
 
-  // حذف یک پیام خاص از کش
+  // حذف یک پیام خاص
   Future<void> clearMessage(String conversationId, String messageId) async {
-    await initialize();
-
-    // Remove from memory cache
-    if (_memoryCache.containsKey(conversationId)) {
-      _memoryCache[conversationId]!.removeWhere((m) => m.id == messageId);
-    }
-
-    // Remove from Hive
-    final key = '${conversationId}_$messageId';
-    await _box?.delete(key);
+    await (delete(cachedMessages)
+          ..where((tbl) =>
+              tbl.conversationId.equals(conversationId) &
+              tbl.id.equals(messageId)))
+        .go();
   }
 
-  // پاک کردن تمام کش
+  // پاک کردن کل کش
   Future<void> clearAllCache() async {
-    await initialize();
-
-    await _box!.clear();
-    _memoryCache.clear();
-
-    // هنگام پاکسازی کل کش، کش تاریخ را هم پاک کن
-    _dateDividersCache.clear();
+    await delete(cachedMessages).go();
   }
 
-  // گرفتن لیست تاریخ‌های پیام (date divider) برای یک مکالمه
-  List<DateTime> getDateDividers(String conversationId) {
-    // اول از کش حافظه
-    if (_dateDividersCache.containsKey(conversationId)) {
-      return _dateDividersCache[conversationId]!;
-    }
-    // اگر در کش حافظه نبود، از Hive پیام‌ها را بخوان و تاریخ‌ها را استخراج کن
-    final box = _box;
-    if (box == null) return [];
-    final datesSet = <String>{};
-    for (final key in box.keys) {
-      if (key.toString().startsWith('${conversationId}_')) {
-        final hiveModel = box.get(key);
-        if (hiveModel != null) {
-          final date = hiveModel.createdAt;
-          final dateKey = '${date.year}-${date.month}-${date.day}';
-          datesSet.add(dateKey);
-        }
-      }
-    }
-    // تبدیل به لیست DateTime و مرتب‌سازی
-    final dates = datesSet.map((s) {
-      final parts = s.split('-');
-      return DateTime(
-          int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
-    }).toList()
-      ..sort((a, b) => b.compareTo(a)); // جدیدترین بالا
-    _dateDividersCache[conversationId] = dates;
-    return dates;
+  // --- اضافه شد: حذف پیام‌های قدیمی‌تر از یک تاریخ ---
+  Future<void> deleteMessagesOlderThan(DateTime date) async {
+    await (delete(cachedMessages)
+          ..where((tbl) => tbl.createdAt.isSmallerThanValue(date)))
+        .go();
   }
 
-  // ذخیره تاریخ‌های جدید برای یک مکالمه (در حافظه و Hive)
-  Future<void> _updateDateDividers(
-      String conversationId, List<MessageModel> messages) async {
-    await initialize();
-    final dates = <DateTime>[];
-    DateTime? lastDate;
-    // پیام‌ها باید بر اساس زمان صعودی مرتب شوند تا تاریخ‌ها درست استخراج شوند
-    final sorted = List<MessageModel>.from(messages)
-      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-    for (final msg in sorted) {
-      final msgDate =
-          DateTime(msg.createdAt.year, msg.createdAt.month, msg.createdAt.day);
-      if (lastDate == null || !msgDate.isAtSameMomentAs(lastDate)) {
-        dates.add(msgDate);
-        lastDate = msgDate;
-      }
-    }
-    _dateDividersCache[conversationId] = dates;
-    // ذخیره در Hive (به صورت لیست String)
-    await _dateBox?.put(
-        conversationId, dates.map((d) => d.toIso8601String()).toList());
+  // --- اضافه شد: شمارش پیام‌های خوانده‌نشده ---
+  Future<int> countUnreadMessages(String conversationId) async {
+    final count = await (selectOnly(cachedMessages)
+          ..addColumns([cachedMessages.id.count()])
+          ..where(cachedMessages.conversationId.equals(conversationId) &
+              cachedMessages.isRead.equals(false)))
+        .getSingle();
+    return count.read(cachedMessages.id.count()) ?? 0;
   }
 
-  // افزودن متد جدید برای همگام‌سازی هوشمند با سرور
-  Future<void> smartSync(
-      String conversationId, List<MessageModel> serverMessages) async {
-    await initialize();
-
-    // حذف پیام‌های قدیمی از کش
-    await _cleanOldCache();
-
-    // دریافت پیام‌های موقت
-    final cachedMessages = await getConversationMessages(conversationId);
-    final tempMessages =
-        cachedMessages.where((m) => m.id.startsWith('temp_')).toList();
-
-    // حذف پیام‌های غیر موقت فعلی
-    for (final key in _box!.keys) {
-      if (key.toString().startsWith('${conversationId}_') &&
-          !key.toString().contains('temp_')) {
-        await _box!.delete(key);
-      }
-    }
-
-    // اضافه کردن پیام‌های جدید سرور
-    await cacheMessages(serverMessages);
-
-    // بازگرداندن پیام‌های موقت
-    await cacheMessages(tempMessages);
-
-    // بروزرسانی کش حافظه
-    _memoryCache[conversationId] = [...serverMessages, ...tempMessages]
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
-    // محدود کردن تعداد پیام‌های کش شده
-    if (_memoryCache[conversationId]!.length > MAX_MESSAGES_PER_CONVERSATION) {
-      _memoryCache[conversationId] = _memoryCache[conversationId]!
-          .take(MAX_MESSAGES_PER_CONVERSATION)
-          .toList();
-    }
+  // --- اضافه شد: عملیات Transaction ---
+  Future<void> performTransaction(Future<void> Function() action) async {
+    await transaction(() async {
+      await action();
+    });
   }
+}
 
-  Future<void> _cleanOldCache() async {
-    final now = DateTime.now();
-    final keys = _box!.keys.toList();
-
-    for (final key in keys) {
-      final message = _box!.get(key);
-      if (message != null) {
-        final messageAge = now.difference(message.createdAt);
-        if (messageAge.inHours > MAX_CACHE_AGE_HOURS) {
-          await _box!.delete(key);
-        }
-      }
+// اتصال دیتابیس
+LazyDatabase _openConnection() {
+  return LazyDatabase(() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final dbFile = File(p.join(dir.path, 'messages_cache.sqlite'));
+    if (!dbFile.existsSync()) {
+      dbFile.createSync(recursive: true);
     }
-  }
+    return NativeDatabase(dbFile);
+  });
+}
+
+// تبدیل MessageModel به Drift Companion
+CachedMessagesCompanion _toCompanion(MessageModel m) {
+  return CachedMessagesCompanion(
+    id: Value(m.id),
+    conversationId: Value(m.conversationId),
+    senderId: Value(m.senderId),
+    content: Value(m.content),
+    createdAt: Value(m.createdAt),
+    attachmentUrl: Value(m.attachmentUrl),
+    attachmentType: Value(m.attachmentType),
+    isRead: Value(m.isRead),
+    isSent: Value(m.isSent),
+    senderName: Value(m.senderName),
+    senderAvatar: Value(m.senderAvatar),
+    isMe: Value(m.isMe),
+    replyToMessageId: Value(m.replyToMessageId),
+    replyToContent: Value(m.replyToContent),
+    replyToSenderName: Value(m.replyToSenderName),
+    isPending: Value(m.isPending),
+    localId: Value(m.localId),
+    retryCount: Value(m.retryCount),
+  );
+}
+
+// تبدیل Drift Row به MessageModel
+MessageModel _fromRow(CachedMessage row) {
+  return MessageModel(
+    id: row.id,
+    conversationId: row.conversationId,
+    senderId: row.senderId,
+    content: row.content,
+    createdAt: row.createdAt,
+    attachmentUrl: row.attachmentUrl,
+    attachmentType: row.attachmentType,
+    isRead: row.isRead,
+    isSent: row.isSent,
+    senderName: row.senderName,
+    senderAvatar: row.senderAvatar,
+    isMe: row.isMe,
+    replyToMessageId: row.replyToMessageId,
+    replyToContent: row.replyToContent,
+    replyToSenderName: row.replyToSenderName,
+    isPending: row.isPending,
+    localId: row.localId,
+    retryCount: row.retryCount,
+  );
+}
+
+// سرویس کش پیام با API مشابه قبلی
+class MessageCacheService {
+  static final MessageCacheService _instance = MessageCacheService._internal();
+  factory MessageCacheService() => _instance;
+  MessageCacheService._internal();
+
+  final MessageCacheDatabase _db = MessageCacheDatabase();
+
+  Future<void> cacheMessage(MessageModel message) => _db.cacheMessage(message);
+  Future<void> cacheMessages(List<MessageModel> messages) =>
+      _db.cacheMessages(messages);
+  Future<List<MessageModel>> getConversationMessages(String conversationId,
+          {int limit = 50, DateTime? before}) =>
+      _db.getConversationMessages(conversationId, limit: limit, before: before);
+  Future<MessageModel?> getMessage(String conversationId, String messageId) =>
+      _db.getMessage(conversationId, messageId);
+  Future<void> updateMessageStatus(String conversationId, String messageId,
+          {bool? isRead, bool? isSent}) =>
+      _db.updateMessageStatus(conversationId, messageId,
+          isRead: isRead, isSent: isSent);
+  Future<void> replaceTempMessage(
+          String conversationId, String tempId, MessageModel realMessage) =>
+      _db.replaceTempMessage(conversationId, tempId, realMessage);
+  Future<void> markMessageAsFailed(String conversationId, String tempId) =>
+      _db.markMessageAsFailed(conversationId, tempId);
+  Future<void> clearConversationMessages(String conversationId) =>
+      _db.clearConversationMessages(conversationId);
+  Future<void> clearMessage(String conversationId, String messageId) =>
+      _db.clearMessage(conversationId, messageId);
+  Future<void> clearAllCache() => _db.clearAllCache();
+  Future<void> deleteMessagesOlderThan(DateTime date) =>
+      _db.deleteMessagesOlderThan(date);
+  Future<int> countUnreadMessages(String conversationId) =>
+      _db.countUnreadMessages(conversationId);
+  Future<void> performTransaction(Future<void> Function() action) =>
+      _db.performTransaction(action);
 }

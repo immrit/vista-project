@@ -117,7 +117,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _preloadCache() async {
-    await MessageCacheService().initialize();
     await MessageCacheService().getConversationMessages(widget.conversationId);
   }
 
@@ -1066,7 +1065,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       backgroundImage: widget.otherUserAvatar != null &&
                               widget.otherUserAvatar!.isNotEmpty
                           ? NetworkImage(widget.otherUserAvatar!)
-                          : const AssetImage('assets/images/default_avatar.png')
+                          : AssetImage(
+                                  'lib/view/util/images/default-avatar.jpg')
                               as ImageProvider,
                     ),
                   ),
@@ -1165,6 +1165,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               icon: Icon(Icons.delete_outline),
               tooltip: 'پاکسازی تاریخچه گفتگو',
               onPressed: () => _showClearConversationDialog(context),
+            ),
+            IconButton(
+              icon: Icon(Icons.delete_forever),
+              tooltip: 'حذف پیام‌های قدیمی',
+              onPressed: () async {
+                final oneMonthAgo = DateTime.now().subtract(Duration(days: 30));
+                await ref.read(deleteOldMessagesProvider(oneMonthAgo).future);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('پیام‌های قدیمی حذف شدند')),
+                );
+              },
             ),
             PopupMenuButton<String>(
               icon: Icon(Icons.more_vert),
@@ -1857,6 +1868,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   // ارسال مجدد پیام موقت (retry)
+/*************  ✨ Windsurf Command ⭐  *************/
+  /// ارسال مجدد پیام موقت (retry)
+  ///
+  /// فقط پیام‌هایی که ارسال نشده‌اند و فایل تصویرشان پاک نشده است
+  /// را ارسال مجدد می‌کند. اگر فایل تصویر پاک شده بود، خطا می‌دهد.
+  ///
+/*******  b7959514-a546-4fae-a56c-be1f32b5247e  *******/
   Future<void> _retrySendMessage(MessageModel message) async {
     // فقط پیام‌هایی که ارسال نشده‌اند
     if (message.isSent == false) {
