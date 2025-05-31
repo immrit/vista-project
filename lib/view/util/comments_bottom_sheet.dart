@@ -599,7 +599,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
       },
       child: Container(
         margin: EdgeInsets.only(
-          right: widget.isReply ? 48 : 0,
+          // right: widget.isReply ? 48 : 0, // حذف مارجین راست برای جلوگیری از کاهش عرض پاسخ‌ها
           bottom: 8,
         ),
         child: Column(
@@ -681,45 +681,43 @@ class _CommentItemState extends ConsumerState<CommentItem>
                         // دکمه‌های عملکرد
                         Row(
                           children: [
-                            // دکمه پاسخ
-                            if (!widget.isReply)
-                              InkWell(
-                                onTap: () => widget.onReply(
-                                  widget.comment.id,
-                                  widget.comment.username,
+                            // دکمه پاسخ (حالا برای همه کامنت‌ها نمایش داده می‌شود)
+                            InkWell(
+                              onTap: () => widget.onReply(
+                                widget.comment.id,
+                                widget.comment.username,
+                              ),
+                              borderRadius: BorderRadius.circular(16),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
                                 ),
-                                borderRadius: BorderRadius.circular(16),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.reply,
-                                        size: 16,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.reply,
+                                      size: 16,
+                                      color: theme.colorScheme.onSurface
+                                          .withOpacity(0.6),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'پاسخ',
+                                      style:
+                                          theme.textTheme.bodySmall?.copyWith(
                                         color: theme.colorScheme.onSurface
                                             .withOpacity(0.6),
                                       ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        'پاسخ',
-                                        style:
-                                            theme.textTheme.bodySmall?.copyWith(
-                                          color: theme.colorScheme.onSurface
-                                              .withOpacity(0.6),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
                               ),
+                            ),
 
-                            // نمایش تعداد پاسخ‌ها
-                            if (!widget.isReply &&
-                                widget.comment.replies.isNotEmpty)
+                            // دکمه نمایش/پنهان کردن پاسخ‌ها (برای هر کامنتی که پاسخ دارد)
+                            if (widget.comment.replies.isNotEmpty)
                               InkWell(
                                 onTap: _toggleReplies,
                                 borderRadius: BorderRadius.circular(16),
@@ -826,7 +824,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
             ),
 
             // نمایش پاسخ‌ها
-            if (!widget.isReply && _showReplies)
+            if (_showReplies) // نمایش پاسخ‌ها برای هر کامنتی که قابلیت باز شدن دارد
               Consumer(
                 builder: (context, ref, child) {
                   final commentsState =

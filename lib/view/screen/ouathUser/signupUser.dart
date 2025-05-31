@@ -60,26 +60,34 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   // متد برای ثبت نام
   Future<void> signUp() async {
     ref.read(isLoadingProvider.notifier).state = true;
+    print('[SignUp] شروع ثبت نام');
     try {
-      await supabase.auth.signUp(
+      print('[SignUp] ایمیل: ${emailController.text.trim()}');
+      print('[SignUp] پسورد: ${passController.text.trim()}');
+      final response = await supabase.auth.signUp(
         email: emailController.text.trim(),
         password: passController.text.trim(),
       );
+      print('[SignUp] پاسخ ثبت نام: $response');
       context.showSnackBar('حساب کاربری شما با موفقیت ایجاد شد :)');
       emailController.clear();
       passController.clear();
       confirmPasswordController.clear();
+      print('[SignUp] انتقال به SetProfileData');
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (context) => const SetProfileData()),
       );
     } on AuthException catch (error) {
+      print('[SignUp][AuthException] ${error.message}');
       String errorMessage = getErrorMessage(error.message);
       context.showSnackBar(errorMessage, isError: true);
-    } catch (error) {
-      print('Error: $error');
+    } catch (error, stack) {
+      print('[SignUp][Exception] $error');
+      print('[SignUp][StackTrace] $stack');
       context.showSnackBar('خطای غیرمنتظره‌ای رخ داده است.', isError: true);
     } finally {
       ref.read(isLoadingProvider.notifier).state = false;
+      print('[SignUp] پایان ثبت نام');
     }
   }
 

@@ -167,6 +167,152 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
     loadComments();
   }
 
+  Future<CommentModel?> addReply({
+    required String postId,
+    required String content,
+    required String parentCommentId, // می‌تواند کامنت اصلی یا ریپلای باشد
+  }) async {
+    try {
+      state = state.copyWith(isLoading: true, error: null);
+
+      final newReply = await _repository.addComment(
+        postId: postId,
+        content: content,
+        parentCommentId: parentCommentId,
+      );
+
+      // پیدا کردن کامنت والد و اضافه کردن ریپلای جدید
+      final updatedComments = _addReplyToCommentTree(state.comments, newReply);
+
+      state = state.copyWith(
+        comments: updatedComments,
+        isLoading: false,
+      );
+
+      return newReply;
+    } catch (e) {
+      state = state.copyWith(
+        error: 'خطا در ارسال پاسخ: ${e.toString()}',
+        isLoading: false,
+      );
+      return null;
+    }
+  }
+
+  // متد کمکی برای اضافه کردن ریپلای به درخت کامنت‌ها (recursive)
+  List<CommentModel> _addReplyToCommentTree(
+    List<CommentModel> comments,
+    CommentModel newReply,
+  ) {
+    return comments.map((comment) {
+      // اگر این کامنت والد ریپلای جدید است
+      if (comment.id == newReply.parentCommentId) {
+        // Add new reply to the beginning to keep newest first, assuming newReply is the newest
+        final updatedReplies = [newReply, ...comment.replies];
+        return comment.copyWith(replies: updatedReplies);
+      }
+
+      // اگر ریپلای در زیرمجموعه‌های این کامنت است (جستجوی recursive)
+      final updatedReplies = _addReplyToCommentTree(comment.replies, newReply);
+      if (updatedReplies != comment.replies) {
+        return comment.copyWith(replies: updatedReplies);
+      }
+
+      return comment;
+    }).toList();
+  }
+
+  // متد برای بارگذاری ریپلای‌های یک کامنت خاص
+  Future<void> loadRepliesForComment(String commentId) async {
+    try {
+      // تنظیم loading state برای این کامنت
+      final loadingStates = Map<String, bool>.from(state.loadingReplies);
+      loadingStates[commentId] = true;
+      state = state.copyWith(loadingReplies: loadingStates);
+
+      // دریافت ریپلای‌ها
+      final replies = await _repository.getReplies(commentId);
+
+      // به‌روزرسانی کامنت با ریپلای‌های جدید
+      final updatedComments =
+          _updateCommentReplies(state.comments, commentId, replies);
+
+      // حذف loading state
+      loadingStates.remove(commentId);
+
+      state = state.copyWith(
+        comments: updatedComments,
+        loadingReplies: loadingStates,
+      );
+    } catch (e) {
+      final loadingStates = Map<String, bool>.from(state.loadingReplies);
+      loadingStates.remove(commentId);
+
+      state = state.copyWith(
+        error: 'خطا در بارگذاری پاسخ‌ها: ${e.toString()}',
+        loadingReplies: loadingStates,
+      );
+    }
+  }
+
+  // متد کمکی برای به‌روزرسانی ریپلای‌های یک کامنت (recursive)
+  List<CommentModel> _updateCommentReplies(
+    List<CommentModel> comments,
+    String commentId,
+    List<CommentModel> newReplies,
+  ) {
+    return comments.map((comment) {
+      if (comment.id == commentId) {
+        return comment.copyWith(replies: newReplies);
+      }
+
+      // جستجوی recursive در ریپلای‌ها
+      final updatedReplies =
+          _updateCommentReplies(comment.replies, commentId, newReplies);
+      if (updatedReplies != comment.replies) {
+        return comment.copyWith(replies: updatedReplies);
+      }
+
+      return comment;
+    }).toList();
+  }
+
+  // متد برای پیدا کردن کامنت یا ریپلای با ID (recursive)
+  CommentModel? findCommentById(String commentId,
+      [List<CommentModel>? searchList]) {
+    final comments = searchList ?? state.comments;
+
+    for (final comment in comments) {
+      if (comment.id == commentId) {
+        return comment;
+      }
+
+      // جستجو در ریپلای‌ها
+      final foundInReplies = findCommentById(commentId, comment.replies);
+      if (foundInReplies != null) {
+        return foundInReplies;
+      }
+    }
+    return null;
+  }
+
+  // متد برای دریافت path یک کامنت (برای نمایش thread)
+  List<String> getCommentPath(String commentId) {
+    final comment = findCommentById(commentId);
+    if (comment == null) return [];
+
+    final path = <String>[commentId];
+    String? currentParentId = comment.parentCommentId;
+
+    while (currentParentId != null) {
+      path.insert(0, currentParentId);
+      final parentComment = findCommentById(currentParentId);
+      currentParentId = parentComment?.parentCommentId;
+    }
+
+    return path;
+  }
+
   // بارگذاری کامنت‌ها
   Future<void> loadComments({bool refresh = false}) async {
     if (state.isLoading && !refresh) return;
@@ -298,13 +444,8 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
           isAddingComment: false,
         );
       } else {
-        final updatedComments = state.comments.map((comment) {
-          if (comment.id == parentCommentId) {
-            return comment.copyWith(replies: [...comment.replies, newComment]);
-          }
-          return comment;
-        }).toList();
-
+        final updatedComments =
+            _addReplyToCommentTree(state.comments, newComment);
         state = state.copyWith(
           comments: updatedComments,
           isAddingComment: false,
