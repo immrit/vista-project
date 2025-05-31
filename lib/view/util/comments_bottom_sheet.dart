@@ -51,6 +51,8 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
 
     // بارگذاری بیشتر کامنت‌ها هنگام رسیدن به انتها
     _scrollController.addListener(_onScroll);
+    // اضافه کردن لیسنر برای آپدیت دکمه ارسال
+    _commentController.addListener(_onCommentTextChanged);
   }
 
   void _onScroll() {
@@ -60,11 +62,22 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
     }
   }
 
+  // متد برای بازسازی ویجت هنگام تغییر متن کامنت
+  void _onCommentTextChanged() {
+    if (mounted) {
+      // بررسی اینکه ویجت هنوز در درخت ویجت‌ها وجود دارد
+      setState(() {
+        // این فراخوانی باعث می‌شود ویجت بازسازی شده و وضعیت دکمه ارسال به‌روز شود
+      });
+    }
+  }
+
   @override
   void dispose() {
-    _commentController.dispose();
     _commentFocusNode.dispose();
     _scrollController.dispose();
+    _commentController.removeListener(_onCommentTextChanged); // حذف لیسنر
+    _commentController.dispose();
     _sheetAnimationController.dispose();
     super.dispose();
   }
@@ -184,34 +197,34 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'کامنت‌ها',
+                      'نظرات (${widget.initialCommentsCount})',
                       style: theme.textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    Consumer(
-                      builder: (context, ref, child) {
-                        final commentsCount =
-                            ref.watch(commentsCountProvider(widget.postId));
-                        return commentsCount.when(
-                          data: (count) => Text(
-                            '$count کامنت',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color:
-                                  theme.colorScheme.onSurface.withOpacity(0.6),
-                            ),
-                          ),
-                          loading: () => Text(
-                            '${widget.initialCommentsCount} کامنت',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color:
-                                  theme.colorScheme.onSurface.withOpacity(0.6),
-                            ),
-                          ),
-                          error: (_, __) => const SizedBox.shrink(),
-                        );
-                      },
-                    ),
+                    // Consumer(
+                    //   builder: (context, ref, child) {
+                    //     final commentsCount =
+                    //         ref.watch(commentsCountProvider(widget.postId));
+                    //     return commentsCount.when(
+                    //       data: (count) => Text(
+                    //         '$count کامنت',
+                    //         style: theme.textTheme.bodyMedium?.copyWith(
+                    //           color:
+                    //               theme.colorScheme.onSurface.withOpacity(0.6),
+                    //         ),
+                    //       ),
+                    //       loading: () => Text(
+                    //         '${widget.initialCommentsCount} کامنت',
+                    //         style: theme.textTheme.bodyMedium?.copyWith(
+                    //           color:
+                    //               theme.colorScheme.onSurface.withOpacity(0.6),
+                    //         ),
+                    //       ),
+                    //       error: (_, __) => const SizedBox.shrink(),
+                    //     );
+                    //   },
+                    // ),
                   ],
                 ),
               ),
@@ -302,36 +315,39 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
     }
 
     return RefreshIndicator(
-      onRefresh: () async {
-        await ref
-            .read(commentsProvider(widget.postId).notifier)
-            .loadComments(refresh: true);
-      },
-      child: ListView.builder(
-        controller: _scrollController,
-        padding: const EdgeInsets.only(top: 8),
-        itemCount: state.comments.length + (state.hasMore ? 1 : 0),
-        itemBuilder: (context, index) {
-          if (index >= state.comments.length) {
-            return const Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(child: CircularProgressIndicator()),
-            );
-          }
-
-          final comment = state.comments[index];
-          return CommentItem(
-            comment: comment,
-            onReply: _startReply,
-            postId: widget.postId,
-          );
+        onRefresh: () async {
+          await ref
+              .read(commentsProvider(widget.postId).notifier)
+              .loadComments(refresh: true);
         },
-      ),
-    );
+        child: ListView.builder(
+          controller: _scrollController,
+          padding: const EdgeInsets.only(top: 8),
+          itemCount: state.comments.length + (state.hasMore ? 1 : 0),
+          itemBuilder: (context, index) {
+            if (index >= state.comments.length) {
+              return const Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+
+            final comment = state.comments[index];
+            return CommentItem(
+              comment: comment,
+              onReply: _startReply,
+              postId: widget.postId,
+            );
+          },
+        ));
   }
 
   Widget _buildCommentInputBox(ThemeData theme) {
     final commentsState = ref.watch(commentsProvider(widget.postId));
+
+    // دریافت اطلاعات کاربر جاری
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    final avatarUrl = currentUser?.userMetadata?['avatar_url'] as String?;
 
     return Container(
       decoration: BoxDecoration(
@@ -386,15 +402,23 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
             child: Row(
               children: [
                 // آواتار کاربر فعلی
-                CircleAvatar(
-                  radius: 18,
-                  backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
-                  child: Icon(
-                    Icons.person,
-                    size: 20,
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
+                avatarUrl != null && avatarUrl.isNotEmpty
+                    ? CircleAvatar(
+                        radius: 18,
+                        backgroundImage: NetworkImage(avatarUrl),
+                        backgroundColor:
+                            theme.colorScheme.primary.withOpacity(0.1),
+                      )
+                    : CircleAvatar(
+                        radius: 18,
+                        backgroundColor:
+                            theme.colorScheme.primary.withOpacity(0.1),
+                        child: Icon(
+                          Icons.person,
+                          size: 20,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
                 const SizedBox(width: 12),
 
                 // فیلد متنی
@@ -491,6 +515,10 @@ class _CommentItemState extends ConsumerState<CommentItem>
 
   bool _showReplies = false;
 
+  // Add this controller
+  final TextEditingController _editController = TextEditingController();
+  bool _isEditing = false;
+
   @override
   void initState() {
     super.initState();
@@ -521,6 +549,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
   @override
   void dispose() {
     _animationController.dispose();
+    _editController.dispose();
     super.dispose();
   }
 
@@ -578,6 +607,71 @@ class _CommentItemState extends ConsumerState<CommentItem>
       size: 16,
       color: color,
     );
+  }
+
+  // Add this method to handle edit mode
+  void _startEditing() async {
+    try {
+      // بررسی دسترسی ویرایش بر اساس اطلاعات خود کامنت (که شامل اطلاعات پروفایل نویسنده است)
+      final isVerifiedByTick = widget.comment.isVerified;
+      final hasSpecialTick =
+          widget.comment.verificationType == VerificationType.blackTick ||
+              widget.comment.verificationType == VerificationType.goldTick ||
+              widget.comment.verificationType == VerificationType.blueTick;
+
+      if (!isVerifiedByTick && !hasSpecialTick) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Row(
+              children: [
+                Icon(Icons.verified, color: Colors.amber),
+                SizedBox(width: 8),
+                Text('ویژه کاربران پریمیوم'),
+              ],
+            ),
+            content:
+                Text('برای ویرایش کامنت‌ها نیاز به اکانت تایید شده دارید.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('بعداً'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/verification-store');
+                },
+                child: Text('خرید اشتراک'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
+      setState(() {
+        _editController.text = widget.comment.content;
+        _isEditing = true;
+      });
+    } catch (e) {
+      print('Error starting edit: $e');
+    }
+  }
+
+  // Add this method to save edited comment
+  Future<void> _saveEdit() async {
+    if (_editController.text.trim().isEmpty) return;
+
+    final result = await ref
+        .read(commentsProvider(widget.postId).notifier)
+        .updateComment(widget.comment.id, _editController.text);
+
+    if (result && mounted) {
+      setState(() {
+        _isEditing = false;
+      });
+    }
   }
 
   @override
@@ -669,13 +763,64 @@ class _CommentItemState extends ConsumerState<CommentItem>
                         const SizedBox(height: 4),
 
                         // متن کامنت
-                        Text(
-                          widget.comment.content,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurface,
-                            height: 1.4,
+                        if (_isEditing)
+                          Column(
+                            children: [
+                              TextField(
+                                controller: _editController,
+                                maxLines: null,
+                                autofocus: true,
+                                decoration: InputDecoration(
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide(
+                                        color: theme.colorScheme.primary,
+                                        width: 2),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(height: 8),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TextButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        _isEditing = false;
+                                      });
+                                    },
+                                    child: Text('لغو'),
+                                  ),
+                                  SizedBox(width: 8),
+                                  ElevatedButton(
+                                    onPressed: _saveEdit,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor:
+                                          theme.colorScheme.primary,
+                                      foregroundColor:
+                                          theme.colorScheme.onPrimary,
+                                    ),
+                                    child: Text('ثبت تغییرات'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          )
+                        else
+                          Text(
+                            widget.comment.content,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurface,
+                              height: 1.4,
+                            ),
                           ),
-                        ),
                         const SizedBox(height: 8),
 
                         // دکمه‌های عملکرد
@@ -759,10 +904,10 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                 color: theme.colorScheme.onSurface
                                     .withOpacity(0.5),
                               ),
-                              onSelected: (value) {
+                              onSelected: (value) async {
                                 switch (value) {
                                   case 'edit':
-                                    // TODO: پیاده‌سازی ویرایش
+                                    _startEditing();
                                     break;
                                   case 'delete':
                                     ref
@@ -770,49 +915,91 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                             .notifier)
                                         .deleteComment(widget.comment.id);
                                     break;
+
                                   case 'report':
                                     // TODO: پیاده‌سازی گزارش
                                     break;
                                 }
                               },
-                              itemBuilder: (context) => [
-                                if (isOwner) ...[
-                                  const PopupMenuItem(
-                                    value: 'edit',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.edit, size: 18),
-                                        SizedBox(width: 8),
-                                        Text('ویرایش'),
-                                      ],
+                              itemBuilder: (context) {
+                                // بررسی مستقیم از متادیتای کاربر برای دسترسی به ویرایش
+                                // استفاده از اطلاعات خود کامنت
+                                final isVerifiedByTick =
+                                    widget.comment.isVerified;
+                                final hasSpecialTick =
+                                    widget.comment.verificationType ==
+                                            VerificationType.blackTick ||
+                                        widget.comment.verificationType ==
+                                            VerificationType.goldTick ||
+                                        widget.comment.verificationType ==
+                                            VerificationType.blueTick;
+                                final canEdit =
+                                    isVerifiedByTick || hasSpecialTick;
+
+                                return [
+                                  if (isOwner) ...[
+                                    PopupMenuItem(
+                                      value: 'edit',
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            Icons.edit,
+                                            size: 18,
+                                            color: canEdit
+                                                ? theme.colorScheme.primary
+                                                : theme.colorScheme.onSurface
+                                                    .withOpacity(0.3),
+                                          ),
+                                          SizedBox(width: 8),
+                                          Text(
+                                            'ویرایش',
+                                            style: TextStyle(
+                                              color: canEdit
+                                                  ? null
+                                                  : theme.colorScheme.onSurface
+                                                      .withOpacity(0.3),
+                                            ),
+                                          ),
+                                          if (!canEdit) ...[
+                                            // نمایش آیکون وریفای اگر کاربر اجازه ویرایش ندارد
+                                            SizedBox(width: 4),
+                                            Icon(
+                                              Icons.verified,
+                                              size: 14,
+                                              color:
+                                                  Colors.amber.withOpacity(0.5),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                  const PopupMenuItem(
-                                    value: 'delete',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.delete,
-                                            size: 18, color: Colors.red),
-                                        SizedBox(width: 8),
-                                        Text('حذف',
-                                            style:
-                                                TextStyle(color: Colors.red)),
-                                      ],
+                                    const PopupMenuItem(
+                                      value: 'delete',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.delete,
+                                              size: 18, color: Colors.red),
+                                          SizedBox(width: 8),
+                                          Text('حذف',
+                                              style:
+                                                  TextStyle(color: Colors.red)),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                ] else ...[
-                                  const PopupMenuItem(
-                                    value: 'report',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.report, size: 18),
-                                        SizedBox(width: 8),
-                                        Text('گزارش'),
-                                      ],
+                                  ] else ...[
+                                    const PopupMenuItem(
+                                      value: 'report',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.report, size: 18),
+                                          SizedBox(width: 8),
+                                          Text('گزارش'),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                ],
-                              ],
+                                  ],
+                                ];
+                              },
                             ),
                           ],
                         ),

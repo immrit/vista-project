@@ -514,6 +514,42 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
     state = state.copyWith(isUpdatingComment: true, error: null);
 
     try {
+      // پیدا کردن کامنتی که قرار است ویرایش شود
+      final commentToUpdate = findCommentById(commentId);
+      if (commentToUpdate == null) {
+        state =
+            state.copyWith(isUpdatingComment: false, error: 'کامنت پیدا نشد');
+        return false;
+      }
+
+      // بررسی اینکه آیا کاربر لاگین شده، صاحب کامنت است
+      final supabaseUser = Supabase.instance.client.auth.currentUser;
+      if (supabaseUser == null) {
+        state = state.copyWith(
+            isUpdatingComment: false, error: 'کاربر وارد نشده است');
+        return false;
+      }
+      if (commentToUpdate.userId != supabaseUser.id) {
+        state = state.copyWith(
+            isUpdatingComment: false,
+            error: 'شما اجازه ویرایش این کامنت را ندارید');
+        return false;
+      }
+
+      // بررسی دسترسی ویرایش بر اساس اطلاعات پروفایل نویسنده کامنت (که در CommentModel موجود است)
+      final hasEditAccess = commentToUpdate.isVerified ||
+          commentToUpdate.verificationType == VerificationType.blackTick ||
+          commentToUpdate.verificationType == VerificationType.goldTick ||
+          commentToUpdate.verificationType == VerificationType.blueTick;
+
+      if (!hasEditAccess) {
+        state = state.copyWith(
+          isUpdatingComment: false,
+          error: 'برای ویرایش کامنت، حساب شما باید تایید شده باشد.',
+        );
+        return false;
+      }
+
       final updatedComment = await _repository.updateComment(
         commentId: commentId,
         content: newContent.trim(),

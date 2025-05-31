@@ -553,4 +553,22 @@ class CommentRepository {
       throw Exception('خطا در دریافت کامنت‌ها بر اساس بازه زمانی: $e');
     }
   }
+
+  Future<CommentModel?> getCurrentUserProfile() async {
+    try {
+      final userId = _client.auth.currentUser?.id;
+      if (userId == null) return null;
+
+      final response = await _client
+          .from('profiles')
+          .select('*, verification_type, is_verified')
+          .eq('id', userId)
+          .single();
+
+      return CommentModel.fromMap(response);
+    } catch (e) {
+      print('Error getting current user profile: $e');
+      return null;
+    }
+  }
 }
