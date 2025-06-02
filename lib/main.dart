@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' show Platform; // اضافه کن
 import 'package:Vista/DB/conversation_cache_service.dart';
+import 'package:Vista/view/screen/Settings/vistaStore/store.dart';
 import 'package:Vista/view/screen/SplashScreen.dart';
 import 'package:Vista/view/util/const.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -11,7 +12,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
-
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_links/app_links.dart';
@@ -786,6 +786,9 @@ class _MyAppState extends ConsumerState<MyApp> {
                   }
                   // اگر conversationId نبود، یک صفحه خالی یا ارور نمایش بده
                   return Scaffold(body: Center(child: Text('مکالمه یافت نشد')));
+                },
+                '/verification-store': (context) {
+                  return VerificationBadgeStore();
                 },
               },
               // builder: (context, child) {

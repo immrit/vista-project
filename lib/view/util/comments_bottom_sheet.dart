@@ -120,6 +120,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final commentsState = ref.watch(commentsProvider(widget.postId));
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
 
     return AnimatedBuilder(
       animation: _sheetAnimation,
@@ -150,8 +151,13 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
               child: _buildCommentsContent(commentsState, theme),
             ),
 
-            // باکس ارسال کامنت
-            _buildCommentInputBox(theme),
+            // باکس ارسال کامنت با padding برای کیبورد
+            AnimatedPadding(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOutCubic,
+              padding: EdgeInsets.only(bottom: keyboardHeight),
+              child: _buildCommentInputBox(theme),
+            ),
           ],
         ),
       ),
@@ -343,13 +349,8 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
   }
 
   Widget _buildCommentInputBox(ThemeData theme) {
-    final commentsState = ref.watch(commentsProvider(widget.postId));
-
-    // دریافت اطلاعات کاربر جاری
-    final currentUser = Supabase.instance.client.auth.currentUser;
-    final avatarUrl = currentUser?.userMetadata?['avatar_url'] as String?;
-
     return Container(
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         border: Border(
@@ -358,131 +359,153 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
             width: 1,
           ),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: theme.shadowColor.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
-      child: Column(
-        children: [
-          // نمایش در حال ریپلای
-          if (_replyingToCommentId != null)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: theme.colorScheme.primary.withOpacity(0.1),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.reply,
-                    size: 16,
-                    color: theme.colorScheme.primary,
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // نمایش اطلاعات ریپلای
+            if (_replyingToCommentId != null) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: theme.colorScheme.primary.withOpacity(0.2),
+                    width: 1,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'در حال پاسخ به @$_replyingToUsername',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: _cancelReply,
-                    icon: Icon(
-                      Icons.close,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.reply,
                       size: 16,
                       color: theme.colorScheme.primary,
                     ),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ],
-              ),
-            ),
-
-          // باکس ورودی
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                // آواتار کاربر فعلی
-                avatarUrl != null && avatarUrl.isNotEmpty
-                    ? CircleAvatar(
-                        radius: 18,
-                        backgroundImage: NetworkImage(avatarUrl),
-                        backgroundColor:
-                            theme.colorScheme.primary.withOpacity(0.1),
-                      )
-                    : CircleAvatar(
-                        radius: 18,
-                        backgroundColor:
-                            theme.colorScheme.primary.withOpacity(0.1),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'در حال پاسخ به $_replyingToUsername',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    InkWell(
+                      onTap: _cancelReply,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
                         child: Icon(
-                          Icons.person,
-                          size: 20,
+                          Icons.close,
+                          size: 16,
                           color: theme.colorScheme.primary,
                         ),
                       ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            // فیلد ورودی کامنت
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // آواتار کاربر
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
+                  child: Icon(
+                    Icons.person,
+                    size: 20,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
                 const SizedBox(width: 12),
 
-                // فیلد متنی
+                // فیلد متن
                 Expanded(
                   child: Container(
+                    constraints: const BoxConstraints(
+                      minHeight: 40,
+                      maxHeight: 120,
+                    ),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(24),
+                      color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(20),
                       border: Border.all(
                         color: theme.colorScheme.outline.withOpacity(0.2),
+                        width: 1,
                       ),
                     ),
                     child: TextField(
                       controller: _commentController,
                       focusNode: _commentFocusNode,
                       maxLines: null,
+                      textInputAction: TextInputAction.newline,
                       decoration: InputDecoration(
                         hintText: _replyingToCommentId != null
                             ? 'پاسخ خود را بنویسید...'
-                            : 'کامنت خود را بنویسید...',
+                            : 'نظر خود را بنویسید...',
+                        hintStyle: TextStyle(
+                          color: theme.colorScheme.onSurface.withOpacity(0.5),
+                        ),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 12,
                         ),
-                        hintStyle: TextStyle(
-                          color: theme.colorScheme.onSurface.withOpacity(0.5),
-                        ),
                       ),
-                      textInputAction: TextInputAction.newline,
-                      onSubmitted: (_) => _submitComment(),
+                      style: theme.textTheme.bodyMedium,
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+
+                const SizedBox(width: 8),
 
                 // دکمه ارسال
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  child: commentsState.isAddingComment
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : IconButton(
-                          onPressed: _commentController.text.trim().isEmpty
-                              ? null
-                              : _submitComment, // Ensure this calls `_submitComment`
-                          icon: Icon(
-                            Icons.send,
-                            color: _commentController.text.trim().isEmpty
-                                ? theme.colorScheme.onSurface.withOpacity(0.3)
-                                : theme.colorScheme.primary,
-                          ),
-                        ),
+                  child: InkWell(
+                    onTap: _commentController.text.trim().isNotEmpty
+                        ? _submitComment
+                        : null,
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: _commentController.text.trim().isNotEmpty
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.outline.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Icon(
+                        Icons.send_rounded,
+                        size: 20,
+                        color: _commentController.text.trim().isNotEmpty
+                            ? theme.colorScheme.onPrimary
+                            : theme.colorScheme.onSurface.withOpacity(0.4),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
-          ),
-
-          // فضای امن پایین
-          SizedBox(height: MediaQuery.of(context).padding.bottom),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -642,7 +665,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
                   Navigator.pop(context);
                   Navigator.pushNamed(context, '/verification-store');
                 },
-                child: Text('خرید اشتراک'),
+                child: Text('پریمیوم شوید'),
               ),
             ],
           ),
@@ -672,6 +695,92 @@ class _CommentItemState extends ConsumerState<CommentItem>
         _isEditing = false;
       });
     }
+  }
+
+  Widget _buildEditingField(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Input field container with animation
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: theme.colorScheme.primary.withOpacity(0.5),
+              width: 2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: theme.colorScheme.primary.withOpacity(0.1),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: TextField(
+            controller: _editController,
+            maxLines: null,
+            autofocus: true,
+            cursorColor: theme.colorScheme.primary,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: theme.colorScheme.onSurface,
+            ),
+            decoration: InputDecoration(
+              hintText: 'ویرایش نظر خود...',
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+              hintStyle: TextStyle(
+                color: theme.colorScheme.onSurface.withOpacity(0.5),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // Action buttons with fade animation
+        AnimatedOpacity(
+          duration: const Duration(milliseconds: 200),
+          opacity: _isEditing ? 1.0 : 0.0,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _editController.text = widget.comment.content;
+                    _isEditing = false;
+                  });
+                },
+                icon: const Icon(Icons.close),
+                label: const Text('انصراف'),
+                style: TextButton.styleFrom(
+                  foregroundColor: theme.colorScheme.onSurface.withOpacity(0.7),
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton.icon(
+                onPressed: _saveEdit,
+                icon: const Icon(Icons.check),
+                label: const Text('ثبت تغییرات'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primary,
+                  foregroundColor: theme.colorScheme.onPrimary,
+                  elevation: 2,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -764,55 +873,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
 
                         // متن کامنت
                         if (_isEditing)
-                          Column(
-                            children: [
-                              TextField(
-                                controller: _editController,
-                                maxLines: null,
-                                autofocus: true,
-                                decoration: InputDecoration(
-                                  contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    borderSide: BorderSide(
-                                        color: theme.colorScheme.primary,
-                                        width: 2),
-                                  ),
-                                ),
-                              ),
-                              SizedBox(height: 8),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  TextButton(
-                                    onPressed: () {
-                                      setState(() {
-                                        _isEditing = false;
-                                      });
-                                    },
-                                    child: Text('لغو'),
-                                  ),
-                                  SizedBox(width: 8),
-                                  ElevatedButton(
-                                    onPressed: _saveEdit,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor:
-                                          theme.colorScheme.primary,
-                                      foregroundColor:
-                                          theme.colorScheme.onPrimary,
-                                    ),
-                                    child: Text('ثبت تغییرات'),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          )
+                          _buildEditingField(theme)
                         else
                           Text(
                             widget.comment.content,
