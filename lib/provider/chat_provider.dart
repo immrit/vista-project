@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../DB/conversation_cache_service.dart';
 import '../DB/message_cache_service.dart';
 import '../main.dart';
 import '../model/conversation_model.dart';
@@ -304,12 +305,23 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
       final chatService = ref.read(chatServiceProvider);
       await chatService.markConversationAsRead(conversationId);
 
-      if (_disposed) return;
+      // بروزرسانی مکالمه در کش: unreadCount را صفر کن
+      final cache = ConversationCacheService();
+      final conversation = await cache.getConversation(conversationId);
+      if (conversation != null && conversation.unreadCount != 0) {
+        await cache.updateConversation(
+          conversation.copyWith(
+            hasUnreadMessages: false,
+            unreadCount: 0,
+          ),
+        );
+      }
 
-      // بروزرسانی مکالمات و پیام‌ها
+      // بروزرسانی مکالمات و پیام‌ها و badge
       ref.invalidate(conversationsProvider);
       ref.invalidate(messagesProvider(conversationId));
       ref.invalidate(messagesStreamProvider(conversationId));
+      ref.invalidate(totalUnreadMessagesProvider);
 
       print('مکالمه با موفقیت به عنوان خوانده شده علامت‌گذاری شد');
     } catch (e) {

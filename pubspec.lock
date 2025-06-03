@@ -423,7 +423,7 @@ packages:
     source: hosted
     version: "2.1.0"
   drift:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: drift
       sha256: b584ddeb2b74436735dd2cf746d2d021e19a9a6770f409212fd5cbc2814ada85
@@ -438,6 +438,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.26.0"
+  drift_flutter:
+    dependency: "direct main"
+    description:
+      name: drift_flutter
+      sha256: "0cadbf3b8733409a6cf61d18ba2e94e149df81df7de26f48ae0695b48fd71922"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.4"
   emoji_picker_flutter:
     dependency: "direct main"
     description:

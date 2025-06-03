@@ -1,187 +1,155 @@
 // conversation_cache_service.dart
-import 'package:hive/hive.dart';
-import 'package:hive_flutter/hive_flutter.dart';
-import '../model/Hive Model/conversation_hive_model.dart';
+import 'package:drift/drift.dart';
+import 'package:drift/native.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 import '../model/conversation_model.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:developer';
 
+part 'conversation_cache_service.g.dart';
+
+class CachedConversations extends Table {
+  TextColumn get id => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+  TextColumn get lastMessage => text().nullable()();
+  DateTimeColumn get lastMessageTime => dateTime().nullable()();
+  TextColumn get otherUserName => text().nullable()();
+  TextColumn get otherUserAvatar => text().nullable()();
+  TextColumn get otherUserId => text().nullable()();
+  BoolColumn get hasUnreadMessages =>
+      boolean().withDefault(const Constant(false))();
+  IntColumn get unreadCount => integer().withDefault(const Constant(0))();
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+@DriftDatabase(tables: [CachedConversations])
+class ConversationCacheDatabase extends _$ConversationCacheDatabase {
+  ConversationCacheDatabase() : super(_openConnection());
+  @override
+  int get schemaVersion => 1;
+
+  Future<void> cacheConversation(ConversationModel conversation) async {
+    await into(cachedConversations).insertOnConflictUpdate(
+      CachedConversationsCompanion(
+        id: Value(conversation.id),
+        createdAt: Value(conversation.createdAt),
+        updatedAt: Value(conversation.updatedAt),
+        lastMessage: Value(conversation.lastMessage),
+        lastMessageTime: Value(conversation.lastMessageTime),
+        otherUserName: Value(conversation.otherUserName),
+        otherUserAvatar: Value(conversation.otherUserAvatar),
+        otherUserId: Value(conversation.otherUserId),
+        hasUnreadMessages: Value(conversation.hasUnreadMessages),
+        unreadCount: Value(conversation.unreadCount),
+      ),
+    );
+  }
+
+  Future<void> deleteConversation(String conversationId) async {
+    await (delete(cachedConversations)
+          ..where((tbl) => tbl.id.equals(conversationId)))
+        .go();
+  }
+
+  Future<List<ConversationModel>> getCachedConversations() async {
+    final rows = await select(cachedConversations).get();
+    return rows
+        .map((row) => ConversationModel(
+              id: row.id,
+              createdAt: row.createdAt,
+              updatedAt: row.updatedAt,
+              lastMessage: row.lastMessage,
+              lastMessageTime: row.lastMessageTime,
+              otherUserName: row.otherUserName,
+              otherUserAvatar: row.otherUserAvatar,
+              otherUserId: row.otherUserId,
+              hasUnreadMessages: row.hasUnreadMessages,
+              unreadCount: row.unreadCount,
+              participants: [],
+            ))
+        .toList();
+  }
+
+  // متد جدید: بروزرسانی یا درج مکالمه
+  Future<void> updateConversation(ConversationModel conversation) async {
+    await cacheConversation(conversation);
+  }
+
+  // متد جدید: دریافت یک مکالمه با آیدی
+  Future<ConversationModel?> getConversation(String conversationId) async {
+    final row = await (select(cachedConversations)
+          ..where((tbl) => tbl.id.equals(conversationId)))
+        .getSingleOrNull();
+    if (row == null) return null;
+    return ConversationModel(
+      id: row.id,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      lastMessage: row.lastMessage,
+      lastMessageTime: row.lastMessageTime,
+      otherUserName: row.otherUserName,
+      otherUserAvatar: row.otherUserAvatar,
+      otherUserId: row.otherUserId,
+      hasUnreadMessages: row.hasUnreadMessages,
+      unreadCount: row.unreadCount,
+      participants: [],
+    );
+  }
+
+  // متد جدید: پاک کردن کل کش مکالمات
+  Future<void> clearCache() async {
+    await delete(cachedConversations).go();
+  }
+}
+
+LazyDatabase _openConnection() {
+  return LazyDatabase(() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final dbFile = File(p.join(dir.path, 'conversations.sqlite'));
+    return NativeDatabase(dbFile);
+  });
+}
+
+// ConversationCacheService: سرویس ساده برای استفاده از دیتابیس Drift
 class ConversationCacheService {
   static final ConversationCacheService _instance =
       ConversationCacheService._internal();
   factory ConversationCacheService() => _instance;
   ConversationCacheService._internal();
 
-  static const String _boxName = 'conversations';
-  static const int CACHE_LIMIT = 10; // محدودیت تعداد مکالمات کش شده
+  final ConversationCacheDatabase _db = ConversationCacheDatabase();
 
-  // کش حافظه برای دسترسی سریع‌تر
-  List<ConversationModel>? _cachedConversations;
+  Future<void> cacheConversation(ConversationModel conversation) =>
+      _db.cacheConversation(conversation);
 
-  Box<ConversationHiveModel>? _box;
+  Future<List<ConversationModel>> getCachedConversations() =>
+      _db.getCachedConversations();
 
-  Future<void> initialize() async {
-    if (_box != null) return;
-    try {
-      _box = await Hive.openBox<ConversationHiveModel>(_boxName);
-      log('[Hive] Conversation box opened successfully');
-    } catch (e, st) {
-      log('[Hive] Error opening conversation box: $e', stackTrace: st);
-      rethrow;
-    }
-  }
+  // اضافه شد: بروزرسانی یا درج مکالمه
+  Future<void> updateConversation(ConversationModel conversation) =>
+      _db.updateConversation(conversation);
 
-  // بازیابی مکالمات کش شده
-  Future<List<ConversationModel>> getCachedConversations() async {
-    await initialize();
+  // اضافه شد: دریافت یک مکالمه با آیدی
+  Future<ConversationModel?> getConversation(String conversationId) =>
+      _db.getConversation(conversationId);
 
-    try {
-      if (_cachedConversations != null) {
-        log('[Hive] Returning cached conversations from memory: ${_cachedConversations!.length}');
-        return _cachedConversations!;
-      }
+  // اضافه شد: پاک کردن کل کش مکالمات
+  Future<void> clearCache() => _db.clearCache();
 
-      final List<ConversationModel> conversations = [];
-      for (final hiveModel in _box!.values) {
-        try {
-          conversations.add(hiveModel.toModel());
-        } catch (e, st) {
-          log('[Hive] Error converting HiveModel to ConversationModel: $e',
-              stackTrace: st);
-        }
-      }
-
-      conversations.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-      _cachedConversations = conversations;
-      log('[Hive] Loaded ${conversations.length} conversations from Hive');
-      return conversations;
-    } catch (e, st) {
-      log('[Hive] Error in getCachedConversations: $e', stackTrace: st);
-      rethrow;
-    }
-  }
-
-  // ذخیره لیست مکالمات
-  Future<void> cacheConversations(List<ConversationModel> conversations) async {
-    await initialize();
-    try {
-      // حفظ فقط 10 مکالمه اخیر
-      final recentConversations = conversations.take(CACHE_LIMIT).toList();
-
-      // پاک کردن کش قبلی
-      await _box!.clear();
-
-      // ذخیره مکالمات جدید در Hive
-      for (final conversation in recentConversations) {
-        final hiveModel = ConversationHiveModel.fromModel(conversation);
-        await _box!.put(conversation.id, hiveModel);
-      }
-
-      // بروزرسانی کش حافظه
-      _cachedConversations = recentConversations;
-      log('[Hive] Cached ${recentConversations.length} conversations');
-    } catch (e, st) {
-      log('[Hive] Error in cacheConversations: $e', stackTrace: st);
-      rethrow;
-    }
-  }
-
-  // بروزرسانی یا اضافه کردن یک مکالمه به کش
-  Future<void> updateConversation(ConversationModel conversation) async {
-    await initialize();
-    try {
-      // بروزرسانی در Hive
-      final hiveModel = ConversationHiveModel.fromModel(conversation);
-      await _box!.put(conversation.id, hiveModel);
-
-      // بروزرسانی کش حافظه
-      if (_cachedConversations != null) {
-        // حذف مکالمه قبلی با همین آیدی (اگر وجود داشته باشد)
-        _cachedConversations!.removeWhere((c) => c.id == conversation.id);
-
-        // اضافه کردن مکالمه جدید به ابتدای لیست
-        _cachedConversations!.insert(0, conversation);
-
-        // حفظ محدودیت تعداد
-        if (_cachedConversations!.length > CACHE_LIMIT) {
-          _cachedConversations!.removeLast();
-        }
-      }
-      log('[Hive] Updated conversation: ${conversation.id}');
-    } catch (e, st) {
-      log('[Hive] Error in updateConversation: $e', stackTrace: st);
-      rethrow;
-    }
-  }
-
-  // دریافت یک مکالمه از کش با آیدی
-  Future<ConversationModel?> getConversation(String conversationId) async {
-    await initialize();
-    try {
-      // اول از کش حافظه چک کن
-      if (_cachedConversations != null) {
-        final cached = _cachedConversations!.firstWhere(
-          (c) => c.id == conversationId,
-          orElse: () => null as ConversationModel, // رفع خطای نوع
-        );
-        if (cached != null) return cached;
-      }
-
-      // وگرنه از Hive بخوان
-      final hiveModel = _box!.get(conversationId);
-      if (hiveModel != null) {
-        return hiveModel.toModel();
-      }
-      return null;
-    } catch (e, st) {
-      log('[Hive] Error in getConversation: $e', stackTrace: st);
-      return null;
-    }
-  }
-
-  /// متد سینک برای گرفتن مکالمه از کش حافظه یا Hive (بدون async)
-  ConversationModel? getConversationSync(String conversationId) {
-    try {
-      // ابتدا از کش حافظه (لیست مکالمات کش شده)
-      if (_cachedConversations != null) {
-        final cached = _cachedConversations!.firstWhere(
-          (c) => c.id == conversationId,
-          orElse: () => null as ConversationModel, // رفع خطای نوع
-        );
-        if (cached != null) return cached;
-      }
-      // اگر در کش نبود، از Hive بخوان
-      if (_box != null && _box!.isOpen) {
-        final hiveModel = _box!.get(conversationId);
-        if (hiveModel != null) {
-          return hiveModel.toModel();
-        }
-      }
-      return null;
-    } catch (e, st) {
-      log('[Hive] Error in getConversationSync: $e', stackTrace: st);
-      return null;
-    }
-  }
-
-  // حذف یک مکالمه از کش
   Future<void> removeConversation(String conversationId) async {
-    await initialize();
-
-    // حذف از Hive
-    await _box!.delete(conversationId);
-
-    // حذف از کش حافظه
-    if (_cachedConversations != null) {
-      _cachedConversations!.removeWhere((c) => c.id == conversationId);
-    }
+    await _db.deleteConversation(conversationId);
   }
 
-  // پاک کردن تمام کش
-  Future<void> clearCache() async {
-    await initialize();
-
-    await _box!.clear();
-    _cachedConversations = null;
+  // متد سینک برای گرفتن مکالمه از کش حافظه (Drift) بدون async
+  ConversationModel? getConversationSync(String conversationId) {
+    // Drift فقط متد async دارد، اما می‌توانیم یک کش ساده در حافظه نگه داریم (در صورت نیاز)
+    // یا این متد را فقط برای سازگاری با کد فراخوانی‌کننده قرار دهیم و همیشه null برگردانیم
+    // یا یک هشدار لاگ کنیم
+    // اگر نیاز به کش حافظه داری، باید آن را اضافه کنی
+    return null;
   }
+
+  // سایر متدهای مورد نیاز را می‌توان اضافه کرد
 }

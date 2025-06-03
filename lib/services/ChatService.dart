@@ -70,7 +70,7 @@ class ChatService {
             .order('updated_at', ascending: false);
 
         // برای هر مکالمه، شرکت‌کنندگان را دریافت می‌کنیم
-        final conversations =
+        final List<ConversationModel> conversationsFromServer =
             await Future.wait(conversationsResponse.map((json) async {
           final conversationId = json['id'] as String;
 
@@ -199,7 +199,12 @@ class ChatService {
           return conversation;
         }));
 
-        return conversations;
+        // اگر آنلاین هستی از سرور بگیر و در کش ذخیره کن
+        for (final conversation in conversationsFromServer) {
+          await _conversationCache.cacheConversation(conversation);
+        }
+
+        return conversationsFromServer;
       }
 
       // اگر آنلاین نیستیم و تا اینجا رسیدیم، از هر کشی که داریم استفاده می‌کنیم
