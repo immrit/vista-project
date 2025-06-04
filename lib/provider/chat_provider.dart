@@ -36,11 +36,31 @@ final conversationsStreamProvider =
       .from('messages')
       .stream(primaryKey: ['id']).order('created_at', ascending: false);
 
-  // هر بار که پیام جدیدی آمد، conversations را invalidate کن
+  // هر بار که پیام جدیدی آمد یا پیام خوانده شد، conversations را invalidate کن
   messagesStream.listen((event) {
     print('🔔 پیام جدید یا تغییر پیام دریافت شد');
     ref.invalidate(conversationsProvider);
+    ref.invalidateSelf();
   });
+
+  // --- اضافه شد: Listen به تغییرات وضعیت خوانده شدن پیام‌ها برای بروزرسانی سریع badge ---
+  final readStatusStream = supabase
+      .from('messages')
+      .stream(primaryKey: ['id'])
+      .order('created_at')
+      .map((messages) {
+        // فقط پیام‌هایی که is_read تغییر کرده‌اند را بررسی کن
+        return messages.where((msg) => msg['is_read'] == true).toList();
+      });
+
+  readStatusStream.listen((readMessages) {
+    if (readMessages.isNotEmpty) {
+      print('🔵 پیام خوانده شد، conversationsStreamProvider invalidate');
+      ref.invalidate(conversationsProvider);
+      ref.invalidateSelf();
+    }
+  });
+  // --- پایان اضافه شده ---
 
   // استریم مکالمات را برگردان
   return conversationsStream;
@@ -305,29 +325,26 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
   Future<void> markAsRead(String conversationId) async {
     if (_disposed) return;
 
+    // state = const AsyncValue.loading(); // Optional: set loading state if UI needs it
     try {
       final chatService = ref.read(chatServiceProvider);
+      // This will update Supabase, message cache, and then refreshConversation (which updates conversation cache)
       await chatService.markConversationAsRead(conversationId);
 
-      // بروزرسانی مکالمه در کش: unreadCount را صفر کن
-      final cache = ConversationCacheService();
-      final conversation = await cache.getConversation(conversationId);
-      if (conversation != null && conversation.unreadCount != 0) {
-        await cache.updateConversation(
-          conversation.copyWith(
-            hasUnreadMessages: false,
-            unreadCount: 0,
-          ),
-        );
-      }
+      // The ConversationCacheService is now correctly updated by chatService.markConversationAsRead
+      // (via refreshConversation and its call to _getConversationWithDetails which now calculates unreadCount).
+      // No need for manual cache update here.
 
-      // بروزرسانی مکالمات و پیام‌ها و badge
+      // Invalidate providers to trigger UI updates.
+      // The cachedConversationsStreamProvider (newly added) will react to cache changes automatically.
       ref.invalidate(conversationsProvider);
       ref.invalidate(messagesProvider(conversationId));
       ref.invalidate(messagesStreamProvider(conversationId));
       ref.invalidate(totalUnreadMessagesProvider);
+      ref.invalidate(conversationsStreamProvider);
+      // No need to invalidate cachedConversationsStreamProvider as it listens to DB changes.
 
-      print('مکالمه با موفقیت به عنوان خوانده شده علامت‌گذاری شد');
+      // state = const AsyncValue.data(null); // Optional: set data state
     } catch (e) {
       print('خطا در علامت‌گذاری به عنوان خوانده شده: $e');
     }
@@ -1038,3 +1055,11 @@ final conversationMessagesProvider = StateNotifierProvider.family
     return notifier;
   },
 );
+
+// --- Provider جدید برای گوش دادن به تغییرات کش مکالمات (Drift) ---
+final cachedConversationsStreamProvider =
+    StreamProvider.autoDispose<List<ConversationModel>>((ref) {
+  final conversationCache = ConversationCacheService();
+  // Make sure ConversationCacheService is a singleton or provided correctly
+  return conversationCache.watchCachedConversations();
+});

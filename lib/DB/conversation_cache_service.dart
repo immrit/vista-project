@@ -103,6 +103,31 @@ class ConversationCacheDatabase extends _$ConversationCacheDatabase {
   Future<void> clearCache() async {
     await delete(cachedConversations).go();
   }
+
+  // متد جدید: تماشای تغییرات در مکالمات کش‌شده
+  Stream<List<ConversationModel>> watchCachedConversations() {
+    return (select(cachedConversations)
+          ..orderBy([
+            (t) =>
+                OrderingTerm(expression: t.updatedAt, mode: OrderingMode.desc)
+          ]))
+        .watch()
+        .map((rows) => rows
+            .map((row) => ConversationModel(
+                  id: row.id,
+                  createdAt: row.createdAt,
+                  updatedAt: row.updatedAt,
+                  lastMessage: row.lastMessage,
+                  lastMessageTime: row.lastMessageTime,
+                  otherUserName: row.otherUserName,
+                  otherUserAvatar: row.otherUserAvatar,
+                  otherUserId: row.otherUserId,
+                  hasUnreadMessages: row.hasUnreadMessages,
+                  unreadCount: row.unreadCount,
+                  participants: [], // Participants are not stored in this simple cache table
+                ))
+            .toList());
+  }
 }
 
 LazyDatabase _openConnection() {
@@ -140,7 +165,20 @@ class ConversationCacheService {
   Future<void> clearCache() => _db.clearCache();
 
   Future<void> removeConversation(String conversationId) async {
+    // First, ensure messages related to this conversation are also cleared from message cache if necessary
+    // This might be handled elsewhere or could be added here for completeness.
+    // Example: await MessageCacheService().clearConversationMessages(conversationId);
     await _db.deleteConversation(conversationId);
+  }
+
+  Future<void> updateLastRead(String conversationId, String readTimeIso) async {
+    await (_db.update(_db.cachedConversations)
+          ..where((tbl) => tbl.id.equals(conversationId)))
+        .write(CachedConversationsCompanion(
+      hasUnreadMessages: const Value(false),
+      unreadCount: const Value(0),
+      // updatedAt خیلی مهم نیست اینجا، اختیاری
+    ));
   }
 
   // متد سینک برای گرفتن مکالمه از کش حافظه (Drift) بدون async
@@ -151,6 +189,10 @@ class ConversationCacheService {
     // اگر نیاز به کش حافظه داری، باید آن را اضافه کنی
     return null;
   }
+
+  // اضافه شد: تماشای تغییرات در مکالمات کش‌شده
+  Stream<List<ConversationModel>> watchCachedConversations() =>
+      _db.watchCachedConversations();
 
   // سایر متدهای مورد نیاز را می‌توان اضافه کرد
 }

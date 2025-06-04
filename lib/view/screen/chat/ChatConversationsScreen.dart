@@ -304,19 +304,21 @@ class _ChatConversationsScreenState
   // لیست یکپارچه چت‌ها و کانال‌ها
   Widget _buildUnifiedList(ThemeData theme) {
     // ترکیب داده‌ها از هر دو provider
-    final conversationsAsync = ref.watch(conversationsProvider);
+    // ** تغییر: استفاده از cachedConversationsStreamProvider برای به‌روزرسانی فوری **
+    final conversationsAsync = ref.watch(cachedConversationsStreamProvider);
     final channelsAsync = ref.watch(channelsProvider);
 
     return conversationsAsync.when(
       loading: () => _buildLoadingState(theme),
       error: (error, stack) => _buildErrorState(theme, error.toString()),
-      data: (conversations) {
+      data: (cachedConversations) {
+        // نام متغیر به cachedConversations تغییر کرد
         return channelsAsync.when(
           loading: () => _buildLoadingState(theme),
           error: (error, stack) => _buildErrorState(theme, error.toString()),
           data: (channels) {
-            final unifiedItems =
-                _combineAndFilterItems(conversations, channels);
+            final unifiedItems = _combineAndFilterItems(cachedConversations,
+                channels); // استفاده از cachedConversations
 
             if (unifiedItems.isEmpty) {
               return _buildEmptyState(
@@ -390,11 +392,12 @@ class _ChatConversationsScreenState
   Future<void> _deleteItem(ConversationModel item) async {
     final chatService =
         ref.read(chatServiceProvider); // Changed from context.read
+    final messageNotifier = ref.read(messageNotifierProvider.notifier);
     try {
-      await chatService.deleteConversation(item.id);
-      // برای اطمینان, providerها رو invalidate/refresh کن
-      ref.invalidate(conversationsProvider); // Changed from context.refresh
-      // اگر stream و ... هم داری: (استفاده از ref به جای context)
+      // به جای فراخوانی مستقیم سرویس، از MessageNotifier استفاده می‌کنیم
+      await messageNotifier.deleteConversation(item.id);
+      // Invalidation ها در MessageNotifier.deleteConversation انجام می‌شود
+      // cachedConversationsStreamProvider به طور خودکار با تغییرات کش به‌روز می‌شود
       ref.refresh(conversationsStreamProvider);
       // حتی میتونی بفرستی به صفحه اصلی یا SnackBar نشون بدی
       ScaffoldMessenger.of(context).showSnackBar(
@@ -920,10 +923,15 @@ class _ChatConversationsScreenState
   }
 
   Future<void> _refreshData() async {
-    await Future.wait([
-      ref.refresh(conversationsProvider.future),
-      ref.refresh(channelsProvider.future),
-    ]);
+    // رفرش کردن provider اصلی که از سرور دیتا می‌گیرد
+    // این کار باعث می‌شود ChatService.getConversations فراخوانی شود،
+    // که به نوبه خود کش را آپدیت می‌کند و cachedConversationsStreamProvider تغییرات را نشان می‌دهد.
+    ref.invalidate(conversationsProvider);
+    ref.invalidate(channelsProvider);
+    // نیازی به await مستقیم نیست، UI از طریق stream provider ها آپدیت می‌شود.
+    // یا اگر می‌خواهید منتظر بمانید:
+    // await ref.refresh(conversationsProvider.future);
+    // await ref.refresh(channelsProvider.future);
   }
 
   void _handleMenuAction(String action) {

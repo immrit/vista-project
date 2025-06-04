@@ -161,6 +161,8 @@ class ChatService {
           if (lastMessageQuery != null) {
             json['last_message'] = lastMessageQuery['content'];
             json['last_message_time'] = lastMessageQuery['created_at'];
+            // *** مهم: updated_at خود مکالمه را با زمان آخرین پیام به‌روز کن ***
+            json['updated_at'] = lastMessageQuery['created_at'];
           }
 
           // محاسبه تعداد پیام‌های خوانده‌نشده
@@ -317,6 +319,9 @@ class ChatService {
           .single();
 
       print('✅ پیام با موفقیت ارسال شد');
+
+      // *** اضافه شد: رفرش کردن اطلاعات مکالمه در کش پس از ارسال پیام ***
+      await refreshConversation(conversationId);
 
       // دریافت اطلاعات پروفایل کاربر
       final profileResponse =
@@ -821,12 +826,14 @@ class ChatService {
   // Helper method to get conversation with details
   Future<ConversationModel> _getConversationWithDetails(
       Map<String, dynamic> conversationData, String userId) async {
+    // Create a mutable copy of conversationData to update last_message fields if necessary
+    final updatedConversationData = Map<String, dynamic>.from(conversationData);
     final conversationId = conversationData['id'] as String;
 
     // دریافت شرکت‌کنندگان
     final participantsJson = await _supabase
         .from('conversation_participants')
-        .select('*')
+        .select('*') // Select all fields from conversation_participants
         .eq('conversation_id', conversationId);
 
     final participants =
@@ -834,13 +841,14 @@ class ChatService {
       final participantUserId = participant['user_id'] as String;
       final profileJson = await _supabase
           .from('profiles')
-          .select()
+          .select() // Select all fields from profiles
           .eq('id', participantUserId)
           .maybeSingle();
 
       final updatedParticipant = {...participant};
       if (profileJson != null) {
-        updatedParticipant['profile'] = profileJson;
+        updatedParticipant['profile'] =
+            profileJson; // Nest profile data if needed by fromJson
       }
       return ConversationParticipantModel.fromJson(updatedParticipant);
     }));
@@ -848,29 +856,99 @@ class ChatService {
     // پیدا کردن کاربر دیگر در چت (برای چت دو نفره)
     Map<String, dynamic>? otherParticipantProfile;
     String? otherParticipantUserId;
+    Map<String, dynamic>? otherParticipantProfileData;
 
     for (final pData in participantsJson) {
+      // Iterate over the raw participantsJson
       if (pData['user_id'] != userId) {
-        otherParticipantUserId = pData['user_id'];
-        otherParticipantProfile = await _supabase
-            .from('profiles')
-            .select()
-            .eq('id', otherParticipantUserId!)
-            .maybeSingle();
+        otherParticipantUserId = pData['user_id'] as String?;
+        // Fetch profile for the other user
+        if (otherParticipantUserId != null) {
+          otherParticipantProfileData = await _supabase
+              .from('profiles')
+              .select()
+              .eq('id', otherParticipantUserId)
+              .maybeSingle();
+        }
         break;
       }
     }
 
-    // TODO: Add logic for last_message, last_message_time, hasUnreadMessages, unreadCount
-    // similar to getConversations if needed for a single conversation refresh.
-    // For simplicity, this example focuses on participants and other user details.
+    // آخرین زمان خواندن پیام توسط کاربر فعلی
+    String? myLastRead;
+    for (final participantData in participantsJson) {
+      // Iterate over the raw participantsJson
+      if (participantData['user_id'] == userId) {
+        myLastRead = participantData['last_read_time'] as String?;
+        break;
+      }
+    }
 
-    return ConversationModel.fromJson(conversationData, currentUserId: userId)
+    // دریافت آخرین پیام غیر مخفی (برای last_message and last_message_time)
+    final lastMessageQuery = await _supabase
+        .from('messages')
+        .select('content, created_at')
+        .eq('conversation_id', conversationId)
+        .not(
+            'id',
+            'in',
+            (await _supabase
+                    .from('hidden_messages')
+                    .select('message_id')
+                    .eq('user_id', userId))
+                .map((e) => e['message_id'])
+                .toList())
+        .order('created_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+
+    if (lastMessageQuery != null) {
+      updatedConversationData['last_message'] =
+          lastMessageQuery['content'] as String?;
+      updatedConversationData['last_message_time'] =
+          lastMessageQuery['created_at'] as String?;
+      // *** مهم: updated_at خود مکالمه را با زمان آخرین پیام به‌روز کن ***
+      updatedConversationData['updated_at'] =
+          lastMessageQuery['created_at'] as String?;
+    }
+
+    // محاسبه تعداد پیام‌های خوانده‌نشده
+    int unreadCount = 0;
+    bool hasUnreadMessages = false; // مقدار اولیه
+
+    if (myLastRead != null) {
+      final unreadMessagesRaw = await _supabase
+          .from('messages')
+          .select('id') // فقط آیدی کافیست برای شمارش
+          .eq('conversation_id', conversationId)
+          .gt('created_at', myLastRead)
+          .neq('sender_id', userId); // فقط پیام‌های دیگران
+
+      final hiddenMessages = await _supabase
+          .from('hidden_messages')
+          .select('message_id')
+          .eq('user_id', userId)
+          .eq('conversation_id', conversationId);
+      final hiddenIds =
+          hiddenMessages.map((e) => e['message_id'] as String).toSet();
+
+      unreadCount = unreadMessagesRaw
+          .where((msg) => !hiddenIds.contains(msg['id']))
+          .length;
+    }
+    hasUnreadMessages = unreadCount > 0;
+
+    return ConversationModel.fromJson(updatedConversationData,
+            currentUserId: userId)
         .copyWith(
             participants: participants,
-            otherUserName: otherParticipantProfile?['username'] ?? 'کاربر',
-            otherUserAvatar: otherParticipantProfile?['avatar_url'],
-            otherUserId: otherParticipantUserId);
+            otherUserName:
+                otherParticipantProfileData?['username'] as String? ?? 'کاربر',
+            otherUserAvatar:
+                otherParticipantProfileData?['avatar_url'] as String?,
+            otherUserId: otherParticipantUserId,
+            unreadCount: unreadCount,
+            hasUnreadMessages: hasUnreadMessages);
   }
 
   // حذف تمام پیام‌های یک مکالمه
