@@ -192,7 +192,7 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
       return newReply;
     } catch (e) {
       state = state.copyWith(
-        error: 'خطا در ارسال پاسخ: ${e.toString()}',
+        error: 'مشکلی در ارسال پاسخ پیش آمد. لطفا دوباره تلاش کنید.',
         isLoading: false,
       );
       return null;
@@ -249,7 +249,7 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
       loadingStates.remove(commentId);
 
       state = state.copyWith(
-        error: 'خطا در بارگذاری پاسخ‌ها: ${e.toString()}',
+        error: 'مشکلی در بارگذاری پاسخ‌ها پیش آمد. لطفا دوباره تلاش کنید.',
         loadingReplies: loadingStates,
       );
     }
@@ -368,7 +368,7 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
         isLoading: false,
         isRefreshing: false,
         isLoadingMore: false,
-        error: 'خطا در بارگذاری کامنت‌ها: ${e.toString()}',
+        error: 'مشکلی در بارگذاری کامنت‌ها پیش آمد. لطفا دوباره تلاش کنید.',
       );
     }
   }
@@ -420,7 +420,7 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
-        error: 'خطا در بارگذاری کامنت‌ها: ${e.toString()}',
+        error: 'مشکلی در بارگذاری کامنت‌ها پیش آمد. لطفا دوباره تلاش کنید.',
       );
     }
   }
@@ -456,7 +456,7 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
     } catch (e) {
       state = state.copyWith(
         isAddingComment: false, // Ensure state is reset on failure
-        error: 'خطا در ارسال کامنت: ${e.toString()}',
+        error: 'مشکلی در ارسال کامنت پیش آمد. لطفا دوباره تلاش کنید.',
       );
       return false;
     }
@@ -500,7 +500,7 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
     } catch (e) {
       state = state.copyWith(
         isDeletingComment: false,
-        error: 'خطا در حذف کامنت: ${e.toString()}',
+        error: 'مشکلی در حذف کامنت پیش آمد. لطفا دوباره تلاش کنید.',
       );
       return false;
     }
@@ -593,7 +593,7 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
     } catch (e) {
       state = state.copyWith(
         isUpdatingComment: false,
-        error: 'خطا در ویرایش کامنت: ${e.toString()}',
+        error: 'مشکلی در ویرایش کامنت پیش آمد. لطفا دوباره تلاش کنید.',
       );
       return false;
     }
@@ -637,7 +637,7 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
 
       state = state.copyWith(
         loadingReplies: updatedLoadingReplies,
-        error: 'خطا در بارگذاری پاسخ‌ها: ${e.toString()}',
+        error: 'مشکلی در بارگذاری پاسخ‌ها پیش آمد. لطفا دوباره تلاش کنید.',
       );
     }
   }
@@ -666,7 +666,7 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
-        error: 'خطا در جستجو: ${e.toString()}',
+        error: 'مشکلی در جستجو پیش آمد. لطفا دوباره تلاش کنید.',
       );
     }
   }
@@ -690,7 +690,7 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
       return success;
     } catch (e) {
       state = state.copyWith(
-        error: 'خطا در پین کامنت: ${e.toString()}',
+        error: 'مشکلی در پین کردن کامنت پیش آمد. لطفا دوباره تلاش کنید.',
       );
       return false;
     }
@@ -717,7 +717,8 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
-        error: 'خطا در بارگذاری کامنت‌ها بر اساس تاریخ: ${e.toString()}',
+        error:
+            'مشکلی در بارگذاری کامنت‌ها بر اساس تاریخ پیش آمد. لطفا دوباره تلاش کنید.',
       );
     }
   }
@@ -756,7 +757,7 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
       return await _repository.getCommentThread(commentId);
     } catch (e) {
       state = state.copyWith(
-        error: 'خطا در دریافت thread کامنت: ${e.toString()}',
+        error: 'مشکلی در دریافت اطلاعات کامنت پیش آمد. لطفا دوباره تلاش کنید.',
       );
       return [];
     }

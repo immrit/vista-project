@@ -110,8 +110,12 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
       _cancelReply();
       FocusScope.of(context).unfocus();
     } else {
+      // Get the error message from the provider state
+      final error = ref.read(commentsProvider(widget.postId)).error;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطا در ارسال کامنت')),
+        SnackBar(
+            content:
+                Text(error ?? 'خطا در ارسال کامنت. لطفا دوباره تلاش کنید.')),
       );
     }
   }
@@ -166,7 +170,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
 
   Widget _buildHeader(ThemeData theme) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+      padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 20),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         border: Border(
@@ -194,7 +198,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
             children: [
               Icon(
                 Icons.chat_bubble_outline,
-                color: theme.colorScheme.primary,
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
                 size: 24,
               ),
               const SizedBox(width: 12),
@@ -203,34 +207,12 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'نظرات (${widget.initialCommentsCount})',
+                      'نظرات',
                       style: theme.textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.onSurface.withOpacity(0.6),
                       ),
                     ),
-                    // Consumer(
-                    //   builder: (context, ref, child) {
-                    //     final commentsCount =
-                    //         ref.watch(commentsCountProvider(widget.postId));
-                    //     return commentsCount.when(
-                    //       data: (count) => Text(
-                    //         '$count کامنت',
-                    //         style: theme.textTheme.bodyMedium?.copyWith(
-                    //           color:
-                    //               theme.colorScheme.onSurface.withOpacity(0.6),
-                    //         ),
-                    //       ),
-                    //       loading: () => Text(
-                    //         '${widget.initialCommentsCount} کامنت',
-                    //         style: theme.textTheme.bodyMedium?.copyWith(
-                    //           color:
-                    //               theme.colorScheme.onSurface.withOpacity(0.6),
-                    //         ),
-                    //       ),
-                    //       error: (_, __) => const SizedBox.shrink(),
-                    //     );
-                    //   },
-                    // ),
                   ],
                 ),
               ),
@@ -421,18 +403,28 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
 
             // فیلد ورودی کامنت
             Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // آواتار کاربر
-                CircleAvatar(
-                  radius: 18,
-                  backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
-                  child: Icon(
-                    Icons.person,
-                    size: 20,
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
+                // آواتار کاربر جاری
+                Builder(builder: (context) {
+                  final currentUser = Supabase.instance.client.auth.currentUser;
+                  final avatarUrl =
+                      currentUser?.userMetadata?['avatar_url'] as String?;
+                  return CircleAvatar(
+                    radius: 18,
+                    backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
+                    backgroundImage:
+                        avatarUrl != null ? NetworkImage(avatarUrl) : null,
+                    child: avatarUrl == null
+                        ? Icon(
+                            Icons.person,
+                            size: 20,
+                            color: theme.colorScheme.primary,
+                          )
+                        : null,
+                  );
+                }),
+
                 const SizedBox(width: 12),
 
                 // فیلد متن
@@ -455,6 +447,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
                       focusNode: _commentFocusNode,
                       maxLines: null,
                       textInputAction: TextInputAction.newline,
+                      textDirection: getDirection(_commentController.text),
                       decoration: InputDecoration(
                         hintText: _replyingToCommentId != null
                             ? 'پاسخ خود را بنویسید...'
@@ -686,14 +679,25 @@ class _CommentItemState extends ConsumerState<CommentItem>
   Future<void> _saveEdit() async {
     if (_editController.text.trim().isEmpty) return;
 
-    final result = await ref
-        .read(commentsProvider(widget.postId).notifier)
-        .updateComment(widget.comment.id, _editController.text);
+    final notifier = ref.read(commentsProvider(widget.postId).notifier);
+    final result = await notifier.updateComment(
+      widget.comment.id,
+      _editController.text.trim(),
+      parentCommentId: widget.comment.parentCommentId,
+    );
 
     if (result && mounted) {
       setState(() {
         _isEditing = false;
       });
+    } else if (mounted) {
+      // Show error message
+      final error = ref.read(commentsProvider(widget.postId)).error;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content:
+                Text(error ?? 'خطا در ویرایش کامنت. لطفا دوباره تلاش کنید.')),
+      );
     }
   }
 
@@ -729,6 +733,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
             style: theme.textTheme.bodyLarge?.copyWith(
               color: theme.colorScheme.onSurface,
             ),
+            textDirection: getDirection(_editController.text),
             decoration: InputDecoration(
               hintText: 'ویرایش نظر خود...',
               border: InputBorder.none,
@@ -875,11 +880,14 @@ class _CommentItemState extends ConsumerState<CommentItem>
                         if (_isEditing)
                           _buildEditingField(theme)
                         else
-                          Text(
-                            widget.comment.content,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurface,
-                              height: 1.4,
+                          Directionality(
+                            textDirection: getDirection(widget.comment.content),
+                            child: Text(
+                              widget.comment.content,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurface,
+                                height: 1.4,
+                              ),
                             ),
                           ),
                         const SizedBox(height: 8),
@@ -971,10 +979,26 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                     _startEditing();
                                     break;
                                   case 'delete':
-                                    ref
-                                        .read(commentsProvider(widget.postId)
-                                            .notifier)
-                                        .deleteComment(widget.comment.id);
+                                    final notifier = ref.read(
+                                        commentsProvider(widget.postId)
+                                            .notifier);
+                                    final success =
+                                        await notifier.deleteComment(
+                                      widget.comment.id,
+                                      parentCommentId:
+                                          widget.comment.parentCommentId,
+                                    );
+                                    if (!success && mounted) {
+                                      final error = ref
+                                          .read(commentsProvider(widget.postId))
+                                          .error;
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                            content: Text(error ??
+                                                'خطا در حذف کامنت. لطفا دوباره تلاش کنید.')),
+                                      );
+                                    }
                                     break;
 
                                   case 'report':
@@ -1147,4 +1171,11 @@ void showCommentsBottomSheet2(
       initialCommentsCount: initialCommentsCount,
     ),
   );
+}
+
+// تابع کمکی برای تشخیص راست‌چین یا چپ‌چین بودن متن
+TextDirection getDirection(String text) {
+  // اگر متن شامل کاراکترهای فارسی/عربی باشد، راست‌چین است
+  final rtlRegex = RegExp(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]');
+  return rtlRegex.hasMatch(text) ? TextDirection.rtl : TextDirection.ltr;
 }
