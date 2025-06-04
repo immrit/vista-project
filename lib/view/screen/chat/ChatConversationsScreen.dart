@@ -387,6 +387,26 @@ class _ChatConversationsScreenState
     return filteredItems;
   }
 
+  Future<void> _deleteItem(ConversationModel item) async {
+    final chatService =
+        ref.read(chatServiceProvider); // Changed from context.read
+    try {
+      await chatService.deleteConversation(item.id);
+      // برای اطمینان, providerها رو invalidate/refresh کن
+      ref.invalidate(conversationsProvider); // Changed from context.refresh
+      // اگر stream و ... هم داری: (استفاده از ref به جای context)
+      ref.refresh(conversationsStreamProvider);
+      // حتی میتونی بفرستی به صفحه اصلی یا SnackBar نشون بدی
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("گفتگو با موفقیت حذف شد!")),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("خطا در حذف گفتگو: $e")),
+      );
+    }
+  }
+
   // نمایش آیتم یکپارچه
   Widget _buildUnifiedItem(ThemeData theme, UnifiedChatItem item) {
     return Material(
@@ -1034,7 +1054,15 @@ class _ChatConversationsScreenState
                 isDestructive: true,
                 onTap: () {
                   Navigator.pop(context);
-                  _deleteItem(item);
+                  if (!item.isChannel && item.source is ConversationModel) {
+                    _deleteItem(item.source as ConversationModel);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text(
+                              "این عملیات برای این نوع آیتم پشتیبانی نمی‌شود")),
+                    );
+                  }
                 },
               ),
             ] else ...[
@@ -1213,13 +1241,6 @@ class _ChatConversationsScreenState
     // TODO: Implement archive logic
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('بایگانی شد')),
-    );
-  }
-
-  void _deleteItem(UnifiedChatItem item) {
-    // TODO: Implement delete logic with confirmation
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('حذف شد')),
     );
   }
 

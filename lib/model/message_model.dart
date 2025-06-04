@@ -23,7 +23,7 @@ class MessageModel {
     required this.conversationId,
     required this.senderId,
     required this.content,
-    required this.createdAt,
+    required this.createdAt, // Add this parameter
     this.attachmentUrl,
     this.attachmentType,
     this.isRead = false,
@@ -41,8 +41,9 @@ class MessageModel {
 
   factory MessageModel.fromJson(Map<String, dynamic> json,
       {required String currentUserId}) {
-    String conversationId =
-        json['conversation_id'] ?? json['conversations_id'] ?? '';
+    String conversationId = json['conversation_id'] ??
+        json['conversations_id'] ??
+        ''; // Check this too!
 
     return MessageModel(
       id: json['id'],
@@ -75,6 +76,9 @@ class MessageModel {
     String? replyToSenderName,
     String? senderName,
     String? senderAvatar,
+    DateTime? createdAt,
+    isRead = false,
+    isSent = true,
     int retryCount = 0, // اضافه کنید
   }) {
     return MessageModel(

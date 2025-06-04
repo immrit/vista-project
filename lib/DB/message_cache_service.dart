@@ -241,7 +241,7 @@ MessageModel _fromRow(CachedMessage row) {
     attachmentType: row.attachmentType,
     isRead: row.isRead,
     isSent: row.isSent,
-    senderName: row.senderName,
+    senderName: row.senderName ?? '', // اطمینان از عدم تهی بودن
     senderAvatar: row.senderAvatar,
     isMe: row.isMe,
     replyToMessageId: row.replyToMessageId,
@@ -259,7 +259,7 @@ class MessageCacheService {
   factory MessageCacheService() => _instance;
   MessageCacheService._internal();
 
-  final MessageCacheDatabase _db = MessageCacheDatabase();
+  final MessageCacheDatabase _db = MessageCacheDatabase(); // نمونه دیتابیس
 
   Future<void> cacheMessage(MessageModel message) => _db.cacheMessage(message);
   Future<void> cacheMessages(List<MessageModel> messages) =>

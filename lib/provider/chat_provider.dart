@@ -212,10 +212,14 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
     final currentUser = supabase.auth.currentUser!;
 
     final tempMessage = MessageModel.temporary(
-      tempId: tempId,
+      tempId:
+          tempId, // Ensure a unique temporary ID - consider using UUID package
       conversationId: conversationId,
       senderId: currentUser.id,
       content: content,
+      createdAt: DateTime.now(),
+      isRead: false,
+      isSent: false,
       attachmentUrl: attachmentUrl,
       attachmentType: attachmentType,
       replyToMessageId: replyToMessageId,
@@ -936,6 +940,12 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
   Future<void> _init() async {
     final cached = await _cacheService.getConversationMessages(conversationId);
     state = [...cached];
+    _updateUnreadCount(); // فراخوانی متد جدید
+  }
+
+  // اضافه کردن متد جدید
+  Future<void> _updateUnreadCount() async {
+    // فعلاً خالی می‌ماند. در ادامه تکمیل می‌شود
   }
 
   void addTempMessage(MessageModel message) {
@@ -959,16 +969,25 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
     _cacheService.markMessageAsFailed(conversationId, tempId);
   }
 
-  Future<void> refreshFromServer(ChatService chatService) async {
-    final serverMessages = await chatService.getMessages(conversationId);
-    // حذف پیام‌های temp که پیام واقعی‌شان آمده
-    final serverIds = serverMessages.map((m) => m.id).toSet();
-    final tempMessages = state
-        .where((m) => m.id.startsWith('temp_') && !serverIds.contains(m.id))
-        .toList();
-    state = [...serverMessages, ...tempMessages]
+  // Update unread count for the conversation
+  Future<void> updateConversationUnreadCount() async {
+    final unreadCount = await _cacheService.countUnreadMessages(conversationId);
+    // state = [
+    //   for (final message in state) message.copyWith(unreadCount: unreadCount)
+    // ];
+  }
+
+  @override
+  set state(List<MessageModel> value) {
+    // اطمینان از اینکه پیام‌ها بر اساس createdAt مرتب شده‌اند
+    final sortedList = [...value]
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    await _cacheService.cacheMessages(serverMessages);
+
+    super.state = sortedList;
+    // به‌روزرسانی تعداد پیام‌های خوانده نشده بعد از هر تغییر در لیست
+    Future.microtask(() {
+      //  _updateUnreadCount();
+    });
   }
 }
 

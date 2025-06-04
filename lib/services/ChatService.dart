@@ -23,10 +23,10 @@ class ChatService {
 
   // متغیر static برای نگهداری conversationId فعال و آخرین messageId دیده‌شده
   static String? activeConversationId;
-  static String? lastNotifiedMessageId;
+  // static String? lastNotifiedMessageId;
 
-  // نگهداری لیست پیام‌هایی که نوتیفیکیشن گرفته‌اند (در یک session)
-  static final Set<String> _notifiedMessageIds = {};
+  // // نگهداری لیست پیام‌هایی که نوتیفیکیشن گرفته‌اند (در یک session)
+  // static final Set<String> _notifiedMessageIds = {};
 
 // دریافت تمامی مکالمات کاربر فعلی
   Future<List<ConversationModel>> getConversations() async {
@@ -105,13 +105,18 @@ class ChatService {
           for (final participant in participantsJson) {
             if (participant['user_id'] != userId) {
               otherParticipantData = participant;
+              final otherUserId = participant['user_id']
+                  as String?; // مطمئن شوید که String است و ممکن است null باشد
 
               // دریافت اطلاعات پروفایل کاربر دیگر
-              otherParticipantProfile = await _supabase
-                  .from('profiles')
-                  .select()
-                  .eq('id', participant['user_id'])
-                  .maybeSingle();
+              if (otherUserId != null) {
+                otherParticipantProfile = await _supabase
+                    .from('profiles')
+                    .select()
+                    .eq('id',
+                        otherUserId) // حالا otherUserId از نوع String (غیر تهی) است
+                    .maybeSingle();
+              }
 
               break;
             }
@@ -239,6 +244,33 @@ class ChatService {
     }
   }
 
+  // Renamed to avoid conflict with the other deleteConversation method
+  Future<void> adminDeleteConversation(String conversationId) async {
+    // حذف از Supabase
+    // ۱. اول رکوردهای conversation_participants را حذف کن (تا ارور Constraint نده)
+    await _supabase
+        .from('conversation_participants')
+        .delete()
+        .eq('conversation_id', conversationId);
+
+    // ۲. همه پیام‌های این مکالمه را حذف کن (در صورت نیاز)
+    await _supabase
+        .from('messages')
+        .delete()
+        .eq('conversation_id', conversationId);
+
+    // ۳. در نهایت خود conversation را حذف کن
+    await _supabase.from('conversations').delete().eq('id', conversationId);
+
+    // حذف از کش لوکال Drift
+    await _conversationCache
+        .removeConversation(conversationId); // این مربوط به کش مکالمه است
+
+    // حذف پیام‌های کش‌شده مربوطه هم (در صورت وجود)
+    await _messageCache
+        .clearConversationMessages(conversationId); // استفاده از متد صحیح
+  }
+
   Future<MessageModel> sendMessage({
     required String conversationId,
     required String content,
@@ -291,7 +323,7 @@ class ChatService {
           await _supabase.from('profiles').select().eq('id', userId).single();
 
       return MessageModel.fromJson(response, currentUserId: userId).copyWith(
-        senderName: profileResponse['username'] ?? 'کاربر',
+        senderName: profileResponse['username'] ?? profileResponse['full_name'],
         senderAvatar: profileResponse['avatar_url'],
       );
     } catch (e) {
@@ -451,11 +483,14 @@ class ChatService {
           replyToMessageId: pendingMessage['replyToMessageId'],
           replyToContent: pendingMessage['replyToContent'],
           replyToSenderName: pendingMessage['replyToSenderName'],
+          localId: pendingMessage['temporaryId'] as String?,
         );
 
-        // حذف پیام موقت از کش
-        await _messageCache
-            .clearConversationMessages(pendingMessage['conversationId']);
+        // جایگزینی پیام موقت با پیام واقعی در کش
+        await _messageCache.replaceTempMessage(
+            pendingMessage['conversationId'] as String,
+            pendingMessage['temporaryId'] as String,
+            message);
 
         // حذف از صف
         _pendingMessages.removeWhere(
@@ -786,9 +821,56 @@ class ChatService {
   // Helper method to get conversation with details
   Future<ConversationModel> _getConversationWithDetails(
       Map<String, dynamic> conversationData, String userId) async {
-    // ... کد موجود از متد getConversations برای دریافت جزئیات مکالمه ...
-    // این متد را از بخش مربوطه در getConversations کپی کنید
-    return ConversationModel.fromJson(conversationData, currentUserId: userId);
+    final conversationId = conversationData['id'] as String;
+
+    // دریافت شرکت‌کنندگان
+    final participantsJson = await _supabase
+        .from('conversation_participants')
+        .select('*')
+        .eq('conversation_id', conversationId);
+
+    final participants =
+        await Future.wait(participantsJson.map((participant) async {
+      final participantUserId = participant['user_id'] as String;
+      final profileJson = await _supabase
+          .from('profiles')
+          .select()
+          .eq('id', participantUserId)
+          .maybeSingle();
+
+      final updatedParticipant = {...participant};
+      if (profileJson != null) {
+        updatedParticipant['profile'] = profileJson;
+      }
+      return ConversationParticipantModel.fromJson(updatedParticipant);
+    }));
+
+    // پیدا کردن کاربر دیگر در چت (برای چت دو نفره)
+    Map<String, dynamic>? otherParticipantProfile;
+    String? otherParticipantUserId;
+
+    for (final pData in participantsJson) {
+      if (pData['user_id'] != userId) {
+        otherParticipantUserId = pData['user_id'];
+        otherParticipantProfile = await _supabase
+            .from('profiles')
+            .select()
+            .eq('id', otherParticipantUserId!)
+            .maybeSingle();
+        break;
+      }
+    }
+
+    // TODO: Add logic for last_message, last_message_time, hasUnreadMessages, unreadCount
+    // similar to getConversations if needed for a single conversation refresh.
+    // For simplicity, this example focuses on participants and other user details.
+
+    return ConversationModel.fromJson(conversationData, currentUserId: userId)
+        .copyWith(
+            participants: participants,
+            otherUserName: otherParticipantProfile?['username'] ?? 'کاربر',
+            otherUserAvatar: otherParticipantProfile?['avatar_url'],
+            otherUserId: otherParticipantUserId);
   }
 
   // حذف تمام پیام‌های یک مکالمه
@@ -1004,78 +1086,38 @@ class ChatService {
     // Other updates (like edits, deletes) are handled via stream or separate calls.
   }
 
-  // Helper method to show notification
-  void _showMessageNotification(
-      Map<String, dynamic> messageData, Map<String, dynamic>? senderProfile) {
-    final content = messageData['content'] ?? '';
-    final senderName = senderProfile?['username'] ?? 'کاربر';
-
-    String bodyText = content.isNotEmpty
-        ? content
-        : (messageData['attachment_type'] == 'image'
-            ? 'یک تصویر ارسال شد'
-            : 'پیام جدید');
-
-    if (bodyText.length > 60) {
-      bodyText = bodyText.substring(0, 57) + '...';
-    }
-
-    flutterLocalNotificationsPlugin.show(
-      DateTime.now().millisecondsSinceEpoch % 100000,
-      '$senderName پیام جدید داد',
-      bodyText,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'chat_messages',
-          'پیام‌های چت',
-          channelDescription: 'اعلان پیام‌های جدید چت',
-          importance: Importance.high,
-          priority: Priority.high,
-          icon: '@mipmap/ic_launcher',
-        ),
-      ),
-    );
-  }
-
   // علامت‌گذاری همه پیام‌های یک مکالمه به عنوان خوانده شده
-// علامت‌گذاری مکالمه به عنوان خوانده شده
   Future<void> markConversationAsRead(String conversationId) async {
     try {
       final currentUserId = supabase.auth.currentUser!.id;
 
-      // دریافت پیام‌های نخوانده‌ی مکالمه
-      final unreadMessages = await supabase
-          .from('messages')
-          .select('id')
+      // به‌روزرسانی آخرین زمان خوانده شدن در جدول conversation_participants
+      await _supabase
+          .from('conversation_participants')
+          .update({
+            'last_read_time': DateTime.now().toUtc().toIso8601String(),
+          })
           .eq('conversation_id', conversationId)
-          .eq('is_read', false)
-          .neq('sender_id', currentUserId); // فقط پیام‌هایی که برای من هستند
+          .eq('user_id', currentUserId);
 
-      if (unreadMessages.isEmpty) {
-        print('پیام نخوانده‌ای برای علامت‌گذاری وجود ندارد');
-        return; // اگر پیام نخوانده‌ای نیست، کاری انجام نده
+      // فقط پیام‌های دریافتی را به عنوان خوانده شده در کش علامت‌گذاری کن
+      // این باعث می‌شود پیام‌های ارسال شده توسط کاربر در کش نیز به عنوان خوانده شده ظاهر نشوند
+      final messagesToUpdate = await _messageCache.getConversationMessages(
+        conversationId,
+      );
+
+      for (final message in messagesToUpdate) {
+        if (message.senderId != currentUserId && !message.isRead) {
+          await _messageCache.updateMessageStatus(
+            conversationId,
+            message.id,
+            isRead: true,
+          );
+        }
       }
 
-      print(
-          'در حال علامت‌گذاری ${unreadMessages.length} پیام به عنوان خوانده شده');
-
-      // به‌روزرسانی در سرور
-      await supabase
-          .from('messages')
-          .update({'is_read': true})
-          .eq('conversation_id', conversationId)
-          .eq('is_read', false)
-          .neq('sender_id', currentUserId);
-
-      // به‌روزرسانی در کش محلی برای هر پیام
-      for (final message in unreadMessages) {
-        await _messageCache.updateMessageStatus(conversationId, message['id'],
-            isRead: true);
-        print('پیام ${message['id']} به عنوان خوانده شده علامت‌گذاری شد');
-      }
-
-      print(
-          'تمام پیام‌های مکالمه به عنوان خوانده‌شده علامت‌گذاری شدند: $conversationId');
+      // بروزرسانی فوری لیست مکالمات (برای UI)
+      await refreshConversation(conversationId);
     } catch (e) {
       print('خطا در علامت‌گذاری مکالمه به عنوان خوانده‌شده: $e');
       rethrow;
@@ -1105,29 +1147,60 @@ class ChatService {
   Future<void> deleteConversation(String conversationId) async {
     final userId = _supabase.auth.currentUser!.id;
 
-    // حذف مشارکت کاربر از گفتگو
-    await _supabase
-        .from('conversation_participants')
-        .delete()
-        .eq('conversation_id', conversationId)
-        .eq('user_id', userId);
-
-    // بررسی آیا کاربر دیگری در این گفتگو باقی مانده است
-    final remainingParticipants = await _supabase
-        .from('conversation_participants')
-        .select('id')
-        .eq('conversation_id', conversationId);
-
-    // اگر هیچ شرکت کننده‌ای باقی نمانده، کل گفتگو و پیام‌های آن را حذف کنیم
-    if (remainingParticipants.isEmpty) {
-      // حذف تمام پیام‌های این گفتگو
+    // --- اضافه شد: بررسی وضعیت اتصال به اینترنت ---
+    final isOnline = await isDeviceOnline();
+    if (!isOnline) {
+      throw AppException(
+        userFriendlyMessage:
+            'اتصال به اینترنت برقرار نیست. لطفاً دوباره تلاش کنید.',
+        technicalMessage: 'Cannot delete conversation: Device is offline.',
+      );
+    }
+    // --- پایان اضافه شده ---
+    try {
+      // حذف مشارکت کاربر از گفتگو
       await _supabase
-          .from('messages')
+          .from('conversation_participants')
           .delete()
+          .eq('conversation_id', conversationId)
+          .eq('user_id', userId);
+
+      // بررسی آیا کاربر دیگری در این گفتگو باقی مانده است
+      final remainingParticipants = await _supabase
+          .from('conversation_participants')
+          .select('id')
           .eq('conversation_id', conversationId);
 
-      // حذف خود گفتگو
-      await _supabase.from('conversations').delete().eq('id', conversationId);
+      // اگر هیچ شرکت کننده‌ای باقی نمانده، کل گفتگو و پیام‌های آن را حذف کنیم (از سرور)
+      if (remainingParticipants.isEmpty) {
+        print(
+            'آخرین شرکت‌کننده گفتگو را ترک کرد، حذف کامل گفتگو از سرور: $conversationId');
+        // حذف تمام پیام‌های این گفتگو
+        await _supabase
+            .from('messages')
+            .delete()
+            .eq('conversation_id', conversationId);
+
+        // حذف خود گفتگو
+        await _supabase.from('conversations').delete().eq('id', conversationId);
+      } else {
+        print(
+            'کاربر گفتگو را ترک کرد، شرکت‌کنندگان دیگر باقی مانده‌اند: $conversationId');
+      }
+
+      // --- اضافه شد: حذف از کش لوکال Drift ---
+      // مکالمه و پیام‌های آن را از کش لوکال کاربر فعلی حذف کن
+      await _conversationCache.removeConversation(conversationId);
+      await _messageCache.clearConversationMessages(conversationId);
+      print('گفتگو و پیام‌های آن از کش لوکال حذف شدند: $conversationId');
+      // --- پایان اضافه شده ---
+    } catch (e) {
+      print('خطا در حذف مکالمه (ترک گفتگو): $e');
+      // می‌توانید یک Exception سفارشی پرتاب کنید یا خطا را مدیریت کنید
+      throw AppException(
+        userFriendlyMessage: 'ترک گفتگو با مشکل مواجه شد',
+        technicalMessage: 'Error leaving conversation: $e',
+      );
     }
   }
 

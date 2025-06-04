@@ -14,7 +14,8 @@ class CachedConversations extends Table {
   DateTimeColumn get updatedAt => dateTime()();
   TextColumn get lastMessage => text().nullable()();
   DateTimeColumn get lastMessageTime => dateTime().nullable()();
-  TextColumn get otherUserName => text().nullable()();
+  TextColumn get otherUserName =>
+      text().nullable()(); // اطمینان از وجود این فیلد
   TextColumn get otherUserAvatar => text().nullable()();
   TextColumn get otherUserId => text().nullable()();
   BoolColumn get hasUnreadMessages =>

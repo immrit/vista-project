@@ -20,7 +20,7 @@ class ConversationModel {
     this.lastMessage,
     this.lastMessageTime,
     this.participants = const [],
-    this.otherUserName,
+    this.otherUserName, // اطمینان از وجود این فیلد
     this.otherUserAvatar,
     this.otherUserId,
     this.hasUnreadMessages = false,
