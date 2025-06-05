@@ -83,6 +83,14 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 Future<void> _handleIncomingNotification(RemoteMessage message,
     {bool fromBackground = false}) async {
   final data = message.data;
+  final String? conversationIdFromData = data['conversation_id'];
+
+  // اگر برنامه در پیش‌زمینه است و کاربر دقیقاً همین چت را باز کرده، نوتیفیکیشن نمایش نده
+  if (!fromBackground &&
+      ChatService.activeConversationId != null &&
+      ChatService.activeConversationId == conversationIdFromData) {
+    return;
+  }
   final String? type = data['type'];
   final notification = message.notification;
   String? title;
@@ -91,7 +99,10 @@ Future<void> _handleIncomingNotification(RemoteMessage message,
   if (type == 'chat_message') {
     title = 'پیام جدید از ${data['sender_name'] ?? 'کاربر'}';
     body = data['content'] ?? 'پیام جدید';
-    final conversationId = data['conversation_id'] ?? '';
+    final conversationId = conversationIdFromData ?? '';
+    final int notificationId = conversationId.isNotEmpty
+        ? conversationId.hashCode
+        : DateTime.now().millisecondsSinceEpoch % 100000;
     const AndroidNotificationDetails androidDetails =
         AndroidNotificationDetails('chat_messages', 'پیام‌های چت',
             channelDescription: 'اعلان پیام‌های جدید چت',
@@ -110,7 +121,7 @@ Future<void> _handleIncomingNotification(RemoteMessage message,
         NotificationDetails(android: androidDetails);
 
     await flutterLocalNotificationsPlugin.show(
-      DateTime.now().millisecondsSinceEpoch % 100000,
+      notificationId,
       title,
       body!.length > 60 ? '${body.substring(0, 57)}...' : body,
       notificationDetails,
@@ -329,36 +340,8 @@ void main() async {
 
   // هندل اعلان‌های دریافتی وقتی برنامه باز است (foreground)
   FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-    final type = message.data['type'];
-    // فقط برای اعلان‌های غیر از پیام چت، نوتیفیکیشن لوکال نمایش بده
-    if (type != null && type != 'chat_message') {
-      // اگر notification وجود دارد، از آن استفاده کن (برای نمایش اعلان)
-      if (message.notification != null) {
-        await flutterLocalNotificationsPlugin.show(
-          DateTime.now().millisecondsSinceEpoch % 100000,
-          message.notification!.title ?? 'اعلان',
-          message.notification!.body ?? '',
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
-              'social_notify',
-              'اعلان اجتماعی',
-              channelDescription: 'اعلان‌های اجتماعی (لایک، کامنت و ...)',
-              importance: Importance.high,
-              priority: Priority.high,
-              icon: '@drawable/ic_notification',
-            ),
-          ),
-          payload: message.data['post_id'] ??
-              message.data['comment_id'] ??
-              message.data['parent_comment_id'] ??
-              '',
-        );
-      } else {
-        // اگر notification وجود ندارد، از منطق قبلی استفاده کن
-        await _handleIncomingNotification(message);
-      }
-    }
-    // اگر type == 'chat_message' هیچ نوتیفیکیشن لوکالی نمایش داده نشود
+    // fromBackground: false چون این هندلر برای پیام‌های پیش‌زمینه است
+    await _handleIncomingNotification(message, fromBackground: false);
   });
 
   runApp(
@@ -432,92 +415,8 @@ class _MyAppState extends ConsumerState<MyApp> {
     });
     // _setupProfileCheck();
 
-    // هندلر FCM در فورگراند و بکگراند
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      if (message.data['type'] == 'chat_message') {
-        final senderName = message.data['sender_name'] ?? 'کاربر';
-        final content = message.data['content'] ?? 'پیام جدید';
-        flutterLocalNotificationsPlugin.show(
-          DateTime.now().millisecondsSinceEpoch % 100000,
-          'پیام جدید از $senderName',
-          content.length > 60 ? '${content.substring(0, 57)}...' : content,
-          NotificationDetails(
-            android: AndroidNotificationDetails(
-              'chat_messages',
-              'پیام‌های چت',
-              color: Color(
-                  0xff3a0088), // this is background color for transparent App Icon
-              channelDescription: 'اعلان پیام‌های جدید چت',
-              importance: Importance.high,
-              priority: Priority.high,
-              styleInformation: BigTextStyleInformation(''),
-              icon: '@drawable/ic_notification',
-              actions: <AndroidNotificationAction>[
-                AndroidNotificationAction(
-                  'reply',
-                  'پاسخ',
-                  inputs: [AndroidNotificationActionInput()],
-                  showsUserInterface: true,
-                ),
-              ],
-            ),
-          ),
-          payload: message.data['conversation_id'] ?? '',
-        );
-      }
-      // --- Social notification types ---
-      else if (message.data['type'] == 'like' ||
-          message.data['type'] == 'follow' ||
-          message.data['type'] == 'comment' ||
-          message.data['type'] == 'reply_comment') {
-        final type = message.data['type'];
-        final actor = message.data['actor'] ?? 'کاربر';
-        final postTitle = message.data['post_title'] ?? '';
-        final commentText = message.data['comment_text'] ?? '';
-        String title = '';
-        String body = '';
-
-        switch (type) {
-          case 'like':
-            title = 'لایک جدید';
-            body =
-                '$actor پست شما را پسندید${postTitle.isNotEmpty ? ': $postTitle' : ''}';
-            break;
-          case 'follow':
-            title = 'دنبال‌کننده جدید';
-            body = '$actor شما را دنبال کرد';
-            break;
-          case 'comment':
-            title = 'نظر جدید';
-            body =
-                '$actor برای پست شما نظر گذاشت${commentText.isNotEmpty ? ': $commentText' : ''}';
-            break;
-          case 'reply_comment':
-            title = 'پاسخ به نظر شما';
-            body =
-                '$actor به نظر شما پاسخ داد${commentText.isNotEmpty ? ': $commentText' : ''}';
-            break;
-        }
-
-        flutterLocalNotificationsPlugin.show(
-          DateTime.now().millisecondsSinceEpoch % 100000,
-          title,
-          body,
-          NotificationDetails(
-            android: AndroidNotificationDetails(
-              'social_notifications',
-              'اعلان‌های شبکه اجتماعی',
-              channelDescription:
-                  'اعلان رویدادهای اجتماعی (لایک، دنبال، کامنت)',
-              importance: Importance.high,
-              priority: Priority.high,
-              icon: '@drawable/ic_notification',
-            ),
-          ),
-          payload: message.data['payload'] ?? '',
-        );
-      }
-    });
+    // هندلر FCM در فورگراند قبلاً در main() ست شده است.
+    // اینجا نیازی به onMessage.listen مجدد نیست.
   }
 
   @override

@@ -22,6 +22,7 @@ import '../../../provider/chat_provider.dart';
 import '../../../services/uploadImageChatService.dart';
 import '../../Exeption/app_exceptions.dart';
 import '../../util/time_utils.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../../util/widgets.dart';
 import 'package:flutter/foundation.dart' as foundation;
 import '../../../DB/message_cache_service.dart';
@@ -90,6 +91,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _scrollController.addListener(_handleScrollToBottomBtn);
 
     // علامت‌گذاری پیام‌ها به عنوان خوانده شده هنگام ورود به صفحه
+    // و حذف نوتیفیکیشن‌های مربوط به این مکالمه
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final int notificationId = widget.conversationId.hashCode;
+      flutterLocalNotificationsPlugin.cancel(notificationId);
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final safeHandler = ref.read(safeMessageHandlerProvider);
       safeHandler.markAsRead(widget.conversationId);
