@@ -1022,29 +1022,104 @@ final conversationMessagesProvider = StateNotifierProvider.family
           .stream(primaryKey: ['id'])
           .eq('conversation_id', conversationId)
           .order('created_at', ascending: false)
-          .listen((data) async {
-            // پیام‌های جدید را به MessageModel تبدیل کن
-            final messages = data
-                .map((json) {
-                  return MessageModel.fromJson(json, currentUserId: userId);
-                })
-                // فقط پیام‌های temp را نگه دار اگر senderId == userId (فرستنده فعلی)
-                .where((m) => !m.id.startsWith('temp_') || m.senderId == userId)
-                .toList();
+          .listen((jsonDataList) async {
+            // یک کپی قابل ویرایش از state فعلی ایجاد می‌کنیم
+            var currentMessagesState = List<MessageModel>.from(notifier.state);
+            final List<MessageModel> newMessagesFromOthersToCache = [];
+            bool stateWasModified = false;
 
-            // حذف پیام‌های temp که پیام واقعی‌شان آمده
-            final serverIds = messages.map((m) => m.id).toSet();
-            final tempMessages = notifier.state
-                .where((m) =>
-                    m.id.startsWith('temp_') &&
-                    !serverIds.contains(m.id) &&
-                    m.senderId == userId)
-                .toList();
+            for (final jsonMsg in jsonDataList) {
+              // اطمینان از ارسال currentUserId برای تشخیص صحیح isMe
+              final serverMessage =
+                  MessageModel.fromJson(jsonMsg, currentUserId: userId);
 
-            // بروزرسانی state و کش
-            notifier.state = [...messages, ...tempMessages]
-              ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-            await notifier._cacheService.cacheMessages(messages);
+              // بررسی می‌کنیم آیا سرور local_id را برگردانده است یا خیر
+              // این برای تشخیص پیام‌هایی که توسط همین کلاینت ارسال شده‌اند حیاتی است
+              if (serverMessage.senderId == userId &&
+                  serverMessage.localId != null &&
+                  serverMessage.localId!.isNotEmpty) {
+                // این یک پیام است که توسط کاربر فعلی ارسال شده و از سرور تایید شده است.
+                final tempMessageId =
+                    serverMessage.localId!; // این ID پیام موقت اولیه است.
+
+                // جستجو برای پیام موقت در state فعلی با استفاده از tempMessageId.
+                // پیام موقت ID خود را برابر با tempMessageId دارد.
+                final tempMessageIndex = currentMessagesState.indexWhere(
+                    (m) => m.id == tempMessageId && m.id.startsWith('temp_'));
+
+                if (tempMessageIndex != -1) {
+                  // پیام موقت پیدا شد. آن را با نسخه کامل سروری جایگزین می‌کنیم.
+                  // serverMessage دارای ID نهایی سرور است.
+                  currentMessagesState[tempMessageIndex] = serverMessage;
+                  stateWasModified = true;
+                  // کش را نیز بروزرسانی می‌کنیم: پیام موقت را با پیام واقعی جایگزین می‌کنیم.
+                  await notifier._cacheService.replaceTempMessage(
+                      conversationId, tempMessageId, serverMessage);
+                } else {
+                  // پیام موقت پیدا نشد. این حالت ممکن است رخ دهد اگر:
+                  // 1. متد replaceTempWithReal (پس از ارسال موفق) زودتر اجرا شده باشد.
+                  // 2. این پیام از یک کلاینت دیگر توسط همین کاربر ارسال شده باشد (که localId متفاوتی دارد یا ندارد).
+                  // در این حالت، باید اطمینان حاصل کنیم که پیام سروری (با ID نهایی‌اش) در state وجود دارد.
+                  final serverMessageInStateIndex =
+                      currentMessagesState.indexWhere((m) =>
+                          m.id == serverMessage.id); // جستجو با ID نهایی سرور.
+
+                  if (serverMessageInStateIndex == -1) {
+                    // اگر پیام با ID نهایی سرور در state نبود، آن را اضافه می‌کنیم.
+                    currentMessagesState.add(serverMessage);
+                    stateWasModified = true;
+                    await notifier._cacheService
+                        .cacheMessage(serverMessage); // و در کش ذخیره می‌کنیم.
+                  } else if (currentMessagesState[serverMessageInStateIndex]
+                          .isPending &&
+                      !serverMessage.isPending) {
+                    // اگر پیام موجود در state هنوز pending بود (مثلاً یک تلاش ناموفق قبلی)
+                    // و پیام سرور دیگر pending نیست، آن را بروزرسانی می‌کنیم.
+                    currentMessagesState[serverMessageInStateIndex] =
+                        serverMessage;
+                    stateWasModified = true;
+                    await notifier._cacheService
+                        .cacheMessage(serverMessage); // بروزرسانی کش.
+                  }
+                }
+              } else {
+                // این پیام یا از کاربر دیگری است، یا یک پیام قدیمی از کاربر فعلی بدون localId.
+                final existingMessageIndex = currentMessagesState
+                    .indexWhere((m) => m.id == serverMessage.id);
+
+                if (existingMessageIndex == -1) {
+                  // پیام جدید از کاربر دیگر یا پیام قدیمی که در state نبوده.
+                  currentMessagesState.add(serverMessage);
+                  newMessagesFromOthersToCache
+                      .add(serverMessage); // برای ذخیره دسته‌ای در کش
+                  stateWasModified = true;
+                } else {
+                  // پیام در state موجود است. فقط اگر محتوای آن متفاوت است، بروزرسانی می‌کنیم.
+                  // برای این کار، MessageModel باید operator== را به درستی پیاده‌سازی کرده باشد.
+                  // یا می‌توان فیلدهای خاصی مانند isRead را بررسی کرد.
+                  // فعلاً فرض می‌کنیم اگر ID یکی است و پیام از طرف خودمان نیست، بروز نگه داشته می‌شود.
+                  // اگر نیاز به بروزرسانی دقیق‌تر دارید (مثلاً وضعیت خوانده شدن)، باید اینجا بررسی شود.
+                  if (currentMessagesState[existingMessageIndex] !=
+                      serverMessage) {
+                    // نیاز به پیاده‌سازی صحیح == در MessageModel
+                    currentMessagesState[existingMessageIndex] = serverMessage;
+                    stateWasModified = true;
+                    await notifier._cacheService
+                        .cacheMessage(serverMessage); // بروزرسانی کش
+                  }
+                }
+              }
+            }
+
+            if (stateWasModified) {
+              // setter مربوط به state در ConversationMessagesNotifier لیست را مرتب می‌کند.
+              notifier.state = currentMessagesState;
+            }
+
+            if (newMessagesFromOthersToCache.isNotEmpty) {
+              await notifier._cacheService
+                  .cacheMessages(newMessagesFromOthersToCache);
+            }
           });
 
       ref.onDispose(() {

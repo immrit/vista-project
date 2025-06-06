@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../model/CommentModel.dart';
+import '../screen/PublicPosts/profileScreen.dart';
 
 class CommentsBottomSheet extends ConsumerStatefulWidget {
   final String postId;
@@ -818,19 +819,33 @@ class _CommentItemState extends ConsumerState<CommentItem>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // آواتار
-                  CircleAvatar(
-                    radius: widget.isReply ? 16 : 20,
-                    backgroundImage: widget.comment.avatarUrl != null
-                        ? NetworkImage(widget.comment.avatarUrl!)
-                        : null,
-                    backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
-                    child: widget.comment.avatarUrl == null
-                        ? Icon(
-                            Icons.person,
-                            size: widget.isReply ? 16 : 20,
-                            color: theme.colorScheme.primary,
-                          )
-                        : null,
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ProfileScreen(
+                            userId: widget.comment.userId,
+                            username: widget.comment.username,
+                          ),
+                        ),
+                      );
+                    },
+                    child: CircleAvatar(
+                      radius: widget.isReply ? 16 : 20,
+                      backgroundImage: widget.comment.avatarUrl != null
+                          ? NetworkImage(widget.comment.avatarUrl!)
+                          : null,
+                      backgroundColor:
+                          theme.colorScheme.primary.withOpacity(0.1),
+                      child: widget.comment.avatarUrl == null
+                          ? Icon(
+                              Icons.person,
+                              size: widget.isReply ? 16 : 20,
+                              color: theme.colorScheme.primary,
+                            )
+                          : null,
+                    ),
                   ),
                   const SizedBox(width: 12),
 
@@ -843,13 +858,29 @@ class _CommentItemState extends ConsumerState<CommentItem>
                         Row(
                           children: [
                             Flexible(
-                              child: Text(
-                                '@${widget.comment.username}',
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: theme.colorScheme.onSurface,
+                              // Flexible اکنون فرزند مستقیم Row است
+                              child: GestureDetector(
+                                // GestureDetector فرزند Flexible است
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => ProfileScreen(
+                                        userId: widget.comment.userId,
+                                        username: widget.comment.username,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                child: Text(
+                                  // Text فرزند GestureDetector است
+                                  '${widget.comment.username}',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: theme.colorScheme.onSurface,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                             const SizedBox(width: 4),

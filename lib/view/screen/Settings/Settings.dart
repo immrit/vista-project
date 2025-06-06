@@ -101,27 +101,26 @@ class Settings extends ConsumerWidget {
                       ),
 
                       const SizedBox(height: 24),
-                      const SizedBox(height: 24),
 
                       // فروشگاه ویستا
-                      _buildSectionHeader('ویستا استور', Icons.palette),
-                      Card(
-                        margin: const EdgeInsets.symmetric(vertical: 8.0),
-                        elevation: 2,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child:
-                            ProfileFields('نشان‌های ویژه', Icons.verified, () {
-                          Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (context) =>
-                                      const VerificationBadgeStore()));
-                        }, colorScheme.primary),
-                      ),
+                      // _buildSectionHeader('ویستا استور', Icons.palette),
+                      // Card(
+                      //   margin: const EdgeInsets.symmetric(vertical: 8.0),
+                      //   elevation: 2,
+                      //   shape: RoundedRectangleBorder(
+                      //     borderRadius: BorderRadius.circular(12),
+                      //   ),
+                      //   child:
+                      //       ProfileFields('نشان‌های ویژه', Icons.verified, () {
+                      //     Navigator.push(
+                      //         context,
+                      //         MaterialPageRoute(
+                      //             builder: (context) =>
+                      //                 const VerificationBadgeStore()));
+                      //   }, colorScheme.primary),
+                      // ),
 
-                      const SizedBox(height: 24),
+                      // const SizedBox(height: 24),
 
                       // اضافه کردن بخش جدید - درباره ما
                       _buildSectionHeader('درباره ما', Icons.info_outline),
@@ -789,7 +788,7 @@ class VersionNumber extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Text(
-      '1.2.2+20 :نسخه', // به‌روز‌رسانی این خط با شماره نسخه فعلی برنامه
+      '1.2.3+21 :نسخه', // به‌روز‌رسانی این خط با شماره نسخه فعلی برنامه
       style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
     );
   }
