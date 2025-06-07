@@ -166,6 +166,63 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
     }
   }
 
+  Future<void> togglePinConversation(String conversationId) async {
+    if (_disposed) return;
+    state = const AsyncValue.loading();
+    try {
+      final chatService = ref.read(chatServiceProvider);
+      await chatService.toggleConversationPinLocal(conversationId);
+
+      // Invalidate providers to reflect the change
+      ref.invalidate(
+          conversationsProvider); // Fetches from server then updates cache
+      ref.invalidate(
+          cachedConversationsStreamProvider); // Directly listens to cache
+      ref.invalidate(
+          conversationsStreamProvider); // Listens to supabase + invalidates on message
+
+      state = const AsyncValue.data(null);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+    }
+  }
+
+  Future<void> toggleMuteConversation(String conversationId) async {
+    if (_disposed) return;
+    state = const AsyncValue.loading();
+    try {
+      final chatService = ref.read(chatServiceProvider);
+      await chatService.toggleConversationMute(conversationId);
+
+      // Invalidate providers to reflect the change
+      ref.invalidate(conversationsProvider);
+      ref.invalidate(cachedConversationsStreamProvider);
+      ref.invalidate(conversationsStreamProvider);
+
+      state = const AsyncValue.data(null);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+    }
+  }
+
+  Future<void> toggleArchiveConversation(String conversationId) async {
+    if (_disposed) return;
+    state = const AsyncValue.loading();
+    try {
+      final chatService = ref.read(chatServiceProvider);
+      await chatService.toggleConversationArchive(conversationId);
+
+      // Invalidate providers to reflect the change
+      ref.invalidate(conversationsProvider);
+      ref.invalidate(cachedConversationsStreamProvider);
+      ref.invalidate(conversationsStreamProvider);
+
+      state = const AsyncValue.data(null);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+    }
+  }
+
   // پاکسازی کامل مکالمه
   Future<void> clearConversation(String conversationId,
       {bool bothSides = false}) async {
@@ -232,8 +289,7 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
     final currentUser = supabase.auth.currentUser!;
 
     final tempMessage = MessageModel.temporary(
-      tempId:
-          tempId, // Ensure a unique temporary ID - consider using UUID package
+      tempId: tempId,
       conversationId: conversationId,
       senderId: currentUser.id,
       content: content,
@@ -247,16 +303,26 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
       replyToSenderName: replyToSenderName,
       senderName: currentUser.userMetadata?['username'],
       senderAvatar: currentUser.userMetadata?['avatar_url'],
-      retryCount: 0, // مقدار اولیه
+      retryCount: 0,
     );
 
-    ref
-        .read(conversationMessagesProvider(conversationId).notifier)
-        .addTempMessage(tempMessage);
+    final notifier =
+        ref.read(conversationMessagesProvider(conversationId).notifier);
+    notifier.addTempMessage(tempMessage);
+
+    // فقط اگر آنلاین بود، تیک بلافاصله بخورد
+    final chatService = ref.read(chatServiceProvider);
+    final isOnline = await chatService.isDeviceOnline();
+    if (isOnline) {
+      notifier.replaceTempWithReal(
+        tempMessage.id,
+        tempMessage.copyWith(isSent: true),
+      );
+    }
 
     // تلاش برای ارسال پیام با منطق retry
     unawaited(_trySendWithRetry(
-      tempMessage: tempMessage,
+      tempMessage: tempMessage.copyWith(isSent: isOnline),
       conversationId: conversationId,
       content: content,
       attachmentUrl: attachmentUrl,
@@ -279,6 +345,7 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
     String? replyToSenderName,
     required int retryCount,
   }) async {
+    print('🚀 شروع ارسال پیام به سرور...');
     try {
       final chatService = ref.read(chatServiceProvider);
       final serverMessage = await chatService.sendMessage(
@@ -291,9 +358,11 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
         replyToSenderName: replyToSenderName,
         localId: tempMessage.id,
       );
+      print('✅ پیام از سرور برگشت: ${serverMessage.id}');
       ref
           .read(conversationMessagesProvider(conversationId).notifier)
           .replaceTempWithReal(tempMessage.id, serverMessage);
+      print('🔄 پیام temp با پیام واقعی جایگزین شد');
     } catch (e) {
       if (retryCount < maxRetry - 1) {
         // افزایش شمارنده و تلاش مجدد بعد از کمی تاخیر
@@ -945,10 +1014,60 @@ class ConversationStateNotifier extends StateNotifier<AsyncValue<void>> {
   }
 }
 
+// --- اضافه کنید: StreamProvider برای وضعیت آنلاین بودن دستگاه ---
+final deviceOnlineStatusProvider = StreamProvider<bool>((ref) async* {
+  final chatService = ref.watch(chatServiceProvider);
+  bool lastStatus = await chatService.isDeviceOnline();
+  yield lastStatus;
+  while (true) {
+    await Future.delayed(const Duration(seconds: 3));
+    final isOnline = await chatService.isDeviceOnline();
+    if (isOnline != lastStatus) {
+      lastStatus = isOnline;
+      yield isOnline;
+    }
+  }
+});
+
+// --- اضافه کنید: Provider برای ارسال پیام‌های آفلاین به محض آنلاین شدن ---
+final pendingMessagesSyncProvider = Provider<void>((ref) {
+  final chatService = ref.watch(chatServiceProvider);
+  ref.listen<AsyncValue<bool>>(deviceOnlineStatusProvider, (prev, next) {
+    if (next.value == true) {
+      chatService.sendPendingMessages();
+    }
+  });
+});
+
+// --- اضافه کنید: Provider برای مدیریت وضعیت مکالمات (با قابلیت Refresh) ---
+final conversationRefreshProvider =
+    StateNotifierProvider<ConversationRefreshNotifier, AsyncValue<void>>((ref) {
+  return ConversationRefreshNotifier(ref);
+});
+
+class ConversationRefreshNotifier extends StateNotifier<AsyncValue<void>> {
+  final Ref ref;
+
+  ConversationRefreshNotifier(this.ref) : super(const AsyncValue.data(null));
+
+  Future<void> refreshConversations() async {
+    state = const AsyncValue.loading();
+    try {
+      final chatService = ref.read(chatServiceProvider);
+      await chatService.refreshConversations();
+      state = const AsyncValue.data(null);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+    }
+  }
+}
+
 // --- اضافه کنید: StateNotifier برای پیام‌های هر مکالمه ---
 class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
   final String conversationId;
   final MessageCacheService _cacheService = MessageCacheService();
+  final ConversationCacheService _conversationCache =
+      ConversationCacheService();
 
   ConversationMessagesNotifier(this.conversationId) : super([]) {
     _init();
@@ -957,32 +1076,70 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
   Future<void> _init() async {
     final cached = await _cacheService.getConversationMessages(conversationId);
     state = [...cached];
-    _updateUnreadCount(); // فراخوانی متد جدید
+    _updateUnreadCount();
   }
 
-  // اضافه کردن متد جدید
+  // شمارش دقیق پیام‌های خوانده‌نشده و بروزرسانی کش مکالمه
   Future<void> _updateUnreadCount() async {
-    // فعلاً خالی می‌ماند. در ادامه تکمیل می‌شود
+    final currentUserId = supabase.auth.currentUser?.id;
+    if (currentUserId == null) return;
+
+    // فقط پیام‌هایی که:
+    // - isRead == false
+    // - senderId != currentUserId (یعنی پیام دریافتی)
+    // - پیام مخفی نشده نباشد (در کش پیام‌ها فرض بر این است که پیام‌های مخفی حذف شده‌اند)
+    final unreadCount = state
+        .where((msg) => !msg.isRead && msg.senderId != currentUserId)
+        .length;
+
+    // بروزرسانی کش مکالمه
+    final conversation =
+        await _conversationCache.getConversation(conversationId);
+    if (conversation != null) {
+      final updated = conversation.copyWith(
+        unreadCount: unreadCount,
+        hasUnreadMessages: unreadCount > 0,
+      );
+      await _conversationCache.updateConversation(updated);
+    }
+  }
+
+  // حذف پیام temp که پیام واقعی با localId آمده (برای هر بار set state)
+  List<MessageModel> _filterTempDuplicates(List<MessageModel> messages) {
+    final realLocalIds = messages
+        .where((m) => !m.id.startsWith('temp_') && m.localId != null)
+        .map((m) => m.localId)
+        .toSet();
+    return messages
+        .where(
+            (m) => !(m.id.startsWith('temp_') && realLocalIds.contains(m.id)))
+        .toList();
   }
 
   void addTempMessage(MessageModel message) {
-    state = [message, ...state];
+    final newState = [
+      ...state.where((m) => m.id != message.id && m.localId != message.id),
+      message
+    ];
+    state = _filterTempDuplicates(newState);
     _cacheService.cacheMessage(message);
   }
 
   void replaceTempWithReal(String tempId, MessageModel realMessage) {
-    state = [
-      for (final m in state)
-        if (m.id == tempId) realMessage else m
+    final newState = [
+      ...state.where((m) => m.id != tempId && m.localId != tempId),
+      realMessage
     ];
+    state = _filterTempDuplicates(newState);
     _cacheService.replaceTempMessage(conversationId, tempId, realMessage);
   }
 
   void markTempFailed(String tempId) {
-    state = [
+    final newState = [
       for (final m in state)
         if (m.id == tempId) m.copyWith(isSent: false) else m
     ];
+    state = _filterTempDuplicates(newState);
     _cacheService.markMessageAsFailed(conversationId, tempId);
   }
 
@@ -996,14 +1153,14 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
 
   @override
   set state(List<MessageModel> value) {
-    // اطمینان از اینکه پیام‌ها بر اساس createdAt مرتب شده‌اند
-    final sortedList = [...value]
+    // همیشه قبل از ست کردن state، پیام temp که پیام واقعی‌اش آمده حذف کن
+    final filtered = _filterTempDuplicates(value);
+    // مرتب‌سازی
+    final sortedList = [...filtered]
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
     super.state = sortedList;
-    // به‌روزرسانی تعداد پیام‌های خوانده نشده بعد از هر تغییر در لیست
     Future.microtask(() {
-      //  _updateUnreadCount();
+      _updateUnreadCount();
     });
   }
 }
@@ -1023,64 +1180,29 @@ final conversationMessagesProvider = StateNotifierProvider.family
           .eq('conversation_id', conversationId)
           .order('created_at', ascending: false)
           .listen((jsonDataList) async {
-            // یک کپی قابل ویرایش از state فعلی ایجاد می‌کنیم
             var currentMessagesState = List<MessageModel>.from(notifier.state);
             final List<MessageModel> newMessagesFromOthersToCache = [];
             bool stateWasModified = false;
 
             for (final jsonMsg in jsonDataList) {
-              // اطمینان از ارسال currentUserId برای تشخیص صحیح isMe
               final serverMessage =
                   MessageModel.fromJson(jsonMsg, currentUserId: userId);
 
-              // بررسی می‌کنیم آیا سرور local_id را برگردانده است یا خیر
-              // این برای تشخیص پیام‌هایی که توسط همین کلاینت ارسال شده‌اند حیاتی است
+              // اگر پیام واقعی با localId آمد، پیام temp را حذف کن
               if (serverMessage.senderId == userId &&
                   serverMessage.localId != null &&
                   serverMessage.localId!.isNotEmpty) {
-                // این یک پیام است که توسط کاربر فعلی ارسال شده و از سرور تایید شده است.
-                final tempMessageId =
-                    serverMessage.localId!; // این ID پیام موقت اولیه است.
+                final tempMessageId = serverMessage.localId!;
+                // حذف پیام temp با id یا localId برابر
+                currentMessagesState.removeWhere(
+                    (m) => m.id == tempMessageId || m.localId == tempMessageId);
 
-                // جستجو برای پیام موقت در state فعلی با استفاده از tempMessageId.
-                // پیام موقت ID خود را برابر با tempMessageId دارد.
-                final tempMessageIndex = currentMessagesState.indexWhere(
-                    (m) => m.id == tempMessageId && m.id.startsWith('temp_'));
-
-                if (tempMessageIndex != -1) {
-                  // پیام موقت پیدا شد. آن را با نسخه کامل سروری جایگزین می‌کنیم.
-                  // serverMessage دارای ID نهایی سرور است.
-                  currentMessagesState[tempMessageIndex] = serverMessage;
+                // اگر پیام واقعی در state نیست، اضافه کن
+                if (!currentMessagesState
+                    .any((m) => m.id == serverMessage.id)) {
+                  currentMessagesState.add(serverMessage);
                   stateWasModified = true;
-                  // کش را نیز بروزرسانی می‌کنیم: پیام موقت را با پیام واقعی جایگزین می‌کنیم.
-                  await notifier._cacheService.replaceTempMessage(
-                      conversationId, tempMessageId, serverMessage);
-                } else {
-                  // پیام موقت پیدا نشد. این حالت ممکن است رخ دهد اگر:
-                  // 1. متد replaceTempWithReal (پس از ارسال موفق) زودتر اجرا شده باشد.
-                  // 2. این پیام از یک کلاینت دیگر توسط همین کاربر ارسال شده باشد (که localId متفاوتی دارد یا ندارد).
-                  // در این حالت، باید اطمینان حاصل کنیم که پیام سروری (با ID نهایی‌اش) در state وجود دارد.
-                  final serverMessageInStateIndex =
-                      currentMessagesState.indexWhere((m) =>
-                          m.id == serverMessage.id); // جستجو با ID نهایی سرور.
-
-                  if (serverMessageInStateIndex == -1) {
-                    // اگر پیام با ID نهایی سرور در state نبود، آن را اضافه می‌کنیم.
-                    currentMessagesState.add(serverMessage);
-                    stateWasModified = true;
-                    await notifier._cacheService
-                        .cacheMessage(serverMessage); // و در کش ذخیره می‌کنیم.
-                  } else if (currentMessagesState[serverMessageInStateIndex]
-                          .isPending &&
-                      !serverMessage.isPending) {
-                    // اگر پیام موجود در state هنوز pending بود (مثلاً یک تلاش ناموفق قبلی)
-                    // و پیام سرور دیگر pending نیست، آن را بروزرسانی می‌کنیم.
-                    currentMessagesState[serverMessageInStateIndex] =
-                        serverMessage;
-                    stateWasModified = true;
-                    await notifier._cacheService
-                        .cacheMessage(serverMessage); // بروزرسانی کش.
-                  }
+                  await notifier._cacheService.cacheMessage(serverMessage);
                 }
               } else {
                 // این پیام یا از کاربر دیگری است، یا یک پیام قدیمی از کاربر فعلی بدون localId.
@@ -1088,31 +1210,25 @@ final conversationMessagesProvider = StateNotifierProvider.family
                     .indexWhere((m) => m.id == serverMessage.id);
 
                 if (existingMessageIndex == -1) {
-                  // پیام جدید از کاربر دیگر یا پیام قدیمی که در state نبوده.
                   currentMessagesState.add(serverMessage);
-                  newMessagesFromOthersToCache
-                      .add(serverMessage); // برای ذخیره دسته‌ای در کش
+                  newMessagesFromOthersToCache.add(serverMessage);
                   stateWasModified = true;
                 } else {
-                  // پیام در state موجود است. فقط اگر محتوای آن متفاوت است، بروزرسانی می‌کنیم.
-                  // برای این کار، MessageModel باید operator== را به درستی پیاده‌سازی کرده باشد.
-                  // یا می‌توان فیلدهای خاصی مانند isRead را بررسی کرد.
-                  // فعلاً فرض می‌کنیم اگر ID یکی است و پیام از طرف خودمان نیست، بروز نگه داشته می‌شود.
-                  // اگر نیاز به بروزرسانی دقیق‌تر دارید (مثلاً وضعیت خوانده شدن)، باید اینجا بررسی شود.
                   if (currentMessagesState[existingMessageIndex] !=
                       serverMessage) {
-                    // نیاز به پیاده‌سازی صحیح == در MessageModel
                     currentMessagesState[existingMessageIndex] = serverMessage;
                     stateWasModified = true;
-                    await notifier._cacheService
-                        .cacheMessage(serverMessage); // بروزرسانی کش
+                    await notifier._cacheService.cacheMessage(serverMessage);
                   }
                 }
               }
             }
 
+            // --- مهم: حذف پیام temp که پیام واقعی‌اش آمده ---
+            currentMessagesState =
+                notifier._filterTempDuplicates(currentMessagesState);
+
             if (stateWasModified) {
-              // setter مربوط به state در ConversationMessagesNotifier لیست را مرتب می‌کند.
               notifier.state = currentMessagesState;
             }
 
@@ -1137,4 +1253,39 @@ final cachedConversationsStreamProvider =
   final conversationCache = ConversationCacheService();
   // Make sure ConversationCacheService is a singleton or provided correctly
   return conversationCache.watchCachedConversations();
+});
+
+// Provider برای دریافت و نمایش حجم کش پیام‌ها
+final chatCacheSizeProvider = FutureProvider<String>((ref) async {
+  // final messageCacheService = MessageCacheService(); // برای این مورد نیاز مستقیم نیست
+  int sizeInBytes = -1; // مقدار اولیه برای تشخیص خطا یا عدم وجود فایل
+  String? errorMessage;
+
+  try {
+    final file = await getMessageCacheDbFile(); // استفاده از تابع کمکی
+    if (await file.exists()) {
+      sizeInBytes = await file.length();
+      if (sizeInBytes == 0) {
+        return "خالی"; // اگر فایل وجود دارد ولی خالی است
+      }
+    } else {
+      // اگر فایل اصلاً وجود ندارد (مثلاً اولین اجرا و بدون هیچ پیامی در کش)
+      return "خالی";
+    }
+  } catch (e, stackTrace) {
+    print("❌ خطا در دریافت حجم پایگاه داده کش: $e\n$stackTrace");
+    errorMessage = "خطا در محاسبه";
+    return errorMessage; // برگرداندن پیام خطا برای نمایش در UI
+  }
+
+  // اگر sizeInBytes هنوز -1 است و خطایی هم نداشتیم، یعنی وضعیت نامشخص
+  if (sizeInBytes < 0 && errorMessage == null) return "نامشخص";
+  if (errorMessage != null)
+    return errorMessage; // این خط اضافی است چون بالا return شده
+
+  if (sizeInBytes < 1024)
+    return "$sizeInBytes بایت"; // sizeInBytes اینجا حتما >= 0 است
+  if (sizeInBytes < 1024 * 1024)
+    return "${(sizeInBytes / 1024).toStringAsFixed(2)} کیلوبایت"; // دقت بیشتر
+  return "${(sizeInBytes / (1024 * 1024)).toStringAsFixed(2)} مگابایت"; // دقت بیشتر
 });

@@ -12,6 +12,9 @@ class ConversationModel {
   final String? otherUserId;
   final bool hasUnreadMessages;
   final int unreadCount; // تعداد پیام‌های خوانده‌نشده
+  final bool isPinned;
+  final bool isMuted; // اضافه کردن فیلد isMuted
+  final bool isArchived; // فیلد جدید برای وضعیت بایگانی
 
   ConversationModel({
     required this.id,
@@ -25,6 +28,9 @@ class ConversationModel {
     this.otherUserId,
     this.hasUnreadMessages = false,
     this.unreadCount = 0, // مقدار پیش‌فرض 0 برای جلوگیری از null
+    this.isPinned = false,
+    this.isMuted = false, // مقدار پیش‌فرض برای isMuted
+    this.isArchived = false, // مقدار پیش‌فرض برای بایگانی
   });
 
   factory ConversationModel.fromJson(Map<String, dynamic> json,
@@ -46,6 +52,9 @@ class ConversationModel {
       otherUserId: json['otherUserId'],
       hasUnreadMessages: json['hasUnreadMessages'] ?? false,
       unreadCount: json['unreadCount'] ?? 0, // استفاده از ?? برای مقدار پیش‌فرض
+      isPinned: json['is_pinned'] ?? false,
+      isMuted: json['is_muted'] ?? false, // خواندن isMuted از JSON
+      isArchived: json['is_archived'] ?? false, // خواندن وضعیت بایگانی
     );
   }
 
@@ -62,6 +71,9 @@ class ConversationModel {
       'otherUserId': otherUserId,
       'hasUnreadMessages': hasUnreadMessages,
       'unreadCount': unreadCount,
+      'is_pinned': isPinned,
+      'is_muted': isMuted, // اضافه کردن isMuted به JSON
+      'is_archived': isArchived, // اضافه کردن وضعیت بایگانی به JSON
     };
   }
 
@@ -77,6 +89,9 @@ class ConversationModel {
     String? otherUserId,
     bool? hasUnreadMessages,
     int? unreadCount,
+    bool? isPinned,
+    bool? isMuted, // اضافه کردن پارامتر isMuted
+    bool? isArchived,
   }) {
     return ConversationModel(
       id: id ?? this.id,
@@ -90,6 +105,9 @@ class ConversationModel {
       otherUserId: otherUserId ?? this.otherUserId,
       hasUnreadMessages: hasUnreadMessages ?? this.hasUnreadMessages,
       unreadCount: unreadCount ?? this.unreadCount,
+      isPinned: isPinned ?? this.isPinned,
+      isMuted: isMuted ?? this.isMuted, // استفاده از isMuted
+      isArchived: isArchived ?? this.isArchived,
     );
   }
 
@@ -105,6 +123,9 @@ class ConversationModel {
       lastMessageTime: null,
       hasUnreadMessages: false,
       unreadCount: 0, // اضافه کردن مقدار پیش‌فرض
+      isPinned: false,
+      isMuted: false, // مقدار پیش‌فرض برای isMuted
+      isArchived: false,
     );
   }
 }

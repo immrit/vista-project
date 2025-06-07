@@ -21,6 +21,14 @@ class CachedConversations extends Table {
   BoolColumn get hasUnreadMessages =>
       boolean().withDefault(const Constant(false))();
   IntColumn get unreadCount => integer().withDefault(const Constant(0))();
+  // BoolColumn get isPinned => boolean().withDefault(const Constant(false))(); // Corrected below
+  // BoolColumn get isMuted => boolean().withDefault(const Constant(false))(); // Corrected below
+  // BoolColumn get isArchived => boolean().withDefault(const Constant(false)); // Corrected below
+  @override // اطمینان حاصل کنید که این overrideها معتبر هستند (اگر از کلاسی ارث‌بری می‌کنید)
+  BoolColumn get isPinned => boolean().withDefault(const Constant(false))();
+  BoolColumn get isMuted => boolean().withDefault(const Constant(false))();
+  BoolColumn get isArchived =>
+      boolean().withDefault(const Constant(false))(); // اضافه کردن () در انتها
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -28,9 +36,32 @@ class CachedConversations extends Table {
 @DriftDatabase(tables: [CachedConversations])
 class ConversationCacheDatabase extends _$ConversationCacheDatabase {
   ConversationCacheDatabase() : super(_openConnection());
-  @override
-  int get schemaVersion => 1;
 
+  @override
+  int get schemaVersion => 4; // شماره نسخه را به 4 افزایش دهید
+
+  @override
+  MigrationStrategy get migration {
+    return MigrationStrategy(
+      onCreate: (m) => m.createAll(),
+      onUpgrade: (m, from, to) async {
+        if (from < 2) {
+          // اگر از نسخه 1 به 2 یا بالاتر می‌رویم
+          await m.addColumn(cachedConversations, cachedConversations.isPinned);
+        }
+        if (from < 3) {
+          // اگر از نسخه 2 یا 1 به 3 یا بالاتر می‌رویم
+          await m.addColumn(cachedConversations, cachedConversations.isMuted);
+        }
+        if (from < 4) {
+          await m.addColumn(
+              cachedConversations, cachedConversations.isArchived);
+        }
+      },
+    );
+  }
+
+  @override
   Future<void> cacheConversation(ConversationModel conversation) async {
     await into(cachedConversations).insertOnConflictUpdate(
       CachedConversationsCompanion(
@@ -44,6 +75,9 @@ class ConversationCacheDatabase extends _$ConversationCacheDatabase {
         otherUserId: Value(conversation.otherUserId),
         hasUnreadMessages: Value(conversation.hasUnreadMessages),
         unreadCount: Value(conversation.unreadCount),
+        isPinned: Value(conversation.isPinned),
+        isMuted: Value(conversation.isMuted), // ذخیره وضعیت بی‌صدا
+        isArchived: Value(conversation.isArchived), // ذخیره وضعیت بایگانی
       ),
     );
   }
@@ -68,6 +102,9 @@ class ConversationCacheDatabase extends _$ConversationCacheDatabase {
               otherUserId: row.otherUserId,
               hasUnreadMessages: row.hasUnreadMessages,
               unreadCount: row.unreadCount,
+              isPinned: row.isPinned,
+              isMuted: row.isMuted, // خواندن وضعیت بی‌صدا
+              isArchived: row.isArchived, // خواندن وضعیت بایگانی
               participants: [],
             ))
         .toList();
@@ -95,6 +132,9 @@ class ConversationCacheDatabase extends _$ConversationCacheDatabase {
       otherUserId: row.otherUserId,
       hasUnreadMessages: row.hasUnreadMessages,
       unreadCount: row.unreadCount,
+      isPinned: row.isPinned,
+      isMuted: row.isMuted, // خواندن وضعیت بی‌صدا
+      isArchived: row.isArchived, // خواندن وضعیت بایگانی
       participants: [],
     );
   }
@@ -124,9 +164,39 @@ class ConversationCacheDatabase extends _$ConversationCacheDatabase {
                   otherUserId: row.otherUserId,
                   hasUnreadMessages: row.hasUnreadMessages,
                   unreadCount: row.unreadCount,
+                  isPinned: row.isPinned,
+                  isMuted: row.isMuted, // خواندن وضعیت بی‌صدا
+                  isArchived: row.isArchived, // خواندن وضعیت بایگانی
                   participants: [], // Participants are not stored in this simple cache table
                 ))
             .toList());
+  }
+
+  // متد جدید برای تغییر وضعیت سنجاق
+  Future<void> setPinStatus(String conversationId, bool isPinned) async {
+    await (update(cachedConversations)
+          ..where((tbl) => tbl.id.equals(conversationId)))
+        .write(
+      CachedConversationsCompanion(isPinned: Value(isPinned)),
+    );
+  }
+
+  // متد جدید برای تغییر وضعیت بی‌صدا
+  Future<void> setMuteStatus(String conversationId, bool isMuted) async {
+    await (update(cachedConversations)
+          ..where((tbl) => tbl.id.equals(conversationId)))
+        .write(
+      CachedConversationsCompanion(isMuted: Value(isMuted)),
+    );
+  }
+
+  // متد جدید برای تغییر وضعیت بایگانی
+  Future<void> setArchiveStatus(String conversationId, bool isArchived) async {
+    await (update(cachedConversations)
+          ..where((tbl) => tbl.id.equals(conversationId)))
+        .write(
+      CachedConversationsCompanion(isArchived: Value(isArchived)),
+    );
   }
 }
 
@@ -193,6 +263,15 @@ class ConversationCacheService {
   // اضافه شد: تماشای تغییرات در مکالمات کش‌شده
   Stream<List<ConversationModel>> watchCachedConversations() =>
       _db.watchCachedConversations();
+
+  Future<void> setPinStatus(String conversationId, bool isPinned) =>
+      _db.setPinStatus(conversationId, isPinned);
+
+  Future<void> setMuteStatus(String conversationId, bool isMuted) =>
+      _db.setMuteStatus(conversationId, isMuted);
+
+  Future<void> setArchiveStatus(String conversationId, bool isArchived) =>
+      _db.setArchiveStatus(conversationId, isArchived);
 
   // سایر متدهای مورد نیاز را می‌توان اضافه کرد
 }

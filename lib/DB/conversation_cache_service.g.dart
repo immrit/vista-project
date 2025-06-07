@@ -74,6 +74,36 @@ class $CachedConversationsTable extends CachedConversations
       type: DriftSqlType.int,
       requiredDuringInsert: false,
       defaultValue: const Constant(0));
+  static const VerificationMeta _isPinnedMeta =
+      const VerificationMeta('isPinned');
+  @override
+  late final GeneratedColumn<bool> isPinned = GeneratedColumn<bool>(
+      'is_pinned', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_pinned" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  static const VerificationMeta _isMutedMeta =
+      const VerificationMeta('isMuted');
+  @override
+  late final GeneratedColumn<bool> isMuted = GeneratedColumn<bool>(
+      'is_muted', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_muted" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  static const VerificationMeta _isArchivedMeta =
+      const VerificationMeta('isArchived');
+  @override
+  late final GeneratedColumn<bool> isArchived = GeneratedColumn<bool>(
+      'is_archived', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_archived" IN (0, 1))'),
+      defaultValue: const Constant(false));
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -85,7 +115,10 @@ class $CachedConversationsTable extends CachedConversations
         otherUserAvatar,
         otherUserId,
         hasUnreadMessages,
-        unreadCount
+        unreadCount,
+        isPinned,
+        isMuted,
+        isArchived
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -156,6 +189,20 @@ class $CachedConversationsTable extends CachedConversations
           unreadCount.isAcceptableOrUnknown(
               data['unread_count']!, _unreadCountMeta));
     }
+    if (data.containsKey('is_pinned')) {
+      context.handle(_isPinnedMeta,
+          isPinned.isAcceptableOrUnknown(data['is_pinned']!, _isPinnedMeta));
+    }
+    if (data.containsKey('is_muted')) {
+      context.handle(_isMutedMeta,
+          isMuted.isAcceptableOrUnknown(data['is_muted']!, _isMutedMeta));
+    }
+    if (data.containsKey('is_archived')) {
+      context.handle(
+          _isArchivedMeta,
+          isArchived.isAcceptableOrUnknown(
+              data['is_archived']!, _isArchivedMeta));
+    }
     return context;
   }
 
@@ -185,6 +232,12 @@ class $CachedConversationsTable extends CachedConversations
           DriftSqlType.bool, data['${effectivePrefix}has_unread_messages'])!,
       unreadCount: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}unread_count'])!,
+      isPinned: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_pinned'])!,
+      isMuted: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_muted'])!,
+      isArchived: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_archived'])!,
     );
   }
 
@@ -206,6 +259,9 @@ class CachedConversation extends DataClass
   final String? otherUserId;
   final bool hasUnreadMessages;
   final int unreadCount;
+  final bool isPinned;
+  final bool isMuted;
+  final bool isArchived;
   const CachedConversation(
       {required this.id,
       required this.createdAt,
@@ -216,7 +272,10 @@ class CachedConversation extends DataClass
       this.otherUserAvatar,
       this.otherUserId,
       required this.hasUnreadMessages,
-      required this.unreadCount});
+      required this.unreadCount,
+      required this.isPinned,
+      required this.isMuted,
+      required this.isArchived});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -240,6 +299,9 @@ class CachedConversation extends DataClass
     }
     map['has_unread_messages'] = Variable<bool>(hasUnreadMessages);
     map['unread_count'] = Variable<int>(unreadCount);
+    map['is_pinned'] = Variable<bool>(isPinned);
+    map['is_muted'] = Variable<bool>(isMuted);
+    map['is_archived'] = Variable<bool>(isArchived);
     return map;
   }
 
@@ -265,6 +327,9 @@ class CachedConversation extends DataClass
           : Value(otherUserId),
       hasUnreadMessages: Value(hasUnreadMessages),
       unreadCount: Value(unreadCount),
+      isPinned: Value(isPinned),
+      isMuted: Value(isMuted),
+      isArchived: Value(isArchived),
     );
   }
 
@@ -282,6 +347,9 @@ class CachedConversation extends DataClass
       otherUserId: serializer.fromJson<String?>(json['otherUserId']),
       hasUnreadMessages: serializer.fromJson<bool>(json['hasUnreadMessages']),
       unreadCount: serializer.fromJson<int>(json['unreadCount']),
+      isPinned: serializer.fromJson<bool>(json['isPinned']),
+      isMuted: serializer.fromJson<bool>(json['isMuted']),
+      isArchived: serializer.fromJson<bool>(json['isArchived']),
     );
   }
   @override
@@ -298,6 +366,9 @@ class CachedConversation extends DataClass
       'otherUserId': serializer.toJson<String?>(otherUserId),
       'hasUnreadMessages': serializer.toJson<bool>(hasUnreadMessages),
       'unreadCount': serializer.toJson<int>(unreadCount),
+      'isPinned': serializer.toJson<bool>(isPinned),
+      'isMuted': serializer.toJson<bool>(isMuted),
+      'isArchived': serializer.toJson<bool>(isArchived),
     };
   }
 
@@ -311,7 +382,10 @@ class CachedConversation extends DataClass
           Value<String?> otherUserAvatar = const Value.absent(),
           Value<String?> otherUserId = const Value.absent(),
           bool? hasUnreadMessages,
-          int? unreadCount}) =>
+          int? unreadCount,
+          bool? isPinned,
+          bool? isMuted,
+          bool? isArchived}) =>
       CachedConversation(
         id: id ?? this.id,
         createdAt: createdAt ?? this.createdAt,
@@ -328,6 +402,9 @@ class CachedConversation extends DataClass
         otherUserId: otherUserId.present ? otherUserId.value : this.otherUserId,
         hasUnreadMessages: hasUnreadMessages ?? this.hasUnreadMessages,
         unreadCount: unreadCount ?? this.unreadCount,
+        isPinned: isPinned ?? this.isPinned,
+        isMuted: isMuted ?? this.isMuted,
+        isArchived: isArchived ?? this.isArchived,
       );
   CachedConversation copyWithCompanion(CachedConversationsCompanion data) {
     return CachedConversation(
@@ -352,6 +429,10 @@ class CachedConversation extends DataClass
           : this.hasUnreadMessages,
       unreadCount:
           data.unreadCount.present ? data.unreadCount.value : this.unreadCount,
+      isPinned: data.isPinned.present ? data.isPinned.value : this.isPinned,
+      isMuted: data.isMuted.present ? data.isMuted.value : this.isMuted,
+      isArchived:
+          data.isArchived.present ? data.isArchived.value : this.isArchived,
     );
   }
 
@@ -367,7 +448,10 @@ class CachedConversation extends DataClass
           ..write('otherUserAvatar: $otherUserAvatar, ')
           ..write('otherUserId: $otherUserId, ')
           ..write('hasUnreadMessages: $hasUnreadMessages, ')
-          ..write('unreadCount: $unreadCount')
+          ..write('unreadCount: $unreadCount, ')
+          ..write('isPinned: $isPinned, ')
+          ..write('isMuted: $isMuted, ')
+          ..write('isArchived: $isArchived')
           ..write(')'))
         .toString();
   }
@@ -383,7 +467,10 @@ class CachedConversation extends DataClass
       otherUserAvatar,
       otherUserId,
       hasUnreadMessages,
-      unreadCount);
+      unreadCount,
+      isPinned,
+      isMuted,
+      isArchived);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -397,7 +484,10 @@ class CachedConversation extends DataClass
           other.otherUserAvatar == this.otherUserAvatar &&
           other.otherUserId == this.otherUserId &&
           other.hasUnreadMessages == this.hasUnreadMessages &&
-          other.unreadCount == this.unreadCount);
+          other.unreadCount == this.unreadCount &&
+          other.isPinned == this.isPinned &&
+          other.isMuted == this.isMuted &&
+          other.isArchived == this.isArchived);
 }
 
 class CachedConversationsCompanion extends UpdateCompanion<CachedConversation> {
@@ -411,6 +501,9 @@ class CachedConversationsCompanion extends UpdateCompanion<CachedConversation> {
   final Value<String?> otherUserId;
   final Value<bool> hasUnreadMessages;
   final Value<int> unreadCount;
+  final Value<bool> isPinned;
+  final Value<bool> isMuted;
+  final Value<bool> isArchived;
   final Value<int> rowid;
   const CachedConversationsCompanion({
     this.id = const Value.absent(),
@@ -423,6 +516,9 @@ class CachedConversationsCompanion extends UpdateCompanion<CachedConversation> {
     this.otherUserId = const Value.absent(),
     this.hasUnreadMessages = const Value.absent(),
     this.unreadCount = const Value.absent(),
+    this.isPinned = const Value.absent(),
+    this.isMuted = const Value.absent(),
+    this.isArchived = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CachedConversationsCompanion.insert({
@@ -436,6 +532,9 @@ class CachedConversationsCompanion extends UpdateCompanion<CachedConversation> {
     this.otherUserId = const Value.absent(),
     this.hasUnreadMessages = const Value.absent(),
     this.unreadCount = const Value.absent(),
+    this.isPinned = const Value.absent(),
+    this.isMuted = const Value.absent(),
+    this.isArchived = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         createdAt = Value(createdAt),
@@ -451,6 +550,9 @@ class CachedConversationsCompanion extends UpdateCompanion<CachedConversation> {
     Expression<String>? otherUserId,
     Expression<bool>? hasUnreadMessages,
     Expression<int>? unreadCount,
+    Expression<bool>? isPinned,
+    Expression<bool>? isMuted,
+    Expression<bool>? isArchived,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -464,6 +566,9 @@ class CachedConversationsCompanion extends UpdateCompanion<CachedConversation> {
       if (otherUserId != null) 'other_user_id': otherUserId,
       if (hasUnreadMessages != null) 'has_unread_messages': hasUnreadMessages,
       if (unreadCount != null) 'unread_count': unreadCount,
+      if (isPinned != null) 'is_pinned': isPinned,
+      if (isMuted != null) 'is_muted': isMuted,
+      if (isArchived != null) 'is_archived': isArchived,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -479,6 +584,9 @@ class CachedConversationsCompanion extends UpdateCompanion<CachedConversation> {
       Value<String?>? otherUserId,
       Value<bool>? hasUnreadMessages,
       Value<int>? unreadCount,
+      Value<bool>? isPinned,
+      Value<bool>? isMuted,
+      Value<bool>? isArchived,
       Value<int>? rowid}) {
     return CachedConversationsCompanion(
       id: id ?? this.id,
@@ -491,6 +599,9 @@ class CachedConversationsCompanion extends UpdateCompanion<CachedConversation> {
       otherUserId: otherUserId ?? this.otherUserId,
       hasUnreadMessages: hasUnreadMessages ?? this.hasUnreadMessages,
       unreadCount: unreadCount ?? this.unreadCount,
+      isPinned: isPinned ?? this.isPinned,
+      isMuted: isMuted ?? this.isMuted,
+      isArchived: isArchived ?? this.isArchived,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -528,6 +639,15 @@ class CachedConversationsCompanion extends UpdateCompanion<CachedConversation> {
     if (unreadCount.present) {
       map['unread_count'] = Variable<int>(unreadCount.value);
     }
+    if (isPinned.present) {
+      map['is_pinned'] = Variable<bool>(isPinned.value);
+    }
+    if (isMuted.present) {
+      map['is_muted'] = Variable<bool>(isMuted.value);
+    }
+    if (isArchived.present) {
+      map['is_archived'] = Variable<bool>(isArchived.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -547,6 +667,9 @@ class CachedConversationsCompanion extends UpdateCompanion<CachedConversation> {
           ..write('otherUserId: $otherUserId, ')
           ..write('hasUnreadMessages: $hasUnreadMessages, ')
           ..write('unreadCount: $unreadCount, ')
+          ..write('isPinned: $isPinned, ')
+          ..write('isMuted: $isMuted, ')
+          ..write('isArchived: $isArchived, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -578,6 +701,9 @@ typedef $$CachedConversationsTableCreateCompanionBuilder
   Value<String?> otherUserId,
   Value<bool> hasUnreadMessages,
   Value<int> unreadCount,
+  Value<bool> isPinned,
+  Value<bool> isMuted,
+  Value<bool> isArchived,
   Value<int> rowid,
 });
 typedef $$CachedConversationsTableUpdateCompanionBuilder
@@ -592,6 +718,9 @@ typedef $$CachedConversationsTableUpdateCompanionBuilder
   Value<String?> otherUserId,
   Value<bool> hasUnreadMessages,
   Value<int> unreadCount,
+  Value<bool> isPinned,
+  Value<bool> isMuted,
+  Value<bool> isArchived,
   Value<int> rowid,
 });
 
@@ -636,6 +765,15 @@ class $$CachedConversationsTableFilterComposer
 
   ColumnFilters<int> get unreadCount => $composableBuilder(
       column: $table.unreadCount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isPinned => $composableBuilder(
+      column: $table.isPinned, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isMuted => $composableBuilder(
+      column: $table.isMuted, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isArchived => $composableBuilder(
+      column: $table.isArchived, builder: (column) => ColumnFilters(column));
 }
 
 class $$CachedConversationsTableOrderingComposer
@@ -680,6 +818,15 @@ class $$CachedConversationsTableOrderingComposer
 
   ColumnOrderings<int> get unreadCount => $composableBuilder(
       column: $table.unreadCount, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get isPinned => $composableBuilder(
+      column: $table.isPinned, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get isMuted => $composableBuilder(
+      column: $table.isMuted, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get isArchived => $composableBuilder(
+      column: $table.isArchived, builder: (column) => ColumnOrderings(column));
 }
 
 class $$CachedConversationsTableAnnotationComposer
@@ -720,6 +867,15 @@ class $$CachedConversationsTableAnnotationComposer
 
   GeneratedColumn<int> get unreadCount => $composableBuilder(
       column: $table.unreadCount, builder: (column) => column);
+
+  GeneratedColumn<bool> get isPinned =>
+      $composableBuilder(column: $table.isPinned, builder: (column) => column);
+
+  GeneratedColumn<bool> get isMuted =>
+      $composableBuilder(column: $table.isMuted, builder: (column) => column);
+
+  GeneratedColumn<bool> get isArchived => $composableBuilder(
+      column: $table.isArchived, builder: (column) => column);
 }
 
 class $$CachedConversationsTableTableManager extends RootTableManager<
@@ -762,6 +918,9 @@ class $$CachedConversationsTableTableManager extends RootTableManager<
             Value<String?> otherUserId = const Value.absent(),
             Value<bool> hasUnreadMessages = const Value.absent(),
             Value<int> unreadCount = const Value.absent(),
+            Value<bool> isPinned = const Value.absent(),
+            Value<bool> isMuted = const Value.absent(),
+            Value<bool> isArchived = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               CachedConversationsCompanion(
@@ -775,6 +934,9 @@ class $$CachedConversationsTableTableManager extends RootTableManager<
             otherUserId: otherUserId,
             hasUnreadMessages: hasUnreadMessages,
             unreadCount: unreadCount,
+            isPinned: isPinned,
+            isMuted: isMuted,
+            isArchived: isArchived,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -788,6 +950,9 @@ class $$CachedConversationsTableTableManager extends RootTableManager<
             Value<String?> otherUserId = const Value.absent(),
             Value<bool> hasUnreadMessages = const Value.absent(),
             Value<int> unreadCount = const Value.absent(),
+            Value<bool> isPinned = const Value.absent(),
+            Value<bool> isMuted = const Value.absent(),
+            Value<bool> isArchived = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               CachedConversationsCompanion.insert(
@@ -801,6 +966,9 @@ class $$CachedConversationsTableTableManager extends RootTableManager<
             otherUserId: otherUserId,
             hasUnreadMessages: hasUnreadMessages,
             unreadCount: unreadCount,
+            isPinned: isPinned,
+            isMuted: isMuted,
+            isArchived: isArchived,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0

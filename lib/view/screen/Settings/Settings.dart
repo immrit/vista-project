@@ -1,3 +1,4 @@
+import 'package:Vista/view/util/const.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -787,8 +788,8 @@ class VersionNumber extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Text(
-      '1.2.3+21 :نسخه', // به‌روز‌رسانی این خط با شماره نسخه فعلی برنامه
+    return Text(
+      '1.2.4+22 :نسخه', // به‌روز‌رسانی این خط با شماره نسخه فعلی برنامه
       style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
     );
   }

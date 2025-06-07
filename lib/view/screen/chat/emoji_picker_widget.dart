@@ -17,7 +17,7 @@ class EmojiPickerWidget extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Material(
-      color: isDark ? Colors.grey[900] : Colors.grey[50],
+      color: isDark ? const Color(0xFF121212) : Colors.white, // پس‌زمینه اصلی
       child: EmojiPicker(
         onEmojiSelected: (category, emoji) => onEmojiSelected(emoji.emoji),
         onBackspacePressed: onBackspacePressed,

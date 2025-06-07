@@ -121,6 +121,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     // پیش‌لود کش برای عملکرد سریع‌تر
     _preloadCache();
+
+    // فعال‌سازی مکانیزم ارسال پیام‌های آفلاین به محض آنلاین شدن
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(pendingMessagesSyncProvider);
+    });
   }
 
   Future<void> _preloadCache() async {
@@ -321,8 +326,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final tempImageName = _selectedImageName;
     final tempReplyMessage = _replyToMessage;
 
-    // پاک کردن فوری فیلدها
     setState(() {
+      _isSending = true; // اضافه کنید
       _messageController.clear();
       _selectedImage = null;
       _selectedImageBytes = null;
@@ -343,8 +348,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             replyToContent: tempReplyMessage?.content,
             replyToSenderName: tempReplyMessage?.senderName,
           );
+      if (mounted) {
+        setState(() {
+          _isSending = false; // اضافه کنید
+        });
+      }
     } catch (e) {
       if (mounted) {
+        setState(() {
+          _isSending = false; // اضافه کنید
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('خطا در ارسال پیام: $e')),
         );
@@ -589,7 +602,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   color: isLightMode ? Colors.black87 : Colors.white,
                 ),
                 maxLines: 3,
-              ),
+              )
             ],
           ),
           actions: [
@@ -1173,17 +1186,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               tooltip: 'پاکسازی تاریخچه گفتگو',
               onPressed: () => _showClearConversationDialog(context),
             ),
-            IconButton(
-              icon: Icon(Icons.delete_forever),
-              tooltip: 'حذف پیام‌های قدیمی',
-              onPressed: () async {
-                final oneMonthAgo = DateTime.now().subtract(Duration(days: 30));
-                await ref.read(deleteOldMessagesProvider(oneMonthAgo).future);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('پیام‌های قدیمی حذف شدند')),
-                );
-              },
-            ),
             PopupMenuButton<String>(
               icon: Icon(Icons.more_vert),
               tooltip: 'گزینه‌های بیشتر',
@@ -1260,58 +1262,56 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             Column(
               children: [
                 Expanded(
-                  child: ref
-                          .watch(conversationMessagesProvider(
-                              widget.conversationId))
-                          .isEmpty
-                      ? const Center(
-                          child: Text(
-                              'پیامی وجود ندارد. اولین پیام را ارسال کنید!'))
-                      : ListView.builder(
-                          controller: _scrollController,
-                          reverse: true,
-                          itemCount: ref
-                              .watch(conversationMessagesProvider(
-                                  widget.conversationId))
-                              .length,
-                          itemBuilder: (context, index) {
-                            final message = ref.watch(
-                                conversationMessagesProvider(
-                                    widget.conversationId))[index];
-                            final isMe = message.senderId ==
-                                supabase.auth.currentUser?.id;
-                            // جداکننده تاریخ
-                            bool showDateDivider = false;
-                            final msgDate = DateTime(message.createdAt.year,
-                                message.createdAt.month, message.createdAt.day);
+                  child: Builder(
+                    builder: (context) {
+                      final messages = ref.watch(
+                          conversationMessagesProvider(widget.conversationId));
+                      if (messages.isEmpty) {
+                        return const Center(
+                            child: Text(
+                                'پیامی وجود ندارد. اولین پیام را ارسال کنید!'));
+                      }
+                      // Filter out temporary messages replaced by real ones
+                      final realLocalIds = messages
+                          .where((m) =>
+                              !m.id.startsWith('temp_') && m.localId != null)
+                          .map((m) => m.localId)
+                          .toSet();
+                      final filteredMessages = messages.where((m) {
+                        if (m.id.startsWith('temp_') &&
+                            realLocalIds.contains(m.id)) return false;
+                        return true;
+                      }).toList();
 
-                            // اگر این پیام اولین پیام از یک روز است (در لیست معکوس)
-                            if (index ==
-                                ref
-                                        .watch(conversationMessagesProvider(
-                                            widget.conversationId))
-                                        .length -
-                                    1) {
+                      return ListView.builder(
+                        controller: _scrollController,
+                        reverse: true,
+                        itemCount: filteredMessages.length,
+                        itemBuilder: (context, index) {
+                          final message = filteredMessages[index];
+                          final isMe =
+                              message.senderId == supabase.auth.currentUser?.id;
+                          bool showDateDivider = false;
+                          if (index == filteredMessages.length - 1) {
+                            showDateDivider = true;
+                          } else {
+                            final prevMsg = filteredMessages[index + 1];
+                            if (!_isSameDay(
+                                message.createdAt, prevMsg.createdAt)) {
                               showDateDivider = true;
-                            } else {
-                              final prevMsg = ref.watch(
-                                  conversationMessagesProvider(
-                                      widget.conversationId))[index + 1];
-                              if (!_isSameDay(
-                                  message.createdAt, prevMsg.createdAt)) {
-                                showDateDivider = true;
-                              }
                             }
-                            // اگر باید جداکننده نمایش داده شود، تاریخ را به صورت فارسی نمایش بده
-                            return Column(
-                              children: [
-                                if (showDateDivider)
-                                  _buildDateDivider(message.createdAt),
-                                _buildMessageItem(context, message, isMe),
-                              ],
-                            );
-                          },
-                        ),
+                          }
+                          return Column(
+                            children: [
+                              if (showDateDivider)
+                                _buildDateDivider(message.createdAt),
+                              _buildMessageItem(context, message, isMe),
+                            ],
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
                 if (_isCurrentUserBlocked || _isOtherUserBlocked)
                   _buildBlockedBanner(),
@@ -1351,7 +1351,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  // جداکننده تاریخ حرفه‌ای با استایل حبابی و بدون تکرار روز هفته
+  // جداکننده تاریخ حرفه‌ای با استایل حبابی
   Widget _buildDateDivider(DateTime date) {
     final now = DateTime.now();
     final jNow = Jalali.fromDateTime(now);

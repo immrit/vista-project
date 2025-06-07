@@ -290,3 +290,16 @@ class MessageCacheService {
   Future<void> performTransaction(Future<void> Function() action) =>
       _db.performTransaction(action);
 }
+
+// Helper function to get the DB file, can be outside the class or static
+Future<File> getMessageCacheDbFile() async {
+  final dir = await getApplicationDocumentsDirectory();
+  // اطمینان از اینکه نام فایل با نام استفاده شده در _openConnection مطابقت دارد
+  return File(p.join(dir.path, 'messages_cache.sqlite'));
+}
+
+extension MessageCacheDatabaseSize on MessageCacheDatabase {
+  Future<File> get databaseFile async {
+    return getMessageCacheDbFile();
+  }
+}

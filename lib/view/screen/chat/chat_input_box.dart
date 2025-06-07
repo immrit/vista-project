@@ -294,43 +294,6 @@ class _ChatInputBoxState extends State<ChatInputBox>
             ],
           ),
         ),
-
-        // Emoji Picker
-        if (widget.showEmojiPicker)
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            height: 280,
-            child: EmojiPicker(
-              onEmojiSelected: (category, emoji) {
-                widget.onEmojiSelected(emoji.emoji);
-              },
-              config: Config(
-                height: 280,
-                checkPlatformCompatibility: true,
-                categoryViewConfig: CategoryViewConfig(
-                  backgroundColor:
-                      isDark ? const Color(0xFF1A1A1A) : Colors.white,
-                  iconColor: isDark ? Colors.grey[400]! : Colors.grey[600]!,
-                  iconColorSelected: primaryColor,
-                ),
-                bottomActionBarConfig: BottomActionBarConfig(
-                  backgroundColor:
-                      isDark ? const Color(0xFF1A1A1A) : Colors.white,
-                  buttonColor:
-                      isDark ? const Color(0xFF2A2A2A) : Colors.grey[100]!,
-                ),
-                searchViewConfig: SearchViewConfig(
-                  backgroundColor:
-                      isDark ? const Color(0xFF1A1A1A) : Colors.white,
-                  buttonIconColor:
-                      isDark ? const Color(0xFF2A2A2A) : Colors.grey[100]!,
-                ),
-                skinToneConfig: const SkinToneConfig(
-                  enabled: true,
-                ),
-              ),
-            ),
-          ),
       ],
     );
   }

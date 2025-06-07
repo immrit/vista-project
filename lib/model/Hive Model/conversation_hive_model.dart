@@ -1,129 +1,140 @@
-// conversation_hive_model.dart
-import 'package:hive/hive.dart';
-import 'package:Vista/model/conversation_model.dart';
+// // conversation_hive_model.dart
+// import 'package:hive/hive.dart';
+// import 'package:Vista/model/conversation_model.dart';
 
-part 'conversation_hive_model.g.dart';
+// part 'conversation_hive_model.g.dart';
 
-@HiveType(typeId: 1)
-class ConversationHiveModel extends HiveObject {
-  @HiveField(0)
-  late String id;
+// @HiveType(typeId: 1)
+// class ConversationHiveModel extends HiveObject {
+//   @HiveField(0)
+//   late String id;
 
-  @HiveField(1)
-  late DateTime createdAt;
+//   @HiveField(1)
+//   late DateTime createdAt;
 
-  @HiveField(2)
-  late DateTime updatedAt;
+//   @HiveField(2)
+//   late DateTime updatedAt;
 
-  @HiveField(3)
-  String? lastMessage;
+//   @HiveField(3)
+//   String? lastMessage;
 
-  @HiveField(4)
-  DateTime? lastMessageTime;
+//   @HiveField(4)
+//   DateTime? lastMessageTime;
 
-  @HiveField(5)
-  late List<ConversationParticipantHiveModel> participants;
+//   @HiveField(5)
+//   late List<ConversationParticipantHiveModel> participants;
 
-  @HiveField(6)
-  String? otherUserName;
+//   @HiveField(6)
+//   String? otherUserName;
 
-  @HiveField(7)
-  String? otherUserAvatar;
+//   @HiveField(7)
+//   String? otherUserAvatar;
 
-  @HiveField(8)
-  String? otherUserId;
+//   @HiveField(8)
+//   String? otherUserId;
 
-  @HiveField(9)
-  late bool hasUnreadMessages;
+//   @HiveField(9)
+//   late bool hasUnreadMessages;
 
-  @HiveField(10)
-  late int unreadCount;
+//   @HiveField(10)
+//   late int unreadCount;
 
-  ConversationHiveModel();
+//   @HiveField(11)
+//   late bool isPinned;
 
-  // تبدیل ConversationModel به ConversationHiveModel
-  factory ConversationHiveModel.fromModel(ConversationModel model) {
-    final hiveModel = ConversationHiveModel()
-      ..id = model.id
-      ..createdAt = model.createdAt
-      ..updatedAt = model.updatedAt
-      ..lastMessage = model.lastMessage
-      ..lastMessageTime = model.lastMessageTime
-      ..participants = model.participants
-          .map((p) => ConversationParticipantHiveModel.fromModel(p))
-          .toList()
-      ..otherUserName = model.otherUserName
-      ..otherUserAvatar = model.otherUserAvatar
-      ..otherUserId = model.otherUserId
-      ..hasUnreadMessages = model.hasUnreadMessages
-      ..unreadCount = model.unreadCount;
+//   @HiveField(12) // فیلد جدید برای وضعیت بایگانی
+//   late bool isArchived;
 
-    return hiveModel;
-  }
+//   ConversationHiveModel();
 
-  // تبدیل ConversationHiveModel به ConversationModel
-  ConversationModel toModel() {
-    return ConversationModel(
-      id: id,
-      createdAt: createdAt,
-      updatedAt: updatedAt,
-      lastMessage: lastMessage,
-      lastMessageTime: lastMessageTime,
-      participants: participants.map((p) => p.toModel()).toList(),
-      otherUserName: otherUserName,
-      otherUserAvatar: otherUserAvatar,
-      otherUserId: otherUserId,
-      hasUnreadMessages: hasUnreadMessages,
-      unreadCount: unreadCount,
-    );
-  }
-}
+//   // تبدیل ConversationModel به ConversationHiveModel
+//   factory ConversationHiveModel.fromModel(ConversationModel model) {
+//     final hiveModel = ConversationHiveModel()
+//       ..id = model.id
+//       ..createdAt = model.createdAt
+//       ..updatedAt = model.updatedAt
+//       ..lastMessage = model.lastMessage
+//       ..lastMessageTime = model.lastMessageTime
+//       ..participants = model.participants
+//           .map((p) => ConversationParticipantHiveModel.fromModel(p))
+//           .toList()
+//       ..otherUserName = model.otherUserName
+//       ..otherUserAvatar = model.otherUserAvatar
+//       ..otherUserId = model.otherUserId
+//       ..hasUnreadMessages = model.hasUnreadMessages
+//       ..unreadCount = model.unreadCount
+//       ..isPinned = model.isPinned
+//       ..isArchived = model.isArchived; // اضافه کردن مقداردهی
 
-@HiveType(typeId: 2)
-class ConversationParticipantHiveModel extends HiveObject {
-  @HiveField(0)
-  late String id;
+//     return hiveModel;
+//   }
 
-  @HiveField(1)
-  late String conversationId;
+//   // تبدیل ConversationHiveModel به ConversationModel
+//   ConversationModel toModel() {
+//     return ConversationModel(
+//       id: id,
+//       createdAt: createdAt,
+//       updatedAt: updatedAt,
+//       lastMessage: lastMessage,
+//       lastMessageTime: lastMessageTime,
+//       participants: participants.map((p) => p.toModel()).toList(),
+//       otherUserName: otherUserName,
+//       otherUserAvatar: otherUserAvatar,
+//       otherUserId: otherUserId,
+//       hasUnreadMessages: hasUnreadMessages,
+//       unreadCount: unreadCount,
+//       isPinned: isPinned,
+//       isMuted: isMuted, // اضافه کردن isMuted اگر در ConversationModel وجود دارد
+//       isArchived: isArchived, // اضافه کردن به مدل اصلی
+//     );
+//   }
+// }
 
-  @HiveField(2)
-  late String userId;
+// @HiveType(typeId: 2)
+// class ConversationParticipantHiveModel extends HiveObject {
+//   @HiveField(0)
+//   late String id;
 
-  @HiveField(3)
-  late DateTime createdAt;
+//   @HiveField(1)
+//   late String conversationId;
 
-  @HiveField(4)
-  late DateTime lastReadTime;
+//   @HiveField(2)
+//   late String userId;
 
-  @HiveField(5)
-  late bool isMuted;
+//   @HiveField(3)
+//   late DateTime createdAt;
 
-  ConversationParticipantHiveModel();
+//   @HiveField(4)
+//   late DateTime lastReadTime;
 
-  // تبدیل ConversationParticipantModel به ConversationParticipantHiveModel
-  factory ConversationParticipantHiveModel.fromModel(
-      ConversationParticipantModel model) {
-    final hiveModel = ConversationParticipantHiveModel()
-      ..id = model.id
-      ..conversationId = model.conversationId
-      ..userId = model.userId
-      ..createdAt = model.createdAt
-      ..lastReadTime = model.lastReadTime
-      ..isMuted = model.isMuted;
+//   @HiveField(5)
+//   late bool isMuted;
 
-    return hiveModel;
-  }
+//   ConversationParticipantHiveModel();
 
-  // تبدیل ConversationParticipantHiveModel به ConversationParticipantModel
-  ConversationParticipantModel toModel() {
-    return ConversationParticipantModel(
-      id: id,
-      conversationId: conversationId,
-      userId: userId,
-      createdAt: createdAt,
-      lastReadTime: lastReadTime,
-      isMuted: isMuted,
-    );
-  }
-}
+//   // تبدیل ConversationParticipantModel به ConversationParticipantHiveModel
+//   factory ConversationParticipantHiveModel.fromModel(
+//       ConversationParticipantModel model) {
+//     final hiveModel = ConversationParticipantHiveModel()
+//       ..id = model.id
+//       ..conversationId = model.conversationId
+//       ..userId = model.userId
+//       ..createdAt = model.createdAt
+//       ..lastReadTime = model.lastReadTime
+//       ..isMuted = model.isMuted;
+
+//     return hiveModel;
+//   }
+
+//   // تبدیل ConversationParticipantHiveModel به ConversationParticipantModel
+//   ConversationParticipantModel toModel() {
+//     return ConversationParticipantModel(
+//       id: id,
+//       conversationId: conversationId,
+//       userId: userId,
+//       createdAt: createdAt,
+//       lastReadTime: lastReadTime,
+//       isMuted: isMuted,
+//     );
+//   }
+// }

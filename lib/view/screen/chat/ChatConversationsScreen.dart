@@ -11,6 +11,8 @@ import '../../../provider/channel_provider.dart';
 import '../../../provider/chat_provider.dart';
 import '../../util/const.dart';
 import '../channel/ChannelScreen.dart';
+import 'ArchivedConversationsScreen.dart';
+import 'ChatSettingsScreen.dart'; // اضافه کردن ایمپورت صفحه جدید
 import 'ChatScreen.dart';
 
 // مدل یکپارچه برای نمایش چت‌ها و کانال‌ها در یک لیست
@@ -26,6 +28,7 @@ class UnifiedChatItem {
   final bool isOnline;
   final bool isPinned;
   final bool isMuted;
+  final bool isArchived; // اضافه کردن فیلد isArchived
   final dynamic source;
   final int? memberCount;
 
@@ -40,6 +43,7 @@ class UnifiedChatItem {
     this.isOnline = false,
     this.isPinned = false,
     this.isMuted = false,
+    this.isArchived = false, // مقدار پیش‌فرض
     this.source,
     this.memberCount,
   });
@@ -51,12 +55,12 @@ class UnifiedChatItem {
       subtitle: conversation.lastMessage,
       avatarUrl: conversation.otherUserAvatar,
       lastActivity: conversation.lastMessageTime,
-      unreadCount: conversation.unreadCount ?? 0,
+      unreadCount: conversation.unreadCount,
       isChannel: false,
 
-      // isOnline: conversation.isOnline ?? false,
-      // isPinned: conversation.isPinned ?? false,
-      // isMuted: conversation.isMuted ?? false,
+      isPinned: conversation.isPinned,
+      isMuted: conversation.isMuted,
+      isArchived: conversation.isArchived, // خواندن isArchived
       source: conversation,
     );
   }
@@ -354,15 +358,18 @@ class _ChatConversationsScreenState
 
   // ترکیب و فیلتر کردن آیتم‌ها
   List<UnifiedChatItem> _combineAndFilterItems(
-    List<ConversationModel> conversations,
-    List<ChannelModel> channels,
-  ) {
+      List<ConversationModel> conversations, List<ChannelModel> channels,
+      {bool showArchived = false} // پارامتر جدید
+      ) {
     final List<UnifiedChatItem> allItems = [];
 
     // اضافه کردن conversations
-    allItems.addAll(
-      conversations.map(UnifiedChatItem.fromConversation),
-    );
+    final filteredConversations = conversations.where((conv) {
+      return showArchived ? conv.isArchived : !conv.isArchived;
+    }).toList();
+
+    allItems
+        .addAll(filteredConversations.map(UnifiedChatItem.fromConversation));
 
     // اضافه کردن channels
     allItems.addAll(
@@ -937,47 +944,49 @@ class _ChatConversationsScreenState
   void _handleMenuAction(String action) {
     switch (action) {
       case 'archived':
-        _openArchivedChats();
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const ArchivedConversationsScreen(),
+          ),
+        );
         break;
       case 'new_channel':
         _createNewChannel();
         break;
       case 'settings':
-        _openChatSettings();
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) =>
+                    const ChatSettingsScreen())); // هدایت به صفحه جدید
         break;
     }
   }
 
-  // Navigation Methods
   void _navigateToItem(UnifiedChatItem item) {
     if (item.isChannel) {
-      _navigateToChannel(item.source as ChannelModel);
+      // Navigate to Channel Screen
+      // TODO: Implement ChannelScreen navigation
     } else {
-      _navigateToChat(item.source as ConversationModel);
+      // Navigate to Chat Screen
+      if (item.source is ConversationModel) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ChatScreen(
+              otherUserName:
+                  (item.source as ConversationModel).otherUserName ?? '',
+              otherUserAvatar:
+                  (item.source as ConversationModel).otherUserAvatar ??
+                      defaultAvatarUrl,
+              conversationId: item.id,
+              otherUserId: (item.source as ConversationModel).otherUserId ?? '',
+            ),
+          ),
+        );
+      }
     }
-  }
-
-  void _navigateToChat(ConversationModel conversation) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ChatScreen(
-          otherUserName: conversation.otherUserName ?? '',
-          otherUserAvatar: conversation.otherUserAvatar ?? defaultAvatarUrl,
-          conversationId: conversation.id,
-          otherUserId: conversation.otherUserId ?? '',
-        ),
-      ),
-    );
-  }
-
-  void _navigateToChannel(ChannelModel channel) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ChannelScreen(channel: channel),
-      ),
-    );
   }
 
   // Option Sheets
@@ -1232,24 +1241,37 @@ class _ChatConversationsScreenState
 
   // Placeholder Action Methods
   void _togglePin(UnifiedChatItem item) {
-    // TODO: Implement pin/unpin logic
+    ref.read(messageNotifierProvider.notifier).togglePinConversation(item.id);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${item.isPinned ? 'حذف سنجاق' : 'سنجاق'} شد')),
+      SnackBar(
+          content:
+              Text('مکالمه ${item.isPinned ? 'از سنجاق حذف' : 'سنجاق'} شد')),
     );
   }
 
   void _toggleMute(UnifiedChatItem item) {
-    // TODO: Implement mute/unmute logic
+    ref.read(messageNotifierProvider.notifier).toggleMuteConversation(item.id);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('اعلان‌ها ${item.isMuted ? 'فعال' : 'خاموش'} شد')),
+      SnackBar(
+          content: Text(
+              'اعلان‌ها برای این گفتگو ${item.isMuted ? 'فعال' : 'خاموش'} شد')),
     );
   }
 
   void _archiveItem(UnifiedChatItem item) {
-    // TODO: Implement archive logic
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('بایگانی شد')),
-    );
+    if (!item.isChannel && item.source is ConversationModel) {
+      ref
+          .read(messageNotifierProvider.notifier) // خواندن وضعیت قبل از تغییر
+          .toggleArchiveConversation(item.id)
+          .then((_) {
+        // این بخش پس از اتمام عملیات اجرا می‌شود
+        // برای نمایش پیام صحیح، باید وضعیت جدید را از provider یا آیتم به‌روز شده بگیریم
+        // فعلا یک پیام عمومی‌تر نمایش می‌دهیم
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('درخواست بایگانی/خروج از بایگانی ارسال شد.')),
+        );
+      });
+    }
   }
 
   void _showChannelInfo(UnifiedChatItem item) {
@@ -1274,10 +1296,6 @@ class _ChatConversationsScreenState
 
   void _createNewChannel() {
     // TODO: Implement new channel creation logic
-  }
-
-  void _openArchivedChats() {
-    // TODO: Implement archived chats screen
   }
 
   void _openChatSettings() {

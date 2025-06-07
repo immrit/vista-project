@@ -16,15 +16,15 @@ class HiveInitialize {
     }
 
     // ثبت آداپتورها فقط یکبار
-    if (!_adaptersRegistered) {
-      Hive.registerAdapter(ConversationHiveModelAdapter());
-      Hive.registerAdapter(ConversationParticipantHiveModelAdapter());
-      Hive.registerAdapter(MessageHiveModelAdapter());
-      _adaptersRegistered = true;
-    }
+    // if (!_adaptersRegistered) {
+    //   Hive.registerAdapter(ConversationHiveModelAdapter());
+    //   Hive.registerAdapter(ConversationParticipantHiveModelAdapter());
+    //   Hive.registerAdapter(MessageHiveModelAdapter());
+    //   _adaptersRegistered = true;
+    // }
 
-    // باز کردن باکس‌ها
-    await Hive.openBox<ConversationHiveModel>('conversations');
-    await Hive.openBox<MessageHiveModel>('messages');
+    // // باز کردن باکس‌ها
+    // await Hive.openBox<ConversationHiveModel>('conversations');
+    // await Hive.openBox<MessageHiveModel>('messages');
   }
 }

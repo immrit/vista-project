@@ -124,9 +124,13 @@ class ChatService {
 
           // آخرین زمان خواندن پیام توسط کاربر فعلی
           String? myLastRead;
+          bool currentUserIsMuted = false;
+          bool currentUserIsArchived = false; // مقدار پیش‌فرض برای بایگانی
           for (final participant in participantsJson) {
             if (participant['user_id'] == userId) {
               myLastRead = participant['last_read_time'];
+              currentUserIsMuted = participant['is_muted'] ?? false;
+              currentUserIsArchived = participant['is_archived'] ?? false;
               break;
             }
           }
@@ -198,10 +202,17 @@ class ChatService {
             otherUserId: otherParticipantData?['user_id'],
             hasUnreadMessages: hasUnreadMessages,
             unreadCount: unreadCount,
+            // isPinned مقدار اولیه از کش خوانده می‌شود اگر وجود داشته باشد
+            isPinned: (await _conversationCache.getConversation(conversationId))
+                    ?.isPinned ??
+                false,
+            isMuted: currentUserIsMuted,
+            isArchived: currentUserIsArchived, // اضافه کردن isArchived
           );
 
           // ذخیره هر مکالمه در کش
-          await conversationCache.updateConversation(conversation);
+          // اطمینان از اینکه isPinned در کش هم آپدیت می‌شود
+          await _conversationCache.updateConversation(conversation);
 
           return conversation;
         }));
@@ -858,6 +869,17 @@ class ChatService {
     String? otherParticipantUserId;
     Map<String, dynamic>? otherParticipantProfileData;
 
+    // پیدا کردن اطلاعات شرکت‌کننده فعلی برای وضعیت is_muted
+    bool currentUserIsMuted = false;
+    bool currentUserIsArchived = false;
+    for (final pData in participantsJson) {
+      if (pData['user_id'] == userId) {
+        currentUserIsMuted = pData['is_muted'] ?? false;
+        currentUserIsArchived = pData['is_archived'] ?? false;
+        break;
+      }
+    }
+
     for (final pData in participantsJson) {
       // Iterate over the raw participantsJson
       if (pData['user_id'] != userId) {
@@ -948,7 +970,12 @@ class ChatService {
                 otherParticipantProfileData?['avatar_url'] as String?,
             otherUserId: otherParticipantUserId,
             unreadCount: unreadCount,
-            hasUnreadMessages: hasUnreadMessages);
+            hasUnreadMessages: hasUnreadMessages,
+            isPinned: (await _conversationCache.getConversation(conversationId))
+                    ?.isPinned ??
+                false,
+            isMuted: currentUserIsMuted,
+            isArchived: currentUserIsArchived); // اضافه کردن isArchived
   }
 
   // حذف تمام پیام‌های یک مکالمه
@@ -1580,5 +1607,99 @@ class ChatService {
   Future<void> deleteOldMessages(DateTime date) async {
     final messageCache = MessageCacheService();
     await messageCache.deleteMessagesOlderThan(date);
+  }
+
+  // متد برای تغییر وضعیت سنجاق مکالمه (فقط در کش محلی)
+  Future<void> toggleConversationPinLocal(String conversationId) async {
+    final conversation =
+        await _conversationCache.getConversation(conversationId);
+    if (conversation != null) {
+      final newPinStatus = !conversation.isPinned;
+      await _conversationCache.setPinStatus(conversationId, newPinStatus);
+      // برای اطمینان از اینکه UI آپدیت می‌شود، می‌توانیم مکالمه را در کش آپدیت کنیم
+      // یا به provider ها اجازه دهیم که به تغییرات گوش دهند.
+      // فعلا فقط وضعیت پین را در کش تغییر می‌دهیم.
+    }
+  }
+
+  // متد برای تغییر وضعیت بی‌صدا کردن مکالمه
+  Future<void> toggleConversationMute(String conversationId) async {
+    final currentUserId = _supabase.auth.currentUser?.id;
+    if (currentUserId == null) {
+      throw AppException(
+          userFriendlyMessage: 'کاربر شناسایی نشد.',
+          technicalMessage: 'Current user is null');
+    }
+
+    try {
+      // ۱. دریافت وضعیت فعلی is_muted از جدول conversation_participants
+      final participantData = await _supabase
+          .from('conversation_participants')
+          .select('is_muted')
+          .eq('conversation_id', conversationId)
+          .eq('user_id', currentUserId)
+          .single();
+
+      final currentMuteStatus = participantData['is_muted'] as bool? ?? false;
+      final newMuteStatus = !currentMuteStatus;
+
+      // ۲. به‌روزرسانی وضعیت is_muted در Supabase
+      await _supabase
+          .from('conversation_participants')
+          .update({'is_muted': newMuteStatus})
+          .eq('conversation_id', conversationId)
+          .eq('user_id', currentUserId);
+      // ۳. به‌روزرسانی کش محلی (Drift)
+      await _conversationCache.setMuteStatus(conversationId, newMuteStatus);
+      await refreshConversation(
+          conversationId); // برای اطمینان از همگام‌سازی کامل مدل در کش
+    } catch (e) {
+      print('Error toggling conversation mute status: $e');
+      throw AppException(
+          userFriendlyMessage:
+              'تغییر وضعیت اعلان با خطا مواجه شد. ${e.toString()}',
+          technicalMessage: 'Error in toggleConversationMute: $e');
+    }
+  }
+
+  // متد برای تغییر وضعیت بایگانی مکالمه
+  Future<void> toggleConversationArchive(String conversationId) async {
+    final currentUserId = _supabase.auth.currentUser?.id;
+    if (currentUserId == null) {
+      throw AppException(
+        userFriendlyMessage: 'کاربر شناسایی نشد.',
+        technicalMessage: 'Current user is null.',
+      );
+    }
+
+    try {
+      final participantData = await _supabase
+          .from('conversation_participants')
+          .select('is_archived')
+          .eq('conversation_id', conversationId)
+          .eq('user_id', currentUserId)
+          .single();
+
+      final currentArchiveStatus =
+          participantData['is_archived'] as bool? ?? false;
+      final newArchiveStatus = !currentArchiveStatus;
+
+      await _supabase
+          .from('conversation_participants')
+          .update({'is_archived': newArchiveStatus})
+          .eq('conversation_id', conversationId)
+          .eq('user_id', currentUserId);
+
+      await _conversationCache.setArchiveStatus(
+          conversationId, newArchiveStatus);
+      await refreshConversation(conversationId);
+    } catch (e, stack) {
+      print('Error toggling conversation archive status: $e');
+      throw AppException(
+        technicalMessage:
+            'Error in toggleConversationArchive: $e, Stack: $stack',
+        userFriendlyMessage: 'تغییر وضعیت بایگانی با خطا مواجه شد.',
+      );
+    }
   }
 }
