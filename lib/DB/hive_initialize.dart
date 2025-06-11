@@ -1,8 +1,6 @@
 // hive_initialize.dart
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import '../model/Hive Model/conversation_hive_model.dart';
-import '../model/Hive Model/message_hive_model.dart';
 
 class HiveInitialize {
   static bool _adaptersRegistered = false;

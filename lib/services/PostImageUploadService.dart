@@ -73,7 +73,8 @@ class PostImageUploadService {
         acl: ObjectCannedACL.publicRead,
       );
 
-      final uploadedUrl = 'https://storage.coffevista.ir/$bucketName/$fileName';
+      final uploadedUrl =
+          'https://storage.389346.ir.cdn.ir/$bucketName/$fileName';
       print('تصویر پست با موفقیت آپلود شد: $uploadedUrl');
       return uploadedUrl;
     } catch (e) {
@@ -110,7 +111,7 @@ class PostImageUploadService {
       );
 
       final uploadedUrl =
-          'https://storage.coffevista.ir/$bucketName/$s3FileName';
+          'https://storage.389346.ir.cdn.ir/$bucketName/$s3FileName';
       print('تصویر پست با موفقیت آپلود شد: $uploadedUrl');
       return uploadedUrl;
     } catch (e) {
@@ -224,7 +225,7 @@ class PostImageUploadService {
         metadata: {'originalName': path.basename(file.path)},
       );
 
-      final url = 'https://storage.coffevista.ir/$bucketName/$fileName';
+      final url = 'https://storage.389346.ir.cdn.ir/$bucketName/$fileName';
       print("Uploaded music file URL: $url"); // اضافه کردن این خط
 
       // تست دسترسی به فایل
@@ -283,7 +284,7 @@ class PostImageUploadService {
         metadata: {'originalName': path.basename(file.path)},
       );
 
-      final url = 'https://storage.coffevista.ir/$bucketName/$fileName';
+      final url = 'https://storage.389346.ir.cdn.ir/$bucketName/$fileName';
       print("Uploaded video file URL: $url");
 
       // تست دسترسی به فایل
@@ -323,7 +324,7 @@ class PostImageUploadService {
         acl: ObjectCannedACL.publicRead,
       );
 
-      final url = 'https://storage.coffevista.ir/$bucketName/$s3FileName';
+      final url = 'https://storage.389346.ir.cdn.ir/$bucketName/$s3FileName';
       print("Uploaded video file URL: $url");
 
       return url;

@@ -12,23 +12,27 @@ import 'PublicPosts/publicPosts.dart';
 import 'searchPage.dart';
 import '../../provider/chat_provider.dart';
 
-// استریم تعداد پیام‌های خوانده‌نشده (سریع و به‌روز)
-final unreadMessagesCountProvider = StreamProvider<int>((ref) {
+// استریم تعداد *مکالمه‌های* خوانده‌نشده
+final unreadConversationsCountProvider = StreamProvider<int>((ref) {
   final userId = supabase.auth.currentUser?.id;
   if (userId == null) return const Stream.empty();
 
-  // فقط پیام‌هایی که is_read=false و فرستنده کاربر فعلی نیست (یعنی پیام دریافتی و خوانده‌نشده)
-  return supabase
-      .from('messages')
-      .stream(primaryKey: ['id'])
-      .eq('is_read', false)
-      .map((messages) => messages
-          .where((msg) =>
-              msg['sender_id'] != userId &&
-              // اگر پیام حذف شده یا مخفی شده برای کاربر فعلی دارید، اینجا هم باید چک شود
-              // (مثلاً msg['is_hidden'] != true)
-              true)
-          .length);
+  // به استریم مکالمات گوش می‌دهیم
+  // تغییر به cachedConversationsStreamProvider برای واکنش سریع‌تر به تغییرات کش
+  return ref
+      .watch(cachedConversationsStreamProvider)
+      .when(
+        data: (conversations) {
+          // مکالماتی را که پیام خوانده‌نشده دارند، فیلتر و شمارش می‌کنیم
+          final count = conversations.where((c) => (c.unreadCount) > 0).length;
+          return Stream.value(count);
+        },
+        loading: () => Stream.value(0), // در حال بارگذاری، تعداد صفر است
+        error: (error, stackTrace) {
+          print('Error in unreadConversationsCountProvider: $error');
+          return Stream.value(0); // در صورت خطا، تعداد صفر است
+        },
+      );
 });
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -63,9 +67,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _checkProfileCompletion() async {
-    final isComplete = await ref
-        .read(profileCompletionProvider.notifier)
-        .checkProfileCompletion();
+    final isComplete =
+        await ref
+            .read(profileCompletionProvider.notifier)
+            .checkProfileCompletion();
     if (!isComplete && mounted) {
       // انتقال به صفحه ویرایش پروفایل
       Navigator.pushNamed(context, '/editeProfile');
@@ -76,9 +81,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void _onItemTapped(int index) {
     if (index == 2) {
       Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => const AddPublicPostScreen(),
-        ),
+        MaterialPageRoute(builder: (context) => const AddPublicPostScreen()),
       );
     } else {
       setState(() {
@@ -100,7 +103,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _lastPressed = now;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('برای خروج دوباره دکمه بازگشت را بزنید')),
+            content: Text('برای خروج دوباره دکمه بازگشت را بزنید'),
+          ),
         );
         return false;
       }
@@ -113,17 +117,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // فعال کردن Provider سراسری نوتیفیکیشن چت (در پس‌زمینه)
     ref.watch(globalChatNotificationProvider);
 
-    // استریم تعداد پیام‌های خوانده‌نشده
-    final unreadCountAsync = ref.watch(unreadMessagesCountProvider);
+    // استریم تعداد *مکالمه‌های* خوانده‌نشده
+    final unreadConversationsCountAsync = ref.watch(
+      unreadConversationsCountProvider,
+    );
 
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
         // استفاده از IndexedStack برای حفظ وضعیت صفحات
-        body: IndexedStack(
-          index: _selectedIndex,
-          children: _tabs,
-        ),
+        body: IndexedStack(index: _selectedIndex, children: _tabs),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _selectedIndex,
           onDestinationSelected: _onItemTapped,
@@ -140,13 +143,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
             NavigationDestination(
               icon: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   shape: BoxShape.rectangle,
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? Colors.white24
-                      : Colors.black12,
+                  color:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white24
+                          : Colors.black12,
                   borderRadius: BorderRadius.circular(15),
                 ),
                 child: const Icon(Icons.add, size: 26),
@@ -171,9 +177,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             // تب چت با بج نمایش پیام‌های جدید
             NavigationDestination(
               icon: _buildMessageBadge(
-                  Icons.chat_bubble_outline, false, unreadCountAsync),
-              selectedIcon:
-                  _buildMessageBadge(Icons.chat_bubble, true, unreadCountAsync),
+                Icons.chat_bubble_outline,
+                false,
+                unreadConversationsCountAsync,
+              ),
+              selectedIcon: _buildMessageBadge(
+                Icons.chat_bubble,
+                true,
+                unreadConversationsCountAsync,
+              ),
               label: '',
             ),
             const NavigationDestination(
@@ -193,14 +205,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // تابع برای نمایش بج اعلان
   Widget _buildNotificationBadge(IconData icon, bool isSelected) {
     return badges.Badge(
-      showBadge: ref.watch(hasNewNotificationProvider).when(
+      showBadge: ref
+          .watch(hasNewNotificationProvider)
+          .when(
             data: (hasNewNotification) => hasNewNotification,
             loading: () => false,
             error: (_, __) => false,
           ),
-      badgeStyle: const badges.BadgeStyle(
-        badgeColor: Colors.red,
-      ),
+      badgeStyle: const badges.BadgeStyle(badgeColor: Colors.red),
       position: badges.BadgePosition.topEnd(top: -10, end: -10),
       child: Icon(
         icon,
@@ -209,13 +221,41 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  // تابع برای نمایش بج پیام جدید (سریع و فقط برای پیام‌های خوانده‌نشده)
+  // تابع برای نمایش بج تعداد مکالمه‌های خوانده‌نشده
   Widget _buildMessageBadge(
-      IconData icon, bool isSelected, AsyncValue<int> unreadCountAsync) {
-    // فقط آیکون را نمایش بده، بج را حذف کن
-    return Icon(
-      icon,
-      // color: isSelected ? Theme.of(context).colorScheme.primary : null,
+    IconData iconData,
+    bool isSelected,
+    AsyncValue<int> unreadConversationsCountAsync,
+  ) {
+    return unreadConversationsCountAsync.when(
+      data: (count) {
+        return badges.Badge(
+          showBadge: count > 0,
+          badgeContent: Text(
+            count > 9 ? '۹+' : count.toString(),
+            style: const TextStyle(color: Colors.white, fontSize: 10),
+          ),
+          badgeStyle: badges.BadgeStyle(
+            badgeColor: Colors.red,
+            padding: EdgeInsets.all(count > 9 ? 4 : 5), // پدینگ بج
+          ),
+          position: badges.BadgePosition.topEnd(top: -12, end: -12),
+          child: Icon(
+            iconData,
+            color: isSelected ? Theme.of(context).colorScheme.primary : null,
+          ),
+        );
+      },
+      loading:
+          () => Icon(
+            iconData,
+            color: isSelected ? Theme.of(context).colorScheme.primary : null,
+          ), // نمایش آیکون بدون بج در حال لود
+      error:
+          (err, stack) => Icon(
+            iconData,
+            color: isSelected ? Theme.of(context).colorScheme.primary : null,
+          ), // نمایش آیکون بدون بج در صورت خطا
     );
   }
 }

@@ -85,7 +85,8 @@ class ProfileImageUploadService {
         acl: ObjectCannedACL.publicRead,
       );
 
-      final uploadedUrl = 'https://storage.coffevista.ir/$bucketName/$fileName';
+      final uploadedUrl =
+          'https://storage.389346.ir.cdn.ir/$bucketName/$fileName';
       print('تصویر با موفقیت آپلود شد: $uploadedUrl');
       return uploadedUrl;
     } catch (e) {
@@ -129,7 +130,7 @@ class ProfileImageUploadService {
       );
 
       final uploadedUrl =
-          'https://storage.coffevista.ir/$bucketName/$s3FileName';
+          'https://storage.389346.ir.cdn.ir/$bucketName/$s3FileName';
       print('تصویر با موفقیت آپلود شد: $uploadedUrl');
       return uploadedUrl;
     } catch (e) {

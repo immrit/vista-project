@@ -20,7 +20,7 @@ class StoryImageUploadService {
   );
 
   static const String bucketName = 'coffevista';
-  static const String storageBaseUrl = 'https://storage.coffevista.ir';
+  static const String storageBaseUrl = 'https://storage.389346.ir.cdn.ir';
 
   /// آپلود تصویر استوری (پشتیبانی از وب و موبایل)
   static Future<String?> uploadStoryImage(dynamic imageData) async {

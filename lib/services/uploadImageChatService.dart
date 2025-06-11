@@ -92,7 +92,8 @@ class ChatImageUploadService {
       }
 
       // اطمینان از اینکه لینک خروجی معتبر و قابل استفاده است
-      final uploadedUrl = 'https://storage.coffevista.ir/$bucketName/$fileName';
+      final uploadedUrl =
+          'https://storage.389346.ir.cdn.ir/$bucketName/$fileName';
       print('تصویر چت با موفقیت آپلود شد: $uploadedUrl');
 
       // بررسی نهایی: اگر لینک خالی یا null بود، خطا بده
@@ -150,7 +151,7 @@ class ChatImageUploadService {
         );
 
         final uploadedUrl =
-            'https://storage.coffevista.ir/$bucketName/$s3FileName';
+            'https://storage.389346.ir.cdn.ir/$bucketName/$s3FileName';
         print('Web image upload successful: $uploadedUrl');
 
         return uploadedUrl;

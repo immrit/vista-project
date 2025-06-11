@@ -347,6 +347,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             replyToMessageId: tempReplyMessage?.id,
             replyToContent: tempReplyMessage?.content,
             replyToSenderName: tempReplyMessage?.senderName,
+            // localId: tempMessage.id, // این باید در MessageNotifier.sendMessage مدیریت شود
           );
       if (mounted) {
         setState(() {

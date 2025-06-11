@@ -32,13 +32,15 @@ final conversationsStreamProvider =
   final userId = supabase.auth.currentUser?.id;
 
   // استریم پیام‌های جدید (فقط پیام‌هایی که کاربر در آن مکالمه عضو است)
+  // یا هر تغییری در جدول messages که می‌تواند روی unreadCount تاثیر بگذارد
   final messagesStream = supabase
       .from('messages')
       .stream(primaryKey: ['id']).order('created_at', ascending: false);
 
   // هر بار که پیام جدیدی آمد یا پیام خوانده شد، conversations را invalidate کن
   messagesStream.listen((event) {
-    print('🔔 پیام جدید یا تغییر پیام دریافت شد');
+    print(
+        '🔔 پیام جدید یا تغییر وضعیت پیام دریافت شد، invalidating conversationsProvider & conversationsStreamProvider');
     ref.invalidate(conversationsProvider);
     ref.invalidateSelf();
   });
@@ -1117,12 +1119,21 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
   }
 
   void addTempMessage(MessageModel message) {
+    // ابتدا بررسی کن که آیا پیامی با همین localId (که در اینجا message.id است) وجود دارد یا خیر
+    // این کار برای جلوگیری از افزودن مجدد پیام موقت در صورت رفرش‌های ناخواسته است.
+    if (state.any((m) => m.id == message.id)) {
+      return;
+    }
     final newState = [
       ...state.where((m) => m.id != message.id && m.localId != message.id),
       message
     ];
     state = _filterTempDuplicates(newState);
-    _cacheService.cacheMessage(message);
+    // کش کردن پیام موقت
+    if (!message.id.startsWith('temp_')) {
+      print("خطای منطقی: پیام موقت باید با temp_ شروع شود: ${message.id}");
+    }
+    _cacheService.cacheMessage(message); // پیام موقت را با همان ID موقت کش کن
   }
 
   void replaceTempWithReal(String tempId, MessageModel realMessage) {
@@ -1131,7 +1142,13 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
       realMessage
     ];
     state = _filterTempDuplicates(newState);
-    _cacheService.replaceTempMessage(conversationId, tempId, realMessage);
+    // ابتدا پیام موقت را از کش حذف کن
+    _cacheService.clearMessage(conversationId, tempId).then((_) {
+      // سپس پیام واقعی را کش کن
+      _cacheService.cacheMessage(realMessage);
+    }).catchError((e) {
+      print("خطا در جایگزینی پیام در کش: $e");
+    });
   }
 
   void markTempFailed(String tempId) {
@@ -1195,11 +1212,18 @@ final conversationMessagesProvider = StateNotifierProvider.family
                 final tempMessageId = serverMessage.localId!;
                 // حذف پیام temp با id یا localId برابر
                 currentMessagesState.removeWhere(
-                    (m) => m.id == tempMessageId || m.localId == tempMessageId);
+                    (m) => m.id == tempMessageId); // فقط با ID موقت چک کن
 
                 // اگر پیام واقعی در state نیست، اضافه کن
-                if (!currentMessagesState
-                    .any((m) => m.id == serverMessage.id)) {
+                // و همچنین مطمئن شو که پیام واقعی قبلا از طریق _trySendWithRetry اضافه نشده
+                final alreadyExistsAsReal = currentMessagesState.any((m) =>
+                    m.id == serverMessage.id && !m.id.startsWith("temp_"));
+                final alreadyExistsAsTemp =
+                    currentMessagesState.any((m) => m.id == tempMessageId);
+
+                if (!alreadyExistsAsReal &&
+                    !currentMessagesState
+                        .any((m) => m.id == serverMessage.id)) {
                   currentMessagesState.add(serverMessage);
                   stateWasModified = true;
                   await notifier._cacheService.cacheMessage(serverMessage);
@@ -1209,13 +1233,20 @@ final conversationMessagesProvider = StateNotifierProvider.family
                 final existingMessageIndex = currentMessagesState
                     .indexWhere((m) => m.id == serverMessage.id);
 
-                if (existingMessageIndex == -1) {
+                if (existingMessageIndex == -1 &&
+                    !currentMessagesState
+                        .any((m) => m.id == serverMessage.id)) {
                   currentMessagesState.add(serverMessage);
                   newMessagesFromOthersToCache.add(serverMessage);
                   stateWasModified = true;
                 } else {
-                  if (currentMessagesState[existingMessageIndex] !=
-                      serverMessage) {
+                  // اگر پیام وجود دارد، فقط در صورتی آپدیت کن که محتوای آن تغییر کرده باشد
+                  // یا وضعیت خوانده شدن آن (این بخش بیشتر برای پیام‌های دریافتی است)
+                  if (existingMessageIndex != -1 &&
+                      (currentMessagesState[existingMessageIndex].content !=
+                              serverMessage.content ||
+                          currentMessagesState[existingMessageIndex].isRead !=
+                              serverMessage.isRead)) {
                     currentMessagesState[existingMessageIndex] = serverMessage;
                     stateWasModified = true;
                     await notifier._cacheService.cacheMessage(serverMessage);

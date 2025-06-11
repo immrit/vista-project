@@ -299,6 +299,9 @@ class _ChatConversationsScreenState
                 vertical: 16,
               ),
             ),
+            onChanged: (query) {
+              setState(() => _searchQuery = query);
+            },
           ),
         ),
       ),
