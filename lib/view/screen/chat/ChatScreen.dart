@@ -82,9 +82,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     timeago.setLocaleMessages('fa', timeago.FaMessages());
 
     Future.microtask(() {
-      ref
-          .read(messageNotifierProvider.notifier)
-          .markAsRead(widget.conversationId);
+      ref.read(messageNotifierProvider.notifier).markAsRead(widget
+          .conversationId); // این باید last_read_time را در سرور آپدیت کند
       ref.read(userOnlineNotifierProvider).updateOnlineStatus();
       _checkOnlineStatus();
     });
@@ -99,7 +98,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final safeHandler = ref.read(safeMessageHandlerProvider);
-      safeHandler.markAsRead(widget.conversationId);
+      safeHandler
+          .markAsRead(widget.conversationId); // فراخوانی مجدد برای اطمینان
       print(
           'علامت‌گذاری پیام‌های مکالمه ${widget.conversationId} به عنوان خوانده شده');
     });
@@ -1818,48 +1818,57 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                   SizedBox(width: 4),
                                   if (isMe)
                                     // فقط اگر پیام توسط کاربر فعلی ارسال شده و isSent=false و id پیام temp است، ساعت و دکمه ارسال مجدد نمایش بده
-                                    isFailed
-                                        ? Row(
-                                            children: [
-                                              Icon(
-                                                Icons.error_outline,
-                                                size: 14,
-                                                color: Colors.red,
-                                              ),
-                                              SizedBox(width: 2),
-                                              GestureDetector(
-                                                onTap: () async {
-                                                  await _retrySendMessage(
-                                                      message);
-                                                },
-                                                child: Icon(
-                                                  Icons.refresh,
-                                                  size: 16,
-                                                  color: Colors.red,
-                                                ),
-                                              ),
-                                            ],
-                                          )
-                                        : (!message.isSent &&
-                                                message.id.startsWith('temp_'))
-                                            ? Icon(
-                                                Icons.access_time,
-                                                size: 14,
-                                                color: isLightMode
-                                                    ? Colors.white24
-                                                    : Colors.black,
-                                              )
-                                            : Icon(
-                                                message.isRead
-                                                    ? Icons.done_all
-                                                    : Icons.done,
-                                                size: 14,
-                                                color: message.isRead
-                                                    ? Colors.blue
-                                                    : (isMe
-                                                        ? myTimeColor
-                                                        : otherTimeColor),
-                                              ),
+                                    if (message.isPending)
+                                      Icon(
+                                        Icons.access_time_rounded,
+                                        size: 14,
+                                        color:
+                                            isMe ? myTimeColor : otherTimeColor,
+                                      )
+                                    else if (!message.isSent) // Failed
+                                      GestureDetector(
+                                        onTap: () {
+                                          // فراخوانی متد retrySendMessage از MessageNotifier
+                                          ref
+                                              .read(messageNotifierProvider
+                                                  .notifier)
+                                              .retrySendMessage(message);
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                                content: Text(
+                                                    'درحال تلاش مجدد برای ارسال...')),
+                                          );
+                                        },
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.error_outline_rounded,
+                                              size: 16,
+                                              color: Colors.red,
+                                            ),
+                                            SizedBox(width: 2),
+                                            Icon(
+                                              Icons.refresh_rounded,
+                                              size: 16,
+                                              color: Colors.red,
+                                            ),
+                                          ],
+                                        ),
+                                      )
+                                    else
+                                      Icon(
+                                        message.isRead
+                                            ? Icons.done_all
+                                            : Icons.done,
+                                        size: 14,
+                                        color: message.isRead
+                                            ? Colors.blue
+                                            : (isMe
+                                                ? myTimeColor
+                                                : otherTimeColor),
+                                      ),
                                 ],
                               ),
                             ),
@@ -1873,90 +1882,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
           ),
         ));
-  }
-
-  // ارسال مجدد پیام موقت (retry)
-/*************  ✨ Windsurf Command ⭐  *************/
-  /// ارسال مجدد پیام موقت (retry)
-  ///
-  /// فقط پیام‌هایی که ارسال نشده‌اند و فایل تصویرشان پاک نشده است
-  /// را ارسال مجدد می‌کند. اگر فایل تصویر پاک شده بود، خطا می‌دهد.
-  ///
-/*******  b7959514-a546-4fae-a56c-be1f32b5247e  *******/
-  Future<void> _retrySendMessage(MessageModel message) async {
-    // فقط پیام‌هایی که ارسال نشده‌اند
-    if (message.isSent == false) {
-      // اگر پیام عکس داشت و فایلش پاک شده بود، خطا بده
-      if (message.attachmentType == 'image' &&
-          message.attachmentUrl != null &&
-          !File(message.attachmentUrl!).existsSync()) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('فایل تصویر یافت نشد!')),
-        );
-        return;
-      }
-      // ارسال مجدد پیام (تقریباً مشابه _sendMessage)
-      String? attachmentUrl;
-      String? attachmentType;
-      if (message.attachmentType == 'image' && message.attachmentUrl != null) {
-        setState(() => _isUploading = true);
-        try {
-          attachmentUrl = await _uploadImage(File(message.attachmentUrl!));
-          attachmentType = 'image';
-        } catch (e) {
-          setState(() => _isUploading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('ارسال تصویر ناموفق بود')),
-          );
-          return;
-        }
-        setState(() => _isUploading = false);
-      }
-      final chatService = ref.read(chatServiceProvider);
-      try {
-        final isOnline = await chatService.isDeviceOnline();
-        MessageModel? sentMessage;
-        if (isOnline) {
-          sentMessage = await chatService.sendMessage(
-            conversationId: message.conversationId,
-            content: message.content,
-            attachmentUrl: attachmentUrl,
-            attachmentType: attachmentType,
-            replyToMessageId: message.replyToMessageId,
-            replyToContent: message.replyToContent,
-            replyToSenderName: message.replyToSenderName,
-          );
-        } else {
-          sentMessage = await chatService.sendOfflineMessage(
-            conversationId: message.conversationId,
-            content: message.content,
-            attachmentUrl: attachmentUrl,
-            attachmentType: attachmentType,
-            replyToMessageId: message.replyToMessageId,
-            replyToContent: message.replyToContent,
-            replyToSenderName: message.replyToSenderName,
-          );
-        }
-        // جایگزینی پیام موقت با پیام واقعی
-        await MessageCacheService().replaceTempMessage(
-          message.conversationId,
-          message.id,
-          sentMessage!,
-        );
-        // فوراً UI را رفرش کن تا وضعیت ساعت به تیک تغییر کند
-        if (mounted) {
-          setState(() {});
-        }
-      } catch (e) {
-        await MessageCacheService().markMessageAsFailed(
-          message.conversationId,
-          message.id,
-        );
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('ارسال مجدد پیام ناموفق بود')),
-        );
-      }
-    }
   }
 
   void _showMessageOptions(

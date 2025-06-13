@@ -48,10 +48,10 @@ class MessageModel {
     return MessageModel(
       id: json['id'],
       conversationId: conversationId,
-      senderId: json['sender_id'],
-      content: json['content'],
-      createdAt: DateTime.parse(json['created_at']),
-      isRead: json['is_read'] ?? false,
+      senderId: json['sender_id'] as String,
+      content: json['content'] as String,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      isRead: json['is_read'] as bool? ?? false,
       isSent: json['is_sent'] ?? true,
       attachmentUrl: json['attachment_url'],
       attachmentType: json['attachment_type'],
@@ -61,6 +61,9 @@ class MessageModel {
       replyToMessageId: json['reply_to_message_id'],
       replyToContent: json['reply_to_content'],
       replyToSenderName: json['reply_to_sender_name'],
+      localId: json['local_id'] as String?,
+      retryCount: json['retry_count'] as int? ?? 0,
+      isPending: json['is_pending'] as bool? ?? false,
     );
   }
 

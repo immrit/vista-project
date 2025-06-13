@@ -144,7 +144,10 @@ class MessageCacheDatabase extends _$MessageCacheDatabase {
           ..where((tbl) =>
               tbl.conversationId.equals(conversationId) &
               tbl.id.equals(tempId)))
-        .write(const CachedMessagesCompanion(isSent: Value(false)));
+        .write(const CachedMessagesCompanion(
+      isSent: Value(false),
+      isPending: Value(false), // Ensure isPending is also set to false
+    ));
   }
 
   // حذف پیام‌های یک مکالمه
