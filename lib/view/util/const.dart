@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 const String defaultAvatarUrl = 'lib/view/util/images/default-avatar.jpg';
 
 const String supabaseCdnUrl = 'https://api.coffevista.ir:8443';
-const String supabaseDirectUrl = 'https://api.vistanet.sbs:8443';
+const String supabaseDirectUrl = 'https://cdn.vistanet.sbs';
 const String supabaseAnonKey =
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
 
