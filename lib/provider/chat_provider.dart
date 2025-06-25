@@ -452,6 +452,8 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
       ref.invalidate(messagesStreamProvider(conversationId));
       ref.invalidate(totalUnreadMessagesProvider);
       ref.invalidate(conversationsStreamProvider);
+      ref.invalidate(
+          cachedConversationsStreamProvider); // اضافه شد: invalidate کش مکالمات
       // No need to invalidate cachedConversationsStreamProvider as it listens to DB changes.
 
       // state = const AsyncValue.data(null); // Optional: set data state

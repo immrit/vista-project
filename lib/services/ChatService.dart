@@ -1246,7 +1246,6 @@ class ChatService {
           .eq('user_id', currentUserId);
 
       // فقط پیام‌های دریافتی را به عنوان خوانده شده در کش علامت‌گذاری کن
-      // این باعث می‌شود پیام‌های ارسال شده توسط کاربر در کش نیز به عنوان خوانده شده ظاهر نشوند
       final messagesToUpdate = await _messageCache.getConversationMessages(
         conversationId,
       );
@@ -1261,11 +1260,14 @@ class ChatService {
         }
       }
 
+      // بروزرسانی کش مکالمه برای صفر کردن unreadCount و hasUnreadMessages
+      await _conversationCache.updateLastRead(
+        conversationId,
+        DateTime.now().toUtc().toIso8601String(),
+      );
+
       // بروزرسانی فوری لیست مکالمات (برای UI)
       await refreshConversation(conversationId);
-      // پس از خوانده شدن، باید provider مکالمات را نیز invalidate کنیم تا unreadCount در UI آپدیت شود
-      // این کار توسط refreshConversation انجام می‌شود که کش را آپدیت می‌کند و
-      // cachedConversationsStreamProvider به آن گوش می‌دهد.
     } catch (e) {
       print('خطا در علامت‌گذاری مکالمه به عنوان خوانده‌شده: $e');
       rethrow;

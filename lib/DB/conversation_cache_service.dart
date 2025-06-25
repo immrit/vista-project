@@ -90,7 +90,7 @@ class ConversationCacheDatabase extends _$ConversationCacheDatabase {
 
   Future<List<ConversationModel>> getCachedConversations() async {
     final rows = await select(cachedConversations).get();
-    return rows
+    final conversations = rows
         .map((row) => ConversationModel(
               id: row.id,
               createdAt: row.createdAt,
@@ -103,11 +103,17 @@ class ConversationCacheDatabase extends _$ConversationCacheDatabase {
               hasUnreadMessages: row.hasUnreadMessages,
               unreadCount: row.unreadCount,
               isPinned: row.isPinned,
-              isMuted: row.isMuted, // خواندن وضعیت بی‌صدا
-              isArchived: row.isArchived, // خواندن وضعیت بایگانی
+              isMuted: row.isMuted,
+              isArchived: row.isArchived,
               participants: [],
             ))
         .toList();
+    // اضافه شد: لاگ‌گیری برای هر مکالمه
+    for (final c in conversations) {
+      print(
+          '[ConversationCacheService] getCachedConversations: id=${c.id}, unreadCount=${c.unreadCount}, hasUnreadMessages=${c.hasUnreadMessages}');
+    }
+    return conversations;
   }
 
   // متد جدید: بروزرسانی یا درج مکالمه
@@ -247,8 +253,11 @@ class ConversationCacheService {
         .write(CachedConversationsCompanion(
       hasUnreadMessages: const Value(false),
       unreadCount: const Value(0),
-      // updatedAt خیلی مهم نیست اینجا، اختیاری
     ));
+    // اضافه شد: لاگ‌گیری بعد از آپدیت
+    final conv = await getConversation(conversationId);
+    print(
+        '[ConversationCacheService] updateLastRead: conversationId=$conversationId, unreadCount=${conv?.unreadCount}, hasUnreadMessages=${conv?.hasUnreadMessages}');
   }
 
   // متد سینک برای گرفتن مکالمه از کش حافظه (Drift) بدون async
