@@ -19,6 +19,8 @@ import 'dart:io';
 import 'package:shamsi_date/shamsi_date.dart';
 import '../../../model/message_model.dart';
 import '../../../provider/chat_provider.dart';
+import '../../../services/audio_recording_service.dart';
+import '../../../services/uploadAudioChatService.dart';
 import '../../../services/uploadImageChatService.dart';
 import '../../Exeption/app_exceptions.dart';
 import '../../util/time_utils.dart';
@@ -29,6 +31,7 @@ import '../../../DB/message_cache_service.dart';
 import '../../../services/ChatService.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
+import '../../widgets/audio_player_widget.dart';
 import '../../widgets/web files/image_downloader.dart';
 import '/main.dart';
 import 'chat_input_box.dart';
@@ -63,10 +66,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final FocusNode _messageFocusNode = FocusNode();
   bool _showEmojiPicker = false;
   MessageModel? _replyToMessage;
+
   bool _isCurrentUserBlocked = false;
   bool _isOtherUserBlocked = false;
   bool _showScrollToBottom = false;
   double _uploadProgress = 0.0; // درصد پیشرفت آپلود عکس
+  File? _selectedAudio;
+  Uint8List? _selectedAudioBytes; // برای وب
+  String? _selectedAudioName; // برای وب
+  bool _isRecordingAudio = false;
 
   bool _isSending = false;
   final MessageCacheService _messageCache =
@@ -317,42 +325,60 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final message = _messageController.text.trim();
     if (message.isEmpty &&
         _selectedImage == null &&
-        _selectedImageBytes == null) return;
+        _selectedImageBytes == null &&
+        _selectedAudio == null && // اضافه
+        _selectedAudioBytes == null) return; // اضافه
 
-    // پاک کردن محتوای پیام و تصویر قبل از ارسال
+    // ذخیره مقادیر موقت
     final tempMessage = message;
     final tempImage = _selectedImage;
     final tempImageBytes = _selectedImageBytes;
     final tempImageName = _selectedImageName;
+    final tempAudio = _selectedAudio; // اضافه
+    final tempAudioBytes = _selectedAudioBytes; // اضافه
+    final tempAudioName = _selectedAudioName; // اضافه
     final tempReplyMessage = _replyToMessage;
 
     setState(() {
-      _isSending = true; // اضافه کنید
+      _isSending = true;
       _messageController.clear();
       _selectedImage = null;
       _selectedImageBytes = null;
       _selectedImageName = null;
+      _selectedAudio = null; // اضافه
+      _selectedAudioBytes = null; // اضافه
+      _selectedAudioName = null; // اضافه
       _replyToMessage = null;
     });
 
     try {
+      String? attachmentUrl;
+      String? attachmentType;
+
+      // بررسی فایل صوتی (جدید)
+      if (tempAudio != null || tempAudioBytes != null) {
+        attachmentUrl = await _uploadAudio(tempAudio ?? tempAudioBytes);
+        attachmentType = 'audio';
+      }
+      // بررسی تصویر (موجود)
+      else if (tempImage != null || tempImageBytes != null) {
+        attachmentUrl = await _uploadImage(tempImage ?? tempImageBytes);
+        attachmentType = 'image';
+      }
+
       // ارسال پیام
       await ref.read(messageNotifierProvider.notifier).sendMessage(
             conversationId: widget.conversationId,
             content: tempMessage,
-            attachmentUrl: tempImage?.path ??
-                (tempImageBytes != null ? 'temp_image' : null),
-            attachmentType:
-                (tempImage != null || tempImageBytes != null) ? 'image' : null,
+            attachmentUrl: attachmentUrl,
+            attachmentType: attachmentType,
             replyToMessageId: tempReplyMessage?.id,
             replyToContent: tempReplyMessage?.content,
             replyToSenderName: tempReplyMessage?.senderName,
-            // localId: tempMessage.id, // این باید در MessageNotifier.sendMessage مدیریت شود
           );
+
       if (mounted) {
-        setState(() {
-          _isSending = false; // اضافه کنید
-        });
+        setState(() => _isSending = false);
       }
     } catch (e) {
       if (mounted) {
@@ -1464,29 +1490,157 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // جایگزینی _buildMessageInput با استفاده از ChatInputBox
   Widget _buildMessageInput() {
     return ChatInputBox(
+      // کنترلرها و فوکوس
       messageController: _messageController,
       messageFocusNode: _messageFocusNode,
-      showEmojiPicker: _showEmojiPicker,
+
+      // رفتارها
       toggleEmojiPicker: _toggleEmojiKeyboard,
       pickImage: _pickImage,
       sendMessage: _sendMessage,
       onEmojiSelected: _onEmojiSelected,
-      isUploading: _isUploading,
-      selectedImagePreview:
-          _selectedImage != null || (kIsWeb && _selectedImageBytes != null)
-              ? _buildImagePreview()
-              : null,
-      // پارامترهای اختیاری (اگر نیاز دارید)
-      isSending: _isSending, // اگر متغیر _isSending دارید
-      uploadProgress: _uploadProgress, // اگر progress دارید
-      replyToMessage: _replyToMessage?.content, // اگر reply دارید
-      replyToUser: _replyToMessage?.senderName,
       onReplyCancel: () {
         setState(() {
           _replyToMessage = null;
         });
       },
+
+      // رفتارهای صوتی
+      onAudioRecorded: _onAudioRecorded,
+      onStartRecording: _startRecording,
+      onStopRecording: _stopRecording,
+      onImageCancel: _onImageCancel,
+      onAudioCancel: _cancelAudioPreview, // اضافه شد
+
+      // وضعیت‌ها
+      showEmojiPicker: _showEmojiPicker,
+      isUploading: _isUploading,
+      isSending: _isSending,
+      isRecordingAudio: _isRecordingAudio,
+      uploadProgress: _uploadProgress,
+
+      // داده‌ها با فرمت جدید
+      replyData: _replyToMessage != null
+          ? ReplyData(
+              message: _replyToMessage!.content,
+              user: _replyToMessage!.senderName ?? 'کاربر', // <-- fix here
+            )
+          : null,
+
+      selectedImage:
+          (_selectedImage != null || (kIsWeb && _selectedImageBytes != null))
+              ? SelectedFile(
+                  file: _selectedImage,
+                  bytes: kIsWeb ? _selectedImageBytes : null,
+                  name: kIsWeb ? _selectedImageName : null,
+                  type: 'image',
+                )
+              : null,
+
+      selectedAudio:
+          (_selectedAudio != null || (kIsWeb && _selectedAudioBytes != null))
+              ? SelectedFile(
+                  file: _selectedAudio,
+                  bytes: kIsWeb ? _selectedAudioBytes : null,
+                  name: _selectedAudioName,
+                  type: 'audio',
+                )
+              : null,
+
+      // اگر می‌خوای از پیش‌نمایش سفارشی استفاده کنی
+      customImagePreview:
+          (_selectedImage != null || (kIsWeb && _selectedImageBytes != null))
+              ? _buildImagePreview()
+              : null,
     );
+  }
+
+  // تابعی برای شروع ضبط صدا
+  void _startRecording() async {
+    setState(() {
+      _isRecordingAudio = true; // وضعیت ضبط را فعال کن
+      _selectedAudio = null; // هر فایل صوتی قبلی را پاک کن
+      _selectedAudioBytes = null;
+      _selectedAudioName = null;
+    });
+    print('DEBUG: Recording started.');
+    await AudioRecordingService.startRecording();
+  }
+
+  // تابعی برای توقف ضبط صدا
+  void _stopRecording() async {
+    setState(() {
+      _isRecordingAudio = false; // وضعیت ضبط را غیرفعال کن
+    });
+    print('DEBUG: Recording stopped. Attempting to get audio file...');
+    try {
+      // این تابع باید ضبط را متوقف کند و فایل را برگرداند
+      final file = await AudioRecordingService.stopRecording();
+      if (file != null) {
+        print(
+            'DEBUG: AudioRecordingService.stopRecording() returned file: ${file.path}');
+        _onAudioRecorded(file, null, file.path.split('/').last);
+      } else {
+        print('ERROR: AudioRecordingService.stopRecording() returned null.');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content:
+                    Text('خطا در ذخیره فایل صوتی. لطفا دوباره تلاش کنید.')),
+          );
+        }
+      }
+    } catch (e) {
+      print('ERROR: Exception during stopping recording: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در توقف ضبط: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  // تابع مدیریت ضبط صوت
+  void _onAudioRecorded(
+      File? audioFile, Uint8List? audioBytes, String? fileName) {
+    if (audioFile != null || audioBytes != null) {
+      print('DEBUG: _onAudioRecorded called with file: $fileName');
+      setState(() {
+        _selectedAudio = audioFile;
+        _selectedAudioBytes = audioBytes;
+        _selectedAudioName = fileName;
+        // _isRecordingAudio = false; // این خط باید توسط _stopRecording مدیریت شود
+      });
+    } else {
+      print(
+          'DEBUG: _onAudioRecorded called with null file, clearing selected audio.');
+      // اگر فایل null بود، یعنی باید پیش‌نمایش را پاک کنیم
+      setState(() {
+        _selectedAudio = null;
+        _selectedAudioBytes = null;
+        _selectedAudioName = null;
+        _isRecordingAudio = false;
+      });
+    }
+  }
+
+  // تابع حذف پیش‌نمایش صوتی
+  void _cancelAudioPreview() {
+    setState(() {
+      _selectedAudio = null;
+      _selectedAudioBytes = null;
+      _selectedAudioName = null;
+    });
+    print('DEBUG: Audio preview cancelled.');
+  }
+
+  // تابع حذف پیش‌نمایش تصویر
+  void _onImageCancel() {
+    setState(() {
+      _selectedImage = null;
+      _selectedImageBytes = null;
+      _selectedImageName = null;
+    });
   }
 
   Widget _buildImagePreview() {
@@ -1572,6 +1726,44 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
+// تابع آپلود صوت
+  Future<String?> _uploadAudio(dynamic fileOrBytes) async {
+    setState(() {
+      _isUploading = true;
+      _uploadProgress = 0.0;
+    });
+
+    try {
+      String? audioUrl;
+      if (kIsWeb && fileOrBytes is Uint8List && _selectedAudioName != null) {
+        audioUrl = await ChatAudioUploadService.uploadChatAudioWeb(
+          fileOrBytes,
+          _selectedAudioName!,
+          widget.conversationId,
+        );
+      } else if (fileOrBytes is File) {
+        audioUrl = await ChatAudioUploadService.uploadChatAudio(
+          fileOrBytes,
+          widget.conversationId,
+          onProgress: (progress) {
+            setState(() => _uploadProgress = progress);
+          },
+        );
+      }
+      return audioUrl;
+    } catch (e) {
+      _showErrorDialog('خطا در آپلود فایل صوتی: $e');
+      return null;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+          _uploadProgress = 0.0;
+        });
+      }
+    }
+  }
+
   Widget _buildMessageItem(
       BuildContext context, MessageModel message, bool isMe) {
     final brightness = Theme.of(context).brightness;
@@ -1595,8 +1787,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _showFullScreenImage(context, url);
     }
 
-// بخش مربوط به نمایش عکس پیام را اصلاح کنید
     if (message.attachmentUrl != null &&
+        message.attachmentUrl!.isNotEmpty &&
+        message.attachmentType == 'audio') {
+      attachmentWidget = Padding(
+        padding: const EdgeInsets.only(top: 0.0), // پدینگ صفر شد
+        child: AudioPlayerWidget(
+          audioUrl: message.attachmentUrl!,
+          isMe: isMe,
+        ),
+      );
+    }
+// بررسی پیام تصویری (کد موجود)
+    else if (message.attachmentUrl != null &&
         message.attachmentUrl!.isNotEmpty &&
         message.attachmentType == 'image') {
       final url = message.attachmentUrl!;
@@ -1713,6 +1916,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16).copyWith(
                       bottomRight:
+                          // Existing borderRadius logic
                           isMe ? Radius.circular(4) : Radius.circular(16),
                       bottomLeft:
                           isMe ? Radius.circular(16) : Radius.circular(4),
@@ -1729,6 +1933,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           padding: EdgeInsets.all(8),
                           margin: EdgeInsets.only(bottom: 4),
                           decoration: BoxDecoration(
+                            // Existing reply decoration
                             color:
                                 Theme.of(context).brightness == Brightness.dark
                                     ? Colors.black12
@@ -1736,6 +1941,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Column(
+                            // Existing reply content
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
@@ -1746,7 +1952,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                   fontSize: 12,
                                 ),
                               ),
-                              SizedBox(height: 4),
+                              SizedBox(
+                                  height:
+                                      4), // Space between sender name and reply content
                               Text(
                                 message.replyToContent ?? '',
                                 style: TextStyle(
@@ -1756,125 +1964,148 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              attachmentWidget,
                             ],
                           ),
                         ),
-                      Padding(
-                        padding: EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: isMe
-                              ? CrossAxisAlignment.end
-                              : CrossAxisAlignment.start,
-                          children: [
-                            // نمایش عکس پیام (موقت یا واقعی)
-                            if (message.attachmentUrl != null &&
-                                message.attachmentUrl!.isNotEmpty &&
-                                message.attachmentType == 'image')
-                              attachmentWidget,
-                            if (message.content.isNotEmpty)
-                              Padding(
-                                padding: EdgeInsets.only(
-                                  top: message.attachmentUrl != null ? 8 : 0,
-                                ),
-                                child: Directionality(
-                                  textDirection:
-                                      getTextDirection(message.content),
-                                  child: Text(
-                                    message.content,
-                                    style: TextStyle(
-                                      color:
-                                          isMe ? myTextColor : otherTextColor,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: isMe
-                                          ? Colors.white24
-                                          : Colors.black12,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text(
-                                      _formatMessageHour(message.createdAt),
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color:
-                                            isMe ? myTimeColor : otherTimeColor,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(width: 4),
-                                  if (isMe)
-                                    // فقط اگر پیام توسط کاربر فعلی ارسال شده و isSent=false و id پیام temp است، ساعت و دکمه ارسال مجدد نمایش بده
-                                    if (message.isPending)
-                                      Icon(
-                                        Icons.access_time_rounded,
-                                        size: 14,
-                                        color:
-                                            isMe ? myTimeColor : otherTimeColor,
-                                      )
-                                    else if (!message.isSent) // Failed
-                                      GestureDetector(
-                                        onTap: () {
-                                          // فراخوانی متد retrySendMessage از MessageNotifier
-                                          ref
-                                              .read(messageNotifierProvider
-                                                  .notifier)
-                                              .retrySendMessage(message);
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            SnackBar(
-                                                content: Text(
-                                                    'درحال تلاش مجدد برای ارسال...')),
-                                          );
-                                        },
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.error_outline_rounded,
-                                              size: 16,
-                                              color: Colors.red,
-                                            ),
-                                            SizedBox(width: 2),
-                                            Icon(
-                                              Icons.refresh_rounded,
-                                              size: 16,
-                                              color: Colors.red,
-                                            ),
-                                          ],
-                                        ),
-                                      )
-                                    else
-                                      Icon(
-                                        message.isRead
-                                            ? Icons.done_all
-                                            : Icons.done,
-                                        size: 14,
-                                        color: message.isRead
-                                            ? Colors.blue
-                                            : (isMe
-                                                ? myTimeColor
-                                                : otherTimeColor),
-                                      ),
-                                ],
-                              ),
-                            ),
-                          ],
+                      // Display attachment (audio or image)
+                      if (message.attachmentUrl != null &&
+                          message.attachmentUrl!.isNotEmpty &&
+                          (message.attachmentType == 'image' ||
+                              message.attachmentType == 'audio'))
+                        Padding(
+                          padding: EdgeInsets.only(
+                              top: message.replyToMessageId != null
+                                  ? 4
+                                  : 12, // Less top padding if it's a reply, otherwise normal
+                              left: 12,
+                              right: 12,
+                              bottom: message.content.isNotEmpty
+                                  ? 4
+                                  : 12), // Less bottom padding if there's content, otherwise normal
+                          child: attachmentWidget,
                         ),
-                      ),
+                      // Display message content
+                      if (message.content.isNotEmpty)
+                        Padding(
+                          padding: EdgeInsets.only(
+                            top: (message.attachmentUrl != null &&
+                                    message.attachmentUrl!.isNotEmpty)
+                                ? 4
+                                : 12, // Less top padding if there's an attachment, otherwise normal
+                            left: 12,
+                            right: 12,
+                            bottom: 12,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: isMe
+                                ? CrossAxisAlignment.end
+                                : CrossAxisAlignment.start,
+                            children: [
+                              if (message.content.isNotEmpty)
+                                Padding(
+                                  padding: EdgeInsets.only(
+                                    top: message.attachmentUrl != null ? 8 : 0,
+                                  ),
+                                  child: Directionality(
+                                    textDirection:
+                                        getTextDirection(message.content),
+                                    child: Text(
+                                      message.content,
+                                      style: TextStyle(
+                                        color:
+                                            isMe ? myTextColor : otherTextColor,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: isMe
+                                            ? Colors.white24
+                                            : Colors.black12,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        _formatMessageHour(message.createdAt),
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: isMe
+                                              ? myTimeColor
+                                              : otherTimeColor,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(width: 4),
+                                    if (isMe)
+                                      // فقط اگر پیام توسط کاربر فعلی ارسال شده و isSent=false و id پیام temp است، ساعت و دکمه ارسال مجدد نمایش بده
+                                      if (message.isPending)
+                                        Icon(
+                                          Icons.access_time_rounded,
+                                          size: 14,
+                                          color: isMe
+                                              ? myTimeColor
+                                              : otherTimeColor,
+                                        )
+                                      else if (!message.isSent) // Failed
+                                        GestureDetector(
+                                          onTap: () {
+                                            // فراخوانی متد retrySendMessage از MessageNotifier
+                                            ref
+                                                .read(messageNotifierProvider
+                                                    .notifier)
+                                                .retrySendMessage(message);
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                              SnackBar(
+                                                  content: Text(
+                                                      'درحال تلاش مجدد برای ارسال...')),
+                                            );
+                                          },
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.error_outline_rounded,
+                                                size: 16,
+                                                color: Colors.red,
+                                              ),
+                                              SizedBox(width: 2),
+                                              Icon(
+                                                Icons.refresh_rounded,
+                                                size: 16,
+                                                color: Colors.red,
+                                              ),
+                                            ],
+                                          ),
+                                        )
+                                      else
+                                        Icon(
+                                          message.isRead
+                                              ? Icons.done_all
+                                              : Icons.done,
+                                          size: 14,
+                                          color: message.isRead
+                                              ? Colors.blue
+                                              : (isMe
+                                                  ? myTimeColor
+                                                  : otherTimeColor),
+                                        ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                     ],
                   ),
                 ),
