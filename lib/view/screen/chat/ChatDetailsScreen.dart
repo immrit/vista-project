@@ -95,9 +95,9 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
       actions: [
         IconButton(
           icon: const Icon(Icons.search_outlined),
-          onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
+          onPressed: () async {
+            final messageId = await Navigator.of(context).push<String?>(
+              MaterialPageRoute<String?>(
                 builder: (context) => ChatMessageSearchScreen(
                   conversationId: widget.conversationId,
                   otherUserName: widget.otherUserName,
@@ -106,6 +106,10 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
                 ),
               ),
             );
+            if (messageId != null && mounted) {
+              // Pass the result back to the previous screen (ChatScreen)
+              Navigator.of(context).pop(messageId);
+            }
           },
           tooltip: 'جستجو',
         ),

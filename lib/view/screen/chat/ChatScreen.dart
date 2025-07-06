@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
@@ -10,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:share_plus/share_plus.dart';
+import 'dart:async';
 import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:image_picker/image_picker.dart';
@@ -56,7 +58,11 @@ class ChatScreen extends ConsumerStatefulWidget {
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
+  // کنترلرهای جدید برای لیست قابل اسکرول
+  final ItemScrollController _itemScrollController = ItemScrollController();
+  final ItemPositionsListener _itemPositionsListener =
+      ItemPositionsListener.create();
+
   final imagePicker = ImagePicker();
   File? _selectedImage;
   Uint8List? _selectedImageBytes; // برای وب
@@ -68,6 +74,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   MessageModel? _replyToMessage;
 
   bool _isCurrentUserBlocked = false;
+  String? _highlightedMessageId;
+  Timer? _highlightTimer;
   bool _isOtherUserBlocked = false;
   bool _showScrollToBottom = false;
   double _uploadProgress = 0.0; // درصد پیشرفت آپلود عکس
@@ -95,7 +103,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ref.read(userOnlineNotifierProvider).updateOnlineStatus();
       _checkOnlineStatus();
     });
-    _scrollController.addListener(_handleScrollToBottomBtn);
+    _itemPositionsListener.itemPositions.addListener(_handleScrollToBottomBtn);
 
     // علامت‌گذاری پیام‌ها به عنوان خوانده شده هنگام ورود به صفحه
     // و حذف نوتیفیکیشن‌های مربوط به این مکالمه
@@ -183,39 +191,76 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _handleScrollToBottomBtn() {
-    // اگر کاربر از انتهای لیست دور شد، دکمه "رفتن به پایین" را نمایش بده
-    if (!_scrollController.hasClients) return;
-    final threshold = 200.0;
-    final isAtBottom = _scrollController.offset <= threshold;
-    if (_showScrollToBottom == isAtBottom) {
+    if (_itemPositionsListener.itemPositions.value.isEmpty) return;
+
+    // بررسی اینکه آیا اولین آیتم (جدیدترین پیام) در صفحه دیده می‌شود یا خیر
+    final firstItemVisible = _itemPositionsListener.itemPositions.value
+        .any((pos) => pos.index == 0 && pos.itemLeadingEdge >= 0);
+
+    final shouldShow = !firstItemVisible;
+
+    if (_showScrollToBottom != shouldShow) {
       setState(() {
-        _showScrollToBottom = !isAtBottom;
+        _showScrollToBottom = shouldShow;
       });
     }
   }
 
   void _scrollToBottom() {
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    }
+    _itemScrollController.scrollTo(
+      index: 0,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
   }
 
   @override
   void dispose() {
     _isDisposed = true;
     _messageController.dispose();
-    _scrollController.removeListener(_handleScrollToBottomBtn);
-    _scrollController.dispose();
+    _itemPositionsListener.itemPositions
+        .removeListener(_handleScrollToBottomBtn);
+    _highlightTimer?.cancel();
     _messageFocusNode.dispose();
     // هنگام خروج از صفحه چت، conversationId فعال را پاک کن
     if (ChatService.activeConversationId == widget.conversationId) {
       ChatService.activeConversationId = null;
     }
     super.dispose();
+  }
+
+  // متد جدید برای پرش به پیام
+  void _jumpToMessage(String messageId) {
+    final messages =
+        ref.read(conversationMessagesProvider(widget.conversationId));
+    final index = messages.indexWhere((m) => m.id == messageId);
+
+    if (index != -1 && _itemScrollController.isAttached) {
+      setState(() {
+        _highlightedMessageId = messageId;
+      });
+
+      _itemScrollController.scrollTo(
+        index: index,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+        alignment: 0.5, // اسکرول به وسط صفحه برای دید بهتر
+      );
+
+      // حذف هایلایت بعد از چند ثانیه
+      _highlightTimer?.cancel();
+      _highlightTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted) {
+          setState(() {
+            _highlightedMessageId = null;
+          });
+        }
+      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('پیام مورد نظر در لیست فعلی یافت نشد.')),
+      );
+    }
   }
 
   Future<void> _pickImage() async {
@@ -1048,214 +1093,231 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       top: false,
       child: Scaffold(
         appBar: AppBar(
-          elevation: 1,
-          titleSpacing: 0,
-          backgroundColor: Theme.of(context).brightness == Brightness.dark
-              ? Color(0xFF1A1A1A)
-              : Colors.white,
-          iconTheme: IconThemeData(
-            color: Theme.of(context).brightness == Brightness.dark
-                ? Colors.white
-                : Colors.black87,
-          ),
-          title: GestureDetector(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ChatDetailsScreen(
-                    conversationId: widget.conversationId,
-                    otherUserName: widget.otherUserName,
-                    otherUserAvatar: widget.otherUserAvatar,
-                    otherUserId: widget.otherUserId,
-                  ),
-                ),
-              );
-            },
-            child: Row(
-              children: [
-                Hero(
-                  tag: 'avatar_${widget.otherUserId}',
-                  child: Material(
-                    type: MaterialType.transparency,
-                    child: CircleAvatar(
-                      radius: 20,
-                      backgroundImage: widget.otherUserAvatar != null &&
-                              widget.otherUserAvatar!.isNotEmpty
-                          ? NetworkImage(widget.otherUserAvatar!)
-                          : AssetImage(
-                                  'lib/view/util/images/default-avatar.jpg')
-                              as ImageProvider,
+            elevation: 1,
+            titleSpacing: 0,
+            backgroundColor: Theme.of(context).brightness == Brightness.dark
+                ? Color(0xFF1A1A1A)
+                : Colors.white,
+            iconTheme: IconThemeData(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : Colors.black87,
+            ),
+            title: InkWell(
+              onTap: () async {
+                final messageIdToJump = await Navigator.push<String?>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ChatDetailsScreen(
+                      conversationId: widget.conversationId,
+                      otherUserName: widget.otherUserName,
+                      otherUserAvatar: widget.otherUserAvatar,
+                      otherUserId: widget.otherUserId,
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        widget.otherUserName,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white
-                              : Colors.black87,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Consumer(
-                        builder: (context, ref, child) {
-                          final isOnlineAsync = ref.watch(
-                              userOnlineStatusStreamProvider(
-                                  widget.otherUserId));
+                );
 
-                          return isOnlineAsync.when(
-                            data: (isOnline) {
-                              if (isOnline) {
-                                return Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: BoxDecoration(
-                                        color: Colors.green,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                    SizedBox(width: 4),
-                                    Text(
-                                      'آنلاین',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.green,
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              } else {
-                                final lastOnlineAsync = ref.watch(
-                                    userLastOnlineProvider(widget.otherUserId));
-                                return lastOnlineAsync.when(
-                                  data: (lastOnline) {
-                                    return Text(
-                                      lastOnline != null
-                                          ? TimeUtils.formatLastSeen(lastOnline)
-                                          : 'آفلاین',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Theme.of(context).brightness ==
-                                                Brightness.dark
-                                            ? Colors.grey[400]
-                                            : Colors.grey[600],
-                                      ),
-                                    );
-                                  },
-                                  loading: () => Text('در حال بارگذاری...',
-                                      style: TextStyle(fontSize: 12)),
-                                  error: (_, __) => Text('آفلاین',
-                                      style: TextStyle(
-                                          fontSize: 12, color: Colors.grey)),
-                                );
-                              }
-                            },
-                            loading: () => Text('در حال بارگذاری...',
-                                style: TextStyle(fontSize: 12)),
-                            error: (error, _) {
-                              print('خطا در دریافت وضعیت آنلاین: $error');
-                              return Text('آفلاین',
-                                  style: TextStyle(
-                                      fontSize: 12, color: Colors.grey));
-                            },
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            IconButton(
-              icon: Icon(Icons.delete_outline),
-              tooltip: 'پاکسازی تاریخچه گفتگو',
-              onPressed: () => _showClearConversationDialog(context),
-            ),
-            PopupMenuButton<String>(
-              icon: Icon(Icons.more_vert),
-              tooltip: 'گزینه‌های بیشتر',
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              onSelected: (value) {
-                switch (value) {
-                  case 'search':
-                    _showSearchDialog(context);
-                    break;
-                  case 'block':
-                    _isOtherUserBlocked
-                        ? _showUnblockUserDialog(context)
-                        : _showBlockUserDialog(context);
-                    break;
-                  case 'report':
-                    _showReportUserDialog(context);
-                    break;
-                  case 'profile':
-                    Navigator.of(context).push(MaterialPageRoute(
-                        builder: (context) => ProfileScreen(
-                            userId: widget.otherUserId,
-                            username: widget.otherUserName)));
-                    break;
+                if (messageIdToJump != null && mounted) {
+                  _jumpToMessage(messageIdToJump);
                 }
               },
-              itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: 'profile',
-                  child: Row(
-                    children: [
-                      Icon(Icons.person_outline,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white70
-                              : Colors.black87),
-                      SizedBox(width: 12),
-                      Text('مشاهده پروفایل'),
-                    ],
-                  ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: Row(
+                  children: [
+                    Hero(
+                      tag: 'avatar_${widget.otherUserId}',
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: CircleAvatar(
+                          radius: 20,
+                          backgroundImage: widget.otherUserAvatar != null &&
+                                  widget.otherUserAvatar!.isNotEmpty
+                              ? NetworkImage(widget.otherUserAvatar!)
+                              : const AssetImage(
+                                      'lib/view/util/images/default-avatar.jpg')
+                                  as ImageProvider,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            widget.otherUserName,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? Colors.white
+                                  : Colors.black87,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Consumer(
+                            builder: (context, ref, child) {
+                              final isOnlineAsync = ref.watch(
+                                  userOnlineStatusStreamProvider(
+                                      widget.otherUserId));
+
+                              return isOnlineAsync.when(
+                                data: (isOnline) {
+                                  if (isOnline) {
+                                    return Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          width: 8,
+                                          height: 8,
+                                          decoration: const BoxDecoration(
+                                            color: Colors.green,
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        const Text(
+                                          'آنلاین',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.green,
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  } else {
+                                    final lastOnlineAsync = ref.watch(
+                                        userLastOnlineProvider(
+                                            widget.otherUserId));
+                                    return lastOnlineAsync.when(
+                                      data: (lastOnline) {
+                                        return Text(
+                                          lastOnline != null
+                                              ? TimeUtils.formatLastSeen(
+                                                  lastOnline)
+                                              : 'آفلاین',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color:
+                                                Theme.of(context).brightness ==
+                                                        Brightness.dark
+                                                    ? Colors.grey[400]
+                                                    : Colors.grey[600],
+                                          ),
+                                        );
+                                      },
+                                      loading: () => const Text(
+                                          'در حال بارگذاری...',
+                                          style: TextStyle(fontSize: 12)),
+                                      error: (_, __) => const Text('آفلاین',
+                                          style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey)),
+                                    );
+                                  }
+                                },
+                                loading: () => const Text('در حال بارگذاری...',
+                                    style: TextStyle(fontSize: 12)),
+                                error: (error, _) {
+                                  print('خطا در دریافت وضعیت آنلاین: $error');
+                                  return const Text('آفلاین',
+                                      style: TextStyle(
+                                          fontSize: 12, color: Colors.grey));
+                                },
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                PopupMenuItem(
-                  value: 'block',
-                  child: Row(
-                    children: [
-                      Icon(_isOtherUserBlocked ? Icons.lock_open : Icons.block,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white70
-                              : Colors.black87),
-                      SizedBox(width: 12),
-                      Text(_isOtherUserBlocked ? 'رفع مسدودیت' : 'مسدود کردن'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'report',
-                  child: Row(
-                    children: [
-                      Icon(Icons.report_problem_outlined,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white70
-                              : Colors.black87),
-                      SizedBox(width: 12),
-                      Text('گزارش کاربر'),
-                    ],
-                  ),
-                ),
-              ],
+              ),
             ),
-          ],
-        ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.delete_outline),
+                tooltip: 'پاکسازی تاریخچه گفتگو',
+                onPressed: () => _showClearConversationDialog(context),
+              ),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert),
+                tooltip: 'گزینه‌های بیشتر',
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                onSelected: (value) {
+                  switch (value) {
+                    case 'search':
+                      _showSearchDialog(context);
+                      break;
+                    case 'block':
+                      _isOtherUserBlocked
+                          ? _showUnblockUserDialog(context)
+                          : _showBlockUserDialog(context);
+                      break;
+                    case 'report':
+                      _showReportUserDialog(context);
+                      break;
+                    case 'profile':
+                      Navigator.of(context).push(MaterialPageRoute(
+                          builder: (context) => ProfileScreen(
+                              userId: widget.otherUserId,
+                              username: widget.otherUserName)));
+                      break;
+                  }
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'profile',
+                    child: Row(
+                      children: [
+                        Icon(Icons.person_outline,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white70
+                                    : Colors.black87),
+                        const SizedBox(width: 12),
+                        const Text('مشاهده پروفایل'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'block',
+                    child: Row(
+                      children: [
+                        Icon(
+                            _isOtherUserBlocked ? Icons.lock_open : Icons.block,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white70
+                                    : Colors.black87),
+                        const SizedBox(width: 12),
+                        Text(
+                            _isOtherUserBlocked ? 'رفع مسدودیت' : 'مسدود کردن'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'report',
+                    child: Row(
+                      children: [
+                        Icon(Icons.report_problem_outlined,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white70
+                                    : Colors.black87),
+                        const SizedBox(width: 12),
+                        const Text('گزارش کاربر'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ]),
         body: Stack(
           children: [
             Column(
@@ -1282,8 +1344,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         return true;
                       }).toList();
 
-                      return ListView.builder(
-                        controller: _scrollController,
+                      return ScrollablePositionedList.builder(
+                        itemScrollController: _itemScrollController,
+                        itemPositionsListener: _itemPositionsListener,
                         reverse: true,
                         itemCount: filteredMessages.length,
                         itemBuilder: (context, index) {
@@ -1338,7 +1401,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 bottom: 80,
                 right: 16,
                 child: FloatingActionButton(
-                  mini: true,
+                  mini: true, // دکمه کوچکتر
                   backgroundColor: Theme.of(context).colorScheme.primary,
                   onPressed: _scrollToBottom,
                   child: const Icon(Icons.arrow_downward, color: Colors.white),
@@ -1871,214 +1934,230 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
           ],
         ),
-        child: GestureDetector(
-          onLongPress: () => _showMessageOptions(context, message, isMe),
-          child: Align(
-            alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.8,
-              ),
-              child: Opacity(
-                opacity: opacity,
-                child: Card(
-                  margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  color:
-                      tempColor ?? (isMe ? myMessageColor : otherMessageColor),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16).copyWith(
-                      bottomRight:
-                          // Existing borderRadius logic
-                          isMe ? Radius.circular(4) : Radius.circular(16),
-                      bottomLeft:
-                          isMe ? Radius.circular(16) : Radius.circular(4),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 800),
+          curve: Curves.easeInOut,
+          padding: const EdgeInsets.symmetric(vertical: 1, horizontal: 4),
+          decoration: BoxDecoration(
+            color: _highlightedMessageId == message.id
+                ? Theme.of(context).colorScheme.primary.withOpacity(0.2)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: GestureDetector(
+            onLongPress: () => _showMessageOptions(context, message, isMe),
+            child: Align(
+              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.8,
+                ),
+                child: Opacity(
+                  opacity: opacity,
+                  child: Card(
+                    margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    color: tempColor ??
+                        (isMe ? myMessageColor : otherMessageColor),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16).copyWith(
+                        bottomRight:
+                            isMe ? Radius.circular(4) : Radius.circular(16),
+                        bottomLeft: isMe
+                            ? const Radius.circular(16)
+                            : const Radius.circular(4),
+                      ),
                     ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: isMe
-                        ? CrossAxisAlignment.end
-                        : CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (message.replyToMessageId != null)
-                        Container(
-                          padding: EdgeInsets.all(8),
-                          margin: EdgeInsets.only(bottom: 4),
-                          decoration: BoxDecoration(
-                            // Existing reply decoration
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.black12
-                                    : Colors.white24,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Column(
-                            // Existing reply content
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                message.replyToSenderName ?? 'کاربر',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: isMe ? Colors.white70 : Colors.black87,
-                                  fontSize: 12,
+                    child: Column(
+                      crossAxisAlignment: isMe
+                          ? CrossAxisAlignment.end
+                          : CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (message.replyToMessageId != null)
+                          Container(
+                            padding: EdgeInsets.all(8),
+                            margin: EdgeInsets.only(bottom: 4),
+                            decoration: BoxDecoration(
+                              // Existing reply decoration
+                              color: Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? Colors.black12
+                                  : Colors.white24,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Column(
+                              // Existing reply content
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  message.replyToSenderName ?? 'کاربر',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color:
+                                        isMe ? Colors.white70 : Colors.black87,
+                                    fontSize: 12,
+                                  ),
                                 ),
-                              ),
-                              SizedBox(
-                                  height:
-                                      4), // Space between sender name and reply content
-                              Text(
-                                message.replyToContent ?? '',
-                                style: TextStyle(
-                                  color: isMe ? Colors.white70 : Colors.black87,
-                                  fontSize: 12,
+                                SizedBox(
+                                    height:
+                                        4), // Space between sender name and reply content
+                                Text(
+                                  message.replyToContent ?? '',
+                                  style: TextStyle(
+                                    color:
+                                        isMe ? Colors.white70 : Colors.black87,
+                                    fontSize: 12,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      // Display attachment (audio or image)
-                      if (message.attachmentUrl != null &&
-                          message.attachmentUrl!.isNotEmpty &&
-                          (message.attachmentType == 'image' ||
-                              message.attachmentType == 'audio'))
-                        Padding(
-                          padding: EdgeInsets.only(
-                              top: message.replyToMessageId != null
+                        // Display attachment (audio or image)
+                        if (message.attachmentUrl != null &&
+                            message.attachmentUrl!.isNotEmpty &&
+                            (message.attachmentType == 'image' ||
+                                message.attachmentType == 'audio'))
+                          Padding(
+                            padding: EdgeInsets.only(
+                                top: message.replyToMessageId != null
+                                    ? 4
+                                    : 12, // Less top padding if it's a reply, otherwise normal
+                                left: 12,
+                                right: 12,
+                                bottom: message.content.isNotEmpty
+                                    ? 4
+                                    : 12), // Less bottom padding if there's content, otherwise normal
+                            child: attachmentWidget,
+                          ),
+                        // Display message content
+                        if (message.content.isNotEmpty)
+                          Padding(
+                            padding: EdgeInsets.only(
+                              top: (message.attachmentUrl != null &&
+                                      message.attachmentUrl!.isNotEmpty)
                                   ? 4
-                                  : 12, // Less top padding if it's a reply, otherwise normal
+                                  : 12, // Less top padding if there's an attachment, otherwise normal
                               left: 12,
                               right: 12,
-                              bottom: message.content.isNotEmpty
-                                  ? 4
-                                  : 12), // Less bottom padding if there's content, otherwise normal
-                          child: attachmentWidget,
-                        ),
-                      // Display message content
-                      if (message.content.isNotEmpty)
-                        Padding(
-                          padding: EdgeInsets.only(
-                            top: (message.attachmentUrl != null &&
-                                    message.attachmentUrl!.isNotEmpty)
-                                ? 4
-                                : 12, // Less top padding if there's an attachment, otherwise normal
-                            left: 12,
-                            right: 12,
-                            bottom: 12,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: isMe
-                                ? CrossAxisAlignment.end
-                                : CrossAxisAlignment.start,
-                            children: [
-                              if (message.content.isNotEmpty)
-                                Padding(
-                                  padding: EdgeInsets.only(
-                                    top: message.attachmentUrl != null ? 8 : 0,
-                                  ),
-                                  child: Directionality(
-                                    textDirection:
-                                        getTextDirection(message.content),
-                                    child: Text(
-                                      message.content,
-                                      style: TextStyle(
-                                        color:
-                                            isMe ? myTextColor : otherTextColor,
-                                        fontSize: 16,
-                                      ),
+                              bottom: 12,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: isMe
+                                  ? CrossAxisAlignment.end
+                                  : CrossAxisAlignment.start,
+                              children: [
+                                if (message.content.isNotEmpty)
+                                  Padding(
+                                    padding: EdgeInsets.only(
+                                      top:
+                                          message.attachmentUrl != null ? 8 : 0,
                                     ),
-                                  ),
-                                ),
-                              Padding(
-                                padding: const EdgeInsets.only(top: 4),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: isMe
-                                            ? Colors.white24
-                                            : Colors.black12,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
+                                    child: Directionality(
+                                      textDirection:
+                                          getTextDirection(message.content),
                                       child: Text(
-                                        _formatMessageHour(message.createdAt),
+                                        message.content,
                                         style: TextStyle(
-                                          fontSize: 11,
                                           color: isMe
-                                              ? myTimeColor
-                                              : otherTimeColor,
-                                          fontWeight: FontWeight.w500,
+                                              ? myTextColor
+                                              : otherTextColor,
+                                          fontSize: 16,
                                         ),
                                       ),
                                     ),
-                                    SizedBox(width: 4),
-                                    if (isMe)
-                                      // فقط اگر پیام توسط کاربر فعلی ارسال شده و isSent=false و id پیام temp است، ساعت و دکمه ارسال مجدد نمایش بده
-                                      if (message.isPending)
-                                        Icon(
-                                          Icons.access_time_rounded,
-                                          size: 14,
+                                  ),
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
                                           color: isMe
-                                              ? myTimeColor
-                                              : otherTimeColor,
-                                        )
-                                      else if (!message.isSent) // Failed
-                                        GestureDetector(
-                                          onTap: () {
-                                            // فراخوانی متد retrySendMessage از MessageNotifier
-                                            ref
-                                                .read(messageNotifierProvider
-                                                    .notifier)
-                                                .retrySendMessage(message);
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(
-                                              SnackBar(
-                                                  content: Text(
-                                                      'درحال تلاش مجدد برای ارسال...')),
-                                            );
-                                          },
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(
-                                                Icons.error_outline_rounded,
-                                                size: 16,
-                                                color: Colors.red,
-                                              ),
-                                              SizedBox(width: 2),
-                                              Icon(
-                                                Icons.refresh_rounded,
-                                                size: 16,
-                                                color: Colors.red,
-                                              ),
-                                            ],
-                                          ),
-                                        )
-                                      else
-                                        Icon(
-                                          message.isRead
-                                              ? Icons.done_all
-                                              : Icons.done,
-                                          size: 14,
-                                          color: message.isRead
-                                              ? Colors.blue
-                                              : (isMe
-                                                  ? myTimeColor
-                                                  : otherTimeColor),
+                                              ? Colors.white24
+                                              : Colors.black12,
+                                          borderRadius:
+                                              BorderRadius.circular(8),
                                         ),
-                                  ],
+                                        child: Text(
+                                          _formatMessageHour(message.createdAt),
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: isMe
+                                                ? myTimeColor
+                                                : otherTimeColor,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                      SizedBox(width: 4),
+                                      if (isMe)
+                                        // فقط اگر پیام توسط کاربر فعلی ارسال شده و isSent=false و id پیام temp است، ساعت و دکمه ارسال مجدد نمایش بده
+                                        if (message.isPending)
+                                          Icon(
+                                            Icons.access_time_rounded,
+                                            size: 14,
+                                            color: isMe
+                                                ? myTimeColor
+                                                : otherTimeColor,
+                                          )
+                                        else if (!message.isSent) // Failed
+                                          GestureDetector(
+                                            onTap: () {
+                                              // فراخوانی متد retrySendMessage از MessageNotifier
+                                              ref
+                                                  .read(messageNotifierProvider
+                                                      .notifier)
+                                                  .retrySendMessage(message);
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                    content: Text(
+                                                        'درحال تلاش مجدد برای ارسال...')),
+                                              );
+                                            },
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  Icons.error_outline_rounded,
+                                                  size: 16,
+                                                  color: Colors.red,
+                                                ),
+                                                SizedBox(width: 2),
+                                                Icon(
+                                                  Icons.refresh_rounded,
+                                                  size: 16,
+                                                  color: Colors.red,
+                                                ),
+                                              ],
+                                            ),
+                                          )
+                                        else
+                                          Icon(
+                                            message.isRead
+                                                ? Icons.done_all
+                                                : Icons.done,
+                                            size: 14,
+                                            color: message.isRead
+                                                ? Colors.blue
+                                                : (isMe
+                                                    ? myTimeColor
+                                                    : otherTimeColor),
+                                          ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
