@@ -90,30 +90,32 @@ class ConversationCacheDatabase extends _$ConversationCacheDatabase {
 
   Future<List<ConversationModel>> getCachedConversations() async {
     final rows = await select(cachedConversations).get();
-    final conversations = rows
-        .map((row) => ConversationModel(
-              id: row.id,
-              createdAt: row.createdAt,
-              updatedAt: row.updatedAt,
-              lastMessage: row.lastMessage,
-              lastMessageTime: row.lastMessageTime,
-              otherUserName: row.otherUserName,
-              otherUserAvatar: row.otherUserAvatar,
-              otherUserId: row.otherUserId,
-              hasUnreadMessages: row.hasUnreadMessages,
-              unreadCount: row.unreadCount,
-              isPinned: row.isPinned,
-              isMuted: row.isMuted,
-              isArchived: row.isArchived,
-              participants: [],
-            ))
-        .toList();
+    final conversations = rows.map(_mapRowToModel).toList();
     // اضافه شد: لاگ‌گیری برای هر مکالمه
     for (final c in conversations) {
       print(
           '[ConversationCacheService] getCachedConversations: id=${c.id}, unreadCount=${c.unreadCount}, hasUnreadMessages=${c.hasUnreadMessages}');
     }
     return conversations;
+  }
+
+  // Helper to map a Drift row to our app model
+  ConversationModel _mapRowToModel(CachedConversation row) {
+    return ConversationModel(
+        id: row.id,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        lastMessage: row.lastMessage,
+        lastMessageTime: row.lastMessageTime,
+        otherUserName: row.otherUserName,
+        otherUserAvatar: row.otherUserAvatar,
+        otherUserId: row.otherUserId,
+        hasUnreadMessages: row.hasUnreadMessages,
+        unreadCount: row.unreadCount,
+        isPinned: row.isPinned,
+        isMuted: row.isMuted,
+        isArchived: row.isArchived,
+        participants: []);
   }
 
   // متد جدید: بروزرسانی یا درج مکالمه
@@ -126,23 +128,7 @@ class ConversationCacheDatabase extends _$ConversationCacheDatabase {
     final row = await (select(cachedConversations)
           ..where((tbl) => tbl.id.equals(conversationId)))
         .getSingleOrNull();
-    if (row == null) return null;
-    return ConversationModel(
-      id: row.id,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      lastMessage: row.lastMessage,
-      lastMessageTime: row.lastMessageTime,
-      otherUserName: row.otherUserName,
-      otherUserAvatar: row.otherUserAvatar,
-      otherUserId: row.otherUserId,
-      hasUnreadMessages: row.hasUnreadMessages,
-      unreadCount: row.unreadCount,
-      isPinned: row.isPinned,
-      isMuted: row.isMuted, // خواندن وضعیت بی‌صدا
-      isArchived: row.isArchived, // خواندن وضعیت بایگانی
-      participants: [],
-    );
+    return row != null ? _mapRowToModel(row) : null;
   }
 
   // متد جدید: پاک کردن کل کش مکالمات
@@ -154,28 +140,14 @@ class ConversationCacheDatabase extends _$ConversationCacheDatabase {
   Stream<List<ConversationModel>> watchCachedConversations() {
     return (select(cachedConversations)
           ..orderBy([
+            (t) => OrderingTerm(
+                expression: t.isPinned,
+                mode: OrderingMode.desc), // سنجاق شده‌ها در بالا
             (t) =>
                 OrderingTerm(expression: t.updatedAt, mode: OrderingMode.desc)
           ]))
         .watch()
-        .map((rows) => rows
-            .map((row) => ConversationModel(
-                  id: row.id,
-                  createdAt: row.createdAt,
-                  updatedAt: row.updatedAt,
-                  lastMessage: row.lastMessage,
-                  lastMessageTime: row.lastMessageTime,
-                  otherUserName: row.otherUserName,
-                  otherUserAvatar: row.otherUserAvatar,
-                  otherUserId: row.otherUserId,
-                  hasUnreadMessages: row.hasUnreadMessages,
-                  unreadCount: row.unreadCount,
-                  isPinned: row.isPinned,
-                  isMuted: row.isMuted, // خواندن وضعیت بی‌صدا
-                  isArchived: row.isArchived, // خواندن وضعیت بایگانی
-                  participants: [], // Participants are not stored in this simple cache table
-                ))
-            .toList());
+        .map((rows) => rows.map(_mapRowToModel).toList());
   }
 
   // متد جدید برای تغییر وضعیت سنجاق
@@ -203,6 +175,14 @@ class ConversationCacheDatabase extends _$ConversationCacheDatabase {
         .write(
       CachedConversationsCompanion(isArchived: Value(isArchived)),
     );
+  }
+
+  // متد جدید برای تماشای یک مکالمه خاص
+  Stream<ConversationModel?> watchConversation(String conversationId) {
+    return (select(cachedConversations)
+          ..where((tbl) => tbl.id.equals(conversationId)))
+        .watchSingleOrNull()
+        .map((row) => row != null ? _mapRowToModel(row) : null);
   }
 }
 
@@ -281,6 +261,10 @@ class ConversationCacheService {
 
   Future<void> setArchiveStatus(String conversationId, bool isArchived) =>
       _db.setArchiveStatus(conversationId, isArchived);
+
+  // اضافه شد: تماشای یک مکالمه خاص
+  Stream<ConversationModel?> watchConversation(String conversationId) =>
+      _db.watchConversation(conversationId);
 
   // سایر متدهای مورد نیاز را می‌توان اضافه کرد
 }

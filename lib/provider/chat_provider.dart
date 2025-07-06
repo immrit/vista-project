@@ -1399,6 +1399,40 @@ final cachedConversationsStreamProvider =
   return conversationCache.watchCachedConversations();
 });
 
+// --- اضافه کنید: Provider برای دریافت آنی اطلاعات یک گفتگوی خاص ---
+final conversationProvider = StreamProvider.family
+    .autoDispose<ConversationModel?, String>((ref, conversationId) {
+  final cache = ConversationCacheService();
+
+  // همچنین، یکبار اطلاعات را از سرور برای اطمینان از به‌روز بودن کش، درخواست می‌دهیم.
+  // نیازی به await کردن نیست؛ استریم به محض آپدیت شدن کش، UI را به‌روز می‌کند.
+  Future.microtask(() {
+    ref.read(chatServiceProvider).refreshConversation(conversationId);
+  });
+
+  return cache.watchConversation(conversationId);
+});
+
+// --- اضافه کنید: Provider برای دریافت رسانه‌های اشتراک‌گذاری شده در یک گفتگو ---
+final sharedMediaProvider = FutureProvider.family
+    .autoDispose<List<MessageModel>, String>((ref, conversationId) async {
+  final userId = supabase.auth.currentUser!.id;
+
+  // کوئری مستقیم به سابابیس برای دریافت پیام‌های دارای ضمیمه
+  final response = await supabase
+      .from('messages')
+      .select()
+      .eq('conversation_id', conversationId)
+      .not('attachment_type', 'is', null) // فقط پیام‌های دارای ضمیمه
+      .order('created_at', ascending: false);
+
+  final messages = response
+      .map((json) => MessageModel.fromJson(json, currentUserId: userId))
+      .toList();
+
+  return messages;
+});
+
 // Provider برای دریافت و نمایش حجم کش پیام‌ها
 final chatCacheSizeProvider = FutureProvider<String>((ref) async {
   // final messageCacheService = MessageCacheService(); // برای این مورد نیاز مستقیم نیست
@@ -1432,4 +1466,17 @@ final chatCacheSizeProvider = FutureProvider<String>((ref) async {
   if (sizeInBytes < 1024 * 1024)
     return "${(sizeInBytes / 1024).toStringAsFixed(2)} کیلوبایت"; // دقت بیشتر
   return "${(sizeInBytes / (1024 * 1024)).toStringAsFixed(2)} مگابایت"; // دقت بیشتر
+});
+
+// --- اضافه کنید: Provider برای دریافت جزئیات کامل پروفایل کاربر ---
+final userProfileDetailsProvider = FutureProvider.family
+    .autoDispose<Map<String, dynamic>?, String>((ref, userId) async {
+  try {
+    final response =
+        await supabase.from('profiles').select().eq('id', userId).maybeSingle();
+    return response;
+  } catch (e) {
+    print('Error fetching user profile details for $userId: $e');
+    return null;
+  }
 });

@@ -12,7 +12,6 @@ import 'package:photo_view/photo_view.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
-import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'dart:io';
@@ -34,6 +33,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../widgets/audio_player_widget.dart';
 import '../../widgets/web files/image_downloader.dart';
 import '/main.dart';
+import 'ChatDetailsScreen.dart';
 import 'chat_input_box.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -1058,55 +1058,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ? Colors.white
                 : Colors.black87,
           ),
-          title: Row(
-            children: [
-              Hero(
-                tag: 'avatar_${widget.otherUserId}',
-                child: Material(
-                  type: MaterialType.transparency,
-                  child: GestureDetector(
-                    onTap: () {
-                      showDialog(
-                        context: context,
-                        builder: (context) => Dialog(
-                          backgroundColor: Colors.transparent,
-                          elevation: 0,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.network(
-                                  widget.otherUserAvatar ?? '',
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      Image.asset(
-                                          'assets/images/default_avatar.png'),
-                                  height: 250,
-                                  width: 250,
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                              SizedBox(height: 16),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                ),
-                                onPressed: () => Navigator.pop(context),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 16, vertical: 8),
-                                  child: Text('بستن',
-                                      style: TextStyle(color: Colors.black87)),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
+          title: GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ChatDetailsScreen(
+                    conversationId: widget.conversationId,
+                    otherUserName: widget.otherUserName,
+                    otherUserAvatar: widget.otherUserAvatar,
+                    otherUserId: widget.otherUserId,
+                  ),
+                ),
+              );
+            },
+            child: Row(
+              children: [
+                Hero(
+                  tag: 'avatar_${widget.otherUserId}',
+                  child: Material(
+                    type: MaterialType.transparency,
                     child: CircleAvatar(
                       radius: 20,
                       backgroundImage: widget.otherUserAvatar != null &&
@@ -1118,94 +1089,95 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      widget.otherUserName,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white
-                            : Colors.black87,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        widget.otherUserName,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : Colors.black87,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Consumer(
-                      builder: (context, ref, child) {
-                        final isOnlineAsync = ref.watch(
-                            userOnlineStatusStreamProvider(widget.otherUserId));
+                      Consumer(
+                        builder: (context, ref, child) {
+                          final isOnlineAsync = ref.watch(
+                              userOnlineStatusStreamProvider(
+                                  widget.otherUserId));
 
-                        return isOnlineAsync.when(
-                          data: (isOnline) {
-                            if (isOnline) {
-                              return Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: BoxDecoration(
-                                      color: Colors.green,
-                                      shape: BoxShape.circle,
+                          return isOnlineAsync.when(
+                            data: (isOnline) {
+                              if (isOnline) {
+                                return Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        color: Colors.green,
+                                        shape: BoxShape.circle,
+                                      ),
                                     ),
-                                  ),
-                                  SizedBox(width: 4),
-                                  Text(
-                                    'آنلاین',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.green,
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'آنلاین',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.green,
+                                      ),
                                     ),
-                                  ),
-                                ],
-                              );
-                            } else {
-                              final lastOnlineAsync = ref.watch(
-                                  userLastOnlineProvider(widget.otherUserId));
-                              return lastOnlineAsync.when(
-                                data: (lastOnline) {
-                                  return Text(
-                                    lastOnline != null
-                                        ? TimeUtils.formatLastSeen(lastOnline)
-                                        : 'آفلاین',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Theme.of(context).brightness ==
-                                              Brightness.dark
-                                          ? Colors.grey[400]
-                                          : Colors.grey[600],
-                                    ),
-                                  );
-                                },
-                                loading: () => Text('در حال بارگذاری...',
-                                    style: TextStyle(fontSize: 12)),
-                                error: (_, __) => Text('آفلاین',
-                                    style: TextStyle(
-                                        fontSize: 12, color: Colors.grey)),
-                              );
-                            }
-                          },
-                          loading: () => Text('در حال بارگذاری...',
-                              style: TextStyle(fontSize: 12)),
-                          error: (error, _) {
-                            print('خطا در دریافت وضعیت آنلاین: $error');
-                            return Text('آفلاین',
-                                style: TextStyle(
-                                    fontSize: 12, color: Colors.grey));
-                          },
-                        );
-                      },
-                    ),
-                  ],
+                                  ],
+                                );
+                              } else {
+                                final lastOnlineAsync = ref.watch(
+                                    userLastOnlineProvider(widget.otherUserId));
+                                return lastOnlineAsync.when(
+                                  data: (lastOnline) {
+                                    return Text(
+                                      lastOnline != null
+                                          ? TimeUtils.formatLastSeen(lastOnline)
+                                          : 'آفلاین',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Theme.of(context).brightness ==
+                                                Brightness.dark
+                                            ? Colors.grey[400]
+                                            : Colors.grey[600],
+                                      ),
+                                    );
+                                  },
+                                  loading: () => Text('در حال بارگذاری...',
+                                      style: TextStyle(fontSize: 12)),
+                                  error: (_, __) => Text('آفلاین',
+                                      style: TextStyle(
+                                          fontSize: 12, color: Colors.grey)),
+                                );
+                              }
+                            },
+                            loading: () => Text('در حال بارگذاری...',
+                                style: TextStyle(fontSize: 12)),
+                            error: (error, _) {
+                              print('خطا در دریافت وضعیت آنلاین: $error');
+                              return Text('آفلاین',
+                                  style: TextStyle(
+                                      fontSize: 12, color: Colors.grey));
+                            },
+                          );
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           actions: [
             IconButton(
