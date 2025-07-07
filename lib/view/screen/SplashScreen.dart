@@ -13,44 +13,28 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  bool _isLoading = true;
-  bool _hasError = false; // متغیر جدید برای نمایش وضعیت خطا
-
   @override
   void initState() {
     super.initState();
-    _checkAuthAndNavigate();
+    _redirect();
   }
 
-  Future<void> _checkAuthAndNavigate() async {
-    try {
-      setState(() {
-        _isLoading = true;
-        _hasError = false;
-      });
+  Future<void> _redirect() async {
+    // یک تأخیر کوتاه برای نمایش انیمیشن اسپلش
+    // دریافت داده به صفحه مربوطه منتقل شده تا رابط کاربری مسدود نشود
+    await Future.delayed(const Duration(seconds: 2));
 
-      await Future.delayed(const Duration(seconds: 2));
-      final response = await supabase.from('posts').select();
+    if (!mounted) return;
 
-      if (!mounted) return;
-
-      setState(() => _isLoading = false);
-
+    final session = supabase.auth.currentSession;
+    if (session == null) {
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => supabase.auth.currentSession == null
-              ? const WelcomePage()
-              : const HomeScreen(),
-        ),
+        MaterialPageRoute(builder: (context) => const WelcomePage()),
       );
-    } catch (e) {
-      print('Error: $e');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _hasError = true;
-        });
-      }
+    } else {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => const HomeScreen()),
+      );
     }
   }
 
@@ -87,42 +71,10 @@ class _SplashScreenState extends State<SplashScreen> {
                 ),
               ),
               const SizedBox(height: 30),
-              if (_isLoading)
-                LoadingAnimationWidget.progressiveDots(
-                  color: Colors.white,
-                  size: 50,
-                ),
-              if (_hasError) ...[
-                const Text(
-                  'خطا در برقراری ارتباط',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: _checkAuthAndNavigate,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text(
-                    'تلاش مجدد',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
+              LoadingAnimationWidget.progressiveDots(
+                color: Colors.white,
+                size: 50,
+              ),
             ],
           ),
         ),
