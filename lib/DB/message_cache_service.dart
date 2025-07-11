@@ -116,15 +116,8 @@ class MessageCacheDatabase extends _$MessageCacheDatabase {
     bool? isRead,
     bool? isSent,
   }) async {
-    final updates = CachedMessagesCompanion(
-      isRead: isRead != null ? Value(isRead) : const Value.absent(),
-      isSent: isSent != null ? Value(isSent) : const Value.absent(),
-    );
-    await (update(cachedMessages)
-          ..where((tbl) =>
-              tbl.conversationId.equals(conversationId) &
-              tbl.id.equals(messageId)))
-        .write(updates);
+    // قابلیت خوانده شده حذف شد
+    return;
   }
 
   // جایگزینی پیام temp با پیام واقعی
@@ -180,12 +173,8 @@ class MessageCacheDatabase extends _$MessageCacheDatabase {
 
   // --- اضافه شد: شمارش پیام‌های خوانده‌نشده ---
   Future<int> countUnreadMessages(String conversationId) async {
-    final count = await (selectOnly(cachedMessages)
-          ..addColumns([cachedMessages.id.count()])
-          ..where(cachedMessages.conversationId.equals(conversationId) &
-              cachedMessages.isRead.equals(false)))
-        .getSingle();
-    return count.read(cachedMessages.id.count()) ?? 0;
+    // قابلیت خوانده شده حذف شد
+    return 0;
   }
 
   // --- اضافه شد: عملیات Transaction ---

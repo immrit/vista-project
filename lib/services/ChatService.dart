@@ -25,6 +25,9 @@ class ChatService {
   static String? activeConversationId;
   // static String? lastNotifiedMessageId;
 
+  // اضافه شد: برای حل مشکل race condition در خواندن وضعیت خوانده‌نشده
+  static final Map<String, DateTime> _recentReadConversations = {};
+
   // // نگهداری لیست پیام‌هایی که نوتیفیکیشن گرفته‌اند (در یک session)
   // static final Set<String> _notifiedMessageIds = {};
 
@@ -180,29 +183,8 @@ class ChatService {
             }
 
             // محاسبه تعداد پیام‌های خوانده‌نشده
+            // قابلیت خوانده نشده حذف شد
             int unreadCount = 0;
-            if (myLastRead != null) {
-              final unreadMessages = await _supabase
-                  .from('messages')
-                  .select('id')
-                  .eq('conversation_id', conversationId)
-                  .gt('created_at', myLastRead)
-                  .neq('sender_id', userId); // فقط پیام‌های دریافتی
-
-              // فیلتر پیام‌های مخفی شده
-              final hiddenMessages = await _supabase
-                  .from('hidden_messages')
-                  .select('message_id')
-                  .eq('user_id', userId)
-                  .eq('conversation_id', conversationId);
-
-              final hiddenIds =
-                  hiddenMessages.map((e) => e['message_id'] as String).toSet();
-
-              unreadCount = unreadMessages
-                  .where((msg) => !hiddenIds.contains(msg['id']))
-                  .length;
-            }
 
             final conversation = ConversationModel.fromJson(
               json,
@@ -213,7 +195,7 @@ class ChatService {
               otherUserAvatar: otherParticipantProfile?['avatar_url'],
               otherUserId: otherParticipantData?['user_id'],
               hasUnreadMessages: hasUnreadMessages,
-              unreadCount: unreadCount,
+              unreadCount: 0,
               // isPinned مقدار اولیه از کش خوانده می‌شود اگر وجود داشته باشد
               isPinned: (await _conversationCache.getConversation(
                     conversationId,
@@ -963,31 +945,8 @@ class ChatService {
     }
 
     // محاسبه تعداد پیام‌های خوانده‌نشده
-    int unreadCount = 0;
-    bool hasUnreadMessages = false; // مقدار اولیه
-
-    if (myLastRead != null) {
-      final unreadMessagesRaw = await _supabase
-          .from('messages')
-          .select('id') // فقط آیدی کافیست برای شمارش
-          .eq('conversation_id', conversationId)
-          .gt('created_at', myLastRead)
-          .neq('sender_id', userId); // فقط پیام‌های دیگران
-
-      final hiddenMessages = await _supabase
-          .from('hidden_messages')
-          .select('message_id')
-          .eq('user_id', userId)
-          .eq('conversation_id', conversationId);
-      final hiddenIds =
-          hiddenMessages.map((e) => e['message_id'] as String).toSet();
-
-      unreadCount = unreadMessagesRaw
-          .where((msg) => !hiddenIds.contains(msg['id']))
-          .length;
-    }
-    hasUnreadMessages = unreadCount > 0;
-
+    final int unreadCount = 0;
+    final bool hasUnreadMessages = false;
     return ConversationModel.fromJson(
       updatedConversationData,
       currentUserId: userId,
@@ -1235,43 +1194,8 @@ class ChatService {
 
   // علامت‌گذاری همه پیام‌های یک مکالمه به عنوان خوانده شده
   Future<void> markConversationAsRead(String conversationId) async {
-    try {
-      final currentUserId = supabase.auth.currentUser!.id;
-
-      // به‌روزرسانی آخرین زمان خوانده شدن در جدول conversation_participants
-      await _supabase
-          .from('conversation_participants')
-          .update({'last_read_time': DateTime.now().toUtc().toIso8601String()})
-          .eq('conversation_id', conversationId)
-          .eq('user_id', currentUserId);
-
-      // فقط پیام‌های دریافتی را به عنوان خوانده شده در کش علامت‌گذاری کن
-      final messagesToUpdate = await _messageCache.getConversationMessages(
-        conversationId,
-      );
-
-      for (final message in messagesToUpdate) {
-        if (message.senderId != currentUserId && !message.isRead) {
-          await _messageCache.updateMessageStatus(
-            conversationId,
-            message.id,
-            isRead: true,
-          );
-        }
-      }
-
-      // بروزرسانی کش مکالمه برای صفر کردن unreadCount و hasUnreadMessages
-      await _conversationCache.updateLastRead(
-        conversationId,
-        DateTime.now().toUtc().toIso8601String(),
-      );
-
-      // بروزرسانی فوری لیست مکالمات (برای UI)
-      await refreshConversation(conversationId);
-    } catch (e) {
-      print('خطا در علامت‌گذاری مکالمه به عنوان خوانده‌شده: $e');
-      rethrow;
-    }
+    // قابلیت خوانده شده حذف شد
+    return;
   }
 
   // دریافت مکالمات بلادرنگ

@@ -120,7 +120,34 @@ class ConversationCacheDatabase extends _$ConversationCacheDatabase {
 
   // متد جدید: بروزرسانی یا درج مکالمه
   Future<void> updateConversation(ConversationModel conversation) async {
-    await cacheConversation(conversation);
+    final existing = await getConversation(conversation.id);
+    if (existing != null &&
+        existing.lastMessage == conversation.lastMessage &&
+        existing.lastMessageTime == conversation.lastMessageTime &&
+        existing.updatedAt == conversation.updatedAt &&
+        existing.isPinned == conversation.isPinned &&
+        existing.isMuted == conversation.isMuted &&
+        existing.isArchived == conversation.isArchived) {
+      // هیچ تغییری نکرده، نیازی به آپدیت نیست
+      return;
+    }
+    await into(cachedConversations).insertOnConflictUpdate(
+      CachedConversationsCompanion(
+        id: Value(conversation.id),
+        createdAt: Value(conversation.createdAt),
+        updatedAt: Value(conversation.updatedAt),
+        lastMessage: Value(conversation.lastMessage),
+        lastMessageTime: Value(conversation.lastMessageTime),
+        otherUserName: Value(conversation.otherUserName),
+        otherUserAvatar: Value(conversation.otherUserAvatar),
+        otherUserId: Value(conversation.otherUserId),
+        hasUnreadMessages: Value(conversation.hasUnreadMessages),
+        unreadCount: Value(conversation.unreadCount),
+        isPinned: Value(conversation.isPinned),
+        isMuted: Value(conversation.isMuted),
+        isArchived: Value(conversation.isArchived),
+      ),
+    );
   }
 
   // متد جدید: دریافت یک مکالمه با آیدی
@@ -136,13 +163,12 @@ class ConversationCacheDatabase extends _$ConversationCacheDatabase {
     await delete(cachedConversations).go();
   }
 
-  // متد جدید: تماشای تغییرات در مکالمات کش‌شده
+  // متد جدید: تماشای تغییرات در مکالمات کش‌شده - بهینه‌سازی شده
   Stream<List<ConversationModel>> watchCachedConversations() {
     return (select(cachedConversations)
           ..orderBy([
-            (t) => OrderingTerm(
-                expression: t.isPinned,
-                mode: OrderingMode.desc), // سنجاق شده‌ها در بالا
+            (t) =>
+                OrderingTerm(expression: t.isPinned, mode: OrderingMode.desc),
             (t) =>
                 OrderingTerm(expression: t.updatedAt, mode: OrderingMode.desc)
           ]))
@@ -228,16 +254,8 @@ class ConversationCacheService {
   }
 
   Future<void> updateLastRead(String conversationId, String readTimeIso) async {
-    await (_db.update(_db.cachedConversations)
-          ..where((tbl) => tbl.id.equals(conversationId)))
-        .write(CachedConversationsCompanion(
-      hasUnreadMessages: const Value(false),
-      unreadCount: const Value(0),
-    ));
-    // اضافه شد: لاگ‌گیری بعد از آپدیت
-    final conv = await getConversation(conversationId);
-    print(
-        '[ConversationCacheService] updateLastRead: conversationId=$conversationId, unreadCount=${conv?.unreadCount}, hasUnreadMessages=${conv?.hasUnreadMessages}');
+    // قابلیت خوانده شده حذف شد
+    return;
   }
 
   // متد سینک برای گرفتن مکالمه از کش حافظه (Drift) بدون async

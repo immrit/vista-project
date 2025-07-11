@@ -55,7 +55,7 @@ class UnifiedChatItem {
       subtitle: conversation.lastMessage,
       avatarUrl: conversation.otherUserAvatar,
       lastActivity: conversation.lastMessageTime,
-      unreadCount: conversation.unreadCount,
+      unreadCount: 0, // قابلیت خوانده نشده حذف شد
       isChannel: false,
 
       isPinned: conversation.isPinned,
@@ -605,8 +605,7 @@ class _ChatConversationsScreenState
             item.title,
             style: TextStyle(
               fontSize: 16,
-              fontWeight:
-                  item.unreadCount > 0 ? FontWeight.w600 : FontWeight.w500,
+              fontWeight: FontWeight.w500,
               color: theme.textTheme.titleMedium?.color,
             ),
             maxLines: 1,
@@ -636,10 +635,8 @@ class _ChatConversationsScreenState
       item.subtitle!,
       style: TextStyle(
         fontSize: 14,
-        color: item.unreadCount > 0
-            ? theme.textTheme.bodyMedium?.color
-            : theme.hintColor,
-        fontWeight: item.unreadCount > 0 ? FontWeight.w500 : FontWeight.normal,
+        color: theme.hintColor,
+        fontWeight: FontWeight.normal,
       ),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
@@ -656,16 +653,12 @@ class _ChatConversationsScreenState
             _formatTime(item.lastActivity!),
             style: TextStyle(
               fontSize: 12,
-              color:
-                  item.unreadCount > 0 ? theme.primaryColor : theme.hintColor,
-              fontWeight:
-                  item.unreadCount > 0 ? FontWeight.w600 : FontWeight.normal,
+              color: theme.hintColor,
+              fontWeight: FontWeight.normal,
             ),
           ),
         const SizedBox(height: 4),
-        if (item.unreadCount > 0)
-          _buildUnreadBadge(theme, item.unreadCount)
-        else if (item.isChannel && item.memberCount != null)
+        if (item.isChannel && item.memberCount != null)
           Text(
             '${_formatNumber(item.memberCount!)} عضو',
             style: TextStyle(
@@ -675,26 +668,6 @@ class _ChatConversationsScreenState
             ),
           ),
       ],
-    );
-  }
-
-  Widget _buildUnreadBadge(ThemeData theme, int count) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: theme.primaryColor,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-      child: Text(
-        count > 99 ? '99+' : count.toString(),
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-        ),
-        textAlign: TextAlign.center,
-      ),
     );
   }
 

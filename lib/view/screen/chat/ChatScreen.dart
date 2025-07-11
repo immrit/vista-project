@@ -98,26 +98,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     timeago.setLocaleMessages('fa', timeago.FaMessages());
 
     Future.microtask(() {
-      ref.read(messageNotifierProvider.notifier).markAsRead(widget
-          .conversationId); // این باید last_read_time را در سرور آپدیت کند
+      // قابلیت خواندن پیام حذف شد
       ref.read(userOnlineNotifierProvider).updateOnlineStatus();
       _checkOnlineStatus();
     });
     _itemPositionsListener.itemPositions.addListener(_handleScrollToBottomBtn);
 
-    // علامت‌گذاری پیام‌ها به عنوان خوانده شده هنگام ورود به صفحه
     // و حذف نوتیفیکیشن‌های مربوط به این مکالمه
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final int notificationId = widget.conversationId.hashCode;
       flutterLocalNotificationsPlugin.cancel(notificationId);
-    });
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final safeHandler = ref.read(safeMessageHandlerProvider);
-      safeHandler
-          .markAsRead(widget.conversationId); // فراخوانی مجدد برای اطمینان
-      print(
-          'علامت‌گذاری پیام‌های مکالمه ${widget.conversationId} به عنوان خوانده شده');
     });
     // هنگام ورود به صفحه چت، conversationId فعال را تنظیم کن
     ChatService.activeConversationId = widget.conversationId;
@@ -2140,15 +2130,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                           )
                                         else
                                           Icon(
-                                            message.isRead
-                                                ? Icons.done_all
-                                                : Icons.done,
+                                            Icons.done,
                                             size: 14,
-                                            color: message.isRead
-                                                ? Colors.blue
-                                                : (isMe
-                                                    ? myTimeColor
-                                                    : otherTimeColor),
+                                            color: isMe
+                                                ? myTimeColor
+                                                : otherTimeColor,
                                           ),
                                     ],
                                   ),

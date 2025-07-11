@@ -26,46 +26,35 @@ final conversationsStreamProvider =
     StreamProvider.autoDispose<List<ConversationModel>>((ref) {
   print('🔄 شروع استریم مکالمات');
   final chatService = ref.watch(chatServiceProvider);
+  final conversationCache = ConversationCacheService();
 
-  // استریم تغییرات مکالمات و پیام‌ها را ترکیب کن
+  // استریم تغییرات مکالمات
   final conversationsStream = chatService.subscribeToConversations();
-  final userId = supabase.auth.currentUser?.id;
 
-  // استریم پیام‌های جدید (فقط پیام‌هایی که کاربر در آن مکالمه عضو است)
-  // یا هر تغییری در جدول messages که می‌تواند روی unreadCount تاثیر بگذارد
+  // استریم پیام‌های جدید (برای آپدیت فوری مکالمه)
   final messagesStream = supabase
       .from('messages')
       .stream(primaryKey: ['id']).order('created_at', ascending: false);
 
-  // هر بار که پیام جدیدی آمد یا پیام خوانده شد، conversations را invalidate کن
-  messagesStream.listen((event) {
-    print(
-        '🔔 پیام جدید یا تغییر وضعیت پیام دریافت شد، invalidating conversationsProvider & conversationsStreamProvider');
-    ref.invalidate(conversationsProvider);
-    ref.invalidateSelf();
-  });
-
-  // --- اضافه شد: Listen به تغییرات وضعیت خوانده شدن پیام‌ها برای بروزرسانی سریع badge ---
-  final readStatusStream = supabase
-      .from('messages')
-      .stream(primaryKey: ['id'])
-      .order('created_at')
-      .map((messages) {
-        // فقط پیام‌هایی که is_read تغییر کرده‌اند را بررسی کن
-        return messages.where((msg) => msg['is_read'] == true).toList();
-      });
-
-  readStatusStream.listen((readMessages) {
-    if (readMessages.isNotEmpty) {
-      print('🔵 پیام خوانده شد، conversationsStreamProvider invalidate');
-      ref.invalidate(conversationsProvider);
-      ref.invalidateSelf();
+  messagesStream.listen((event) async {
+    final updatedConversations = <String>{};
+    for (final msg in event) {
+      final conversationId = msg['conversation_id'] as String?;
+      if (conversationId != null &&
+          !updatedConversations.contains(conversationId)) {
+        updatedConversations.add(conversationId);
+        // مکالمه را از سرور بگیر و کش را آپدیت کن
+        await chatService.refreshConversation(conversationId);
+      }
     }
+    // conversationsStreamProvider را invalidate کن تا UI فوراً رفرش شود
+    ref.invalidateSelf();
+    ref.invalidate(conversationsProvider);
+    ref.invalidate(cachedConversationsStreamProvider);
   });
-  // --- پایان اضافه شده ---
 
-  // استریم مکالمات را برگردان
-  return conversationsStream;
+  // هر بار که کش مکالمات تغییر کرد، لیست را مجدداً از کش بخوان
+  return conversationCache.watchCachedConversations();
 });
 
 // پرووایدر برای سرویس چت
@@ -102,24 +91,44 @@ final messagesProvider = FutureProvider.family
   return chatService.getMessages(conversationId);
 });
 
-// استریم پیام‌های یک مکالمه
+// استریم پیام‌های یک مکالمه (real-time, بدون پیام temp برای مقصد)
 final messagesStreamProvider = StreamProvider.family
-    .autoDispose<List<MessageModel>, String>((ref, conversationId) {
+    .autoDispose<List<MessageModel>, String>((ref, conversationId) async* {
+  final userId = supabase.auth.currentUser!.id;
+  final cache = MessageCacheService();
   final chatService = ref.watch(chatServiceProvider);
-  return chatService.subscribeToMessages(conversationId);
+
+  final isOnline = await chatService.isDeviceOnline();
+
+  if (isOnline) {
+    // فقط استریم Supabase
+    yield* supabase
+        .from('messages')
+        .stream(primaryKey: ['id'])
+        .eq('conversation_id', conversationId)
+        .order('created_at', ascending: false)
+        .map((jsonList) {
+          // پیام‌های واقعی (id واقعی) را نگه دار، پیام temp را حذف کن
+          final messages = jsonList
+              .map((json) => MessageModel.fromJson(json, currentUserId: userId))
+              .where((msg) => !msg.id.startsWith('temp_'))
+              .toList();
+          // کش را sync کن (فقط برای آفلاین)
+          cache.cacheMessages(messages);
+          return messages;
+        });
+  } else {
+    // فقط کش (آفلاین)
+    final cached = await cache.getConversationMessages(conversationId);
+    // پیام temp را حذف کن (در آفلاین هم نباید پیام temp نمایش داده شود)
+    yield cached.where((msg) => !msg.id.startsWith('temp_')).toList();
+  }
 });
 
 // پرووایدر برای بررسی پیام‌های جدید
 final hasNewMessagesProvider = FutureProvider.autoDispose<bool>((ref) async {
-  final conversationsAsync = ref.watch(conversationsProvider);
-  return conversationsAsync.when(
-    data: (conversations) {
-      return conversations
-          .any((conversation) => conversation.hasUnreadMessages);
-    },
-    loading: () => false,
-    error: (_, __) => false,
-  );
+  // قابلیت خوانده شده حذف شد
+  return false;
 });
 
 // پرووایدر برای MessageNotifier
@@ -322,6 +331,9 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
       );
     }
 
+    // --- حذف شد: invalidate کردن کل provider پیام‌ها ---
+    // ref.invalidate(conversationMessagesProvider(conversationId));
+
     // تلاش برای ارسال پیام با منطق retry
     unawaited(_trySendWithRetry(
       tempMessage: tempMessage.copyWith(isSent: isOnline),
@@ -433,33 +445,8 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
   }
 
   Future<void> markAsRead(String conversationId) async {
-    if (_disposed) return;
-
-    // state = const AsyncValue.loading(); // Optional: set loading state if UI needs it
-    try {
-      final chatService = ref.read(chatServiceProvider);
-      // This will update Supabase, message cache, and then refreshConversation (which updates conversation cache)
-      await chatService.markConversationAsRead(conversationId);
-
-      // The ConversationCacheService is now correctly updated by chatService.markConversationAsRead
-      // (via refreshConversation and its call to _getConversationWithDetails which now calculates unreadCount).
-      // No need for manual cache update here.
-
-      // Invalidate providers to trigger UI updates.
-      // The cachedConversationsStreamProvider (newly added) will react to cache changes automatically.
-      ref.invalidate(conversationsProvider);
-      ref.invalidate(messagesProvider(conversationId));
-      ref.invalidate(messagesStreamProvider(conversationId));
-      ref.invalidate(totalUnreadMessagesProvider);
-      ref.invalidate(conversationsStreamProvider);
-      ref.invalidate(
-          cachedConversationsStreamProvider); // اضافه شد: invalidate کش مکالمات
-      // No need to invalidate cachedConversationsStreamProvider as it listens to DB changes.
-
-      // state = const AsyncValue.data(null); // Optional: set data state
-    } catch (e) {
-      print('خطا در علامت‌گذاری به عنوان خوانده شده: $e');
-    }
+    // قابلیت خوانده شده حذف شد
+    return;
   }
 
   Future<ConversationModel> createConversation(String otherUserId) async {
@@ -587,12 +574,8 @@ class SafeMessageHandler {
   // }
 
   Future<void> markAsRead(String conversationId) async {
-    try {
-      await _notifier.markAsRead(conversationId);
-    } catch (e) {
-      print('خطا در علامت‌گذاری به عنوان خوانده‌شده: $e');
-      rethrow;
-    }
+    // قابلیت خوانده شده حذف شد
+    return;
   }
 }
 
@@ -727,21 +710,8 @@ final userOnlineStatusStreamProvider =
 
 // مجموع تعداد پیام‌های خوانده‌نشده از لیست مکالمات (برای بج آیکون)
 final totalUnreadMessagesProvider = StreamProvider<int>((ref) {
-  final userId = supabase.auth.currentUser?.id;
-  if (userId == null) return Stream.value(0);
-
-  return ref.watch(conversationsStreamProvider).when(
-        data: (conversations) {
-          // جمع فقط پیام‌های خوانده‌نشده واقعی
-          final total = conversations.fold<int>(
-            0,
-            (sum, conversation) => sum + (conversation.unreadCount ?? 0),
-          );
-          return Stream.value(total);
-        },
-        loading: () => Stream.value(0),
-        error: (_, __) => Stream.value(0),
-      );
+  // قابلیت خوانده شده حذف شد
+  return Stream.value(0);
 });
 
 // پرووایدر برای آخرین بازدید
@@ -840,8 +810,8 @@ class UserReportNotifier extends StateNotifier<AsyncValue<void>> {
 // شمارش پیام‌های خوانده‌نشده برای یک مکالمه
 final unreadMessageCountProvider =
     FutureProvider.family<int, String>((ref, conversationId) async {
-  final messageCache = MessageCacheService();
-  return await messageCache.countUnreadMessages(conversationId);
+  // قابلیت خوانده شده حذف شد
+  return 0;
 });
 
 // حذف پیام‌های قدیمی‌تر از یک تاریخ خاص
@@ -968,67 +938,8 @@ final combinedConversationsProvider =
 
 // تنظیم مجدد پرووایدر برای بروزرسانی وضعیت خوانده شدن پیام‌ها
 final unreadMessagesProvider = StreamProvider<Map<String, int>>((ref) {
-  final chatService = ref.watch(chatServiceProvider);
-  final userId = supabase.auth.currentUser?.id;
-
-  if (userId == null) {
-    return Stream.value({});
-  }
-
-  // Subscribe to messages table for real-time updates
-  return supabase
-      .from('messages')
-      .stream(primaryKey: ['id'])
-      .order('created_at')
-      .map((data) async {
-        // گروه‌بندی پیام‌های خوانده نشده بر اساس مکالمه
-        final Map<String, int> unreadCounts = {};
-
-        for (final message in data) {
-          if (!message['is_read'] && message['recipient_id'] == userId) {
-            final conversationId = message['conversation_id'];
-            unreadCounts[conversationId] =
-                (unreadCounts[conversationId] ?? 0) + 1;
-          }
-        }
-
-        return unreadCounts;
-      })
-      .asyncMap((future) => future);
-});
-
-// اضافه کردن پرووایدر جدید برای مدیریت بهتر نوتیفیکیشن‌ها
-final chatNotificationProvider = Provider<void>((ref) {
-  ref.listen<AsyncValue<Map<String, int>>>(
-    unreadMessagesProvider,
-    (previous, next) {
-      next.whenData((unreadCounts) {
-        for (final conversationId in unreadCounts.keys) {
-          final prevCount = previous?.value?[conversationId] ?? 0;
-          final newCount = unreadCounts[conversationId] ?? 0;
-          if (newCount > prevCount) {
-            // نمایش نوتیفیکیشن فقط اگر پیام جدید آمده باشد
-            flutterLocalNotificationsPlugin.show(
-              DateTime.now().millisecondsSinceEpoch % 100000,
-              'پیام جدید',
-              'شما $newCount پیام خوانده نشده دارید',
-              const NotificationDetails(
-                android: AndroidNotificationDetails(
-                  'chat_messages',
-                  'پیام‌های چت',
-                  channelDescription: 'اعلان پیام‌های جدید چت',
-                  importance: Importance.high,
-                  priority: Priority.high,
-                  icon: '@drawable/ic_notification',
-                ),
-              ),
-              payload: conversationId,
-            );
-          }
-        }
-      });
-    },
-  );
+  // قابلیت خوانده شده حذف شد
+  return Stream.value({});
 });
 
 // Provider برای مدیریت وضعیت مکالمات
@@ -1054,13 +965,8 @@ class ConversationStateNotifier extends StateNotifier<AsyncValue<void>> {
   }
 
   Future<void> markAsRead(String conversationId) async {
-    try {
-      final chatService = ref.read(chatServiceProvider);
-      await chatService.markConversationAsRead(conversationId);
-      refreshConversations();
-    } catch (e) {
-      print('خطا در علامت‌گذاری به عنوان خوانده شده: $e');
-    }
+    // قابلیت خوانده شده حذف شد
+    return;
   }
 }
 
@@ -1225,6 +1131,40 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
         .cacheMessage(updatedMessage); // پیام آپدیت شده را در کش هم ذخیره کن
   }
 
+  // --- اضافه شد: متدهای optimistic update ---
+
+  // اضافه کردن پیام جدید به state (بدون invalidate کردن کل provider)
+  void addMessage(MessageModel message) {
+    final newState = [...state, message];
+    state = _filterTempDuplicates(newState);
+    _cacheService.cacheMessage(message);
+  }
+
+  // حذف پیام از state (بدون invalidate کردن کل provider)
+  void removeMessage(String messageId) {
+    final newState = state.where((m) => m.id != messageId).toList();
+    state = _filterTempDuplicates(newState);
+    _cacheService.clearMessage(conversationId, messageId);
+  }
+
+  // جایگزینی پیام موقت با پیام واقعی (بدون invalidate کردن کل provider)
+  void replaceTempMessage(String tempId, MessageModel realMessage) {
+    final newState = state.map((m) {
+      if (m.id == tempId) {
+        return realMessage;
+      }
+      return m;
+    }).toList();
+    state = _filterTempDuplicates(newState);
+
+    // آپدیت کش
+    _cacheService.clearMessage(conversationId, tempId).then((_) {
+      _cacheService.cacheMessage(realMessage);
+    }).catchError((e) {
+      print("خطا در جایگزینی پیام در کش: $e");
+    });
+  }
+
   void markMessageAsFailed(String messageId) {
     final newState = [
       for (final m in state)
@@ -1263,6 +1203,8 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
 final conversationMessagesProvider = StateNotifierProvider.family
     .autoDispose<ConversationMessagesNotifier, List<MessageModel>, String>(
   (ref, conversationId) {
+    final link = ref
+        .keepAlive(); // جلوگیری از dispose شدن زودهنگام تا زمانی که صفحه چت باز است
     final notifier = ConversationMessagesNotifier(conversationId);
 
     // --- اضافه شد: گوش دادن به استریم Supabase برای بروزرسانی سریع ---
@@ -1276,96 +1218,68 @@ final conversationMessagesProvider = StateNotifierProvider.family
           .listen((jsonDataList) async {
             var currentMessagesState = List<MessageModel>.from(notifier.state);
             final List<MessageModel> newMessagesFromOthersToCache = [];
-            final List<MessageModel> updatedOrNewOwnMessagesToCache =
-                []; // اضافه شد
+            final List<MessageModel> updatedOrNewOwnMessagesToCache = [];
             bool stateWasModified = false;
 
             for (final jsonMsg in jsonDataList) {
               final serverMessage =
                   MessageModel.fromJson(jsonMsg, currentUserId: userId);
 
-              if (serverMessage.senderId == userId &&
-                  serverMessage.localId != null &&
+              // حذف پیام temp اگر پیام واقعی با localId مشابه آمد
+              if (serverMessage.localId != null &&
                   serverMessage.localId!.isNotEmpty) {
-                // این پیام توسط کاربر فعلی ارسال شده و از سرور برگشته است
-                final tempMessageId = serverMessage.localId!;
-
-                // 1. پیام موقت متناظر را از currentMessagesState حذف کن (اگر وجود دارد)
                 final int tempIndex = currentMessagesState
-                    .indexWhere((m) => m.id == tempMessageId);
+                    .indexWhere((m) => m.id == serverMessage.localId);
                 if (tempIndex != -1) {
                   currentMessagesState.removeAt(tempIndex);
                   stateWasModified = true;
                 }
+              }
 
-                // 2. بررسی و مدیریت پیام واقعی در currentMessagesState
-                final int realMessageIndex = currentMessagesState
-                    .indexWhere((m) => m.id == serverMessage.id);
-                if (realMessageIndex == -1) {
-                  // پیام واقعی (با ID سرور) در state نیست، پس آن را اضافه کن
-                  currentMessagesState.add(serverMessage);
-                  stateWasModified = true;
-                  // کش کردن پیام واقعی جدید
-                  updatedOrNewOwnMessagesToCache
-                      .add(serverMessage); // اضافه به لیست کش
+              final existingIndex = currentMessagesState
+                  .indexWhere((m) => m.id == serverMessage.id);
+              if (existingIndex == -1) {
+                currentMessagesState.add(serverMessage);
+                stateWasModified = true;
+                if (serverMessage.senderId == userId) {
+                  updatedOrNewOwnMessagesToCache.add(serverMessage);
                 } else {
-                  // پیام واقعی از قبل در state وجود دارد. آن را با نسخه جدیدتر از استریم جایگزین کن
-                  // تا مطمئن شویم آخرین اطلاعات سرور (مانند createdAt دقیق، is_sent) را داریم.
-                  if (currentMessagesState[realMessageIndex] != serverMessage) {
-                    // فقط اگر واقعا متفاوت هستند
-                    currentMessagesState[realMessageIndex] = serverMessage;
-                    stateWasModified = true;
-                    // کش کردن پیام واقعی آپدیت شده
-                    updatedOrNewOwnMessagesToCache
-                        .add(serverMessage); // اضافه به لیست کش
-                  }
+                  newMessagesFromOthersToCache.add(serverMessage);
                 }
               } else {
-                // این پیام یا از کاربر دیگری است، یا یک پیام قدیمی از کاربر فعلی بدون localId.
-                final existingMessageIndex = currentMessagesState
-                    .indexWhere((m) => m.id == serverMessage.id);
-
-                if (existingMessageIndex == -1) {
-                  currentMessagesState.add(serverMessage);
-                  newMessagesFromOthersToCache.add(serverMessage);
+                // فقط اگر پیام تغییر کرده باشد، آپدیت کن
+                if (currentMessagesState[existingIndex] != serverMessage) {
+                  currentMessagesState[existingIndex] = serverMessage;
                   stateWasModified = true;
-                } else {
-                  // اگر پیام وجود دارد، فقط در صورتی آپدیت کن که نیاز باشد
-                  // بررسی isRead هم اضافه شده برای تیک آبی
-                  if (currentMessagesState[existingMessageIndex].content !=
-                          serverMessage.content ||
-                      currentMessagesState[existingMessageIndex].isRead !=
-                          serverMessage
-                              .isRead || //  <-- بررسی کلیدی برای تیک آبی
-                      currentMessagesState[existingMessageIndex]
-                              .attachmentUrl != // بررسی تغییرات احتمالی دیگر
-                          serverMessage.attachmentUrl ||
-                      currentMessagesState[existingMessageIndex].isSent !=
-                          serverMessage.isSent) {
-                    currentMessagesState[existingMessageIndex] =
-                        serverMessage; // آپدیت پیام موجود
-                    stateWasModified = true;
-                    await notifier._cacheService.cacheMessage(serverMessage);
+                  if (serverMessage.senderId == userId) {
+                    updatedOrNewOwnMessagesToCache.add(serverMessage);
+                  } else {
+                    newMessagesFromOthersToCache.add(serverMessage);
                   }
                 }
-                if (currentMessagesState[existingMessageIndex].isRead !=
-                    serverMessage.isRead) {
-                  // اگر فقط وضعیت isRead تغییر کرده است (مهم برای تیک آبی)
-                  currentMessagesState[existingMessageIndex] =
-                      serverMessage.copyWith(isRead: serverMessage.isRead);
-                  stateWasModified = true;
-                  await notifier._cacheService
-                      .cacheMessage(currentMessagesState[existingMessageIndex]);
+              }
+
+              // --- آپدیت فوری کش مکالمه فقط اگر پیام جدیدتر است ---
+              final conversationIdForUpdate = serverMessage.conversationId;
+              final conversationCache = ConversationCacheService();
+              final conversation = await conversationCache
+                  .getConversation(conversationIdForUpdate);
+              if (conversation != null) {
+                // فقط اگر پیام جدیدتر است، مکالمه را آپدیت کن
+                if (serverMessage.createdAt.isAfter(conversation.updatedAt)) {
+                  final updatedConversation = conversation.copyWith(
+                    lastMessage: serverMessage.content,
+                    lastMessageTime: serverMessage.createdAt,
+                    updatedAt: serverMessage.createdAt,
+                  );
+                  await conversationCache
+                      .updateConversation(updatedConversation);
+                  // invalidate providers
+                  ref.invalidate(conversationsStreamProvider);
+                  ref.invalidate(cachedConversationsStreamProvider);
                 }
               }
             }
-
-            // اطمینان از اینکه هرگونه پیام موقت باقیمانده که معادل واقعی‌اش آمده، حذف شود.
-            // این کار توسط _filterTempDuplicates در setter مربوط به state انجام خواهد شد،
-            // اما برای اطمینان بیشتر می‌توانیم اینجا هم اعمال کنیم، اگرچه با منطق بالا باید currentMessagesState تمیز باشد.
-            // final previousLength = currentMessagesState.length;
-            // currentMessagesState = notifier._filterTempDuplicates(currentMessagesState);
-            // if (currentMessagesState.length != previousLength) stateWasModified = true;
 
             if (stateWasModified) {
               notifier.state = currentMessagesState;
@@ -1376,7 +1290,6 @@ final conversationMessagesProvider = StateNotifierProvider.family
                   .cacheMessages(newMessagesFromOthersToCache);
             }
             if (updatedOrNewOwnMessagesToCache.isNotEmpty) {
-              // اضافه شد
               await notifier._cacheService
                   .cacheMessages(updatedOrNewOwnMessagesToCache);
             }
@@ -1384,6 +1297,7 @@ final conversationMessagesProvider = StateNotifierProvider.family
 
       ref.onDispose(() {
         sub.cancel();
+        link.close(); // آزادسازی keepAlive هنگام dispose
       });
     }
 
