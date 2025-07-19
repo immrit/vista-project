@@ -214,7 +214,6 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   await HiveInitialize.initialize();
-  await initializeDateFormatting('fa', null);
 
   WidgetsFlutterBinding.ensureInitialized();
 

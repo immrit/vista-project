@@ -35,27 +35,46 @@ class ConversationModel {
 
   factory ConversationModel.fromJson(Map<String, dynamic> json,
       {String? currentUserId}) {
-    return ConversationModel(
-      id: json['id'],
-      createdAt: DateTime.parse(json['created_at']),
-      updatedAt: DateTime.parse(json['updated_at']),
-      lastMessage: json['last_message'],
-      lastMessageTime: json['last_message_time'] != null
-          ? DateTime.parse(json['last_message_time'])
-          : null,
-      participants: json['participants'] != null
-          ? List<ConversationParticipantModel>.from(json['participants']
-              .map((x) => ConversationParticipantModel.fromJson(x)))
-          : [],
-      otherUserName: json['otherUserName'],
-      otherUserAvatar: json['otherUserAvatar'],
-      otherUserId: json['otherUserId'],
-      hasUnreadMessages: json['hasUnreadMessages'] ?? false,
-      unreadCount: json['unreadCount'] ?? 0, // استفاده از ?? برای مقدار پیش‌فرض
-      isPinned: json['is_pinned'] ?? false,
-      isMuted: json['is_muted'] ?? false, // خواندن isMuted از JSON
-      isArchived: json['is_archived'] ?? false, // خواندن وضعیت بایگانی
-    );
+    try {
+      // بررسی وجود فیلدهای اجباری
+      if (json['id'] == null) {
+        throw Exception('فیلد id در JSON موجود نیست');
+      }
+
+      if (json['created_at'] == null) {
+        throw Exception('فیلد created_at در JSON موجود نیست');
+      }
+
+      if (json['updated_at'] == null) {
+        throw Exception('فیلد updated_at در JSON موجود نیست');
+      }
+
+      return ConversationModel(
+        id: json['id'] as String,
+        createdAt: DateTime.parse(json['created_at'] as String),
+        updatedAt: DateTime.parse(json['updated_at'] as String),
+        lastMessage: json['last_message'] as String?,
+        lastMessageTime: json['last_message_time'] != null
+            ? DateTime.parse(json['last_message_time'] as String)
+            : null,
+        participants: json['participants'] != null
+            ? List<ConversationParticipantModel>.from(json['participants']
+                .map((x) => ConversationParticipantModel.fromJson(x)))
+            : [],
+        otherUserName: json['otherUserName'] as String?,
+        otherUserAvatar: json['otherUserAvatar'] as String?,
+        otherUserId: json['otherUserId'] as String?,
+        hasUnreadMessages: json['hasUnreadMessages'] ?? false,
+        unreadCount: json['unreadCount'] ?? 0,
+        isPinned: json['is_pinned'] ?? false,
+        isMuted: json['is_muted'] ?? false,
+        isArchived: json['is_archived'] ?? false,
+      );
+    } catch (e) {
+      print('❌ خطا در تبدیل JSON به ConversationModel: $e');
+      print('📄 JSON داده: $json');
+      rethrow;
+    }
   }
 
   Map<String, dynamic> toJson() {
@@ -148,14 +167,45 @@ class ConversationParticipantModel {
   });
 
   factory ConversationParticipantModel.fromJson(Map<String, dynamic> json) {
-    return ConversationParticipantModel(
-      id: json['id'],
-      conversationId: json['conversation_id'],
-      userId: json['user_id'],
-      createdAt: DateTime.parse(json['created_at']),
-      lastReadTime: DateTime.parse(json['last_read_time']),
-      isMuted: json['is_muted'] ?? false,
-    );
+    try {
+      // بررسی وجود فیلدهای اجباری
+      if (json['id'] == null) {
+        throw Exception('فیلد id در ConversationParticipantModel موجود نیست');
+      }
+
+      if (json['conversation_id'] == null) {
+        throw Exception(
+            'فیلد conversation_id در ConversationParticipantModel موجود نیست');
+      }
+
+      if (json['user_id'] == null) {
+        throw Exception(
+            'فیلد user_id در ConversationParticipantModel موجود نیست');
+      }
+
+      if (json['created_at'] == null) {
+        throw Exception(
+            'فیلد created_at در ConversationParticipantModel موجود نیست');
+      }
+
+      if (json['last_read_time'] == null) {
+        throw Exception(
+            'فیلد last_read_time در ConversationParticipantModel موجود نیست');
+      }
+
+      return ConversationParticipantModel(
+        id: json['id'] as String,
+        conversationId: json['conversation_id'] as String,
+        userId: json['user_id'] as String,
+        createdAt: DateTime.parse(json['created_at'] as String),
+        lastReadTime: DateTime.parse(json['last_read_time'] as String),
+        isMuted: json['is_muted'] ?? false,
+      );
+    } catch (e) {
+      print('❌ خطا در تبدیل JSON به ConversationParticipantModel: $e');
+      print('📄 JSON داده: $json');
+      rethrow;
+    }
   }
 
   Map<String, dynamic> toJson() {

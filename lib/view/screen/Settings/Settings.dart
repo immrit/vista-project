@@ -12,6 +12,8 @@ import '../ouathUser/updatePassword.dart';
 import 'ContactUs.dart';
 import 'TermsAndConditions.dart';
 import 'vistaStore/store.dart';
+import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class Settings extends ConsumerWidget {
   const Settings({super.key});
@@ -42,6 +44,66 @@ class Settings extends ConsumerWidget {
                     children: [
                       // پروفایل کاربر - با طراحی زیباتر
                       _buildUserProfileCard(context, getprofile, colorScheme),
+
+                      // دکمه ورود به فروشگاه ویستا
+                      Card(
+                        margin: const EdgeInsets.symmetric(vertical: 8.0),
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ProfileFields(
+                          'ورود به فروشگاه ویستا',
+                          Icons.store,
+                          () async {
+                            // --- مقداردهی کلید JWT (حتماً مقدار را با کلید واقعی جایگزین کنید) ---
+                            const String jwtSecret = 'اینجا کلید را قرار بده';
+                            final user = getprofile;
+                            if (user == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text('اطلاعات کاربر یافت نشد.')),
+                              );
+                              return;
+                            }
+                            final email = user['email'];
+                            final name = user['username'];
+                            final premium = user['premium'] ?? false;
+
+                            // ساخت JWT با اطلاعات کاربر و انقضای کوتاه مدت
+                            final jwt = JWT({
+                              'email': email,
+                              'name': name,
+                              'premium': premium,
+                              'exp': DateTime.now()
+                                      .add(Duration(minutes: 5))
+                                      .millisecondsSinceEpoch ~/
+                                  1000,
+                            });
+
+                            // امضا با کلید مشترک
+                            final token = jwt.sign(SecretKey(jwtSecret),
+                                algorithm: JWTAlgorithm.HS256);
+
+                            // ساخت URL مقصد
+                            final url = Uri.parse(
+                                'http://172.18.0.1:3000/store/auth-redirect?token=$token');
+
+                            // باز کردن سایت با توکن
+                            if (await canLaunchUrl(url)) {
+                              await launchUrl(url,
+                                  mode: LaunchMode.externalApplication);
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text(
+                                        'امکان باز کردن فروشگاه وجود ندارد.')),
+                              );
+                            }
+                          },
+                          colorScheme.primary,
+                        ),
+                      ),
 
                       const SizedBox(height: 24),
 

@@ -1,31 +1,41 @@
-import 'package:Vista/view/screen/searchPage.dart';
+import 'package:Vista/view/screen/PublicPosts/PostDetailPage.dart';
+import 'package:Vista/view/screen/PublicPosts/publicPosts.dart';
 import 'package:Vista/view/util/comments_bottom_sheet.dart';
+import 'package:badges/badges.dart' as badges;
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shamsi_date/shamsi_date.dart';
+import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shamsi_date/shamsi_date.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:visibility_detector/visibility_detector.dart';
+import '../../../main.dart';
 import '../../../model/MusicModel.dart';
+import '../../../model/ProfileModel.dart';
 import '../../../provider/MusicProvider.dart';
 import '../../../provider/chat_provider.dart';
 import '../../util/const.dart';
 import '../../util/widgets.dart';
 import '../../widgets/CustomVideoPlayer.dart';
+import '../../widgets/ReelsScreen.dart';
+import '../Music/MiniMusicPlayer.dart';
+import '../Stories/story_system.dart';
 import '../chat/ChatScreen.dart';
-import '/main.dart';
-import '../../../model/ProfileModel.dart';
-import '../../../model/publicPostModel.dart';
+import '../ouathUser/editeProfile.dart';
+import '../searchPage.dart';
+import '/model/publicPostModel.dart';
 import '../../../provider/provider.dart';
 import 'MusicWaveform.dart';
 import 'followers and followings/FollowersScreen.dart';
 import 'followers and followings/FollowingScreen.dart';
-import '../ouathUser/editeProfile.dart';
-import 'publicPosts.dart';
-import '../../widgets/ReelsScreen.dart'; // اضافه کن اگر نیست
+import 'notificationScreen.dart';
+import 'dart:async';
+import 'package:aws_s3_api/s3-2006-03-01.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   final String userId;
@@ -322,7 +332,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return '${jalaliDate.year}/${jalaliDate.month}/${jalaliDate.day}';
   }
 
-// ... existing code ...
   Widget _buildProfileDetails(ProfileModel profile) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(profile.fullName,
@@ -394,7 +403,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ])
     ]);
   }
-// ... existing code ...
 
   SliverList _buildPostsList(ProfileModel profile) {
     return SliverList(
@@ -821,65 +829,637 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     Share.share(shareText);
   }
 
-  PopupMenuButton<String> _buildPostMenu(
-      BuildContext context, PublicPostModel post) {
-    final currentUserId = supabase.auth.currentUser?.id;
-    final isCurrentUserPost = post.userId == currentUserId;
-    return PopupMenuButton<String>(
-      onSelected: (value) async {
-        switch (value) {
-          case 'delete':
-            final confirmed = await showDialog<bool>(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('حذف پست'),
-                content: const Text('آیا از حذف این پست اطمینان دارید؟'),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('انصراف')),
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    style: TextButton.styleFrom(foregroundColor: Colors.red),
-                    child: const Text('حذف'),
-                  ),
+  void showEditPostDialog(
+      BuildContext context, WidgetRef ref, PublicPostModel post) {
+    final TextEditingController contentController =
+        TextEditingController(text: post.content);
+    String? imageUrl = post.imageUrl;
+    String? videoUrl = post.videoUrl;
+    bool imageRemoved = false;
+    bool videoRemoved = false;
+    bool isLoading = false;
+
+    // جملات آماده برای ادمین‌ها
+    final List<String> adminTemplates = [
+      'این محتوا مناسب نیست و حذف شده است.',
+      'تبلیغات در ویستا ممنوع است.',
+      'این پست بر اساس قوانین ویستا حذف شده است.',
+      'محتوای نامناسب شناسایی و حذف شد.',
+      'این پست نقض قوانین محسوب می‌شود.',
+      'لطفاً محتوای مناسب ارسال کنید.',
+      'این محتوا با قوانین ویستا سازگار نیست.',
+    ];
+
+    // تابع تشخیص جهت متن
+    TextDirection getTextDirection(String text) {
+      final persianRegex = RegExp(r'[\u0600-\u06FF]');
+      final englishRegex = RegExp(r'[a-zA-Z]');
+
+      int persianCount = persianRegex.allMatches(text).length;
+      int englishCount = englishRegex.allMatches(text).length;
+
+      if (persianCount > englishCount) {
+        return TextDirection.rtl;
+      } else {
+        return TextDirection.ltr;
+      }
+    }
+
+    // تابع حذف فایل از آروان کلود
+    Future<void> deleteFileFromArvan(String fileUrl) async {
+      try {
+        if (fileUrl.contains('storage.389346.ir.cdn.ir')) {
+          final uri = Uri.parse(fileUrl);
+          final key = uri.pathSegments.sublist(1).join('/');
+
+          final s3 = S3(
+            region: 'ir-thr-at1',
+            credentials: AwsClientCredentials(
+              accessKey: '4f4716fb-fa84-4ae7-9c8b-34d2a0896cdf',
+              secretKey:
+                  'a6b4db27b4c54bfa46cbc4fd8a4ba2079e2da0cd2800acdc80dd758f8b2c1ec5',
+            ),
+            endpointUrl: 'https://coffevista.s3.ir-thr-at1.arvanstorage.ir',
+          );
+
+          await s3.deleteObject(
+            bucket: 'coffevista',
+            key: key,
+          );
+          print('فایل با موفقیت از آروان کلود حذف شد: $fileUrl');
+        }
+      } catch (e) {
+        print('خطا در حذف فایل از آروان کلود: $e');
+      }
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Row(
+                children: [
+                  Icon(Icons.edit, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  const Text('ویرایش پست ادمین'),
                 ],
               ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // بخش جملات آماده
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border:
+                            Border.all(color: Colors.orange.withOpacity(0.3)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.lightbulb_outline,
+                                  size: 16, color: Colors.orange),
+                              const SizedBox(width: 4),
+                              const Text('جملات آماده:',
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: adminTemplates.map((template) {
+                              return InkWell(
+                                onTap: () {
+                                  contentController.text = template;
+                                  setState(() {});
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                        color: Colors.orange.withOpacity(0.5)),
+                                  ),
+                                  child: Text(
+                                    template.length > 30
+                                        ? '${template.substring(0, 30)}...'
+                                        : template,
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.orange[700]),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // بخش متن پست
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.grey[800]
+                            : Colors.grey[100],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.text_fields,
+                                  size: 16, color: Colors.blue),
+                              const SizedBox(width: 4),
+                              const Text('متن پست:',
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Directionality(
+                            textDirection:
+                                getTextDirection(contentController.text),
+                            child: TextField(
+                              controller: contentController,
+                              maxLines: 4,
+                              maxLength: 300,
+                              textDirection:
+                                  getTextDirection(contentController.text),
+                              onChanged: (value) {
+                                setState(() {
+                                  // تغییر جهت متن بر اساس محتوا
+                                });
+                              },
+                              decoration: InputDecoration(
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                hintText: 'متن پست را ویرایش کنید...',
+                                counterText:
+                                    '${contentController.text.length}/300',
+                                filled: true,
+                                fillColor: Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? Colors.grey[700]
+                                    : Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // بخش محتوای چندرسانه‌ای
+                    if (imageUrl != null &&
+                        imageUrl.isNotEmpty &&
+                        !imageRemoved) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.grey[800]
+                              : Colors.grey[100],
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.image,
+                                    size: 16, color: Colors.green),
+                                const SizedBox(width: 4),
+                                const Text('تصویر فعلی:',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Stack(
+                                children: [
+                                  CachedNetworkImage(
+                                    imageUrl: imageUrl,
+                                    height: 150,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                    placeholder: (context, url) => Container(
+                                      height: 150,
+                                      color: Colors.grey[300],
+                                      child: const Center(
+                                          child: CircularProgressIndicator()),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    top: 8,
+                                    right: 8,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black54,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: const Icon(
+                                        Icons.image,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: () async {
+                                      // حذف از آروان کلود
+                                      await deleteFileFromArvan(imageUrl);
+                                      setState(() {
+                                        imageRemoved = true;
+                                      });
+                                    },
+                                    icon: const Icon(Icons.delete, size: 16),
+                                    label: const Text('حذف تصویر'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.red,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 8),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // بخش ویدیو
+                    if (videoUrl != null &&
+                        videoUrl.isNotEmpty &&
+                        !videoRemoved) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.grey[800]
+                              : Colors.grey[100],
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.video_library,
+                                    size: 16, color: Colors.red),
+                                const SizedBox(width: 4),
+                                const Text('ویدیو فعلی:',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              height: 150,
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: Colors.black,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Stack(
+                                children: [
+                                  Center(
+                                    child: Icon(
+                                      Icons.play_circle_outline,
+                                      color: Colors.white,
+                                      size: 50,
+                                    ),
+                                  ),
+                                  Positioned(
+                                    top: 8,
+                                    right: 8,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black54,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: const Icon(
+                                        Icons.video_library,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: () async {
+                                      // حذف از آروان کلود
+                                      await deleteFileFromArvan(videoUrl);
+                                      setState(() {
+                                        videoRemoved = true;
+                                      });
+                                    },
+                                    icon: const Icon(Icons.delete, size: 16),
+                                    label: const Text('حذف ویدیو'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.red,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 8),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // اطلاعات پست
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.info_outline,
+                                  size: 16, color: Colors.blue),
+                              const SizedBox(width: 4),
+                              const Text('اطلاعات پست:',
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text('نویسنده: ${post.username}'),
+                          Text(
+                              'تاریخ: ${post.createdAt.toString().substring(0, 16)}'),
+                          Text('لایک‌ها: ${post.likeCount}'),
+                          Text('کامنت‌ها: ${post.commentCount}'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed:
+                      isLoading ? null : () => Navigator.of(context).pop(),
+                  child: const Text('لغو'),
+                ),
+                ElevatedButton.icon(
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          final content = contentController.text.trim();
+                          if (content.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('متن پست نمی‌تواند خالی باشد'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                            return;
+                          }
+
+                          setState(() {
+                            isLoading = true;
+                          });
+
+                          try {
+                            final updateData = {
+                              'content': content,
+                              if (imageRemoved) 'image_url': null,
+                              if (!imageRemoved && imageUrl != null)
+                                'image_url': imageUrl,
+                              if (videoRemoved) 'video_url': null,
+                              if (!videoRemoved && videoUrl != null)
+                                'video_url': videoUrl,
+                              'updated_at': DateTime.now().toIso8601String(),
+                            };
+
+                            await supabase
+                                .from('posts')
+                                .update(updateData)
+                                .eq('id', post.id);
+                            ref.refresh(userProfileProvider(post.userId));
+
+                            if (context.mounted) {
+                              Navigator.of(context).pop();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Row(
+                                    children: [
+                                      Icon(Icons.check_circle,
+                                          color: Colors.white),
+                                      const SizedBox(width: 8),
+                                      const Text('پست با موفقیت ویرایش شد'),
+                                    ],
+                                  ),
+                                  backgroundColor: Colors.green,
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              setState(() {
+                                isLoading = false;
+                              });
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Row(
+                                    children: [
+                                      Icon(Icons.error, color: Colors.white),
+                                      const SizedBox(width: 8),
+                                      Text('خطا در ویرایش پست: $e'),
+                                    ],
+                                  ),
+                                  backgroundColor: Colors.red,
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                  icon: isLoading
+                      ? SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Icon(Icons.save),
+                  label: Text(isLoading ? 'در حال ذخیره...' : 'ذخیره تغییرات'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  ),
+                ),
+              ],
             );
-            if (confirmed == true) {
-              try {
-                await ref
-                    .read(supabaseServiceProvider)
-                    .deletePost(ref, post.id);
-                ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('پست با موفقیت حذف شد')));
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('خطا در حذف پست')));
-              }
-            }
-            break;
-          case 'report':
-            showDialog(
-                context: context,
-                builder: (context) => ReportDialog(post: post));
-            break;
-          case 'copy':
-            await Clipboard.setData(ClipboardData(text: post.content));
-            if (context.mounted) {
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(const SnackBar(content: Text('متن کپی شد!')));
-            }
-            break;
-        }
+          },
+        );
       },
-      itemBuilder: (context) => [
-        if (isCurrentUserPost)
-          const PopupMenuItem(value: 'delete', child: Text('حذف'))
-        else
-          const PopupMenuItem(value: 'report', child: Text('گزارش')),
-        const PopupMenuItem(value: 'copy', child: Text('کپی')),
-      ],
+    );
+  }
+
+  PopupMenuButton<String> _buildPostMenu(
+      BuildContext context, PublicPostModel post) {
+    final profileAsync = ref.watch(profileProvider);
+
+    return profileAsync.when(
+      data: (profile) {
+        final isBlueTick = profile != null &&
+            profile['is_verified'] == true &&
+            profile['verification_type'] == 'blueTick';
+        final currentUserId = supabase.auth.currentUser?.id;
+        final isCurrentUserPost = post.userId == currentUserId;
+
+        return PopupMenuButton<String>(
+          onSelected: (value) async {
+            switch (value) {
+              case 'delete':
+                if (isCurrentUserPost || isBlueTick) {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('حذف پست'),
+                      content: const Text('آیا از حذف این پست اطمینان دارید؟'),
+                      actions: [
+                        TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('انصراف')),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          style:
+                              TextButton.styleFrom(foregroundColor: Colors.red),
+                          child: const Text('حذف'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirmed == true) {
+                    try {
+                      await ref
+                          .read(supabaseServiceProvider)
+                          .deletePost(ref, post.id);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('پست با موفقیت حذف شد')));
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('خطا در حذف پست')));
+                    }
+                  }
+                }
+                break;
+              case 'report':
+                if (!isCurrentUserPost) {
+                  showDialog(
+                      context: context,
+                      builder: (context) => ReportDialog(post: post));
+                }
+                break;
+              case 'copy':
+                await Clipboard.setData(ClipboardData(text: post.content));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('متن کپی شد!')));
+                }
+                break;
+              case 'edit':
+                showEditPostDialog(context, ref, post);
+                break;
+            }
+          },
+          itemBuilder: (context) {
+            final items = <PopupMenuItem<String>>[];
+
+            // گزینه گزارش برای پست‌های دیگران
+            if (!isCurrentUserPost) {
+              items.add(
+                  const PopupMenuItem(value: 'report', child: Text('گزارش')));
+            }
+
+            // گزینه کپی برای همه
+            items.add(const PopupMenuItem(value: 'copy', child: Text('کپی')));
+
+            // گزینه حذف برای صاحب پست یا ناظر
+            if (isCurrentUserPost || isBlueTick) {
+              items.add(
+                  const PopupMenuItem(value: 'delete', child: Text('حذف')));
+            }
+
+            // گزینه ویرایش فقط برای ناظرها
+            if (isBlueTick) {
+              items.add(
+                  const PopupMenuItem(value: 'edit', child: Text('ویرایش')));
+            }
+
+            return items;
+          },
+        );
+      },
+      loading: () => PopupMenuButton<String>(
+        onSelected: (value) {},
+        itemBuilder: (context) => [],
+      ),
+      error: (_, __) => PopupMenuButton<String>(
+        onSelected: (value) {},
+        itemBuilder: (context) => [],
+      ),
     );
   }
 
