@@ -430,7 +430,7 @@ class ChatService {
       );
 
       // ذخیره در کش
-      await _messageCache.cacheMessage(temporaryMessage);
+      await _messageCache.cacheMessage(temporaryMessage, userId);
 
       // بروزرسانی مکالمه در کش
       final conversation = await _conversationCache.getConversation(
@@ -484,17 +484,14 @@ class ChatService {
   // ارسال پیام‌های در صف
   Future<void> sendPendingMessages() async {
     if (_pendingMessages.isEmpty) return;
-
+    final userId = _supabase.auth.currentUser!.id;
     final isOnline = await isDeviceOnline();
     if (!isOnline) return;
-
     final pendingMessagesCopy = List<Map<String, dynamic>>.from(
       _pendingMessages,
     );
-
     for (final pendingMessage in pendingMessagesCopy) {
       try {
-        // ارسال پیام به سرور
         final message = await sendMessage(
           conversationId: pendingMessage['conversationId'],
           content: pendingMessage['content'],
@@ -505,15 +502,12 @@ class ChatService {
           replyToSenderName: pendingMessage['replyToSenderName'],
           localId: pendingMessage['temporaryId'] as String?,
         );
-
-        // جایگزینی پیام موقت با پیام واقعی در کش
         await _messageCache.replaceTempMessage(
           pendingMessage['conversationId'] as String,
           pendingMessage['temporaryId'] as String,
           message,
+          userId,
         );
-
-        // حذف از صف
         _pendingMessages.removeWhere(
           (msg) => msg['temporaryId'] == pendingMessage['temporaryId'],
         );
@@ -1020,7 +1014,6 @@ class ChatService {
     int offset = 0,
   }) async {
     final userId = _supabase.auth.currentUser!.id;
-
     try {
       // بررسی وضعیت آنلاین
       final isOnline = await isDeviceOnline();
@@ -1028,6 +1021,7 @@ class ChatService {
       // ابتدا از کش استفاده می‌کنیم
       final cachedMessages = await _messageCache.getConversationMessages(
         conversationId,
+        userId,
         limit: limit,
       );
 
@@ -1065,13 +1059,11 @@ class ChatService {
 
         final messages = await Future.wait(
           filteredMessages.map((json) async {
-            // برای هر پیام، اطلاعات فرستنده را جداگانه دریافت می‌کنیم
             final profileResponse = await _supabase
                 .from('profiles')
                 .select()
                 .eq('id', json['sender_id'])
                 .maybeSingle();
-
             final message = MessageModel.fromJson(
               json,
               currentUserId: userId,
@@ -1079,10 +1071,7 @@ class ChatService {
               senderName: profileResponse?['username'] ?? 'کاربر',
               senderAvatar: profileResponse?['avatar_url'],
             );
-
-            // ذخیره پیام در کش
-            await _messageCache.cacheMessage(message);
-
+            await _messageCache.cacheMessage(message, userId);
             return message;
           }),
         );
@@ -1099,15 +1088,12 @@ class ChatService {
       // اگر آنلاین نیستیم و تا اینجا رسیدیم، از هر کشی که داریم استفاده می‌کنیم
       return cachedMessages;
     } catch (e) {
-      // در صورت خطا، اگر کش داریم از آن استفاده می‌کنیم
       final fallbackCachedMessages = await _messageCache
-          .getConversationMessages(conversationId, limit: limit);
-
+          .getConversationMessages(conversationId, userId, limit: limit);
       if (fallbackCachedMessages.isNotEmpty) {
         print('خطا در دریافت پیام‌ها از سرور. استفاده از کش: $e');
         return fallbackCachedMessages;
       }
-
       print('خطا در دریافت پیام‌ها: $e');
       throw AppException(
         userFriendlyMessage: 'دریافت پیام‌ها با مشکل مواجه شد',
@@ -1168,23 +1154,19 @@ class ChatService {
     String conversationId,
     List<MessageModel> newMessages,
   ) async {
-    // فقط پیام‌های جدید را کش کن
-    // برای پیام‌های موجود در کش، وضعیت‌ها (مثل is_read) نباید با پیام‌های جدید جایگزین شوند
-    // این منطق پیچیده‌تر از درج صرف است
-
-    // ایدی پیام‌های موجود در کش
+    final userId = _supabase.auth.currentUser!.id;
     final cachedMessageIds = (await _messageCache.getConversationMessages(
       conversationId,
+      userId,
     ))
         .map((m) => m.id)
         .toSet();
-
     // پیام‌های جدیدی که در کش نیستند
     final messagesToCache =
         newMessages.where((m) => !cachedMessageIds.contains(m.id)).toList();
 
     if (messagesToCache.isNotEmpty) {
-      await _messageCache.cacheMessages(messagesToCache);
+      await _messageCache.cacheMessages(messagesToCache, userId);
     }
 
     // TODO: Handle updates for existing messages (e.g., is_read status) if needed.

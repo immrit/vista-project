@@ -135,7 +135,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _preloadCache() async {
-    await MessageCacheService().getConversationMessages(widget.conversationId);
+    final userId = supabase.auth.currentUser?.id;
+    if (userId != null) {
+      await MessageCacheService()
+          .getConversationMessages(widget.conversationId, userId);
+    }
   }
 
   Future<void> _checkBlockStatus() async {
@@ -2780,7 +2784,8 @@ class MessageSender {
 
     // ایجاد پیام موقت
     final tempMessage = await _createTempMessage(attachmentUrl, attachmentType);
-    await messageCache.cacheMessage(tempMessage);
+    final userId = supabase.auth.currentUser!.id;
+    await messageCache.cacheMessage(tempMessage, userId);
 
     // ارسال پیام به سرور
     try {
@@ -2810,6 +2815,7 @@ class MessageSender {
         conversationId,
         tempMessage.id,
         sentMessage,
+        userId,
       );
     } catch (e) {
       await messageCache.markMessageAsFailed(conversationId, tempMessage.id);

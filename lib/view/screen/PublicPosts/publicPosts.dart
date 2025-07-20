@@ -1297,7 +1297,7 @@ void showEditPostDialog(
               children: [
                 Icon(Icons.edit, color: Colors.blue),
                 const SizedBox(width: 8),
-                const Text('ویرایش پست ادمین'),
+                const Text('ویرایش پست توسط ناظر'),
               ],
             ),
             content: SingleChildScrollView(
@@ -1623,6 +1623,48 @@ void showEditPostDialog(
                             'تاریخ: ${post.createdAt.toString().substring(0, 16)}'),
                         Text('لایک‌ها: ${post.likeCount}'),
                         Text('کامنت‌ها: ${post.commentCount}'),
+                        // نمایش اطلاعات ناظر قبلی (اگر وجود داشته باشد)
+                        if (post.moderatorUsername != null) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                  color: Colors.orange.withOpacity(0.3)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.admin_panel_settings,
+                                        size: 14, color: Colors.orange),
+                                    const SizedBox(width: 4),
+                                    const Text('آخرین ویرایش توسط:',
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text('ناظر: ${post.moderatorUsername}',
+                                    style: const TextStyle(fontSize: 12)),
+                                if (post.moderatedAt != null)
+                                  Text(
+                                      'تاریخ: ${post.moderatedAt!.toString().substring(0, 16)}',
+                                      style: const TextStyle(fontSize: 12)),
+                                if (post.moderationReason != null) ...[
+                                  const SizedBox(height: 4),
+                                  Text('دلیل: ${post.moderationReason}',
+                                      style: const TextStyle(
+                                          fontSize: 12, color: Colors.red)),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -1654,6 +1696,14 @@ void showEditPostDialog(
                         });
 
                         try {
+                          // دریافت اطلاعات ناظر فعلی
+                          final currentUser = supabase.auth.currentUser;
+                          final moderatorProfile = await supabase
+                              .from('profiles')
+                              .select('username')
+                              .eq('id', currentUser!.id)
+                              .single();
+
                           final updateData = {
                             'content': content,
                             if (imageRemoved) 'image_url': null,
@@ -1663,6 +1713,12 @@ void showEditPostDialog(
                             if (!videoRemoved && videoUrl != null)
                               'video_url': videoUrl,
                             'updated_at': DateTime.now().toIso8601String(),
+                            // ثبت اطلاعات ناظر
+                            'moderator_id': currentUser.id,
+                            'moderator_username': moderatorProfile['username'],
+                            'moderated_at': DateTime.now().toIso8601String(),
+                            'moderation_reason':
+                                content, // متن ویرایش شده به عنوان دلیل
                           };
 
                           await supabase
@@ -1754,43 +1810,18 @@ Widget _buildPostActions(
       final isBlueTick = profile != null &&
           profile['is_verified'] == true &&
           profile['verification_type'] == 'blueTick';
+      final isAdminOrModerator = profile != null &&
+          (profile['role'] == 'admin' || profile['role'] == 'moderator');
+
+      // Debug: چاپ اطلاعات پروفایل
+      print('DEBUG: Profile data: $profile');
+      print('DEBUG: User role: ${profile?['role']}');
+      print('DEBUG: isAdminOrModerator: $isAdminOrModerator');
+
       final currentUserId = supabase.auth.currentUser?.id;
 
       return PopupMenuButton<String>(
         icon: const Icon(Icons.more_vert),
-        onSelected: (value) async {
-          if (value == 'report') {
-            _showReportDialog(context, ref, post.id);
-          } else if (value == 'copy') {
-            await Clipboard.setData(ClipboardData(text: post.content));
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text('متن پست کپی شد'),
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                action: SnackBarAction(
-                  label: 'باشه',
-                  onPressed: () {},
-                ),
-              ),
-            );
-          } else if (value == 'delete') {
-            if (currentUserId == post.userId || isBlueTick) {
-              _showDeleteConfirmation(context, ref, post.id);
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('شما نمی‌توانید این پست را حذف کنید'),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            }
-          } else if (value == 'edit') {
-            showEditPostDialog(context, ref, post);
-          }
-        },
         itemBuilder: (context) {
           final items = <PopupMenuItem<String>>[
             const PopupMenuItem<String>(
@@ -1829,8 +1860,8 @@ Widget _buildPostActions(
             ));
           }
 
-          // اضافه کردن گزینه ویرایش فقط برای ناظرها
-          if (isBlueTick) {
+          // اضافه کردن گزینه ویرایش فقط برای ناظرها و ادمین‌ها
+          if (isAdminOrModerator) {
             items.add(const PopupMenuItem<String>(
               value: 'edit',
               child: Row(
@@ -1843,17 +1874,156 @@ Widget _buildPostActions(
             ));
           }
 
+          // تست: همیشه گزینه ویرایش را نمایش بده
+          items.add(const PopupMenuItem<String>(
+            value: 'edit_test',
+            child: Row(
+              children: [
+                Icon(Icons.edit, color: Colors.blue),
+                SizedBox(width: 8),
+                Text('ویرایش پست'),
+              ],
+            ),
+          ));
+
           return items;
+        },
+        onSelected: (value) async {
+          if (value == 'report') {
+            _showReportDialog(context, ref, post.id);
+          } else if (value == 'copy') {
+            await Clipboard.setData(ClipboardData(text: post.content));
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('متن پست کپی شد'),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                action: SnackBarAction(
+                  label: 'باشه',
+                  onPressed: () {},
+                ),
+              ),
+            );
+          } else if (value == 'delete') {
+            if (currentUserId == post.userId || isBlueTick) {
+              _showDeleteConfirmation(context, ref, post.id);
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('شما نمی‌توانید این پست را حذف کنید'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          } else if (value == 'edit') {
+            if (isAdminOrModerator) {
+              showEditPostDialog(context, ref, post);
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('شما مجوز ویرایش این پست را ندارید'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          } else if (value == 'edit_test') {
+            // تست: همیشه دیالوگ ویرایش را نمایش بده
+            showEditPostDialog(context, ref, post);
+          }
         },
       );
     },
     loading: () => PopupMenuButton<String>(
       icon: const Icon(Icons.more_vert),
-      itemBuilder: (context) => [],
+      itemBuilder: (context) => [
+        const PopupMenuItem<String>(
+          value: 'report',
+          child: Row(
+            children: [
+              Icon(Icons.flag, color: Colors.orange),
+              SizedBox(width: 8),
+              Text('گزارش پست'),
+            ],
+          ),
+        ),
+        const PopupMenuItem<String>(
+          value: 'copy',
+          child: Row(
+            children: [
+              Icon(Icons.content_copy, color: Colors.blue),
+              SizedBox(width: 8),
+              Text('کپی متن'),
+            ],
+          ),
+        ),
+      ],
+      onSelected: (value) async {
+        if (value == 'report') {
+          _showReportDialog(context, ref, post.id);
+        } else if (value == 'copy') {
+          await Clipboard.setData(ClipboardData(text: post.content));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('متن پست کپی شد'),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              action: SnackBarAction(
+                label: 'باشه',
+                onPressed: () {},
+              ),
+            ),
+          );
+        }
+      },
     ),
     error: (_, __) => PopupMenuButton<String>(
       icon: const Icon(Icons.more_vert),
-      itemBuilder: (context) => [],
+      itemBuilder: (context) => [
+        const PopupMenuItem<String>(
+          value: 'report',
+          child: Row(
+            children: [
+              Icon(Icons.flag, color: Colors.orange),
+              SizedBox(width: 8),
+              Text('گزارش پست'),
+            ],
+          ),
+        ),
+        const PopupMenuItem<String>(
+          value: 'copy',
+          child: Row(
+            children: [
+              Icon(Icons.content_copy, color: Colors.blue),
+              SizedBox(width: 8),
+              Text('کپی متن'),
+            ],
+          ),
+        ),
+      ],
+      onSelected: (value) async {
+        if (value == 'report') {
+          _showReportDialog(context, ref, post.id);
+        } else if (value == 'copy') {
+          await Clipboard.setData(ClipboardData(text: post.content));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('متن پست کپی شد'),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              action: SnackBarAction(
+                label: 'باشه',
+                onPressed: () {},
+              ),
+            ),
+          );
+        }
+      },
     ),
   );
 }

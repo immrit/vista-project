@@ -20,6 +20,11 @@ class $CachedMessagesTable extends CachedMessages
   late final GeneratedColumn<String> conversationId = GeneratedColumn<String>(
       'conversation_id', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+      'user_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
   static const VerificationMeta _senderIdMeta =
       const VerificationMeta('senderId');
   @override
@@ -135,6 +140,7 @@ class $CachedMessagesTable extends CachedMessages
   List<GeneratedColumn> get $columns => [
         id,
         conversationId,
+        userId,
         senderId,
         content,
         createdAt,
@@ -174,6 +180,12 @@ class $CachedMessagesTable extends CachedMessages
               data['conversation_id']!, _conversationIdMeta));
     } else if (isInserting) {
       context.missing(_conversationIdMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(_userIdMeta,
+          userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta));
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
     }
     if (data.containsKey('sender_id')) {
       context.handle(_senderIdMeta,
@@ -265,7 +277,7 @@ class $CachedMessagesTable extends CachedMessages
   }
 
   @override
-  Set<GeneratedColumn> get $primaryKey => {id, conversationId};
+  Set<GeneratedColumn> get $primaryKey => {id, conversationId, userId};
   @override
   CachedMessage map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
@@ -274,6 +286,8 @@ class $CachedMessagesTable extends CachedMessages
           .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
       conversationId: attachedDatabase.typeMapping.read(
           DriftSqlType.string, data['${effectivePrefix}conversation_id'])!,
+      userId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}user_id'])!,
       senderId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}sender_id'])!,
       content: attachedDatabase.typeMapping
@@ -318,6 +332,7 @@ class $CachedMessagesTable extends CachedMessages
 class CachedMessage extends DataClass implements Insertable<CachedMessage> {
   final String id;
   final String conversationId;
+  final String userId;
   final String senderId;
   final String content;
   final DateTime createdAt;
@@ -337,6 +352,7 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
   const CachedMessage(
       {required this.id,
       required this.conversationId,
+      required this.userId,
       required this.senderId,
       required this.content,
       required this.createdAt,
@@ -358,6 +374,7 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['conversation_id'] = Variable<String>(conversationId);
+    map['user_id'] = Variable<String>(userId);
     map['sender_id'] = Variable<String>(senderId);
     map['content'] = Variable<String>(content);
     map['created_at'] = Variable<DateTime>(createdAt);
@@ -397,6 +414,7 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
     return CachedMessagesCompanion(
       id: Value(id),
       conversationId: Value(conversationId),
+      userId: Value(userId),
       senderId: Value(senderId),
       content: Value(content),
       createdAt: Value(createdAt),
@@ -438,6 +456,7 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
     return CachedMessage(
       id: serializer.fromJson<String>(json['id']),
       conversationId: serializer.fromJson<String>(json['conversationId']),
+      userId: serializer.fromJson<String>(json['userId']),
       senderId: serializer.fromJson<String>(json['senderId']),
       content: serializer.fromJson<String>(json['content']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -463,6 +482,7 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'conversationId': serializer.toJson<String>(conversationId),
+      'userId': serializer.toJson<String>(userId),
       'senderId': serializer.toJson<String>(senderId),
       'content': serializer.toJson<String>(content),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -485,6 +505,7 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
   CachedMessage copyWith(
           {String? id,
           String? conversationId,
+          String? userId,
           String? senderId,
           String? content,
           DateTime? createdAt,
@@ -504,6 +525,7 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
       CachedMessage(
         id: id ?? this.id,
         conversationId: conversationId ?? this.conversationId,
+        userId: userId ?? this.userId,
         senderId: senderId ?? this.senderId,
         content: content ?? this.content,
         createdAt: createdAt ?? this.createdAt,
@@ -535,6 +557,7 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
       conversationId: data.conversationId.present
           ? data.conversationId.value
           : this.conversationId,
+      userId: data.userId.present ? data.userId.value : this.userId,
       senderId: data.senderId.present ? data.senderId.value : this.senderId,
       content: data.content.present ? data.content.value : this.content,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -573,6 +596,7 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
     return (StringBuffer('CachedMessage(')
           ..write('id: $id, ')
           ..write('conversationId: $conversationId, ')
+          ..write('userId: $userId, ')
           ..write('senderId: $senderId, ')
           ..write('content: $content, ')
           ..write('createdAt: $createdAt, ')
@@ -597,6 +621,7 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
   int get hashCode => Object.hash(
       id,
       conversationId,
+      userId,
       senderId,
       content,
       createdAt,
@@ -619,6 +644,7 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
       (other is CachedMessage &&
           other.id == this.id &&
           other.conversationId == this.conversationId &&
+          other.userId == this.userId &&
           other.senderId == this.senderId &&
           other.content == this.content &&
           other.createdAt == this.createdAt &&
@@ -640,6 +666,7 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
 class CachedMessagesCompanion extends UpdateCompanion<CachedMessage> {
   final Value<String> id;
   final Value<String> conversationId;
+  final Value<String> userId;
   final Value<String> senderId;
   final Value<String> content;
   final Value<DateTime> createdAt;
@@ -660,6 +687,7 @@ class CachedMessagesCompanion extends UpdateCompanion<CachedMessage> {
   const CachedMessagesCompanion({
     this.id = const Value.absent(),
     this.conversationId = const Value.absent(),
+    this.userId = const Value.absent(),
     this.senderId = const Value.absent(),
     this.content = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -681,6 +709,7 @@ class CachedMessagesCompanion extends UpdateCompanion<CachedMessage> {
   CachedMessagesCompanion.insert({
     required String id,
     required String conversationId,
+    required String userId,
     required String senderId,
     required String content,
     required DateTime createdAt,
@@ -700,12 +729,14 @@ class CachedMessagesCompanion extends UpdateCompanion<CachedMessage> {
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         conversationId = Value(conversationId),
+        userId = Value(userId),
         senderId = Value(senderId),
         content = Value(content),
         createdAt = Value(createdAt);
   static Insertable<CachedMessage> custom({
     Expression<String>? id,
     Expression<String>? conversationId,
+    Expression<String>? userId,
     Expression<String>? senderId,
     Expression<String>? content,
     Expression<DateTime>? createdAt,
@@ -727,6 +758,7 @@ class CachedMessagesCompanion extends UpdateCompanion<CachedMessage> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (conversationId != null) 'conversation_id': conversationId,
+      if (userId != null) 'user_id': userId,
       if (senderId != null) 'sender_id': senderId,
       if (content != null) 'content': content,
       if (createdAt != null) 'created_at': createdAt,
@@ -750,6 +782,7 @@ class CachedMessagesCompanion extends UpdateCompanion<CachedMessage> {
   CachedMessagesCompanion copyWith(
       {Value<String>? id,
       Value<String>? conversationId,
+      Value<String>? userId,
       Value<String>? senderId,
       Value<String>? content,
       Value<DateTime>? createdAt,
@@ -770,6 +803,7 @@ class CachedMessagesCompanion extends UpdateCompanion<CachedMessage> {
     return CachedMessagesCompanion(
       id: id ?? this.id,
       conversationId: conversationId ?? this.conversationId,
+      userId: userId ?? this.userId,
       senderId: senderId ?? this.senderId,
       content: content ?? this.content,
       createdAt: createdAt ?? this.createdAt,
@@ -798,6 +832,9 @@ class CachedMessagesCompanion extends UpdateCompanion<CachedMessage> {
     }
     if (conversationId.present) {
       map['conversation_id'] = Variable<String>(conversationId.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
     }
     if (senderId.present) {
       map['sender_id'] = Variable<String>(senderId.value);
@@ -858,6 +895,7 @@ class CachedMessagesCompanion extends UpdateCompanion<CachedMessage> {
     return (StringBuffer('CachedMessagesCompanion(')
           ..write('id: $id, ')
           ..write('conversationId: $conversationId, ')
+          ..write('userId: $userId, ')
           ..write('senderId: $senderId, ')
           ..write('content: $content, ')
           ..write('createdAt: $createdAt, ')
@@ -896,6 +934,7 @@ typedef $$CachedMessagesTableCreateCompanionBuilder = CachedMessagesCompanion
     Function({
   required String id,
   required String conversationId,
+  required String userId,
   required String senderId,
   required String content,
   required DateTime createdAt,
@@ -918,6 +957,7 @@ typedef $$CachedMessagesTableUpdateCompanionBuilder = CachedMessagesCompanion
     Function({
   Value<String> id,
   Value<String> conversationId,
+  Value<String> userId,
   Value<String> senderId,
   Value<String> content,
   Value<DateTime> createdAt,
@@ -952,6 +992,9 @@ class $$CachedMessagesTableFilterComposer
   ColumnFilters<String> get conversationId => $composableBuilder(
       column: $table.conversationId,
       builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get userId => $composableBuilder(
+      column: $table.userId, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get senderId => $composableBuilder(
       column: $table.senderId, builder: (column) => ColumnFilters(column));
@@ -1022,6 +1065,9 @@ class $$CachedMessagesTableOrderingComposer
       column: $table.conversationId,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get userId => $composableBuilder(
+      column: $table.userId, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get senderId => $composableBuilder(
       column: $table.senderId, builder: (column) => ColumnOrderings(column));
 
@@ -1091,6 +1137,9 @@ class $$CachedMessagesTableAnnotationComposer
 
   GeneratedColumn<String> get conversationId => $composableBuilder(
       column: $table.conversationId, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
 
   GeneratedColumn<String> get senderId =>
       $composableBuilder(column: $table.senderId, builder: (column) => column);
@@ -1171,6 +1220,7 @@ class $$CachedMessagesTableTableManager extends RootTableManager<
           updateCompanionCallback: ({
             Value<String> id = const Value.absent(),
             Value<String> conversationId = const Value.absent(),
+            Value<String> userId = const Value.absent(),
             Value<String> senderId = const Value.absent(),
             Value<String> content = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
@@ -1192,6 +1242,7 @@ class $$CachedMessagesTableTableManager extends RootTableManager<
               CachedMessagesCompanion(
             id: id,
             conversationId: conversationId,
+            userId: userId,
             senderId: senderId,
             content: content,
             createdAt: createdAt,
@@ -1213,6 +1264,7 @@ class $$CachedMessagesTableTableManager extends RootTableManager<
           createCompanionCallback: ({
             required String id,
             required String conversationId,
+            required String userId,
             required String senderId,
             required String content,
             required DateTime createdAt,
@@ -1234,6 +1286,7 @@ class $$CachedMessagesTableTableManager extends RootTableManager<
               CachedMessagesCompanion.insert(
             id: id,
             conversationId: conversationId,
+            userId: userId,
             senderId: senderId,
             content: content,
             createdAt: createdAt,

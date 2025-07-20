@@ -17,6 +17,8 @@ import '../../model/publicPostModel.dart';
 import '../../provider/provider.dart';
 import '../screen/PublicPosts/profileScreen.dart';
 import 'themes.dart';
+import '../../DB/message_cache_service.dart';
+import '../../DB/conversation_cache_service.dart';
 
 class topText extends StatelessWidget {
   topText({
@@ -339,8 +341,10 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
           title: const Text(
             'خروج',
           ),
-          onTap: () {
-            supabase.auth.signOut();
+          onTap: () async {
+            await MessageCacheService().clearAllCache();
+            await ConversationCacheService().clearCache();
+            await supabase.auth.signOut();
             Navigator.pushReplacementNamed(context, '/welcome');
           },
         ),

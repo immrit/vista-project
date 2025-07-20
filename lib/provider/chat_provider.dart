@@ -67,10 +67,11 @@ final messagesProvider = FutureProvider.family
     .autoDispose<List<MessageModel>, String>((ref, conversationId) async {
   final chatService = ref.watch(chatServiceProvider);
   final messageCache = MessageCacheService();
+  final userId = supabase.auth.currentUser!.id;
 
   // ابتدا پیام‌های کش را بازگردان
   final cachedMessages =
-      await messageCache.getConversationMessages(conversationId);
+      await messageCache.getConversationMessages(conversationId, userId);
 
   // اگر کش داریم، فوراً آن را نشان بده
   if (cachedMessages.isNotEmpty) {
@@ -79,7 +80,7 @@ final messagesProvider = FutureProvider.family
       chatService.getMessages(conversationId).then((serverMessages) {
         if (serverMessages.isNotEmpty) {
           // اگر پیام‌های جدید از سرور آمد، کش را بروزرسانی کن
-          messageCache.cacheMessages(serverMessages);
+          messageCache.cacheMessages(serverMessages, userId);
         }
       });
     });
@@ -114,12 +115,12 @@ final messagesStreamProvider = StreamProvider.family
               .where((msg) => !msg.id.startsWith('temp_'))
               .toList();
           // کش را sync کن (فقط برای آفلاین)
-          cache.cacheMessages(messages);
+          cache.cacheMessages(messages, userId);
           return messages;
         });
   } else {
     // فقط کش (آفلاین)
-    final cached = await cache.getConversationMessages(conversationId);
+    final cached = await cache.getConversationMessages(conversationId, userId);
     // پیام temp را حذف کن (در آفلاین هم نباید پیام temp نمایش داده شود)
     yield cached.where((msg) => !msg.id.startsWith('temp_')).toList();
   }
@@ -243,7 +244,7 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
       await chatService.clearConversation(conversationId, bothSides: bothSides);
 
       // بروزرسانی پیام‌ها
-      ref.invalidate(messagesStreamProvider(conversationId));
+      ref.invalidate(messagesProvider(conversationId));
       ref.invalidate(conversationsProvider);
 
       state = const AsyncValue.data(null);
@@ -1030,7 +1031,9 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
   }
 
   Future<void> _init() async {
-    final cached = await _cacheService.getConversationMessages(conversationId);
+    final userId = supabase.auth.currentUser!.id;
+    final cached =
+        await _cacheService.getConversationMessages(conversationId, userId);
     state = [...cached];
     _updateUnreadCount();
   }
@@ -1085,9 +1088,11 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
     state = _filterTempDuplicates(newState);
     // کش کردن پیام موقت
     if (!message.id.startsWith('temp_')) {
-      print("خطای منطقی: پیام موقت باید با temp_ شروع شود: ${message.id}");
+      print("خطای منطقی: پیام موقت باید با temp_ شروع شود:  [31m");
     }
-    _cacheService.cacheMessage(message); // پیام موقت را با همان ID موقت کش کن
+    final userId = supabase.auth.currentUser!.id;
+    _cacheService.cacheMessage(
+        message, userId); // پیام موقت را با همان ID موقت کش کن
   }
 
   void replaceTempWithReal(String tempId, MessageModel realMessage) {
@@ -1097,9 +1102,10 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
     ];
     state = _filterTempDuplicates(newState);
     // ابتدا پیام موقت را از کش حذف کن
+    final userId = supabase.auth.currentUser!.id;
     _cacheService.clearMessage(conversationId, tempId).then((_) {
       // سپس پیام واقعی را کش کن
-      _cacheService.cacheMessage(realMessage);
+      _cacheService.cacheMessage(realMessage, userId);
     }).catchError((e) {
       print("خطا در جایگزینی پیام در کش: $e");
     });
@@ -1127,8 +1133,9 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
     }).toList();
     state =
         newState; // این setter مرتب‌سازی و فیلتر _filterTempDuplicates را اعمال می‌کند
-    _cacheService
-        .cacheMessage(updatedMessage); // پیام آپدیت شده را در کش هم ذخیره کن
+    final userId = supabase.auth.currentUser!.id;
+    _cacheService.cacheMessage(
+        updatedMessage, userId); // پیام آپدیت شده را در کش هم ذخیره کن
   }
 
   // --- اضافه شد: متدهای optimistic update ---
@@ -1137,13 +1144,15 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
   void addMessage(MessageModel message) {
     final newState = [...state, message];
     state = _filterTempDuplicates(newState);
-    _cacheService.cacheMessage(message);
+    final userId = supabase.auth.currentUser!.id;
+    _cacheService.cacheMessage(message, userId);
   }
 
   // حذف پیام از state (بدون invalidate کردن کل provider)
   void removeMessage(String messageId) {
     final newState = state.where((m) => m.id != messageId).toList();
     state = _filterTempDuplicates(newState);
+    final userId = supabase.auth.currentUser!.id;
     _cacheService.clearMessage(conversationId, messageId);
   }
 
@@ -1158,8 +1167,9 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
     state = _filterTempDuplicates(newState);
 
     // آپدیت کش
+    final userId = supabase.auth.currentUser!.id;
     _cacheService.clearMessage(conversationId, tempId).then((_) {
-      _cacheService.cacheMessage(realMessage);
+      _cacheService.cacheMessage(realMessage, userId);
     }).catchError((e) {
       print("خطا در جایگزینی پیام در کش: $e");
     });
@@ -1287,11 +1297,11 @@ final conversationMessagesProvider = StateNotifierProvider.family
 
             if (newMessagesFromOthersToCache.isNotEmpty) {
               await notifier._cacheService
-                  .cacheMessages(newMessagesFromOthersToCache);
+                  .cacheMessages(newMessagesFromOthersToCache, userId);
             }
             if (updatedOrNewOwnMessagesToCache.isNotEmpty) {
               await notifier._cacheService
-                  .cacheMessages(updatedOrNewOwnMessagesToCache);
+                  .cacheMessages(updatedOrNewOwnMessagesToCache, userId);
             }
           });
 

@@ -28,6 +28,7 @@ class ProfileModel extends Equatable {
   final bool isFollowed;
   final List<PublicPostModel> posts;
   final List<Story> stories; // اضافه کردن لیست استوری‌ها
+  final String? role; // فیلد نقش کاربر
 
   const ProfileModel({
     required this.id,
@@ -44,6 +45,7 @@ class ProfileModel extends Equatable {
     this.isFollowed = false,
     this.posts = const [],
     this.stories = const [], // مقدار پیش‌فرض برای استوری‌ها
+    this.role, // پارامتر نقش کاربر
   });
 
   factory ProfileModel.fromMap(Map<String, dynamic> map) {
@@ -75,6 +77,7 @@ class ProfileModel extends Equatable {
       stories: (map['stories'] as List<dynamic>? ?? [])
           .map((story) => Story.fromMap(story))
           .toList(), // واکشی استوری‌ها
+      role: map['role']?.toString(), // واکشی نقش کاربر
     );
   }
 
@@ -95,6 +98,7 @@ class ProfileModel extends Equatable {
       'posts': posts.map((post) => post.toMap()).toList(),
       'stories':
           stories.map((story) => story.toMap()).toList(), // ذخیره استوری‌ها
+      'role': role, // ذخیره نقش کاربر
     };
   }
 
@@ -115,6 +119,7 @@ class ProfileModel extends Equatable {
     bool? isFollowed,
     List<PublicPostModel>? posts,
     List<Story>? stories, // اضافه کردن استوری‌ها به copyWith
+    String? role, // اضافه کردن نقش کاربر به copyWith
   }) {
     return ProfileModel(
       id: id ?? this.id,
@@ -131,6 +136,7 @@ class ProfileModel extends Equatable {
       isFollowed: isFollowed ?? this.isFollowed,
       posts: posts ?? this.posts,
       stories: stories ?? this.stories, // اضافه کردن استوری‌ها
+      role: role ?? this.role, // اضافه کردن نقش کاربر
     );
   }
 
@@ -150,6 +156,7 @@ class ProfileModel extends Equatable {
         isFollowed,
         posts,
         stories, // اضافه کردن استوری‌ها به props
+        role, // اضافه کردن نقش کاربر به props
       ];
   bool get hasBlueBadge =>
       isVerified && verificationType == VerificationType.blueTick;
@@ -159,4 +166,11 @@ class ProfileModel extends Equatable {
       isVerified && verificationType == VerificationType.blackTick;
   bool get hasAnyBadge =>
       isVerified && verificationType != VerificationType.none;
+
+  // متدهای کمکی برای بررسی نقش کاربر
+  bool get isAdmin => role == 'admin';
+  bool get isModerator => role == 'moderator';
+  bool get isAdminOrModerator => role == 'admin' || role == 'moderator';
+  bool get isNormalUser => role == 'normal' || role == null;
+  bool get isPremiumUser => role == 'premium';
 }

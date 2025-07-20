@@ -904,7 +904,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 children: [
                   Icon(Icons.edit, color: Colors.blue),
                   const SizedBox(width: 8),
-                  const Text('ویرایش پست ادمین'),
+                  const Text('ویرایش پست توسط ناظر'),
                 ],
               ),
               content: SingleChildScrollView(
@@ -1236,6 +1236,48 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               'تاریخ: ${post.createdAt.toString().substring(0, 16)}'),
                           Text('لایک‌ها: ${post.likeCount}'),
                           Text('کامنت‌ها: ${post.commentCount}'),
+                          // نمایش اطلاعات ناظر قبلی (اگر وجود داشته باشد)
+                          if (post.moderatorUsername != null) ...[
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                    color: Colors.orange.withOpacity(0.3)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(Icons.admin_panel_settings,
+                                          size: 14, color: Colors.orange),
+                                      const SizedBox(width: 4),
+                                      const Text('آخرین ویرایش توسط:',
+                                          style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text('ناظر: ${post.moderatorUsername}',
+                                      style: const TextStyle(fontSize: 12)),
+                                  if (post.moderatedAt != null)
+                                    Text(
+                                        'تاریخ: ${post.moderatedAt!.toString().substring(0, 16)}',
+                                        style: const TextStyle(fontSize: 12)),
+                                  if (post.moderationReason != null) ...[
+                                    const SizedBox(height: 4),
+                                    Text('دلیل: ${post.moderationReason}',
+                                        style: const TextStyle(
+                                            fontSize: 12, color: Colors.red)),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -1268,6 +1310,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           });
 
                           try {
+                            // دریافت اطلاعات ناظر فعلی
+                            final currentUser = supabase.auth.currentUser;
+                            final moderatorProfile = await supabase
+                                .from('profiles')
+                                .select('username')
+                                .eq('id', currentUser!.id)
+                                .single();
+
                             final updateData = {
                               'content': content,
                               if (imageRemoved) 'image_url': null,
@@ -1277,6 +1327,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               if (!videoRemoved && videoUrl != null)
                                 'video_url': videoUrl,
                               'updated_at': DateTime.now().toIso8601String(),
+                              // ثبت اطلاعات ناظر
+                              'moderator_id': currentUser.id,
+                              'moderator_username':
+                                  moderatorProfile['username'],
+                              'moderated_at': DateTime.now().toIso8601String(),
+                              'moderation_reason':
+                                  content, // متن ویرایش شده به عنوان دلیل
                             };
 
                             await supabase
@@ -1365,6 +1422,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         final isBlueTick = profile != null &&
             profile['is_verified'] == true &&
             profile['verification_type'] == 'blueTick';
+        final isAdminOrModerator = profile != null &&
+            (profile['role'] == 'admin' || profile['role'] == 'moderator');
+
+        // Debug: چاپ اطلاعات پروفایل
+        print('DEBUG: Profile data: $profile');
+        print('DEBUG: User role: ${profile?['role']}');
+        print('DEBUG: isAdminOrModerator: $isAdminOrModerator');
+
         final currentUserId = supabase.auth.currentUser?.id;
         final isCurrentUserPost = post.userId == currentUserId;
 
@@ -1420,6 +1485,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 }
                 break;
               case 'edit':
+                if (isAdminOrModerator) {
+                  showEditPostDialog(context, ref, post);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('شما مجوز ویرایش این پست را ندارید'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+                break;
+              case 'edit_test':
+                // تست: همیشه دیالوگ ویرایش را نمایش بده
                 showEditPostDialog(context, ref, post);
                 break;
             }
@@ -1442,23 +1520,63 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   const PopupMenuItem(value: 'delete', child: Text('حذف')));
             }
 
-            // گزینه ویرایش فقط برای ناظرها
-            if (isBlueTick) {
+            // گزینه ویرایش فقط برای ناظرها و ادمین‌ها
+            if (isAdminOrModerator) {
               items.add(
                   const PopupMenuItem(value: 'edit', child: Text('ویرایش')));
             }
+
+            // تست: همیشه گزینه ویرایش را نمایش بده
+            items.add(
+                const PopupMenuItem(value: 'edit_test', child: Text('ویرایش')));
 
             return items;
           },
         );
       },
       loading: () => PopupMenuButton<String>(
-        onSelected: (value) {},
-        itemBuilder: (context) => [],
+        onSelected: (value) async {
+          switch (value) {
+            case 'report':
+              showDialog(
+                  context: context,
+                  builder: (context) => ReportDialog(post: post));
+              break;
+            case 'copy':
+              await Clipboard.setData(ClipboardData(text: post.content));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(const SnackBar(content: Text('متن کپی شد!')));
+              }
+              break;
+          }
+        },
+        itemBuilder: (context) => [
+          const PopupMenuItem(value: 'report', child: Text('گزارش')),
+          const PopupMenuItem(value: 'copy', child: Text('کپی')),
+        ],
       ),
       error: (_, __) => PopupMenuButton<String>(
-        onSelected: (value) {},
-        itemBuilder: (context) => [],
+        onSelected: (value) async {
+          switch (value) {
+            case 'report':
+              showDialog(
+                  context: context,
+                  builder: (context) => ReportDialog(post: post));
+              break;
+            case 'copy':
+              await Clipboard.setData(ClipboardData(text: post.content));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(const SnackBar(content: Text('متن کپی شد!')));
+              }
+              break;
+          }
+        },
+        itemBuilder: (context) => [
+          const PopupMenuItem(value: 'report', child: Text('گزارش')),
+          const PopupMenuItem(value: 'copy', child: Text('کپی')),
+        ],
       ),
     );
   }

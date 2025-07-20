@@ -22,6 +22,11 @@ class PublicPostModel extends Equatable {
   int commentCount;
   final String? musicUrl;
   final String? title;
+  // فیلدهای مربوط به ناظر
+  final String? moderatorId;
+  final String? moderatorUsername;
+  final DateTime? moderatedAt;
+  final String? moderationReason;
 
   PublicPostModel({
     required this.id,
@@ -41,6 +46,11 @@ class PublicPostModel extends Equatable {
     List<String>? hashtags,
     this.musicUrl,
     this.title,
+    // پارامترهای مربوط به ناظر
+    this.moderatorId,
+    this.moderatorUsername,
+    this.moderatedAt,
+    this.moderationReason,
   }) : hashtags = hashtags ?? _extractHashtags(content);
 
   // متد استاتیک برای استخراج هشتگ‌ها از متن
@@ -65,7 +75,7 @@ class PublicPostModel extends Equatable {
       imageUrl: _parseString(map, 'image_url', defaultValue: ""),
       videoUrl: _parseString(map, 'video_url',
           defaultValue: ""), // پارس کردن video_url
-      createdAt: _parseDateTime(map, 'created_at'),
+      createdAt: _parseDateTime(map, 'created_at') ?? DateTime.now(),
       username: _parseUsername(map),
       avatarUrl: _parseAvatarUrl(map),
       likeCount: _parseInt(map, 'like_count'),
@@ -77,6 +87,10 @@ class PublicPostModel extends Equatable {
       hashtags: _parseHashtags(map),
       musicUrl: _parseString(map, 'music_url', defaultValue: ""),
       title: _parseString(map, 'title'),
+      moderatorId: _parseString(map, 'moderator_id'),
+      moderatorUsername: _parseString(map, 'moderator_username'),
+      moderatedAt: _parseDateTime(map, 'moderated_at'),
+      moderationReason: _parseString(map, 'moderation_reason'),
     );
   }
 
@@ -97,12 +111,12 @@ class PublicPostModel extends Equatable {
     return defaultValue;
   }
 
-  static DateTime _parseDateTime(Map<String, dynamic> map, String key) {
+  static DateTime? _parseDateTime(Map<String, dynamic> map, String key) {
+    if (map[key] == null) return null;
     try {
-      return DateTime.parse(
-          map[key]?.toString() ?? DateTime.now().toIso8601String());
+      return DateTime.parse(map[key].toString());
     } catch (e) {
-      return DateTime.now();
+      return null;
     }
   }
 
@@ -166,6 +180,10 @@ class PublicPostModel extends Equatable {
       'hashtags': hashtags,
       'music_url': musicUrl,
       'title': title,
+      'moderator_id': moderatorId,
+      'moderator_username': moderatorUsername,
+      'moderated_at': moderatedAt?.toIso8601String(),
+      'moderation_reason': moderationReason,
     };
   }
 
@@ -192,6 +210,11 @@ class PublicPostModel extends Equatable {
     List<String>? hashtags,
     String? musicUrl,
     String? title,
+    // پارامترهای مربوط به ناظر
+    String? moderatorId,
+    String? moderatorUsername,
+    DateTime? moderatedAt,
+    String? moderationReason,
   }) {
     return PublicPostModel(
       id: id ?? this.id,
@@ -211,6 +234,10 @@ class PublicPostModel extends Equatable {
       hashtags: hashtags ?? this.hashtags,
       musicUrl: musicUrl ?? this.musicUrl,
       title: title ?? this.title,
+      moderatorId: moderatorId ?? this.moderatorId,
+      moderatorUsername: moderatorUsername ?? this.moderatorUsername,
+      moderatedAt: moderatedAt ?? this.moderatedAt,
+      moderationReason: moderationReason ?? this.moderationReason,
     );
   }
 
@@ -235,6 +262,10 @@ class PublicPostModel extends Equatable {
       hashtags: $hashtags,
       musicUrl: $musicUrl,
       title: $title,
+      moderatorId: $moderatorId,
+      moderatorUsername: $moderatorUsername,
+      moderatedAt: $moderatedAt,
+      moderationReason: $moderationReason,
     )''';
   }
 
@@ -257,6 +288,10 @@ class PublicPostModel extends Equatable {
         hashtags,
         musicUrl,
         title,
+        moderatorId,
+        moderatorUsername,
+        moderatedAt,
+        moderationReason,
       ];
 
   // متدهای کمکی

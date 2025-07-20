@@ -11,6 +11,7 @@ part 'message_cache_service.g.dart';
 class CachedMessages extends Table {
   TextColumn get id => text()(); // message id (ممکن است temp_ باشد)
   TextColumn get conversationId => text()();
+  TextColumn get userId => text()(); // اضافه شد: userId برای امنیت
   TextColumn get senderId => text()();
   TextColumn get content => text()();
   DateTimeColumn get createdAt => dateTime()();
@@ -29,7 +30,7 @@ class CachedMessages extends Table {
   IntColumn get retryCount => integer().withDefault(const Constant(0))();
 
   @override
-  Set<Column> get primaryKey => {id, conversationId};
+  Set<Column> get primaryKey => {id, conversationId, userId}; // اضافه شد userId
 }
 
 // تعریف دیتابیس Drift
@@ -53,26 +54,29 @@ class MessageCacheDatabase extends _$MessageCacheDatabase {
       );
 
   // درج یا بروزرسانی پیام
-  Future<void> cacheMessage(MessageModel message) async {
-    await into(cachedMessages).insertOnConflictUpdate(_toCompanion(message));
+  Future<void> cacheMessage(MessageModel message, String userId) async {
+    await into(cachedMessages)
+        .insertOnConflictUpdate(_toCompanion(message, userId));
   }
 
   // درج یا بروزرسانی چند پیام
-  Future<void> cacheMessages(List<MessageModel> messages) async {
+  Future<void> cacheMessages(List<MessageModel> messages, String userId) async {
     if (messages.isEmpty) return;
     await batch((batch) {
       batch.insertAllOnConflictUpdate(
         cachedMessages,
-        messages.map(_toCompanion).toList(),
+        messages.map((m) => _toCompanion(m, userId)).toList(),
       );
     });
   }
 
   // دریافت پیام‌های یک مکالمه (جدیدترین بالا)
-  Future<List<MessageModel>> getConversationMessages(String conversationId,
+  Future<List<MessageModel>> getConversationMessages(
+      String conversationId, String userId,
       {int limit = 50, DateTime? before}) async {
     final query = select(cachedMessages)
-      ..where((tbl) => tbl.conversationId.equals(conversationId))
+      ..where((tbl) =>
+          tbl.conversationId.equals(conversationId) & tbl.userId.equals(userId))
       ..orderBy([
         (tbl) =>
             OrderingTerm(expression: tbl.createdAt, mode: OrderingMode.desc)
@@ -121,14 +125,14 @@ class MessageCacheDatabase extends _$MessageCacheDatabase {
   }
 
   // جایگزینی پیام temp با پیام واقعی
-  Future<void> replaceTempMessage(
-      String conversationId, String tempId, MessageModel realMessage) async {
+  Future<void> replaceTempMessage(String conversationId, String tempId,
+      MessageModel realMessage, String userId) async {
     await (delete(cachedMessages)
           ..where((tbl) =>
               tbl.conversationId.equals(conversationId) &
               tbl.id.equals(tempId)))
         .go();
-    await cacheMessage(realMessage);
+    await cacheMessage(realMessage, userId);
   }
 
   // علامت‌گذاری پیام temp به عنوان failed
@@ -198,10 +202,11 @@ LazyDatabase _openConnection() {
 }
 
 // تبدیل MessageModel به Drift Companion
-CachedMessagesCompanion _toCompanion(MessageModel m) {
+CachedMessagesCompanion _toCompanion(MessageModel m, String userId) {
   return CachedMessagesCompanion(
     id: Value(m.id),
     conversationId: Value(m.conversationId),
+    userId: Value(userId),
     senderId: Value(m.senderId),
     content: Value(m.content),
     createdAt: Value(m.createdAt),
@@ -253,21 +258,24 @@ class MessageCacheService {
 
   final MessageCacheDatabase _db = MessageCacheDatabase(); // نمونه دیتابیس
 
-  Future<void> cacheMessage(MessageModel message) => _db.cacheMessage(message);
-  Future<void> cacheMessages(List<MessageModel> messages) =>
-      _db.cacheMessages(messages);
-  Future<List<MessageModel>> getConversationMessages(String conversationId,
+  Future<void> cacheMessage(MessageModel message, String userId) =>
+      _db.cacheMessage(message, userId);
+  Future<void> cacheMessages(List<MessageModel> messages, String userId) =>
+      _db.cacheMessages(messages, userId);
+  Future<List<MessageModel>> getConversationMessages(
+          String conversationId, String userId,
           {int limit = 50, DateTime? before}) =>
-      _db.getConversationMessages(conversationId, limit: limit, before: before);
+      _db.getConversationMessages(conversationId, userId,
+          limit: limit, before: before);
   Future<MessageModel?> getMessage(String conversationId, String messageId) =>
       _db.getMessage(conversationId, messageId);
   Future<void> updateMessageStatus(String conversationId, String messageId,
           {bool? isRead, bool? isSent}) =>
       _db.updateMessageStatus(conversationId, messageId,
           isRead: isRead, isSent: isSent);
-  Future<void> replaceTempMessage(
-          String conversationId, String tempId, MessageModel realMessage) =>
-      _db.replaceTempMessage(conversationId, tempId, realMessage);
+  Future<void> replaceTempMessage(String conversationId, String tempId,
+          MessageModel realMessage, String userId) =>
+      _db.replaceTempMessage(conversationId, tempId, realMessage, userId);
   Future<void> markMessageAsFailed(String conversationId, String tempId) =>
       _db.markMessageAsFailed(conversationId, tempId);
   Future<void> clearConversationMessages(String conversationId) =>
