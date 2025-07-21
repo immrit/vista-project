@@ -77,16 +77,16 @@ class MessageCacheDatabase extends _$MessageCacheDatabase {
     final query = select(cachedMessages)
       ..where((tbl) =>
           tbl.conversationId.equals(conversationId) & tbl.userId.equals(userId))
+      // Optional: Add a filter to only show non-failed messages
       ..orderBy([
         (tbl) =>
             OrderingTerm(expression: tbl.createdAt, mode: OrderingMode.desc)
       ])
       ..limit(limit);
-
     if (before != null) {
       query.where((tbl) => tbl.createdAt.isSmallerThanValue(before));
     }
-
+    print('getConversationMessages cachedMessages');
     final rows = await query.get();
     return rows.map<MessageModel>(_fromRow).toList();
   }

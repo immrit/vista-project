@@ -4,7 +4,6 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../DB/conversation_cache_service.dart';
 import '../DB/message_cache_service.dart';
@@ -12,7 +11,6 @@ import '../model/conversation_model.dart';
 import '../model/message_model.dart';
 import '../view/Exeption/app_exceptions.dart';
 import '/main.dart';
-
 import 'uploadImageChatService.dart';
 
 class ChatService {
@@ -43,7 +41,7 @@ class ChatService {
 
       // ابتدا سعی می‌کنیم مکالمات را از کش بگیریم
       final cachedConversations =
-          await conversationCache.getCachedConversations();
+          await conversationCache.getCachedConversations(userId);
 
       // اگر آفلاین هستیم و کش داریم، از کش استفاده می‌کنیم
       if (!isOnline && cachedConversations.isNotEmpty) {
@@ -112,8 +110,7 @@ class ChatService {
             for (final participant in participantsJson) {
               if (participant['user_id'] != userId) {
                 otherParticipantData = participant;
-                final otherUserId = participant['user_id']
-                    as String?; // مطمئن شوید که String است و ممکن است null باشد
+                final otherUserId = participant['user_id'] as String?;
 
                 // دریافت اطلاعات پروفایل کاربر دیگر
                 if (otherUserId != null) {
@@ -123,7 +120,7 @@ class ChatService {
                       .eq(
                         'id',
                         otherUserId,
-                      ) // حالا otherUserId از نوع String (غیر تهی) است
+                      )
                       .maybeSingle();
                 }
 
@@ -197,8 +194,9 @@ class ChatService {
               hasUnreadMessages: hasUnreadMessages,
               unreadCount: 0,
               // isPinned مقدار اولیه از کش خوانده می‌شود اگر وجود داشته باشد
-              isPinned: (await _conversationCache.getConversation(
+              isPinned: (await conversationCache.getConversation(
                     conversationId,
+                    userId,
                   ))
                       ?.isPinned ??
                   false,
@@ -207,8 +205,7 @@ class ChatService {
             );
 
             // ذخیره هر مکالمه در کش
-            // اطمینان از اینکه isPinned در کش هم آپدیت می‌شود
-            await _conversationCache.updateConversation(conversation);
+            await conversationCache.updateConversation(conversation, userId);
 
             return conversation;
           }),
@@ -216,7 +213,7 @@ class ChatService {
 
         // اگر آنلاین هستی از سرور بگیر و در کش ذخیره کن
         for (final conversation in conversationsFromServer) {
-          await _conversationCache.cacheConversation(conversation);
+          await conversationCache.cacheConversation(conversation, userId);
         }
 
         return conversationsFromServer;
@@ -227,7 +224,7 @@ class ChatService {
     } catch (e) {
       // در صورت خطا، اگر کش داریم از آن استفاده می‌کنیم
       final fallbackCachedConversations =
-          await conversationCache.getCachedConversations();
+          await conversationCache.getCachedConversations(userId);
       if (fallbackCachedConversations.isNotEmpty) {
         print('خطا در دریافت مکالمات از سرور. استفاده از کش: $e');
         return fallbackCachedConversations;
@@ -357,8 +354,9 @@ class ChatService {
     try {
       // پاک کردن مکالمات قدیمی‌تر از یک ماه
       final oneMonthAgo = DateTime.now().subtract(const Duration(days: 30));
-
-      final conversations = await _conversationCache.getCachedConversations();
+      final userId = _supabase.auth.currentUser!.id;
+      final conversations =
+          await _conversationCache.getCachedConversations(userId);
       for (final conversation in conversations) {
         if (conversation.updatedAt.isBefore(oneMonthAgo)) {
           await _conversationCache.removeConversation(conversation.id);
@@ -375,16 +373,15 @@ class ChatService {
     try {
       final isOnline = await isDeviceOnline();
       if (!isOnline) return;
-
+      final userId = _supabase.auth.currentUser!.id;
       // دریافت مکالمات به‌روز
       await getConversations();
-
       // سپس برای هر مکالمه، پیام‌های اخیر را دریافت می‌کنیم
-      final conversations = await _conversationCache.getCachedConversations();
+      final conversations =
+          await _conversationCache.getCachedConversations(userId);
       for (final conversation in conversations) {
         await getMessages(conversation.id, limit: 20, offset: 0);
       }
-
       print('همگام‌سازی کش با موفقیت انجام شد');
     } catch (e) {
       print('خطا در همگام‌سازی کش: $e');
@@ -405,10 +402,8 @@ class ChatService {
     String? replyToSenderName,
   }) async {
     final userId = _supabase.auth.currentUser!.id;
-
     try {
       final isOnline = await isDeviceOnline();
-
       // ساخت یک پیام موقت با ID موقت
       final temporaryId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
       final temporaryMessage = MessageModel(
@@ -428,13 +423,12 @@ class ChatService {
         replyToContent: replyToContent,
         replyToSenderName: replyToSenderName,
       );
-
       // ذخیره در کش
       await _messageCache.cacheMessage(temporaryMessage, userId);
-
       // بروزرسانی مکالمه در کش
       final conversation = await _conversationCache.getConversation(
         conversationId,
+        userId,
       );
       if (conversation != null) {
         final updatedConversation = conversation.copyWith(
@@ -442,9 +436,9 @@ class ChatService {
           lastMessageTime: DateTime.now(),
           updatedAt: DateTime.now(),
         );
-        await _conversationCache.updateConversation(updatedConversation);
+        await _conversationCache.updateConversation(
+            updatedConversation, userId);
       }
-
       // اگر آنلاین هستیم، همان لحظه ارسال می‌کنیم
       if (isOnline) {
         return await sendMessage(
@@ -457,7 +451,6 @@ class ChatService {
           replyToSenderName: replyToSenderName,
         );
       }
-
       // اگر آفلاین هستیم، به صف اضافه می‌کنیم
       _pendingMessages.add({
         'temporaryId': temporaryId,
@@ -469,7 +462,6 @@ class ChatService {
         'replyToContent': replyToContent,
         'replyToSenderName': replyToSenderName,
       });
-
       // در صف ذخیره می‌کنیم تا بعداً ارسال شود
       return temporaryMessage;
     } catch (e) {
@@ -746,21 +738,17 @@ class ChatService {
     bool forEveryone = false,
   }) async {
     final userId = _supabase.auth.currentUser!.id;
-
     try {
       final message = await _supabase
           .from('messages')
           .select('sender_id, conversation_id')
           .eq('id', messageId)
           .single();
-
       final conversationId = message['conversation_id'];
       final isSender = message['sender_id'] == userId;
-
       if (forEveryone && !isSender) {
         throw Exception('فقط فرستنده پیام می‌تواند آن را برای همه حذف کند');
       }
-
       if (forEveryone) {
         await _supabase.from('messages').delete().eq('id', messageId);
       } else {
@@ -771,19 +759,15 @@ class ChatService {
           'hidden_at': DateTime.now().toIso8601String(),
         });
       }
-
       // پاکسازی فوری کش پیام
       await _messageCache.clearMessage(conversationId, messageId);
-
       // بروزرسانی آخرین پیام مکالمه
       final hiddenMessages = await _supabase
           .from('hidden_messages')
           .select('message_id')
           .eq('user_id', userId);
-
       final hiddenMessageIds =
           hiddenMessages.map((e) => e['message_id']).toList();
-
       final lastMessage = await _supabase
           .from('messages')
           .select()
@@ -792,19 +776,16 @@ class ChatService {
           .order('created_at', ascending: false)
           .limit(1)
           .maybeSingle();
-
       if (lastMessage != null) {
         await _supabase.from('conversations').update({
           'last_message': lastMessage['content'],
           'last_message_time': lastMessage['created_at'],
         }).eq('id', conversationId);
       }
-
       // بروزرسانی کش مکالمه
       await refreshConversation(conversationId);
-
       // بروزرسانی فوری لیست مکالمات (برای UI)
-      await _conversationCache.clearCache();
+      await _conversationCache.clearCache(userId);
       await getConversations();
     } catch (e) {
       print('خطا در حذف پیام: $e');
@@ -827,7 +808,7 @@ class ChatService {
           conversationResponse,
           userId,
         );
-        await _conversationCache.updateConversation(conversation);
+        await _conversationCache.updateConversation(conversation, userId);
       }
     } catch (e) {
       print('خطا در بروزرسانی مکالمه: $e');
@@ -954,6 +935,7 @@ class ChatService {
       hasUnreadMessages: hasUnreadMessages,
       isPinned: (await _conversationCache.getConversation(
             conversationId,
+            userId,
           ))
               ?.isPinned ??
           false,
@@ -1013,6 +995,7 @@ class ChatService {
     int limit = 20,
     int offset = 0,
   }) async {
+    //final userId = _supabase.auth.currentUser!.id;
     final userId = _supabase.auth.currentUser!.id;
     try {
       // بررسی وضعیت آنلاین
@@ -1057,11 +1040,13 @@ class ChatService {
             .where((message) => !hiddenMessageIds.contains(message['id']))
             .toList();
 
+        print('messagesResponse ${messagesResponse.length}');
+
         final messages = await Future.wait(
           filteredMessages.map((json) async {
             final profileResponse = await _supabase
                 .from('profiles')
-                .select()
+                .select('username, avatar_url')
                 .eq('id', json['sender_id'])
                 .maybeSingle();
             final message = MessageModel.fromJson(
@@ -1082,6 +1067,7 @@ class ChatService {
           await markConversationAsRead(conversationId);
         }
 
+        print('getMessages From Server ${messages.length}');
         return messages;
       }
 
@@ -1541,7 +1527,8 @@ class ChatService {
 
   // متد گرفتن مکالمات کش شده
   Future<List<ConversationModel>> getCachedConversations() async {
-    return await _conversationCache.getCachedConversations();
+    final userId = _supabase.auth.currentUser!.id;
+    return await _conversationCache.getCachedConversations(userId);
   }
 
   // متد گرفتن تعداد پیام‌های خوانده‌نشده برای هر مکالمه
@@ -1577,12 +1564,15 @@ class ChatService {
 
   // متد برای تغییر وضعیت سنجاق مکالمه (فقط در کش محلی)
   Future<void> toggleConversationPinLocal(String conversationId) async {
+    final userId = _supabase.auth.currentUser!.id;
     final conversation = await _conversationCache.getConversation(
       conversationId,
+      userId,
     );
     if (conversation != null) {
       final newPinStatus = !conversation.isPinned;
-      await _conversationCache.setPinStatus(conversationId, newPinStatus);
+      await _conversationCache.setPinStatus(
+          conversationId, userId, newPinStatus);
       // برای اطمینان از اینکه UI آپدیت می‌شود، می‌توانیم مکالمه را در کش آپدیت کنیم
       // یا به provider ها اجازه دهیم که به تغییرات گوش دهند.
       // فعلا فقط وضعیت پین را در کش تغییر می‌دهیم.
@@ -1618,7 +1608,8 @@ class ChatService {
           .eq('conversation_id', conversationId)
           .eq('user_id', currentUserId);
       // ۳. به‌روزرسانی کش محلی (Drift)
-      await _conversationCache.setMuteStatus(conversationId, newMuteStatus);
+      await _conversationCache.setMuteStatus(
+          conversationId, currentUserId, newMuteStatus);
       await refreshConversation(
         conversationId,
       ); // برای اطمینان از همگام‌سازی کامل مدل در کش
@@ -1662,6 +1653,7 @@ class ChatService {
 
       await _conversationCache.setArchiveStatus(
         conversationId,
+        currentUserId,
         newArchiveStatus,
       );
       await refreshConversation(conversationId);

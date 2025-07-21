@@ -14,47 +14,22 @@ import '../view/Exeption/app_exceptions.dart';
 // لیست مکالمات
 final conversationsProvider =
     FutureProvider.autoDispose<List<ConversationModel>>((ref) async {
-  print('🔍 درخواست دریافت مکالمات از conversationsProvider');
+  final userId = supabase.auth.currentUser!.id;
   final chatService = ref.watch(chatServiceProvider);
   final conversations = await chatService.getConversations();
-  print('📥 تعداد مکالمات دریافت شده: ${conversations.length}');
+  // conversations فقط مکالمات userId جاری را واکشی می‌کند
   return conversations;
 });
 
 // استریم مکالمات برای بروزرسانی خودکار
 final conversationsStreamProvider =
     StreamProvider.autoDispose<List<ConversationModel>>((ref) {
-  print('🔄 شروع استریم مکالمات');
+  final userId = supabase.auth.currentUser!.id;
   final chatService = ref.watch(chatServiceProvider);
   final conversationCache = ConversationCacheService();
 
-  // استریم تغییرات مکالمات
-  final conversationsStream = chatService.subscribeToConversations();
-
-  // استریم پیام‌های جدید (برای آپدیت فوری مکالمه)
-  final messagesStream = supabase
-      .from('messages')
-      .stream(primaryKey: ['id']).order('created_at', ascending: false);
-
-  messagesStream.listen((event) async {
-    final updatedConversations = <String>{};
-    for (final msg in event) {
-      final conversationId = msg['conversation_id'] as String?;
-      if (conversationId != null &&
-          !updatedConversations.contains(conversationId)) {
-        updatedConversations.add(conversationId);
-        // مکالمه را از سرور بگیر و کش را آپدیت کن
-        await chatService.refreshConversation(conversationId);
-      }
-    }
-    // conversationsStreamProvider را invalidate کن تا UI فوراً رفرش شود
-    ref.invalidateSelf();
-    ref.invalidate(conversationsProvider);
-    ref.invalidate(cachedConversationsStreamProvider);
-  });
-
-  // هر بار که کش مکالمات تغییر کرد، لیست را مجدداً از کش بخوان
-  return conversationCache.watchCachedConversations();
+  // استریم تغییرات مکالمات فقط برای userId جاری
+  return conversationCache.watchCachedConversations(userId);
 });
 
 // پرووایدر برای سرویس چت
@@ -1053,13 +1028,13 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
 
     // بروزرسانی کش مکالمه
     final conversation =
-        await _conversationCache.getConversation(conversationId);
+        await _conversationCache.getConversation(conversationId, currentUserId);
     if (conversation != null) {
       final updated = conversation.copyWith(
         unreadCount: unreadCount,
         hasUnreadMessages: unreadCount > 0,
       );
-      await _conversationCache.updateConversation(updated);
+      await _conversationCache.updateConversation(updated, currentUserId);
     }
   }
 
@@ -1272,8 +1247,8 @@ final conversationMessagesProvider = StateNotifierProvider.family
               // --- آپدیت فوری کش مکالمه فقط اگر پیام جدیدتر است ---
               final conversationIdForUpdate = serverMessage.conversationId;
               final conversationCache = ConversationCacheService();
-              final conversation = await conversationCache
-                  .getConversation(conversationIdForUpdate);
+              final conversation = await conversationCache.getConversation(
+                  conversationIdForUpdate, userId);
               if (conversation != null) {
                 // فقط اگر پیام جدیدتر است، مکالمه را آپدیت کن
                 if (serverMessage.createdAt.isAfter(conversation.updatedAt)) {
@@ -1282,8 +1257,8 @@ final conversationMessagesProvider = StateNotifierProvider.family
                     lastMessageTime: serverMessage.createdAt,
                     updatedAt: serverMessage.createdAt,
                   );
-                  await conversationCache
-                      .updateConversation(updatedConversation);
+                  await conversationCache.updateConversation(
+                      updatedConversation, userId);
                   // invalidate providers
                   ref.invalidate(conversationsStreamProvider);
                   ref.invalidate(cachedConversationsStreamProvider);
@@ -1320,7 +1295,8 @@ final cachedConversationsStreamProvider =
     StreamProvider.autoDispose<List<ConversationModel>>((ref) {
   final conversationCache = ConversationCacheService();
   // Make sure ConversationCacheService is a singleton or provided correctly
-  return conversationCache.watchCachedConversations();
+  return conversationCache
+      .watchCachedConversations(supabase.auth.currentUser!.id);
 });
 
 // --- اضافه کنید: Provider برای دریافت آنی اطلاعات یک گفتگوی خاص ---
@@ -1334,7 +1310,8 @@ final conversationProvider = StreamProvider.family
     ref.read(chatServiceProvider).refreshConversation(conversationId);
   });
 
-  return cache.watchConversation(conversationId);
+  final userId = supabase.auth.currentUser!.id;
+  return cache.watchConversation(conversationId, userId);
 });
 
 // --- اضافه کنید: Provider برای دریافت رسانه‌های اشتراک‌گذاری شده در یک گفتگو ---

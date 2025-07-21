@@ -343,7 +343,8 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
           ),
           onTap: () async {
             await MessageCacheService().clearAllCache();
-            await ConversationCacheService().clearCache();
+            await ConversationCacheService()
+                .clearCache(supabase.auth.currentUser!.id);
             await supabase.auth.signOut();
             Navigator.pushReplacementNamed(context, '/welcome');
           },
