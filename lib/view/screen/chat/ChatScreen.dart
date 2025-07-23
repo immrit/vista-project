@@ -920,51 +920,76 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
               TextButton(
                 onPressed: () {
-                  Navigator.pop(context);
+                  final navigator = Navigator.of(context);
+                  final messenger = ScaffoldMessenger.of(context);
+                  final notifier = ref.read(messageNotifierProvider.notifier);
 
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Row(
-                        children: [
-                          SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
+                  navigator.pop();
+
+                  messenger.showSnackBar(
+                    const SnackBar(
+                      content: Row(children: [
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
-                          SizedBox(width: 12),
-                          Text('در حال پاکسازی گفتگو...'),
-                        ],
-                      ),
-                      duration: Duration(seconds: 1),
+                        ),
+                        SizedBox(width: 12),
+                        Text('در حال پاکسازی گفتگو...'),
+                      ]),
+                      duration: Duration(seconds: 4),
                     ),
                   );
 
-                  ref
-                      .read(messageNotifierProvider.notifier)
+                  notifier
                       .deleteAllMessages(widget.conversationId,
                           forEveryone: bothSides)
                       .then((_) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
+                    if (!mounted) return;
+                    messenger.removeCurrentSnackBar();
+                    messenger.showSnackBar(
+                      const SnackBar(
                         content: Text('تاریخچه گفتگو با موفقیت پاک شد'),
                         backgroundColor: Colors.green,
                       ),
                     );
+                    // After clearing, if the conversation is fully removed (e.g., last participant leaves), pop the screen.
+                    // The provider will be updated, and we can check its state.
+                    Future.delayed(const Duration(milliseconds: 200), () {
+                      if (mounted) {
+                        final conversationExists = ref
+                                .read(
+                                    conversationProvider(widget.conversationId))
+                                .hasValue &&
+                            ref
+                                    .read(conversationProvider(
+                                        widget.conversationId))
+                                    .value !=
+                                null;
+                        if (!conversationExists) {
+                          navigator.pop();
+                        }
+                      }
+                    });
                   }).catchError((error) {
+                    if (!mounted) return;
+                    messenger.removeCurrentSnackBar();
                     String errorMessage = 'خطا در پاکسازی گفتگو';
                     if (error is AppException) {
                       errorMessage = error.userFriendlyMessage;
                     }
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(errorMessage)),
+                    messenger.showSnackBar(
+                      SnackBar(
+                          content: Text(errorMessage),
+                          backgroundColor: Colors.red),
                     );
                   });
                 },
-                child: Text(
+                child: const Text(
                   'پاکسازی',
                   style: TextStyle(color: Colors.red),
                 ),

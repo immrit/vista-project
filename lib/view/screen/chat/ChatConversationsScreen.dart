@@ -13,6 +13,7 @@ import '../../util/const.dart';
 import '../channel/ChannelScreen.dart';
 import 'ArchivedConversationsScreen.dart';
 import 'ChatSettingsScreen.dart'; // اضافه کردن ایمپورت صفحه جدید
+import '../../../services/ChatService.dart';
 import 'ChatScreen.dart';
 
 // مدل یکپارچه برای نمایش چت‌ها و کانال‌ها در یک لیست
@@ -617,6 +618,20 @@ class _ChatConversationsScreenState
   }
 
   Widget _buildSubtitle(ThemeData theme, UnifiedChatItem item) {
+    // Check for the placeholder for cleared history
+    if (item.subtitle == ChatService.clearedHistoryPlaceholder) {
+      return Text(
+        'تاریخچه گفتگو حذف شده است',
+        style: TextStyle(
+          fontSize: 14,
+          color: theme.hintColor,
+          fontStyle: FontStyle.italic,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+
     if (item.subtitle?.isEmpty ?? true) {
       if (item.isChannel) {
         return Text(

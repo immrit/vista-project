@@ -80,9 +80,10 @@ class ConversationCacheDatabase extends _$ConversationCacheDatabase {
     );
   }
 
-  Future<void> deleteConversation(String conversationId) async {
+  Future<void> deleteConversation(String conversationId, String userId) async {
     await (delete(cachedConversations)
-          ..where((tbl) => tbl.id.equals(conversationId)))
+          ..where((tbl) =>
+              tbl.id.equals(conversationId) & tbl.userId.equals(userId)))
         .go();
   }
 
@@ -248,11 +249,11 @@ class ConversationCacheService {
   // اضافه شد: پاک کردن کل کش مکالمات
   Future<void> clearCache(String userId) => _db.clearCache(userId);
 
-  Future<void> removeConversation(String conversationId) async {
+  Future<void> removeConversation(String conversationId, String userId) async {
     // First, ensure messages related to this conversation are also cleared from message cache if necessary
     // This might be handled elsewhere or could be added here for completeness.
     // Example: await MessageCacheService().clearConversationMessages(conversationId);
-    await _db.deleteConversation(conversationId);
+    await _db.deleteConversation(conversationId, userId);
   }
 
   Future<void> updateLastRead(String conversationId, String readTimeIso) async {

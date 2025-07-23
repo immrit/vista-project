@@ -460,11 +460,15 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
       await chatService.deleteAllMessages(conversationId,
           forEveryone: forEveryone);
 
-      // بروزرسانی لیست مکالمات و پیام‌ها
-      ref.invalidate(messagesProvider(conversationId));
-      ref.invalidate(messagesStreamProvider(conversationId));
+      // بروزرسانی فوری UI با پاک کردن state
+      ref
+          .read(conversationMessagesProvider(conversationId).notifier)
+          .clearAll();
+
+      // بروزرسانی لیست مکالمات در صفحه اصلی
       ref.invalidate(conversationsProvider);
       ref.invalidate(conversationsStreamProvider);
+      ref.invalidate(cachedConversationsStreamProvider);
 
       state = const AsyncValue.data(null);
     } catch (e, stack) {
@@ -1078,7 +1082,7 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
     state = _filterTempDuplicates(newState);
     // ابتدا پیام موقت را از کش حذف کن
     final userId = supabase.auth.currentUser!.id;
-    _cacheService.clearMessage(conversationId, tempId).then((_) {
+    _cacheService.clearMessage(conversationId, tempId, userId).then((_) {
       // سپس پیام واقعی را کش کن
       _cacheService.cacheMessage(realMessage, userId);
     }).catchError((e) {
@@ -1128,7 +1132,12 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
     final newState = state.where((m) => m.id != messageId).toList();
     state = _filterTempDuplicates(newState);
     final userId = supabase.auth.currentUser!.id;
-    _cacheService.clearMessage(conversationId, messageId);
+    _cacheService.clearMessage(conversationId, messageId, userId);
+  }
+
+  // متد جدید برای پاک کردن تمام پیام‌ها از state
+  void clearAll() {
+    state = [];
   }
 
   // جایگزینی پیام موقت با پیام واقعی (بدون invalidate کردن کل provider)
@@ -1143,7 +1152,7 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
 
     // آپدیت کش
     final userId = supabase.auth.currentUser!.id;
-    _cacheService.clearMessage(conversationId, tempId).then((_) {
+    _cacheService.clearMessage(conversationId, tempId, userId).then((_) {
       _cacheService.cacheMessage(realMessage, userId);
     }).catchError((e) {
       print("خطا در جایگزینی پیام در کش: $e");

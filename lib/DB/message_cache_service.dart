@@ -148,18 +148,23 @@ class MessageCacheDatabase extends _$MessageCacheDatabase {
   }
 
   // حذف پیام‌های یک مکالمه
-  Future<void> clearConversationMessages(String conversationId) async {
+  Future<void> clearConversationMessages(
+      String conversationId, String userId) async {
     await (delete(cachedMessages)
-          ..where((tbl) => tbl.conversationId.equals(conversationId)))
+          ..where((tbl) =>
+              tbl.conversationId.equals(conversationId) &
+              tbl.userId.equals(userId)))
         .go();
   }
 
   // حذف یک پیام خاص
-  Future<void> clearMessage(String conversationId, String messageId) async {
+  Future<void> clearMessage(
+      String conversationId, String messageId, String userId) async {
     await (delete(cachedMessages)
           ..where((tbl) =>
               tbl.conversationId.equals(conversationId) &
-              tbl.id.equals(messageId)))
+              tbl.id.equals(messageId) &
+              tbl.userId.equals(userId)))
         .go();
   }
 
@@ -278,10 +283,12 @@ class MessageCacheService {
       _db.replaceTempMessage(conversationId, tempId, realMessage, userId);
   Future<void> markMessageAsFailed(String conversationId, String tempId) =>
       _db.markMessageAsFailed(conversationId, tempId);
-  Future<void> clearConversationMessages(String conversationId) =>
-      _db.clearConversationMessages(conversationId);
-  Future<void> clearMessage(String conversationId, String messageId) =>
-      _db.clearMessage(conversationId, messageId);
+  Future<void> clearConversationMessages(
+          String conversationId, String userId) =>
+      _db.clearConversationMessages(conversationId, userId);
+  Future<void> clearMessage(
+          String conversationId, String messageId, String userId) =>
+      _db.clearMessage(conversationId, messageId, userId);
   Future<void> clearAllCache() => _db.clearAllCache();
   Future<void> deleteMessagesOlderThan(DateTime date) =>
       _db.deleteMessagesOlderThan(date);

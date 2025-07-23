@@ -20,6 +20,9 @@ class ChatService {
   final MessageCacheService _messageCache = MessageCacheService();
 
   // متغیر static برای نگهداری conversationId فعال و آخرین messageId دیده‌شده
+  // A constant to represent a cleared conversation state
+  static const String clearedHistoryPlaceholder = '[conversation_cleared]';
+
   static String? activeConversationId;
   // static String? lastNotifiedMessageId;
 
@@ -272,12 +275,12 @@ class ChatService {
     // حذف از کش لوکال Drift
     await _conversationCache.removeConversation(
       conversationId,
+      _supabase.auth.currentUser!.id,
     ); // این مربوط به کش مکالمه است
 
     // حذف پیام‌های کش‌شده مربوطه هم (در صورت وجود)
     await _messageCache.clearConversationMessages(
-      conversationId,
-    ); // استفاده از متد صحیح
+        conversationId, _supabase.auth.currentUser!.id); // استفاده از متد صحیح
   }
 
   Future<MessageModel> sendMessage({
@@ -359,8 +362,9 @@ class ChatService {
           await _conversationCache.getCachedConversations(userId);
       for (final conversation in conversations) {
         if (conversation.updatedAt.isBefore(oneMonthAgo)) {
-          await _conversationCache.removeConversation(conversation.id);
-          await _messageCache.clearConversationMessages(conversation.id);
+          await _conversationCache.removeConversation(conversation.id, userId);
+          await _messageCache.clearConversationMessages(
+              conversation.id, userId);
         }
       }
     } catch (e) {
@@ -760,7 +764,7 @@ class ChatService {
         });
       }
       // پاکسازی فوری کش پیام
-      await _messageCache.clearMessage(conversationId, messageId);
+      await _messageCache.clearMessage(conversationId, messageId, userId);
       // بروزرسانی آخرین پیام مکالمه
       final hiddenMessages = await _supabase
           .from('hidden_messages')
@@ -950,39 +954,49 @@ class ChatService {
     bool forEveryone = false,
   }) async {
     final userId = _supabase.auth.currentUser!.id;
+    final now = DateTime.now();
 
     try {
       if (forEveryone) {
-        // Delete messages for everyone
+        // حذف همه پیام‌های این مکالمه از دیتابیس
+        print(
+            '[DEBUG] Deleting all messages for conversation: $conversationId');
         await _supabase
             .from('messages')
             .delete()
             .eq('conversation_id', conversationId);
-
-        // Clear all messages from cache
-        await _messageCache.clearConversationMessages(conversationId);
       } else {
-        // Hide messages only for current user
+        // فقط برای کاربر فعلی پیام‌ها را مخفی کن (با استفاده از جدول hidden_messages)
         final messages = await _supabase
             .from('messages')
             .select('id')
             .eq('conversation_id', conversationId);
 
-        for (final message in messages) {
-          await _supabase.from('hidden_messages').upsert({
-            'message_id': message['id'],
-            'user_id': userId,
-            'conversation_id': conversationId,
-            'hidden_at': DateTime.now().toIso8601String(),
-          });
+        if (messages.isNotEmpty) {
+          final hiddenMessagesData = messages
+              .map((message) => {
+                    'message_id': message['id'],
+                    'user_id': userId,
+                    'conversation_id': conversationId,
+                    'hidden_at': now.toIso8601String(),
+                  })
+              .toList();
+          await _supabase.from('hidden_messages').upsert(hiddenMessagesData);
         }
-
-        // Clear messages from local cache
-        await _messageCache.clearConversationMessages(conversationId);
       }
 
-      // Update conversation in cache
-      await _conversationCache.removeConversation(conversationId);
+      // 1. Update the conversation on the server with a placeholder
+      await _supabase.from('conversations').update({
+        'last_message': clearedHistoryPlaceholder,
+        'last_message_time': now.toIso8601String(),
+        'updated_at': now.toIso8601String(),
+      }).eq('id', conversationId);
+
+      // 2. Clear local messages for this conversation
+      await _messageCache.clearConversationMessages(conversationId, userId);
+
+      // 3. Refresh the conversation in the local cache from the server to ensure consistency
+      await refreshConversation(conversationId);
     } catch (e) {
       print('خطا در پاکسازی مکالمه: $e');
       rethrow;
@@ -1234,8 +1248,16 @@ class ChatService {
 
       // --- اضافه شد: حذف از کش لوکال Drift ---
       // مکالمه و پیام‌های آن را از کش لوکال کاربر فعلی حذف کن
-      await _conversationCache.removeConversation(conversationId);
-      await _messageCache.clearConversationMessages(conversationId);
+      await _conversationCache.removeConversation(
+        conversationId,
+        userId,
+      ); // این مربوط به کش مکالمه است
+
+      // حذف پیام‌های کش‌شده مربوطه هم (در صورت وجود)
+      await _messageCache.clearConversationMessages(
+        conversationId,
+        userId,
+      ); // استفاده از متد صحیح
       print('گفتگو و پیام‌های آن از کش لوکال حذف شدند: $conversationId');
       // --- پایان اضافه شده ---
     } catch (e) {
@@ -1469,42 +1491,33 @@ class ChatService {
 
     try {
       if (bothSides) {
-        // حذف تمام پیام‌های مکالمه برای همه
-        final messagesWithImages = await _supabase
-            .from('messages')
-            .select('attachment_url')
-            .eq('conversation_id', conversationId)
-            .neq('attachment_url', '');
-
-        // تبدیل به لیستی از Futureها
-        final deleteFutures = messagesWithImages
-            .where((msg) => msg['attachment_url'] != null)
-            .map(
-              (msg) => ChatImageUploadService.deleteChatImage(
-                msg['attachment_url'] as String,
-              ),
-            )
-            .toList();
-
-        await Future.wait(deleteFutures);
-
-        // حذف پیام‌ها از دیتابیس
-        await _supabase
-            .from('messages')
-            .delete()
-            .eq('conversation_id', conversationId);
-
-        // پاکسازی کش پیام‌های این مکالمه
-        await _messageCache.clearConversationMessages(conversationId);
+        // پاکسازی دوطرفه: حذف همه پیام‌های این گفتگو از دیتابیس و پاکسازی last_message
+        // فراخوانی فانکشن سرور (در صورت وجود)
+        try {
+          await _supabase.rpc('clear_conversation_fully',
+              params: {'convo_id': conversationId});
+        } catch (e) {
+          // اگر فانکشن وجود نداشت یا خطا داد، حذف مستقیم پیام‌ها و آپدیت conversation
+          await _supabase
+              .from('messages')
+              .delete()
+              .eq('conversation_id', conversationId);
+          await _supabase.from('conversations').update({
+            'last_message': null,
+            'last_message_time': null,
+          }).eq('id', conversationId);
+        }
+        // پاکسازی کش پیام‌ها و مکالمه
+        await _messageCache.clearConversationMessages(conversationId, userId);
+        await _conversationCache.removeConversation(conversationId, userId);
       } else {
-        // فقط برای کاربر فعلی پیام‌ها را مخفی کن (با استفاده از جدول hidden_messages)
+        // پاکسازی یک‌طرفه: فقط برای کاربر فعلی پیام‌ها را مخفی کن
         final messages = await _supabase
             .from('messages')
             .select('id')
             .eq('conversation_id', conversationId);
 
-        // برای هر پیام، یک رکورد در جدول hidden_messages اضافه می‌کنیم
-        for (var message in messages) {
+        for (final message in messages) {
           await _supabase.from('hidden_messages').upsert({
             'message_id': message['id'],
             'user_id': userId,
@@ -1512,13 +1525,9 @@ class ChatService {
             'hidden_at': DateTime.now().toIso8601String(),
           });
         }
-
-        // پاکسازی کش پیام‌های این مکالمه
-        await _messageCache.clearConversationMessages(conversationId);
+        await _messageCache.clearConversationMessages(conversationId, userId);
+        await _conversationCache.removeConversation(conversationId, userId);
       }
-
-      // پاکسازی کش مکالمه
-      await _conversationCache.removeConversation(conversationId);
     } catch (e) {
       print('خطا در پاکسازی مکالمه: $e');
       throw Exception('پاکسازی مکالمه با خطا مواجه شد: $e');
