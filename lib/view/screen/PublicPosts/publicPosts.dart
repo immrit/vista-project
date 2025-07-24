@@ -1102,45 +1102,45 @@ Widget _buildPostContent(PublicPostModel post, BuildContext context) {
             final duration = ref.watch(musicDurationProvider);
 
             return Container(
-              margin: const EdgeInsets.symmetric(vertical: 8.0),
-              decoration: BoxDecoration(
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.grey[900]
-                    : Colors.grey[100],
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: MusicWaveform(
-                musicUrl: post.musicUrl!,
-                isPlaying: isPlaying && isThisPlaying,
-                position: position,
-                duration: duration,
-                onPlayPause: () {
-                  if (isPlaying && isThisPlaying) {
-                    ref.read(musicPlayerProvider.notifier).togglePlayPause();
-                  } else {
-                    final music = MusicModel(
-                      id: post.id,
-                      userId: post.userId,
-                      title: post.title ?? 'موزیک',
-                      artist: post.username,
-                      musicUrl: post.musicUrl!,
-                      createdAt: post.createdAt,
-                      username: post.username,
-                      avatarUrl: post.avatarUrl,
-                      isVerified: post.isVerified,
-                    );
-                    ref.read(musicPlayerProvider.notifier).playMusic(music);
-                  }
-                },
-              ),
-            );
+                margin: const EdgeInsets.symmetric(vertical: 8.0),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.grey[900]
+                      : Colors.grey[100],
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: MusicWaveform(
+                  musicUrl: post.musicUrl!,
+                  isPlaying: isPlaying && isThisPlaying,
+                  position: position,
+                  duration: duration,
+                  onPlayPause: () {
+                    if (isPlaying && isThisPlaying) {
+                      ref.read(musicPlayerProvider.notifier).togglePlayPause();
+                    } else {
+                      final music = MusicModel(
+                        id: post.id,
+                        userId: post.userId,
+                        title: post.title ?? 'موزیک',
+                        artist: post.username,
+                        musicUrl: post.musicUrl!,
+                        createdAt: post.createdAt,
+                        username: post.username,
+                        avatarUrl: post.avatarUrl,
+                        isVerified: post.isVerified,
+                      );
+                      ref.read(musicPlayerProvider.notifier).playMusic(music);
+                    }
+                  },
+                ));
+            ;
           },
         ),
     ],
@@ -1807,16 +1807,10 @@ Widget _buildPostActions(
 
   return profileAsync.when(
     data: (profile) {
+      // فقط از is_verified و verification_type استفاده کن
       final isBlueTick = profile != null &&
           profile['is_verified'] == true &&
           profile['verification_type'] == 'blueTick';
-      final isAdminOrModerator = profile != null &&
-          (profile['role'] == 'admin' || profile['role'] == 'moderator');
-
-      // Debug: چاپ اطلاعات پروفایل
-      print('DEBUG: Profile data: $profile');
-      print('DEBUG: User role: ${profile?['role']}');
-      print('DEBUG: isAdminOrModerator: $isAdminOrModerator');
 
       final currentUserId = supabase.auth.currentUser?.id;
 
@@ -1846,7 +1840,7 @@ Widget _buildPostActions(
             ),
           ];
 
-          // اضافه کردن گزینه حذف برای صاحب پست یا ناظر
+          // فقط صاحب پست یا blueTick مجاز به حذف و ویرایش هستند
           if (currentUserId == post.userId || isBlueTick) {
             items.add(const PopupMenuItem<String>(
               value: 'delete',
@@ -1858,10 +1852,6 @@ Widget _buildPostActions(
                 ],
               ),
             ));
-          }
-
-          // اضافه کردن گزینه ویرایش فقط برای ناظرها و ادمین‌ها
-          if (isAdminOrModerator) {
             items.add(const PopupMenuItem<String>(
               value: 'edit',
               child: Row(
@@ -1873,18 +1863,6 @@ Widget _buildPostActions(
               ),
             ));
           }
-
-          // تست: همیشه گزینه ویرایش را نمایش بده
-          items.add(const PopupMenuItem<String>(
-            value: 'edit_test',
-            child: Row(
-              children: [
-                Icon(Icons.edit, color: Colors.blue),
-                SizedBox(width: 8),
-                Text('ویرایش پست'),
-              ],
-            ),
-          ));
 
           return items;
         },
@@ -1907,6 +1885,10 @@ Widget _buildPostActions(
               ),
             );
           } else if (value == 'delete') {
+            // فقط صاحب پست یا blueTick مجاز به حذف هستند
+            final isBlueTick = profile != null &&
+                profile['is_verified'] == true &&
+                profile['verification_type'] == 'blueTick';
             if (currentUserId == post.userId || isBlueTick) {
               _showDeleteConfirmation(context, ref, post.id);
             } else {
@@ -1918,7 +1900,11 @@ Widget _buildPostActions(
               );
             }
           } else if (value == 'edit') {
-            if (isAdminOrModerator) {
+            // فقط صاحب پست یا blueTick مجاز به ویرایش هستند
+            final isBlueTick = profile != null &&
+                profile['is_verified'] == true &&
+                profile['verification_type'] == 'blueTick';
+            if (currentUserId == post.userId || isBlueTick) {
               showEditPostDialog(context, ref, post);
             } else {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -1928,9 +1914,6 @@ Widget _buildPostActions(
                 ),
               );
             }
-          } else if (value == 'edit_test') {
-            // تست: همیشه دیالوگ ویرایش را نمایش بده
-            showEditPostDialog(context, ref, post);
           }
         },
       );
@@ -2480,6 +2463,23 @@ class _ConnectionStatusBarState extends State<ConnectionStatusBar>
 //     );
 //   }
 
+//   @override
+//   Widget build(BuildContext context) {
+//     return GestureDetector(
+//       onTap: _openFullScreen,
+//       child: Container(
+//         constraints: BoxConstraints(maxHeight: 400),
+//         child: _isInitialized
+//             ? ClipRRect(
+//                 borderRadius: BorderRadius.circular(8),
+//                 child: Chewie(controller: _chewieController!),
+//               )
+//             : AspectRatio(
+//                 aspectRatio: 16 / 9,
+//                 child: Container(
+//                   color: Colors.black87,
+//                   child: const Center(
+//                     child: CircularProgressIndicator(),
 //   @override
 //   Widget build(BuildContext context) {
 //     return GestureDetector(
