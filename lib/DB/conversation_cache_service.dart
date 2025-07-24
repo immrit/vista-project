@@ -10,7 +10,7 @@ part 'conversation_cache_service.g.dart';
 
 class CachedConversations extends Table {
   TextColumn get id => text()();
-  TextColumn get userId => text()(); // اضافه شد: userId برای هر مکالمه
+  TextColumn get userId => text().nullable()(); // ابتدا nullable تعریف شد
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
   TextColumn get lastMessage => text().nullable()();
@@ -52,6 +52,9 @@ class ConversationCacheDatabase extends _$ConversationCacheDatabase {
         }
         if (from < 5) {
           await m.addColumn(cachedConversations, cachedConversations.userId);
+          // مقداردهی اولیه برای userId (رشته خالی)
+          await customStatement(
+              "UPDATE cached_conversations SET user_id = '' WHERE user_id IS NULL");
         }
       },
     );
@@ -304,4 +307,21 @@ extension ConversationCacheDatabaseWatchExt on ConversationCacheDatabase {
         .watchSingleOrNull()
         .map((row) => row != null ? _mapRowToModel(row) : null);
   }
+}
+
+// مسیر فایل دیتابیس مکالمات
+Future<File> getConversationCacheDbFile() async {
+  final dir = await getApplicationDocumentsDirectory();
+  return File(p.join(dir.path, 'conversations.sqlite'));
+}
+
+// حذف کامل فایل دیتابیس مکالمات (و فایل‌های WAL/SHM)
+Future<void> deleteConversationCacheDbFile() async {
+  final file = await getConversationCacheDbFile();
+  if (await file.exists()) await file.delete();
+  // حذف فایل‌های WAL و SHM هم اگر وجود دارند:
+  final wal = File('${file.path}-wal');
+  final shm = File('${file.path}-shm');
+  if (await wal.exists()) await wal.delete();
+  if (await shm.exists()) await shm.delete();
 }

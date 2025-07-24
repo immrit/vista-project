@@ -374,10 +374,12 @@ class _ContactUsScreenState extends State<ContactUsScreen> {
         _subjectController.clear();
         _messageController.clear();
       } catch (error) {
+        debugPrint('خطا در ارسال پیام تماس با ما: $error');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('خطا در ارسال پیام: ${error.toString()}'),
+            const SnackBar(
+              content:
+                  Text('ارسال پیام با مشکل مواجه شد. لطفاً دوباره تلاش کنید.'),
               behavior: SnackBarBehavior.floating,
               backgroundColor: Colors.red,
             ),

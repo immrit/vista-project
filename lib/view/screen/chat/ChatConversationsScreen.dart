@@ -15,6 +15,8 @@ import 'ArchivedConversationsScreen.dart';
 import 'ChatSettingsScreen.dart'; // اضافه کردن ایمپورت صفحه جدید
 import '../../../services/ChatService.dart';
 import 'ChatScreen.dart';
+import '../../../DB/conversation_cache_service.dart';
+import '../../../DB/message_cache_service.dart';
 
 // مدل یکپارچه برای نمایش چت‌ها و کانال‌ها در یک لیست
 @immutable
@@ -807,6 +809,22 @@ class _ChatConversationsScreenState
 
   // Error State
   Widget _buildErrorState(ThemeData theme, String message) {
+    // شناسایی خطاهای دیتابیس و نمایش پیام راهنما
+    final isDbMigrationError = message.contains('NOT NULL') ||
+        message.contains('SqliteException') ||
+        message.contains('migration') ||
+        message.contains('ALTER TABLE');
+
+    String customMessage = message;
+    if (isDbMigrationError) {
+      customMessage = 'مشکلی در بروزرسانی داده‌های برنامه پیش آمده است.\n'
+          'برای رفع مشکل یکی از راه‌های زیر را امتحان کنید:\n\n'
+          '۱. برنامه را یکبار کامل ببندید و دوباره باز کنید.\n'
+          '۲. اگر مشکل حل نشد، از تنظیمات گوشی وارد بخش برنامه‌ها شوید و داده‌های برنامه (Clear Data) را پاک کنید.\n'
+          '۳. یا برنامه را حذف و مجدداً نصب کنید.\n\n'
+          'در صورت نیاز به راهنمایی بیشتر با پشتیبانی تماس بگیرید.';
+    }
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -836,7 +854,7 @@ class _ChatConversationsScreenState
             ),
             const SizedBox(height: 8),
             Text(
-              message,
+              customMessage,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
@@ -845,7 +863,8 @@ class _ChatConversationsScreenState
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
-              onPressed: _refreshData,
+              onPressed:
+                  isDbMigrationError ? _resetCacheAndRefresh : _refreshData,
               icon: const Icon(Icons.refresh_rounded),
               label: const Text('تلاش مجدد'),
               style: ElevatedButton.styleFrom(
@@ -930,6 +949,23 @@ class _ChatConversationsScreenState
     // یا اگر می‌خواهید منتظر بمانید:
     // await ref.refresh(conversationsProvider.future);
     // await ref.refresh(channelsProvider.future);
+  }
+
+  Future<void> _resetCacheAndRefresh() async {
+    // پاک‌سازی کش مکالمات و پیام‌ها
+    await deleteConversationCacheDbFile();
+    await deleteMessageCacheDbFile();
+    // رفرش providerها
+    ref.invalidate(conversationsProvider);
+    ref.invalidate(cachedConversationsStreamProvider);
+    ref.invalidate(channelsProvider);
+    // نمایش پیام موفقیت
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('کش برنامه پاک‌سازی شد. لطفاً دوباره تلاش کنید.')),
+      );
+    }
   }
 
   void _handleMenuAction(String action) {

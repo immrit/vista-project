@@ -310,3 +310,14 @@ extension MessageCacheDatabaseSize on MessageCacheDatabase {
     return getMessageCacheDbFile();
   }
 }
+
+// حذف کامل فایل دیتابیس پیام‌ها (و فایل‌های WAL/SHM)
+Future<void> deleteMessageCacheDbFile() async {
+  final file = await getMessageCacheDbFile();
+  if (await file.exists()) await file.delete();
+  // حذف فایل‌های WAL و SHM هم اگر وجود دارند:
+  final wal = File('${file.path}-wal');
+  final shm = File('${file.path}-shm');
+  if (await wal.exists()) await wal.delete();
+  if (await shm.exists()) await shm.delete();
+}

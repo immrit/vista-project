@@ -35,6 +35,7 @@ import 'view/screen/ouathUser/welcome.dart';
 import 'view/screen/ouathUser/editeProfile.dart';
 import 'package:flutter/foundation.dart' show kIsWeb; // اضافه کن
 import 'package:intl/intl.dart';
+import 'DB/message_cache_service.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -381,7 +382,7 @@ class MyApp extends ConsumerStatefulWidget {
   _MyAppState createState() => _MyAppState();
 }
 
-class _MyAppState extends ConsumerState<MyApp> {
+class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   late final AppLinks _appLinks;
   StreamSubscription? _linkSubscription;
   bool _isLoading = false;
@@ -390,6 +391,7 @@ class _MyAppState extends ConsumerState<MyApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _linkSubscription?.cancel();
     _profileCheckTimer?.cancel();
     super.dispose();
@@ -398,6 +400,7 @@ class _MyAppState extends ConsumerState<MyApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _appLinks = AppLinks();
 
     // مدیریت دیپ لینک‌های ورودی
@@ -430,6 +433,19 @@ class _MyAppState extends ConsumerState<MyApp> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         DeepLinkService.processPendingTokens(context);
       });
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) async {
+    if (state == AppLifecycleState.detached) {
+      final box = await Hive.openBox('settings');
+      bool clearDriftCacheOnExit =
+          box.get('clearDriftCacheOnExit', defaultValue: true);
+      if (clearDriftCacheOnExit) {
+        await deleteMessageCacheDbFile();
+        await deleteConversationCacheDbFile();
+      }
     }
   }
 

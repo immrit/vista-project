@@ -45,6 +45,7 @@ class _CreateChannelScreenState extends ConsumerState<CreateChannelScreen> {
         });
       }
     } catch (e) {
+      debugPrint('خطا در انتخاب تصویر: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('خطا در انتخاب تصویر: $e')),
       );
@@ -88,10 +89,12 @@ class _CreateChannelScreenState extends ConsumerState<CreateChannelScreen> {
         );
       }
     } catch (e) {
+      debugPrint('خطا در ایجاد کانال: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطا در ایجاد کانال: $e'),
+          const SnackBar(
+            content:
+                Text('ایجاد کانال با مشکل مواجه شد. لطفاً دوباره تلاش کنید.'),
             backgroundColor: Colors.red,
           ),
         );

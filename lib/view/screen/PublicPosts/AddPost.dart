@@ -235,7 +235,8 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       }
     } catch (e, s) {
       debugPrint('خطا در انتخاب/برش ویدیو: $e\n$s');
-      _showError('خطایی در انتخاب یا پردازش ویدیو رخ داد: $e');
+      _showError(
+          'خطایی در انتخاب یا پردازش ویدیو رخ داد. لطفاً دوباره تلاش کنید.');
     }
   }
 
@@ -634,6 +635,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
         _showSnackBar('پست با موفقیت منتشر شد', isError: false);
       }
     } catch (e) {
+      debugPrint('خطا در ارسال پست: $e');
       if (mounted) {
         String errorMessage = 'خطا در ارسال پست';
         if (e.toString().contains('storage')) {
