@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shamsi_date/shamsi_date.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../../model/publicPostModel.dart';
 import '../../util/widgets.dart';
 import '../searchPage.dart';
@@ -16,6 +17,38 @@ import '../../../provider/provider.dart';
 import '../../../model/MusicModel.dart';
 import '../../../provider/MusicProvider.dart';
 import 'MusicWaveform.dart';
+
+// Provider برای مدیریت پست جزئیات
+final postDetailProvider =
+    FutureProvider.family<PublicPostModel?, String>((ref, postId) async {
+  try {
+    final response = await supabase.from('posts').select('''
+          *,
+          profiles!posts_user_id_fkey (
+            id,
+            username,
+            full_name,
+            avatar_url,
+            is_verified,
+            verification_type
+          ),
+          likes!posts_likes_post_id_fkey (
+            user_id
+          ),
+          comments!posts_comments_post_id_fkey (
+            count
+          )
+        ''').eq('id', postId).single();
+
+    if (response == null) return null;
+
+    // تبدیل به PublicPostModel
+    return PublicPostModel.fromMap(response as Map<String, dynamic>);
+  } catch (e) {
+    print('Error fetching post: $e');
+    throw Exception('خطا در بارگذاری پست: $e');
+  }
+});
 
 class PostDetailsPage extends ConsumerStatefulWidget {
   const PostDetailsPage({super.key, required this.postId});
@@ -30,8 +63,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
   late TextEditingController commentController;
   final List<UserModel> mentionedUsers = [];
   String? replyToCommentId;
-
-  final bool _isRetrying = false;
+  bool _isRetrying = false;
 
   @override
   void dispose() {
@@ -43,6 +75,79 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
   void initState() {
     super.initState();
     commentController = TextEditingController();
+  }
+
+  // سیستم اشتراک‌گذاری هوشمند
+  void _sharePost(PublicPostModel post) {
+    final String webUrl = 'https://coffevista.ir/post/${post.id}';
+
+    String shareText = '${post.username}:\n${post.content}\n\n';
+    shareText += 'مشاهده در Vista: $webUrl';
+
+    Share.share(shareText);
+  }
+
+  // مدیریت خطا و retry
+  Widget _buildErrorWidget(String error, VoidCallback onRetry) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 64,
+            color: Colors.grey[400],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'خطا در بارگذاری پست',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey[600],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            error,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[500],
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: _isRetrying ? null : onRetry,
+            icon: _isRetrying
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+            label: Text(_isRetrying ? 'در حال تلاش...' : 'تلاش مجدد'),
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Loading widget
+  Widget _buildLoadingWidget() {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(),
+          SizedBox(height: 16),
+          Text('در حال بارگذاری پست...'),
+        ],
+      ),
+    );
   }
 
 // یک متد برای جلب userId از پایگاه داده بر اساس username
@@ -1200,40 +1305,13 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
           children: [
             postAsyncValue.when(
               data: (post) => _buildPostDetails(context, post),
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.error_outline_rounded,
-                      size: 48,
-                      color: Colors.grey[400],
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'مشکلی در بارگذاری پست پیش آمده',
-                      style: TextStyle(
-                        color: Colors.grey,
-                        fontSize: 16,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      onPressed: () => ref.refresh(postProvider(widget.postId)),
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('تلاش مجدد'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 12,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              loading: () => _buildLoadingWidget(),
+              error: (error, _) => _buildErrorWidget(error.toString(), () {
+                setState(() {
+                  _isRetrying = true;
+                });
+                ref.invalidate(postProvider(widget.postId));
+              }),
             ),
           ],
         ),

@@ -35,30 +35,27 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- اینتنت فیلتر برای دیپ لینک HTTP/HTTPS - بهینه شده -->
-<intent-filter android:autoVerify="true">
-    <action android:name="android.intent.action.VIEW" />
-    <category android:name="android.intent.category.DEFAULT" />
-    <category android:name="android.intent.category.BROWSABLE" />
-    <data android:scheme="https" />
-    <data android:scheme="http" />
-    <data android:host="coffevista.ir" />
-    <data android:pathPattern="/auth/v1/verify" />
-    <data android:pathPattern="/auth/v1/callback" />
-</intent-filter>
+            <!-- اینتنت فیلتر جامع برای همه لینک‌های coffevista.ir -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="coffevista.ir" />
+            </intent-filter>
 
-            <!-- اینتنت فیلتر برای دیپ لینک custom scheme vista:// - بهینه شده -->
-<intent-filter>
-    <action android:name="android.intent.action.VIEW" />
-    <category android:name="android.intent.category.DEFAULT" />
-    <category android:name="android.intent.category.BROWSABLE" />
-    <data android:scheme="vista" />
-    <data android:host="auth" />
-    <data android:path="/reset-password" />
-    <data android:path="/confirm" />
-    <data android:path="/email-change" />
-    <data android:path="/invite" />
-</intent-filter>
+            <!-- اینتنت فیلتر برای دیپ لینک custom scheme vista:// -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="vista" />
+                <data android:host="auth" />
+                <data android:path="/reset-password" />
+                <data android:path="/confirm" />
+                <data android:path="/email-change" />
+                <data android:path="/invite" />
+            </intent-filter>
             
             <!-- اینتنت فیلتر برای مسیرهای خاص email-change و سایر عملیات auth -->
             <intent-filter>
@@ -70,6 +67,36 @@
                 <data android:pathPattern="/confirm" />
                 <data android:pathPattern="/reset-password" />
                 <data android:pathPattern="/invite" />
+            </intent-filter>
+
+            <!-- اینتنت فیلتر برای دیپ لینک فید -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="vista" />
+                <data android:host="post" />
+                <data android:pathPattern="/.*" />
+            </intent-filter>
+
+            <!-- اینتنت فیلتر برای دیپ لینک فید -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="vista.me" />
+                <data android:host="post" />
+                <data android:pathPattern="/.*" />
+            </intent-filter>
+
+            <!-- اینتنت فیلتر برای دیپ لینک فید -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="vista.me" />
+                <data android:pathPattern="/post/.*" />
             </intent-filter>
         </activity>
 

@@ -24,6 +24,7 @@ import 'provider/provider.dart';
 import 'security/security.dart';
 import 'services/ChatService.dart';
 import 'services/deepLink.dart';
+import 'services/deep_link_service.dart' as new_deep_link;
 import 'view/screen/chat/ChatScreen.dart';
 import 'view/util/themes.dart';
 import 'view/screen/Settings/Settings.dart';
@@ -36,9 +37,15 @@ import 'view/screen/ouathUser/editeProfile.dart';
 import 'package:flutter/foundation.dart' show kIsWeb; // اضافه کن
 import 'package:intl/intl.dart';
 import 'DB/message_cache_service.dart';
+import 'view/screen/PublicPosts/publicPosts.dart';
+import 'view/screen/PublicPosts/PostDetailPage.dart';
+import 'view/screen/PublicPosts/profileScreen.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
+
+// GlobalKey برای navigator
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 /// هندل پاسخ به اعلان
 Future<void> notificationResponseHandler(NotificationResponse response) async {
@@ -211,8 +218,6 @@ Future<void> _handleIncomingNotification(RemoteMessage message,
   }
 }
 
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-
 void main() async {
   await HiveInitialize.initialize();
 
@@ -311,6 +316,10 @@ void main() async {
     initializationSettings,
     onDidReceiveNotificationResponse: notificationResponseHandler,
   );
+
+  // راه‌اندازی Deep Link Service
+  final deepLinkService = new_deep_link.DeepLinkService();
+  await deepLinkService.initDeepLinks(navigatorKey);
 
   // چت کانال
   const AndroidNotificationChannel chatChannel = AndroidNotificationChannel(
@@ -431,7 +440,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
       // پردازش توکن‌های در انتظار بعد از ایجاد context
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        DeepLinkService.processPendingTokens(context);
+        // Deep link processing handled by new service
       });
     }
   }
@@ -525,10 +534,6 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     print('Uri scheme: ${uri.scheme}');
     print('Uri host: ${uri.host}');
     print('Uri path: ${uri.path}');
-    print('Query parameters: ${uri.queryParameters}');
-    print('Query: ${uri.query}');
-    print('Fragment: ${uri.fragment}');
-    print('Raw data: ${uri.toString()}');
 
     // جلوگیری از پردازش همزمان چندین درخواست
     if (_isLoading) return;
@@ -536,40 +541,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     setState(() => _isLoading = true);
 
     try {
-      // اینجا ما context را فقط در صورتی که برنامه کاملاً بارگذاری شده باشد ارسال می‌کنیم
-      BuildContext? safeContext = _appInitialized ? context : null;
-
-      // اول بر اساس string کامل بررسی می‌کنیم
-      if (uri.toString().contains('reset-password')) {
-        print('Handling reset password');
-        DeepLinkService.handleResetPassword(uri, safeContext);
-      } else if (uri.toString().contains('email-change') ||
-          (uri.path.contains('email-change'))) {
-        print('Handling email change');
-        DeepLinkService.handleEmailChange(uri, safeContext);
-      } else if (uri.toString().contains('confirm')) {
-        print('Handling confirmation');
-        DeepLinkService.handleConfirm(uri, safeContext);
-      }
-      // سپس بر اساس الگوی uri.scheme و uri.host
-      else if (uri.scheme == 'vista' && uri.host == 'auth') {
-        // روش قدیمی
-        switch (uri.path) {
-          case '/reset-password':
-            DeepLinkService.handleResetPassword(uri, safeContext);
-            break;
-          case '/email-change':
-            DeepLinkService.handleEmailChange(uri, safeContext);
-            break;
-          case '/confirm':
-            DeepLinkService.handleConfirm(uri, safeContext);
-            break;
-          default:
-            print('Unknown path: ${uri.path}');
-        }
-      } else {
-        print('Unrecognized deep link format: $uri');
-      }
+      // استفاده از DeepLinkService جدید
+      final deepLinkService = new_deep_link.DeepLinkService();
+      deepLinkService.handleDeepLink(uri, navigatorKey);
     } catch (e) {
       print('Error processing deep link: $e');
     } finally {
@@ -662,7 +636,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
               title: 'Vista',
               debugShowCheckedModeBanner: false,
               theme: theme,
-              navigatorKey: navigatorKey, // اضافه کردن navigatorKey
+              navigatorKey: navigatorKey, // استفاده از navigator key
               home: SplashScreen(),
               initialRoute: '/',
               scaffoldMessengerKey: GlobalKey<ScaffoldMessengerState>(),
@@ -678,6 +652,27 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                               as String? ??
                           '',
                     ),
+                '/post-detail': (context) {
+                  final args = ModalRoute.of(context)?.settings.arguments
+                      as Map<String, dynamic>?;
+                  final postId = args?['postId'] as String?;
+                  if (postId != null) {
+                    return PostDetailsPage(postId: postId);
+                  }
+                  return const Scaffold(
+                      body: Center(child: Text('پست یافت نشد')));
+                },
+                '/profile': (context) {
+                  final args = ModalRoute.of(context)?.settings.arguments
+                      as Map<String, dynamic>?;
+                  final username = args?['username'] as String?;
+                  if (username != null) {
+                    return ProfileScreen(username: username, userId: '');
+                  }
+                  return const Scaffold(
+                      body: Center(child: Text('پروفایل یافت نشد')));
+                },
+                '/feed': (context) => const PublicPostsScreen(),
                 '/chat': (context) {
                   final conversationId =
                       ModalRoute.of(context)?.settings.arguments as String?;

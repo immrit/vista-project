@@ -141,12 +141,15 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
   }
 
   void _sharePost(PublicPostModel post) {
+    // ایجاد deep link برای پست
+    String deepLink = 'https://coffevista.ir/post/${post.id}';
+
     String shareText = "ویدیوی جالب از ${post.username}";
     if (post.title != null && post.title!.isNotEmpty) {
       shareText += ": ${post.title}";
     }
 
-    Share.share('$shareText\n\nاین ویدیو را در اپلیکیشن ما مشاهده کنید!');
+    Share.share('$shareText\n\nمشاهده در اپلیکیشن Vista:\n$deepLink');
   }
 
   void _showComments(PublicPostModel post) {

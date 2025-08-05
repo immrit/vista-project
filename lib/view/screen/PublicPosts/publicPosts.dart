@@ -17,6 +17,7 @@ import 'package:visibility_detector/visibility_detector.dart';
 import '../../../main.dart';
 import '../../../model/MusicModel.dart';
 import '../../../provider/MusicProvider.dart';
+import '../../../provider/engagement_posts_provider.dart'; // تغییر به فایل جدید
 import '../../util/widgets.dart';
 import '../../widgets/CustomVideoPlayer.dart';
 import '../../widgets/ReelsScreen.dart';
@@ -25,6 +26,7 @@ import '../Stories/story_system.dart';
 import '../searchPage.dart';
 import '/model/publicPostModel.dart';
 import '../../../provider/provider.dart';
+import '../../../services/smart_share_service.dart';
 import 'MusicWaveform.dart';
 import 'notificationScreen.dart';
 import 'profileScreen.dart';
@@ -379,12 +381,13 @@ class _AllPostsPaginatedTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final postsAsync = ref.watch(publicPostsProvider);
-    final notifier = ref.watch(publicPostsProvider.notifier);
+    // تغییر به استفاده از engagementPostsProvider
+    final postsAsync = ref.watch(engagementPostsProvider);
+    final notifier = ref.watch(engagementPostsProvider.notifier);
 
     return RefreshIndicator(
       onRefresh: () async =>
-          ref.read(publicPostsProvider.notifier).refreshPosts(),
+          ref.read(engagementPostsProvider.notifier).refreshPosts(),
       child: postsAsync.when(
         loading: () => _buildPostsSkeletonList(),
         error: (error, stack) => Center(
@@ -411,7 +414,7 @@ class _AllPostsPaginatedTab extends ConsumerWidget {
               const SizedBox(height: 24),
               ElevatedButton.icon(
                 onPressed: () {
-                  ref.refresh(publicPostsProvider);
+                  ref.refresh(engagementPostsProvider);
                   ref.refresh(fetchFollowingPostsProvider);
                   ref.refresh(storyUsersProvider);
                   ref.refresh(commentNotifierProvider);
@@ -929,15 +932,7 @@ Widget _buildPostItem(
               // دکمه اشتراک‌گذاری با انیمیشن کلیک
               GestureDetector(
                 onTap: () {
-                  String sharePost =
-                      'کاربر ${post.username} به شما ارسال کرد:\n\n${post.content}';
-
-                  // اگر پست تصویر دارد، آن را هم به اشتراک بگذارید
-                  if (post.imageUrl != null && post.imageUrl!.isNotEmpty) {
-                    sharePost += '\n\nتصویر: ${post.imageUrl}';
-                  }
-
-                  Share.share(sharePost);
+                  SmartShareService().sharePost(post, context: context);
                 },
                 child: Container(
                   padding: const EdgeInsets.all(8),
@@ -1727,7 +1722,7 @@ void showEditPostDialog(
                               .eq('id', post.id);
 
                           // رفرش همه provider های مربوطه
-                          ref.refresh(publicPostsProvider);
+                          ref.refresh(engagementPostsProvider);
                           ref.refresh(fetchFollowingPostsProvider);
 
                           if (context.mounted) {
@@ -2045,7 +2040,7 @@ void _showDeleteConfirmation(
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('پست با موفقیت حذف شد')),
                   );
-                  ref.read(publicPostsProvider.notifier).refreshPosts();
+                  ref.read(engagementPostsProvider.notifier).refreshPosts();
                 }
               } catch (e) {
                 if (context.mounted) {

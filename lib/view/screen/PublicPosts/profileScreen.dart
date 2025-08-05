@@ -825,7 +825,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   void _sharePost(PublicPostModel post) {
-    String shareText = '${post.username}: \n${post.content}';
+    // ایجاد deep link برای پست
+    String deepLink = 'https://coffevista.ir/post/${post.id}';
+
+    String shareText =
+        '${post.username}: \n${post.content}\n\nمشاهده در اپلیکیشن Vista:\n$deepLink';
     Share.share(shareText);
   }
 

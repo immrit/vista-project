@@ -2,6 +2,7 @@ import 'package:Vista/view/util/const.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // ایمپورت‌های مربوط به پروژه شما
 import '../../../main.dart';
@@ -53,51 +54,38 @@ class Settings extends ConsumerWidget {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: ProfileFields(
-                          'ورود به فروشگاه ویستا',
+                          'ویستا وب',
                           Icons.store,
                           () async {
-                            // --- مقداردهی کلید JWT (حتماً مقدار را با کلید واقعی جایگزین کنید) ---
-                            const String jwtSecret = 'اینجا کلید را قرار بده';
-                            final user = getprofile;
-                            if (user == null) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                    content: Text('اطلاعات کاربر یافت نشد.')),
+                            // گرفتن session فعلی کاربر از Supabase
+                            final session =
+                                Supabase.instance.client.auth.currentSession;
+                            final accessToken = session?.accessToken;
+                            final refreshToken = session?.refreshToken;
+
+                            print('accessToken: $accessToken');
+                            print('refreshToken: $refreshToken');
+                            if (accessToken != null && refreshToken != null) {
+                              // ساخت URL مقصد با توکن‌های Supabase
+                              final url = Uri.parse(
+                                'https://coffevista.ir/auth/callback?access_token=$accessToken&refresh_token=$refreshToken',
                               );
-                              return;
-                            }
-                            final email = user['email'];
-                            final name = user['username'];
-                            final premium = user['premium'] ?? false;
 
-                            // ساخت JWT با اطلاعات کاربر و انقضای کوتاه مدت
-                            final jwt = JWT({
-                              'email': email,
-                              'name': name,
-                              'premium': premium,
-                              'exp': DateTime.now()
-                                      .add(Duration(minutes: 5))
-                                      .millisecondsSinceEpoch ~/
-                                  1000,
-                            });
-
-                            // امضا با کلید مشترک
-                            final token = jwt.sign(SecretKey(jwtSecret),
-                                algorithm: JWTAlgorithm.HS256);
-
-                            // ساخت URL مقصد
-                            final url = Uri.parse(
-                                'http://172.18.0.1:3000/store/auth-redirect?token=$token');
-
-                            // باز کردن سایت با توکن
-                            if (await canLaunchUrl(url)) {
-                              await launchUrl(url,
-                                  mode: LaunchMode.externalApplication);
+                              // باز کردن سایت با توکن
+                              if (await canLaunchUrl(url)) {
+                                await launchUrl(url,
+                                    mode: LaunchMode.externalApplication);
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content: Text(
+                                          'امکان باز کردن سایت وجود ندارد.')),
+                                );
+                              }
                             } else {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                    content: Text(
-                                        'امکان باز کردن فروشگاه وجود ندارد.')),
+                                    content: Text('اطلاعات ورود یافت نشد!')),
                               );
                             }
                           },
@@ -851,7 +839,7 @@ class VersionNumber extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(
-      '1.2.7+25 :نسخه', // به‌روز‌رسانی این خط با شماره نسخه فعلی برنامه
+      '1.2.8+26 :نسخه', // به‌روز‌رسانی این خط با شماره نسخه فعلی برنامه
       style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
     );
   }
