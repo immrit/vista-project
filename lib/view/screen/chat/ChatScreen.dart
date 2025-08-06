@@ -88,6 +88,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final MessageCacheService _messageCache =
       MessageCacheService(); // اضافه کردن این خط
 
+  // متغیرهای جدید برای انیمیشن پاسخ به پیام
+  Map<String, AnimationController> _messageAnimationControllers = {};
+  Map<String, Animation<double>> _messageSlideAnimations = {};
+  Map<String, bool> _messageReplyStates = {};
+  String? _currentlyReplyingToMessageId;
+
   @override
   void initState() {
     super.initState();
@@ -216,6 +222,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         .removeListener(_handleScrollToBottomBtn);
     _highlightTimer?.cancel();
     _messageFocusNode.dispose();
+
+    // پاک کردن انیمیشن کنترلرها
+    for (var controller in _messageAnimationControllers.values) {
+      controller.dispose();
+    }
+    _messageAnimationControllers.clear();
+
     // هنگام خروج از صفحه چت، conversationId فعال را پاک کن
     if (ChatService.activeConversationId == widget.conversationId) {
       ChatService.activeConversationId = null;
@@ -349,7 +362,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _replyToMessage = message;
       _messageFocusNode.requestFocus();
     });
-    // اسکرول خودکار به بالا را حذف کردیم
   }
 
   void _cancelReply() {
@@ -1041,24 +1053,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  // void _scrollToFirstUnread(List<MessageModel> messages) async {
-  //   final currentUserId = supabase.auth.currentUser?.id;
-  //   final firstUnreadIndex = messages
-  //       .lastIndexWhere((msg) => !msg.isRead && msg.senderId != currentUserId);
-
-  //   if (firstUnreadIndex != -1 && _scrollController.hasClients) {
-  //     // چون لیست reverse است، باید به اندیس معکوس اسکرول کنیم
-  //     final position =
-  //         (messages.length - 1 - firstUnreadIndex) * 72.0; // تقریبی
-  //     await Future.delayed(const Duration(milliseconds: 300));
-  //     _scrollController.animateTo(
-  //       position,
-  //       duration: const Duration(milliseconds: 400),
-  //       curve: Curves.easeInOut,
-  //     );
-  //   }
-  // }
-
   void _toggleEmojiKeyboard() {
     if (_showEmojiPicker) {
       // اگر ایموجی پیکر باز است، آن را ببند و فوکوس را به TextField بده
@@ -1093,6 +1087,1067 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _messageController.selection = TextSelection.fromPosition(
       TextPosition(offset: newPosition),
     );
+  }
+
+  String _getPersianMonth(int month) {
+    switch (month) {
+      case 1:
+        return 'فروردین';
+      case 2:
+        return 'اردیبهشت';
+      case 3:
+        return 'خرداد';
+      case 4:
+        return 'تیر';
+      case 5:
+        return 'مرداد';
+      case 6:
+        return 'شهریور';
+      case 7:
+        return 'مهر';
+      case 8:
+        return 'آبان';
+      case 9:
+        return 'آذر';
+      case 10:
+        return 'دی';
+      case 11:
+        return 'بهمن';
+      case 12:
+        return 'اسفند';
+      default:
+        return '';
+    }
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  // جایگزینی _buildMessageInput با استفاده از ChatInputBox
+  Widget _buildMessageInput() {
+    return ChatInputBox(
+      // کنترلرها و فوکوس
+      messageController: _messageController,
+      messageFocusNode: _messageFocusNode,
+
+      // رفتارها
+      toggleEmojiPicker: _toggleEmojiKeyboard,
+      pickImage: _pickImage,
+      sendMessage: _sendMessage,
+      onEmojiSelected: _onEmojiSelected,
+      onReplyCancel: () {
+        setState(() {
+          _replyToMessage = null;
+        });
+      },
+
+      // رفتارهای صوتی
+      onAudioRecorded: _onAudioRecorded,
+      onStartRecording: _startRecording,
+      onStopRecording: _stopRecording,
+      onImageCancel: _onImageCancel,
+      onAudioCancel: _cancelAudioPreview,
+
+      // وضعیت‌ها
+      showEmojiPicker: _showEmojiPicker,
+      isUploading: _isUploading,
+      isSending: _isSending,
+      isRecordingAudio: _isRecordingAudio,
+      uploadProgress: _uploadProgress,
+
+      // داده‌ها با فرمت جدید
+      replyData: _replyToMessage != null
+          ? ReplyData(
+              message: _replyToMessage!.content,
+              user: _replyToMessage!.senderName ?? 'کاربر',
+            )
+          : null,
+
+      selectedImage:
+          (_selectedImage != null || (kIsWeb && _selectedImageBytes != null))
+              ? SelectedFile(
+                  file: _selectedImage,
+                  bytes: kIsWeb ? _selectedImageBytes : null,
+                  name: kIsWeb ? _selectedImageName : null,
+                  type: 'image',
+                )
+              : null,
+
+      selectedAudio:
+          (_selectedAudio != null || (kIsWeb && _selectedAudioBytes != null))
+              ? SelectedFile(
+                  file: _selectedAudio,
+                  bytes: kIsWeb ? _selectedAudioBytes : null,
+                  name: _selectedAudioName,
+                  type: 'audio',
+                )
+              : null,
+
+      customImagePreview:
+          (_selectedImage != null || (kIsWeb && _selectedImageBytes != null))
+              ? _buildImagePreview()
+              : null,
+    );
+  }
+
+  // تابعی برای شروع ضبط صدا
+  void _startRecording() async {
+    setState(() {
+      _isRecordingAudio = true;
+      _selectedAudio = null;
+      _selectedAudioBytes = null;
+      _selectedAudioName = null;
+    });
+    print('DEBUG: Recording started.');
+    await AudioRecordingService.startRecording();
+  }
+
+  // تابعی برای توقف ضبط صدا
+  void _stopRecording() async {
+    setState(() {
+      _isRecordingAudio = false;
+    });
+    print('DEBUG: Recording stopped. Attempting to get audio file...');
+    try {
+      final file = await AudioRecordingService.stopRecording();
+      if (file != null) {
+        print(
+            'DEBUG: AudioRecordingService.stopRecording() returned file: ${file.path}');
+        _onAudioRecorded(file, null, file.path.split('/').last);
+      } else {
+        print('ERROR: AudioRecordingService.stopRecording() returned null.');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content:
+                    Text('خطا در ذخیره فایل صوتی. لطفا دوباره تلاش کنید.')),
+          );
+        }
+      }
+    } catch (e) {
+      print('ERROR: Exception during stopping recording: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در توقف ضبط: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  // تابع مدیریت ضبط صوت
+  void _onAudioRecorded(
+      File? audioFile, Uint8List? audioBytes, String? fileName) {
+    if (audioFile != null || audioBytes != null) {
+      print('DEBUG: _onAudioRecorded called with file: $fileName');
+      setState(() {
+        _selectedAudio = audioFile;
+        _selectedAudioBytes = audioBytes;
+        _selectedAudioName = fileName;
+      });
+    } else {
+      print(
+          'DEBUG: _onAudioRecorded called with null file, clearing selected audio.');
+      setState(() {
+        _selectedAudio = null;
+        _selectedAudioBytes = null;
+        _selectedAudioName = null;
+        _isRecordingAudio = false;
+      });
+    }
+  }
+
+  // تابع حذف پیش‌نمایش صوتی
+  void _cancelAudioPreview() {
+    setState(() {
+      _selectedAudio = null;
+      _selectedAudioBytes = null;
+      _selectedAudioName = null;
+    });
+    print('DEBUG: Audio preview cancelled.');
+  }
+
+  // تابع حذف پیش‌نمایش تصویر
+  void _onImageCancel() {
+    setState(() {
+      _selectedImage = null;
+      _selectedImageBytes = null;
+      _selectedImageName = null;
+    });
+  }
+
+  Widget _buildImagePreview() {
+    return Stack(
+      children: [
+        Container(
+          margin: const EdgeInsets.all(8),
+          height: 120,
+          width: 120,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.primary,
+              width: 1.2,
+            ),
+            image: DecorationImage(
+              image: kIsWeb && _selectedImageBytes != null
+                  ? MemoryImage(_selectedImageBytes!)
+                  : FileImage(_selectedImage!) as ImageProvider,
+              fit: BoxFit.cover,
+            ),
+          ),
+          child: _isUploading ? _buildUploadProgress() : null,
+        ),
+        Positioned(
+          top: 0,
+          right: 0,
+          child: _buildCloseButton(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUploadProgress() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.35),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(
+              value: _uploadProgress > 0 ? _uploadProgress : null,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${(_uploadProgress * 100).toStringAsFixed(0)}%',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCloseButton() {
+    return Material(
+      color: Colors.black.withOpacity(0.5),
+      shape: const CircleBorder(),
+      child: IconButton(
+        icon: const Icon(Icons.close, color: Colors.white, size: 22),
+        onPressed: _isUploading
+            ? null
+            : () => setState(() {
+                  _selectedImage = null;
+                  _selectedImageBytes = null;
+                  _selectedImageName = null;
+                }),
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(
+          minWidth: 32,
+          minHeight: 32,
+        ),
+      ),
+    );
+  }
+
+  // تابع آپلود صوت
+  Future<String?> _uploadAudio(dynamic fileOrBytes) async {
+    setState(() {
+      _isUploading = true;
+      _uploadProgress = 0.0;
+    });
+
+    try {
+      String? audioUrl;
+      if (kIsWeb && fileOrBytes is Uint8List && _selectedAudioName != null) {
+        audioUrl = await ChatAudioUploadService.uploadChatAudioWeb(
+          fileOrBytes,
+          _selectedAudioName!,
+          widget.conversationId,
+        );
+      } else if (fileOrBytes is File) {
+        audioUrl = await ChatAudioUploadService.uploadChatAudio(
+          fileOrBytes,
+          widget.conversationId,
+          onProgress: (progress) {
+            setState(() => _uploadProgress = progress);
+          },
+        );
+      }
+      return audioUrl;
+    } catch (e) {
+      _showErrorDialog('خطا در آپلود فایل صوتی: $e');
+      return null;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+          _uploadProgress = 0.0;
+        });
+      }
+    }
+  }
+
+  Widget _buildMessageItem(
+      BuildContext context, MessageModel message, bool isMe) {
+    final brightness = Theme.of(context).brightness;
+    final isLightMode = brightness == Brightness.light;
+
+    final myMessageColor = isLightMode
+        ? Theme.of(context).colorScheme.primary
+        : Theme.of(context).colorScheme.primary.withOpacity(0.8);
+
+    final otherMessageColor =
+        isLightMode ? Colors.grey[300] : Color(0xFF383838);
+
+    final myTextColor = isLightMode ? Colors.white : Colors.black;
+    final otherTextColor = isLightMode ? Colors.black87 : Colors.white;
+
+    final myTimeColor = isLightMode ? Colors.white70 : Colors.black87;
+    final otherTimeColor = isLightMode ? Colors.grey[700] : Colors.grey[300];
+
+    Widget attachmentWidget = const SizedBox.shrink();
+    void _showImageViewer(String url) {
+      _showFullScreenImage(context, url);
+    }
+
+    if (message.attachmentUrl != null &&
+        message.attachmentUrl!.isNotEmpty &&
+        message.attachmentType == 'audio') {
+      attachmentWidget = Padding(
+        padding: const EdgeInsets.only(top: 0.0), // پدینگ صفر شد
+        child: AudioPlayerWidget(
+          audioUrl: message.attachmentUrl!,
+          isMe: isMe,
+        ),
+      );
+    }
+// بررسی پیام تصویری (کد موجود)
+    else if (message.attachmentUrl != null &&
+        message.attachmentUrl!.isNotEmpty &&
+        message.attachmentType == 'image') {
+      final url = message.attachmentUrl!;
+
+      Widget imageWidget;
+      if (url.startsWith('/') && File(url).existsSync()) {
+        // تصویر لوکال
+        imageWidget = GestureDetector(
+          onTap: () => _showFullScreenImage(context, url),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.file(
+              File(url),
+              width: 200,
+              height: 200,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => Container(
+                width: 200,
+                height: 200,
+                color: Colors.grey[300],
+                child: const Icon(Icons.broken_image,
+                    size: 40, color: Colors.grey),
+              ),
+            ),
+          ),
+        );
+      } else if (url.startsWith('http')) {
+        // تصویر نتورک
+        imageWidget = GestureDetector(
+          onTap: () => _showFullScreenImage(context, url),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: CachedNetworkImage(
+              imageUrl: url,
+              width: 200,
+              height: 200,
+              fit: BoxFit.cover,
+              placeholder: (context, url) => Container(
+                width: 200,
+                height: 200,
+                color: Colors.grey[300],
+                child: const Center(
+                  child: CircularProgressIndicator(),
+                ),
+              ),
+              errorWidget: (context, url, error) => Container(
+                width: 200,
+                height: 200,
+                color: Colors.grey[300],
+                child: const Icon(Icons.broken_image,
+                    size: 40, color: Colors.grey),
+              ),
+            ),
+          ),
+        );
+      } else {
+        imageWidget = const SizedBox.shrink();
+      }
+
+      attachmentWidget = Padding(
+        padding: const EdgeInsets.only(top: 8.0),
+        child: imageWidget,
+      );
+    }
+    // پیام موقت: رنگ متفاوت یا شفافیت
+    final bool isTemp = !message.isSent && message.id.startsWith('temp_');
+    final bool isFailed = isTemp && message.retryCount >= 3;
+    final double opacity = isTemp ? 0.6 : 1.0;
+    final Color? tempColor = isTemp
+        ? (isMe
+            ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
+            : Colors.grey[400]?.withOpacity(0.5))
+        : null;
+
+    return GestureDetector(
+      onHorizontalDragUpdate: (details) {
+        // کشیدن به سمت مخالف برای فعال‌سازی پاسخ
+        // پیام‌های من: کشیدن به سمت چپ (dx < 0)
+        // پیام‌های دیگران: کشیدن به سمت راست (dx > 0)
+        final dragDirection = isMe ? -details.delta.dx : details.delta.dx;
+        if (dragDirection > 0) {
+          // محاسبه فاصله کشیدن
+          final dragDistance = details.globalPosition.dx;
+          final screenWidth = MediaQuery.of(context).size.width;
+          final maxDragDistance = screenWidth * 0.3; // حداکثر 30% عرض صفحه
+          final currentDragDistance = isMe
+              ? (screenWidth - dragDistance).clamp(0.0, maxDragDistance)
+              : dragDistance.clamp(0.0, maxDragDistance);
+
+          final dragRatio = currentDragDistance / maxDragDistance;
+
+          setState(() {
+            _messageReplyStates[message.id] = true;
+          });
+
+          // اگر کشیدن به اندازه کافی بود، پاسخ را فعال کن
+          if (dragRatio > 0.4) {
+            // آستانه 40%
+            // اضافه کردن هپتیک فیدبک
+            HapticFeedback.lightImpact();
+            _setReplyMessage(message);
+          }
+        }
+      },
+      onHorizontalDragEnd: (details) {
+        // بازگشت نرم به حالت عادی با تاخیر
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) {
+            setState(() {
+              _messageReplyStates[message.id] = false;
+            });
+          }
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.elasticOut,
+        transform: Matrix4.translationValues(
+          _messageReplyStates[message.id] == true ? (isMe ? -40 : 40) : 0,
+          0,
+          0,
+        ),
+        child: Stack(
+          children: [
+            // نشانگر کشیدن
+            if (_messageReplyStates[message.id] == true)
+              Positioned(
+                top: 0,
+                bottom: 0,
+                left: isMe ? null : 0,
+                right: isMe ? 0 : null,
+                child: Container(
+                  width: 4,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary,
+                    borderRadius: BorderRadius.circular(2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withOpacity(0.3),
+                        blurRadius: 4,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 800),
+              curve: Curves.easeInOut,
+              padding: const EdgeInsets.symmetric(vertical: 1, horizontal: 4),
+              decoration: BoxDecoration(
+                color: _highlightedMessageId == message.id
+                    ? Theme.of(context).colorScheme.primary.withOpacity(0.2)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Transform.scale(
+                scale: _messageReplyStates[message.id] == true ? 1.02 : 1.0,
+                child: GestureDetector(
+                  onLongPress: () =>
+                      _showMessageOptions(context, message, isMe),
+                  child: Align(
+                    alignment:
+                        isMe ? Alignment.centerRight : Alignment.centerLeft,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: MediaQuery.of(context).size.width * 0.8,
+                      ),
+                      child: Opacity(
+                        opacity: opacity,
+                        child: Card(
+                          margin:
+                              EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          color: tempColor ??
+                              (isMe ? myMessageColor : otherMessageColor),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16).copyWith(
+                              bottomRight: isMe
+                                  ? Radius.circular(4)
+                                  : Radius.circular(16),
+                              bottomLeft: isMe
+                                  ? const Radius.circular(16)
+                                  : const Radius.circular(4),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: isMe
+                                ? CrossAxisAlignment.end
+                                : CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (message.replyToMessageId != null)
+                                Container(
+                                  padding: EdgeInsets.all(8),
+                                  margin: EdgeInsets.only(bottom: 4),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? Colors.black12
+                                        : Colors.white24,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        message.replyToSenderName ?? 'کاربر',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: isMe
+                                              ? Colors.white70
+                                              : Colors.black87,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      SizedBox(height: 4),
+                                      Text(
+                                        message.replyToContent ?? '',
+                                        style: TextStyle(
+                                          color: isMe
+                                              ? Colors.white70
+                                              : Colors.black87,
+                                          fontSize: 12,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              if (message.attachmentUrl != null &&
+                                  message.attachmentUrl!.isNotEmpty &&
+                                  (message.attachmentType == 'image' ||
+                                      message.attachmentType == 'audio'))
+                                Padding(
+                                  padding: EdgeInsets.only(
+                                      top: message.replyToMessageId != null
+                                          ? 4
+                                          : 12,
+                                      left: 12,
+                                      right: 12,
+                                      bottom:
+                                          message.content.isNotEmpty ? 4 : 12),
+                                  child: attachmentWidget,
+                                ),
+                              if (message.content.isNotEmpty)
+                                Padding(
+                                  padding: EdgeInsets.only(
+                                    top: (message.attachmentUrl != null &&
+                                            message.attachmentUrl!.isNotEmpty)
+                                        ? 4
+                                        : 12,
+                                    left: 12,
+                                    right: 12,
+                                    bottom: 12,
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: isMe
+                                        ? CrossAxisAlignment.end
+                                        : CrossAxisAlignment.start,
+                                    children: [
+                                      if (message.content.isNotEmpty)
+                                        Padding(
+                                          padding: EdgeInsets.only(
+                                            top: message.attachmentUrl != null
+                                                ? 8
+                                                : 0,
+                                          ),
+                                          child: Directionality(
+                                            textDirection: getTextDirection(
+                                                message.content),
+                                            child: Text(
+                                              message.content,
+                                              style: TextStyle(
+                                                color: isMe
+                                                    ? myTextColor
+                                                    : otherTextColor,
+                                                fontSize: 16,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 4),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.end,
+                                          children: [
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: isMe
+                                                    ? Colors.white24
+                                                    : Colors.black12,
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: Text(
+                                                _formatMessageHour(
+                                                    message.createdAt),
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: isMe
+                                                      ? myTimeColor
+                                                      : otherTimeColor,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ),
+                                            SizedBox(width: 4),
+                                            if (isMe)
+                                              if (message.isPending)
+                                                Icon(
+                                                  Icons.access_time_rounded,
+                                                  size: 14,
+                                                  color: isMe
+                                                      ? myTimeColor
+                                                      : otherTimeColor,
+                                                )
+                                              else if (!message.isSent)
+                                                GestureDetector(
+                                                  onTap: () {
+                                                    ref
+                                                        .read(
+                                                            messageNotifierProvider
+                                                                .notifier)
+                                                        .retrySendMessage(
+                                                            message);
+                                                    ScaffoldMessenger.of(
+                                                            context)
+                                                        .showSnackBar(
+                                                      SnackBar(
+                                                          content: Text(
+                                                              'درحال تلاش مجدد برای ارسال...')),
+                                                    );
+                                                  },
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Icon(
+                                                        Icons
+                                                            .error_outline_rounded,
+                                                        size: 16,
+                                                        color: Colors.red,
+                                                      ),
+                                                      SizedBox(width: 2),
+                                                      Icon(
+                                                        Icons.refresh_rounded,
+                                                        size: 16,
+                                                        color: Colors.red,
+                                                      ),
+                                                    ],
+                                                  ),
+                                                )
+                                              else
+                                                Icon(
+                                                  Icons.done,
+                                                  size: 14,
+                                                  color: isMe
+                                                      ? myTimeColor
+                                                      : otherTimeColor,
+                                                ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showMessageOptions(
+      BuildContext context, MessageModel message, bool isMe) {
+    showModalBottomSheet(
+      context: context,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading:
+                    Icon(Icons.reply, color: Theme.of(context).primaryColor),
+                title: Text('پاسخ'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _setReplyMessage(message);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.delete, color: Colors.red),
+                title: Text('حذف پیام'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showDeleteMessageDialog(message);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.copy, color: Colors.blue),
+                title: Text('کپی پیام'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Clipboard.setData(ClipboardData(text: message.content));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('پیام کپی شد')),
+                  );
+                },
+              ),
+              if (!isMe)
+                ListTile(
+                  leading: Icon(Icons.report, color: Colors.orange),
+                  title: Text('گزارش پیام'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showReportMessageDialog(context, message);
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showReportMessageDialog(BuildContext context, MessageModel message) {
+    final reportReasonController = TextEditingController();
+    String selectedReason = 'محتوای نامناسب';
+
+    final reportReasons = [
+      'محتوای نامناسب',
+      'آزار و اذیت',
+      'اسپم',
+      'جعل هویت',
+      'سایر موارد'
+    ];
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('گزارش پیام'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<String>(
+              value: selectedReason,
+              items: reportReasons.map((reason) {
+                return DropdownMenuItem(
+                  value: reason,
+                  child: Text(reason),
+                );
+              }).toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  selectedReason = value;
+                }
+              },
+              decoration: InputDecoration(
+                labelText: 'دلیل گزارش',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            SizedBox(height: 16),
+            TextField(
+              controller: reportReasonController,
+              decoration: InputDecoration(
+                labelText: 'توضیحات بیشتر (اختیاری)',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('انصراف'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ref
+                  .read(userReportNotifierProvider.notifier)
+                  .reportUser(
+                    userId: message.senderId,
+                    reason: selectedReason,
+                    additionalInfo: reportReasonController.text.trim(),
+                  )
+                  .then((_) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('گزارش پیام ارسال شد')),
+                );
+              }).catchError((error) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('خطا در ارسال گزارش')),
+                );
+              });
+            },
+            child: Text('ارسال گزارش'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _downloadImage(String imageUrl, WidgetRef ref) async {
+    final chatService = ref.read(chatServiceProvider);
+    final downloadNotifier = ref.read(imageDownloadProvider.notifier);
+
+    downloadNotifier.startDownload(imageUrl);
+
+    try {
+      final filePath = await chatService.downloadChatImage(
+        imageUrl,
+        (progress) {
+          downloadNotifier.updateProgress(imageUrl, progress);
+        },
+      );
+
+      downloadNotifier.setDownloaded(imageUrl, filePath);
+    } catch (e) {
+      downloadNotifier.setError(imageUrl, 'خطا در دانلود: $e');
+    }
+  }
+
+  void _showFullScreenImage(BuildContext context, String imageUrl) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black87,
+        pageBuilder: (BuildContext context, _, __) {
+          return Scaffold(
+            backgroundColor: Colors.transparent,
+            appBar: AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              leading: IconButton(
+                icon: Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+              ),
+              actions: [
+                IconButton(
+                  icon: Icon(Icons.download, color: Colors.white),
+                  onPressed: () async {
+                    if (imageUrl.startsWith('http')) {
+                      final status = await Permission.storage.request();
+                      if (status.isGranted) {
+                        final directory =
+                            await getApplicationDocumentsDirectory();
+                        final fileName =
+                            "image_{DateTime.now().millisecondsSinceEpoch}.jpg";
+                        final path = "{directory.path}/fileName";
+
+                        try {
+                          final response = await http.get(Uri.parse(imageUrl));
+                          final file = File(path);
+                          await file.writeAsBytes(response.bodyBytes);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('تصویر دانلود شد')),
+                          );
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('خطا در دانلود تصویر')),
+                          );
+                        }
+                      }
+                    }
+                  },
+                ),
+              ],
+            ),
+            body: Center(
+              child: GestureDetector(
+                onVerticalDragEnd: (details) {
+                  if (details.velocity.pixelsPerSecond.dy.abs() > 200) {
+                    Navigator.pop(context);
+                  }
+                },
+                child: PhotoView(
+                  imageProvider: imageUrl.startsWith('http')
+                      ? CachedNetworkImageProvider(imageUrl) as ImageProvider
+                      : FileImage(File(imageUrl)),
+                  minScale: PhotoViewComputedScale.contained,
+                  maxScale: PhotoViewComputedScale.covered * 3,
+                  backgroundDecoration: BoxDecoration(
+                    color: Colors.transparent,
+                  ),
+                  loadingBuilder: (context, event) => Center(
+                    child: SizedBox(
+                      width: 30,
+                      height: 30,
+                      child: CircularProgressIndicator(
+                        value: event == null
+                            ? 0
+                            : event.cumulativeBytesLoaded /
+                                (event.expectedTotalBytes ?? 1),
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(
+            opacity: animation,
+            child: child,
+          );
+        },
+      ),
+    );
+  }
+
+  String _formatMessageHour(DateTime time) {
+    final tehranOffset = const Duration(hours: 3, minutes: 30);
+    final tehranTime = time.toUtc().add(tehranOffset);
+    return '${tehranTime.hour.toString().padLeft(2, '0')}:${tehranTime.minute.toString().padLeft(2, '0')}';
+  }
+
+  // متدهای باقی‌مانده
+  Widget _buildDateDivider(DateTime date) {
+    final now = DateTime.now();
+    final jNow = Jalali.fromDateTime(now);
+    final jDate = Jalali.fromDateTime(date);
+
+    String label;
+    if (_isSameDay(date, now)) {
+      label = 'امروز';
+    } else if (_isSameDay(date, now.subtract(const Duration(days: 1)))) {
+      label = 'دیروز';
+    } else if (jDate.year == jNow.year) {
+      label =
+          '${_getPersianWeekDay(jDate.weekDay)}  ${jDate.day.toString().padLeft(2, '0')} ${_getPersianMonth(jDate.month)}';
+    } else {
+      label =
+          '${_getPersianWeekDay(jDate.weekDay)}  ${jDate.day.toString().padLeft(2, '0')} ${_getPersianMonth(jDate.month)} ${jDate.year}';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16.0),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.primary.withOpacity(0.10),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.25),
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.03),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _getPersianWeekDay(int weekDay) {
+    switch (weekDay) {
+      case 1:
+        return 'شنبه';
+      case 2:
+        return 'یکشنبه';
+      case 3:
+        return 'دوشنبه';
+      case 4:
+        return 'سه‌شنبه';
+      case 5:
+        return 'چهارشنبه';
+      case 6:
+        return 'پنجشنبه';
+      case 7:
+        return 'جمعه';
+      default:
+        return '';
+    }
   }
 
   @override
@@ -1430,1131 +2485,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
       ),
     );
-  }
-
-  // جداکننده تاریخ حرفه‌ای با استایل حبابی
-  Widget _buildDateDivider(DateTime date) {
-    final now = DateTime.now();
-    final jNow = Jalali.fromDateTime(now);
-    final jDate = Jalali.fromDateTime(date);
-
-    String label;
-    if (_isSameDay(date, now)) {
-      label = 'امروز';
-    } else if (_isSameDay(date, now.subtract(const Duration(days: 1)))) {
-      label = 'دیروز';
-    } else if (jDate.year == jNow.year) {
-      label =
-          '${_getPersianWeekDay(jDate.weekDay)}  ${jDate.day.toString().padLeft(2, '0')} ${_getPersianMonth(jDate.month)}';
-    } else {
-      label =
-          '${_getPersianWeekDay(jDate.weekDay)}  ${jDate.day.toString().padLeft(2, '0')} ${_getPersianMonth(jDate.month)} ${jDate.year}';
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16.0),
-      child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.10),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.25),
-              width: 1.2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.03),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-              letterSpacing: 0.2,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _getPersianWeekDay(int weekDay) {
-    switch (weekDay) {
-      case 1:
-        return 'شنبه';
-      case 2:
-        return 'یکشنبه';
-      case 3:
-        return 'دوشنبه';
-      case 4:
-        return 'سه‌شنبه';
-      case 5:
-        return 'چهارشنبه';
-      case 6:
-        return 'پنجشنبه';
-      case 7:
-        return 'جمعه';
-      default:
-        return '';
-    }
-  }
-
-  String _getPersianMonth(int month) {
-    switch (month) {
-      case 1:
-        return 'فروردین';
-      case 2:
-        return 'اردیبهشت';
-      case 3:
-        return 'خرداد';
-      case 4:
-        return 'تیر';
-      case 5:
-        return 'مرداد';
-      case 6:
-        return 'شهریور';
-      case 7:
-        return 'مهر';
-      case 8:
-        return 'آبان';
-      case 9:
-        return 'آذر';
-      case 10:
-        return 'دی';
-      case 11:
-        return 'بهمن';
-      case 12:
-        return 'اسفند';
-      default:
-        return '';
-    }
-  }
-
-  bool _isSameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
-
-  // جایگزینی _buildMessageInput با استفاده از ChatInputBox
-  Widget _buildMessageInput() {
-    return ChatInputBox(
-      // کنترلرها و فوکوس
-      messageController: _messageController,
-      messageFocusNode: _messageFocusNode,
-
-      // رفتارها
-      toggleEmojiPicker: _toggleEmojiKeyboard,
-      pickImage: _pickImage,
-      sendMessage: _sendMessage,
-      onEmojiSelected: _onEmojiSelected,
-      onReplyCancel: () {
-        setState(() {
-          _replyToMessage = null;
-        });
-      },
-
-      // رفتارهای صوتی
-      onAudioRecorded: _onAudioRecorded,
-      onStartRecording: _startRecording,
-      onStopRecording: _stopRecording,
-      onImageCancel: _onImageCancel,
-      onAudioCancel: _cancelAudioPreview, // اضافه شد
-
-      // وضعیت‌ها
-      showEmojiPicker: _showEmojiPicker,
-      isUploading: _isUploading,
-      isSending: _isSending,
-      isRecordingAudio: _isRecordingAudio,
-      uploadProgress: _uploadProgress,
-
-      // داده‌ها با فرمت جدید
-      replyData: _replyToMessage != null
-          ? ReplyData(
-              message: _replyToMessage!.content,
-              user: _replyToMessage!.senderName ?? 'کاربر', // <-- fix here
-            )
-          : null,
-
-      selectedImage:
-          (_selectedImage != null || (kIsWeb && _selectedImageBytes != null))
-              ? SelectedFile(
-                  file: _selectedImage,
-                  bytes: kIsWeb ? _selectedImageBytes : null,
-                  name: kIsWeb ? _selectedImageName : null,
-                  type: 'image',
-                )
-              : null,
-
-      selectedAudio:
-          (_selectedAudio != null || (kIsWeb && _selectedAudioBytes != null))
-              ? SelectedFile(
-                  file: _selectedAudio,
-                  bytes: kIsWeb ? _selectedAudioBytes : null,
-                  name: _selectedAudioName,
-                  type: 'audio',
-                )
-              : null,
-
-      // اگر می‌خوای از پیش‌نمایش سفارشی استفاده کنی
-      customImagePreview:
-          (_selectedImage != null || (kIsWeb && _selectedImageBytes != null))
-              ? _buildImagePreview()
-              : null,
-    );
-  }
-
-  // تابعی برای شروع ضبط صدا
-  void _startRecording() async {
-    setState(() {
-      _isRecordingAudio = true; // وضعیت ضبط را فعال کن
-      _selectedAudio = null; // هر فایل صوتی قبلی را پاک کن
-      _selectedAudioBytes = null;
-      _selectedAudioName = null;
-    });
-    print('DEBUG: Recording started.');
-    await AudioRecordingService.startRecording();
-  }
-
-  // تابعی برای توقف ضبط صدا
-  void _stopRecording() async {
-    setState(() {
-      _isRecordingAudio = false; // وضعیت ضبط را غیرفعال کن
-    });
-    print('DEBUG: Recording stopped. Attempting to get audio file...');
-    try {
-      // این تابع باید ضبط را متوقف کند و فایل را برگرداند
-      final file = await AudioRecordingService.stopRecording();
-      if (file != null) {
-        print(
-            'DEBUG: AudioRecordingService.stopRecording() returned file: ${file.path}');
-        _onAudioRecorded(file, null, file.path.split('/').last);
-      } else {
-        print('ERROR: AudioRecordingService.stopRecording() returned null.');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content:
-                    Text('خطا در ذخیره فایل صوتی. لطفا دوباره تلاش کنید.')),
-          );
-        }
-      }
-    } catch (e) {
-      print('ERROR: Exception during stopping recording: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا در توقف ضبط: ${e.toString()}')),
-        );
-      }
-    }
-  }
-
-  // تابع مدیریت ضبط صوت
-  void _onAudioRecorded(
-      File? audioFile, Uint8List? audioBytes, String? fileName) {
-    if (audioFile != null || audioBytes != null) {
-      print('DEBUG: _onAudioRecorded called with file: $fileName');
-      setState(() {
-        _selectedAudio = audioFile;
-        _selectedAudioBytes = audioBytes;
-        _selectedAudioName = fileName;
-        // _isRecordingAudio = false; // این خط باید توسط _stopRecording مدیریت شود
-      });
-    } else {
-      print(
-          'DEBUG: _onAudioRecorded called with null file, clearing selected audio.');
-      // اگر فایل null بود، یعنی باید پیش‌نمایش را پاک کنیم
-      setState(() {
-        _selectedAudio = null;
-        _selectedAudioBytes = null;
-        _selectedAudioName = null;
-        _isRecordingAudio = false;
-      });
-    }
-  }
-
-  // تابع حذف پیش‌نمایش صوتی
-  void _cancelAudioPreview() {
-    setState(() {
-      _selectedAudio = null;
-      _selectedAudioBytes = null;
-      _selectedAudioName = null;
-    });
-    print('DEBUG: Audio preview cancelled.');
-  }
-
-  // تابع حذف پیش‌نمایش تصویر
-  void _onImageCancel() {
-    setState(() {
-      _selectedImage = null;
-      _selectedImageBytes = null;
-      _selectedImageName = null;
-    });
-  }
-
-  Widget _buildImagePreview() {
-    return Stack(
-      children: [
-        Container(
-          margin: const EdgeInsets.all(8),
-          height: 120,
-          width: 120,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: Theme.of(context).colorScheme.primary,
-              width: 1.2,
-            ),
-            image: DecorationImage(
-              image: kIsWeb && _selectedImageBytes != null
-                  ? MemoryImage(_selectedImageBytes!)
-                  : FileImage(_selectedImage!) as ImageProvider,
-              fit: BoxFit.cover,
-            ),
-          ),
-          child: _isUploading ? _buildUploadProgress() : null,
-        ),
-        Positioned(
-          top: 0,
-          right: 0,
-          child: _buildCloseButton(),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildUploadProgress() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.35),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(
-              value: _uploadProgress > 0 ? _uploadProgress : null,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                Theme.of(context).colorScheme.primary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '${(_uploadProgress * 100).toStringAsFixed(0)}%',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCloseButton() {
-    return Material(
-      color: Colors.black.withOpacity(0.5),
-      shape: const CircleBorder(),
-      child: IconButton(
-        icon: const Icon(Icons.close, color: Colors.white, size: 22),
-        onPressed: _isUploading
-            ? null
-            : () => setState(() {
-                  _selectedImage = null;
-                  _selectedImageBytes = null;
-                  _selectedImageName = null;
-                }),
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(
-          minWidth: 32,
-          minHeight: 32,
-        ),
-      ),
-    );
-  }
-
-// تابع آپلود صوت
-  Future<String?> _uploadAudio(dynamic fileOrBytes) async {
-    setState(() {
-      _isUploading = true;
-      _uploadProgress = 0.0;
-    });
-
-    try {
-      String? audioUrl;
-      if (kIsWeb && fileOrBytes is Uint8List && _selectedAudioName != null) {
-        audioUrl = await ChatAudioUploadService.uploadChatAudioWeb(
-          fileOrBytes,
-          _selectedAudioName!,
-          widget.conversationId,
-        );
-      } else if (fileOrBytes is File) {
-        audioUrl = await ChatAudioUploadService.uploadChatAudio(
-          fileOrBytes,
-          widget.conversationId,
-          onProgress: (progress) {
-            setState(() => _uploadProgress = progress);
-          },
-        );
-      }
-      return audioUrl;
-    } catch (e) {
-      _showErrorDialog('خطا در آپلود فایل صوتی: $e');
-      return null;
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isUploading = false;
-          _uploadProgress = 0.0;
-        });
-      }
-    }
-  }
-
-  Widget _buildMessageItem(
-      BuildContext context, MessageModel message, bool isMe) {
-    final brightness = Theme.of(context).brightness;
-    final isLightMode = brightness == Brightness.light;
-
-    final myMessageColor = isLightMode
-        ? Theme.of(context).colorScheme.primary
-        : Theme.of(context).colorScheme.primary.withOpacity(0.8);
-
-    final otherMessageColor =
-        isLightMode ? Colors.grey[300] : Color(0xFF383838);
-
-    final myTextColor = isLightMode ? Colors.white : Colors.black;
-    final otherTextColor = isLightMode ? Colors.black87 : Colors.white;
-
-    final myTimeColor = isLightMode ? Colors.white70 : Colors.black87;
-    final otherTimeColor = isLightMode ? Colors.grey[700] : Colors.grey[300];
-
-    Widget attachmentWidget = const SizedBox.shrink();
-    void _showImageViewer(String url) {
-      _showFullScreenImage(context, url);
-    }
-
-    if (message.attachmentUrl != null &&
-        message.attachmentUrl!.isNotEmpty &&
-        message.attachmentType == 'audio') {
-      attachmentWidget = Padding(
-        padding: const EdgeInsets.only(top: 0.0), // پدینگ صفر شد
-        child: AudioPlayerWidget(
-          audioUrl: message.attachmentUrl!,
-          isMe: isMe,
-        ),
-      );
-    }
-// بررسی پیام تصویری (کد موجود)
-    else if (message.attachmentUrl != null &&
-        message.attachmentUrl!.isNotEmpty &&
-        message.attachmentType == 'image') {
-      final url = message.attachmentUrl!;
-
-      Widget imageWidget;
-      if (url.startsWith('/') && File(url).existsSync()) {
-        // تصویر لوکال
-        imageWidget = GestureDetector(
-          onTap: () => _showFullScreenImage(context, url),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.file(
-              File(url),
-              width: 200,
-              height: 200,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => Container(
-                width: 200,
-                height: 200,
-                color: Colors.grey[300],
-                child: const Icon(Icons.broken_image,
-                    size: 40, color: Colors.grey),
-              ),
-            ),
-          ),
-        );
-      } else if (url.startsWith('http')) {
-        // تصویر نتورک
-        imageWidget = GestureDetector(
-          onTap: () => _showFullScreenImage(context, url),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: CachedNetworkImage(
-              imageUrl: url,
-              width: 200,
-              height: 200,
-              fit: BoxFit.cover,
-              placeholder: (context, url) => Container(
-                width: 200,
-                height: 200,
-                color: Colors.grey[300],
-                child: const Center(
-                  child: CircularProgressIndicator(),
-                ),
-              ),
-              errorWidget: (context, url, error) => Container(
-                width: 200,
-                height: 200,
-                color: Colors.grey[300],
-                child: const Icon(Icons.broken_image,
-                    size: 40, color: Colors.grey),
-              ),
-            ),
-          ),
-        );
-      } else {
-        imageWidget = const SizedBox.shrink();
-      }
-
-      attachmentWidget = Padding(
-        padding: const EdgeInsets.only(top: 8.0),
-        child: imageWidget,
-      );
-    }
-    // پیام موقت: رنگ متفاوت یا شفافیت
-    final bool isTemp = !message.isSent && message.id.startsWith('temp_');
-    final bool isFailed = isTemp && message.retryCount >= 3;
-    final double opacity = isTemp ? 0.6 : 1.0;
-    final Color? tempColor = isTemp
-        ? (isMe
-            ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
-            : Colors.grey[400]?.withOpacity(0.5))
-        : null;
-
-    return Slidable(
-        key: Key(message.id),
-        startActionPane: ActionPane(
-          motion: const DrawerMotion(),
-          extentRatio: 0.25,
-          children: [
-            CustomSlidableAction(
-              backgroundColor:
-                  Theme.of(context).colorScheme.primary.withOpacity(0.8),
-              foregroundColor: Colors.white,
-              onPressed: (_) => _setReplyMessage(message),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.reply, size: 20),
-                  SizedBox(height: 4),
-                  Text(
-                    'پاسخ',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 800),
-          curve: Curves.easeInOut,
-          padding: const EdgeInsets.symmetric(vertical: 1, horizontal: 4),
-          decoration: BoxDecoration(
-            color: _highlightedMessageId == message.id
-                ? Theme.of(context).colorScheme.primary.withOpacity(0.2)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: GestureDetector(
-            onLongPress: () => _showMessageOptions(context, message, isMe),
-            child: Align(
-              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(context).size.width * 0.8,
-                ),
-                child: Opacity(
-                  opacity: opacity,
-                  child: Card(
-                    margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    color: tempColor ??
-                        (isMe ? myMessageColor : otherMessageColor),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16).copyWith(
-                        bottomRight:
-                            isMe ? Radius.circular(4) : Radius.circular(16),
-                        bottomLeft: isMe
-                            ? const Radius.circular(16)
-                            : const Radius.circular(4),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: isMe
-                          ? CrossAxisAlignment.end
-                          : CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (message.replyToMessageId != null)
-                          Container(
-                            padding: EdgeInsets.all(8),
-                            margin: EdgeInsets.only(bottom: 4),
-                            decoration: BoxDecoration(
-                              // Existing reply decoration
-                              color: Theme.of(context).brightness ==
-                                      Brightness.dark
-                                  ? Colors.black12
-                                  : Colors.white24,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Column(
-                              // Existing reply content
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  message.replyToSenderName ?? 'کاربر',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color:
-                                        isMe ? Colors.white70 : Colors.black87,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                SizedBox(
-                                    height:
-                                        4), // Space between sender name and reply content
-                                Text(
-                                  message.replyToContent ?? '',
-                                  style: TextStyle(
-                                    color:
-                                        isMe ? Colors.white70 : Colors.black87,
-                                    fontSize: 12,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                        // Display attachment (audio or image)
-                        if (message.attachmentUrl != null &&
-                            message.attachmentUrl!.isNotEmpty &&
-                            (message.attachmentType == 'image' ||
-                                message.attachmentType == 'audio'))
-                          Padding(
-                            padding: EdgeInsets.only(
-                                top: message.replyToMessageId != null
-                                    ? 4
-                                    : 12, // Less top padding if it's a reply, otherwise normal
-                                left: 12,
-                                right: 12,
-                                bottom: message.content.isNotEmpty
-                                    ? 4
-                                    : 12), // Less bottom padding if there's content, otherwise normal
-                            child: attachmentWidget,
-                          ),
-                        // Display message content
-                        if (message.content.isNotEmpty)
-                          Padding(
-                            padding: EdgeInsets.only(
-                              top: (message.attachmentUrl != null &&
-                                      message.attachmentUrl!.isNotEmpty)
-                                  ? 4
-                                  : 12, // Less top padding if there's an attachment, otherwise normal
-                              left: 12,
-                              right: 12,
-                              bottom: 12,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: isMe
-                                  ? CrossAxisAlignment.end
-                                  : CrossAxisAlignment.start,
-                              children: [
-                                if (message.content.isNotEmpty)
-                                  Padding(
-                                    padding: EdgeInsets.only(
-                                      top:
-                                          message.attachmentUrl != null ? 8 : 0,
-                                    ),
-                                    child: Directionality(
-                                      textDirection:
-                                          getTextDirection(message.content),
-                                      child: Text(
-                                        message.content,
-                                        style: TextStyle(
-                                          color: isMe
-                                              ? myTextColor
-                                              : otherTextColor,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: isMe
-                                              ? Colors.white24
-                                              : Colors.black12,
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                        ),
-                                        child: Text(
-                                          _formatMessageHour(message.createdAt),
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: isMe
-                                                ? myTimeColor
-                                                : otherTimeColor,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ),
-                                      SizedBox(width: 4),
-                                      if (isMe)
-                                        // فقط اگر پیام توسط کاربر فعلی ارسال شده و isSent=false و id پیام temp است، ساعت و دکمه ارسال مجدد نمایش بده
-                                        if (message.isPending)
-                                          Icon(
-                                            Icons.access_time_rounded,
-                                            size: 14,
-                                            color: isMe
-                                                ? myTimeColor
-                                                : otherTimeColor,
-                                          )
-                                        else if (!message.isSent) // Failed
-                                          GestureDetector(
-                                            onTap: () {
-                                              // فراخوانی متد retrySendMessage از MessageNotifier
-                                              ref
-                                                  .read(messageNotifierProvider
-                                                      .notifier)
-                                                  .retrySendMessage(message);
-                                              ScaffoldMessenger.of(context)
-                                                  .showSnackBar(
-                                                SnackBar(
-                                                    content: Text(
-                                                        'درحال تلاش مجدد برای ارسال...')),
-                                              );
-                                            },
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(
-                                                  Icons.error_outline_rounded,
-                                                  size: 16,
-                                                  color: Colors.red,
-                                                ),
-                                                SizedBox(width: 2),
-                                                Icon(
-                                                  Icons.refresh_rounded,
-                                                  size: 16,
-                                                  color: Colors.red,
-                                                ),
-                                              ],
-                                            ),
-                                          )
-                                        else
-                                          Icon(
-                                            Icons.done,
-                                            size: 14,
-                                            color: isMe
-                                                ? myTimeColor
-                                                : otherTimeColor,
-                                          ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ));
-  }
-
-  void _showMessageOptions(
-      BuildContext context, MessageModel message, bool isMe) {
-    showModalBottomSheet(
-      context: context,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Wrap(
-            children: [
-              ListTile(
-                leading:
-                    Icon(Icons.reply, color: Theme.of(context).primaryColor),
-                title: Text('پاسخ'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _setReplyMessage(message);
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.delete, color: Colors.red),
-                title: Text('حذف پیام'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showDeleteMessageDialog(message);
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.copy, color: Colors.blue),
-                title: Text('کپی پیام'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Clipboard.setData(ClipboardData(text: message.content));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('پیام کپی شد')),
-                  );
-                },
-              ),
-              if (!isMe)
-                ListTile(
-                  leading: Icon(Icons.report, color: Colors.orange),
-                  title: Text('گزارش پیام'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showReportMessageDialog(context, message);
-                  },
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _showReportMessageDialog(BuildContext context, MessageModel message) {
-    final reportReasonController = TextEditingController();
-    String selectedReason = 'محتوای نامناسب';
-
-    final reportReasons = [
-      'محتوای نامناسب',
-      'آزار و اذیت',
-      'اسپم',
-      'جعل هویت',
-      'سایر موارد'
-    ];
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('گزارش پیام'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              value: selectedReason,
-              items: reportReasons.map((reason) {
-                return DropdownMenuItem(
-                  value: reason,
-                  child: Text(reason),
-                );
-              }).toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  selectedReason = value;
-                }
-              },
-              decoration: InputDecoration(
-                labelText: 'دلیل گزارش',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            SizedBox(height: 16),
-            TextField(
-              controller: reportReasonController,
-              decoration: InputDecoration(
-                labelText: 'توضیحات بیشتر (اختیاری)',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('انصراف'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ref
-                  .read(userReportNotifierProvider.notifier)
-                  .reportUser(
-                    userId: message.senderId,
-                    reason: selectedReason,
-                    additionalInfo: reportReasonController.text.trim(),
-                  )
-                  .then((_) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('گزارش پیام ارسال شد')),
-                );
-              }).catchError((error) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('خطا در ارسال گزارش')),
-                );
-              });
-            },
-            child: Text('ارسال گزارش'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _downloadImage(String imageUrl, WidgetRef ref) async {
-    final chatService = ref.read(chatServiceProvider);
-    final downloadNotifier = ref.read(imageDownloadProvider.notifier);
-
-    downloadNotifier.startDownload(imageUrl);
-
-    try {
-      final filePath = await chatService.downloadChatImage(
-        imageUrl,
-        (progress) {
-          downloadNotifier.updateProgress(imageUrl, progress);
-        },
-      );
-
-      downloadNotifier.setDownloaded(imageUrl, filePath);
-    } catch (e) {
-      downloadNotifier.setError(imageUrl, 'خطا در دانلود: $e');
-    }
-  }
-
-  void _showFullScreenImage(BuildContext context, String imageUrl) {
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        opaque: false,
-        barrierColor: Colors.black87,
-        pageBuilder: (BuildContext context, _, __) {
-          return Scaffold(
-            backgroundColor: Colors.transparent,
-            appBar: AppBar(
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              leading: IconButton(
-                icon: Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
-              ),
-              actions: [
-                // دکمه اشتراک‌گذاری
-                // IconButton(
-                //   icon: Icon(Icons.share, color: Colors.white),
-                //   onPressed: () {
-                //     if (imageUrl.startsWith('http')) {
-                //       Share.share(imageUrl);
-                //     } else {
-                //       // Share.shareXFiles([imageUrl]);
-                //     }
-                //   },
-                // ),
-                // دکمه دانلود
-                IconButton(
-                  icon: Icon(Icons.download, color: Colors.white),
-                  onPressed: () async {
-                    if (imageUrl.startsWith('http')) {
-                      final status = await Permission.storage.request();
-                      if (status.isGranted) {
-                        final directory =
-                            await getApplicationDocumentsDirectory();
-                        final fileName =
-                            "image_{DateTime.now().millisecondsSinceEpoch}.jpg";
-                        final path = "{directory.path}/fileName";
-
-                        try {
-                          final response = await http.get(Uri.parse(imageUrl));
-                          final file = File(path);
-                          await file.writeAsBytes(response.bodyBytes);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('تصویر دانلود شد')),
-                          );
-                        } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('خطا در دانلود تصویر')),
-                          );
-                        }
-                      }
-                    }
-                  },
-                ),
-              ],
-            ),
-            body: Center(
-              child: GestureDetector(
-                onVerticalDragEnd: (details) {
-                  // اگر کاربر به سمت بالا یا پایین کشید، صفحه بسته شود
-                  if (details.velocity.pixelsPerSecond.dy.abs() > 200) {
-                    Navigator.pop(context);
-                  }
-                },
-                child: PhotoView(
-                  imageProvider: imageUrl.startsWith('http')
-                      ? CachedNetworkImageProvider(imageUrl) as ImageProvider
-                      : FileImage(File(imageUrl)),
-                  minScale: PhotoViewComputedScale.contained,
-                  maxScale: PhotoViewComputedScale.covered * 3,
-                  backgroundDecoration: BoxDecoration(
-                    color: Colors.transparent,
-                  ),
-                  loadingBuilder: (context, event) => Center(
-                    child: SizedBox(
-                      width: 30,
-                      height: 30,
-                      child: CircularProgressIndicator(
-                        value: event == null
-                            ? 0
-                            : event.cumulativeBytesLoaded /
-                                (event.expectedTotalBytes ?? 1),
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(
-            opacity: animation,
-            child: child,
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildImageAttachment(String imageUrl) {
-    // اگر فایل لوکال وجود دارد، مستقیم نمایش بده
-    if (imageUrl.startsWith('/') && File(imageUrl).existsSync()) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.file(
-          File(imageUrl),
-          fit: BoxFit.cover,
-          width: 200,
-          height: 200,
-        ),
-      );
-    }
-
-    // اگر لینک اینترنتی است، از سیستم دانلود و کش استفاده کن
-    return Consumer(
-      builder: (context, ref, child) {
-        final downloadStateMap = ref.watch(imageDownloadProvider);
-        final downloadState =
-            downloadStateMap[imageUrl] ?? const ImageDownloadState();
-
-        if (downloadState.isDownloaded && downloadState.path != null) {
-          return GestureDetector(
-            onTap: () => _showFullScreenImage(context, downloadState.path!),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.file(
-                File(downloadState.path!),
-                fit: BoxFit.cover,
-                width: 200,
-                height: 200,
-              ),
-            ),
-          );
-        } else if (downloadState.isDownloading) {
-          return Container(
-            width: 200,
-            height: 200,
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircularProgressIndicator(
-                  value: downloadState.progress,
-                  strokeWidth: 3,
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  '${(downloadState.progress * 100).toStringAsFixed(0)}%',
-                  style: const TextStyle(fontSize: 14),
-                ),
-                const SizedBox(height: 5),
-                TextButton(
-                  onPressed: () {
-                    ref.read(imageDownloadProvider.notifier).reset(imageUrl);
-                  },
-                  child: const Text('لغو'),
-                ),
-              ],
-            ),
-          );
-        } else {
-          // اگر هنوز دانلود نشده، پیش‌نمایش و دکمه دانلود نمایش بده
-          return Container(
-            width: 200,
-            height: 200,
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(8),
-              image: DecorationImage(
-                image: NetworkImage(imageUrl),
-                fit: BoxFit.cover,
-                opacity: 0.3,
-              ),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.download_outlined,
-                  size: 40,
-                  color: Colors.grey[700],
-                ),
-                const SizedBox(height: 10),
-                ElevatedButton(
-                  onPressed: () => _downloadImage(imageUrl, ref),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).primaryColor,
-                  ),
-                  child: const Text('دانلود تصویر'),
-                ),
-                if (downloadState.error != null)
-                  Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Text(
-                      downloadState.error!,
-                      style: const TextStyle(color: Colors.red, fontSize: 12),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-              ],
-            ),
-          );
-        }
-      },
-    );
-  }
-
-  String _formatMessageHour(DateTime time) {
-    // تبدیل زمان به ساعت تهران (UTC+3:30)
-    final tehranOffset = const Duration(hours: 3, minutes: 30);
-    final tehranTime = time.toUtc().add(tehranOffset);
-    return '${tehranTime.hour.toString().padLeft(2, '0')}:${tehranTime.minute.toString().padLeft(2, '0')}';
   }
 }
 
