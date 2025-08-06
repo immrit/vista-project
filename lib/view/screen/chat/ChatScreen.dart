@@ -35,6 +35,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../widgets/audio_player_widget.dart';
 import '../../widgets/web files/image_downloader.dart';
 import '/main.dart';
+import 'package.flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'ChatDetailsScreen.dart';
 import 'chat_input_box.dart';
 
@@ -1363,33 +1364,44 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         return true;
                       }).toList();
 
-                      return ScrollablePositionedList.builder(
-                        itemScrollController: _itemScrollController,
-                        itemPositionsListener: _itemPositionsListener,
-                        reverse: true,
-                        itemCount: filteredMessages.length,
-                        itemBuilder: (context, index) {
-                          final message = filteredMessages[index];
-                          final isMe =
-                              message.senderId == supabase.auth.currentUser?.id;
-                          bool showDateDivider = false;
-                          if (index == filteredMessages.length - 1) {
-                            showDateDivider = true;
-                          } else {
-                            final prevMsg = filteredMessages[index + 1];
-                            if (!_isSameDay(
-                                message.createdAt, prevMsg.createdAt)) {
+                      return AnimationLimiter(
+                        child: ScrollablePositionedList.builder(
+                          itemScrollController: _itemScrollController,
+                          itemPositionsListener: _itemPositionsListener,
+                          reverse: true,
+                          itemCount: filteredMessages.length,
+                          itemBuilder: (context, index) {
+                            final message = filteredMessages[index];
+                            final isMe = message.senderId ==
+                                supabase.auth.currentUser?.id;
+                            bool showDateDivider = false;
+                            if (index == filteredMessages.length - 1) {
                               showDateDivider = true;
+                            } else {
+                              final prevMsg = filteredMessages[index + 1];
+                              if (!_isSameDay(
+                                  message.createdAt, prevMsg.createdAt)) {
+                                showDateDivider = true;
+                              }
                             }
-                          }
-                          return Column(
-                            children: [
-                              if (showDateDivider)
-                                _buildDateDivider(message.createdAt),
-                              _buildMessageItem(context, message, isMe),
-                            ],
-                          );
-                        },
+                            return AnimationConfiguration.staggeredList(
+                              position: index,
+                              duration: const Duration(milliseconds: 400),
+                              child: SlideAnimation(
+                                verticalOffset: 50.0,
+                                child: FadeInAnimation(
+                                  child: Column(
+                                    children: [
+                                      if (showDateDivider)
+                                        _buildDateDivider(message.createdAt),
+                                      _buildMessageItem(context, message, isMe),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       );
                     },
                   ),
@@ -1931,27 +1943,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return Slidable(
         key: Key(message.id),
         startActionPane: ActionPane(
-          motion: const DrawerMotion(),
+          motion: const StretchMotion(),
           extentRatio: 0.25,
           children: [
-            CustomSlidableAction(
-              backgroundColor:
-                  Theme.of(context).colorScheme.primary.withOpacity(0.8),
-              foregroundColor: Colors.white,
-              onPressed: (_) => _setReplyMessage(message),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.reply, size: 20),
-                  SizedBox(height: 4),
-                  Text(
-                    'پاسخ',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ],
-              ),
+            SlidableAction(
+              onPressed: (context) => _setReplyMessage(message),
+              backgroundColor: Colors.transparent,
+              foregroundColor: Theme.of(context).colorScheme.primary,
+              icon: Icons.reply,
+              label: 'پاسخ',
             ),
           ],
+        ),
+        dismissal: SlidableDismissal(
+          child: Container(), // Empty container
+          onDismissed: (actionType) {
+            _setReplyMessage(message);
+          },
+          onWillDismiss: (actionType) {
+            // Prevent dismissal but allow the action
+            if (actionType == ActionType.start) {
+              HapticFeedback.lightImpact();
+              _setReplyMessage(message);
+            }
+            return false;
+          },
+          dismissThresholds: const <ActionType, double>{
+            ActionType.start: 0.3,
+          },
         ),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 800),
