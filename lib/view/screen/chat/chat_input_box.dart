@@ -1,12 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:async'; // اضافه کردن import برای Timer
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
-
+import 'dart:math' as math; // اضافه کردن برای محاسبات ریاضی
 import '../../widgets/audio_player_widget.dart';
 
 /// مدل داده‌های پیام پاسخ
@@ -121,6 +117,8 @@ class _ChatInputBoxState extends State<ChatInputBox>
   late Animation<double> _waveformAnimation;
   late Animation<double> _shakeAnimation; // انیمیشن لرزش
   late Animation<double> _successAnimation; // انیمیشن موفقیت
+  late Animation<double> _audioLevelAnimation; // انیمیشن سطح صدا
+  late Animation<double> _recordingGlowAnimation; // انیمیشن درخشش ضبط
 
   // وضعیت‌ها
   bool _hasText = false;
@@ -131,6 +129,16 @@ class _ChatInputBoxState extends State<ChatInputBox>
   bool _showRecordingHint = false; // نمایش راهنما
   int _typingIndicator = 0; // برای نمایش نقطه‌های تایپ
 
+  // متغیرهای جدید برای ضبط مدرن
+  List<double> _audioLevels = []; // تاریخچه سطح صدا
+  Timer? _audioLevelTimer; // تایمر برای به‌روزرسانی سطح صدا
+  double _maxAudioLevel = 0.0; // حداکثر سطح صدا
+  bool _isRecordingActive = false; // وضعیت فعال بودن ضبط
+
+  // انیمیشن‌های جدید برای ضبط مدرن
+  late AnimationController _audioLevelController;
+  late AnimationController _recordingGlowController;
+
   @override
   void initState() {
     super.initState();
@@ -138,6 +146,16 @@ class _ChatInputBoxState extends State<ChatInputBox>
     _setupListeners();
     _updateInitialStates();
     _startTypingIndicator();
+  }
+
+  void _addAudioLevel(double level) {
+    setState(() {
+      _audioLevels.add(level);
+      if (_audioLevels.length > 120) {
+        // طول موج روی صفحه
+        _audioLevels.removeAt(0);
+      }
+    });
   }
 
   void _initializeAnimations() {
@@ -219,6 +237,28 @@ class _ChatInputBoxState extends State<ChatInputBox>
       parent: _successController,
       curve: Curves.elasticOut,
     );
+
+    // انیمیشن‌های جدید برای ضبط مدرن
+    _audioLevelController = AnimationController(
+      duration: const Duration(milliseconds: 100),
+      vsync: this,
+    );
+    _audioLevelAnimation = CurvedAnimation(
+      parent: _audioLevelController,
+      curve: Curves.easeOut,
+    );
+
+    _recordingGlowController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+    _recordingGlowAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _recordingGlowController,
+      curve: Curves.easeInOut,
+    ));
   }
 
   void _setupListeners() {
@@ -293,7 +333,15 @@ class _ChatInputBoxState extends State<ChatInputBox>
     _recordingController.forward();
     _pulseController.repeat(reverse: true);
     _waveformController.repeat(reverse: true);
+    _audioLevelController.repeat(reverse: true);
+    _recordingGlowController.repeat(reverse: true);
     _startRecordingTimer();
+    _startAudioLevelSimulation();
+    setState(() {
+      _isRecordingActive = true;
+      _audioLevels.clear();
+      _maxAudioLevel = 0.0;
+    });
   }
 
   void _stopRecordingAnimation() {
@@ -302,7 +350,15 @@ class _ChatInputBoxState extends State<ChatInputBox>
     _pulseController.reset();
     _waveformController.stop();
     _waveformController.reset();
+    _audioLevelController.stop();
+    _audioLevelController.reset();
+    _recordingGlowController.stop();
+    _recordingGlowController.reset();
     _stopRecordingTimer();
+    _stopAudioLevelSimulation();
+    setState(() {
+      _isRecordingActive = false;
+    });
   }
 
   void _startRecordingTimer() {
@@ -326,6 +382,31 @@ class _ChatInputBoxState extends State<ChatInputBox>
       Future.delayed(
           const Duration(milliseconds: 100), _updateRecordingDuration);
     }
+  }
+
+  void _startAudioLevelSimulation() {
+    _audioLevelTimer =
+        Timer.periodic(const Duration(milliseconds: 50), (timer) {
+      if (!mounted || !_isRecordingActive) return;
+
+      final time = DateTime.now().millisecondsSinceEpoch / 1000;
+      final baseLevel =
+          0.3 + 0.25 * math.sin(time * 2) + 0.15 * math.sin(time * 4);
+      final noise = (math.Random().nextDouble() - 0.5) * 0.1;
+      final newLevel = (baseLevel + noise).clamp(0.0, 1.0);
+
+      setState(() {
+        _audioLevels.add(newLevel);
+        if (_audioLevels.length > 60) {
+          _audioLevels.removeAt(0);
+        }
+      });
+    });
+  }
+
+  void _stopAudioLevelSimulation() {
+    _audioLevelTimer?.cancel();
+    _audioLevelTimer = null;
   }
 
   String _formatDuration(double seconds) {
@@ -370,6 +451,7 @@ class _ChatInputBoxState extends State<ChatInputBox>
   @override
   void dispose() {
     widget.messageController.removeListener(_onTextChanged);
+    _audioLevelTimer?.cancel();
     _replyController.dispose();
     _sendButtonController.dispose();
     _recordingController.dispose();
@@ -377,6 +459,8 @@ class _ChatInputBoxState extends State<ChatInputBox>
     _waveformController.dispose();
     _shakeController.dispose();
     _successController.dispose();
+    _audioLevelController.dispose();
+    _recordingGlowController.dispose();
     super.dispose();
   }
 
@@ -389,7 +473,7 @@ class _ChatInputBoxState extends State<ChatInputBox>
     return Column(
       children: [
         // نمایش راهنما
-        _buildRecordingHint(colorScheme),
+        _buildOldRecordingHint(colorScheme),
 
         // پیش‌نمایش پاسخ
         _buildReplyPreview(isDark, colorScheme),
@@ -406,7 +490,7 @@ class _ChatInputBoxState extends State<ChatInputBox>
     );
   }
 
-  Widget _buildRecordingHint(ColorScheme colorScheme) {
+  Widget _buildOldRecordingHint(ColorScheme colorScheme) {
     if (!_showRecordingHint) return const SizedBox.shrink();
 
     return AnimatedBuilder(
@@ -713,9 +797,9 @@ class _ChatInputBoxState extends State<ChatInputBox>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // دکمه‌های عملیات - در حالت ضبط صدا مخفی می‌شوند
-          if (!isRecording && !showCompactMode)
-            ..._buildActionButtons(colorScheme),
+          // دکمه‌های عملیات - فقط عکس در حالت تایپ مخفی می‌شود، ایموجی همیشه نمایش داده می‌شود
+          if (!isRecording)
+            ..._buildActionButtons(colorScheme, showCompactMode),
 
           // فیلد متن یا نمایش ضبط صدا
           Expanded(
@@ -731,20 +815,23 @@ class _ChatInputBoxState extends State<ChatInputBox>
     );
   }
 
-  List<Widget> _buildActionButtons(ColorScheme colorScheme) {
+  List<Widget> _buildActionButtons(
+      ColorScheme colorScheme, bool showCompactMode) {
     final buttons = <Widget>[];
 
-    // دکمه انتخاب تصویر
-    buttons.add(
-      _buildActionButton(
-        icon: Icons.photo_camera_rounded,
-        onTap: widget.pickImage,
-        tooltip: 'ارسال تصویر',
-        colorScheme: colorScheme,
-      ),
-    );
+    // دکمه انتخاب تصویر - فقط در حالت تایپ مخفی می‌شود
+    if (!showCompactMode) {
+      buttons.add(
+        _buildActionButton(
+          icon: Icons.photo_camera_rounded,
+          onTap: widget.pickImage,
+          tooltip: 'ارسال تصویر',
+          colorScheme: colorScheme,
+        ),
+      );
+    }
 
-    // دکمه ایموجی
+    // دکمه ایموجی - همیشه نمایش داده می‌شود
     buttons.add(
       _buildActionButton(
         icon: widget.showEmojiPicker
@@ -886,106 +973,184 @@ class _ChatInputBoxState extends State<ChatInputBox>
   }
 
   Widget _buildRecordingDisplay(ColorScheme colorScheme) {
-    return Column(
+    return Container(
+      height: 60,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Row(
+        children: [
+          // لغو ضبط
+          IconButton(
+            icon: Icon(Icons.close_rounded, color: colorScheme.secondary),
+            onPressed: widget.onAudioCancel,
+          ),
+
+          // موج میله‌ای
+          Expanded(child: _buildModernWaveform(colorScheme)),
+
+          const SizedBox(width: 8),
+
+          // تایمر
+          Text(
+            _formatDuration(_recordingDuration),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: colorScheme.primary,
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          // توقف
+          // InkWell(
+          //   onTap: widget.onStopRecording,
+          //   borderRadius: BorderRadius.circular(30),
+          //   child: Container(
+          //     padding: const EdgeInsets.all(8),
+          //     decoration: const BoxDecoration(
+          //       color: Colors.red,
+          //       shape: BoxShape.circle,
+          //     ),
+          //     child:
+          //         const Icon(Icons.stop_rounded, color: Colors.white, size: 20),
+          //   ),
+          // ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernWaveform(ColorScheme colorScheme) {
+    return Container(
+      height: 50,
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outline.withOpacity(0.2)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: CustomPaint(
+        painter: ModernBarWaveformPainter(
+          audioLevels: _audioLevels,
+          color: colorScheme.primary,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecordingStatus(ColorScheme colorScheme) {
+    return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // نمایش طیف صدا
-        _buildWaveform(),
+        // آیکون ضبط با انیمیشن پالس
+        AnimatedBuilder(
+          animation: _pulseAnimation,
+          builder: (context, child) {
+            return Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.red.withOpacity(0.3 * _pulseAnimation.value),
+                    blurRadius: 8 * _pulseAnimation.value,
+                    spreadRadius: 2 * _pulseAnimation.value,
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
 
-        // نمایش زمان ضبط
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // آیکون ضبط
-              AnimatedBuilder(
-                animation: _pulseAnimation,
-                builder: (context, child) {
-                  return Transform.scale(
-                    scale: 0.8 + (_pulseAnimation.value * 0.2),
-                    child: Icon(
-                      Icons.fiber_manual_record_rounded,
-                      size: 12,
-                      color: Colors.red,
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(width: 8),
-              // زمان ضبط
-              Text(
-                _formatDuration(_recordingDuration),
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.onSurface.withOpacity(0.8),
-                ),
-              ),
-            ],
+        const SizedBox(width: 12),
+
+        // زمان ضبط
+        Text(
+          _formatDuration(_recordingDuration),
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: colorScheme.onSurface,
+            fontFamily: 'monospace',
           ),
         ),
 
-        // نمایش سطح صدا
-        _buildAudioLevelIndicator(),
+        const SizedBox(width: 12),
 
-        // نمایش راهنما
-        if (_recordingDuration < 1.0)
-          Padding(
-            padding: const EdgeInsets.only(top: 8.0),
-            child: Text(
-              'در حال ضبط صدا...',
-              style: TextStyle(
-                fontSize: 12,
-                color: colorScheme.onSurface.withOpacity(0.6),
-              ),
+        // نمایش سطح صدا فعلی
+        Container(
+          width: 60,
+          height: 4,
+          decoration: BoxDecoration(
+            color: colorScheme.outline.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(2),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: AnimatedBuilder(
+              animation: _audioLevelAnimation,
+              builder: (context, child) {
+                return LinearProgressIndicator(
+                  value: _audioLevel,
+                  backgroundColor: Colors.transparent,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    _getAudioLevelColor(_audioLevel, colorScheme),
+                  ),
+                );
+              },
             ),
           ),
+        ),
       ],
     );
   }
 
-  Widget _buildWaveform() {
-    return Container(
-      height: 40,
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      child: AnimatedBuilder(
-        animation: _waveformAnimation,
-        builder: (context, child) {
-          return CustomPaint(
-            painter: WaveformPainter(
-              audioLevel: _audioLevel,
-              waveformAnimation: _waveformAnimation,
+  Widget _buildRecordingHint(ColorScheme colorScheme) {
+    return AnimatedBuilder(
+      animation: _recordingGlowAnimation,
+      builder: (context, child) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: colorScheme.primary
+                .withOpacity(0.1 * _recordingGlowAnimation.value),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: colorScheme.primary
+                  .withOpacity(0.3 * _recordingGlowAnimation.value),
+              width: 1,
             ),
-          );
-        },
-      ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.mic_rounded,
+                size: 14,
+                color: colorScheme.primary,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'در حال ضبط صدا...',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildAudioLevelIndicator() {
-    return Container(
-      width: 80,
-      height: 8,
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.grey[300],
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(4),
-        child: AnimatedBuilder(
-          animation: _waveformAnimation,
-          builder: (context, child) {
-            return LinearProgressIndicator(
-              value: _audioLevel * _waveformAnimation.value,
-              backgroundColor: Colors.transparent,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.red),
-            );
-          },
-        ),
-      ),
-    );
+  Color _getAudioLevelColor(double level, ColorScheme colorScheme) {
+    if (level < 0.3) return Colors.green;
+    if (level < 0.7) return Colors.orange;
+    return Colors.red;
   }
 
   Widget _buildSendButton(ColorScheme colorScheme) {
@@ -1009,27 +1174,50 @@ class _ChatInputBoxState extends State<ChatInputBox>
                       : colorScheme.onSurface.withOpacity(0.3),
               borderRadius: BorderRadius.circular(20),
               elevation: canSend ? 2 : 0,
-              child: GestureDetector(
-                onLongPress: !isTyping && canSend ? _handleLongPress : null,
-                onLongPressEnd:
-                    _isLongPress ? (_) => _handleLongPressEnd() : null,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: isRecording
-                      ? widget.onStopRecording
-                      : canSend
-                          ? (isTyping
-                              ? widget.sendMessage
-                              : widget.onStartRecording)
-                          : null,
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    alignment: Alignment.center,
-                    child: _buildSendButtonContent(
-                        colorScheme, isTyping, isRecording),
-                  ),
-                ),
+              child: AnimatedBuilder(
+                animation: isRecording
+                    ? _pulseAnimation
+                    : const AlwaysStoppedAnimation(0.0),
+                builder: (context, child) {
+                  return Container(
+                    decoration: isRecording
+                        ? BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.red
+                                    .withOpacity(0.3 * _pulseAnimation.value),
+                                blurRadius: 8 * _pulseAnimation.value,
+                                spreadRadius: 2 * _pulseAnimation.value,
+                              ),
+                            ],
+                          )
+                        : null,
+                    child: GestureDetector(
+                      onLongPress:
+                          !isTyping && canSend ? _handleLongPress : null,
+                      onLongPressEnd:
+                          _isLongPress ? (_) => _handleLongPressEnd() : null,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(20),
+                        onTap: isRecording
+                            ? widget.onStopRecording
+                            : canSend
+                                ? (isTyping
+                                    ? widget.sendMessage
+                                    : widget.onStartRecording)
+                                : null,
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          alignment: Alignment.center,
+                          child: _buildSendButtonContent(
+                              colorScheme, isTyping, isRecording),
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
           ),
@@ -1110,53 +1298,39 @@ class _ChatInputBoxState extends State<ChatInputBox>
   }
 }
 
-/// کلاس نقاش طیف صدا
-class WaveformPainter extends CustomPainter {
-  final double audioLevel;
-  final Animation<double> waveformAnimation;
+class ModernBarWaveformPainter extends CustomPainter {
+  final List<double> audioLevels;
+  final Color color;
 
-  WaveformPainter({
-    required this.audioLevel,
-    required this.waveformAnimation,
+  ModernBarWaveformPainter({
+    required this.audioLevels,
+    required this.color,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (audioLevels.isEmpty) return;
+
+    const barWidth = 3.0;
+    const space = 2.0;
+    int maxBars = (size.width / (barWidth + space)).floor();
+
     final paint = Paint()
-      ..color = Colors.red
-      ..strokeWidth = 2.0
-      ..strokeCap = StrokeCap.round;
+      ..color = color
+      ..style = PaintingStyle.fill;
 
-    final centerY = size.height / 2;
-    final barWidth = 3.0;
-    final spacing = 2.0;
-    final totalBars = 15;
-
-    for (int i = 0; i < totalBars; i++) {
-      final x = (i * (barWidth + spacing)) +
-          (size.width - (totalBars * (barWidth + spacing))) / 2;
-
-      // محاسبه ارتفاع بر اساس سطح صدا و موقعیت
-      final heightMultiplier =
-          0.3 + (0.7 * audioLevel * waveformAnimation.value);
-      final barHeight = (size.height * 0.8) *
-          heightMultiplier *
-          (0.5 + 0.5 * (i % 3 + 1) / 3);
-
-      final topY = centerY - barHeight / 2;
-      final bottomY = centerY + barHeight / 2;
-
-      canvas.drawLine(
-        Offset(x, topY),
-        Offset(x, bottomY),
-        paint,
+    for (int i = 0; i < maxBars && i < audioLevels.length; i++) {
+      final level = audioLevels[audioLevels.length - 1 - i];
+      final barHeight = level * size.height;
+      final dx = size.width - (i * (barWidth + space)) - barWidth;
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(dx, (size.height - barHeight) / 2, barWidth, barHeight),
+        const Radius.circular(2),
       );
+      canvas.drawRRect(rect, paint);
     }
   }
 
   @override
-  bool shouldRepaint(WaveformPainter oldDelegate) {
-    return oldDelegate.audioLevel != audioLevel ||
-        oldDelegate.waveformAnimation.value != waveformAnimation.value;
-  }
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
