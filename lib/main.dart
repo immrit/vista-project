@@ -25,6 +25,7 @@ import 'security/security.dart';
 import 'services/ChatService.dart';
 import 'services/deepLink.dart';
 import 'services/deep_link_service.dart' as new_deep_link;
+import 'services/PushNotificationService.dart';
 import 'view/screen/chat/ChatScreen.dart';
 import 'view/util/themes.dart';
 import 'view/screen/Settings/Settings.dart';
@@ -47,175 +48,19 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
 // GlobalKey برای navigator
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-/// هندل پاسخ به اعلان
+/// Notification response handler - now handled by PushNotificationService
+/// This is kept for compatibility but the actual handling is done in PushNotificationService
 Future<void> notificationResponseHandler(NotificationResponse response) async {
-  // دکمه پاسخ
-  if (response.actionId == 'reply') {
-    final replyText = response.input;
-    final conversationId = response.payload;
-    if (replyText != null &&
-        conversationId != null &&
-        conversationId.isNotEmpty) {
-      // ارسال پیام به سرور
-      try {
-        // فرض: ChatService و supabase مقداردهی شده‌اند
-        await ChatService().sendMessage(
-          conversationId: conversationId,
-          content: replyText,
-        );
-        // اگر برنامه باز است، صفحه چت را به‌روزرسانی کن
-        // (اختیاری: اگر صفحه چت باز است، می‌توانی یک event بفرستی)
-      } catch (e) {
-        print('خطا در ارسال پاسخ سریع: $e');
-      }
-    }
-  } else {
-    // کلیک روی نوتیفیکیشن: conversationId در payload
-    final conversationId = response.payload;
-    if (conversationId != null && conversationId.isNotEmpty) {
-      // باز کردن صفحه چت مربوطه
-      navigatorKey.currentState?.pushNamed(
-        '/chat',
-        arguments: conversationId,
-      );
-    }
-  }
+  // This handler is now managed by PushNotificationService
+  // The actual navigation logic is in PushNotificationService.handleNotificationNavigation
+  print('Notification response received: ${response.actionId}');
 }
 
-/// پیام های پوش پس زمینه و ترمینیتد
+/// Background message handler for FCM
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await _handleIncomingNotification(message, fromBackground: true);
-}
-
-/// تابع مرکزی هندل همه اعلان‌ها
-Future<void> _handleIncomingNotification(RemoteMessage message,
-    {bool fromBackground = false}) async {
-  final data = message.data;
-  final String? conversationIdFromData = data['conversation_id'];
-
-  // اگر برنامه در پیش‌زمینه است و کاربر دقیقاً همین چت را باز کرده، نوتیفیکیشن نمایش نده
-  if (!fromBackground &&
-      ChatService.activeConversationId != null &&
-      ChatService.activeConversationId == conversationIdFromData) {
-    return;
-  }
-  final String? type = data['type'];
-  final notification = message.notification;
-  String? title;
-  String? body;
-
-  if (type == 'chat_message') {
-    title = 'پیام جدید از ${data['sender_name'] ?? 'کاربر'}';
-    body = data['content'] ?? 'پیام جدید';
-    final conversationId = conversationIdFromData ?? '';
-    final int notificationId = conversationId.isNotEmpty
-        ? conversationId.hashCode
-        : DateTime.now().millisecondsSinceEpoch % 100000;
-    const AndroidNotificationDetails androidDetails =
-        AndroidNotificationDetails('chat_messages', 'پیام‌های چت',
-            channelDescription: 'اعلان پیام‌های جدید چت',
-            importance: Importance.high,
-            priority: Priority.high,
-            icon: '@drawable/ic_notification',
-            actions: <AndroidNotificationAction>[
-          AndroidNotificationAction(
-            'reply',
-            'پاسخ',
-            inputs: [AndroidNotificationActionInput()],
-            showsUserInterface: true,
-          ),
-        ]);
-    const NotificationDetails notificationDetails =
-        NotificationDetails(android: androidDetails);
-
-    await flutterLocalNotificationsPlugin.show(
-      notificationId,
-      title,
-      body!.length > 60 ? '${body.substring(0, 57)}...' : body,
-      notificationDetails,
-      payload: conversationId,
-    );
-    return;
-  }
-
-  // انواع شبکه اجتماعی (مطابق دیتابیس: new_comment, like, comment_reply, follow)
-  if (type == 'like' ||
-      type == 'new_comment' ||
-      type == 'comment_reply' ||
-      type == 'follow') {
-    // استخراج نام کاربر ارسال‌کننده (در دیتابیس: sender_id، اما معمولا در FCM باید username یا actor_name هم ارسال شود)
-    final senderName = data['actor_name'] ??
-        data['sender_name'] ??
-        data['username'] ??
-        data['sender_username'] ??
-        data['sender'] ??
-        "یک کاربر";
-    final commentText = data['comment_text'] ?? data['content'] ?? '';
-    switch (type) {
-      case 'like':
-        title = 'لایک جدید';
-        body = '$senderName پست شما را پسندید';
-        break;
-      case 'new_comment':
-        title = 'کامنت جدید!';
-        body =
-            '$senderName برای پست شما کامنت گذاشت${commentText.isNotEmpty ? ': $commentText' : ''}';
-        break;
-      case 'comment_reply':
-        title = 'پاسخ به کامنت شما';
-        body =
-            '$senderName به نظر شما پاسخ داد${commentText.isNotEmpty ? ': $commentText' : ''}';
-        break;
-      case 'follow':
-        title = 'دنبال‌کننده جدید!';
-        body = '$senderName شما را دنبال کرد';
-        break;
-      default:
-        title = 'اعلان جدید';
-        body = notification?.body ?? data['content'] ?? '';
-    }
-
-    const AndroidNotificationDetails androidDetails =
-        AndroidNotificationDetails(
-      'social_notify',
-      'اعلان اجتماعی',
-      channelDescription: 'اعلان‌های اجتماعی (لایک، کامنت، دنبال‌کننده و ...)',
-      importance: Importance.high,
-      priority: Priority.high,
-      icon: '@drawable/ic_notification',
-    );
-
-    const NotificationDetails notificationDetails =
-        NotificationDetails(android: androidDetails);
-
-    await flutterLocalNotificationsPlugin.show(
-      DateTime.now().millisecondsSinceEpoch % 100000,
-      title,
-      body!.length > 60 ? '${body.substring(0, 57)}...' : body,
-      notificationDetails,
-      payload: data['post_id'] ??
-          data['comment_id'] ??
-          data['parent_comment_id'] ??
-          '',
-    );
-    return;
-  }
-
-  // اگر نوع ناشناخته یا نوتیف عادی بود:
-  if (notification != null) {
-    await flutterLocalNotificationsPlugin.show(
-      DateTime.now().millisecondsSinceEpoch % 100000,
-      notification.title ?? 'اعلان',
-      notification.body ?? '',
-      const NotificationDetails(
-        android: AndroidNotificationDetails('general', 'اعلان عمومی',
-            channelDescription: 'پیغام‌های عمومی',
-            importance: Importance.high,
-            priority: Priority.high,
-            icon: '@drawable/ic_notification'),
-      ),
-    );
-  }
+  // این هندلر فقط برای پیام‌های پس‌زمینه استفاده می‌شود
+  // پیام‌های پیش‌زمینه توسط PushNotificationService مدیریت می‌شوند
+  print('Background message received: ${message.messageId}');
 }
 
 void main() async {
@@ -347,11 +192,8 @@ void main() async {
           AndroidFlutterLocalNotificationsPlugin>()
       ?.createNotificationChannel(socialChannel);
 
-  // هندل اعلان‌های دریافتی وقتی برنامه باز است (foreground)
-  FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-    // fromBackground: false چون این هندلر برای پیام‌های پیش‌زمینه است
-    await _handleIncomingNotification(message, fromBackground: false);
-  });
+  // FCM foreground messages are now handled by PushNotificationService
+  // This listener is set up in PushNotificationService.init() after user login
 
   runApp(
     ProviderScope(
@@ -469,6 +311,15 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         if (fcmToken != null) {
           await _setFcmToken(fcmToken);
           print("FCM Token: $fcmToken");
+
+          // راه‌اندازی PushNotificationService بعد از لاگین
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              final pushNotificationService =
+                  ref.read(pushNotificationServiceProvider);
+              pushNotificationService.init(context);
+            }
+          });
         }
       }
     });

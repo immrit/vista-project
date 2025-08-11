@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 enum VerificationType { none, blueTick, goldTick, blackTick }
 
@@ -15,6 +16,11 @@ class NotificationModel extends Equatable {
   final String PostId;
   final bool isRead;
   final VerificationType verificationType;
+  // اضافه کردن فیلدهای جدید برای FCM
+  final String? openScreen;
+  final String? conversationId;
+  final String? commentId;
+  final String? followerId;
 
   const NotificationModel({
     required this.id,
@@ -29,11 +35,62 @@ class NotificationModel extends Equatable {
     required this.PostId,
     required this.isRead,
     required this.verificationType,
+    this.openScreen,
+    this.conversationId,
+    this.commentId,
+    this.followerId,
   });
 
   bool get hasBlueBadge => verificationType == VerificationType.blueTick;
   bool get hasGoldBadge => verificationType == VerificationType.goldTick;
   bool get hasBlackBadge => verificationType == VerificationType.blackTick;
+
+  /// Factory method برای ایجاد NotificationModel از FCM RemoteMessage
+  factory NotificationModel.fromFCM(RemoteMessage message) {
+    final data = message.data;
+    final notification = message.notification;
+
+    // استخراج اطلاعات از payload
+    final type = data['type'] ?? '';
+    final username = data['username'] ?? data['sender_name'] ?? 'کاربر';
+    final avatarUrl = data['avatar_url'] ?? '';
+    final content =
+        data['message'] ?? data['content'] ?? notification?.body ?? '';
+    final postId = data['post_id'] ?? '';
+    final conversationId = data['conversation_id'] ?? '';
+    final commentId = data['comment_id'] ?? '';
+    final followerId = data['follower_id'] ?? '';
+    final openScreen = data['open_screen'] ?? '';
+
+    // تعیین verification type بر اساس badges
+    VerificationType verificationType = VerificationType.none;
+    if (data['has_blue_badge'] == 'true') {
+      verificationType = VerificationType.blueTick;
+    } else if (data['has_gold_badge'] == 'true') {
+      verificationType = VerificationType.goldTick;
+    } else if (data['has_black_badge'] == 'true') {
+      verificationType = VerificationType.blackTick;
+    }
+
+    return NotificationModel(
+      id: data['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      senderId: data['sender_id'] ?? '',
+      recipientId: data['recipient_id'] ?? '',
+      content: content,
+      createdAt: DateTime.now(),
+      type: type,
+      username: username,
+      userIsVerified: false, // از FCM نمی‌توانیم این مقدار را دریافت کنیم
+      avatarUrl: avatarUrl,
+      PostId: postId,
+      isRead: false,
+      verificationType: verificationType,
+      openScreen: openScreen,
+      conversationId: conversationId,
+      commentId: commentId,
+      followerId: followerId,
+    );
+  }
 
   Map<String, dynamic> toMap() {
     return {
@@ -49,6 +106,10 @@ class NotificationModel extends Equatable {
       'post_id': PostId,
       'is_read': isRead,
       'verification_type': verificationType.toString().split('.').last,
+      'open_screen': openScreen,
+      'conversation_id': conversationId,
+      'comment_id': commentId,
+      'follower_id': followerId,
     };
   }
 
@@ -125,6 +186,10 @@ class NotificationModel extends Equatable {
       PostId: map['post_id'] ?? '',
       isRead: map['is_read'] ?? false,
       verificationType: getVerificationType(),
+      openScreen: map['open_screen'],
+      conversationId: map['conversation_id'],
+      commentId: map['comment_id'],
+      followerId: map['follower_id'],
     );
   }
 
@@ -142,6 +207,10 @@ class NotificationModel extends Equatable {
     String? PostId,
     bool? isRead,
     VerificationType? verificationType,
+    String? openScreen,
+    String? conversationId,
+    String? commentId,
+    String? followerId,
   }) {
     return NotificationModel(
       id: id ?? this.id,
@@ -156,11 +225,15 @@ class NotificationModel extends Equatable {
       PostId: PostId ?? this.PostId,
       isRead: isRead ?? this.isRead,
       verificationType: verificationType ?? this.verificationType,
+      openScreen: openScreen ?? this.openScreen,
+      conversationId: conversationId ?? this.conversationId,
+      commentId: commentId ?? this.commentId,
+      followerId: followerId ?? this.followerId,
     );
   }
 
   @override
-  List<Object> get props => [
+  List<Object?> get props => [
         id,
         senderId,
         recipientId,
@@ -173,5 +246,9 @@ class NotificationModel extends Equatable {
         PostId,
         isRead,
         verificationType,
+        openScreen,
+        conversationId,
+        commentId,
+        followerId,
       ];
 }

@@ -1423,19 +1423,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     return profileAsync.when(
       data: (profile) {
+        final currentUserId = supabase.auth.currentUser?.id;
+        final isCurrentUserPost = post.userId == currentUserId;
+
         final isBlueTick = profile != null &&
             profile['is_verified'] == true &&
             profile['verification_type'] == 'blueTick';
-        final isAdminOrModerator = profile != null &&
-            (profile['role'] == 'admin' || profile['role'] == 'moderator');
+        // فقط کاربران با تیک آبی مجاز به ویرایش هستند
+        final canEditPost = isBlueTick;
 
         // Debug: چاپ اطلاعات پروفایل
         print('DEBUG: Profile data: $profile');
-        print('DEBUG: User role: ${profile?['role']}');
-        print('DEBUG: isAdminOrModerator: $isAdminOrModerator');
-
-        final currentUserId = supabase.auth.currentUser?.id;
-        final isCurrentUserPost = post.userId == currentUserId;
+        print('DEBUG: isBlueTick: $isBlueTick');
+        print('DEBUG: canEditPost (blueTick only): $canEditPost');
 
         return PopupMenuButton<String>(
           onSelected: (value) async {
@@ -1489,7 +1489,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 }
                 break;
               case 'edit':
-                if (isAdminOrModerator) {
+                if (canEditPost) {
                   showEditPostDialog(context, ref, post);
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -1499,10 +1499,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                   );
                 }
-                break;
-              case 'edit_test':
-                // تست: همیشه دیالوگ ویرایش را نمایش بده
-                showEditPostDialog(context, ref, post);
                 break;
             }
           },
@@ -1524,15 +1520,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   const PopupMenuItem(value: 'delete', child: Text('حذف')));
             }
 
-            // گزینه ویرایش فقط برای ناظرها و ادمین‌ها
-            if (isAdminOrModerator) {
+            // گزینه ویرایش فقط برای کاربران با تیک آبی
+            if (canEditPost) {
               items.add(
                   const PopupMenuItem(value: 'edit', child: Text('ویرایش')));
             }
-
-            // تست: همیشه گزینه ویرایش را نمایش بده
-            items.add(
-                const PopupMenuItem(value: 'edit_test', child: Text('ویرایش')));
 
             return items;
           },

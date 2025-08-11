@@ -1,6 +1,7 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../../../model/notificationModel.dart';
 import '../../../main.dart';
 
@@ -298,6 +299,20 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
   /// ریفِرش دستی (مثلاً برای pull to refresh)
   Future<void> refresh() async {
     await fetchNotifications(refresh: true);
+  }
+
+  /// اضافه کردن اعلان جدید از FCM Push Notification
+  void addNotificationFromPush(RemoteMessage message) {
+    try {
+      final notification = NotificationModel.fromFCM(message);
+
+      // اضافه کردن به ابتدای لیست (جدیدترین اول)
+      state = [notification, ...state];
+
+      print('✅ اعلان جدید از FCM اضافه شد: ${notification.type}');
+    } catch (e) {
+      print('❌ خطا در اضافه کردن اعلان از FCM: $e');
+    }
   }
 }
 

@@ -1835,8 +1835,8 @@ Widget _buildPostActions(
             ),
           ];
 
-          // فقط صاحب پست یا blueTick مجاز به حذف و ویرایش هستند
-          if (currentUserId == post.userId || isBlueTick) {
+          // فقط صاحب پست مجاز به حذف است
+          if (currentUserId == post.userId) {
             items.add(const PopupMenuItem<String>(
               value: 'delete',
               child: Row(
@@ -1847,6 +1847,10 @@ Widget _buildPostActions(
                 ],
               ),
             ));
+          }
+
+          // فقط کاربران با تیک آبی مجاز به ویرایش هستند
+          if (isBlueTick) {
             items.add(const PopupMenuItem<String>(
               value: 'edit',
               child: Row(
@@ -1895,11 +1899,11 @@ Widget _buildPostActions(
               );
             }
           } else if (value == 'edit') {
-            // فقط صاحب پست یا blueTick مجاز به ویرایش هستند
+            // فقط کاربران با تیک آبی مجاز به ویرایش هستند
             final isBlueTick = profile != null &&
                 profile['is_verified'] == true &&
                 profile['verification_type'] == 'blueTick';
-            if (currentUserId == post.userId || isBlueTick) {
+            if (isBlueTick) {
               showEditPostDialog(context, ref, post);
             } else {
               ScaffoldMessenger.of(context).showSnackBar(
