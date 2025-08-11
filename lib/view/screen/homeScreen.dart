@@ -19,9 +19,7 @@ final unreadConversationsCountProvider = StreamProvider<int>((ref) {
 
   // به استریم مکالمات گوش می‌دهیم
   // تغییر به cachedConversationsStreamProvider برای واکنش سریع‌تر به تغییرات کش
-  return ref
-      .watch(cachedConversationsStreamProvider)
-      .when(
+  return ref.watch(cachedConversationsStreamProvider).when(
         data: (conversations) {
           // مکالماتی را که پیام خوانده‌نشده دارند، فیلتر و شمارش می‌کنیم
           final count = conversations.where((c) => (c.unreadCount) > 0).length;
@@ -67,10 +65,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _checkProfileCompletion() async {
-    final isComplete =
-        await ref
-            .read(profileCompletionProvider.notifier)
-            .checkProfileCompletion();
+    final isComplete = await ref
+        .read(profileCompletionProvider.notifier)
+        .checkProfileCompletion();
     if (!isComplete && mounted) {
       // انتقال به صفحه ویرایش پروفایل
       Navigator.pushNamed(context, '/editeProfile');
@@ -131,14 +128,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           selectedIndex: _selectedIndex,
           onDestinationSelected: _onItemTapped,
           destinations: <NavigationDestination>[
-            const NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home),
+            NavigationDestination(
+              icon: Image.asset(
+                'lib/view/util/images/bottomnavigation/home-outline.png',
+                width: 24,
+                height: 24,
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+              ),
+              selectedIcon: Image.asset(
+                'lib/view/util/images/bottomnavigation/home.png',
+                width: 24,
+                height: 24,
+                color: Colors.black,
+              ),
               label: '',
             ),
-            const NavigationDestination(
-              icon: Icon(Icons.search),
-              selectedIcon: Icon(Icons.search),
+            NavigationDestination(
+              icon: Image.asset(
+                'lib/view/util/images/bottomnavigation/magnifying-glass.png',
+                width: 24,
+                height: 24,
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+              ),
+              selectedIcon: Image.asset(
+                'lib/view/util/images/bottomnavigation/magnifying-glass.png',
+                width: 24,
+                height: 24,
+                color: Colors.black,
+              ),
               label: '',
             ),
             NavigationDestination(
@@ -149,10 +166,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
                 decoration: BoxDecoration(
                   shape: BoxShape.rectangle,
-                  color:
-                      Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white24
-                          : Colors.black12,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white24
+                      : Colors.black12,
                   borderRadius: BorderRadius.circular(15),
                 ),
                 child: const Icon(Icons.add, size: 26),
@@ -161,12 +177,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: LinearGradient(
+                  gradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      Theme.of(context).colorScheme.primary,
-                      Theme.of(context).colorScheme.secondary,
+                      Colors.black,
+                      Colors.black,
                     ],
                   ),
                 ),
@@ -177,20 +193,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             // تب چت با بج نمایش پیام‌های جدید
             NavigationDestination(
               icon: _buildMessageBadge(
-                Icons.chat_bubble_outline,
+                'lib/view/util/images/bottomnavigation/email-outline.png',
                 false,
                 unreadConversationsCountAsync,
               ),
               selectedIcon: _buildMessageBadge(
-                Icons.chat_bubble,
+                'lib/view/util/images/bottomnavigation/email.png',
                 true,
                 unreadConversationsCountAsync,
               ),
               label: '',
             ),
-            const NavigationDestination(
-              icon: Icon(Icons.person_2_outlined),
-              selectedIcon: Icon(Icons.person_2),
+            NavigationDestination(
+              icon: Image.asset(
+                'lib/view/util/images/bottomnavigation/user-outline.png',
+                width: 24,
+                height: 24,
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+              ),
+              selectedIcon: Image.asset(
+                'lib/view/util/images/bottomnavigation/user.png',
+                width: 24,
+                height: 24,
+                color: Colors.black,
+              ),
               label: '',
             ),
           ],
@@ -203,27 +229,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   // تابع برای نمایش بج اعلان
-  Widget _buildNotificationBadge(IconData icon, bool isSelected) {
+  Widget _buildNotificationBadge(String iconPath, bool isSelected) {
     return badges.Badge(
-      showBadge: ref
-          .watch(hasNewNotificationProvider)
-          .when(
+      showBadge: ref.watch(hasNewNotificationProvider).when(
             data: (hasNewNotification) => hasNewNotification,
             loading: () => false,
             error: (_, __) => false,
           ),
       badgeStyle: const badges.BadgeStyle(badgeColor: Colors.red),
       position: badges.BadgePosition.topEnd(top: -10, end: -10),
-      child: Icon(
-        icon,
-        color: isSelected ? Theme.of(context).colorScheme.primary : null,
+      child: Image.asset(
+        iconPath,
+        width: 24,
+        height: 24,
+        color: isSelected
+            ? Colors.black
+            : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
       ),
     );
   }
 
   // تابع برای نمایش بج تعداد مکالمه‌های خوانده‌نشده
   Widget _buildMessageBadge(
-    IconData iconData,
+    String iconPath,
     bool isSelected,
     AsyncValue<int> unreadConversationsCountAsync,
   ) {
@@ -240,22 +268,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             padding: EdgeInsets.all(count > 9 ? 4 : 5), // پدینگ بج
           ),
           position: badges.BadgePosition.topEnd(top: -12, end: -12),
-          child: Icon(
-            iconData,
-            color: isSelected ? Theme.of(context).colorScheme.primary : null,
+          child: Image.asset(
+            iconPath,
+            width: 24,
+            height: 24,
+            color: isSelected
+                ? Colors.black
+                : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
           ),
         );
       },
-      loading:
-          () => Icon(
-            iconData,
-            color: isSelected ? Theme.of(context).colorScheme.primary : null,
-          ), // نمایش آیکون بدون بج در حال لود
-      error:
-          (err, stack) => Icon(
-            iconData,
-            color: isSelected ? Theme.of(context).colorScheme.primary : null,
-          ), // نمایش آیکون بدون بج در صورت خطا
+      loading: () => Image.asset(
+        iconPath,
+        width: 24,
+        height: 24,
+        color: isSelected
+            ? Colors.black
+            : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+      ), // نمایش آیکون بدون بج در حال لود
+      error: (err, stack) => Image.asset(
+        iconPath,
+        width: 24,
+        height: 24,
+        color: isSelected
+            ? Colors.black
+            : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+      ), // نمایش آیکون بدون بج در صورت خطا
     );
   }
 }

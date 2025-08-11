@@ -153,6 +153,7 @@ flutter:
     - lib/view/util/images/headerBack.jpg
     - lib/view/util/images/default-avatar.jpg
     - lib/view/util/images/fish.svg
+    - lib/view/util/images/bottomnavigation/
   #   - images/a_dot_ham.jpeg
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
