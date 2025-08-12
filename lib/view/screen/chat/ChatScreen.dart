@@ -38,6 +38,13 @@ import '/main.dart';
 import 'ChatDetailsScreen.dart';
 import 'chat_input_box.dart';
 
+/// ChatScreen with automatic theme-based wallpaper support
+/// Features:
+/// - Light theme: Uses light-wallpaper.png
+/// - Dark theme: Uses dark-wallpaper.png
+/// - Smooth transitions between themes
+/// - Overlay for better text readability
+
 class ChatScreen extends ConsumerStatefulWidget {
   final String conversationId;
   final String otherUserName;
@@ -2150,6 +2157,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  /// Returns the appropriate chat wallpaper path based on current theme
+  String _getChatWallpaperPath(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    return isDarkMode
+        ? 'lib/view/util/images/chat-wallpaper/dark-wallpaper.png'
+        : 'lib/view/util/images/chat-wallpaper/light-wallpaper.png';
+  }
+
+  /// Returns the appropriate overlay color for better text readability
+  Color _getWallpaperOverlayColor(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    return isDarkMode
+        ? Colors.black.withOpacity(0.3)
+        : Colors.white.withOpacity(0.4);
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
@@ -2394,6 +2417,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ]),
         body: Stack(
           children: [
+            // Chat Wallpaper Background - Automatically changes based on theme
+            Positioned.fill(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+                decoration: BoxDecoration(
+                  image: DecorationImage(
+                    image: AssetImage(_getChatWallpaperPath(context)),
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+            ),
+            // Subtle overlay for better text readability - Adapts to theme
+            Positioned.fill(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+                decoration: BoxDecoration(
+                  color: _getWallpaperOverlayColor(context),
+                ),
+              ),
+            ),
             Column(
               children: [
                 Expanded(
