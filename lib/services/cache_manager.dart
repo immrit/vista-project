@@ -29,4 +29,16 @@ class CustomCacheManager {
       maxNrOfCacheObjects: 200, // تعداد بیشتر برای تصاویر چت
     ),
   );
+
+  // Cache manager اختصاصی برای والپیپرهای چت با مدت زمان کش طولانی‌تر
+  static const String _wallpaperCacheKey = 'chat_wallpaper_cache';
+  static final CacheManager wallpaperInstance = CacheManager(
+    Config(
+      _wallpaperCacheKey,
+      stalePeriod:
+          const Duration(days: 30), // نگهداری طولانی‌مدت برای والپیپرها
+      maxNrOfCacheObjects: 50, // تعداد کم اما کیفیت بالا
+      fileService: HttpFileService(),
+    ),
+  );
 }

@@ -219,6 +219,25 @@ Future<void> uploadProfilePicture() async {
 
 //CustomDrawer
 
+// تابع کمکی برای انتخاب رنگ header drawer
+Color _getDrawerHeaderColor(ThemeData theme) {
+  // اگر رنگ primary سفید است (در حالت تاریک)، از gradient یا رنگ جایگزین استفاده کن
+  if (theme.primaryColor == Colors.white &&
+      theme.brightness == Brightness.dark) {
+    return const Color(0xFF424242); // خاکستری تیره برای حالت سفید در تم تاریک
+  }
+  return theme.primaryColor;
+}
+
+// تابع کمکی برای انتخاب رنگ متن در header
+Color _getDrawerHeaderTextColor(ThemeData theme) {
+  if (theme.primaryColor == Colors.white &&
+      theme.brightness == Brightness.dark) {
+    return Colors.white;
+  }
+  return Colors.white;
+}
+
 Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
     ThemeData currentcolor, BuildContext context, WidgetRef ref) {
   // استفاده از تم پویا
@@ -235,7 +254,7 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
             maxHeight: 180,
           ),
           decoration: BoxDecoration(
-            color: dynamicTheme.primaryColor,
+            color: _getDrawerHeaderColor(dynamicTheme),
           ),
           child: getprofile.when(
               data: (getprofile) {
@@ -277,8 +296,9 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
                               Flexible(
                                 child: Text(
                                   '${getprofile['username']}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
+                                  style: TextStyle(
+                                    color:
+                                        _getDrawerHeaderTextColor(dynamicTheme),
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -302,7 +322,8 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
                           child: Text(
                             "${supabase.auth.currentUser!.email}",
                             style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.8),
+                              color: _getDrawerHeaderTextColor(dynamicTheme)
+                                  .withValues(alpha: 0.8),
                               fontSize: 13,
                             ),
                             overflow: TextOverflow.ellipsis,
@@ -325,8 +346,9 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
                     child: Center(
                       child: Text(
                         errorMsg,
-                        style:
-                            const TextStyle(color: Colors.white, fontSize: 14),
+                        style: TextStyle(
+                            color: _getDrawerHeaderTextColor(dynamicTheme),
+                            fontSize: 14),
                         textAlign: TextAlign.center,
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
@@ -335,10 +357,10 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
                   ),
                 );
               },
-              loading: () => const SafeArea(
+              loading: () => SafeArea(
                     child: Center(
                       child: CircularProgressIndicator(
-                        color: Colors.white,
+                        color: _getDrawerHeaderTextColor(dynamicTheme),
                       ),
                     ),
                   )),

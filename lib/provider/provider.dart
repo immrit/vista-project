@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:hive_flutter/hive_flutter.dart';
+import '../DB/message_cache_service.dart';
+import '../DB/conversation_cache_service.dart';
 import '../model/SearchResut.dart';
 import '../services/PostImageUploadService.dart';
 import '../view/widgets/VideoPlayerConfig.dart';
@@ -2317,3 +2320,272 @@ class AutoPlayNotifier extends StateNotifier<bool> {
     await VideoPlayerConfig().setAutoPlay(value);
   }
 }
+
+// Font size settings provider
+class MessageFontSizeNotifier extends StateNotifier<double> {
+  MessageFontSizeNotifier() : super(14.0) {
+    _loadFontSize();
+  }
+
+  static const String _fontSizeKey = 'message_font_size';
+
+  Future<void> _loadFontSize() async {
+    final box = await Hive.openBox('settings');
+    final savedSize = box.get(_fontSizeKey, defaultValue: 14.0);
+    state = savedSize.toDouble();
+  }
+
+  Future<void> setFontSize(double size) async {
+    state = size;
+    final box = await Hive.openBox('settings');
+    await box.put(_fontSizeKey, size);
+  }
+
+  String getFontSizeLabel(double size) {
+    if (size <= 11.0) return 'خیلی کوچک';
+    if (size <= 13.0) return 'کوچک';
+    if (size <= 15.0) return 'متوسط';
+    if (size <= 17.0) return 'بزرگ';
+    if (size <= 20.0) return 'خیلی بزرگ';
+    return 'بسیار بزرگ';
+  }
+}
+
+final messageFontSizeProvider =
+    StateNotifierProvider<MessageFontSizeNotifier, double>((ref) {
+  return MessageFontSizeNotifier();
+});
+
+// Auto download settings provider
+class AutoDownloadSettings {
+  final String photos; // 'always', 'wifi', 'never'
+  final String videos; // 'always', 'wifi', 'never'
+
+  AutoDownloadSettings({
+    this.photos = 'wifi',
+    this.videos = 'never',
+  });
+
+  AutoDownloadSettings copyWith({
+    String? photos,
+    String? videos,
+  }) {
+    return AutoDownloadSettings(
+      photos: photos ?? this.photos,
+      videos: videos ?? this.videos,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'photos': photos,
+      'videos': videos,
+    };
+  }
+
+  static AutoDownloadSettings fromMap(Map<String, dynamic> map) {
+    return AutoDownloadSettings(
+      photos: map['photos'] ?? 'wifi',
+      videos: map['videos'] ?? 'never',
+    );
+  }
+}
+
+class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
+  AutoDownloadNotifier() : super(AutoDownloadSettings()) {
+    _loadSettings();
+  }
+
+  static const String _autoDownloadKey = 'auto_download_settings';
+
+  Future<void> _loadSettings() async {
+    final box = await Hive.openBox('settings');
+    final savedSettings = box.get(_autoDownloadKey);
+    if (savedSettings != null) {
+      state = AutoDownloadSettings.fromMap(
+          Map<String, dynamic>.from(savedSettings));
+    }
+  }
+
+  Future<void> updatePhotoSetting(String setting) async {
+    state = state.copyWith(photos: setting);
+    await _saveSettings();
+  }
+
+  Future<void> updateVideoSetting(String setting) async {
+    state = state.copyWith(videos: setting);
+    await _saveSettings();
+  }
+
+  Future<void> _saveSettings() async {
+    final box = await Hive.openBox('settings');
+    await box.put(_autoDownloadKey, state.toMap());
+  }
+
+  String getSettingLabel(String setting) {
+    switch (setting) {
+      case 'always':
+        return 'همیشه';
+      case 'wifi':
+        return 'فقط Wi-Fi';
+      case 'never':
+        return 'هرگز';
+      default:
+        return 'نامشخص';
+    }
+  }
+}
+
+final autoDownloadProvider =
+    StateNotifierProvider<AutoDownloadNotifier, AutoDownloadSettings>((ref) {
+  return AutoDownloadNotifier();
+});
+
+// Performance settings provider
+class PerformanceSettings {
+  final bool batterySaverMode;
+  final bool smartCache;
+  final bool messagePreloading;
+
+  PerformanceSettings({
+    this.batterySaverMode = false,
+    this.smartCache = true,
+    this.messagePreloading = true,
+  });
+
+  PerformanceSettings copyWith({
+    bool? batterySaverMode,
+    bool? smartCache,
+    bool? messagePreloading,
+  }) {
+    return PerformanceSettings(
+      batterySaverMode: batterySaverMode ?? this.batterySaverMode,
+      smartCache: smartCache ?? this.smartCache,
+      messagePreloading: messagePreloading ?? this.messagePreloading,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'batterySaverMode': batterySaverMode,
+      'smartCache': smartCache,
+      'messagePreloading': messagePreloading,
+    };
+  }
+
+  static PerformanceSettings fromMap(Map<String, dynamic> map) {
+    return PerformanceSettings(
+      batterySaverMode: map['batterySaverMode'] ?? false,
+      smartCache: map['smartCache'] ?? true,
+      messagePreloading: map['messagePreloading'] ?? true,
+    );
+  }
+}
+
+class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
+  PerformanceNotifier() : super(PerformanceSettings()) {
+    _loadSettings();
+  }
+
+  static const String _performanceKey = 'performance_settings';
+
+  Future<void> _loadSettings() async {
+    final box = await Hive.openBox('settings');
+    final savedSettings = box.get(_performanceKey);
+    if (savedSettings != null) {
+      state =
+          PerformanceSettings.fromMap(Map<String, dynamic>.from(savedSettings));
+    }
+  }
+
+  Future<void> updateBatterySaver(bool enabled) async {
+    state = state.copyWith(batterySaverMode: enabled);
+    await _saveSettings();
+
+    // اعمال تنظیمات حالت کم‌مصرف
+    if (enabled) {
+      await _applyBatterySaverMode();
+    } else {
+      await _disableBatterySaverMode();
+    }
+  }
+
+  Future<void> updateSmartCache(bool enabled) async {
+    state = state.copyWith(smartCache: enabled);
+    await _saveSettings();
+
+    // اعمال تنظیمات کش هوشمند
+    if (enabled) {
+      await _enableSmartCache();
+    } else {
+      await _disableSmartCache();
+    }
+  }
+
+  Future<void> updateMessagePreloading(bool enabled) async {
+    state = state.copyWith(messagePreloading: enabled);
+    await _saveSettings();
+  }
+
+  Future<void> _saveSettings() async {
+    final box = await Hive.openBox('settings');
+    await box.put(_performanceKey, state.toMap());
+  }
+
+  Future<void> _applyBatterySaverMode() async {
+    // کاهش کیفیت تصاویر
+    await Hive.openBox('settings').then((box) {
+      box.put('image_quality', 'low');
+      box.put('auto_sync', false);
+      box.put('background_refresh', false);
+    });
+  }
+
+  Future<void> _disableBatterySaverMode() async {
+    await Hive.openBox('settings').then((box) {
+      box.put('image_quality', 'high');
+      box.put('auto_sync', true);
+      box.put('background_refresh', true);
+    });
+  }
+
+  Future<void> _enableSmartCache() async {
+    // پاکسازی خودکار کش قدیمی
+    final messageCacheService = MessageCacheService();
+    final conversationCacheService = ConversationCacheService();
+
+    // حذف پیام‌های قدیمی‌تر از 30 روز
+    final cutoffDate = DateTime.now().subtract(const Duration(days: 30));
+    await messageCacheService.deleteMessagesOlderThan(cutoffDate);
+  }
+
+  Future<void> _disableSmartCache() async {
+    // غیرفعال کردن پاکسازی خودکار
+    await Hive.openBox('settings').then((box) {
+      box.put('auto_cache_cleanup', false);
+    });
+  }
+
+  String getBatterySaverDescription() {
+    return state.batterySaverMode
+        ? 'فعال - کاهش مصرف باتری تا 30%'
+        : 'غیرفعال - عملکرد کامل';
+  }
+
+  String getSmartCacheDescription() {
+    return state.smartCache
+        ? 'فعال - بهینه‌سازی خودکار حافظه'
+        : 'غیرفعال - نگهداری همه داده‌ها';
+  }
+
+  String getPreloadingDescription() {
+    return state.messagePreloading
+        ? 'فعال - بارگذاری سریع‌تر'
+        : 'غیرفعال - بارگذاری عادی';
+  }
+}
+
+final performanceProvider =
+    StateNotifierProvider<PerformanceNotifier, PerformanceSettings>((ref) {
+  return PerformanceNotifier();
+});

@@ -39,6 +39,7 @@ import 'view/screen/ouathUser/editeProfile.dart';
 import 'package:flutter/foundation.dart' show kIsWeb; // اضافه کن
 import 'package:intl/intl.dart';
 import 'DB/message_cache_service.dart';
+import 'services/wallpaper_cache_service.dart';
 import 'view/screen/PublicPosts/publicPosts.dart';
 import 'view/screen/PublicPosts/PostDetailPage.dart';
 import 'view/screen/PublicPosts/profileScreen.dart';
@@ -195,6 +196,9 @@ void main() async {
 
   // FCM foreground messages are now handled by PushNotificationService
   // This listener is set up in PushNotificationService.init() after user login
+
+  // پیش‌بارگذاری والپیپرهای چت در background
+  unawaited(WallpaperCacheService.preloadWallpapers());
 
   runApp(
     ProviderScope(

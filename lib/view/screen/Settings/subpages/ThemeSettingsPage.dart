@@ -166,6 +166,19 @@ class ThemeSettingsPage extends ConsumerWidget {
                       children: [
                         _buildThemePreview(
                           context,
+                          color: ThemeColor.white,
+                          label: 'سفید',
+                          isSelected: selectedColor == ThemeColor.white,
+                          brightness: brightness,
+                          onTap: () {
+                            ref
+                                .read(selectedColorProvider.notifier)
+                                .updateColor(ThemeColor.white);
+                          },
+                        ),
+                        const SizedBox(width: 12),
+                        _buildThemePreview(
+                          context,
                           color: ThemeColor.blue,
                           label: 'آبی',
                           isSelected: selectedColor == ThemeColor.blue,
@@ -213,19 +226,6 @@ class ThemeSettingsPage extends ConsumerWidget {
                             ref
                                 .read(selectedColorProvider.notifier)
                                 .updateColor(ThemeColor.teal);
-                          },
-                        ),
-                        const SizedBox(width: 12),
-                        _buildThemePreview(
-                          context,
-                          color: ThemeColor.white,
-                          label: 'سفید',
-                          isSelected: selectedColor == ThemeColor.white,
-                          brightness: brightness,
-                          onTap: () {
-                            ref
-                                .read(selectedColorProvider.notifier)
-                                .updateColor(ThemeColor.white);
                           },
                         ),
                         const SizedBox(width: 4), // فاصله انتهایی

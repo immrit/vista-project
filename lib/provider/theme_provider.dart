@@ -24,13 +24,13 @@ final dynamicThemeProvider = Provider<ThemeData>((ref) {
 
 // Notifier برای مدیریت رنگ انتخاب شده
 class SelectedColorNotifier extends StateNotifier<ThemeColor> {
-  SelectedColorNotifier() : super(ThemeColor.blue) {
+  SelectedColorNotifier() : super(ThemeColor.white) {
     _loadFromHive();
   }
 
   void _loadFromHive() async {
     final box = Hive.box('settings');
-    final colorName = box.get('selectedColor', defaultValue: 'blue');
+    final colorName = box.get('selectedColor', defaultValue: 'white');
     state = _parseThemeColor(colorName);
   }
 
@@ -54,8 +54,10 @@ class SelectedColorNotifier extends StateNotifier<ThemeColor> {
         return ThemeColor.teal;
       case 'white':
         return ThemeColor.white;
-      default:
+      case 'blue':
         return ThemeColor.blue;
+      default:
+        return ThemeColor.white;
     }
   }
 
