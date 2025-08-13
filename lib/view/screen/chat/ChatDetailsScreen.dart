@@ -4,12 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
 import 'package:shamsi_date/shamsi_date.dart' as shamsi;
-import 'package:url_launcher/url_launcher.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:intl/intl.dart';
 import '../../../model/conversation_model.dart';
 import '../../../model/message_model.dart';
 import '../../../provider/chat_provider.dart';
+import '../../../provider/provider.dart';
 import 'ChatMessageSearchScreen.dart';
 
 class ChatDetailsScreen extends ConsumerStatefulWidget {
@@ -54,13 +54,15 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
         ref.watch(conversationProvider(widget.conversationId));
     final isBlockedAsync =
         ref.watch(userBlockStatusProvider(widget.otherUserId));
+    final userSettingsAsync =
+        ref.watch(userSettingsByIdProvider(widget.otherUserId));
 
     return Scaffold(
       body: NestedScrollView(
         headerSliverBuilder: (context, innerBoxIsScrolled) {
           return [
-            _buildSliverAppBar(
-                userProfileAsync, conversationAsync, isBlockedAsync),
+            _buildSliverAppBar(userProfileAsync, conversationAsync,
+                isBlockedAsync, userSettingsAsync),
             _buildUserInfo(userProfileAsync),
             _buildTabBar(),
           ];
@@ -85,7 +87,8 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
   Widget _buildSliverAppBar(
       AsyncValue<Map<String, dynamic>?> userProfileAsync,
       AsyncValue<ConversationModel?> conversationAsync,
-      AsyncValue<bool> isBlockedAsync) {
+      AsyncValue<bool> isBlockedAsync,
+      AsyncValue<Map<String, dynamic>?> userSettingsAsync) {
     return SliverAppBar(
       expandedHeight: 320.0,
       floating: false,
@@ -218,7 +221,7 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
                 children: [
                   // آواتار بزرگ قابل کلیک
                   GestureDetector(
-                    onTap: () => _showFullScreenAvatar(),
+                    onTap: () => _handleAvatarTap(userSettingsAsync),
                     child: Hero(
                       tag: 'profile_avatar_${widget.otherUserId}',
                       child: Container(
@@ -341,6 +344,18 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
         ),
       ),
     );
+  }
+
+  void _handleAvatarTap(AsyncValue<Map<String, dynamic>?> userSettingsAsync) {
+    final settings = userSettingsAsync.value;
+    final allowZoom = (settings?["allow_profile_zoom"] as bool?) ?? true;
+
+    if (!allowZoom) {
+      _showSnackBar('این کاربر بزرگنمایی پروفایل را غیرفعال کرده است');
+      return;
+    }
+
+    _showFullScreenAvatar();
   }
 
   void _showFullScreenAvatar() {
@@ -690,42 +705,7 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
     );
   }
 
-  Widget _buildStatItem(
-      String label, String count, IconData icon, Color color) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(
-            icon,
-            color: color,
-            size: 28,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          count,
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey[600],
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
-  }
+  // removed unused _buildStatItem
 
   Widget _buildMediaItem(
       MessageModel message, int index, List<MessageModel> mediaMessages) {

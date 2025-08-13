@@ -9,7 +9,7 @@ import '../model/SearchResut.dart';
 import '../services/PostImageUploadService.dart';
 import '../view/widgets/VideoPlayerConfig.dart';
 import '/model/ProfileModel.dart';
-import '/model/notificationModel.dart';
+// import '/model/notificationModel.dart';
 import '/model/publicPostModel.dart';
 import '../main.dart';
 import '../model/CommentModel.dart';
@@ -2109,6 +2109,41 @@ final currentUserProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final response =
       await supabase.from('profiles').select().eq('id', userId).single();
   return response;
+});
+
+// user_settings providers
+final userSettingsByIdProvider =
+    FutureProvider.family<Map<String, dynamic>?, String>((ref, userId) async {
+  try {
+    final client = Supabase.instance.client;
+    final response = await client
+        .from('user_settings')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+    return response;
+  } catch (e) {
+    debugPrint('Error fetching user_settings for $userId: $e');
+    return null;
+  }
+});
+
+final currentUserSettingsProvider =
+    FutureProvider<Map<String, dynamic>?>((ref) async {
+  try {
+    final client = Supabase.instance.client;
+    final userId = client.auth.currentUser?.id;
+    if (userId == null) return null;
+    final response = await client
+        .from('user_settings')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+    return response;
+  } catch (e) {
+    debugPrint('Error fetching current user_settings: $e');
+    return null;
+  }
 });
 final videoPositionProvider =
     StateProvider.family<Duration, String>((ref, videoId) {

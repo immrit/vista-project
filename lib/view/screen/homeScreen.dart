@@ -139,7 +139,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 'lib/view/util/images/bottomnavigation/home.png',
                 width: 24,
                 height: 24,
-                color: Colors.black,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white
+                    : Colors.black,
               ),
               label: '',
             ),
@@ -154,7 +156,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 'lib/view/util/images/bottomnavigation/magnifying-glass.png',
                 width: 24,
                 height: 24,
-                color: Colors.black,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white
+                    : Colors.black,
               ),
               label: '',
             ),
@@ -215,7 +219,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 'lib/view/util/images/bottomnavigation/user.png',
                 width: 24,
                 height: 24,
-                color: Colors.black,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white
+                    : Colors.black,
               ),
               label: '',
             ),
@@ -243,7 +249,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         width: 24,
         height: 24,
         color: isSelected
-            ? Colors.black
+            ? (Theme.of(context).brightness == Brightness.dark
+                ? Colors.white
+                : Colors.black)
             : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
       ),
     );
@@ -273,7 +281,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             width: 24,
             height: 24,
             color: isSelected
-                ? Colors.black
+                ? (Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white
+                    : Colors.black)
                 : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
           ),
         );
@@ -283,7 +293,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         width: 24,
         height: 24,
         color: isSelected
-            ? Colors.black
+            ? (Theme.of(context).brightness == Brightness.dark
+                ? Colors.white
+                : Colors.black)
             : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
       ), // نمایش آیکون بدون بج در حال لود
       error: (err, stack) => Image.asset(
@@ -291,7 +303,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         width: 24,
         height: 24,
         color: isSelected
-            ? Colors.black
+            ? (Theme.of(context).brightness == Brightness.dark
+                ? Colors.white
+                : Colors.black)
             : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
       ), // نمایش آیکون بدون بج در صورت خطا
     );

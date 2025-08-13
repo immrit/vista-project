@@ -1,4 +1,3 @@
-import 'package:Vista/view/util/const.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -12,9 +11,10 @@ import '../../widgets/VideoPlayerConfig.dart';
 import '../ouathUser/updatePassword.dart';
 import 'ContactUs.dart';
 import 'TermsAndConditions.dart';
-import 'vistaStore/store.dart';
-import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
+// import 'vistaStore/store.dart';
+// import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../chat/ChatSettingsScreen.dart';
 
 class Settings extends ConsumerWidget {
   const Settings({super.key});
@@ -261,6 +261,82 @@ class Settings extends ConsumerWidget {
                           ],
                         ),
                       ),
+
+                      const SizedBox(height: 24),
+
+                      // بخش تنظیمات چت
+                      _buildSectionHeader('تنظیمات چت', Icons.chat_outlined),
+                      Card(
+                        margin: const EdgeInsets.symmetric(vertical: 8.0),
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          children: [
+                            ProfileFields(
+                              'تنظیمات چت',
+                              Icons.settings,
+                              () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const ChatSettingsScreen(),
+                                  ),
+                                );
+                              },
+                              colorScheme.primary,
+                            ),
+                            const Divider(height: 1),
+                            Consumer(builder: (context, ref, _) {
+                              final settingsAsync =
+                                  ref.watch(currentUserSettingsProvider);
+                              final value = settingsAsync
+                                      .value?['allow_profile_zoom'] as bool? ??
+                                  true;
+                              return SwitchListTile(
+                                title: const Text('اجازه بزرگنمایی پروفایل من'),
+                                subtitle: const Text(
+                                    'اگر غیرفعال باشد، دیگران نمی‌توانند عکس پروفایل شما را بزرگنمایی کنند'),
+                                value: value,
+                                onChanged: (bool next) async {
+                                  try {
+                                    final client = Supabase.instance.client;
+                                    final userId = client.auth.currentUser?.id;
+                                    if (userId == null) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(const SnackBar(
+                                              content: Text(
+                                                  'ابتدا وارد حساب خود شوید')));
+                                      return;
+                                    }
+                                    await client.from('user_settings').upsert({
+                                      'user_id': userId,
+                                      'allow_profile_zoom': next,
+                                    });
+                                    final _ = await ref.refresh(
+                                        currentUserSettingsProvider.future);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                          content: Text(
+                                              'تنظیمات حریم خصوصی به‌روزرسانی شد')),
+                                    );
+                                  } catch (e) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                          content:
+                                              Text('خطا در ذخیره تنظیم: $e')),
+                                    );
+                                  }
+                                },
+                                secondary:
+                                    const Icon(Icons.zoom_in_map_outlined),
+                              );
+                            }),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -286,7 +362,7 @@ class Settings extends ConsumerWidget {
                   const SizedBox(height: 24),
                   ElevatedButton(
                     onPressed: () {
-                      ref.refresh(profileProvider);
+                      final _ = ref.refresh(profileProvider);
                     },
                     child: const Text('تلاش مجدد'),
                   ),

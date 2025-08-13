@@ -12,7 +12,7 @@ import '../../../provider/chat_provider.dart';
 import '../../util/const.dart';
 import '../channel/ChannelScreen.dart';
 import 'ArchivedConversationsScreen.dart';
-import 'ChatSettingsScreen.dart'; // اضافه کردن ایمپورت صفحه جدید
+// import 'ChatSettingsScreen.dart'; // اضافه کردن ایمپورت صفحه جدید
 import '../../../services/ChatService.dart';
 import 'ChatScreen.dart';
 import '../../../DB/conversation_cache_service.dart';
@@ -210,12 +210,6 @@ class _ChatConversationsScreenState
           value: 'archived',
           icon: Icons.archive_outlined,
           title: 'گفتگوهای بایگانی',
-          theme: theme,
-        ),
-        _buildMenuItem(
-          value: 'settings',
-          icon: Icons.settings_outlined,
-          title: 'تنظیمات چت',
           theme: theme,
         ),
       ],
@@ -980,13 +974,6 @@ class _ChatConversationsScreenState
         break;
       case 'new_channel':
         _createNewChannel();
-        break;
-      case 'settings':
-        Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (context) =>
-                    const ChatSettingsScreen())); // هدایت به صفحه جدید
         break;
     }
   }

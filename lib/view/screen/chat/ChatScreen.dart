@@ -30,6 +30,7 @@ import '../../util/widgets.dart';
 import 'package:flutter/foundation.dart' as foundation;
 import '../../../DB/message_cache_service.dart';
 import '../../../services/ChatService.dart';
+import '../../../services/cache_manager.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../../widgets/audio_player_widget.dart';
@@ -37,13 +38,6 @@ import '../../widgets/web files/image_downloader.dart';
 import '/main.dart';
 import 'ChatDetailsScreen.dart';
 import 'chat_input_box.dart';
-
-/// ChatScreen with automatic theme-based wallpaper support
-/// Features:
-/// - Light theme: Uses light-wallpaper.png
-/// - Dark theme: Uses dark-wallpaper.png
-/// - Smooth transitions between themes
-/// - Overlay for better text readability
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String conversationId;
@@ -145,6 +139,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(pendingMessagesSyncProvider);
     });
+
+    // پیش‌بارگذاری والپیپر برای عملکرد بهتر
+    _preloadWallpaper();
+  }
+
+  /// پیش‌بارگذاری والپیپر در کش
+  Future<void> _preloadWallpaper() async {
+    try {
+      final lightUrl =
+          'https://coffevista.s3.ir-thr-at1.arvanstorage.ir/wallpaper-chat%2F9f649ff4-5ebf-4a68-b740-6f009453500b.png?versionId=';
+      final darkUrl =
+          'https://coffevista.s3.ir-thr-at1.arvanstorage.ir/wallpaper-chat%2F784e1c0c-2b8a-443d-8231-67c100a081e1.png?versionId=';
+
+      // پیش‌بارگذاری هر دو والپیپر
+      await Future.wait([
+        CustomCacheManager.chatInstance.downloadFile(lightUrl),
+        CustomCacheManager.chatInstance.downloadFile(darkUrl),
+      ]);
+    } catch (e) {
+      print('خطا در پیش‌بارگذاری والپیپر: $e');
+    }
   }
 
   Future<void> _preloadCache() async {
@@ -2157,12 +2172,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
-  /// Returns the appropriate chat wallpaper path based on current theme
-  String _getChatWallpaperPath(BuildContext context) {
+  /// Returns the appropriate chat wallpaper URL based on current theme
+  String _getChatWallpaperUrl(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return isDarkMode
-        ? 'lib/view/util/images/chat-wallpaper/dark-wallpaper.png'
-        : 'lib/view/util/images/chat-wallpaper/light-wallpaper.png';
+        ? 'https://coffevista.s3.ir-thr-at1.arvanstorage.ir/wallpaper-chat%2F784e1c0c-2b8a-443d-8231-67c100a081e1.png?versionId='
+        : 'https://coffevista.s3.ir-thr-at1.arvanstorage.ir/wallpaper-chat%2F9f649ff4-5ebf-4a68-b740-6f009453500b.png?versionId=';
   }
 
   /// Returns the appropriate overlay color for better text readability
@@ -2171,6 +2186,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return isDarkMode
         ? Colors.black.withOpacity(0.3)
         : Colors.white.withOpacity(0.4);
+  }
+
+  /// Returns a placeholder widget while wallpaper is loading
+  Widget _buildWallpaperPlaceholder(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isDarkMode
+              ? [
+                  Colors.grey[900]!,
+                  Colors.grey[800]!,
+                ]
+              : [
+                  Colors.grey[100]!,
+                  Colors.grey[200]!,
+                ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -2417,17 +2454,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ]),
         body: Stack(
           children: [
-            // Chat Wallpaper Background - Automatically changes based on theme
+            // Chat Wallpaper Background - Fixed position, doesn't move with keyboard
             Positioned.fill(
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-                decoration: BoxDecoration(
-                  image: DecorationImage(
-                    image: AssetImage(_getChatWallpaperPath(context)),
-                    fit: BoxFit.cover,
-                  ),
-                ),
+              child: CachedNetworkImage(
+                imageUrl: _getChatWallpaperUrl(context),
+                fit: BoxFit.cover,
+                cacheManager: CustomCacheManager.chatInstance,
+                placeholder: (context, url) =>
+                    _buildWallpaperPlaceholder(context),
+                errorWidget: (context, url, error) =>
+                    _buildWallpaperPlaceholder(context),
+                fadeInDuration: const Duration(milliseconds: 300),
+                fadeOutDuration: const Duration(milliseconds: 300),
               ),
             ),
             // Subtle overlay for better text readability - Adapts to theme
@@ -2440,6 +2478,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
               ),
             ),
+            // Chat content
             Column(
               children: [
                 Expanded(
