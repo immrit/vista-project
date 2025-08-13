@@ -1,149 +1,139 @@
 import 'package:flutter/material.dart';
 
-// تم روشن
-final ThemeData lightTheme = ThemeData(
-  brightness: Brightness.light,
-  primaryColor: Colors.white,
-  scaffoldBackgroundColor: Colors.white,
-  appBarTheme: const AppBarTheme(
-    color: Colors.white,
-    iconTheme: IconThemeData(color: Colors.black),
-    titleTextStyle: TextStyle(color: Colors.black, fontSize: 20),
-    elevation: 0,
-  ),
-  colorScheme: ColorScheme.fromSwatch(primarySwatch: Colors.grey).copyWith(
-    secondary: Colors.black,
-    onPrimary: Colors.black,
-    onSecondary: Colors.white,
-  ),
-  bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-    selectedItemColor: Colors.black,
-    unselectedItemColor: Colors.grey,
-  ),
-  floatingActionButtonTheme: const FloatingActionButtonThemeData(
-    backgroundColor: Colors.black,
-    foregroundColor: Colors.white,
-  ),
-  fontFamily: 'Vazir',
-);
+// enum برای رنگ‌های اصلی
+enum ThemeColor {
+  blue,
+  red,
+  yellow,
+  teal,
+  white, // رنگ سفید برای تم تاریک
+}
 
-// تم تاریک
-final ThemeData darkTheme = ThemeData(
-  brightness: Brightness.dark,
-  primaryColor: const Color(0xFF1E1E1E), // Charcoal base
-  scaffoldBackgroundColor: const Color(0xFF1E1E1E), // Main background
-  appBarTheme: const AppBarTheme(
-    color: Color(0xFF252525), // Slightly lighter
-    iconTheme: IconThemeData(color: Colors.white),
-    titleTextStyle: TextStyle(color: Colors.white, fontSize: 20),
-    elevation: 0,
-  ),
-  colorScheme: const ColorScheme.dark(
-    primary: Colors.white, // Changed from blue to white
-    secondary: Color(0xFF252525),
-    surface: Color(0xFF252525),
-    onPrimary: Colors.white,
-    onSecondary: Colors.white,
-    onSurface: Colors.white,
-  ),
-  floatingActionButtonTheme: const FloatingActionButtonThemeData(
-    backgroundColor: Colors.white,
-    foregroundColor: Colors.black,
-  ),
-  bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-    backgroundColor: Color(0xFF252525), // Nav bar background
-    selectedItemColor: Colors.white, // Changed from blue to white
-    unselectedItemColor: Color(0xFF8899A6),
-  ),
-  cardColor: const Color(0xFF252525),
-  dividerColor: const Color(0xFF323232),
-  fontFamily: 'Vazir',
-);
+// تابع برای ایجاد تم بر اساس رنگ و brightness
+ThemeData createTheme(ThemeColor color, Brightness brightness) {
+  final bool isDark = brightness == Brightness.dark;
 
-// تم قرمز و سفید
-final ThemeData redWhiteTheme = ThemeData(
-  brightness: Brightness.light,
-  primaryColor: Colors.red,
-  scaffoldBackgroundColor: Colors.red[50],
-  appBarTheme: AppBarTheme(
-    color: Colors.red[200],
-    iconTheme: const IconThemeData(color: Colors.white),
-    titleTextStyle: const TextStyle(color: Colors.white, fontSize: 20),
-    elevation: 0,
-  ),
-  colorScheme: ColorScheme.fromSwatch(primarySwatch: Colors.red).copyWith(
-    secondary: Colors.white,
-    onPrimary: Colors.white,
-    onSecondary: Colors.red,
-  ),
-  bottomNavigationBarTheme: BottomNavigationBarThemeData(
-    selectedItemColor: Colors.red[400],
-    unselectedItemColor: Colors.red[200],
-  ),
-  floatingActionButtonTheme: FloatingActionButtonThemeData(
-    backgroundColor: Colors.red[400],
-    foregroundColor: Colors.white,
-  ),
-  fontFamily: 'Vazir',
-);
+  // تعیین رنگ اصلی بر اساس انتخاب
+  Color primaryColor;
+  Color background;
+  Color surface;
 
-// تم زرد و مشکی
-final ThemeData yellowBlackTheme = ThemeData(
-  brightness: Brightness.light,
-  primaryColor: Colors.yellow[700],
-  scaffoldBackgroundColor: Colors.white,
-  appBarTheme: AppBarTheme(
-    color: Colors.yellow[700],
-    iconTheme: const IconThemeData(color: Colors.black),
-    titleTextStyle: const TextStyle(color: Colors.black, fontSize: 20),
-    elevation: 0,
-  ),
-  colorScheme: ColorScheme.light(
-    primary: Colors.yellow[700]!,
-    secondary: Colors.black,
-    onPrimary: Colors.black,
-    onSecondary: Colors.yellow,
-    surface: Colors.yellow[100]!,
-    onSurface: Colors.black,
-  ),
-  bottomNavigationBarTheme: BottomNavigationBarThemeData(
-    selectedItemColor: Colors.yellow[700],
-    unselectedItemColor: Colors.grey,
-  ),
-  floatingActionButtonTheme: FloatingActionButtonThemeData(
-    backgroundColor: Colors.yellow[700],
-    foregroundColor: Colors.black,
-  ),
-  fontFamily: 'Vazir',
-);
+  switch (color) {
+    case ThemeColor.blue:
+      primaryColor = isDark ? Colors.blue[300]! : Colors.blue[700]!;
+      break;
+    case ThemeColor.red:
+      primaryColor = isDark ? Colors.red[300]! : Colors.red[700]!;
+      break;
+    case ThemeColor.yellow:
+      primaryColor = isDark ? Colors.amber[300]! : Colors.amber[700]!;
+      break;
+    case ThemeColor.teal:
+      primaryColor = isDark ? Colors.teal[300]! : Colors.teal[700]!;
+      break;
+    case ThemeColor.white:
+      primaryColor = isDark ? Colors.white : Colors.grey[800]!;
+      break;
+  }
 
-// تم teal و سفید
-// تم teal و سفید بهبود یافته
-final ThemeData tealWhiteTheme = ThemeData(
-  brightness: Brightness.light,
-  primaryColor: Colors.teal[700],
-  scaffoldBackgroundColor: Colors.teal[50],
-  appBarTheme: AppBarTheme(
-    color: Colors.teal[700],
-    iconTheme: const IconThemeData(color: Colors.white),
-    titleTextStyle: const TextStyle(color: Colors.white, fontSize: 20),
-    elevation: 0,
-  ),
-  colorScheme: ColorScheme.light(
-    primary: Colors.teal[700]!,
-    secondary: Colors.white,
-    onPrimary: Colors.white,
-    onSecondary: Colors.teal,
-    surface: Colors.teal[100]!,
-    onSurface: Colors.teal[900]!,
-  ),
-  bottomNavigationBarTheme: BottomNavigationBarThemeData(
-    selectedItemColor: Colors.teal[700],
-    unselectedItemColor: Colors.teal[200],
-  ),
-  floatingActionButtonTheme: FloatingActionButtonThemeData(
-    backgroundColor: Colors.teal[700],
-    foregroundColor: Colors.white,
-  ),
-  fontFamily: 'Vazir',
-);
+  if (isDark) {
+    // تم تاریک
+    background = const Color(0xFF1E1E1E);
+    surface = const Color(0xFF252525);
+
+    return ThemeData(
+      brightness: Brightness.dark,
+      primaryColor: primaryColor,
+      scaffoldBackgroundColor: background,
+      appBarTheme: AppBarTheme(
+        color: surface,
+        iconTheme: const IconThemeData(color: Colors.white),
+        titleTextStyle: const TextStyle(color: Colors.white, fontSize: 20),
+        elevation: 0,
+      ),
+      colorScheme: ColorScheme.dark(
+        primary: primaryColor,
+        secondary: surface,
+        surface: surface,
+        onPrimary: Colors.white,
+        onSecondary: Colors.white,
+        onSurface: Colors.white,
+      ),
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        backgroundColor: surface,
+        selectedItemColor: primaryColor,
+        unselectedItemColor: const Color(0xFF8899A6),
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
+      ),
+      cardColor: surface,
+      dividerColor: const Color(0xFF323232),
+      fontFamily: 'Vazir',
+    );
+  } else {
+    // تم روشن
+    background = Colors.white;
+    surface = color == ThemeColor.blue
+        ? Colors.grey[50]!
+        : color == ThemeColor.white
+            ? Colors.grey[100]!
+            : _getColorShade(color, 50);
+
+    return ThemeData(
+      brightness: Brightness.light,
+      primaryColor: primaryColor,
+      scaffoldBackgroundColor: background,
+      appBarTheme: AppBarTheme(
+        color: primaryColor,
+        iconTheme: const IconThemeData(color: Colors.white),
+        titleTextStyle: const TextStyle(color: Colors.white, fontSize: 20),
+        elevation: 0,
+      ),
+      colorScheme: ColorScheme.light(
+        primary: primaryColor,
+        secondary: surface,
+        surface: surface,
+        onPrimary: Colors.white,
+        onSecondary: primaryColor,
+        onSurface: Colors.black87,
+      ),
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        selectedItemColor: primaryColor,
+        unselectedItemColor: Colors.grey,
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
+      ),
+      cardColor: Colors.white,
+      dividerColor: Colors.grey[300],
+      fontFamily: 'Vazir',
+    );
+  }
+}
+
+// تابع کمکی برای گرفتن سایه رنگ
+Color _getColorShade(ThemeColor color, int shade) {
+  switch (color) {
+    case ThemeColor.red:
+      return Colors.red[shade]!;
+    case ThemeColor.yellow:
+      return Colors.amber[shade]!;
+    case ThemeColor.teal:
+      return Colors.teal[shade]!;
+    case ThemeColor.blue:
+      return Colors.blue[shade]!;
+    case ThemeColor.white:
+      return Colors.grey[shade]!;
+  }
+}
+
+// تم‌های پیش‌فرض برای سازگاری با کد قبلی
+final ThemeData lightTheme = createTheme(ThemeColor.blue, Brightness.light);
+final ThemeData darkTheme = createTheme(ThemeColor.blue, Brightness.dark);
+final ThemeData redWhiteTheme = createTheme(ThemeColor.red, Brightness.light);
+final ThemeData yellowBlackTheme =
+    createTheme(ThemeColor.yellow, Brightness.light);
+final ThemeData tealWhiteTheme = createTheme(ThemeColor.teal, Brightness.light);

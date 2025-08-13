@@ -21,6 +21,7 @@ import 'firebase_options.dart';
 import 'model/Hive Model/RecentSearch.dart';
 import 'provider/profile_completion_provider.dart';
 import 'provider/provider.dart';
+import 'provider/theme_provider.dart';
 import 'security/security.dart';
 import 'services/ChatService.dart';
 import 'services/deepLink.dart';
@@ -197,10 +198,7 @@ void main() async {
 
   runApp(
     ProviderScope(
-      overrides: [
-        themeProvider.overrideWith((ref) => initialTheme),
-      ],
-      child: MyApp(initialTheme: initialTheme),
+      child: MyApp(),
     ),
   );
 }
@@ -225,9 +223,7 @@ ThemeData _getInitialTheme(String savedTheme) {
 final supabase = Supabase.instance.client;
 
 class MyApp extends ConsumerStatefulWidget {
-  const MyApp({super.key, required this.initialTheme});
-
-  final ThemeData initialTheme;
+  const MyApp({super.key});
 
   @override
   _MyAppState createState() => _MyAppState();
@@ -482,7 +478,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       builder: (context, child) {
         return Consumer(
           builder: (context, ref, child) {
-            final theme = ref.watch(themeProvider);
+            final theme = ref.watch(dynamicThemeProvider);
             return MaterialApp(
               title: 'Vista',
               debugShowCheckedModeBanner: false,

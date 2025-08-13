@@ -15,6 +15,7 @@ import '../../model/CommentModel.dart';
 import '../../model/UserModel.dart';
 import '../../model/publicPostModel.dart';
 import '../../provider/provider.dart';
+import '../../provider/theme_provider.dart';
 import '../screen/PublicPosts/profileScreen.dart';
 import 'themes.dart';
 import '../../DB/message_cache_service.dart';
@@ -220,57 +221,97 @@ Future<void> uploadProfilePicture() async {
 
 Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
     ThemeData currentcolor, BuildContext context, WidgetRef ref) {
-  void saveThemeToHive(String theme) async {
-    var box = Hive.box('settings');
-    await box.put('selectedTheme', theme);
-
-    final themeNotifier = ref.watch(themeProvider.notifier);
-  }
-
+  // استفاده از تم پویا
+  final dynamicTheme = ref.watch(dynamicThemeProvider);
   return Drawer(
-    width: 0.6.sw,
+    width: 0.65.sw,
+    backgroundColor: dynamicTheme.scaffoldBackgroundColor,
     child: Column(
       children: <Widget>[
-        DrawerHeader(
-          padding: EdgeInsets.zero,
-          margin: EdgeInsets.zero,
+        Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(
+            minHeight: 160,
+            maxHeight: 180,
+          ),
+          decoration: BoxDecoration(
+            color: dynamicTheme.primaryColor,
+          ),
           child: getprofile.when(
               data: (getprofile) {
-                return UserAccountsDrawerHeader(
-                  decoration: BoxDecoration(
-                      color: currentcolor.appBarTheme.backgroundColor),
-                  currentAccountPicture: CircleAvatar(
-                    radius: 30,
-                    backgroundImage: getprofile!['avatar_url'] != null
-                        ? CachedNetworkImageProvider(
-                            getprofile['avatar_url'].toString())
-                        : const AssetImage(
-                            'lib/util/images/default-avatar.jpg'),
-                  ),
-                  margin: const EdgeInsets.only(bottom: 0),
-                  currentAccountPictureSize: const Size(65, 65),
-                  accountName: Row(
-                    children: [
-                      Text(
-                        '${getprofile['username']}',
-                        style: TextStyle(
+                return SafeArea(
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16.0, vertical: 12.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Avatar
+                        Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.3),
+                              width: 2,
+                            ),
+                          ),
+                          child: CircleAvatar(
+                            radius: 28,
+                            backgroundImage: getprofile!['avatar_url'] != null
+                                ? CachedNetworkImageProvider(
+                                    getprofile['avatar_url'].toString())
+                                : const AssetImage(
+                                    'lib/util/images/default-avatar.jpg'),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        // Username row با محدودیت عرض
+                        SizedBox(
+                          width: double.infinity,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  '${getprofile['username']}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ),
+                              if (getprofile['is_verified'])
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 4),
+                                  child: _buildVerificationBadge(
+                                      context, getprofile),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        // Email با محدودیت عرض
+                        SizedBox(
+                          width: double.infinity,
+                          child: Text(
+                            "${supabase.auth.currentUser!.email}",
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.8),
+                              fontSize: 13,
+                            ),
                             overflow: TextOverflow.ellipsis,
-                            color: currentcolor.brightness == Brightness.dark
-                                ? Colors.white
-                                : Colors.black),
-                      ),
-                      const SizedBox(
-                        width: 3,
-                      ),
-                      if (getprofile['is_verified'])
-                        _buildVerificationBadge(context, getprofile)
-                    ],
+                            maxLines: 1,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  accountEmail: Text("${supabase.auth.currentUser!.email}",
-                      style: TextStyle(
-                          color: currentcolor.brightness == Brightness.dark
-                              ? Colors.white
-                              : Colors.black)),
                 );
               },
               error: (error, stack) {
@@ -278,68 +319,78 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
                     ? 'کاربر وارد سیستم نشده است، لطفاً ورود کنید.'
                     : 'خطا در دریافت اطلاعات کاربر، لطفاً دوباره تلاش کنید.';
 
-                return Center(child: Text(errorMsg));
+                return SafeArea(
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    child: Center(
+                      child: Text(
+                        errorMsg,
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 14),
+                        textAlign: TextAlign.center,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                );
               },
-              loading: () => const Center(child: CircularProgressIndicator())),
+              loading: () => const SafeArea(
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                      ),
+                    ),
+                  )),
         ),
         SwitchListTile(
-          title: const Text('حالت شب/روز'),
-          value: ref.watch(themeProvider).brightness == Brightness.dark,
+          title: Text(
+            'حالت تاریک',
+            style: TextStyle(color: dynamicTheme.textTheme.bodyLarge?.color),
+          ),
+          value: ref.watch(brightnessProvider) == Brightness.dark,
           onChanged: (bool isDark) {
-            // تغییر تم
-            final themeNotifier = ref.read(themeProvider.notifier);
-
-            if (isDark) {
-              themeNotifier.state = darkTheme;
-              saveThemeToHive('dark');
-            } else {
-              themeNotifier.state = lightTheme;
-              saveThemeToHive('light');
-            }
+            // استفاده از سیستم تم جدید
+            ref
+                .read(brightnessProvider.notifier)
+                .updateBrightness(isDark ? Brightness.dark : Brightness.light);
           },
           secondary: Icon(
-            ref.watch(themeProvider).brightness == Brightness.dark
+            ref.watch(brightnessProvider) == Brightness.dark
                 ? Icons.dark_mode
                 : Icons.light_mode,
+            color: dynamicTheme.primaryColor,
           ),
-          activeColor: Colors.black,
-          activeTrackColor: Colors.white10,
+          activeColor: dynamicTheme.primaryColor,
         ),
-
         ListTile(
-          leading: const Icon(Icons.settings),
-          title: const Text(
+          leading: Icon(Icons.settings, color: dynamicTheme.primaryColor),
+          title: Text(
             'تنظیمات',
+            style: TextStyle(color: dynamicTheme.textTheme.bodyLarge?.color),
           ),
           onTap: () {
             Navigator.pushNamed(context, '/settings');
           },
         ),
         ListTile(
-          leading: const Icon(Icons.support_agent),
-          title: const Text(
+          leading: Icon(Icons.support_agent, color: dynamicTheme.primaryColor),
+          title: Text(
             'پشتیبانی',
+            style: TextStyle(color: dynamicTheme.textTheme.bodyLarge?.color),
           ),
           onTap: () {
             Navigator.push(context,
                 MaterialPageRoute(builder: (context) => ContactUsScreen()));
           },
         ),
-        // ListTile(
-        //   leading: const Icon(Icons.person_add),
-        //   title: const Text(
-        //     'دعوت از دوستان',
-        //   ),
-        //   onTap: () {
-        //     const String inviteText =
-        //         'دوست عزیز سلام! من از ویستا نوت برای ذخیره یادداشت هام و ارتباط با کلی رفیق جدید استفاده میکنم! \n پیشنهاد میکنم همین الان از بازار نصبش کنی😉:  https://cafebazaar.ir/app/com.example.vista_notes2/ ';
-        //     Share.share(inviteText);
-        //   },
-        // ),
+        const Spacer(),
+        Divider(color: dynamicTheme.dividerColor),
         ListTile(
-          leading: const Icon(Icons.logout),
-          title: const Text(
-            'خروج',
+          leading: Icon(Icons.logout, color: dynamicTheme.colorScheme.error),
+          title: Text(
+            'خروج از حساب',
+            style: TextStyle(color: dynamicTheme.colorScheme.error),
           ),
           onTap: () async {
             await MessageCacheService().clearAllCache();
@@ -387,24 +438,11 @@ Widget _buildVerificationBadge(
       iconColor = Colors.blue;
   }
 
-  // نمایش نشان با امکان کلیک برای مشاهده اطلاعات بیشتر
-  return Container(
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      color: Colors.white,
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.2),
-          blurRadius: 2,
-          offset: const Offset(0, 1),
-        ),
-      ],
-    ),
-    child: Icon(
-      iconData,
-      color: iconColor,
-      size: 13,
-    ),
+  // نمایش نشان بدون container اضافی
+  return Icon(
+    iconData,
+    color: iconColor,
+    size: 16,
   );
 }
 

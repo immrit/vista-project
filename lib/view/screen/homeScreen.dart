@@ -139,9 +139,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 'lib/view/util/images/bottomnavigation/home.png',
                 width: 24,
                 height: 24,
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.white
-                    : Colors.black,
+                color: Theme.of(context).primaryColor,
               ),
               label: '',
             ),
@@ -156,9 +154,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 'lib/view/util/images/bottomnavigation/magnifying-glass.png',
                 width: 24,
                 height: 24,
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.white
-                    : Colors.black,
+                color: Theme.of(context).primaryColor,
               ),
               label: '',
             ),
@@ -170,23 +166,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
                 decoration: BoxDecoration(
                   shape: BoxShape.rectangle,
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? Colors.white24
-                      : Colors.black12,
+                  color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(15),
                 ),
-                child: const Icon(Icons.add, size: 26),
+                child: Icon(
+                  Icons.add, 
+                  size: 26,
+                  color: Theme.of(context).primaryColor,
+                ),
               ),
               selectedIcon: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: const LinearGradient(
+                  gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      Colors.black,
-                      Colors.black,
+                      Theme.of(context).primaryColor,
+                      Theme.of(context).primaryColor.withValues(alpha: 0.8),
                     ],
                   ),
                 ),
@@ -219,9 +217,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 'lib/view/util/images/bottomnavigation/user.png',
                 width: 24,
                 height: 24,
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.white
-                    : Colors.black,
+                color: Theme.of(context).primaryColor,
               ),
               label: '',
             ),
@@ -230,29 +226,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           animationDuration: const Duration(milliseconds: 500),
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         ),
-      ),
-    );
-  }
-
-  // تابع برای نمایش بج اعلان
-  Widget _buildNotificationBadge(String iconPath, bool isSelected) {
-    return badges.Badge(
-      showBadge: ref.watch(hasNewNotificationProvider).when(
-            data: (hasNewNotification) => hasNewNotification,
-            loading: () => false,
-            error: (_, __) => false,
-          ),
-      badgeStyle: const badges.BadgeStyle(badgeColor: Colors.red),
-      position: badges.BadgePosition.topEnd(top: -10, end: -10),
-      child: Image.asset(
-        iconPath,
-        width: 24,
-        height: 24,
-        color: isSelected
-            ? (Theme.of(context).brightness == Brightness.dark
-                ? Colors.white
-                : Colors.black)
-            : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
       ),
     );
   }
@@ -281,9 +254,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             width: 24,
             height: 24,
             color: isSelected
-                ? (Theme.of(context).brightness == Brightness.dark
-                    ? Colors.white
-                    : Colors.black)
+                ? Theme.of(context).primaryColor
                 : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
           ),
         );

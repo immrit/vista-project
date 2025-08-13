@@ -151,7 +151,7 @@ class _ChatConversationsScreenState
   // AppBar بهینه‌شده
   PreferredSizeWidget _buildAppBar(ThemeData theme) {
     return AppBar(
-      backgroundColor: theme.scaffoldBackgroundColor,
+      backgroundColor: theme.appBarTheme.backgroundColor,
       elevation: 0,
       scrolledUnderElevation: 0,
       systemOverlayStyle: SystemUiOverlayStyle(

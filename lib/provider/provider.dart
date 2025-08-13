@@ -15,6 +15,10 @@ import '../main.dart';
 import '../model/CommentModel.dart';
 import '../model/UserModel.dart';
 import '../view/util/themes.dart';
+import 'theme_provider.dart';
+
+// Import security provider
+import 'security_provider.dart';
 
 //check user state
 final authStateProvider = StreamProvider<User?>((ref) {
