@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io' show Platform; // اضافه کن
 import 'package:Vista/DB/conversation_cache_service.dart';
 import 'package:Vista/view/screen/Settings/vistaStore/store.dart';
 import 'package:Vista/view/screen/SplashScreen.dart';
@@ -19,16 +18,12 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'DB/hive_initialize.dart';
 import 'firebase_options.dart';
 import 'model/Hive Model/RecentSearch.dart';
-import 'provider/profile_completion_provider.dart';
-import 'provider/provider.dart';
 import 'provider/theme_provider.dart';
 import 'security/security.dart';
 import 'services/ChatService.dart';
-import 'services/deepLink.dart';
 import 'services/deep_link_service.dart' as new_deep_link;
 import 'services/PushNotificationService.dart';
 import 'view/screen/chat/ChatScreen.dart';
-import 'view/util/themes.dart';
 import 'view/screen/Settings/Settings.dart';
 import 'view/screen/homeScreen.dart';
 import 'view/screen/ouathUser/loginUser.dart';
@@ -37,12 +32,12 @@ import 'view/screen/ouathUser/signupUser.dart';
 import 'view/screen/ouathUser/welcome.dart';
 import 'view/screen/ouathUser/editeProfile.dart';
 import 'package:flutter/foundation.dart' show kIsWeb; // اضافه کن
-import 'package:intl/intl.dart';
 import 'DB/message_cache_service.dart';
 import 'services/wallpaper_cache_service.dart';
 import 'view/screen/PublicPosts/publicPosts.dart';
 import 'view/screen/PublicPosts/PostDetailPage.dart';
 import 'view/screen/PublicPosts/profileScreen.dart';
+import 'security/e2ee_service.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -135,12 +130,25 @@ void main() async {
     //         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE',
     //     debug: true);
 
-    final response =
-        await Supabase.instance.client.from('profiles').select().single();
-
-    print('Profile data: $response');
+    // Supabase connection verified
   } catch (e) {
     print('Supabase initialization error: $e');
+  }
+
+  // E2EE init & publish own public key (best-effort)
+  try {
+    await E2EEService.instance.ensureInitialized();
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      await E2EEService.instance.publishOwnPublicKeyIfNeeded();
+    }
+    Supabase.instance.client.auth.onAuthStateChange.listen((event) async {
+      if (event.event == AuthChangeEvent.signedIn) {
+        await E2EEService.instance.publishOwnPublicKeyIfNeeded();
+      }
+    });
+  } catch (e) {
+    print('E2EE init error: $e');
   }
 
   // بروزرسانی IP فقط روی غیر وب
@@ -148,10 +156,7 @@ void main() async {
     await updateIpAddress();
   }
 
-  // تنظیم تم
-  var box = Hive.box('settings');
-  String savedTheme = box.get('selectedTheme', defaultValue: 'light');
-  ThemeData initialTheme = _getInitialTheme(savedTheme);
+  // تنظیم تم (پویا از طریق provider در زمان ساخت MaterialApp اعمال می‌شود)
 
   // راه اندازی flutter_local_notifications و ساخت کانال‌ها:
   const AndroidInitializationSettings initializationSettingsAndroid =
@@ -207,22 +212,7 @@ void main() async {
   );
 }
 
-ThemeData _getInitialTheme(String savedTheme) {
-  switch (savedTheme) {
-    case 'light':
-      return lightTheme;
-    case 'dark':
-      return darkTheme;
-    case 'red':
-      return redWhiteTheme;
-    case 'yellow':
-      return yellowBlackTheme;
-    case 'teal':
-      return tealWhiteTheme;
-    default:
-      return lightTheme;
-  }
-}
+// Removed unused _getInitialTheme; theme is provided via provider at runtime
 
 final supabase = Supabase.instance.client;
 
@@ -310,7 +300,11 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
         if (fcmToken != null) {
           await _setFcmToken(fcmToken);
-          print("FCM Token: $fcmToken");
+          // Avoid logging full FCM token
+          final redacted = fcmToken.length > 8
+              ? '${fcmToken.substring(0, 4)}...${fcmToken.substring(fcmToken.length - 4)}'
+              : '***';
+          print("FCM Token updated: $redacted");
 
           // راه‌اندازی PushNotificationService بعد از لاگین
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -358,11 +352,12 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     // گوش دادن به دیپ لینک‌های ورودی
     _linkSubscription = _appLinks.uriLinkStream.listen((Uri? uri) {
       if (uri != null) {
-        print('Received deep link: $uri');
+        final safe = 'scheme=${uri.scheme}, host=${uri.host}, path=${uri.path}';
+        print('Received deep link: $safe');
         _processDeepLink(uri);
       }
     }, onError: (error) {
-      print('Deep link error: $error');
+      print('Deep link error');
     });
   }
 
@@ -371,7 +366,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     try {
       final initialLink = await _appLinks.getInitialLink();
       if (initialLink != null) {
-        print('Processing initial link: $initialLink');
+        final safe =
+            'scheme=${initialLink.scheme}, host=${initialLink.host}, path=${initialLink.path}';
+        print('Processing initial link: $safe');
         _processDeepLink(initialLink);
       }
     } catch (e) {
@@ -381,7 +378,6 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
   /// پردازش دیپ لینک برای انواع مختلف
   void _processDeepLink(Uri uri) {
-    print('Processing deep link: $uri');
     print('Uri scheme: ${uri.scheme}');
     print('Uri host: ${uri.host}');
     print('Uri path: ${uri.path}');

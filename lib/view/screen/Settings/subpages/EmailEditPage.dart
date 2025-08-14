@@ -51,7 +51,6 @@ class _EmailEditPageState extends ConsumerState<EmailEditPage> {
         title: const Text('ویرایش ایمیل'),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: isDark ? const Color(0xFF252525) : Colors.white,
       ),
       body: Form(
         key: _formKey,
@@ -124,7 +123,7 @@ class _EmailEditPageState extends ConsumerState<EmailEditPage> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       filled: true,
-                      fillColor: _isCodeSent ? Colors.grey[100] : null,
+                      fillColor: _isCodeSent ? Colors.white : null,
                     ),
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {

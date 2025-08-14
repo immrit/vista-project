@@ -1461,16 +1461,43 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
           followersCount: state!.followersCount - 1,
         );
       } else {
-        // اضافه کردن فالو
-        await supabase.from('follows').insert({
-          'follower_id': currentUserId,
-          'following_id': userId,
-        });
+        // بررسی خصوصی بودن حساب هدف
+        final settings = await supabase
+            .from('user_settings')
+            .select('is_private')
+            .eq('user_id', userId)
+            .maybeSingle();
+        final isPrivate = (settings?['is_private'] as bool?) ?? false;
 
-        state = state!.copyWith(
-          isFollowed: true,
-          followersCount: state!.followersCount + 1,
-        );
+        if (isPrivate) {
+          // اگر خصوصی است، درخواست دنبال کردن ارسال شود
+          await supabase.from('follow_requests').upsert({
+            'requester_id': currentUserId,
+            'recipient_id': userId,
+            'status': 'pending',
+            'created_at': DateTime.now().toIso8601String(),
+          });
+          // اعلان برای کاربر هدف
+          await supabase.from('notifications').insert({
+            'recipient_id': userId,
+            'sender_id': currentUserId,
+            'type': 'follow_request',
+            'content': 'درخواست دنبال کردن جدید',
+            'created_at': DateTime.now().toIso8601String(),
+            'is_read': false,
+          });
+        } else {
+          // اضافه کردن فالو مستقیم
+          await supabase.from('follows').insert({
+            'follower_id': currentUserId,
+            'following_id': userId,
+          });
+
+          state = state!.copyWith(
+            isFollowed: true,
+            followersCount: state!.followersCount + 1,
+          );
+        }
       }
     } catch (e) {
       print('خطا در تغییر وضعیت فالو: $e');
@@ -1501,6 +1528,27 @@ final userProfileProvider =
     StateNotifierProvider.family<ProfileNotifier, ProfileModel?, String>(
   (ref, userId) => ProfileNotifier(ref)..fetchProfile(userId),
 );
+
+// بررسی در حال انتظار بودن درخواست دنبال کردن
+final followRequestPendingProvider =
+    FutureProvider.family<bool, String>((ref, targetUserId) async {
+  try {
+    final supabase = Supabase.instance.client;
+    final currentUserId = supabase.auth.currentUser?.id;
+    if (currentUserId == null) return false;
+    final res = await supabase
+        .from('follow_requests')
+        .select('id')
+        .eq('requester_id', currentUserId)
+        .eq('recipient_id', targetUserId)
+        .eq('status', 'pending')
+        .maybeSingle();
+    return res != null;
+  } catch (e) {
+    print('خطا در بررسی وضعیت درخواست دنبال کردن: $e');
+    return false;
+  }
+});
 
 final postProvider =
     FutureProvider.family<PublicPostModel, String>((ref, postId) async {
@@ -2158,8 +2206,47 @@ final videoPositionProvider =
 });
 
 // Video Player Settings Providers
-final dataSaverProvider = StateProvider<bool>((ref) => false);
-final autoQualityProvider = StateProvider<bool>((ref) => true);
+class DataSaverNotifier extends StateNotifier<bool> {
+  DataSaverNotifier() : super(false) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    final value = await VideoPlayerConfig().getDataSaverMode();
+    state = value;
+  }
+
+  Future<void> set(bool value) async {
+    state = value;
+    await VideoPlayerConfig().setDataSaverMode(value);
+  }
+}
+
+final dataSaverProvider = StateNotifierProvider<DataSaverNotifier, bool>((ref) {
+  return DataSaverNotifier();
+});
+
+class AutoQualityNotifier extends StateNotifier<bool> {
+  AutoQualityNotifier() : super(true) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    final value = await VideoPlayerConfig().getAutoQuality();
+    state = value;
+  }
+
+  Future<void> set(bool value) async {
+    state = value;
+    await VideoPlayerConfig().setAutoQuality(value);
+  }
+}
+
+final autoQualityProvider =
+    StateNotifierProvider<AutoQualityNotifier, bool>((ref) {
+  return AutoQualityNotifier();
+});
+
 final videoQualityProvider = StateProvider<String>((ref) => 'auto');
 
 final videoPlayerConfigProvider = Provider<VideoPlayerConfig>((ref) {

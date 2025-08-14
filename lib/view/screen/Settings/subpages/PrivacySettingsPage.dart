@@ -20,7 +20,6 @@ class PrivacySettingsPage extends ConsumerWidget {
         title: const Text('حریم خصوصی و امنیت'),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: isDark ? const Color(0xFF252525) : Colors.white,
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 16.0),
@@ -68,8 +67,24 @@ class PrivacySettingsPage extends ConsumerWidget {
               subtitle: 'دیگران بتوانند عکس پروفایل شما را بزرگنمایی کنند',
               value: value,
               onChanged: (bool next) async {
-                await _updatePrivacySetting(
+                await _upsertUserSetting(
                     context, ref, 'allow_profile_zoom', next);
+              },
+            );
+          }),
+          _buildDivider(),
+          Consumer(builder: (context, ref, _) {
+            final settingsAsync = ref.watch(currentUserSettingsProvider);
+            final isPrivate =
+                settingsAsync.value?['is_private'] as bool? ?? false;
+            return TelegramSwitchItem(
+              icon: Icons.lock,
+              iconColor: Colors.deepPurple,
+              title: 'حساب خصوصی',
+              subtitle: 'فقط دنبالکنندگان تایید شده محتوای شما را میبینند',
+              value: isPrivate,
+              onChanged: (bool next) async {
+                await _upsertUserSetting(context, ref, 'is_private', next);
               },
             );
           }),
@@ -80,14 +95,6 @@ class PrivacySettingsPage extends ConsumerWidget {
             title: 'آخرین بازدید',
             subtitle: 'کنترل نمایش آخرین بازدید شما',
             onTap: () => _showLastSeenDialog(context, ref),
-          ),
-          _buildDivider(),
-          TelegramSettingsItem(
-            icon: Icons.phone,
-            iconColor: Colors.orange,
-            title: 'شماره تلفن',
-            subtitle: 'کنترل نمایش شماره تلفن شما',
-            onTap: () => _showPhoneNumberDialog(context, ref),
           ),
         ],
       ),
@@ -242,23 +249,25 @@ class PrivacySettingsPage extends ConsumerWidget {
         return Container(
           margin: const EdgeInsets.only(left: 68.0),
           height: 0.5,
-          color: isDark ? Colors.grey[700] : Colors.grey[300],
+          color: isDark ? Colors.grey[700] : Colors.grey[200],
         );
       },
     );
   }
 
   // Helper methods
-  Future<void> _updatePrivacySetting(BuildContext context, WidgetRef ref,
+  // بروزرسانی تنظیمات در جدول user_settings (در صورت نبود رکورد، ایجاد میشود)
+  Future<void> _upsertUserSetting(BuildContext context, WidgetRef ref,
       String setting, dynamic value) async {
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) return;
 
-      await Supabase.instance.client.from('profiles').update({
+      await Supabase.instance.client.from('user_settings').upsert({
+        'user_id': user.id,
         setting: value,
         'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', user.id);
+      });
 
       final _ = ref.refresh(currentUserSettingsProvider);
 
@@ -307,37 +316,7 @@ class PrivacySettingsPage extends ConsumerWidget {
       ),
     ).then((value) {
       if (value != null) {
-        _updatePrivacySetting(context, ref, 'last_seen_visibility', value);
-      }
-    });
-  }
-
-  void _showPhoneNumberDialog(BuildContext context, WidgetRef ref) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('نمایش شماره تلفن'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: const Text('همه'),
-              onTap: () => Navigator.pop(context, 'everyone'),
-            ),
-            ListTile(
-              title: const Text('مخاطبین من'),
-              onTap: () => Navigator.pop(context, 'my_contacts'),
-            ),
-            ListTile(
-              title: const Text('هیچکس'),
-              onTap: () => Navigator.pop(context, 'nobody'),
-            ),
-          ],
-        ),
-      ),
-    ).then((value) {
-      if (value != null) {
-        _updatePrivacySetting(context, ref, 'phone_number_visibility', value);
+        _upsertUserSetting(context, ref, 'last_seen_visibility', value);
       }
     });
   }
@@ -434,7 +413,7 @@ class TelegramSwitchItem extends StatelessWidget {
                   subtitle,
                   style: TextStyle(
                     fontSize: 13,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    color: isDark ? Colors.grey[400] : Colors.grey[700],
                   ),
                 ),
               ],

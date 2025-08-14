@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 // enum برای رنگ‌های اصلی
 enum ThemeColor {
@@ -32,7 +33,7 @@ ThemeData createTheme(ThemeColor color, Brightness brightness) {
       primaryColor = isDark ? Colors.teal[300]! : Colors.teal[700]!;
       break;
     case ThemeColor.white:
-      primaryColor = isDark ? Colors.white : Colors.grey[800]!;
+      primaryColor = isDark ? Colors.white : Colors.black;
       break;
   }
 
@@ -50,6 +51,7 @@ ThemeData createTheme(ThemeColor color, Brightness brightness) {
         iconTheme: const IconThemeData(color: Colors.white),
         titleTextStyle: const TextStyle(color: Colors.white, fontSize: 20),
         elevation: 0,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
       ),
       colorScheme: ColorScheme.dark(
         primary: primaryColor,
@@ -75,28 +77,38 @@ ThemeData createTheme(ThemeColor color, Brightness brightness) {
   } else {
     // تم روشن
     background = Colors.white;
-    surface = color == ThemeColor.blue
-        ? Colors.grey[50]!
-        : color == ThemeColor.white
-            ? Colors.grey[100]!
-            : _getColorShade(color, 50);
+    surface = color == ThemeColor.white
+        ? Colors.white
+        : (color == ThemeColor.blue
+            ? Colors.grey[50]!
+            : _getColorShade(color, 50));
 
     return ThemeData(
       brightness: Brightness.light,
       primaryColor: primaryColor,
       scaffoldBackgroundColor: background,
       appBarTheme: AppBarTheme(
-        color: primaryColor,
-        iconTheme: const IconThemeData(color: Colors.white),
-        titleTextStyle: const TextStyle(color: Colors.white, fontSize: 20),
+        color: color == ThemeColor.white ? Colors.white : primaryColor,
+        foregroundColor:
+            color == ThemeColor.white ? Colors.black : Colors.white,
+        iconTheme: IconThemeData(
+          color: color == ThemeColor.white ? Colors.black : Colors.white,
+        ),
+        titleTextStyle: TextStyle(
+          color: color == ThemeColor.white ? Colors.black : Colors.white,
+          fontSize: 20,
+        ),
         elevation: 0,
+        systemOverlayStyle: color == ThemeColor.white
+            ? SystemUiOverlayStyle.dark
+            : SystemUiOverlayStyle.light,
       ),
       colorScheme: ColorScheme.light(
         primary: primaryColor,
         secondary: surface,
         surface: surface,
         onPrimary: Colors.white,
-        onSecondary: primaryColor,
+        onSecondary: color == ThemeColor.white ? Colors.black : primaryColor,
         onSurface: Colors.black87,
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(

@@ -507,3 +507,4 @@ class TwoFactorSettings {
     return enabled && secret != null && backupCodes.isNotEmpty;
   }
 }
+

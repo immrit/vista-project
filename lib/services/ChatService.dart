@@ -12,12 +12,38 @@ import '../model/message_model.dart';
 import '../view/Exeption/app_exceptions.dart';
 import '/main.dart';
 import 'uploadImageChatService.dart';
+import 'uploadAudioChatService.dart';
+import '../security/e2ee_service.dart';
 
 class ChatService {
   final SupabaseClient _supabase = supabase;
   final ConversationCacheService _conversationCache =
       ConversationCacheService();
   final MessageCacheService _messageCache = MessageCacheService();
+
+  // حذف فایل پیوست چت از استوریج (بر اساس نوع)
+  Future<void> _tryDeleteChatAttachment(
+    String? attachmentType,
+    String? attachmentUrl,
+  ) async {
+    if (attachmentUrl == null || attachmentUrl.isEmpty) return;
+    try {
+      if (attachmentType == 'image') {
+        await ChatImageUploadService.deleteChatImage(attachmentUrl);
+      } else if (attachmentType == 'audio') {
+        await ChatAudioUploadService.deleteChatAudio(attachmentUrl);
+      } else {
+        // تلاش fallback در صورت نامشخص بودن نوع
+        final deletedImage =
+            await ChatImageUploadService.deleteChatImage(attachmentUrl);
+        if (!deletedImage) {
+          await ChatAudioUploadService.deleteChatAudio(attachmentUrl);
+        }
+      }
+    } catch (e) {
+      print('هشدار: حذف فایل پیوست چت ناموفق بود: $e');
+    }
+  }
 
   // متغیر static برای نگهداری conversationId فعال و آخرین messageId دیده‌شده
   // A constant to represent a cleared conversation state
@@ -27,7 +53,18 @@ class ChatService {
   // static String? lastNotifiedMessageId;
 
   // اضافه شد: برای حل مشکل race condition در خواندن وضعیت خوانده‌نشده
-  static final Map<String, DateTime> _recentReadConversations = {};
+  // ignore: unused_field
+  static final Map<String, DateTime> _recentReadConversations =
+      {}; // reserved for future read-status logic
+
+  // اضافه شد: قفل درحال انجام برای جلوگیری از ساخت مکالمه تکراری بین دو کاربر (روی کلاینت)
+  // کلید بر اساس جفت مرتب‌شده از userId ها ساخته می‌شود
+  static final Map<String, Future<String>> _pendingConversationFutures = {};
+
+  // تولید کلید یکتا برای جفت کاربرها بدون توجه به ترتیب
+  static String _pairKey(String a, String b) {
+    return (a.compareTo(b) <= 0) ? '$a|$b' : '$b|$a';
+  }
 
   // // نگهداری لیست پیام‌هایی که نوتیفیکیشن گرفته‌اند (در یک session)
   // static final Set<String> _notifiedMessageIds = {};
@@ -174,17 +211,49 @@ class ChatService {
                 .limit(1)
                 .maybeSingle();
 
-            // اگر پیامی وجود داشت، آن را در json قرار بده
+            // اگر پیامی وجود داشت، آن را در json قرار بده (و تلاش برای رمزگشایی)
             if (lastMessageQuery != null) {
-              json['last_message'] = lastMessageQuery['content'];
+              String? lastContent = lastMessageQuery['content'] as String?;
+              try {
+                await E2EEService.instance.ensureInitialized();
+                if (lastContent != null && lastContent.startsWith('e2ee:v1:')) {
+                  // Resolve otherUserId for this conversation
+                  String? otherId;
+                  try {
+                    final participants = await _supabase
+                        .from('conversation_participants')
+                        .select('user_id')
+                        .eq('conversation_id', conversationId);
+                    for (final p in participants) {
+                      final uid = p['user_id']?.toString();
+                      if (uid != null && uid.isNotEmpty && uid != userId) {
+                        otherId = uid;
+                        break;
+                      }
+                    }
+                  } catch (_) {}
+                  if (otherId != null && otherId.isNotEmpty) {
+                    await E2EEService.instance.prepareConversationKey(
+                      conversationId: conversationId,
+                      otherUserId: otherId,
+                    );
+                    lastContent = await E2EEService.instance.maybeDecryptFast(
+                      content: lastContent,
+                      conversationId: conversationId,
+                      otherUserId: otherId,
+                    );
+                  } else {
+                    lastContent = 'پیام جدید';
+                  }
+                }
+              } catch (_) {}
+              json['last_message'] = lastContent;
               json['last_message_time'] = lastMessageQuery['created_at'];
               // *** مهم: updated_at خود مکالمه را با زمان آخرین پیام به‌روز کن ***
               json['updated_at'] = lastMessageQuery['created_at'];
             }
 
-            // محاسبه تعداد پیام‌های خوانده‌نشده
-            // قابلیت خوانده نشده حذف شد
-            int unreadCount = 0;
+            // محاسبه تعداد پیام‌های خوانده‌نشده: غیرفعال شده
 
             final conversation = ConversationModel.fromJson(
               json,
@@ -303,15 +372,49 @@ class ChatService {
     try {
       final userId = _supabase.auth.currentUser!.id;
 
+      // --- E2EE: encrypt content for recipient if possible ---
+      String encryptedContent = content;
+      String? encryptedReplyContent = replyToContent;
+      try {
+        await E2EEService.instance.ensureInitialized();
+        // پیدا کردن طرف مقابل مکالمه (چت دو نفره)
+        final participantsJson = await _supabase
+            .from('conversation_participants')
+            .select('user_id')
+            .eq('conversation_id', conversationId);
+        final String? recipientId = (participantsJson as List)
+            .map((e) => e['user_id'] as String)
+            .firstWhere((uid) => uid != userId, orElse: () => '');
+        if (recipientId != null && recipientId.isNotEmpty) {
+          encryptedContent =
+              await E2EEService.instance.maybeEncryptForRecipient(
+            plaintext: content,
+            conversationId: conversationId,
+            recipientUserId: recipientId,
+          );
+          if (replyToContent != null && replyToContent.isNotEmpty) {
+            encryptedReplyContent =
+                await E2EEService.instance.maybeEncryptForRecipient(
+              plaintext: replyToContent,
+              conversationId: conversationId,
+              recipientUserId: recipientId,
+            );
+          }
+        }
+      } catch (e) {
+        // اگر هر مشکلی رخ داد، بدون رمزنگاری ارسال می‌کنیم
+        print('E2EE encrypt skipped: $e');
+      }
+
       // ساخت داده‌های پیام برای insert مستقیم
       final messageData = {
         'conversation_id': conversationId,
         'sender_id': userId,
-        'content': content,
+        'content': encryptedContent,
         'attachment_url': attachmentUrl,
         'attachment_type': attachmentType,
         'reply_to_message_id': replyToMessageId,
-        'reply_to_content': replyToContent,
+        'reply_to_content': encryptedReplyContent,
         'reply_to_sender_name': replyToSenderName,
         'local_id': localId, // شناسه محلی برای تطبیق در کلاینت
         'is_sent': true, // فرض بر اینکه سرور با موفقیت دریافت می‌کند
@@ -513,6 +616,65 @@ class ChatService {
     }
   }
 
+  // اضافه شد: متد جدید برای یافتن مکالمه موجود بدون ایجاد مکالمه جدید
+  Future<String?> findExistingConversation(String otherUserId) async {
+    final userId = _supabase.auth.currentUser!.id;
+
+    // جلوگیری از جستجو با خود کاربر
+    if (userId == otherUserId) {
+      return null;
+    }
+
+    try {
+      // 1) بررسی روی سرور با RPC (ترجیحی)
+      try {
+        final existingQuery = await _supabase.rpc(
+          'find_conversation_between_users',
+          params: {'user1': userId, 'user2': otherUserId},
+        );
+        if (existingQuery != null && existingQuery.isNotEmpty) {
+          print('مکالمه موجود در سرور یافت شد: ${existingQuery[0]['id']}');
+          return existingQuery[0]['id'];
+        }
+      } catch (e) {
+        print('find_conversation_between_users RPC failed: $e');
+      }
+
+      // 2) جستجو در کش محلی
+      try {
+        final cached = await _conversationCache.getCachedConversations(userId);
+        for (final c in cached) {
+          if (c.otherUserId == otherUserId) {
+            print('مکالمه موجود در کش یافت شد: ${c.id}');
+            return c.id;
+          }
+        }
+      } catch (e) {
+        print('خطا در جستجوی کش: $e');
+      }
+
+      // 3) جستجو در سرور (از طریق getConversations)
+      try {
+        final all = await getConversations();
+        for (final c in all) {
+          if (c.otherUserId == otherUserId) {
+            print(
+                'مکالمه موجود در سرور (از طریق getConversations) یافت شد: ${c.id}');
+            return c.id;
+          }
+        }
+      } catch (e) {
+        print('خطا در جستجوی سرور: $e');
+      }
+
+      print('هیچ مکالمه موجودی یافت نشد');
+      return null;
+    } catch (e) {
+      print('خطا در findExistingConversation: $e');
+      return null;
+    }
+  }
+
   Future<String> createOrGetConversation(String otherUserId) async {
     final userId = _supabase.auth.currentUser!.id;
 
@@ -521,122 +683,134 @@ class ChatService {
       throw Exception('کاربر نمی‌تواند با خودش گفتگو ایجاد کند.');
     }
 
-    try {
-      // بررسی وجود مکالمه قبلی بین دو کاربر با کوئری ساده‌تر
-      final existingQuery = await _supabase.rpc(
-        'find_conversation_between_users',
-        params: {'user1': userId, 'user2': otherUserId},
-      );
+    final key = _pairKey(userId, otherUserId);
+    print(
+        'createOrGetConversation: جستجو برای کاربر $otherUserId (کلید: $key)');
 
-      if (existingQuery != null && existingQuery.isNotEmpty) {
-        // مکالمه قبلاً وجود دارد
-        return existingQuery[0]['id'];
+    // اگر درحال ساخت/واکشی همین مکالمه هستیم، همان Future را برگردان
+    final inFlight = _pendingConversationFutures[key];
+    if (inFlight != null) {
+      print('createOrGetConversation: در حال انجام برای کلید $key');
+      return await inFlight;
+    }
+
+    Future<String> task() async {
+      try {
+        // ابتدا بررسی کن که آیا مکالمه موجود است
+        final existingId = await findExistingConversation(otherUserId);
+        if (existingId != null && existingId.isNotEmpty) {
+          print('createOrGetConversation: مکالمه موجود یافت شد: $existingId');
+          return existingId;
+        }
+
+        print(
+            'createOrGetConversation: هیچ مکالمه موجودی یافت نشد، ایجاد مکالمه جدید...');
+
+        // اگر هیچ گفتگویی پیدا نشد، مکالمه جدید بساز
+        final newConversation =
+            await _supabase.from('conversations').insert({}).select().single();
+
+        final conversationId = newConversation['id'];
+        print('createOrGetConversation: مکالمه جدید ایجاد شد: $conversationId');
+
+        // افزودن کاربران به مکالمه
+        await _supabase.from('conversation_participants').insert([
+          {
+            'conversation_id': conversationId,
+            'user_id': userId,
+            'last_read_time': DateTime.now().toIso8601String(),
+          },
+          {
+            'conversation_id': conversationId,
+            'user_id': otherUserId,
+            'last_read_time': DateTime.now().toIso8601String(),
+          },
+        ]);
+
+        print(
+            'createOrGetConversation: کاربران به مکالمه $conversationId اضافه شدند');
+
+        // بروزرسانی کش برای جلوگیری از ساخت مجدد
+        await refreshConversation(conversationId);
+        return conversationId;
+      } catch (e) {
+        print('createOrGetConversation: خطا در ایجاد مکالمه: $e');
+        throw AppException(
+          userFriendlyMessage: 'مشکل در ایجاد گفتگو',
+          technicalMessage: 'خطا در createOrGetConversation: $e',
+        );
       }
+    }
 
-      // ایجاد مکالمه جدید بدون نگرانی از RLS
-      final newConversation =
-          await _supabase.from('conversations').insert({}).select().single();
-
-      final conversationId = newConversation['id'];
-
-      // افزودن کاربران به مکالمه
-      await _supabase.from('conversation_participants').insert([
-        {
-          'conversation_id': conversationId,
-          'user_id': userId,
-          'last_read_time': DateTime.now().toIso8601String(),
-        },
-        {
-          'conversation_id': conversationId,
-          'user_id': otherUserId,
-          'last_read_time': DateTime.now().toIso8601String(),
-        },
-      ]);
-
-      return conversationId;
-    } catch (e) {
-      throw AppException(
-        userFriendlyMessage: 'مشکل در ایجاد گفتگو',
-        technicalMessage: 'خطا در createOrGetConversation: $e',
-      );
+    final future = task();
+    _pendingConversationFutures[key] = future;
+    try {
+      final result = await future;
+      print('createOrGetConversation: عملیات با موفقیت انجام شد: $result');
+      return result;
+    } finally {
+      _pendingConversationFutures.remove(key);
     }
   }
 
   // ایجاد مکالمه جدید
   Future<ConversationModel> createConversation(String otherUserId) async {
-    final userId = _supabase.auth.currentUser!.id;
-
     try {
-      // بررسی آیا مکالمه‌ای بین این دو کاربر وجود دارد
-      final existingConversationsResponse = await _supabase.rpc(
-        'find_conversation_between_users',
-        params: {'user1': userId, 'user2': otherUserId},
-      );
+      // ابتدا از متد ایمن createOrGet استفاده می‌کنیم تا هرگز مکالمه تکراری ایجاد نشود
+      final conversationId = await createOrGetConversation(otherUserId);
 
-      if (existingConversationsResponse != null &&
-          existingConversationsResponse.isNotEmpty) {
-        // مکالمه قبلاً وجود دارد، آن را برمی‌گردانیم
-        final conversationId = existingConversationsResponse[0]['id'];
-
-        final conversationResponse = await _supabase
-            .from('conversations')
-            .select()
-            .eq('id', conversationId)
-            .single();
-
-        // دریافت شرکت‌کنندگان و اطلاعات کاربر دیگر
-        final participantsJson = await _supabase
-            .from('conversation_participants')
-            .select('*, profiles:user_id(*)')
-            .eq('conversation_id', conversationId);
-
-        final participants = participantsJson
-            .map((e) => ConversationParticipantModel.fromJson(e))
-            .toList();
-
-        final otherParticipant = participantsJson.firstWhere(
-          (e) => e['user_id'] == otherUserId,
-        );
-
-        return ConversationModel.fromJson(conversationResponse).copyWith(
-          participants: participants,
-          otherUserName: otherParticipant['profiles']['username'] ?? 'کاربر',
-          otherUserAvatar: otherParticipant['profiles']['avatar_url'],
-          otherUserId: otherUserId,
-        );
-      }
-
-      // ایجاد مکالمه جدید
-      final conversationResponse =
-          await _supabase.from('conversations').insert({}).select().single();
-
-      final conversationId = conversationResponse['id'];
-
-      // افزودن شرکت‌کنندگان در دو تراکنش جداگانه
-      // ابتدا کاربر فعلی را اضافه می‌کنیم
-      await _supabase.from('conversation_participants').insert({
-        'conversation_id': conversationId,
-        'user_id': userId,
-        'last_read_time': DateTime.now().toIso8601String(),
-      });
-
-      // سپس کاربر دیگر را اضافه می‌کنیم
-      await _supabase.from('conversation_participants').insert({
-        'conversation_id': conversationId,
-        'user_id': otherUserId,
-        'last_read_time': DateTime.now().toIso8601String(),
-      });
-
-      // دریافت اطلاعات کاربر دیگر
-      final otherUserResponse = await _supabase
-          .from('profiles')
+      // سپس جزئیات مکالمه را واکشی می‌کنیم
+      final conversationResponse = await _supabase
+          .from('conversations')
           .select()
-          .eq('id', otherUserId)
+          .eq('id', conversationId)
           .single();
 
+      // دریافت شرکت‌کنندگان و اطلاعات کاربر دیگر
+      final participantsJson = await _supabase
+          .from('conversation_participants')
+          .select('*, profiles:user_id(*)')
+          .eq('conversation_id', conversationId);
+
+      final participants = participantsJson
+          .map((e) => ConversationParticipantModel.fromJson(e))
+          .toList();
+
+      Map<String, dynamic>? otherParticipant;
+      try {
+        otherParticipant = participantsJson
+            .cast<Map<String, dynamic>>()
+            .firstWhere((e) => e['user_id'] == otherUserId);
+      } catch (_) {
+        otherParticipant = null;
+      }
+
+      String? otherName;
+      String? otherAvatar;
+      if (otherParticipant != null) {
+        final profilesField = otherParticipant['profiles'];
+        final Map<String, dynamic> prof = profilesField is Map<String, dynamic>
+            ? profilesField
+            : <String, dynamic>{};
+        otherName = prof['username'] as String?;
+        otherAvatar = prof['avatar_url'] as String?;
+      } else {
+        // fallback: پروفایل طرف مقابل را مستقیم بخوان
+        try {
+          final otherUserResponse = await _supabase
+              .from('profiles')
+              .select()
+              .eq('id', otherUserId)
+              .maybeSingle();
+          otherName = otherUserResponse?['username'] as String?;
+          otherAvatar = otherUserResponse?['avatar_url'] as String?;
+        } catch (_) {}
+      }
+
       return ConversationModel.fromJson(conversationResponse).copyWith(
-        otherUserName: otherUserResponse['username'] ?? 'کاربر',
-        otherUserAvatar: otherUserResponse['avatar_url'],
+        participants: participants,
+        otherUserName: otherName ?? 'کاربر',
+        otherUserAvatar: otherAvatar,
         otherUserId: otherUserId,
       );
     } catch (e) {
@@ -672,6 +846,42 @@ class ChatService {
   // دریافت زمان آخرین فعالیت کاربر
   Future<DateTime?> getUserLastOnline(String userId) async {
     try {
+      // ابتدا تنظیم نمایش آخرین بازدید را برای کاربر مقابل بخوان
+      final settings = await _supabase
+          .from('user_settings')
+          .select('last_seen_visibility')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      final visibility = settings?['last_seen_visibility'] as String?;
+
+      // اگر هیچکس، برنگردان
+      if (visibility == 'nobody') {
+        return null;
+      }
+
+      // اگر فقط مخاطبین من، بررسی کن آیا کاربر فعلی دنبالکننده است یا ارتباط دارد
+      if (visibility == 'my_contacts') {
+        final currentUserId = _supabase.auth.currentUser?.id;
+        if (currentUserId == null) return null;
+        // تعریف مخاطب: فالو دوطرفه
+        final otherFollowsMe = await _supabase
+            .from('follows')
+            .select('id')
+            .eq('follower_id', userId)
+            .eq('following_id', currentUserId)
+            .maybeSingle();
+        if (otherFollowsMe == null) return null;
+        final iFollowOther = await _supabase
+            .from('follows')
+            .select('id')
+            .eq('follower_id', currentUserId)
+            .eq('following_id', userId)
+            .maybeSingle();
+        if (iFollowOther == null) return null;
+      }
+
+      // خواندن آخرین بازدید از پروفایل
       final response = await _supabase
           .from('profiles')
           .select('last_online')
@@ -691,6 +901,44 @@ class ChatService {
   // بررسی آنلاین بودن کاربر
   Future<bool> isUserOnline(String userId) async {
     try {
+      // ابتدا تنظیمات نمایش آخرین بازدید را برای کاربر مقابل بخوان
+      final settings = await _supabase
+          .from('user_settings')
+          .select('last_seen_visibility')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      final visibility = settings?['last_seen_visibility'] as String?;
+
+      // اگر هیچکس، همیشه آفلاین نشان بده
+      if (visibility == 'nobody') {
+        return false;
+      }
+
+      // اگر فقط مخاطبین من، بررسی کن آیا کاربر فعلی مخاطب است
+      if (visibility == 'my_contacts') {
+        final currentUserId = _supabase.auth.currentUser?.id;
+        if (currentUserId == null) return false;
+
+        // تعریف مخاطب: فالو دوطرفه
+        final otherFollowsMe = await _supabase
+            .from('follows')
+            .select('id')
+            .eq('follower_id', userId)
+            .eq('following_id', currentUserId)
+            .maybeSingle();
+        if (otherFollowsMe == null) return false;
+
+        final iFollowOther = await _supabase
+            .from('follows')
+            .select('id')
+            .eq('follower_id', currentUserId)
+            .eq('following_id', userId)
+            .maybeSingle();
+        if (iFollowOther == null) return false;
+      }
+
+      // اگر تنظیمات اجازه نمایش می‌دهد، وضعیت فنی آنلاین بودن را بررسی کن
       final response = await _supabase
           .from('profiles')
           .select('is_online, last_online')
@@ -737,7 +985,7 @@ class ChatService {
   }
 
   // حذف یک پیام
-  Future<void> deleteMessage(
+  Future<String> deleteMessage(
     String messageId, {
     bool forEveryone = false,
   }) async {
@@ -745,7 +993,7 @@ class ChatService {
     try {
       final message = await _supabase
           .from('messages')
-          .select('sender_id, conversation_id')
+          .select('sender_id, conversation_id, attachment_url, attachment_type')
           .eq('id', messageId)
           .single();
       final conversationId = message['conversation_id'];
@@ -754,6 +1002,11 @@ class ChatService {
         throw Exception('فقط فرستنده پیام می‌تواند آن را برای همه حذف کند');
       }
       if (forEveryone) {
+        // ابتدا حذف فایل پیوست از استوریج (در صورت وجود)
+        await _tryDeleteChatAttachment(
+          message['attachment_type'] as String?,
+          message['attachment_url'] as String?,
+        );
         await _supabase.from('messages').delete().eq('id', messageId);
       } else {
         await _supabase.from('hidden_messages').upsert({
@@ -791,6 +1044,7 @@ class ChatService {
       // بروزرسانی فوری لیست مکالمات (برای UI)
       await _conversationCache.clearCache(userId);
       await getConversations();
+      return conversationId;
     } catch (e) {
       print('خطا در حذف پیام: $e');
       rethrow;
@@ -806,14 +1060,12 @@ class ChatService {
           .eq('id', conversationId)
           .single();
 
-      if (conversationResponse != null) {
-        final userId = _supabase.auth.currentUser!.id;
-        final conversation = await _getConversationWithDetails(
-          conversationResponse,
-          userId,
-        );
-        await _conversationCache.updateConversation(conversation, userId);
-      }
+      final userId = _supabase.auth.currentUser!.id;
+      final conversation = await _getConversationWithDetails(
+        conversationResponse,
+        userId,
+      );
+      await _conversationCache.updateConversation(conversation, userId);
     } catch (e) {
       print('خطا در بروزرسانی مکالمه: $e');
     }
@@ -853,7 +1105,7 @@ class ChatService {
     );
 
     // پیدا کردن کاربر دیگر در چت (برای چت دو نفره)
-    Map<String, dynamic>? otherParticipantProfile;
+    // Map<String, dynamic>? otherParticipantProfile; // not used
     String? otherParticipantUserId;
     Map<String, dynamic>? otherParticipantProfileData;
 
@@ -885,11 +1137,11 @@ class ChatService {
     }
 
     // آخرین زمان خواندن پیام توسط کاربر فعلی
-    String? myLastRead;
+    // String? myLastRead; // not used
     for (final participantData in participantsJson) {
       // Iterate over the raw participantsJson
       if (participantData['user_id'] == userId) {
-        myLastRead = participantData['last_read_time'] as String?;
+        // myLastRead = participantData['last_read_time'] as String?;
         break;
       }
     }
@@ -914,11 +1166,35 @@ class ChatService {
         .maybeSingle();
 
     if (lastMessageQuery != null) {
-      updatedConversationData['last_message'] =
-          lastMessageQuery['content'] as String?;
+      String? lastContent = lastMessageQuery['content'] as String?;
+      try {
+        if (lastContent != null && lastContent.startsWith('e2ee:v1:')) {
+          await E2EEService.instance.ensureInitialized();
+          // تلاش برای رمزگشایی با کلید طرف مقابل
+          String? otherId = otherParticipantUserId;
+          if (otherId == null) {
+            // سعی در یافتن otherUserId از کش مکالمه
+            final cached = await _conversationCache.getConversation(
+              conversationId,
+              userId,
+            );
+            otherId = cached?.otherUserId;
+          }
+          if (otherId != null && otherId.isNotEmpty) {
+            lastContent = await E2EEService.instance.maybeDecryptWithOtherUser(
+              content: lastContent,
+              conversationId: conversationId,
+              otherUserId: otherId,
+            );
+          } else {
+            // در صورت عدم دسترسی، از متن رمز جلوگیری کن
+            lastContent = 'پیام جدید';
+          }
+        }
+      } catch (_) {}
+      updatedConversationData['last_message'] = lastContent;
       updatedConversationData['last_message_time'] =
           lastMessageQuery['created_at'] as String?;
-      // *** مهم: updated_at خود مکالمه را با زمان آخرین پیام به‌روز کن ***
       updatedConversationData['updated_at'] =
           lastMessageQuery['created_at'] as String?;
     }
@@ -958,6 +1234,21 @@ class ChatService {
 
     try {
       if (forEveryone) {
+        // حذف فایل‌های پیوست از استوریج، سپس حذف پیام‌ها از دیتابیس
+        final attachmentMessages = await _supabase
+            .from('messages')
+            .select('id, attachment_url, attachment_type')
+            .eq('conversation_id', conversationId);
+
+        for (final m in attachmentMessages) {
+          final String? url = m['attachment_url'] as String?;
+          if (url != null && url.isNotEmpty) {
+            await _tryDeleteChatAttachment(
+              m['attachment_type'] as String?,
+              url,
+            );
+          }
+        }
         // حذف همه پیام‌های این مکالمه از دیتابیس
         print(
             '[DEBUG] Deleting all messages for conversation: $conversationId');
@@ -1063,13 +1354,32 @@ class ChatService {
                 .select('username, avatar_url')
                 .eq('id', json['sender_id'])
                 .maybeSingle();
-            final message = MessageModel.fromJson(
+            var message = MessageModel.fromJson(
               json,
               currentUserId: userId,
             ).copyWith(
               senderName: profileResponse?['username'] ?? 'کاربر',
               senderAvatar: profileResponse?['avatar_url'],
             );
+
+            // E2EE: Best-effort decrypt for caching a readable preview (optional)
+            try {
+              await E2EEService.instance.ensureInitialized();
+              final decrypted = await E2EEService.instance.maybeDecrypt(
+                content: message.content,
+                conversationId: conversationId,
+              );
+              final replyDecrypted =
+                  await E2EEService.instance.maybeDecryptNullable(
+                content: message.replyToContent,
+                conversationId: conversationId,
+              );
+              message = message.copyWith(
+                content: decrypted,
+                replyToContent: replyDecrypted,
+              );
+            } catch (_) {}
+
             await _messageCache.cacheMessage(message, userId);
             return message;
           }),
@@ -1138,11 +1448,6 @@ class ChatService {
           return messages;
         });
 
-    // ترکیب با Stream دیگر برای بروزرسانی وضعیت پیام‌ها
-    final readStatusStream = _supabase
-        .from('conversation_participants')
-        .stream(primaryKey: ['id']).eq('conversation_id', conversationId);
-
     return messagesStream.asyncMap((messages) async {
       // بروزرسانی وضعیت خوانده شدن پیام‌ها
       return messages;
@@ -1183,7 +1488,6 @@ class ChatService {
   // دریافت مکالمات بلادرنگ
   Stream<List<ConversationModel>> subscribeToConversations() {
     print('📡 شروع گوش دادن به تغییرات مکالمات');
-    final userId = _supabase.auth.currentUser!.id;
 
     return _supabase
         .from('conversations')
@@ -1446,8 +1750,19 @@ class ChatService {
         await directory.create(recursive: true);
       }
 
-      // دانلود فایل با نمایش پیشرفت
-      final response = await http.get(Uri.parse(imageUrl));
+      // دانلود فایل با نمایش پیشرفت (فقط دامنه‌های مجاز)
+      final uri = Uri.parse(imageUrl);
+      const allowedHosts = {
+        'storage.389346.ir.cdn.ir',
+        'coffevista.s3.ir-thr-at1.arvanstorage.ir',
+      };
+      if (!allowedHosts.contains(uri.host)) {
+        throw AppException(
+          userFriendlyMessage: 'دانلود از منبع نامعتبر',
+          technicalMessage: 'host=${uri.host}',
+        );
+      }
+      final response = await http.get(uri);
 
       if (response.statusCode != 200) {
         throw AppException(
@@ -1478,6 +1793,83 @@ class ChatService {
     }
   }
 
+  // =================== Inline image prefetch with cancel ===================
+  final Map<String, http.Client> _imageDownloadClients = {};
+
+  Future<String> prefetchImageCancelable(
+    String messageId,
+    String imageUrl,
+    void Function(double) onProgress,
+  ) async {
+    try {
+      // target path
+      final appDir = await getApplicationDocumentsDirectory();
+      final fileName = path.basename(imageUrl);
+      final filePath = path.join(appDir.path, 'chat_images', fileName);
+      final directory = Directory(path.dirname(filePath));
+      if (!await directory.exists()) {
+        await directory.create(recursive: true);
+      }
+
+      final client = http.Client();
+      _imageDownloadClients[messageId] = client;
+
+      // فقط دانلود از دامنه‌های مجاز
+      final uri2 = Uri.parse(imageUrl);
+      const allowedHosts2 = {
+        'storage.389346.ir.cdn.ir',
+        'coffevista.s3.ir-thr-at1.arvanstorage.ir',
+      };
+      if (!allowedHosts2.contains(uri2.host)) {
+        throw AppException(
+          userFriendlyMessage: 'دانلود از منبع نامعتبر',
+          technicalMessage: 'host=${uri2.host}',
+        );
+      }
+      final request = http.Request('GET', uri2);
+      final streamed = await client.send(request);
+      if (streamed.statusCode != 200) {
+        throw AppException(
+          userFriendlyMessage: 'خطا در دریافت تصویر',
+          technicalMessage: 'HTTP ${streamed.statusCode}',
+        );
+      }
+
+      final total = streamed.contentLength ?? 0;
+      int received = 0;
+      final file = File(filePath);
+      final IOSink sink = file.openWrite();
+      try {
+        await for (final chunk in streamed.stream) {
+          sink.add(chunk);
+          received += chunk.length;
+          if (total > 0) onProgress(received / total);
+        }
+      } catch (e) {
+        // cancel or stream error
+        try {
+          await sink.close();
+          if (await file.exists()) await file.delete();
+        } catch (_) {}
+        rethrow;
+      }
+
+      await sink.close();
+      _imageDownloadClients.remove(messageId)?.close();
+      return filePath;
+    } catch (e) {
+      _imageDownloadClients.remove(messageId)?.close();
+      throw AppException(
+        userFriendlyMessage: 'دانلود تصویر با مشکل مواجه شد',
+        technicalMessage: 'prefetchImageCancelable error: $e',
+      );
+    }
+  }
+
+  void cancelImagePrefetch(String messageId) {
+    _imageDownloadClients.remove(messageId)?.close();
+  }
+
   // Add a method to refresh the conversations (updates cache by fetching from server)
   Future<void> refreshConversations() async {
     await getConversations();
@@ -1491,7 +1883,28 @@ class ChatService {
 
     try {
       if (bothSides) {
-        // پاکسازی دوطرفه: حذف همه پیام‌های این گفتگو از دیتابیس و پاکسازی last_message
+        // پاکسازی دوطرفه: ابتدا حذف فایل‌های پیوست از استوریج، سپس حذف پیام‌ها از دیتابیس
+        try {
+          final attachmentMessages = await _supabase
+              .from('messages')
+              .select('id, attachment_url, attachment_type')
+              .eq('conversation_id', conversationId);
+
+          for (final m in attachmentMessages) {
+            final String? url = m['attachment_url'] as String?;
+            if (url != null && url.isNotEmpty) {
+              await _tryDeleteChatAttachment(
+                m['attachment_type'] as String?,
+                url,
+              );
+            }
+          }
+        } catch (e) {
+          print(
+              'هشدار: دریافت/حذف پیوست‌های گفتگو هنگام پاکسازی دوطرفه ناموفق بود: $e');
+        }
+
+        // سپس حذف همه پیام‌ها از دیتابیس و پاکسازی last_message
         // فراخوانی فانکشن سرور (در صورت وجود)
         try {
           await _supabase.rpc('clear_conversation_fully',

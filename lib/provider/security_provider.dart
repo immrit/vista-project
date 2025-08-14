@@ -526,3 +526,4 @@ final securityScoreProvider = FutureProvider<int>((ref) async {
   final securityService = ref.watch(securityServiceProvider);
   return await securityService.calculateSecurityScore();
 });
+

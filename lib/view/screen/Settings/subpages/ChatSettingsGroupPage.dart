@@ -20,7 +20,6 @@ class ChatSettingsGroupPage extends ConsumerWidget {
         title: const Text('چت و مکالمات'),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: isDark ? const Color(0xFF252525) : Colors.white,
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 16.0),
@@ -169,7 +168,7 @@ class ChatSettingsGroupPage extends ConsumerWidget {
         return Container(
           margin: const EdgeInsets.only(left: 68.0),
           height: 0.5,
-          color: isDark ? Colors.grey[700] : Colors.grey[300],
+          color: isDark ? Colors.grey[700] : Colors.grey[200],
         );
       },
     );
@@ -239,20 +238,21 @@ class ChatSettingsGroupPage extends ConsumerWidget {
     );
   }
 
-    Widget _buildChatPreview(BuildContext context, double fontSize, bool isDark) {
+  Widget _buildChatPreview(BuildContext context, double fontSize, bool isDark) {
     final primaryColor = Theme.of(context).primaryColor;
-    
+
     // محاسبه ارتفاع بر اساس اندازه فونت
     final double containerHeight = math.max(140, fontSize * 8);
     final double maxBubbleWidth = MediaQuery.of(context).size.width * 0.6;
-    
+
     return Container(
       height: containerHeight,
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.grey[50],
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[300]!),
+        border:
+            Border.all(color: isDark ? Colors.grey[600]! : Colors.grey[200]!),
       ),
       child: SingleChildScrollView(
         child: Column(
@@ -263,9 +263,8 @@ class ChatSettingsGroupPage extends ConsumerWidget {
               child: Container(
                 constraints: BoxConstraints(maxWidth: maxBubbleWidth),
                 padding: EdgeInsets.symmetric(
-                  horizontal: math.max(8, fontSize * 0.6), 
-                  vertical: math.max(6, fontSize * 0.4)
-                ),
+                    horizontal: math.max(8, fontSize * 0.6),
+                    vertical: math.max(6, fontSize * 0.4)),
                 decoration: BoxDecoration(
                   color: primaryColor,
                   borderRadius: BorderRadius.circular(16).copyWith(
@@ -285,18 +284,17 @@ class ChatSettingsGroupPage extends ConsumerWidget {
               ),
             ),
             SizedBox(height: math.max(6, fontSize * 0.3)),
-            
+
             // پیام دریافتی (سمت چپ)
             Align(
               alignment: Alignment.centerLeft,
               child: Container(
                 constraints: BoxConstraints(maxWidth: maxBubbleWidth * 0.9),
                 padding: EdgeInsets.symmetric(
-                  horizontal: math.max(8, fontSize * 0.6), 
-                  vertical: math.max(6, fontSize * 0.4)
-                ),
+                    horizontal: math.max(8, fontSize * 0.6),
+                    vertical: math.max(6, fontSize * 0.4)),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF383838) : Colors.grey[300],
+                  color: isDark ? const Color(0xFF383838) : Colors.grey[200],
                   borderRadius: BorderRadius.circular(16).copyWith(
                     bottomLeft: const Radius.circular(4),
                   ),
@@ -454,9 +452,10 @@ class ChatSettingsGroupPage extends ConsumerWidget {
       builder: (context) => Consumer(
         builder: (context, ref, child) {
           final settings = ref.watch(performanceProvider);
-          
+
           return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: const Row(
               children: [
                 Icon(Icons.speed, color: Colors.orange),
@@ -469,26 +468,38 @@ class ChatSettingsGroupPage extends ConsumerWidget {
               children: [
                 SwitchListTile(
                   title: const Text('حالت کم‌مصرف'),
-                  subtitle: Text(ref.read(performanceProvider.notifier).getBatterySaverDescription()),
+                  subtitle: Text(ref
+                      .read(performanceProvider.notifier)
+                      .getBatterySaverDescription()),
                   value: settings.batterySaverMode,
                   onChanged: (value) {
-                    ref.read(performanceProvider.notifier).updateBatterySaver(value);
+                    ref
+                        .read(performanceProvider.notifier)
+                        .updateBatterySaver(value);
                   },
                 ),
                 SwitchListTile(
                   title: const Text('کش هوشمند'),
-                  subtitle: Text(ref.read(performanceProvider.notifier).getSmartCacheDescription()),
+                  subtitle: Text(ref
+                      .read(performanceProvider.notifier)
+                      .getSmartCacheDescription()),
                   value: settings.smartCache,
                   onChanged: (value) {
-                    ref.read(performanceProvider.notifier).updateSmartCache(value);
+                    ref
+                        .read(performanceProvider.notifier)
+                        .updateSmartCache(value);
                   },
                 ),
                 SwitchListTile(
                   title: const Text('پیش‌بارگذاری پیام‌ها'),
-                  subtitle: Text(ref.read(performanceProvider.notifier).getPreloadingDescription()),
+                  subtitle: Text(ref
+                      .read(performanceProvider.notifier)
+                      .getPreloadingDescription()),
                   value: settings.messagePreloading,
                   onChanged: (value) {
-                    ref.read(performanceProvider.notifier).updateMessagePreloading(value);
+                    ref
+                        .read(performanceProvider.notifier)
+                        .updateMessagePreloading(value);
                   },
                 ),
               ],
@@ -563,7 +574,9 @@ class TelegramSwitchItem extends StatelessWidget {
                   subtitle,
                   style: TextStyle(
                     fontSize: 13,
-                    color: Colors.grey[600],
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey[600]
+                        : Colors.grey[700],
                   ),
                 ),
               ],

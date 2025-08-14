@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../widgets/VideoPlayerConfig.dart';
 import '../../../../provider/provider.dart';
 
 class VideoPlaybackSettingsPage extends ConsumerWidget {
@@ -19,7 +18,6 @@ class VideoPlaybackSettingsPage extends ConsumerWidget {
         title: const Text('تنظیمات پخش ویدیو'),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: isDark ? const Color(0xFF252525) : Colors.white,
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 16.0),
@@ -39,8 +37,7 @@ class VideoPlaybackSettingsPage extends ConsumerWidget {
                   subtitle: 'پخش ویدیو با کیفیت پایین برای صرفه‌جویی در داده',
                   value: ref.watch(dataSaverProvider),
                   onChanged: (value) {
-                    ref.read(dataSaverProvider.notifier).state = value;
-                    VideoPlayerConfig().setDataSaverMode(value);
+                    ref.read(dataSaverProvider.notifier).set(value);
                   },
                 ),
                 _buildDivider(),
@@ -51,8 +48,7 @@ class VideoPlaybackSettingsPage extends ConsumerWidget {
                   subtitle: 'تنظیم خودکار کیفیت بر اساس سرعت اینترنت',
                   value: ref.watch(autoQualityProvider),
                   onChanged: (value) {
-                    ref.read(autoQualityProvider.notifier).state = value;
-                    VideoPlayerConfig().setAutoQuality(value);
+                    ref.read(autoQualityProvider.notifier).set(value);
                   },
                 ),
                 _buildDivider(),
@@ -75,10 +71,15 @@ class VideoPlaybackSettingsPage extends ConsumerWidget {
   }
 
   Widget _buildDivider() {
-    return Container(
-      margin: const EdgeInsets.only(left: 68.0),
-      height: 0.5,
-      color: Colors.grey[300],
+    return Builder(
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return Container(
+          margin: const EdgeInsets.only(left: 68.0),
+          height: 0.5,
+          color: isDark ? Colors.grey[300] : Colors.grey[200],
+        );
+      },
     );
   }
 }

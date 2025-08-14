@@ -56,11 +56,10 @@ class DeepLinkService {
 
   // پردازش deep link
   void handleDeepLink(Uri uri, GlobalKey<NavigatorState> navigatorKey) {
-    print('Received deep link: $uri');
-    print('Scheme: ${uri.scheme}');
-    print('Host: ${uri.host}');
-    print('Path: ${uri.path}');
-    print('Path segments: ${uri.pathSegments}');
+    // امن‌سازی لاگ: از چاپ کل URI خودداری کنید
+    final safe =
+        'scheme=${uri.scheme}, host=${uri.host}, path=${uri.path}, segments=${uri.pathSegments.length}';
+    print('Received deep link (safe): $safe');
 
     final scheme = uri.scheme;
     final host = uri.host;

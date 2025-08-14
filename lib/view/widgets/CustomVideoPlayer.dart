@@ -2,10 +2,8 @@ import 'dart:async';
 import 'package:Vista/view/widgets/VideoPlayerConfig.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../model/ProfileModel.dart';
 
@@ -82,7 +80,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
   bool _isVisible = false;
 
   // برای مدیریت وضعیت کپشن
-  bool _isCaptionExpanded = false;
+  // removed unused caption state (was planned for future expansion)
 
   @override
   bool get wantKeepAlive {
@@ -96,13 +94,20 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
   @override
   void initState() {
     super.initState();
-    _loadConfig();
-    _initializePlayer();
+    _loadConfigAndInitialize();
   }
 
-  Future<void> _loadConfig() async {
-    _isDataSaverMode = await _config.getDataSaverMode();
-    setState(() {});
+  Future<void> _loadConfigAndInitialize() async {
+    try {
+      final dataSaver = await _config.getDataSaverMode();
+      if (!mounted) return;
+      setState(() {
+        _isDataSaverMode = dataSaver;
+      });
+      await _initializePlayer();
+    } catch (_) {
+      // ignore
+    }
   }
 
   @override
@@ -115,17 +120,22 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
 
   Future<void> _initializePlayer() async {
     try {
-      final file =
-          await _config.videoCacheManager.getSingleFile(widget.videoUrl);
-      _controller = VideoPlayerController.file(file);
+      // اگر حالت ذخیره‌داده فعال باشد، کش را غیرفعال می‌کنیم و مستقیم از شبکه پخش می‌کنیم
+      // در غیر این صورت از کش سفارشی استفاده می‌کنیم
+      if (_isDataSaverMode) {
+        _controller = VideoPlayerController.network(widget.videoUrl);
+      } else {
+        final file =
+            await _config.videoCacheManager.getSingleFile(widget.videoUrl);
+        _controller = VideoPlayerController.file(file);
+      }
 
       await _controller?.initialize();
 
       if (_controller == null) return;
 
-      if (_isDataSaverMode) {
-        // تنظیمات کیفیت پایین برای حالت ذخیره دیتا
-      }
+      // اگر auto-quality فعال باشد و استریم HLS باشد، پلیر به‌صورت خودکار تطبیقی رفتار می‌کند
+      // (video_player به‌صورت داخلی مدیریت می‌کند اگر URL از نوع HLS باشد)
 
       if (mounted) {
         setState(() {
@@ -255,12 +265,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
     });
   }
 
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    String minutes = twoDigits(duration.inMinutes.remainder(60));
-    String seconds = twoDigits(duration.inSeconds.remainder(60));
-    return "$minutes:$seconds";
-  }
+  // Removed unused _formatDuration to satisfy linter
 
   void _toggleFullScreen() {
     setState(() {

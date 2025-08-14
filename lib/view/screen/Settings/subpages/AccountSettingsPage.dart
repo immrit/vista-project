@@ -19,7 +19,6 @@ class AccountSettingsPage extends ConsumerWidget {
         title: const Text('حساب کاربری'),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: isDark ? const Color(0xFF252525) : Colors.white,
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 16.0),
@@ -85,7 +84,7 @@ class AccountSettingsPage extends ConsumerWidget {
         return Container(
           margin: const EdgeInsets.only(left: 68.0),
           height: 0.5,
-          color: isDark ? Colors.grey[700] : Colors.grey[300],
+          color: isDark ? Colors.grey[700] : Colors.grey[200],
         );
       },
     );
@@ -152,7 +151,7 @@ class TelegramSettingsItem extends StatelessWidget {
                       subtitle,
                       style: TextStyle(
                         fontSize: 13,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        color: isDark ? Colors.grey[400] : Colors.grey[700],
                       ),
                     ),
                   ],
@@ -161,7 +160,7 @@ class TelegramSettingsItem extends StatelessWidget {
               Icon(
                 Icons.arrow_forward_ios,
                 size: 16,
-                color: isDark ? Colors.grey[500] : Colors.grey[400],
+                color: isDark ? Colors.grey[500] : Colors.grey[600],
               ),
             ],
           ),

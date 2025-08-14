@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:video_player/video_player.dart';
-import 'package:visibility_detector/visibility_detector.dart';
-import 'dart:math' as math;
+// removed unused imports
 
-import '../../main.dart';
 import '../../model/publicPostModel.dart';
 import '../../provider/provider.dart';
 import 'ReelsVideoPlayer.dart';
@@ -32,7 +29,7 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
   late PageController _pageController;
   int _currentIndex = 0;
   bool _isLoading = false;
-  late SupabaseService _supabaseService;
+  // removed unused _supabaseService field to satisfy linter
 
   @override
   bool get wantKeepAlive => true; // برای حفظ وضعیت ویدیوها در هنگام اسکرول
@@ -42,7 +39,7 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
     super.initState();
     _currentIndex = widget.initialIndex;
     _pageController = PageController(initialPage: _currentIndex);
-    _supabaseService = SupabaseService(supabase);
+    // _supabaseService = SupabaseService(supabase);
 
     // لاگ کردن موقعیت‌های اولیه برای دیباگ
     if (widget.initialPositions.isNotEmpty) {
@@ -91,7 +88,8 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
     }
   }
 
-  Future<void> _likeReel(PublicPostModel reel) async {
+  // removed unused _likeReel method to satisfy linter
+  /*Future<void> _likeReel(PublicPostModel reel) async {
     try {
       // Optimistic update - بروزرسانی فوری UI
       final updatedReel = reel.copyWith(
@@ -112,8 +110,8 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
 
       // ارسال درخواست به سرور
       await ref.read(supabaseServiceProvider).toggleLike(
-            postId: reel.id!,
-            ownerId: reel.userId!,
+            postId: reel.id,
+            ownerId: reel.userId,
             ref: ref,
           );
     } catch (e) {
@@ -138,7 +136,7 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
         );
       }
     }
-  }
+  }*/
 
   void _sharePost(PublicPostModel post) {
     // ایجاد deep link برای پست
@@ -191,7 +189,7 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
               Divider(),
               // اینجا کامپوننت نمایش کامنت‌ها را قرار دهید
               Expanded(
-                child: commentsList(post.id!, controller),
+                child: commentsList(post.id, controller),
               ),
             ],
           ),
@@ -254,7 +252,7 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
 
                 // موقعیت اولیه ویدیو را پاس می‌دهیم (اگر وجود داشته باشد)
                 Duration? initialPosition;
-                final postId = post.id ?? '';
+                final postId = post.id;
 
                 if (widget.initialPositions.containsKey(postId)) {
                   initialPosition = widget.initialPositions[postId];
@@ -280,7 +278,8 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
                     // ذخیره موقعیت فعلی برای استفاده بعدی
                     _saveVideoPosition(postId, position);
                   },
-                  autoPlayInFeed: true, // در صفحه ریلز، پخش خودکار فعال است
+                  // احترام به تنظیم کاربر برای پخش خودکار
+                  autoPlayInFeed: ref.watch(autoPlayProvider),
                 );
               },
             ),

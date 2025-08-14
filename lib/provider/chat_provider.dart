@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../DB/conversation_cache_service.dart';
 import '../DB/message_cache_service.dart';
@@ -9,7 +8,7 @@ import '../main.dart';
 import '../model/conversation_model.dart';
 import '../model/message_model.dart';
 import '../services/ChatService.dart';
-import '../view/Exeption/app_exceptions.dart';
+import '../security/e2ee_service.dart';
 
 // لیست مکالمات
 final conversationsProvider =
@@ -119,8 +118,7 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
 
   final Ref ref;
   bool _disposed = false;
-  final MessageCacheService _messageCache =
-      MessageCacheService(); // اضافه کردن این خط
+  final MessageCacheService _messageCache = MessageCacheService();
 
   @override
   void dispose() {
@@ -136,7 +134,15 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
     state = const AsyncValue.loading();
     try {
       final chatService = ref.read(chatServiceProvider);
-      await chatService.deleteMessage(messageId, forEveryone: forEveryone);
+      final conversationId =
+          await chatService.deleteMessage(messageId, forEveryone: forEveryone);
+
+      // حذف خوشبینانه از UI: پیام را بلافاصله از state گفتگو حذف کن
+      try {
+        ref
+            .read(conversationMessagesProvider(conversationId).notifier)
+            .markLocallyDeleted(messageId);
+      } catch (_) {}
 
       // بروزرسانی فوری پیام‌ها و مکالمات
       ref.invalidate(messagesStreamProvider);
@@ -218,9 +224,19 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
       final chatService = ref.read(chatServiceProvider);
       await chatService.clearConversation(conversationId, bothSides: bothSides);
 
-      // بروزرسانی پیام‌ها
+      // پاک‌سازی فوری وضعیت لیست پیام‌های در حافظه + علامت‌گذاری برای جلوگیری از بازگشت کش
+      try {
+        await ref
+            .read(conversationMessagesProvider(conversationId).notifier)
+            .clearAllAndMark();
+      } catch (_) {}
+
+      // بروزرسانی providerها برای جلوگیری از بازگشت پیام‌ها از کش/استریم
+      ref.invalidate(conversationMessagesProvider(conversationId));
+      ref.invalidate(messagesStreamProvider(conversationId));
       ref.invalidate(messagesProvider(conversationId));
       ref.invalidate(conversationsProvider);
+      ref.invalidate(conversationsStreamProvider);
 
       state = const AsyncValue.data(null);
     } catch (e, stack) {
@@ -363,6 +379,12 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
         '🚀 تلاش برای ارسال پیام (تلاش ${retryCount + 1}): ${tempMessage.id}');
     try {
       final chatService = ref.read(chatServiceProvider);
+      // Ensure crypto is initialized and own public key published (best-effort)
+      try {
+        await E2EEService.instance.ensureInitialized();
+        await E2EEService.instance.publishOwnPublicKeyIfNeeded();
+      } catch (_) {}
+
       final serverMessage = await chatService.sendMessage(
         conversationId: tempMessage.conversationId, // استفاده از tempMessage
         content: tempMessage.content, // استفاده از tempMessage
@@ -460,10 +482,10 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
       await chatService.deleteAllMessages(conversationId,
           forEveryone: forEveryone);
 
-      // بروزرسانی فوری UI با پاک کردن state
-      ref
+      // بروزرسانی فوری UI با پاک کردن state و علامت‌گذاری برای جلوگیری از بازگشت کش
+      await ref
           .read(conversationMessagesProvider(conversationId).notifier)
-          .clearAll();
+          .clearAllAndMark();
 
       // بروزرسانی لیست مکالمات در صفحه اصلی
       ref.invalidate(conversationsProvider);
@@ -669,8 +691,52 @@ final userOnlineStatusStreamProvider =
       .from('profiles')
       .stream(primaryKey: ['id'])
       .eq('id', userId)
-      .map((list) {
+      .asyncMap((list) async {
         if (list.isEmpty) return false;
+
+        // ابتدا تنظیمات نمایش آخرین بازدید را برای کاربر مقابل بخوان
+        try {
+          final settings = await supabase
+              .from('user_settings')
+              .select('last_seen_visibility')
+              .eq('user_id', userId)
+              .maybeSingle();
+
+          final visibility = settings?['last_seen_visibility'] as String?;
+
+          // اگر هیچکس، همیشه آفلاین نشان بده
+          if (visibility == 'nobody') {
+            return false;
+          }
+
+          // اگر فقط مخاطبین من، بررسی کن آیا کاربر فعلی مخاطب است
+          if (visibility == 'my_contacts') {
+            final currentUserId = supabase.auth.currentUser?.id;
+            if (currentUserId == null) return false;
+
+            // تعریف مخاطب: فالو دوطرفه
+            final otherFollowsMe = await supabase
+                .from('follows')
+                .select('id')
+                .eq('follower_id', userId)
+                .eq('following_id', currentUserId)
+                .maybeSingle();
+            if (otherFollowsMe == null) return false;
+
+            final iFollowOther = await supabase
+                .from('follows')
+                .select('id')
+                .eq('follower_id', currentUserId)
+                .eq('following_id', userId)
+                .maybeSingle();
+            if (iFollowOther == null) return false;
+          }
+        } catch (e) {
+          print('Error checking privacy settings for $userId: $e');
+          // در صورت خطا، محدودیت اعمال نشود
+        }
+
+        // اگر تنظیمات اجازه نمایش می‌دهد، وضعیت فنی آنلاین بودن را بررسی کن
         final profileData = list.first;
         final bool isOnline = profileData['is_online'] ?? false;
         final String? lastOnlineStr = profileData['last_online'];
@@ -699,6 +765,48 @@ final userLastOnlineProvider =
     FutureProvider.family<DateTime?, String>((ref, userId) async {
   final chatService = ref.watch(chatServiceProvider);
   return await chatService.getUserLastOnline(userId);
+});
+
+// آیا کاربر فعلی مجاز است آخرین بازدید کاربر مقابل را ببیند؟
+final canShowLastSeenProvider =
+    FutureProvider.family<bool, String>((ref, String otherUserId) async {
+  try {
+    final currentUserId = supabase.auth.currentUser?.id;
+    if (currentUserId == null) return false;
+
+    // خواندن تنظیمات کاربر مقابل
+    final settings = await supabase
+        .from('user_settings')
+        .select('last_seen_visibility')
+        .eq('user_id', otherUserId)
+        .maybeSingle();
+    final visibility = settings?['last_seen_visibility'] as String?;
+
+    if (visibility == null || visibility == 'everyone') return true;
+    if (visibility == 'nobody') return false;
+
+    if (visibility == 'my_contacts') {
+      // تعریف «مخاطب» به صورت فالو دوطرفه
+      final aFollowsB = await supabase
+          .from('follows')
+          .select('id')
+          .eq('follower_id', currentUserId)
+          .eq('following_id', otherUserId)
+          .maybeSingle();
+      if (aFollowsB == null) return false;
+      final bFollowsA = await supabase
+          .from('follows')
+          .select('id')
+          .eq('follower_id', otherUserId)
+          .eq('following_id', currentUserId)
+          .maybeSingle();
+      return bFollowsA != null;
+    }
+
+    return true;
+  } catch (_) {
+    return true; // در صورت خطا، محدودیت اعمال نشود
+  }
 });
 
 // تنظیم Provider برای بلاک کردن کاربر
@@ -1004,6 +1112,10 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
   final MessageCacheService _cacheService = MessageCacheService();
   final ConversationCacheService _conversationCache =
       ConversationCacheService();
+  // مجموعه پیام‌هایی که کاربر به‌صورت خوشبینانه حذف کرده تا از استریم مجدد ظاهر نشوند
+  final Set<String> _locallyDeletedMessageIds = <String>{};
+  // زمان آخرین پاک‌سازی کامل برای جلوگیری از بازگشت پیام‌های قدیمی از استریم/کش
+  DateTime? _clearedAt;
 
   ConversationMessagesNotifier(this.conversationId) : super([]) {
     _init();
@@ -1135,9 +1247,23 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
     _cacheService.clearMessage(conversationId, messageId, userId);
   }
 
+  // علامت‌گذاری حذف خوشبینانه برای همگام‌سازی با استریم
+  void markLocallyDeleted(String messageId) {
+    _locallyDeletedMessageIds.add(messageId);
+    removeMessage(messageId);
+  }
+
   // متد جدید برای پاک کردن تمام پیام‌ها از state
   void clearAll() {
     state = [];
+  }
+
+  // پاک‌سازی کامل + ثبت زمان پاک‌سازی و حذف کش لوکال
+  Future<void> clearAllAndMark() async {
+    _clearedAt = DateTime.now();
+    state = [];
+    final userId = supabase.auth.currentUser!.id;
+    await _cacheService.clearConversationMessages(conversationId, userId);
   }
 
   // جایگزینی پیام موقت با پیام واقعی (بدون invalidate کردن کل provider)
@@ -1210,83 +1336,132 @@ final conversationMessagesProvider = StateNotifierProvider.family
           .eq('conversation_id', conversationId)
           .order('created_at', ascending: false)
           .listen((jsonDataList) async {
-            var currentMessagesState = List<MessageModel>.from(notifier.state);
-            final List<MessageModel> newMessagesFromOthersToCache = [];
-            final List<MessageModel> updatedOrNewOwnMessagesToCache = [];
-            bool stateWasModified = false;
+            // دریافت لیست پیام‌های مخفی شده برای کاربر فعلی در این گفتگو
+            final hiddenIdsResp = await supabase
+                .from('hidden_messages')
+                .select('message_id')
+                .eq('user_id', userId)
+                .eq('conversation_id', conversationId);
+            final hiddenIds =
+                hiddenIdsResp.map((e) => e['message_id'] as String).toSet();
 
-            for (final jsonMsg in jsonDataList) {
-              final serverMessage =
-                  MessageModel.fromJson(jsonMsg, currentUserId: userId);
-
-              // حذف پیام temp اگر پیام واقعی با localId مشابه آمد
-              if (serverMessage.localId != null &&
-                  serverMessage.localId!.isNotEmpty) {
-                final int tempIndex = currentMessagesState
-                    .indexWhere((m) => m.id == serverMessage.localId);
-                if (tempIndex != -1) {
-                  currentMessagesState.removeAt(tempIndex);
-                  stateWasModified = true;
+            // مجموعه شناسه‌های پیام‌های روی سرور (بعد از فیلتر مخفی)
+            List<MessageModel> serverMessagesRaw = jsonDataList
+                .map((jsonMsg) =>
+                    MessageModel.fromJson(jsonMsg, currentUserId: userId))
+                .where((m) =>
+                    !hiddenIds.contains(m.id) &&
+                    !notifier._locallyDeletedMessageIds.contains(m.id))
+                .toList();
+            // E2EE: decrypt in stream for immediate UI
+            try {
+              if (serverMessagesRaw.isNotEmpty) {
+                // Determine otherUserId once
+                String? otherUserId;
+                try {
+                  final conv = await notifier._conversationCache
+                      .getConversation(conversationId, userId);
+                  otherUserId = conv?.otherUserId;
+                } catch (_) {}
+                if (otherUserId != null && otherUserId.isNotEmpty) {
+                  await E2EEService.instance.prepareConversationKey(
+                    conversationId: conversationId,
+                    otherUserId: otherUserId,
+                  );
+                  serverMessagesRaw = await Future.wait(
+                    serverMessagesRaw.map((m) async {
+                      if (m.content.startsWith('e2ee:v1:')) {
+                        final decrypted =
+                            await E2EEService.instance.maybeDecryptFast(
+                          content: m.content,
+                          conversationId: conversationId,
+                          otherUserId: otherUserId!,
+                        );
+                        final replyDec = await E2EEService.instance
+                            .maybeDecryptWithOtherUserNullable(
+                          content: m.replyToContent,
+                          conversationId: conversationId,
+                          otherUserId: otherUserId!,
+                        );
+                        return m.copyWith(
+                          content: decrypted,
+                          replyToContent: replyDec,
+                        );
+                      }
+                      return m;
+                    }),
+                  );
                 }
               }
+            } catch (_) {}
+            if (notifier._clearedAt != null) {
+              serverMessagesRaw = serverMessagesRaw
+                  .where((m) => m.createdAt.isAfter(notifier._clearedAt!))
+                  .toList();
+            }
+            // final serverIds = serverMessagesRaw.map((m) => m.id).toSet();
 
-              final existingIndex = currentMessagesState
-                  .indexWhere((m) => m.id == serverMessage.id);
-              if (existingIndex == -1) {
-                currentMessagesState.add(serverMessage);
-                stateWasModified = true;
-                if (serverMessage.senderId == userId) {
-                  updatedOrNewOwnMessagesToCache.add(serverMessage);
-                } else {
-                  newMessagesFromOthersToCache.add(serverMessage);
-                }
-              } else {
-                // فقط اگر پیام تغییر کرده باشد، آپدیت کن
-                if (currentMessagesState[existingIndex] != serverMessage) {
-                  currentMessagesState[existingIndex] = serverMessage;
-                  stateWasModified = true;
-                  if (serverMessage.senderId == userId) {
-                    updatedOrNewOwnMessagesToCache.add(serverMessage);
-                  } else {
-                    newMessagesFromOthersToCache.add(serverMessage);
-                  }
-                }
+            // پیام‌های temp موجود از کش که هنوز جایگزین نشده‌اند را نگه دار
+            final cachedNow = await notifier._cacheService
+                .getConversationMessages(conversationId, userId);
+            final tempMessagesInState =
+                cachedNow.where((m) => m.id.startsWith('temp_')).toList();
+
+            // اگر سرور پیامی با localId برابر temp داشت، temp را حذف کن
+            final tempIdsToRemove = tempMessagesInState
+                .where((t) => serverMessagesRaw.any((s) => s.localId == t.id))
+                .map((t) => t.id)
+                .toSet();
+            final remainingTempMessages = tempMessagesInState
+                .where((t) => !tempIdsToRemove.contains(t.id))
+                .toList();
+
+            // ساخت state جدید: temp های باقی‌مانده + پیام‌های سرور (پس از فیلتر مخفی)
+            final List<MessageModel> nextState = [
+              ...remainingTempMessages,
+              ...serverMessagesRaw,
+            ];
+
+            // آپدیت کش فقط برای پیام‌هایی که جدید هستند یا از خود کاربرند
+            final existingIdsInCache = cachedNow.map((m) => m.id).toSet();
+            final toCache = serverMessagesRaw
+                .where((m) => !existingIdsInCache.contains(m.id))
+                .toList();
+            if (toCache.isNotEmpty) {
+              await notifier._cacheService.cacheMessages(toCache, userId);
+            }
+
+            // حذف از کش پیام‌هایی که مخفی شده‌اند
+            if (hiddenIds.isNotEmpty) {
+              for (final hiddenId in hiddenIds) {
+                await notifier._cacheService
+                    .clearMessage(conversationId, hiddenId, userId);
               }
+            }
 
-              // --- آپدیت فوری کش مکالمه فقط اگر پیام جدیدتر است ---
-              final conversationIdForUpdate = serverMessage.conversationId;
+            // به‌روزرسانی کش مکالمه بر اساس جدیدترین پیام سرور (در صورت وجود)
+            if (serverMessagesRaw.isNotEmpty) {
+              final latest = serverMessagesRaw
+                  .reduce((a, b) => a.createdAt.isAfter(b.createdAt) ? a : b);
               final conversationCache = ConversationCacheService();
               final conversation = await conversationCache.getConversation(
-                  conversationIdForUpdate, userId);
-              if (conversation != null) {
-                // فقط اگر پیام جدیدتر است، مکالمه را آپدیت کن
-                if (serverMessage.createdAt.isAfter(conversation.updatedAt)) {
-                  final updatedConversation = conversation.copyWith(
-                    lastMessage: serverMessage.content,
-                    lastMessageTime: serverMessage.createdAt,
-                    updatedAt: serverMessage.createdAt,
-                  );
-                  await conversationCache.updateConversation(
-                      updatedConversation, userId);
-                  // invalidate providers
-                  ref.invalidate(conversationsStreamProvider);
-                  ref.invalidate(cachedConversationsStreamProvider);
-                }
+                  conversationId, userId);
+              if (conversation != null &&
+                  latest.createdAt.isAfter(conversation.updatedAt)) {
+                final updatedConversation = conversation.copyWith(
+                  lastMessage: latest.content,
+                  lastMessageTime: latest.createdAt,
+                  updatedAt: latest.createdAt,
+                );
+                await conversationCache.updateConversation(
+                    updatedConversation, userId);
+                ref.invalidate(conversationsStreamProvider);
+                ref.invalidate(cachedConversationsStreamProvider);
               }
             }
 
-            if (stateWasModified) {
-              notifier.state = currentMessagesState;
-            }
-
-            if (newMessagesFromOthersToCache.isNotEmpty) {
-              await notifier._cacheService
-                  .cacheMessages(newMessagesFromOthersToCache, userId);
-            }
-            if (updatedOrNewOwnMessagesToCache.isNotEmpty) {
-              await notifier._cacheService
-                  .cacheMessages(updatedOrNewOwnMessagesToCache, userId);
-            }
+            // ست کردن state جدید (مرتب‌سازی داخل setter انجام می‌شود)
+            notifier.state = nextState;
           });
 
       ref.onDispose(() {

@@ -7,8 +7,8 @@ import 'package:timeago/timeago.dart' as timeago;
 
 import '../../../model/notificationModel.dart';
 import '../../../provider/notification_provider.dart';
+import '../../../main.dart';
 import '/view/screen/PublicPosts/profileScreen.dart';
-import '../../util/const.dart';
 import 'PostDetailPage.dart';
 
 class NotificationsPage extends ConsumerStatefulWidget {
@@ -272,6 +272,13 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                             username: notification.username,
                           ),
                         ));
+                  } else if (notification.type == 'follow_request') {
+                    _showFollowRequestDialog(
+                      context,
+                      senderId: notification.senderId,
+                      username: notification.username,
+                      avatarUrl: notification.avatarUrl,
+                    );
                   }
                 },
                 child: Padding(
@@ -413,6 +420,32 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                                     ?.color,
                               ),
                             ),
+                            if (notification.type == 'follow_request') ...[
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  OutlinedButton(
+                                    onPressed: () async {
+                                      await _respondFollowRequest(
+                                        requesterId: notification.senderId,
+                                        accept: false,
+                                      );
+                                    },
+                                    child: const Text('رد'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  ElevatedButton(
+                                    onPressed: () async {
+                                      await _respondFollowRequest(
+                                        requesterId: notification.senderId,
+                                        accept: true,
+                                      );
+                                    },
+                                    child: const Text('پذیرفتن'),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -434,6 +467,99 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
           );
         }
       },
+    );
+  }
+
+  Future<void> _respondFollowRequest({
+    required String requesterId,
+    required bool accept,
+  }) async {
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      if (accept) {
+        // ایجاد رابطه فالو
+        await supabase.from('follows').upsert({
+          'follower_id': requesterId,
+          'following_id': userId,
+        });
+        // به‌روزرسانی وضعیت درخواست
+        await supabase
+            .from('follow_requests')
+            .update({'status': 'accepted'})
+            .eq('requester_id', requesterId)
+            .eq('recipient_id', userId);
+        // اعلان به درخواست‌دهنده
+        await supabase.from('notifications').insert({
+          'recipient_id': requesterId,
+          'sender_id': userId,
+          'type': 'follow_request_accepted',
+          'content': 'درخواست دنبال کردن شما پذیرفته شد',
+          'created_at': DateTime.now().toIso8601String(),
+          'is_read': false,
+        });
+      } else {
+        await supabase
+            .from('follow_requests')
+            .update({'status': 'rejected'})
+            .eq('requester_id', requesterId)
+            .eq('recipient_id', userId);
+      }
+
+      // رفرش لیست اعلان‌ها
+      await ref.read(notificationsProvider.notifier).refresh();
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در پردازش درخواست: $e')),
+        );
+      }
+    }
+  }
+
+  void _showFollowRequestDialog(
+    BuildContext context, {
+    required String senderId,
+    required String username,
+    required String avatarUrl,
+  }) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('درخواست دنبال کردن'),
+        content: Row(
+          children: [
+            CircleAvatar(
+              backgroundImage:
+                  avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+              child: avatarUrl.isEmpty ? const Icon(Icons.person) : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Text('کاربر "$username" درخواست دنبال کردن داد.')),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('بستن'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _respondFollowRequest(requesterId: senderId, accept: false);
+            },
+            child: const Text('رد'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _respondFollowRequest(requesterId: senderId, accept: true);
+            },
+            child: const Text('پذیرفتن'),
+          ),
+        ],
+      ),
     );
   }
 

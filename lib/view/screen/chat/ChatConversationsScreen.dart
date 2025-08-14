@@ -17,6 +17,7 @@ import '../../../services/ChatService.dart';
 import 'ChatScreen.dart';
 import '../../../DB/conversation_cache_service.dart';
 import '../../../DB/message_cache_service.dart';
+import '../../../security/e2ee_service.dart';
 
 // مدل یکپارچه برای نمایش چت‌ها و کانال‌ها در یک لیست
 @immutable
@@ -317,6 +318,18 @@ class _ChatConversationsScreenState
       error: (error, stack) => _buildErrorState(theme, error.toString()),
       data: (cachedConversations) {
         // نام متغیر به cachedConversations تغییر کرد
+        // Precompute E2EE keys for faster subtitle decrypt
+        try {
+          for (final c in cachedConversations) {
+            final otherUserId = c.otherUserId;
+            if (otherUserId != null && otherUserId.isNotEmpty) {
+              E2EEService.instance.prepareConversationKey(
+                conversationId: c.id,
+                otherUserId: otherUserId,
+              );
+            }
+          }
+        } catch (_) {}
         return channelsAsync.when(
           loading: () => _buildLoadingState(theme),
           error: (error, stack) => _buildErrorState(theme, error.toString()),
@@ -628,6 +641,23 @@ class _ChatConversationsScreenState
       );
     }
 
+    if (item.isChannel) {
+      // For channels, don't try to decrypt; just show description/title
+      final text = (item.subtitle == null || item.subtitle!.isEmpty)
+          ? 'کانال'
+          : item.subtitle!;
+      return Text(
+        text,
+        style: TextStyle(
+          fontSize: 14,
+          color: theme.hintColor,
+          fontWeight: FontWeight.normal,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+
     if (item.subtitle?.isEmpty ?? true) {
       if (item.isChannel) {
         return Text(
@@ -642,15 +672,46 @@ class _ChatConversationsScreenState
       return const SizedBox.shrink();
     }
 
-    return Text(
-      item.subtitle!,
-      style: TextStyle(
-        fontSize: 14,
-        color: theme.hintColor,
-        fontWeight: FontWeight.normal,
+    // Decrypt last message subtitle if needed (fast path)
+    final convo = item.source is ConversationModel
+        ? item.source as ConversationModel
+        : null;
+    final otherUserId = convo?.otherUserId ?? '';
+    final subtitleText = item.subtitle!;
+    final isEncrypted = subtitleText.startsWith('e2ee:v1:');
+
+    if (!isEncrypted || otherUserId.isEmpty) {
+      return Text(
+        subtitleText,
+        style: TextStyle(
+          fontSize: 14,
+          color: theme.hintColor,
+          fontWeight: FontWeight.normal,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+
+    return FutureBuilder<String>(
+      future: E2EEService.instance.maybeDecryptFast(
+        content: subtitleText,
+        conversationId: item.id,
+        otherUserId: otherUserId,
       ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
+      builder: (context, snapshot) {
+        final text = snapshot.data ?? 'پیام جدید';
+        return Text(
+          text,
+          style: TextStyle(
+            fontSize: 14,
+            color: theme.hintColor,
+            fontWeight: FontWeight.normal,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+      },
     );
   }
 

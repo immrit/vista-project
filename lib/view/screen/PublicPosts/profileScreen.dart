@@ -1,7 +1,6 @@
-import 'package:Vista/view/screen/PublicPosts/PostDetailPage.dart';
+// unused import removed
 import 'package:Vista/view/screen/PublicPosts/publicPosts.dart';
 import 'package:Vista/view/util/comments_bottom_sheet.dart';
-import 'package:badges/badges.dart' as badges;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
@@ -9,10 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shamsi_date/shamsi_date.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import '../../../main.dart';
 import '../../../model/MusicModel.dart';
@@ -23,8 +19,6 @@ import '../../util/const.dart';
 import '../../util/widgets.dart';
 import '../../widgets/CustomVideoPlayer.dart';
 import '../../widgets/ReelsScreen.dart';
-import '../Music/MiniMusicPlayer.dart';
-import '../Stories/story_system.dart';
 import '../chat/ChatScreen.dart';
 import '../ouathUser/editeProfile.dart';
 import '../searchPage.dart';
@@ -33,7 +27,7 @@ import '../../../provider/provider.dart';
 import 'MusicWaveform.dart';
 import 'followers and followings/FollowersScreen.dart';
 import 'followers and followings/FollowingScreen.dart';
-import 'notificationScreen.dart';
+// removed unused imports
 import 'dart:async';
 import 'package:aws_s3_api/s3-2006-03-01.dart';
 
@@ -49,6 +43,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  bool _isStartingConversation = false;
   @override
   void initState() {
     super.initState();
@@ -65,7 +60,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final currentUser = ref.watch(authProvider);
     final getprofile = ref.watch(profileProvider);
     final currentcolor = ref.watch(themeProvider);
-    final autoPlay = ref.watch(autoPlayProvider);
 
     final isCurrentUserProfile = profileState != null &&
         currentUser != null &&
@@ -110,9 +104,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ThemeData currentcolor, dynamic isCurrentUserProfile) {
     return SliverAppBar(
       expandedHeight: 370,
-      backgroundColor: Brightness.dark == Theme.of(context).brightness
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
           ? Colors.grey[900]
-          : null,
+          : Colors.white,
+      foregroundColor: Colors.black,
       floating: false,
       pinned: true,
       actions: [
@@ -141,7 +136,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Row _buildAppBarTitle(ProfileModel profile) {
     return Row(
       children: [
-        Text(profile.username, style: TextStyle(fontWeight: FontWeight.bold)),
+        Text(profile.username,
+            style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white
+                    : Colors.black)),
         const SizedBox(width: 5),
         if (profile.isVerified) _buildVerificationBadge(profile),
       ],
@@ -170,14 +170,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Widget _buildProfileHeader(ProfileModel profile) {
     final bool isCurrentUserProfile = profile.id == ref.read(authProvider)?.id;
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 60),
-          _buildProfileInfo(profile, isCurrentUserProfile),
-        ],
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      color: isDark ? const Color(0xFF252525) : Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 60),
+            _buildProfileInfo(profile, isCurrentUserProfile),
+          ],
+        ),
       ),
     );
   }
@@ -195,7 +199,123 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
         const SizedBox(height: 16),
         _buildProfileDetails(profile),
+        const SizedBox(height: 12),
+        // اگر خصوصی و دنبال نشده: پیام قفل + دکمه درخواست
+        Consumer(builder: (context, ref, _) {
+          final isPrivateAsync =
+              ref.watch(userSettingsByIdProvider(profile.id));
+          return isPrivateAsync.when(
+            data: (settings) {
+              final isPrivate = (settings?['is_private'] as bool?) ?? false;
+              final isFollowed = profile.isFollowed;
+              if (!isPrivate || isFollowed || isCurrentUserProfile) {
+                return const SizedBox.shrink();
+              }
+
+              final pendingAsync =
+                  ref.watch(followRequestPendingProvider(profile.id));
+              return Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.grey[900]
+                      : Colors.grey[100],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white12
+                        : Colors.black12,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: const [
+                        Icon(Icons.lock, size: 18),
+                        SizedBox(width: 8),
+                        Text(
+                          'این حساب خصوصی است',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'برای مشاهده پست‌ها باید درخواست دنبال کردن شما تایید شود.',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                    const SizedBox(height: 10),
+                    pendingAsync.when(
+                      loading: () => const SizedBox(
+                        height: 36,
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                      error: (_, __) => _buildRequestButton(ref, profile),
+                      data: (pending) {
+                        if (pending) {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.orangeAccent),
+                            ),
+                            child:
+                                const Text('درخواست شما در انتظار تایید است'),
+                          );
+                        }
+                        return _buildRequestButton(ref, profile);
+                      },
+                    ),
+                  ],
+                ),
+              );
+            },
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
+          );
+        }),
       ],
+    );
+  }
+
+  Widget _buildRequestButton(WidgetRef ref, ProfileModel profile) {
+    return SizedBox(
+      height: 36,
+      child: ElevatedButton.icon(
+        icon: const Icon(Icons.person_add, size: 16),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.blue,
+          foregroundColor: Colors.white,
+        ),
+        onPressed: () async {
+          try {
+            await ref
+                .read(userProfileProvider(widget.userId).notifier)
+                .toggleFollow(profile.id);
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('درخواست دنبال کردن ارسال شد'),
+                backgroundColor: Colors.green,
+              ));
+              // رفرش وضعیت pending
+              final _ = ref.refresh(followRequestPendingProvider(profile.id));
+            }
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('خطا: $e'),
+                backgroundColor: Colors.red,
+              ));
+            }
+          }
+        },
+        label: const Text('ارسال درخواست دنبال کردن'),
+      ),
     );
   }
 
@@ -241,58 +361,228 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             foregroundColor: isDarkTheme ? Colors.white : Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 12),
           ),
-          onPressed: () => _startConversation(profile.id, profile.username),
-          child: const Row(
+          onPressed: _isStartingConversation
+              ? null
+              : () => _startConversation(profile.id, profile.username),
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.message, size: 16),
-              SizedBox(width: 4),
-              Text('ارسال پیام'),
+              const SizedBox(width: 4),
+              Text(_isStartingConversation ? 'در حال بررسی...' : 'ارسال پیام'),
             ],
           ),
         ),
         const SizedBox(width: 8),
         // دکمه دنبال کردن
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: profile.isFollowed
-                ? (isDarkTheme ? Colors.white : Colors.black)
-                : Colors.white,
-            foregroundColor: profile.isFollowed
-                ? (isDarkTheme ? Colors.black : Colors.white)
-                : (isDarkTheme ? Colors.black : Colors.black),
-            side: BorderSide(
-              color: profile.isFollowed
-                  ? Colors.transparent
-                  : (isDarkTheme ? Colors.black : Colors.black),
+        Consumer(builder: (context, ref, _) {
+          final settingsAsync = ref.watch(userSettingsByIdProvider(profile.id));
+          final pendingAsync =
+              ref.watch(followRequestPendingProvider(profile.id));
+          return settingsAsync.when(
+            data: (settings) {
+              final isPrivate = (settings?['is_private'] as bool?) ?? false;
+              return pendingAsync.when(
+                data: (pending) {
+                  final isFollowed = profile.isFollowed;
+                  final isPending = isPrivate && !isFollowed && pending;
+                  final label = isFollowed
+                      ? 'لغو دنبال کردن'
+                      : (isPrivate
+                          ? (isPending ? 'در انتظار تایید' : 'ارسال درخواست')
+                          : 'دنبال کردن');
+                  return ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isFollowed
+                          ? (isDarkTheme ? Colors.white : Colors.black)
+                          : Colors.white,
+                      foregroundColor: isFollowed
+                          ? (isDarkTheme ? Colors.black : Colors.white)
+                          : (isDarkTheme ? Colors.black : Colors.black),
+                      side: BorderSide(
+                        color: isFollowed
+                            ? Colors.transparent
+                            : (isDarkTheme ? Colors.black : Colors.black),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                    ),
+                    onPressed:
+                        isPending ? null : () => _toggleFollow(profile.id),
+                    child: Text(label),
+                  );
+                },
+                loading: () => ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: isDarkTheme ? Colors.black : Colors.black,
+                    side: BorderSide(
+                        color: isDarkTheme ? Colors.black : Colors.black),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  onPressed: null,
+                  child: const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+                error: (_, __) => ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: isDarkTheme ? Colors.black : Colors.black,
+                    side: BorderSide(
+                        color: isDarkTheme ? Colors.black : Colors.black),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  onPressed: () => _toggleFollow(profile.id),
+                  child: Text(
+                      profile.isFollowed ? 'لغو دنبال کردن' : 'دنبال کردن'),
+                ),
+              );
+            },
+            loading: () => ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: isDarkTheme ? Colors.black : Colors.black,
+                side: BorderSide(
+                    color: isDarkTheme ? Colors.black : Colors.black),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+              onPressed: null,
+              child: const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-          ),
-          onPressed: () => _toggleFollow(profile.id),
-          child: Text(profile.isFollowed ? 'لغو دنبال کردن' : 'دنبال کردن'),
-        ),
+            error: (_, __) => ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: isDarkTheme ? Colors.black : Colors.black,
+                side: BorderSide(
+                    color: isDarkTheme ? Colors.black : Colors.black),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+              onPressed: () => _toggleFollow(profile.id),
+              child: Text(profile.isFollowed ? 'لغو دنبال کردن' : 'دنبال کردن'),
+            ),
+          );
+        }),
       ],
     );
+  }
+
+  // متد برای بررسی وضعیت مکالمه
+  Future<String?> _checkConversationStatus(String otherUserId) async {
+    try {
+      final chatService = ref.read(chatServiceProvider);
+      return await chatService.findExistingConversation(otherUserId);
+    } catch (e) {
+      print('خطا در بررسی وضعیت مکالمه: $e');
+      return null;
+    }
   }
 
   // متد برای شروع گفتگو با کاربر دیگر
   void _startConversation(String otherUserId, String otherUsername) async {
     try {
-      // نمایش دادن یک نشانگر بارگذاری
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator()),
-      );
+      if (_isStartingConversation) return;
+      setState(() {
+        _isStartingConversation = true;
+      });
 
-      // ایجاد یا بازیابی مکالمه از طریق سرویس چت
-      final chatService = ref.read(chatServiceProvider);
-      final conversationId =
-          await chatService.createOrGetConversation(otherUserId);
+      // تعریف تم تاریک/روشن
+      final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
 
-      // بستن نشانگر بارگذاری
-      if (context.mounted) {
-        Navigator.of(context).pop();
+      // دریافت اطلاعات پروفایل برای عکس
+      final profileState = ref.read(userProfileProvider(otherUserId));
+
+      // ابتدا بررسی کن که آیا مکالمه قبلی وجود دارد یا نه
+      String? existingConversationId;
+      bool isNewConversation = true;
+
+      try {
+        final chatService = ref.read(chatServiceProvider);
+        // نمایش نشانگر بارگذاری
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => Dialog(
+            backgroundColor: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: isDarkTheme ? Colors.grey[900] : Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                      strokeWidth: 3,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'در حال بررسی مکالمات موجود...',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: isDarkTheme ? Colors.white : Colors.black87,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'لطفاً صبر کنید',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isDarkTheme ? Colors.grey[400] : Colors.grey[600],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+
+        // بررسی وجود مکالمه قبلی
+        existingConversationId =
+            await chatService.findExistingConversation(otherUserId);
+        if (existingConversationId != null &&
+            existingConversationId.isNotEmpty) {
+          isNewConversation = false;
+          print('مکالمه موجود یافت شد: $existingConversationId');
+        } else {
+          print('هیچ مکالمه موجودی یافت نشد');
+        }
+
+        // بستن نشانگر بارگذاری
+        if (context.mounted && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+      } catch (e) {
+        print('خطا در بررسی وجود مکالمه: $e');
+        // در صورت خطا، فرض بر جدید بودن مکالمه
+        // بستن نشانگر بارگذاری
+        if (context.mounted && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
       }
 
       // انتقال به صفحه چت
@@ -300,29 +590,38 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => ChatScreen(
-              conversationId: conversationId,
+              conversationId:
+                  existingConversationId ?? '', // اگر وجود داشت، آن را ارسال کن
               otherUserId: otherUserId,
               otherUserName: otherUsername,
+              otherUserAvatar:
+                  profileState?.avatarUrl, // اضافه شد: ارسال عکس پروفایل
+              isNewConversation:
+                  isNewConversation, // بر اساس وجود یا عدم وجود مکالمه
             ),
           ),
         );
       }
     } catch (e) {
-      print("خطای ایجاد گفتگو: $e");
-
-      // بستن نشانگر بارگذاری در صورت بروز خطا
+      print("خطای انتقال به صفحه چت: $e");
+      // بستن نشانگر بارگذاری در صورت وجود
       if (context.mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
 
-      // نمایش پیام خطا
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطا در ایجاد گفتگو: $e'),
+            content: Text('خطا در انتقال به صفحه چت: $e'),
             backgroundColor: Colors.red,
           ),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isStartingConversation = false;
+        });
       }
     }
   }
@@ -333,9 +632,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Widget _buildProfileDetails(ProfileModel profile) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color headerTextColor = isDark ? Colors.white : Colors.black;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(profile.fullName,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: headerTextColor)),
       if (profile.bio != null) ...[
         const SizedBox(height: 10),
         ConstrainedBox(
@@ -346,6 +650,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               child: Text(
                 profile.bio!,
                 overflow: TextOverflow.fade,
+                style: TextStyle(color: headerTextColor.withOpacity(0.85)),
               ),
             ),
           ),
@@ -363,9 +668,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             child: Column(
               children: [
                 Text(' ${profile.followingCount}',
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
-                const Text('دنبال شونده ها ',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, color: headerTextColor)),
+                Text('دنبال شونده ها ',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, color: headerTextColor)),
               ],
             ),
           ),
@@ -379,9 +686,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           child: Column(
             children: [
               Text(' ${profile.followersCount}',
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-              const Text('دنبال کنندگان',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, color: headerTextColor)),
+              Text('دنبال کنندگان',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, color: headerTextColor)),
             ],
           ),
         ),
@@ -393,9 +702,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             child: Column(
               children: [
                 Text(' ${profile.posts.length}',
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
-                const Text(' پست‌ها',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, color: headerTextColor)),
+                Text(' پست‌ها',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, color: headerTextColor)),
               ],
             ),
           ),
@@ -405,15 +716,59 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   SliverList _buildPostsList(ProfileModel profile) {
-    return SliverList(
-      delegate: SliverChildBuilderDelegate(
-        (context, index) {
-          if (profile.posts.isEmpty) {
-            return const Center(child: Text('هنوز پستی وجود ندارد'));
-          }
-          return _buildPostItem(profile, profile.posts[index]);
-        },
-        childCount: profile.posts.isEmpty ? 1 : profile.posts.length,
+    // نمایش پیام «حساب کاربری خصوصی» در وسط صفحه شبیه اینستاگرام
+    final isPrivateAsync = ref.watch(userSettingsByIdProvider(profile.id));
+    final currentUserId = ref.read(authProvider)?.id;
+    return isPrivateAsync.when(
+      data: (settings) {
+        final isPrivate = (settings?['is_private'] as bool?) ?? false;
+        final blockedView =
+            isPrivate && !profile.isFollowed && profile.id != currentUserId;
+        if (blockedView) {
+          return SliverList(
+            delegate: SliverChildListDelegate([
+              SizedBox(
+                height: 240,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Icon(Icons.lock_outline, size: 56, color: Colors.grey),
+                      SizedBox(height: 12),
+                      Text(
+                        'حساب کاربری خصوصی',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ]),
+          );
+        }
+
+        return SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              if (profile.posts.isEmpty) {
+                return const Center(child: Text('هنوز پستی وجود ندارد'));
+              }
+              return _buildPostItem(profile, profile.posts[index]);
+            },
+            childCount: profile.posts.isEmpty ? 1 : profile.posts.length,
+          ),
+        );
+      },
+      loading: () => SliverList(
+        delegate: SliverChildListDelegate([
+          const SizedBox(height: 120),
+        ]),
+      ),
+      error: (_, __) => SliverList(
+        delegate: SliverChildListDelegate([
+          const SizedBox(height: 120),
+        ]),
       ),
     );
   }
@@ -508,7 +863,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 decoration: BoxDecoration(
                   color: Theme.of(context).brightness == Brightness.dark
                       ? Colors.grey[900]
-                      : Colors.grey[100],
+                      : Colors.white,
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
@@ -570,7 +925,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Widget _buildPostItem(ProfileModel profile, PublicPostModel post) {
-    final isLiked = ref.watch(likeStateProvider)[post.id] ?? post.isLiked;
+    // final isLiked = ref.watch(likeStateProvider)[post.id] ?? post.isLiked; // unused
 
     return Padding(
       padding: const EdgeInsets.all(12),
@@ -641,11 +996,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     _toggleLike(post);
                   },
                   onComment: () => showCommentsBottomSheet2(context,
-                      postId: post.id!, postTitle: post.title!),
+                      postId: post.id, postTitle: post.title ?? ''),
                   onVideoPositionTap: (position) {
-                    ref
-                        .read(videoPositionProvider(post.id ?? '').notifier)
-                        .state = position;
+                    ref.read(videoPositionProvider(post.id).notifier).state =
+                        position;
                   },
                   onTap: () {
                     final profile =
@@ -665,8 +1019,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           posts: videoPosts,
                           initialIndex: initialIndex < 0 ? 0 : initialIndex,
                           initialPositions: {
-                            post.id ?? '':
-                                ref.read(videoPositionProvider(post.id ?? '')),
+                            post.id: ref.read(videoPositionProvider(post.id)),
                           },
                         ),
                       ),
@@ -754,7 +1107,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       // آپدیت وضعیت در provider
       ref
           .read(likeStateProvider.notifier)
-          .updateLikeState(post.id!, currentLikeState);
+          .updateLikeState(post.id, currentLikeState);
 
       // آپدیت مدل پست
       setState(() {
@@ -773,7 +1126,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       final previousLikeState = post.isLiked;
       ref
           .read(likeStateProvider.notifier)
-          .updateLikeState(post.id!, previousLikeState);
+          .updateLikeState(post.id, previousLikeState);
 
       setState(() {
         post.isLiked = previousLikeState;
@@ -821,7 +1174,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   void _showComments(PublicPostModel post) {
-    showCommentsBottomSheet2(context, postId: post.id!, postTitle: post.title!);
+    showCommentsBottomSheet2(context,
+        postId: post.id, postTitle: post.title ?? '');
   }
 
   void _sharePost(PublicPostModel post) {
@@ -980,7 +1334,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       decoration: BoxDecoration(
                         color: Theme.of(context).brightness == Brightness.dark
                             ? Colors.grey[800]
-                            : Colors.grey[100],
+                            : Colors.white,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Column(
@@ -1040,7 +1394,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         decoration: BoxDecoration(
                           color: Theme.of(context).brightness == Brightness.dark
                               ? Colors.grey[800]
-                              : Colors.grey[100],
+                              : Colors.white,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Column(
@@ -1344,7 +1698,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 .from('posts')
                                 .update(updateData)
                                 .eq('id', post.id);
-                            ref.refresh(userProfileProvider(post.userId));
+                            final _ =
+                                ref.refresh(userProfileProvider(post.userId));
 
                             if (context.mounted) {
                               Navigator.of(context).pop();

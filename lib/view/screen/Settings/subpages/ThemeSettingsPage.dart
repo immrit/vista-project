@@ -21,7 +21,6 @@ class ThemeSettingsPage extends ConsumerWidget {
         title: const Text('ظاهر و شخصی‌سازی'),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: isDark ? const Color(0xFF252525) : Colors.white,
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 16.0),
@@ -33,7 +32,7 @@ class ThemeSettingsPage extends ConsumerWidget {
               color: isDark ? const Color(0xFF252525) : Colors.white,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: isDark ? Colors.grey[700]! : Colors.grey[200]!,
+                color: isDark ? Colors.grey[700]! : Colors.grey[100]!,
                 width: 1,
               ),
               boxShadow: [
@@ -80,7 +79,7 @@ class ThemeSettingsPage extends ConsumerWidget {
                     : 'تم روشن برای استفاده در روز',
                 style: TextStyle(
                   fontSize: 13,
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  color: isDark ? Colors.grey[400] : Colors.grey[700],
                   fontStyle: FontStyle.italic,
                 ),
               ),
@@ -153,7 +152,7 @@ class ThemeSettingsPage extends ConsumerWidget {
                     "رنگ مورد نظر خود را انتخاب کنید",
                     style: TextStyle(
                         fontSize: 14,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600]),
+                        color: isDark ? Colors.grey[400] : Colors.grey[700]),
                   ),
                   const SizedBox(height: 20),
 
@@ -447,7 +446,7 @@ class ThemeSettingsPage extends ConsumerWidget {
                           decoration: BoxDecoration(
                             color: previewIsDark
                                 ? Colors.grey[800]
-                                : Colors.grey[200],
+                                : Colors.grey[100],
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Row(
@@ -500,9 +499,8 @@ class ThemeSettingsPage extends ConsumerWidget {
                         Container(
                           height: 28,
                           decoration: BoxDecoration(
-                            color: previewIsDark
-                                ? Colors.grey[800]
-                                : Colors.grey[100],
+                            color:
+                                previewIsDark ? Colors.grey[800] : Colors.white,
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Row(
@@ -552,7 +550,7 @@ class ThemeSettingsPage extends ConsumerWidget {
                               border: Border.all(
                                 color: previewIsDark
                                     ? Colors.grey[700]!
-                                    : Colors.grey[300]!,
+                                    : Colors.grey[100]!,
                               ),
                             ),
                             child: Column(

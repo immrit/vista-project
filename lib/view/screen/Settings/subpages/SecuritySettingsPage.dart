@@ -58,7 +58,6 @@ class SecuritySettingsPage extends ConsumerWidget {
         title: const Text('امنیت حساب'),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: isDark ? const Color(0xFF252525) : Colors.white,
       ),
       body: securityAsync.when(
         loading: () => const Center(
@@ -158,7 +157,8 @@ class SecuritySettingsPage extends ConsumerWidget {
                       Expanded(
                         child: LinearProgressIndicator(
                           value: score / 100,
-                          backgroundColor: Colors.grey[300],
+                          backgroundColor:
+                              isDark ? Colors.grey[300] : Colors.grey[200],
                           valueColor: AlwaysStoppedAnimation<Color>(
                             _getScoreColor(score),
                           ),
@@ -615,7 +615,9 @@ class SecuritySettingsPage extends ConsumerWidget {
                     margin: const EdgeInsets.symmetric(vertical: 2),
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.grey[100],
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.grey[100]
+                          : Colors.grey[200],
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
@@ -859,7 +861,6 @@ class ActiveSessionsScreen extends ConsumerWidget {
         title: const Text('جلسات فعال'),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: Colors.white,
         actions: [
           TextButton(
             onPressed: () => _terminateAllSessions(context, ref),
@@ -1016,7 +1017,6 @@ class SecurityLogsScreen extends ConsumerWidget {
         title: const Text('تاریخچه امنیت'),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: Colors.white,
       ),
       body: logsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),

@@ -32,7 +32,6 @@ class Settings extends ConsumerWidget {
           title: const Text('تنظیمات'),
           elevation: 0,
           centerTitle: true,
-          backgroundColor: isDark ? const Color(0xFF252525) : Colors.white,
         ),
         body: getprofile.when(
           data: (getprofile) {
@@ -155,9 +154,9 @@ class Settings extends ConsumerWidget {
                           final accessToken = session?.accessToken;
                           final refreshToken = session?.refreshToken;
                           if (accessToken != null && refreshToken != null) {
-                            final url = Uri.parse(
-                              'https://coffevista.ir/auth/callback?access_token=$accessToken&refresh_token=$refreshToken',
-                            );
+                            // به‌جای ارسال توکن در URL، از یک endpoint امن با POST در WebView یا deep link امضاشده استفاده کنید.
+                            // اینجا صرفاً باز کردن صفحه عمومی بدون افشای توکن‌ها انجام می‌شود.
+                            final url = Uri.parse('https://coffevista.ir');
                             if (await canLaunchUrl(url)) {
                               await launchUrl(url,
                                   mode: LaunchMode.externalApplication);
@@ -255,7 +254,7 @@ class Settings extends ConsumerWidget {
         return Container(
           margin: const EdgeInsets.only(left: 68.0),
           height: 0.5,
-          color: isDark ? Colors.grey[700] : Colors.grey[300],
+          color: isDark ? Colors.grey[700] : Colors.grey[200],
         );
       },
     );
@@ -326,7 +325,7 @@ class Settings extends ConsumerWidget {
                   'آنلاین',
                   style: TextStyle(
                     fontSize: 13,
-                    color: Colors.grey[500],
+                    color: isDark ? Colors.grey[500] : Colors.grey[600],
                   ),
                 ),
               ],

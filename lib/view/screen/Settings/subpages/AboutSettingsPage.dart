@@ -17,7 +17,6 @@ class AboutSettingsPage extends StatelessWidget {
         title: const Text('درباره ویستا'),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: isDark ? const Color(0xFF252525) : Colors.white,
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 16.0),
@@ -175,7 +174,7 @@ class AboutSettingsPage extends StatelessWidget {
         return Container(
           margin: const EdgeInsets.only(left: 68.0),
           height: 0.5,
-          color: isDark ? Colors.grey[700] : Colors.grey[300],
+          color: isDark ? Colors.grey[700] : Colors.grey[200],
         );
       },
     );
@@ -442,7 +441,7 @@ class TelegramSettingsItem extends StatelessWidget {
                         fontSize: 13,
                         color: Theme.of(context).brightness == Brightness.dark
                             ? Colors.grey[400]
-                            : Colors.grey[600],
+                            : Colors.grey[700],
                       ),
                     ),
                   ],
@@ -453,7 +452,7 @@ class TelegramSettingsItem extends StatelessWidget {
                 size: 16,
                 color: Theme.of(context).brightness == Brightness.dark
                     ? Colors.grey[500]
-                    : Colors.grey[400],
+                    : Colors.grey[600],
               ),
             ],
           ),
