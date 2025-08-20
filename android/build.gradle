@@ -1,11 +1,11 @@
 buildscript {
-    ext.kotlin_version = '2.0.0' // یا '2.1.21' هم خوب است
+    ext.kotlin_version = '2.1.0'
     repositories {
         google()
-        mavenCentral() // added repository
+        mavenCentral()
     }
-        dependencies {
-        classpath 'com.android.tools.build:gradle:8.3.2' // تغییر به این نسخه
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.6.0'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
@@ -13,24 +13,13 @@ buildscript {
 allprojects {
     repositories {
         google()
-        mavenCentral() // added repository
-        // Add this new repository
-        // maven { url "https://repo1.maven.org/maven2/" }
-        // maven { url "https://jitpack.io" }
-    }
-    configurations.all {
-        resolutionStrategy {
-            force 'androidx.exifinterface:exifinterface:1.3.5' // force a stable version
-        }
+        mavenCentral()
     }
 }
 
 rootProject.buildDir = "../build"
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
-}
-subprojects {
-    project.evaluationDependsOn(":app")
 }
 
 tasks.register("clean", Delete) {

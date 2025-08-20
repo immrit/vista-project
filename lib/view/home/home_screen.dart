@@ -164,10 +164,11 @@ class PostCard extends StatelessWidget {
                 const SizedBox(width: 4),
                 Text('$likeCount'),
                 const SizedBox(width: 16),
-                Icon(
-                  Icons.comment,
+                Image.asset(
+                  'lib/view/util/images/component/comment.png',
+                  width: 20,
+                  height: 20,
                   color: Colors.blue,
-                  size: 20,
                 ),
                 const SizedBox(width: 4),
                 Text('$commentCount'),

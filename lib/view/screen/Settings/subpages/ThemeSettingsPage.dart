@@ -13,6 +13,7 @@ class ThemeSettingsPage extends ConsumerWidget {
     final brightness = ref.watch(brightnessProvider);
     final currentTheme = ref.watch(dynamicThemeProvider);
     final isDark = currentTheme.brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       backgroundColor:
@@ -29,7 +30,7 @@ class ThemeSettingsPage extends ConsumerWidget {
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 16.0),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF252525) : Colors.white,
+              color: isDark ? colorScheme.surface : Colors.white,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: isDark ? Colors.grey[700]! : Colors.grey[100]!,
@@ -135,8 +136,12 @@ class ThemeSettingsPage extends ConsumerWidget {
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 16.0),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF252525) : Colors.white,
-              borderRadius: BorderRadius.circular(12),
+              color: isDark ? colorScheme.surface : Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDark ? Colors.grey[700]! : Colors.grey[100]!,
+                width: 1,
+              ),
             ),
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -242,8 +247,12 @@ class ThemeSettingsPage extends ConsumerWidget {
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 16.0),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF252525) : Colors.white,
-              borderRadius: BorderRadius.circular(12),
+              color: isDark ? colorScheme.surface : Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDark ? Colors.grey[700]! : Colors.grey[100]!,
+                width: 1,
+              ),
             ),
             child: Padding(
               padding: const EdgeInsets.all(16),

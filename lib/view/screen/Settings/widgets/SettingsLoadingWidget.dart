@@ -11,12 +11,13 @@ class SettingsLoadingWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16.0),
       padding: const EdgeInsets.all(24.0),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF252525) : Colors.white,
+        color: isDark ? colorScheme.surface : Colors.white,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -54,12 +55,13 @@ class SettingsErrorWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16.0),
       padding: const EdgeInsets.all(24.0),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF252525) : Colors.white,
+        color: isDark ? colorScheme.surface : Colors.white,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(

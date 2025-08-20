@@ -31,12 +31,14 @@ import 'view/screen/ouathUser/resetPassword.dart';
 import 'view/screen/ouathUser/signupUser.dart';
 import 'view/screen/ouathUser/welcome.dart';
 import 'view/screen/ouathUser/editeProfile.dart';
-import 'package:flutter/foundation.dart' show kIsWeb; // اضافه کن
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'DB/message_cache_service.dart';
 import 'services/wallpaper_cache_service.dart';
 import 'view/screen/PublicPosts/publicPosts.dart';
 import 'view/screen/PublicPosts/PostDetailPage.dart';
 import 'view/screen/PublicPosts/profileScreen.dart';
+import 'view/screen/ouathUser/TwoFactorVerificationScreen.dart';
+import 'view/screen/ouathUser/TwoFactorSetupScreen.dart';
 import 'security/e2ee_service.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -45,18 +47,13 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
 // GlobalKey برای navigator
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-/// Notification response handler - now handled by PushNotificationService
-/// This is kept for compatibility but the actual handling is done in PushNotificationService
+/// Notification response handler
 Future<void> notificationResponseHandler(NotificationResponse response) async {
-  // This handler is now managed by PushNotificationService
-  // The actual navigation logic is in PushNotificationService.handleNotificationNavigation
   print('Notification response received: ${response.actionId}');
 }
 
 /// Background message handler for FCM
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // این هندلر فقط برای پیام‌های پس‌زمینه استفاده می‌شود
-  // پیام‌های پیش‌زمینه توسط PushNotificationService مدیریت می‌شوند
   print('Background message received: ${message.messageId}');
 }
 
@@ -66,7 +63,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize date formatting for all locales
-  await initializeDateFormatting('fa', null); // اضافه کنید
+  await initializeDateFormatting('fa', null);
 
   // فقط برای غیر وب مسیر را ست کن
   if (!kIsWeb) {
@@ -76,117 +73,41 @@ void main() async {
     await Hive.initFlutter();
   }
 
-  // debugPrint و احراز وضعیت آنلاین/آفلاین پروفایل
-  debugPrint = (String? message, {int? wrapWidth}) {
-    if (message?.contains('MESA') == false) {
-      print(message);
-    }
-
-    supabase.auth.onAuthStateChange.listen((data) async {
-      if (data.event == AuthChangeEvent.signedIn) {
-        // کاربر آنلاین
-        await supabase.from('profiles').update({
-          'is_online': true,
-          'last_online': DateTime.now().toUtc().toIso8601String(),
-        }).eq('id', data.session!.user.id);
-      } else if (data.event == AuthChangeEvent.signedOut) {
-        if (data.session?.user.id != null) {
-          await supabase.from('profiles').update({
-            'is_online': false,
-            'last_online': DateTime.now().toUtc().toIso8601String(),
-          }).eq('id', data.session!.user.id);
-        }
-      }
-    });
-  };
-
-  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-
-  // راه اندازی Hive
-  await Hive.initFlutter();
-  if (!Hive.isAdapterRegistered(2)) {
-    Hive.registerAdapter(SearchTypeAdapter()); // typeId: 2
-  }
-  if (!Hive.isAdapterRegistered(1)) {
-    Hive.registerAdapter(RecentSearchAdapter()); // typeId: 1
-  }
-  await Hive.openBox('settings');
-
   // راه‌اندازی Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // هندلر پس‌زمینه FCM
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  // راه‌اندازی Supabase
+  await initializeSupabaseWithFailover();
 
-  try {
-    await initializeSupabaseWithFailover();
-
-    // راه‌اندازی Supabase
-    // await Supabase.initialize(
-    //     url: 'https://api.coffevista.ir:8443',
-    //     anonKey:
-    //         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE',
-    //     debug: true);
-
-    // Supabase connection verified
-  } catch (e) {
-    print('Supabase initialization error: $e');
-  }
-
-  // E2EE init & publish own public key (best-effort)
-  try {
-    await E2EEService.instance.ensureInitialized();
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user != null) {
-      await E2EEService.instance.publishOwnPublicKeyIfNeeded();
-    }
-    Supabase.instance.client.auth.onAuthStateChange.listen((event) async {
-      if (event.event == AuthChangeEvent.signedIn) {
-        await E2EEService.instance.publishOwnPublicKeyIfNeeded();
-      }
-    });
-  } catch (e) {
-    print('E2EE init error: $e');
-  }
-
-  // بروزرسانی IP فقط روی غیر وب
-  if (!kIsWeb) {
-    await updateIpAddress();
-  }
-
-  // تنظیم تم (پویا از طریق provider در زمان ساخت MaterialApp اعمال می‌شود)
-
-  // راه اندازی flutter_local_notifications و ساخت کانال‌ها:
-  const AndroidInitializationSettings initializationSettingsAndroid =
-      AndroidInitializationSettings('@drawable/ic_notification');
-  final InitializationSettings initializationSettings = InitializationSettings(
-    android: initializationSettingsAndroid,
-  );
+  // راه‌اندازی اعلان‌های محلی
   await flutterLocalNotificationsPlugin.initialize(
-    initializationSettings,
+    InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      iOS: DarwinInitializationSettings(),
+    ),
     onDidReceiveNotificationResponse: notificationResponseHandler,
   );
 
-  // راه‌اندازی Deep Link Service
-  final deepLinkService = new_deep_link.DeepLinkService();
-  await deepLinkService.initDeepLinks(navigatorKey);
-
-  // چت کانال
-  const AndroidNotificationChannel chatChannel = AndroidNotificationChannel(
-    'chat_messages',
-    'پیام‌های چت',
-    description: 'اعلان پیام‌های جدید چت',
+  // ایجاد کانال‌های اعلان
+  const chatChannel = AndroidNotificationChannel(
+    'chat_notifications',
+    'Chat Notifications',
+    description: 'Notifications for chat messages',
     importance: Importance.high,
+    playSound: true,
+    enableVibration: true,
     showBadge: true,
   );
-  // سوشیال کانال
-  const AndroidNotificationChannel socialChannel = AndroidNotificationChannel(
-    'social_notify',
-    'اعلان اجتماعی',
-    description: 'اعلان‌های اجتماعی (لایک، کامنت و ...)',
+
+  const socialChannel = AndroidNotificationChannel(
+    'social_notifications',
+    'Social Notifications',
+    description: 'Notifications for social activities',
     importance: Importance.high,
+    playSound: true,
+    enableVibration: true,
     showBadge: true,
   );
 
@@ -199,9 +120,6 @@ void main() async {
           AndroidFlutterLocalNotificationsPlugin>()
       ?.createNotificationChannel(socialChannel);
 
-  // FCM foreground messages are now handled by PushNotificationService
-  // This listener is set up in PushNotificationService.init() after user login
-
   // پیش‌بارگذاری والپیپرهای چت در background
   unawaited(WallpaperCacheService.preloadWallpapers());
 
@@ -211,8 +129,6 @@ void main() async {
     ),
   );
 }
-
-// Removed unused _getInitialTheme; theme is provided via provider at runtime
 
 final supabase = Supabase.instance.client;
 
@@ -249,17 +165,27 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
     // مدیریت FCM توکن
     _setupFCMToken();
-    supabase.auth.onAuthStateChange.listen((data) {
+
+    supabase.auth.onAuthStateChange.listen((data) async {
       if (data.event == AuthChangeEvent.signedIn) {
         // به‌روزرسانی وضعیت آنلاین کاربر
         final chatService = ChatService();
         chatService.updateUserOnlineStatus();
+
+        // بررسی قفل برنامه بعد از لاگین
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            debugPrint('بررسی قفل برنامه بعد از لاگین');
+            // _checkAppLockStatus(); // Removed app lock check
+          }
+        });
+      } else if (data.event == AuthChangeEvent.signedOut) {
+        // بازنشانی وضعیت قفل بعد از خروج
+        debugPrint('بازنشانی وضعیت قفل بعد از خروج');
+        // await ref.read(appLockServiceProvider).resetLockState(); // Removed app lock reset
+        // ref.read(appLockStateProvider.notifier).markLockAsUnlocked(); // Removed app lock state update
       }
     });
-    // _setupProfileCheck();
-
-    // هندلر FCM در فورگراند قبلاً در main() ست شده است.
-    // اینجا نیازی به onMessage.listen مجدد نیست.
   }
 
   @override
@@ -272,14 +198,26 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
       // پردازش توکن‌های در انتظار بعد از ایجاد context
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Deep link processing handled by new service
+        // فقط در اولین اجرا، وضعیت قفل را مقداردهی اولیه می‌کنیم
+        if (mounted) {
+          // final appLockManager = ref.read(appLockManagerProvider); // Removed app lock manager
+          // debugPrint('شروع مقداردهی اولیه وضعیت قفل');
+          // appLockManager.initialize().then((_) { // Removed app lock initialization
+          //   debugPrint('وضعیت قفل مقداردهی اولیه شد');
+          //   // بررسی قفل برنامه در شروع (مثل تلگرام)
+          //   _checkAppLockStatus();
+          // });
+        }
       });
     }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) async {
+    // AppLockLogger.lifecycle('تغییر وضعیت lifecycle: $state'); // Removed app lock logger
+
     if (state == AppLifecycleState.detached) {
+      // AppLockLogger.lifecycle('برنامه detached شد');
       final box = await Hive.openBox('settings');
       bool clearDriftCacheOnExit =
           box.get('clearDriftCacheOnExit', defaultValue: true);
@@ -287,6 +225,149 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         await deleteMessageCacheDbFile();
         await deleteConversationCacheDbFile();
       }
+    } else if (state == AppLifecycleState.resumed) {
+      // بررسی قفل برنامه وقتی اپ از پس‌زمینه باز می‌شود (مثل تلگرام)
+      // AppLockLogger.lifecycle('برنامه resumed شد - بررسی قفل برنامه');
+      debugPrint('بررسی قفل برنامه بعد از بازگشت از پس‌زمینه');
+      // کمی صبر کن تا context آماده شود
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) {
+          // _checkAppLockStatus(); // Removed app lock check
+        }
+      });
+    } else if (state == AppLifecycleState.paused) {
+      // علامت‌گذاری برنامه به عنوان قفل شده وقتی به پس‌زمینه می‌رود (مثل تلگرام)
+      // AppLockLogger.lifecycle('برنامه paused شد - قفل کردن برنامه');
+      // final appLockService = ref.read(appLockServiceProvider); // Removed app lock service
+      // if (await appLockService.isAppLockEnabled()) { // Removed app lock check
+      //   AppLockLogger.lifecycle('قفل کردن برنامه هنگام رفتن به پس‌زمینه');
+      //   debugPrint('قفل کردن برنامه هنگام رفتن به پس‌زمینه');
+      //   await appLockService.markAsLocked();
+      //   ref.read(appLockStateProvider.notifier).markAppAsLocked();
+      // }
+    } else if (state == AppLifecycleState.inactive) {
+      // وقتی اپ غیرفعال می‌شود (مثل تغییر اپ یا رفتن به تنظیمات) - قفل کن (مثل تلگرام)
+      // AppLockLogger.lifecycle('برنامه inactive شد - قفل کردن برنامه');
+      // final appLockService = ref.read(appLockServiceProvider); // Removed app lock service
+      // if (await appLockService.isAppLockEnabled()) { // Removed app lock check
+      //   AppLockLogger.lifecycle('قفل کردن برنامه هنگام غیرفعال شدن');
+      //   debugPrint('قفل کردن برنامه هنگام غیرفعال شدن');
+      //   await appLockService.markAsLocked();
+      //   ref.read(appLockStateProvider.notifier).markAppAsLocked();
+      // }
+    }
+  }
+
+  /// بررسی وضعیت قفل برنامه
+  // Future<void> _checkAppLockStatus() async { // Removed app lock status check
+  //   try {
+  //     AppLockLogger.main('شروع بررسی وضعیت قفل برنامه');
+  //     final appLockManager = ref.read(appLockManagerProvider); // Removed app lock manager
+  //     final appLockState = ref.read(appLockStateProvider); // Removed app lock state
+
+  //     // جلوگیری از بررسی همزمان
+  //     if (appLockState.isShowingLock || AppLockOverlay.isShowing) { // Removed app lock check
+  //       AppLockLogger.main('قفل قبلاً نمایش داده شده - جلوگیری از بررسی مجدد');
+  //       debugPrint('قفل قبلاً نمایش داده شده - جلوگیری از بررسی مجدد');
+  //       return;
+  //     }
+
+  //     // بررسی نیاز به قفل در شروع برنامه (مثل تلگرام)
+  //     final shouldShowLock = await appLockManager.shouldShowLock(); // Removed app lock check
+
+  //     AppLockLogger.main(
+  //         'بررسی وضعیت قفل برنامه: shouldShowLock=$shouldShowLock');
+  //     debugPrint('بررسی وضعیت قفل برنامه: shouldShowLock=$shouldShowLock');
+
+  //     if (shouldShowLock && mounted) {
+  //       AppLockLogger.main('نمایش صفحه قفل برنامه');
+  //       debugPrint('نمایش صفحه قفل برنامه');
+
+  //       // نمایش صفحه قفل به عنوان overlay
+  //       WidgetsBinding.instance.addPostFrameCallback((_) {
+  //         if (mounted) {
+  //           AppLockLogger.main(
+  //               'PostFrameCallback اجرا شد - تلاش برای نمایش overlay');
+  //           debugPrint('PostFrameCallback اجرا شد - تلاش برای نمایش overlay');
+  //           // اضافه کردن تاخیر برای اطمینان از آماده بودن context
+  //           Future.delayed(const Duration(milliseconds: 500), () {
+  //             if (mounted) {
+  //               AppLockLogger.main(
+  //                   'تاخیر 500ms تمام شد - فراخوانی _showLockOverlay');
+  //               debugPrint('تاخیر 500ms تمام شد - فراخوانی _showLockOverlay');
+  //               _showLockOverlay();
+  //             } else {
+  //               AppLockLogger.main(
+  //                   'PostFrameCallback بعد از تاخیر: mounted = false');
+  //               debugPrint('PostFrameCallback بعد از تاخیر: mounted = false');
+  //             }
+  //           });
+  //         } else {
+  //           AppLockLogger.main('PostFrameCallback: mounted = false');
+  //           debugPrint('PostFrameCallback: mounted = false');
+  //         }
+  //       });
+  //     } else {
+  //       AppLockLogger.main('نیازی به نمایش قفل برنامه نیست');
+  //       debugPrint('نیازی به نمایش قفل برنامه نیست');
+  //     }
+  //   } catch (e) {
+  //     AppLockLogger.error('خطا در بررسی وضعیت قفل برنامه', e);
+  //     debugPrint('خطا در بررسی وضعیت قفل برنامه: $e');
+  //   }
+  // }
+
+  /// راه‌اندازی مدیریت دیپ لینک
+  void _setupDeepLinkHandling() {
+    // پردازش لینک اولیه
+    _processInitialLink();
+
+    // گوش دادن به دیپ لینک‌های ورودی
+    _linkSubscription = _appLinks.uriLinkStream.listen((Uri? uri) {
+      if (uri != null) {
+        final safe = 'scheme=${uri.scheme}, host=${uri.host}, path=${uri.path}';
+        print('Received deep link: $safe');
+        _processDeepLink(uri);
+      }
+    }, onError: (error) {
+      print('Deep link error');
+    });
+  }
+
+  /// پردازش لینک اولیه
+  Future<void> _processInitialLink() async {
+    try {
+      final initialLink = await _appLinks.getInitialLink();
+      if (initialLink != null) {
+        final safe =
+            'scheme=${initialLink.scheme}, host=${initialLink.host}, path=${initialLink.path}';
+        print('Processing initial link: $safe');
+        _processDeepLink(initialLink);
+      }
+    } catch (e) {
+      print('Error processing initial link: $e');
+    }
+  }
+
+  /// پردازش دیپ لینک برای انواع مختلف
+  void _processDeepLink(Uri uri) {
+    print('Uri scheme: ${uri.scheme}');
+    print('Uri host: ${uri.host}');
+    print('Uri path: ${uri.path}');
+
+    // جلوگیری از پردازش همزمان چندین درخواست
+    if (_isLoading) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      // استفاده از DeepLinkService جدید
+      final deepLinkService = new_deep_link.DeepLinkService();
+      deepLinkService.handleDeepLink(uri, navigatorKey);
+    } catch (e) {
+      print('Error processing deep link: $e');
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
@@ -344,131 +425,6 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     }
   }
 
-  /// راه‌اندازی مدیریت دیپ لینک
-  void _setupDeepLinkHandling() {
-    // پردازش لینک اولیه
-    _processInitialLink();
-
-    // گوش دادن به دیپ لینک‌های ورودی
-    _linkSubscription = _appLinks.uriLinkStream.listen((Uri? uri) {
-      if (uri != null) {
-        final safe = 'scheme=${uri.scheme}, host=${uri.host}, path=${uri.path}';
-        print('Received deep link: $safe');
-        _processDeepLink(uri);
-      }
-    }, onError: (error) {
-      print('Deep link error');
-    });
-  }
-
-  /// پردازش لینک اولیه
-  Future<void> _processInitialLink() async {
-    try {
-      final initialLink = await _appLinks.getInitialLink();
-      if (initialLink != null) {
-        final safe =
-            'scheme=${initialLink.scheme}, host=${initialLink.host}, path=${initialLink.path}';
-        print('Processing initial link: $safe');
-        _processDeepLink(initialLink);
-      }
-    } catch (e) {
-      print('Error processing initial link: $e');
-    }
-  }
-
-  /// پردازش دیپ لینک برای انواع مختلف
-  void _processDeepLink(Uri uri) {
-    print('Uri scheme: ${uri.scheme}');
-    print('Uri host: ${uri.host}');
-    print('Uri path: ${uri.path}');
-
-    // جلوگیری از پردازش همزمان چندین درخواست
-    if (_isLoading) return;
-
-    setState(() => _isLoading = true);
-
-    try {
-      // استفاده از DeepLinkService جدید
-      final deepLinkService = new_deep_link.DeepLinkService();
-      deepLinkService.handleDeepLink(uri, navigatorKey);
-    } catch (e) {
-      print('Error processing deep link: $e');
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  // void _setupProfileCheck() {
-  //   // بررسی اولیه
-  //   WidgetsBinding.instance.addPostFrameCallback((_) {
-  //     ref.read(profileCompletionProvider.notifier).checkProfileCompletion();
-  //   });
-
-  //   // تنظیم تایمر برای بررسی هر دقیقه
-  //   _profileCheckTimer = Timer.periodic(const Duration(minutes: 7), (_) {
-  //     if (mounted) {
-  //       _showProfileCompletionDialog();
-  //     }
-  //   });
-  // }
-
-  // void _showProfileCompletionDialog() async {
-  //   // برای اطمینان از وجود context صحیح
-  //   final context = navigatorKey.currentContext;
-  //   if (context == null) return;
-
-  //   final isComplete = await ref
-  //       .read(profileCompletionProvider.notifier)
-  //       .checkProfileCompletion();
-  //   if (!isComplete && mounted) {
-  //     // استفاده از GlobalKey برای دسترسی به context صحیح
-  //     showDialog(
-  //       context: context,
-  //       barrierDismissible: false,
-  //       builder: (BuildContext dialogContext) => AlertDialog(
-  //         shape:
-  //             RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-  //         title: const Text(
-  //           'تکمیل اطلاعات پروفایل',
-  //           textAlign: TextAlign.center,
-  //           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-  //         ),
-  //         content: Column(
-  //           mainAxisSize: MainAxisSize.min,
-  //           children: [
-  //             const Icon(Icons.person_outline, size: 48, color: Colors.blue),
-  //             const SizedBox(height: 16),
-  //             const Text(
-  //               'لطفاً برای دسترسی به تمام امکانات برنامه، اطلاعات پروفایل خود را تکمیل کنید.',
-  //               textAlign: TextAlign.center,
-  //               style: TextStyle(fontSize: 14),
-  //             ),
-  //           ],
-  //         ),
-  //         actions: [
-  //           TextButton(
-  //             onPressed: () => Navigator.pop(context),
-  //             child: const Text('بعداً'),
-  //           ),
-  //           FilledButton(
-  //             onPressed: () {
-  //               Navigator.pop(context);
-  //               Navigator.pushNamed(context, '/editeProfile');
-  //             },
-  //             style: FilledButton.styleFrom(
-  //               backgroundColor: Colors.blue,
-  //             ),
-  //             child: const Text(
-  //               'تکمیل پروفایل',
-  //               style: TextStyle(color: Colors.white),
-  //             ),
-  //           ),
-  //         ],
-  //       ),
-  //     );
-  //   }
-  // }
-
   @override
   Widget build(BuildContext context) {
     return ScreenUtilInit(
@@ -483,7 +439,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
               title: 'Vista',
               debugShowCheckedModeBanner: false,
               theme: theme,
-              navigatorKey: navigatorKey, // استفاده از navigator key
+              navigatorKey: navigatorKey,
               home: SplashScreen(),
               initialRoute: '/',
               scaffoldMessengerKey: GlobalKey<ScaffoldMessengerState>(),
@@ -494,11 +450,12 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                 '/editeProfile': (context) => const EditProfile(),
                 '/welcome': (context) => const WelcomePage(),
                 '/settings': (context) => const Settings(),
-                '/reset-password': (context) => ResetPasswordPage(
-                      token: ModalRoute.of(context)?.settings.arguments
-                              as String? ??
-                          '',
-                    ),
+                '/reset-password': (context) {
+                  final args =
+                      ModalRoute.of(context)?.settings.arguments as String? ??
+                          '';
+                  return ResetPasswordPage(token: args);
+                },
                 '/post-detail': (context) {
                   final args = ModalRoute.of(context)?.settings.arguments
                       as Map<String, dynamic>?;
@@ -523,10 +480,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                 '/chat': (context) {
                   final conversationId =
                       ModalRoute.of(context)?.settings.arguments as String?;
-                  // اگر conversationId وجود داشت، صفحه چت را باز کن
                   if (conversationId != null) {
-                    // مقداردهی اطلاعات کاربر مقابل از کش مکالمات
-                    // فرض: ConversationCacheService و ConversationModel را ایمپورت کرده‌ای
                     final conversation = ConversationCacheService()
                         .getConversationSync(conversationId);
                     final otherUserName =
@@ -540,29 +494,35 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                       otherUserAvatar: otherUserAvatar,
                     );
                   }
-                  // اگر conversationId نبود، یک صفحه خالی یا ارور نمایش بده
                   return Scaffold(body: Center(child: Text('مکالمه یافت نشد')));
                 },
                 '/verification-store': (context) {
                   return VerificationBadgeStore();
                 },
+                '/two-factor-verification': (context) {
+                  final args = ModalRoute.of(context)?.settings.arguments
+                      as Map<String, dynamic>?;
+                  final userId = args?['userId'] as String?;
+                  final redirectRoute = args?['redirectRoute'] as String?;
+                  final routeArguments =
+                      args?['routeArguments'] as Map<String, dynamic>?;
+
+                  if (userId != null) {
+                    return TwoFactorVerificationScreen(
+                      userId: userId,
+                      redirectRoute: redirectRoute,
+                      routeArguments: routeArguments,
+                    );
+                  }
+                  return const Scaffold(
+                      body: Center(child: Text('خطا: شناسه کاربر یافت نشد')));
+                },
+                '/two-factor-setup': (context) {
+                  return const TwoFactorSetupScreen();
+                },
+                // '/app-lock': (context) => const AppLockScreen(), // Removed app lock screen
+                // '/app-lock-test-simple': (context) => const AppLockTestSimple(), // Removed app lock test simple
               },
-              // builder: (context, child) {
-              //   return Directionality(
-              //     textDirection: TextDirection.rtl,
-              //     child: Stack(
-              //       children: [
-              //         child!,
-              //         if (_isLoading)
-              //           const Positioned.fill(
-              //             child: Center(
-              //               child: CircularProgressIndicator(),
-              //             ),
-              //           ),
-              //       ],
-              //     ),
-              //   );
-              // },
             );
           },
         );

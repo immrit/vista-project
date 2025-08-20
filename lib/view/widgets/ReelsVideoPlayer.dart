@@ -357,10 +357,11 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
                           showCommentsBottomSheet(
                               context, widget.post.id!, ref);
                         },
-                        icon: const Icon(
-                          Icons.comment,
+                        icon: Image.asset(
+                          'lib/view/util/images/component/comment.png',
+                          width: 32,
+                          height: 32,
                           color: Colors.white,
-                          size: 32,
                         ),
                       ),
                       Text(

@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
+
 /// مدل اطلاعات امنیتی کاربر
 class UserSecurityModel {
   final String id;
@@ -43,38 +45,70 @@ class UserSecurityModel {
   });
 
   factory UserSecurityModel.fromMap(Map<String, dynamic> map) {
-    return UserSecurityModel(
-      id: map['id'] ?? '',
-      userId: map['user_id'] ?? '',
-      twoFactorEnabled: map['two_factor_enabled'] ?? false,
-      twoFactorSecret: map['two_factor_secret'],
-      backupCodes: map['backup_codes'] != null
-          ? List<String>.from(map['backup_codes'])
-          : null,
-      twoFactorSetupAt: map['two_factor_setup_at'] != null
-          ? DateTime.parse(map['two_factor_setup_at'])
-          : null,
-      appLockEnabled: map['app_lock_enabled'] ?? false,
-      appLockType: map['app_lock_type'],
-      appLockHash: map['app_lock_hash'],
-      lastLoginAt: map['last_login_at'] != null
-          ? DateTime.parse(map['last_login_at'])
-          : null,
-      loginIpAddress: map['login_ip_address'],
-      deviceInfo: map['device_info'] != null
-          ? Map<String, dynamic>.from(map['device_info'])
-          : null,
-      failedLoginAttempts: map['failed_login_attempts'] ?? 0,
-      lockedUntil: map['locked_until'] != null
-          ? DateTime.parse(map['locked_until'])
-          : null,
-      securityScore: map['security_score'],
-      lastSecurityCheck: map['last_security_check'] != null
-          ? DateTime.parse(map['last_security_check'])
-          : null,
-      createdAt: DateTime.parse(map['created_at']),
-      updatedAt: DateTime.parse(map['updated_at']),
-    );
+    try {
+      debugPrint('🔧 UserSecurityModel.fromMap شروع شد');
+      debugPrint('📄 داده ورودی: $map');
+
+      // بررسی فیلدهای اجباری
+      if (map['id'] == null) {
+        debugPrint('❌ فیلد id موجود نیست');
+        throw Exception('فیلد id در UserSecurityModel موجود نیست');
+      }
+
+      if (map['user_id'] == null) {
+        debugPrint('❌ فیلد user_id موجود نیست');
+        throw Exception('فیلد user_id در UserSecurityModel موجود نیست');
+      }
+
+      // مدیریت فیلدهای تاریخ با مقدار پیش‌فرض
+      final now = DateTime.now();
+      final createdAt =
+          map['created_at'] != null ? DateTime.parse(map['created_at']) : now;
+      final updatedAt =
+          map['updated_at'] != null ? DateTime.parse(map['updated_at']) : now;
+
+      debugPrint('📅 تاریخ‌ها: createdAt=$createdAt, updatedAt=$updatedAt');
+
+      final model = UserSecurityModel(
+        id: map['id'] ?? '',
+        userId: map['user_id'] ?? '',
+        twoFactorEnabled: map['two_factor_enabled'] ?? false,
+        twoFactorSecret: map['two_factor_secret'],
+        backupCodes: map['backup_codes'] != null
+            ? List<String>.from(map['backup_codes'])
+            : null,
+        twoFactorSetupAt: map['two_factor_setup_at'] != null
+            ? DateTime.parse(map['two_factor_setup_at'])
+            : null,
+        appLockEnabled: map['app_lock_enabled'] ?? false,
+        appLockType: map['app_lock_type'],
+        appLockHash: map['app_lock_hash'],
+        lastLoginAt: map['last_login_at'] != null
+            ? DateTime.parse(map['last_login_at'])
+            : null,
+        loginIpAddress: map['login_ip_address'],
+        deviceInfo: map['device_info'] != null
+            ? Map<String, dynamic>.from(map['device_info'])
+            : null,
+        failedLoginAttempts: map['failed_login_attempts'] ?? 0,
+        lockedUntil: map['locked_until'] != null
+            ? DateTime.parse(map['locked_until'])
+            : null,
+        securityScore: map['security_score'],
+        lastSecurityCheck: map['last_security_check'] != null
+            ? DateTime.parse(map['last_security_check'])
+            : null,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+      );
+
+      debugPrint('✅ UserSecurityModel با موفقیت ایجاد شد');
+      return model;
+    } catch (e, stackTrace) {
+      debugPrint('❌ خطا در UserSecurityModel.fromMap: $e');
+      debugPrint('📚 Stack trace: $stackTrace');
+      rethrow;
+    }
   }
 
   Map<String, dynamic> toMap() {
@@ -184,6 +218,11 @@ class ActiveSessionModel {
   final DateTime lastActivity;
   final DateTime createdAt;
   final DateTime? expiresAt;
+  final String? browserInfo;
+  final String? platform;
+  final bool isTrusted;
+  final String loginMethod;
+  final Map<String, dynamic>? sessionMetadata;
 
   ActiveSessionModel({
     required this.id,
@@ -201,6 +240,11 @@ class ActiveSessionModel {
     required this.lastActivity,
     required this.createdAt,
     this.expiresAt,
+    this.browserInfo,
+    this.platform,
+    this.isTrusted = false,
+    this.loginMethod = 'password',
+    this.sessionMetadata,
   });
 
   factory ActiveSessionModel.fromMap(Map<String, dynamic> map) {
@@ -223,6 +267,13 @@ class ActiveSessionModel {
       createdAt: DateTime.parse(map['created_at']),
       expiresAt:
           map['expires_at'] != null ? DateTime.parse(map['expires_at']) : null,
+      browserInfo: map['browser_info'],
+      platform: map['platform'],
+      isTrusted: map['is_trusted'] ?? false,
+      loginMethod: map['login_method'] ?? 'password',
+      sessionMetadata: map['session_metadata'] != null
+          ? Map<String, dynamic>.from(map['session_metadata'])
+          : null,
     );
   }
 
@@ -243,6 +294,11 @@ class ActiveSessionModel {
       'last_activity': lastActivity.toIso8601String(),
       'created_at': createdAt.toIso8601String(),
       'expires_at': expiresAt?.toIso8601String(),
+      'browser_info': browserInfo,
+      'platform': platform,
+      'is_trusted': isTrusted,
+      'login_method': loginMethod,
+      'session_metadata': sessionMetadata,
     };
   }
 
@@ -285,7 +341,7 @@ class SecurityLogModel {
   final String? description;
   final Map<String, dynamic>? metadata;
   final String? ipAddress;
-  final String? userAgent;
+
   final DateTime createdAt;
 
   SecurityLogModel({
@@ -295,7 +351,6 @@ class SecurityLogModel {
     this.description,
     this.metadata,
     this.ipAddress,
-    this.userAgent,
     required this.createdAt,
   });
 
@@ -309,7 +364,6 @@ class SecurityLogModel {
           ? Map<String, dynamic>.from(map['metadata'])
           : null,
       ipAddress: map['ip_address'],
-      userAgent: map['user_agent'],
       createdAt: DateTime.parse(map['created_at']),
     );
   }
@@ -322,7 +376,6 @@ class SecurityLogModel {
       'description': description,
       'metadata': metadata,
       'ip_address': ipAddress,
-      'user_agent': userAgent,
       'created_at': createdAt.toIso8601String(),
     };
   }
@@ -507,4 +560,3 @@ class TwoFactorSettings {
     return enabled && secret != null && backupCodes.isNotEmpty;
   }
 }
-

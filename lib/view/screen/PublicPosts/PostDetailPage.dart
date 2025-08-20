@@ -671,6 +671,29 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
           },
         ),
         Text('${post.likeCount}'),
+        const SizedBox(width: 16),
+        // دکمه کامنت با آیکون سفارشی
+        GestureDetector(
+          onTap: () {
+            // اضافه کردن منطق نمایش کامنت‌ها
+          },
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.transparent,
+            ),
+            child: Image.asset(
+              'lib/view/util/images/component/comment.png',
+              width: 20,
+              height: 20,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : Colors.black87,
+            ),
+          ),
+        ),
+        Text('${post.commentCount ?? 0}'),
       ],
     );
   }

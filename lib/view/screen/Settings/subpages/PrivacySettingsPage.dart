@@ -3,8 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../provider/provider.dart';
-import 'SecuritySettingsPage.dart';
-import '../Settings.dart'; // برای TelegramSettingsItem
+import 'ActiveSessionsPage.dart';
+import '../Settings.dart';
+import '../../ouathUser/TwoFactorSetupScreen.dart';
 
 class PrivacySettingsPage extends ConsumerWidget {
   const PrivacySettingsPage({super.key});
@@ -111,17 +112,22 @@ class PrivacySettingsPage extends ConsumerWidget {
       ),
       child: Column(
         children: [
-          TelegramSettingsItem(
-            icon: Icons.security,
-            iconColor: Colors.red,
-            title: 'امنیت حساب کاربری',
-            subtitle: 'تایید دو مرحله‌ای، قفل اپلیکیشن، جلسات فعال',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const SecuritySettingsPage(),
-                ),
+          // تایید دو مرحله‌ای
+          Consumer(
+            builder: (context, ref, child) {
+              final securityAsync = ref.watch(securityNotifierProvider);
+              final isEnabled = securityAsync?.twoFactorEnabled ?? false;
+
+              return TelegramSwitchItem(
+                icon: Icons.verified_user,
+                iconColor: Colors.green,
+                title: 'تایید دو مرحله‌ای',
+                subtitle: isEnabled
+                    ? 'حساب شما محافظت اضافی دارد'
+                    : 'افزایش امنیت با کد تایید',
+                value: isEnabled,
+                onChanged: (value) =>
+                    _handleTwoFactorToggle(context, ref, value),
               );
             },
           ),
@@ -135,7 +141,7 @@ class PrivacySettingsPage extends ConsumerWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => const ActiveSessionsScreen(),
+                  builder: (context) => const ActiveSessionsPage(),
                 ),
               );
             },
@@ -146,14 +152,7 @@ class PrivacySettingsPage extends ConsumerWidget {
             iconColor: Colors.teal,
             title: 'تاریخچه امنیت',
             subtitle: 'مشاهده فعالیت‌های امنیتی اخیر',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const SecurityLogsScreen(),
-                ),
-              );
-            },
+            onTap: () => _showSecurityLogs(context, ref),
           ),
         ],
       ),
@@ -330,6 +329,213 @@ class PrivacySettingsPage extends ConsumerWidget {
     );
   }
 
+  /// مدیریت تغییر وضعیت 2FA
+  Future<void> _handleTwoFactorToggle(
+      BuildContext context, WidgetRef ref, bool value) async {
+    try {
+      if (value) {
+        // فعال کردن 2FA
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const TwoFactorSetupScreen(),
+          ),
+        );
+      } else {
+        // غیرفعال کردن 2FA
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('تایید'),
+            content: const Text(
+                'آیا مطمئن هستید که می‌خواهید تایید دو مرحله‌ای را غیرفعال کنید؟'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('انصراف'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('تایید'),
+              ),
+            ],
+          ),
+        );
+
+        if (confirmed == true) {
+          await ref.read(securityNotifierProvider.notifier).disableTwoFactor();
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('تایید دو مرحله‌ای غیرفعال شد'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// نمایش لاگ‌های امنیتی
+  void _showSecurityLogs(BuildContext context, WidgetRef ref) {
+    final logsAsync = ref.watch(securityLogsProvider);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تاریخچه امنیت'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: logsAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, _) => Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error, size: 48, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text('خطا: $error'),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      ref.refresh(securityLogsProvider);
+                    },
+                    child: const Text('تلاش مجدد'),
+                  ),
+                ],
+              ),
+            ),
+            data: (logs) => logs.isEmpty
+                ? const Center(
+                    child: Text('هیچ رویداد امنیتی یافت نشد'),
+                  )
+                : ListView.builder(
+                    itemCount: logs.length,
+                    itemBuilder: (context, index) {
+                      final log = logs[index];
+                      return _buildLogCard(context, log);
+                    },
+                  ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('بستن'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLogCard(BuildContext context, dynamic log) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Icon(
+              _getLogIcon(log.eventType),
+              color: _getLogColor(log.eventType),
+              size: 24,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    log.description ?? log.eventType,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    log.ipAddress ?? 'IP نامشخص',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _formatDateTime(log.createdAt),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// فرمت کردن تاریخ و زمان
+  String _formatDateTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inDays > 0) {
+      return '${difference.inDays} روز پیش';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours} ساعت پیش';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes} دقیقه پیش';
+    } else {
+      return 'همین الان';
+    }
+  }
+
+  /// دریافت آیکون مناسب برای نوع لاگ
+  IconData _getLogIcon(String eventType) {
+    switch (eventType) {
+      case 'successful_login':
+        return Icons.login;
+      case 'failed_login_attempt':
+        return Icons.block;
+      case 'two_factor_enabled':
+        return Icons.verified_user;
+      case 'two_factor_disabled':
+        return Icons.person_off;
+      default:
+        return Icons.security;
+    }
+  }
+
+  /// دریافت رنگ مناسب برای نوع لاگ
+  Color _getLogColor(String eventType) {
+    switch (eventType) {
+      case 'successful_login':
+      case 'two_factor_enabled':
+        return Colors.green;
+      case 'failed_login_attempt':
+        return Colors.red;
+      case 'two_factor_disabled':
+        return Colors.orange;
+      default:
+        return Colors.blue;
+    }
+  }
+
   void _showDeleteAccountDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -422,7 +628,7 @@ class TelegramSwitchItem extends StatelessWidget {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: iconColor,
+            activeThumbColor: iconColor,
           ),
         ],
       ),

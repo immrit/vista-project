@@ -645,7 +645,12 @@ class PostCard extends StatelessWidget {
         // تعداد کامنت
         Row(
           children: [
-            const Icon(Icons.chat_bubble_outline, size: 16, color: Colors.grey),
+            Image.asset(
+              'lib/view/util/images/component/comment.png',
+              width: 16,
+              height: 16,
+              color: Colors.grey,
+            ),
             const SizedBox(width: 4),
             Text(
               post.commentCount.toString() ?? '0',

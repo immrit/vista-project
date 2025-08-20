@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../ContactUs.dart';
 import '../TermsAndConditions.dart';
+import '../widgets/SettingsListItem.dart';
 
 class AboutSettingsPage extends StatelessWidget {
   const AboutSettingsPage({super.key});
@@ -9,6 +10,7 @@ class AboutSettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       backgroundColor:
@@ -24,12 +26,12 @@ class AboutSettingsPage extends StatelessWidget {
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 16.0),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF252525) : Colors.white,
+              color: isDark ? colorScheme.surface : Colors.white,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
               children: [
-                TelegramSettingsItem(
+                SettingsListItem(
                   icon: Icons.info,
                   iconColor: Colors.blue,
                   title: 'درباره ویستا',
@@ -39,7 +41,7 @@ class AboutSettingsPage extends StatelessWidget {
                   },
                 ),
                 _buildDivider(),
-                TelegramSettingsItem(
+                SettingsListItem(
                   icon: Icons.gavel,
                   iconColor: Colors.orange,
                   title: 'شرایط و قوانین',
@@ -54,7 +56,7 @@ class AboutSettingsPage extends StatelessWidget {
                   },
                 ),
                 _buildDivider(),
-                TelegramSettingsItem(
+                SettingsListItem(
                   icon: Icons.contact_support,
                   iconColor: Colors.green,
                   title: 'تماس با ما',
@@ -69,7 +71,7 @@ class AboutSettingsPage extends StatelessWidget {
                   },
                 ),
                 _buildDivider(),
-                TelegramSettingsItem(
+                SettingsListItem(
                   icon: Icons.security,
                   iconColor: Colors.red,
                   title: 'سیاست حریم خصوصی',
@@ -88,12 +90,12 @@ class AboutSettingsPage extends StatelessWidget {
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 16.0),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF252525) : Colors.white,
+              color: isDark ? colorScheme.surface : Colors.white,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
               children: [
-                TelegramSettingsItem(
+                SettingsListItem(
                   icon: Icons.help,
                   iconColor: Colors.purple,
                   title: 'سوالات متداول',
@@ -103,7 +105,7 @@ class AboutSettingsPage extends StatelessWidget {
                   },
                 ),
                 _buildDivider(),
-                TelegramSettingsItem(
+                SettingsListItem(
                   icon: Icons.bug_report,
                   iconColor: Colors.red,
                   title: 'گزارش مشکل',
@@ -113,7 +115,7 @@ class AboutSettingsPage extends StatelessWidget {
                   },
                 ),
                 _buildDivider(),
-                TelegramSettingsItem(
+                SettingsListItem(
                   icon: Icons.star,
                   iconColor: Colors.amber,
                   title: 'امتیاز به ویستا',
@@ -132,12 +134,12 @@ class AboutSettingsPage extends StatelessWidget {
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 16.0),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF252525) : Colors.white,
+              color: isDark ? colorScheme.surface : Colors.white,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
               children: [
-                TelegramSettingsItem(
+                SettingsListItem(
                   icon: Icons.code,
                   iconColor: Colors.teal,
                   title: 'نسخه برنامه',
@@ -147,7 +149,7 @@ class AboutSettingsPage extends StatelessWidget {
                   },
                 ),
                 _buildDivider(),
-                TelegramSettingsItem(
+                SettingsListItem(
                   icon: Icons.update,
                   iconColor: Colors.indigo,
                   title: 'بررسی به‌روزرسانی',
@@ -374,89 +376,6 @@ class AboutSettingsPage extends StatelessWidget {
             child: const Text('متوجه شدم'),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class TelegramSettingsItem extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const TelegramSettingsItem({
-    super.key,
-    required this.icon,
-    required this.iconColor,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: iconColor,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  icon,
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w400,
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white
-                            : Colors.black,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.grey[400]
-                            : Colors.grey[700],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.arrow_forward_ios,
-                size: 16,
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.grey[500]
-                    : Colors.grey[600],
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

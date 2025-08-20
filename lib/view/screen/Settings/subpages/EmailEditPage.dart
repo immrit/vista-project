@@ -43,6 +43,7 @@ class _EmailEditPageState extends ConsumerState<EmailEditPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       backgroundColor:
@@ -96,9 +97,10 @@ class _EmailEditPageState extends ConsumerState<EmailEditPage> {
 
             // فرم ویرایش ایمیل
             Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16.0),
               padding: const EdgeInsets.all(20.0),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF252525) : Colors.white,
+                color: isDark ? colorScheme.surface : Colors.white,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(

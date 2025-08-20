@@ -23,6 +23,9 @@ import 'theme_provider.dart';
 // Import security provider
 import 'security_provider.dart';
 
+// Export security providers
+export 'security_provider.dart';
+
 //check user state
 final authStateProvider = StreamProvider<User?>((ref) {
   return supabase.auth.onAuthStateChange.map((event) => event.session?.user);

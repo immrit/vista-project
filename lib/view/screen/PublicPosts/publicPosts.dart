@@ -909,24 +909,12 @@ Widget _buildPostItem(
               ),
               const SizedBox(width: 16),
               // دکمه کامنت با استایل جدید
-              Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.comment_outlined),
-                    onPressed: () {
-                      showCommentsBottomSheet2(context,
-                          postId: post.id!, postTitle: post.title!);
-                    },
-                  ),
-                  Text(
-                    '${post.commentCount}',
-                    style: TextStyle(
-                      fontWeight: post.commentCount > 0
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                    ),
-                  ),
-                ],
+              CommentButton(
+                commentCount: post.commentCount,
+                onTap: () {
+                  showCommentsBottomSheet2(context,
+                      postId: post.id!, postTitle: post.title!);
+                },
               ),
               const SizedBox(width: 16),
               // دکمه اشتراک‌گذاری با انیمیشن کلیک
@@ -2170,6 +2158,100 @@ class _LikeButtonState extends State<LikeButton>
             style: TextStyle(
               fontWeight: widget.isLiked ? FontWeight.bold : FontWeight.normal,
               color: widget.isLiked ? Colors.red : null,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class CommentButton extends StatefulWidget {
+  final int commentCount;
+  final VoidCallback onTap;
+
+  const CommentButton({
+    super.key,
+    required this.commentCount,
+    required this.onTap,
+  });
+
+  @override
+  State<CommentButton> createState() => _CommentButtonState();
+}
+
+class _CommentButtonState extends State<CommentButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _sizeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+
+    _sizeAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.5), weight: 50),
+      TweenSequenceItem(tween: Tween(begin: 1.5, end: 1.0), weight: 50),
+    ]).animate(_controller);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        AnimatedBuilder(
+          animation: _sizeAnimation,
+          builder: (context, child) {
+            return Transform.scale(
+              scale: _sizeAnimation.value,
+              child: GestureDetector(
+                onTap: () {
+                  _controller.forward(from: 0.0);
+                  widget.onTap();
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.transparent,
+                  ),
+                  child: Image.asset(
+                    'lib/view/util/images/component/comment.png',
+                    width: 20,
+                    height: 20,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white
+                        : Colors.black87,
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          transitionBuilder: (child, animation) {
+            return ScaleTransition(
+              scale: animation,
+              child: child,
+            );
+          },
+          child: Text(
+            widget.commentCount.toString(),
+            key: ValueKey<int>(widget.commentCount),
+            style: TextStyle(
+              fontWeight:
+                  widget.commentCount > 0 ? FontWeight.bold : FontWeight.normal,
             ),
           ),
         ),

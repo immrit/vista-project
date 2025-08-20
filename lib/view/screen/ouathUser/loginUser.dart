@@ -10,6 +10,7 @@ import '../../util/widgets.dart';
 import '../../../provider/provider.dart';
 import 'VerifyCodePage.dart';
 import 'signupUser.dart';
+import 'TwoFactorVerificationScreen.dart';
 
 class Loginuser extends ConsumerStatefulWidget {
   const Loginuser({super.key});
@@ -72,12 +73,28 @@ class _LoginuserState extends ConsumerState<Loginuser> {
       // آپدیت متادیتا بعد از لاگین موفق
       if (authResponse.user != null) {
         await updateUserMetadata(authResponse.user!, userProfile);
-      }
 
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-        );
+        // بررسی تایید دو مرحله‌ای
+        final twoFactorRequired =
+            await _checkTwoFactorRequired(authResponse.user!.id);
+
+        if (mounted) {
+          if (twoFactorRequired) {
+            // انتقال به صفحه تایید دو مرحله‌ای
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (context) => TwoFactorVerificationScreen(
+                  userId: authResponse.user!.id,
+                ),
+              ),
+            );
+          } else {
+            // انتقال مستقیم به صفحه اصلی
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (context) => const HomeScreen()),
+            );
+          }
+        }
       }
     } catch (e) {
       if (e is PostgrestException) {
@@ -126,6 +143,31 @@ class _LoginuserState extends ConsumerState<Loginuser> {
           SnackBar(content: Text('خطا در بروزرسانی اطلاعات: $e')),
         );
       }
+    }
+  }
+
+  /// بررسی نیاز به تایید دو مرحله‌ای
+  Future<bool> _checkTwoFactorRequired(String userId) async {
+    try {
+      final response = await supabase
+          .from('user_security')
+          .select('two_factor_enabled')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      if (response == null) {
+        // اگر رکورد امنیتی وجود ندارد، ایجاد کن
+        await supabase.from('user_security').insert({
+          'user_id': userId,
+          'two_factor_enabled': false,
+        });
+        return false;
+      }
+
+      return response['two_factor_enabled'] == true;
+    } catch (e) {
+      print('خطا در بررسی تایید دو مرحله‌ای: $e');
+      return false; // در صورت خطا، تایید دو مرحله‌ای را غیرفعال در نظر بگیر
     }
   }
 

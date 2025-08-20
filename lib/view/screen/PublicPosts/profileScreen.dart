@@ -171,8 +171,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget _buildProfileHeader(ProfileModel profile) {
     final bool isCurrentUserProfile = profile.id == ref.read(authProvider)?.id;
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      color: isDark ? const Color(0xFF252525) : Colors.white,
+      color: isDark ? colorScheme.surface : Colors.white,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -1087,9 +1088,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget _buildCommentButton(PublicPostModel post) {
     return Row(
       children: [
-        IconButton(
-            icon: const Icon(Icons.comment),
-            onPressed: () => _showComments(post)),
+        GestureDetector(
+          onTap: () => _showComments(post),
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.transparent,
+            ),
+            child: Image.asset(
+              'lib/view/util/images/component/comment.png',
+              width: 20,
+              height: 20,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : Colors.black87,
+            ),
+          ),
+        ),
         Text('${post.commentCount}'),
       ],
     );
