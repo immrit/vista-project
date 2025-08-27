@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:developer' as developer;
 import 'dart:ui' as ui;
 import 'package:gal/gal.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../provider/security_provider.dart';
 import '../../../security/simple_2fa_service.dart';
+import '../../../provider/theme_provider.dart';
 
 class TwoFactorSetupScreen extends ConsumerStatefulWidget {
   const TwoFactorSetupScreen({super.key});
@@ -15,949 +17,1197 @@ class TwoFactorSetupScreen extends ConsumerStatefulWidget {
       _TwoFactorSetupScreenState();
 }
 
-class _TwoFactorSetupScreenState extends ConsumerState<TwoFactorSetupScreen> {
+class _TwoFactorSetupScreenState extends ConsumerState<TwoFactorSetupScreen>
+    with TickerProviderStateMixin {
+  final TextEditingController _codeController = TextEditingController();
+  final FocusNode _codeFocusNode = FocusNode();
+
+  bool _is2FAEnabled = false;
   bool _isLoading = false;
-  String? _password;
-  List<String>? _backupCodes;
-  final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _confirmPasswordController =
-      TextEditingController();
-  final TextEditingController _verificationController = TextEditingController();
+  bool _showBackupCodes = false;
+  List<String> _backupCodes = [];
   String _errorMessage = '';
-  bool _isVerifying = false;
-  bool _showPassword = false;
-  bool _showConfirmPassword = false;
+  String _successMessage = '';
+
+  // Animation controllers
+  late AnimationController _fadeController;
+  late AnimationController _slideController;
+  late AnimationController _scaleController;
+
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+  late Animation<double> _scaleAnimation;
 
   @override
   void initState() {
     super.initState();
-    _generatePassword();
+    _initializeAnimations();
+    _check2FAStatus();
+  }
+
+  void _initializeAnimations() {
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+
+    _slideController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+
+    _scaleController = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeInOut,
+    ));
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _slideController,
+      curve: Curves.easeOutCubic,
+    ));
+
+    _scaleAnimation = Tween<double>(
+      begin: 0.8,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _scaleController,
+      curve: Curves.elasticOut,
+    ));
+
+    // Start animations
+    _fadeController.forward();
+    _slideController.forward();
+    _scaleController.forward();
   }
 
   @override
   void dispose() {
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
-    _verificationController.dispose();
+    _codeController.dispose();
+    _codeFocusNode.dispose();
+    _fadeController.dispose();
+    _slideController.dispose();
+    _scaleController.dispose();
     super.dispose();
   }
 
-  Future<void> _generatePassword() async {
+  /// بررسی وضعیت 2FA
+  Future<void> _check2FAStatus() async {
+    try {
+      developer.log('Checking 2FA status...', name: 'TwoFactorSetup');
+
+      // دریافت userId واقعی از Supabase
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+
+      if (user == null) {
+        developer.log('No authenticated user found', name: 'TwoFactorSetup');
+        setState(() {
+          _errorMessage = 'کاربر احراز هویت نشده است';
+        });
+        return;
+      }
+
+      final userId = user.id;
+      developer.log('Checking 2FA for user: $userId', name: 'TwoFactorSetup');
+
+      // استفاده از روش refresh برای اطمینان از همگام‌سازی با دیتابیس
+      final isEnabled = await Simple2FAService.refresh2FAStatus(userId);
+      developer.log('2FA status after refresh: $isEnabled',
+          name: 'TwoFactorSetup');
+
+      setState(() {
+        _is2FAEnabled = isEnabled;
+        _errorMessage = ''; // پاک کردن خطاهای قبلی
+      });
+    } catch (e) {
+      developer.log('Error checking 2FA status: $e', name: 'TwoFactorSetup');
+      setState(() {
+        _errorMessage = 'خطا در بررسی وضعیت 2FA: $e';
+        _is2FAEnabled = false; // در صورت خطا، false در نظر بگیر
+      });
+    }
+  }
+
+  /// تولید کد پیشنهادی
+  void _generateSuggestedCode() {
+    try {
+      final suggestedCode = Simple2FAService.getSuggestedCode();
+      developer.log('Generated suggested code: $suggestedCode',
+          name: 'TwoFactorSetup');
+
+      setState(() {
+        _codeController.text = suggestedCode;
+        _errorMessage = '';
+      });
+
+      // Focus on the code field
+      _codeFocusNode.requestFocus();
+
+      // Show success message
+      _showSuccessMessage('کد پیشنهادی تولید شد');
+    } catch (e) {
+      developer.log('Error generating suggested code: $e',
+          name: 'TwoFactorSetup');
+      setState(() {
+        _errorMessage = 'خطا در تولید کد پیشنهادی: $e';
+      });
+    }
+  }
+
+  /// فعال‌سازی 2FA
+  Future<void> _generate2FASetup() async {
+    final code = _codeController.text.trim();
+
+    if (code.isEmpty) {
+      setState(() {
+        _errorMessage = 'لطفاً کد 6 رقمی را وارد کنید';
+      });
+      return;
+    }
+
+    if (code.length != 6) {
+      setState(() {
+        _errorMessage = 'کد باید دقیقاً 6 رقم باشد';
+      });
+      return;
+    }
+
+    if (!RegExp(r'^\d{6}$').hasMatch(code)) {
+      setState(() {
+        _errorMessage = 'کد باید فقط شامل اعداد باشد';
+      });
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = '';
+      _successMessage = '';
     });
 
     try {
-      debugPrint('🔐 شروع تولید رمز 2FA...');
+      developer.log('Enabling 2FA with code: $code', name: 'TwoFactorSetup');
 
-      // تولید رمز 2FA
-      final password = Simple2FAService.generatePassword();
-      if (password.isEmpty) {
-        throw Exception('رمز تولید نشد');
-      }
-      debugPrint('🔐 رمز تولید شد: $password');
+      // دریافت userId واقعی از Supabase
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
 
-      // تولید کدهای پشتیبان
-      final backupCodes = Simple2FAService.generateBackupCodes();
-      if (backupCodes.isEmpty) {
-        throw Exception('کدهای پشتیبان تولید نشدند');
-      }
-      debugPrint('🔐 کدهای پشتیبان تولید شدند: ${backupCodes.length} کد');
-
-      setState(() {
-        _password = password;
-        _backupCodes = backupCodes;
-        _isLoading = false;
-      });
-
-      debugPrint('✅ رمز و کدهای پشتیبان در state ذخیره شدند');
-    } catch (e) {
-      debugPrint('❌ خطا در تولید رمز: $e');
-      setState(() {
-        _errorMessage = 'خطا در تولید رمز: $e';
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _verifyAndEnable() async {
-    final password = _passwordController.text.trim();
-    final confirmPassword = _confirmPasswordController.text.trim();
-    final verificationCode = _verificationController.text.trim();
-
-    if (password.isEmpty || confirmPassword.isEmpty) {
-      setState(() {
-        _errorMessage = 'لطفاً رمز و تکرار رمز را وارد کنید';
-      });
-      return;
-    }
-
-    if (password != confirmPassword) {
-      setState(() {
-        _errorMessage = 'رمز و تکرار رمز یکسان نیستند';
-      });
-      return;
-    }
-
-    if (password != _password) {
-      setState(() {
-        _errorMessage = 'رمز وارد شده صحیح نیست';
-      });
-      return;
-    }
-
-    if (verificationCode.isEmpty) {
-      setState(() {
-        _errorMessage = 'لطفاً کد تایید را وارد کنید';
-      });
-      return;
-    }
-
-    // بررسی کد پشتیبان
-    if (_backupCodes != null && _backupCodes!.contains(verificationCode)) {
-      // حذف کد استفاده شده
-      final updatedCodes = Simple2FAService.removeUsedBackupCode(
-          _backupCodes!, verificationCode);
-
-      setState(() {
-        _backupCodes = updatedCodes;
-      });
-
-      // فعال کردن تایید دو مرحله‌ای
-      try {
-        await ref
-            .read(securityNotifierProvider.notifier)
-            .enableSimpleTwoFactor(_password!);
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('تایید دو مرحله‌ای با موفقیت فعال شد'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          Navigator.of(context).pop();
-        }
-      } catch (e) {
+      if (user == null) {
+        developer.log('No authenticated user found', name: 'TwoFactorSetup');
         setState(() {
-          _errorMessage = 'خطا در فعال‌سازی: $e';
+          _errorMessage = 'کاربر احراز هویت نشده است';
+        });
+        return;
+      }
+
+      final userId = user.id;
+      developer.log('Enabling 2FA for user: $userId', name: 'TwoFactorSetup');
+
+      final result = await Simple2FAService.enable2FA(userId, code);
+      developer.log('2FA enabled successfully. Result: $result',
+          name: 'TwoFactorSetup');
+
+      if (result['success'] == true) {
+        final backupCodes = result['backupCodes'] as List<String>;
+
+        // پاک کردن اطلاعات تایید نشست قبلی (اگر وجود داشته باشد)
+        await Simple2FAService.clearSessionVerification();
+
+        setState(() {
+          _is2FAEnabled = true;
+          _backupCodes = backupCodes;
+          _showBackupCodes = true;
+          _successMessage = 'احراز هویت دو مرحله‌ای با موفقیت فعال شد!';
+        });
+
+        // Show backup codes with animation
+        _showBackupCodesWithAnimation();
+      } else {
+        setState(() {
+          _errorMessage = result['message'] ?? 'خطا در فعال‌سازی 2FA';
         });
       }
-    } else {
-      setState(() {
-        _errorMessage = 'کد تایید وارد شده صحیح نیست';
-      });
-    }
-  }
-
-  Future<void> _saveBackupCodesAsImage() async {
-    if (_backupCodes == null) return;
-
-    try {
-      setState(() {
-        _isLoading = true;
-      });
-
-      // ایجاد تصویر از کدهای پشتیبان
-      final recorder = ui.PictureRecorder();
-      final canvas = Canvas(recorder);
-      final paint = Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.fill;
-
-      // پس‌زمینه سفید
-      canvas.drawRect(Rect.fromLTWH(0, 0, 400.0, 600.0), paint);
-
-      // عنوان
-      final titleStyle = TextStyle(
-        fontSize: 24,
-        fontWeight: FontWeight.bold,
-        color: Colors.black,
-      );
-      final titleSpan = TextSpan(
-        text: 'کدهای پشتیبان Vista',
-        style: titleStyle,
-      );
-      final titlePainter = TextPainter(
-        text: titleSpan,
-        textDirection: TextDirection.rtl,
-      );
-      titlePainter.layout();
-      titlePainter.paint(canvas, Offset(200.0 - titlePainter.width / 2, 30.0));
-
-      // توضیحات
-      final descStyle = TextStyle(
-        fontSize: 14,
-        color: Colors.grey[600],
-      );
-      final descSpan = TextSpan(
-        text:
-            'این کدها را در جای امنی نگهداری کنید\nهر کد فقط یک بار قابل استفاده است',
-        style: descStyle,
-      );
-      final descPainter = TextPainter(
-        text: descSpan,
-        textDirection: TextDirection.rtl,
-        textAlign: TextAlign.center,
-      );
-      descPainter.layout();
-      descPainter.paint(canvas, Offset(200.0 - descPainter.width / 2, 80.0));
-
-      // کدهای پشتیبان
-      final codeStyle = TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.bold,
-        fontFamily: 'monospace',
-        color: Colors.black,
-      );
-
-      for (int i = 0; i < _backupCodes!.length; i++) {
-        final y = 140 + (i * 40);
-        final codeSpan = TextSpan(
-          text: '${i + 1}. ${_backupCodes![i]}',
-          style: codeStyle,
-        );
-        final codePainter = TextPainter(
-          text: codeSpan,
-          textDirection: TextDirection.rtl,
-        );
-        codePainter.layout();
-        codePainter.paint(
-            canvas, Offset(200.0 - codePainter.width / 2, y.toDouble()));
-      }
-
-      // تاریخ تولید
-      final dateStyle = TextStyle(
-        fontSize: 12,
-        color: Colors.grey[500],
-      );
-      final dateSpan = TextSpan(
-        text: 'تاریخ تولید: ${DateTime.now().toString().substring(0, 19)}',
-        style: dateStyle,
-      );
-      final datePainter = TextPainter(
-        text: dateSpan,
-        textDirection: TextDirection.rtl,
-      );
-      datePainter.layout();
-      datePainter.paint(canvas, Offset(200.0 - datePainter.width / 2, 580.0));
-
-      // تبدیل به تصویر
-      final picture = recorder.endRecording();
-      final image = await picture.toImage(400, 600);
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      final bytes = byteData!.buffer.asUint8List();
-
-      // ذخیره در گالری
-      await Gal.putImageBytes(
-        bytes,
-        name: 'vista_backup_codes_${DateTime.now().millisecondsSinceEpoch}.png',
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('کدهای پشتیبان در گالری ذخیره شد'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
     } catch (e) {
-      debugPrint('❌ خطا در ذخیره تصویر: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطا در ذخیره تصویر: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      developer.log('Error enabling 2FA: $e', name: 'TwoFactorSetup');
+      setState(() {
+        _errorMessage = 'خطا در فعال‌سازی 2FA: $e';
+      });
     } finally {
       setState(() {
         _isLoading = false;
       });
     }
+  }
+
+  /// نمایش کدهای بکاپ با انیمیشن
+  void _showBackupCodesWithAnimation() {
+    _scaleController.reset();
+    _scaleController.forward();
+  }
+
+  /// نمایش پیام موفقیت
+  void _showSuccessMessage(String message) {
+    setState(() {
+      _successMessage = message;
+    });
+
+    // Auto-hide after 3 seconds
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() {
+          _successMessage = '';
+        });
+      }
+    });
+  }
+
+  /// تولید تصویر کدهای بکاپ
+  Future<Uint8List> _generateBackupCodesImage(String codesText) async {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    const size = Size(300, 400);
+
+    // Background
+    final paint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
+
+    // Border
+    final borderPaint = Paint()
+      ..color = Colors.blue
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    canvas.drawRect(
+        Rect.fromLTWH(1, 1, size.width - 2, size.height - 2), borderPaint);
+
+    // Title
+    final titleStyle = TextStyle(
+      color: Colors.blue.shade800,
+      fontSize: 18,
+      fontWeight: FontWeight.bold,
+    );
+    final titleSpan = TextSpan(text: 'کدهای بکاپ 2FA', style: titleStyle);
+    final titlePainter = TextPainter(
+      text: titleSpan,
+      textDirection: TextDirection.rtl,
+      textAlign: TextAlign.center,
+    );
+    titlePainter.layout();
+    titlePainter.paint(
+        canvas,
+        Offset(
+          (size.width - titlePainter.width) / 2,
+          20,
+        ));
+
+    // Codes
+    final codes = codesText.split(',');
+    final codeStyle = TextStyle(
+      color: Colors.black87,
+      fontSize: 16,
+      fontWeight: FontWeight.w600,
+      fontFamily: 'monospace',
+    );
+
+    double yOffset = 80;
+    for (int i = 0; i < codes.length; i++) {
+      final code = codes[i].trim();
+      final codeSpan = TextSpan(text: code, style: codeStyle);
+      final codePainter = TextPainter(
+        text: codeSpan,
+        textDirection: TextDirection.ltr,
+        textAlign: TextAlign.center,
+      );
+      codePainter.layout();
+
+      final xOffset = (size.width - codePainter.width) / 2;
+      codePainter.paint(canvas, Offset(xOffset, yOffset));
+
+      yOffset += 30;
+    }
+
+    // Warning text
+    final warningStyle = TextStyle(
+      color: Colors.red.shade600,
+      fontSize: 12,
+      fontWeight: FontWeight.w500,
+    );
+    final warningSpan = TextSpan(
+      text: 'این کدها را در جای امنی نگهداری کنید',
+      style: warningStyle,
+    );
+    final warningPainter = TextPainter(
+      text: warningSpan,
+      textDirection: TextDirection.rtl,
+      textAlign: TextAlign.center,
+    );
+    warningPainter.layout();
+    warningPainter.paint(
+        canvas,
+        Offset(
+          (size.width - warningPainter.width) / 2,
+          yOffset + 20,
+        ));
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(300, 400);
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+
+    return byteData!.buffer.asUint8List();
+  }
+
+  /// ذخیره کدهای بکاپ در گالری
+  Future<void> _saveBackupCodesToGallery() async {
+    try {
+      final codesText = _backupCodes.join(',');
+      final imageBytes = await _generateBackupCodesImage(codesText);
+
+      await Gal.putImageBytes(imageBytes, name: 'backup_codes_2fa');
+
+      _showSuccessMessage('کدهای بکاپ در گالری ذخیره شد');
+    } catch (e) {
+      developer.log('Error saving backup codes to gallery: $e',
+          name: 'TwoFactorSetup');
+      setState(() {
+        _errorMessage = 'خطا در ذخیره کدهای بکاپ: $e';
+      });
+    }
+  }
+
+  /// غیرفعال‌سازی 2FA
+  Future<void> _disable2FA() async {
+    // نمایش dialog تایید
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(
+          'تایید غیرفعال‌سازی',
+          style: TextStyle(fontFamily: 'Vazir', fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'آیا مطمئن هستید که می‌خواهید احراز هویت دو مرحله‌ای را غیرفعال کنید؟ این کار امنیت حساب شما را کاهش می‌دهد.',
+          style: TextStyle(fontFamily: 'Vazir'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text(
+              'انصراف',
+              style: TextStyle(fontFamily: 'Vazir'),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text(
+              'غیرفعال کن',
+              style:
+                  TextStyle(fontFamily: 'Vazir', fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+      _successMessage = '';
+    });
+
+    try {
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+
+      if (user == null) {
+        setState(() {
+          _errorMessage = 'کاربر احراز هویت نشده است';
+        });
+        return;
+      }
+
+      final result = await Simple2FAService.disable2FA(user.id);
+
+      if (result['success'] == true) {
+        // پاک کردن اطلاعات تایید نشست
+        await Simple2FAService.clearSessionVerification();
+
+        setState(() {
+          _is2FAEnabled = false;
+          _showBackupCodes = false;
+          _backupCodes = [];
+          _successMessage = 'احراز هویت دو مرحله‌ای با موفقیت غیرفعال شد';
+        });
+      } else {
+        setState(() {
+          _errorMessage = result['message'] ?? 'خطا در غیرفعال‌سازی 2FA';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'خطا در غیرفعال‌سازی 2FA: $e';
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  /// بروزرسانی کدهای بکاپ
+  Future<void> _regenerateBackupCodes() async {
+    // نمایش dialog تایید
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(
+          'تایید بروزرسانی کدهای بکاپ',
+          style: TextStyle(fontFamily: 'Vazir', fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'آیا مطمئن هستید که می‌خواهید کدهای بکاپ جدید تولید کنید؟ کدهای قبلی دیگر قابل استفاده نخواهند بود.',
+          style: TextStyle(fontFamily: 'Vazir'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text(
+              'انصراف',
+              style: TextStyle(fontFamily: 'Vazir'),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text(
+              'تولید کدهای جدید',
+              style:
+                  TextStyle(fontFamily: 'Vazir', fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+      _successMessage = '';
+    });
+
+    try {
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+
+      if (user == null) {
+        setState(() {
+          _errorMessage = 'کاربر احراز هویت نشده است';
+        });
+        return;
+      }
+
+      final newCodes = await Simple2FAService.regenerateBackupCodes(user.id);
+
+      setState(() {
+        _backupCodes = (newCodes['codes'] as List<dynamic>).cast<String>();
+        _showBackupCodes = true;
+        _successMessage = 'کدهای بکاپ جدید با موفقیت تولید شدند';
+      });
+
+      // پاک کردن اطلاعات تایید نشست قبلی (برای امنیت بیشتر)
+      await Simple2FAService.clearSessionVerification();
+
+      _showBackupCodesWithAnimation();
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'خطا در تولید کدهای بکاپ جدید: $e';
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Widget _buildDisableSection() {
+    return ScaleTransition(
+      scale: _scaleAnimation,
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.green.shade50,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.green.shade200),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.green.withOpacity(0.1),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.verified_user,
+                  color: Colors.green.shade600,
+                  size: 28,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'احراز هویت دو مرحله‌ای فعال است',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green.shade800,
+                    fontFamily: 'Vazir',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'حساب شما با احراز هویت دو مرحله‌ای محافظت می‌شود.',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.green.shade700,
+                fontFamily: 'Vazir',
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isLoading ? null : _regenerateBackupCodes,
+                    icon: _isLoading
+                        ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : const Icon(Icons.refresh, color: Colors.white),
+                    label: const Text(
+                      'بروزرسانی کدهای بکاپ',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontFamily: 'Vazir',
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade600,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isLoading ? null : _disable2FA,
+                    icon: _isLoading
+                        ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : const Icon(Icons.security, color: Colors.white),
+                    label: const Text(
+                      'غیرفعال کردن',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontFamily: 'Vazir',
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade600,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final primaryColor = theme.primaryColor;
+
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+      backgroundColor:
+          isDark ? theme.scaffoldBackgroundColor : Colors.grey.shade50,
       appBar: AppBar(
-        title: const Text('تنظیم تایید دو مرحله‌ای'),
-        centerTitle: true,
+        title: const Text(
+          'تنظیم احراز هویت دو مرحله‌ای',
+          style: TextStyle(
+            fontFamily: 'Vazir',
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        backgroundColor: primaryColor,
+        foregroundColor: isDark ? Colors.white : Colors.white,
         elevation: 0,
+        centerTitle: true,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 20),
+      body: FadeTransition(
+        opacity: _fadeAnimation,
+        child: SlideTransition(
+          position: _slideAnimation,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header Section
+                _buildHeaderSection(),
+                const SizedBox(height: 32),
 
-                  // آیکون و عنوان
-                  Center(
-                    child: Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(40),
-                      ),
-                      child: Icon(
-                        Icons.security,
-                        size: 40,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
-                  ),
+                // 2FA Status Section
+                if (!_is2FAEnabled) _buildSetupSection(),
+                if (_is2FAEnabled) _buildDisableSection(),
 
-                  const SizedBox(height: 24),
+                // Backup Codes Section
+                if (_showBackupCodes) _buildBackupCodesSection(),
 
-                  Center(
-                    child: Text(
-                      'تنظیم تایید دو مرحله‌ای',
-                      style: theme.textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
+                // Error Messages
+                if (_errorMessage.isNotEmpty) _buildErrorMessage(),
 
-                  const SizedBox(height: 12),
-
-                  Center(
-                    child: Text(
-                      'برای فعال‌سازی تایید دو مرحله‌ای، رمز تولید شده را به خاطر بسپارید',
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        color:
-                            theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-
-                  const SizedBox(height: 32),
-
-                  // مرحله 1: رمز تولید شده
-                  _buildStep(
-                    1,
-                    'رمز تولید شده',
-                    'رمز زیر را به خاطر بسپارید و در جای امنی نگهداری کنید',
-                    Icons.key,
-                    Colors.green,
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // نمایش رمز
-                  if (_password != null) ...[
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey[300]!),
-                      ),
-                      child: Column(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.green.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                  color: Colors.green.withValues(alpha: 0.3)),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.key,
-                                  size: 16,
-                                  color: Colors.green,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'رمز 2FA',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.green,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // رمز
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[100],
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.grey[300]!),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    _password!,
-                                    style: const TextStyle(
-                                      fontFamily: 'monospace',
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.copy),
-                                  onPressed: () {
-                                    Clipboard.setData(
-                                        ClipboardData(text: _password!));
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                          content: Text('رمز کپی شد')),
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          const SizedBox(height: 8),
-
-                          const Text(
-                            'این رمز را در جای امنی یادداشت کنید',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                  ],
-
-                  // مرحله 2: ورودی رمز
-                  _buildStep(
-                    2,
-                    'تایید رمز',
-                    'رمز تولید شده را در فیلدهای زیر وارد کنید',
-                    Icons.input,
-                    theme.colorScheme.primary,
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // ورودی رمز
-                  TextField(
-                    controller: _passwordController,
-                    decoration: InputDecoration(
-                      labelText: 'رمز',
-                      hintText: 'رمز تولید شده را وارد کنید',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      prefixIcon: const Icon(Icons.key),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _showPassword
-                              ? Icons.visibility
-                              : Icons.visibility_off,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _showPassword = !_showPassword;
-                          });
-                        },
-                      ),
-                    ),
-                    obscureText: !_showPassword,
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // ورودی تکرار رمز
-                  TextField(
-                    controller: _confirmPasswordController,
-                    decoration: InputDecoration(
-                      labelText: 'تکرار رمز',
-                      hintText: 'رمز را دوباره وارد کنید',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      prefixIcon: const Icon(Icons.key),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _showConfirmPassword
-                              ? Icons.visibility
-                              : Icons.visibility_off,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _showConfirmPassword = !_showConfirmPassword;
-                          });
-                        },
-                      ),
-                    ),
-                    obscureText: !_showConfirmPassword,
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // مرحله 3: کد تایید
-                  _buildStep(
-                    3,
-                    'کد تایید',
-                    'یکی از کدهای پشتیبان زیر را وارد کنید',
-                    Icons.verified_user,
-                    Colors.orange,
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // ورودی کد تایید
-                  TextField(
-                    controller: _verificationController,
-                    decoration: InputDecoration(
-                      labelText: 'کد تایید',
-                      hintText: 'یکی از کدهای پشتیبان را وارد کنید',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      prefixIcon: const Icon(Icons.security),
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // دکمه فعال‌سازی
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      onPressed: _isVerifying ? null : _verifyAndEnable,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: _isVerifying
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor:
-                                    AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : const Text(
-                              'فعال‌سازی تایید دو مرحله‌ای',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                    ),
-                  ),
-
-                  // نمایش خطا
-                  if (_errorMessage.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.red.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                            color: Colors.red.withValues(alpha: 0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.error_outline, color: Colors.red),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _errorMessage,
-                              style: const TextStyle(color: Colors.red),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(height: 32),
-
-                  // کدهای پشتیبان
-                  if (_backupCodes != null) ...[
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: Colors.orange.withValues(alpha: 0.2)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.backup,
-                                color: Colors.orange,
-                                size: 24,
-                              ),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'کدهای پشتیبان',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.orange,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'این کدها را در جای امنی نگهداری کنید. هر کد فقط یک بار قابل استفاده است.',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-
-                          // دکمه ذخیره تصویر
-                          SizedBox(
-                            width: double.infinity,
-                            height: 45,
-                            child: ElevatedButton.icon(
-                              onPressed:
-                                  _isLoading ? null : _saveBackupCodesAsImage,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.orange,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              icon: const Icon(Icons.save_alt),
-                              label: Text(_isLoading
-                                  ? 'در حال ذخیره...'
-                                  : 'ذخیره به عنوان تصویر'),
-                            ),
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // نمایش وضعیت کدهای پشتیبان
-                          if (_backupCodes != null) ...[
-                            _buildBackupCodesStatus(_backupCodes!),
-                            const SizedBox(height: 16),
-                          ],
-
-                          SizedBox(
-                            height: 200,
-                            child: ListView.builder(
-                              itemCount: _backupCodes!.length,
-                              itemBuilder: (context, index) => Container(
-                                margin: const EdgeInsets.symmetric(vertical: 2),
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.grey[300]!),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        _backupCodes![index],
-                                        style: const TextStyle(
-                                          fontFamily: 'monospace',
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.copy, size: 16),
-                                      onPressed: () {
-                                        Clipboard.setData(
-                                          ClipboardData(
-                                              text: _backupCodes![index]),
-                                        );
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          const SnackBar(
-                                              content: Text('کد کپی شد')),
-                                        );
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-
-                          // دکمه تولید کدهای جدید
-                          if (_backupCodes != null &&
-                              Simple2FAService.needsNewBackupCodes(
-                                  _backupCodes!)) ...[
-                            const SizedBox(height: 16),
-                            SizedBox(
-                              width: double.infinity,
-                              height: 45,
-                              child: ElevatedButton.icon(
-                                onPressed:
-                                    _isLoading ? null : _generateNewBackupCodes,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                icon: const Icon(Icons.refresh),
-                                label: Text(_isLoading
-                                    ? 'در حال تولید...'
-                                    : 'تولید کدهای جدید'),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+                // Success Messages
+                if (_successMessage.isNotEmpty) _buildSuccessMessage(),
+              ],
             ),
+          ),
+        ),
+      ),
     );
   }
 
-  Widget _buildStep(int number, String title, String description, IconData icon,
-      Color color) {
+  Widget _buildHeaderSection() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final primaryColor = theme.primaryColor;
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
+        gradient: LinearGradient(
+          colors: isDark
+              ? [primaryColor.withOpacity(0.1), primaryColor.withOpacity(0.2)]
+              : [primaryColor.withOpacity(0.1), primaryColor.withOpacity(0.2)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: primaryColor.withOpacity(0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
-      child: Row(
+      child: Column(
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Center(
-              child: Text(
-                number.toString(),
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: primaryColor.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.security,
+                  size: 48,
+                  color: primaryColor,
                 ),
               ),
-            ),
+              // دکمه refresh
+              IconButton(
+                onPressed: _isLoading ? null : _check2FAStatus,
+                icon: _isLoading
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(primaryColor),
+                        ),
+                      )
+                    : Icon(
+                        Icons.refresh,
+                        color: primaryColor,
+                        size: 28,
+                      ),
+                tooltip: 'بروزرسانی وضعیت',
+              ),
+            ],
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
+          const SizedBox(height: 16),
+          Text(
+            'احراز هویت دو مرحله‌ای',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color:
+                  isDark ? theme.textTheme.headlineMedium?.color : primaryColor,
+              fontFamily: 'Vazir',
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _is2FAEnabled
+                ? 'احراز هویت دو مرحله‌ای فعال است'
+                : 'برای امنیت بیشتر، احراز هویت دو مرحله‌ای را فعال کنید',
+            style: TextStyle(
+              fontSize: 16,
+              color: isDark
+                  ? theme.textTheme.bodyMedium?.color
+                  : primaryColor.withOpacity(0.8),
+              fontFamily: 'Vazir',
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSetupSection() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final primaryColor = theme.primaryColor;
+
+    return ScaleTransition(
+      scale: _scaleAnimation,
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: isDark ? theme.cardColor : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: isDark
+                  ? Colors.black.withOpacity(0.3)
+                  : Colors.grey.withOpacity(0.1),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'کد 6 رقمی خود را تعیین کنید',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: isDark
+                    ? theme.textTheme.headlineSmall?.color
+                    : Colors.grey.shade800,
+                fontFamily: 'Vazir',
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+
+            // Code Input Field
+            TextField(
+              controller: _codeController,
+              focusNode: _codeFocusNode,
+              decoration: InputDecoration(
+                labelText: 'کد 6 رقمی',
+                hintText: '123456',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(15),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
                 ),
-                const SizedBox(height: 4),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(15),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(15),
+                  borderSide: BorderSide(color: primaryColor, width: 2),
+                ),
+                filled: true,
+                fillColor: isDark ? theme.cardColor : Colors.grey.shade50,
+                prefixIcon: Icon(
+                  Icons.security,
+                  color: primaryColor,
+                ),
+                counterText: '',
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 16,
+                ),
+              ),
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'Vazir',
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 3,
+              ),
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(6),
+              ],
+              onSubmitted: (_) => _generate2FASetup(),
+            ),
+            const SizedBox(height: 16),
+
+            // Generate Suggested Code Button
+            OutlinedButton.icon(
+              onPressed: _generateSuggestedCode,
+              icon: Icon(Icons.auto_fix_high, color: Colors.blue.shade600),
+              label: Text(
+                'تولید کد پیشنهادی',
+                style: TextStyle(
+                  color: Colors.blue.shade600,
+                  fontFamily: 'Vazir',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                side: BorderSide(color: Colors.blue.shade300),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Enable 2FA Button
+            ElevatedButton(
+              onPressed: _isLoading ? null : _generate2FASetup,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                elevation: 3,
+                shadowColor: Colors.blue.withOpacity(0.3),
+              ),
+              child: _isLoading
+                  ? Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'در حال فعال‌سازی...',
+                          style: TextStyle(
+                            fontFamily: 'Vazir',
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.security, size: 24),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'فعال‌سازی 2FA',
+                          style: TextStyle(
+                            fontFamily: 'Vazir',
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBackupCodesSection() {
+    return ScaleTransition(
+      scale: _scaleAnimation,
+      child: Container(
+        margin: const EdgeInsets.only(top: 24),
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.green.shade50,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.green.shade200),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.green.withOpacity(0.1),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.check_circle,
+                  color: Colors.green.shade600,
+                  size: 28,
+                ),
+                const SizedBox(width: 12),
                 Text(
-                  description,
+                  'کدهای بکاپ',
                   style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green.shade700,
+                    fontFamily: 'Vazir',
                   ),
                 ),
               ],
             ),
-          ),
-          Icon(icon, color: color, size: 24),
-        ],
-      ),
-    );
-  }
+            const SizedBox(height: 16),
 
-  /// نمایش وضعیت کدهای پشتیبان
-  Widget _buildBackupCodesStatus(List<String> backupCodes) {
-    final status = Simple2FAService.checkBackupCodesStatus(backupCodes);
-    final remainingCount = status['remaining_count'] as int;
-    final warningLevel = status['warning_level'] as String;
-    final recommendation = status['recommendation'] as String;
-    final percentage = status['percentage'] as double;
-    final isCritical = status['is_critical'] as bool;
-
-    Color statusColor;
-    IconData statusIcon;
-    String statusText;
-
-    switch (warningLevel) {
-      case 'critical':
-        statusColor = Colors.red;
-        statusIcon = Icons.dangerous;
-        statusText = 'حساب قفل شده!';
-        break;
-      case 'high':
-        statusColor = Colors.red;
-        statusIcon = Icons.warning;
-        statusText = 'کدهای پشتیبان در حال اتمام!';
-        break;
-      case 'medium':
-        statusColor = Colors.orange;
-        statusIcon = Icons.info;
-        statusText = 'کدهای پشتیبان کم';
-        break;
-      default:
-        statusColor = Colors.green;
-        statusIcon = Icons.check_circle;
-        statusText = 'کدهای پشتیبان کافی';
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: statusColor.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: statusColor.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(statusIcon, color: statusColor, size: 24),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      statusText,
-                      style: TextStyle(
-                        color: statusColor,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    Text(
-                      '$remainingCount کد باقی مانده (${percentage.toInt()}%)',
-                      style: TextStyle(
-                        color: statusColor.withValues(alpha: 0.8),
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
+            Text(
+              'این کدها را در جای امنی نگهداری کنید. هر کد فقط یکبار قابل استفاده است.',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.green.shade700,
+                fontFamily: 'Vazir',
               ),
-            ],
-          ),
-          if (recommendation.isNotEmpty) ...[
-            const SizedBox(height: 12),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+
+            // Backup Codes Grid
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: statusColor.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(6),
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: Colors.green.shade200),
               ),
-              child: Row(
+              child: Column(
                 children: [
-                  Icon(
-                    isCritical ? Icons.error : Icons.lightbulb,
-                    color: statusColor,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      recommendation,
-                      style: TextStyle(
-                        color: statusColor,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
+                  for (int i = 0; i < _backupCodes.length; i += 2) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildBackupCodeCard(_backupCodes[i]),
+                        ),
+                        if (i + 1 < _backupCodes.length) ...[
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _buildBackupCodeCard(_backupCodes[i + 1]),
+                          ),
+                        ],
+                      ],
                     ),
-                  ),
+                    if (i + 2 < _backupCodes.length) const SizedBox(height: 16),
+                  ],
                 ],
               ),
             ),
+            const SizedBox(height: 20),
+
+            // Action Buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _saveBackupCodesToGallery,
+                    icon: Icon(Icons.save, color: Colors.green.shade600),
+                    label: Text(
+                      'ذخیره در گالری',
+                      style: TextStyle(
+                        color: Colors.green.shade600,
+                        fontFamily: 'Vazir',
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      side: BorderSide(color: Colors.green.shade300),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _showBackupCodes = false;
+                      });
+                    },
+                    icon: const Icon(Icons.check, color: Colors.white),
+                    label: const Text(
+                      'تایید',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontFamily: 'Vazir',
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade600,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBackupCodeCard(String code) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Text(
+        code,
+        style: TextStyle(
+          fontFamily: 'monospace',
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+          color: Colors.grey.shade800,
+          letterSpacing: 2,
+        ),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+
+  Widget _buildErrorMessage() {
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.red.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.error_outline,
+            color: Colors.red.shade600,
+            size: 24,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _errorMessage,
+              style: TextStyle(
+                color: Colors.red.shade700,
+                fontFamily: 'Vazir',
+                fontSize: 14,
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  /// تولید کدهای پشتیبان جدید
-  Future<void> _generateNewBackupCodes() async {
-    if (_backupCodes == null) return;
-
-    try {
-      setState(() {
-        _isLoading = true;
-      });
-
-      // تولید کدهای جدید و اضافه کردن به لیست موجود
-      final newCodes =
-          Simple2FAService.generateAdditionalBackupCodes(_backupCodes!);
-
-      setState(() {
-        _backupCodes = newCodes;
-        _isLoading = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('کدهای پشتیبان جدید تولید شدند'),
-            backgroundColor: Colors.green,
+  Widget _buildSuccessMessage() {
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.green.shade50,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.green.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.check_circle_outline,
+            color: Colors.green.shade600,
+            size: 24,
           ),
-        );
-      }
-    } catch (e) {
-      debugPrint('❌ خطا در تولید کدهای جدید: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطا در تولید کدهای جدید: $e'),
-            backgroundColor: Colors.red,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _successMessage,
+              style: TextStyle(
+                color: Colors.green.shade700,
+                fontFamily: 'Vazir',
+                fontSize: 14,
+              ),
+            ),
           ),
-        );
-      }
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
+        ],
+      ),
+    );
   }
 }

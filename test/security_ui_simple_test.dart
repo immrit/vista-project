@@ -239,8 +239,7 @@ void main() {
           id: 'test_id',
           userId: 'test_user_id',
           twoFactorEnabled: true,
-          appLockEnabled: false,
-          failedLoginAttempts: 2,
+          loginAttempts: 2,
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
         );
@@ -256,8 +255,7 @@ void main() {
         // Verify settings are displayed
         expect(find.text('تنظیمات امنیتی'), findsOneWidget);
         expect(find.text('احراز هویت دو مرحله‌ای'), findsOneWidget);
-        expect(find.text('قفل برنامه'), findsOneWidget);
-        expect(find.text('تلاش‌های ناموفق ورود'), findsOneWidget);
+        expect(find.text('تلاش‌های ورود'), findsOneWidget);
       });
 
       testWidgets('should display enabled/disabled status',
@@ -266,8 +264,7 @@ void main() {
           id: 'test_id',
           userId: 'test_user_id',
           twoFactorEnabled: true,
-          appLockEnabled: true,
-          failedLoginAttempts: 0,
+          loginAttempts: 0,
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
         );
@@ -281,8 +278,8 @@ void main() {
         );
 
         // Verify status indicators
-        expect(find.text('فعال'), findsNWidgets(2)); // 2FA and App Lock
-        expect(find.text('0'), findsOneWidget); // Failed attempts
+        expect(find.text('فعال'), findsOneWidget); // 2FA
+        expect(find.text('0'), findsOneWidget); // Login attempts
       });
     });
   });
@@ -446,17 +443,10 @@ Widget _buildSecuritySettingsCard(UserSecurityModel settings) {
           ),
           const SizedBox(height: 8),
           _buildSettingItem(
-            'قفل برنامه',
-            settings.appLockEnabled ? 'فعال' : 'غیرفعال',
-            Icons.lock,
-            settings.appLockEnabled ? Colors.green : Colors.red,
-          ),
-          const SizedBox(height: 8),
-          _buildSettingItem(
-            'تلاش‌های ناموفق ورود',
-            '${settings.failedLoginAttempts}',
+            'تلاش‌های ورود',
+            '${settings.loginAttempts ?? 0}',
             Icons.warning,
-            settings.failedLoginAttempts > 0 ? Colors.orange : Colors.green,
+            (settings.loginAttempts ?? 0) > 0 ? Colors.orange : Colors.green,
           ),
         ],
       ),

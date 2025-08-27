@@ -4,7 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../provider/provider.dart';
 import 'ActiveSessionsPage.dart';
-import '../Settings.dart';
+
 import '../../ouathUser/TwoFactorSetupScreen.dart';
 
 class PrivacySettingsPage extends ConsumerWidget {
@@ -82,7 +82,7 @@ class PrivacySettingsPage extends ConsumerWidget {
               icon: Icons.lock,
               iconColor: Colors.deepPurple,
               title: 'حساب خصوصی',
-              subtitle: 'فقط دنبالکنندگان تایید شده محتوای شما را میبینند',
+              subtitle: 'فقط دنبالکنندگان تایید شده محتوای شما را میبینند',
               value: isPrivate,
               onChanged: (bool next) async {
                 await _upsertUserSetting(context, ref, 'is_private', next);
@@ -255,7 +255,7 @@ class PrivacySettingsPage extends ConsumerWidget {
   }
 
   // Helper methods
-  // بروزرسانی تنظیمات در جدول user_settings (در صورت نبود رکورد، ایجاد میشود)
+  // بروزرسانی تنظیمات در جدول user_settings (در صورت نبود رکورد، ایجاد میشود)
   Future<void> _upsertUserSetting(BuildContext context, WidgetRef ref,
       String setting, dynamic value) async {
     try {
@@ -314,7 +314,7 @@ class PrivacySettingsPage extends ConsumerWidget {
         ),
       ),
     ).then((value) {
-      if (value != null) {
+      if (value != null && context.mounted) {
         _upsertUserSetting(context, ref, 'last_seen_visibility', value);
       }
     });
@@ -340,7 +340,10 @@ class PrivacySettingsPage extends ConsumerWidget {
           MaterialPageRoute(
             builder: (context) => const TwoFactorSetupScreen(),
           ),
-        );
+        ).then((_) {
+          // پس از بازگشت از صفحه تنظیم 2FA، وضعیت را خودکار به‌روزرسانی کن
+          ref.invalidate(securityNotifierProvider);
+        });
       } else {
         // غیرفعال کردن 2FA
         final confirmed = await showDialog<bool>(
@@ -364,6 +367,8 @@ class PrivacySettingsPage extends ConsumerWidget {
 
         if (confirmed == true) {
           await ref.read(securityNotifierProvider.notifier).disableTwoFactor();
+          // به‌روزرسانی خودکار وضعیت
+          ref.invalidate(securityNotifierProvider);
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -410,7 +415,7 @@ class PrivacySettingsPage extends ConsumerWidget {
                   ElevatedButton(
                     onPressed: () {
                       Navigator.of(context).pop();
-                      ref.refresh(securityLogsProvider);
+                      ref.invalidate(securityLogsProvider);
                     },
                     child: const Text('تلاش مجدد'),
                   ),
@@ -556,6 +561,82 @@ class PrivacySettingsPage extends ConsumerWidget {
             child: const Text('متوجه شدم'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// Widget برای آیتم‌های تنظیمات
+class TelegramSettingsItem extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const TelegramSettingsItem({
+    super.key,
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: iconColor,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                icon,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w400,
+                      color: isDark ? Colors.white : Colors.black,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark ? Colors.grey[400] : Colors.grey[700],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.arrow_forward_ios,
+              size: 16,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+          ],
+        ),
       ),
     );
   }

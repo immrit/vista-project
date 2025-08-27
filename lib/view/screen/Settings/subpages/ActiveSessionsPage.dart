@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:async';
 import '../../../../provider/security_provider.dart';
 import '../../../../model/SecurityModels.dart';
+import '../../../../services/ActiveSessionsService.dart';
 
-/// صفحه مدیریت نشست‌های فعال
+/// صفحه مدیریت نشست‌های فعال - بهبود یافته
 class ActiveSessionsPage extends ConsumerStatefulWidget {
   const ActiveSessionsPage({super.key});
 
@@ -13,46 +15,71 @@ class ActiveSessionsPage extends ConsumerStatefulWidget {
 }
 
 class _ActiveSessionsPageState extends ConsumerState<ActiveSessionsPage> {
-  Map<String, dynamic>? _systemMetrics;
+  Timer? _autoRefreshTimer;
+  bool _showAllSessions = false;
 
   @override
   void initState() {
     super.initState();
     debugPrint('🔐 ActiveSessionsPage initState شروع شد');
-    _loadSystemMetrics();
     _initializeCurrentSession();
+    _startAutoRefreshTimer();
+  }
+
+  @override
+  void dispose() {
+    _stopAutoRefreshTimer();
+    super.dispose();
   }
 
   Future<void> _initializeCurrentSession() async {
     try {
       debugPrint('🔐 شروع ایجاد نشست فعلی...');
-      // اطمینان از ایجاد نشست فعلی
-      final session = await ref.read(currentSessionProvider.future);
-      if (session != null) {
-        debugPrint('✅ نشست فعلی ایجاد شد: ${session.id}');
-      } else {
-        debugPrint('⚠️ نشست فعلی ایجاد نشد');
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser != null) {
+        // بررسی وجود نشست فعلی
+        final session = await ref.read(currentActiveSessionProvider.future);
+        if (session != null) {
+          debugPrint('✅ نشست فعلی موجود است: ${session.id}');
+        } else {
+          debugPrint('⚠️ نشست فعلی موجود نیست، ایجاد نشست جدید...');
+          // ایجاد نشست جدید
+          try {
+            await ActiveSessionsService.createLoginSession(currentUser.id);
+            debugPrint('✅ نشست جدید ایجاد شد');
+          } catch (e) {
+            debugPrint('❌ خطا در ایجاد نشست جدید: $e');
+          }
+        }
       }
     } catch (e) {
       debugPrint('❌ خطا در ایجاد نشست فعلی: $e');
     }
   }
 
-  Future<void> _loadSystemMetrics() async {
-    try {
-      final testingService = ref.read(securityTestingServiceProvider);
-      final metrics = await testingService.getSystemMetrics();
-      setState(() {
-        _systemMetrics = metrics;
-      });
-    } catch (e) {
-      debugPrint('خطا در بارگذاری آمار سیستم: $e');
+  void _startAutoRefreshTimer() {
+    _autoRefreshTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
+      if (mounted) {
+        _refreshSessionsSilently();
+      }
+    });
+  }
+
+  void _stopAutoRefreshTimer() {
+    _autoRefreshTimer?.cancel();
+  }
+
+  void _refreshSessionsSilently() {
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    if (currentUser != null) {
+      ref.invalidate(userActiveSessionsProvider(currentUser.id));
+      ref.invalidate(currentActiveSessionProvider);
+      ref.invalidate(sessionStatsProvider(currentUser.id));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // دریافت userId فعلی
     final currentUser = Supabase.instance.client.auth.currentUser;
     final userId = currentUser?.id ?? '';
 
@@ -64,7 +91,8 @@ class _ActiveSessionsPageState extends ConsumerState<ActiveSessionsPage> {
       );
     }
 
-    final sessionsAsync = ref.watch(activeSessionsProvider(userId));
+    final sessionsAsync = ref.watch(userActiveSessionsProvider(userId));
+    final sessionsState = ref.watch(activeSessionsStateProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -77,78 +105,92 @@ class _ActiveSessionsPageState extends ConsumerState<ActiveSessionsPage> {
             onPressed: () async {
               final currentUser = Supabase.instance.client.auth.currentUser;
               if (currentUser != null) {
-                // پاک کردن کش نشست‌ها
-                SecurityCache.remove('sessions_${currentUser.id}');
+                // پاک کردن کش و بارگذاری مجدد
+                ref.invalidate(userActiveSessionsProvider(currentUser.id));
+                ref.invalidate(currentActiveSessionProvider);
+                ref.invalidate(sessionStatsProvider(currentUser.id));
 
-                // به‌روزرسانی نشست فعلی
-                ref.invalidate(currentSessionProvider);
-                ref.invalidate(activeSessionsProvider(currentUser.id));
-
-                // بارگذاری مجدد نشست فعلی
-                await _initializeCurrentSession();
+                // بارگذاری مجدد از state provider
+                ref
+                    .read(activeSessionsStateProvider.notifier)
+                    .loadUserSessions(currentUser.id);
               }
-              _loadSystemMetrics();
             },
-          ),
-          PopupMenuButton<String>(
-            onSelected: _handleMenuAction,
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'test',
-                child: Row(
-                  children: [
-                    Icon(Icons.science),
-                    SizedBox(width: 8),
-                    Text('تست سیستم'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'optimize',
-                child: Row(
-                  children: [
-                    Icon(Icons.tune),
-                    SizedBox(width: 8),
-                    Text('بهینه‌سازی'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'diagnostic',
-                child: Row(
-                  children: [
-                    Icon(Icons.analytics),
-                    SizedBox(width: 8),
-                    Text('تشخیص کامل'),
-                  ],
-                ),
-              ),
-            ],
-            child: const Icon(Icons.more_vert),
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // نمایش آمار سیستم
-          if (_systemMetrics != null) _buildSystemMetricsCard(),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          final currentUser = Supabase.instance.client.auth.currentUser;
+          if (currentUser != null) {
+            // پاک کردن کش و بارگذاری مجدد
+            ref.invalidate(userActiveSessionsProvider(currentUser.id));
+            ref.invalidate(currentActiveSessionProvider);
+            ref.invalidate(sessionStatsProvider(currentUser.id));
 
-          // لیست نشست‌ها
-          Expanded(
-            child: sessionsAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => _buildErrorWidget(error),
-              data: (sessions) => _buildSessionsList(sessions),
-            ),
-          ),
-        ],
+            // بارگذاری مجدد از state provider
+            ref
+                .read(activeSessionsStateProvider.notifier)
+                .loadUserSessions(currentUser.id);
+          }
+        },
+        child: sessionsAsync.when(
+          data: (sessions) => _buildSessionsList(sessions, sessionsState),
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, stack) {
+            debugPrint('خطا در بارگذاری نشست‌ها: $error');
+            return _buildErrorWidget(error.toString());
+          },
+        ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showSessionActions(context, userId),
+        icon: const Icon(Icons.security),
+        label: const Text('عملیات امنیتی'),
       ),
     );
   }
 
-  Widget _buildSystemMetricsCard() {
-    if (_systemMetrics == null) return const SizedBox.shrink();
+  Widget _buildSessionsList(
+      List<ActiveSessionModel> sessions, ActiveSessionsState state) {
+    if (sessions.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.devices_other, size: 64, color: Colors.grey),
+            SizedBox(height: 16),
+            Text('هیچ نشست فعالی یافت نشد'),
+            Text('شما فقط از این دستگاه وارد شده‌اید',
+                style: TextStyle(color: Colors.grey)),
+          ],
+        ),
+      );
+    }
 
+    return Column(
+      children: [
+        // آمار کلی
+        if (state.stats != null && state.stats!.isNotEmpty)
+          _buildSessionStats(state.stats!)
+        else
+          _buildSimpleSessionStats(sessions.length),
+
+        // لیست نشست‌ها
+        Expanded(
+          child: ListView.builder(
+            itemCount: sessions.length,
+            itemBuilder: (context, index) {
+              final session = sessions[index];
+              return _buildSessionCard(session, state);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSimpleSessionStats(int totalSessions) {
     return Card(
       margin: const EdgeInsets.all(16),
       child: Padding(
@@ -156,43 +198,32 @@ class _ActiveSessionsPageState extends ConsumerState<ActiveSessionsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Icon(Icons.analytics, color: Colors.blue),
-                const SizedBox(width: 8),
-                Text(
-                  'آمار سیستم',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-              ],
+            const Text(
+              'آمار نشست‌ها',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
-                  child: _buildMetricItem(
-                    'نشست‌های فعال',
-                    '${_systemMetrics!['total_sessions'] ?? 0}',
+                  child: _buildStatItem(
+                    'کل نشست‌ها',
+                    '$totalSessions',
                     Icons.devices,
-                    Colors.green,
                   ),
                 ),
                 Expanded(
-                  child: _buildMetricItem(
+                  child: _buildStatItem(
+                    'نشست‌های فعال',
+                    '$totalSessions',
+                    Icons.check_circle,
+                  ),
+                ),
+                Expanded(
+                  child: _buildStatItem(
                     'نشست فعلی',
-                    '${_systemMetrics!['current_sessions'] ?? 0}',
-                    Icons.phone_android,
-                    Colors.blue,
-                  ),
-                ),
-                Expanded(
-                  child: _buildMetricItem(
-                    'امتیاز امنیت',
-                    '${_systemMetrics!['security_score'] ?? 0}',
-                    Icons.security,
-                    Colors.orange,
+                    '1',
+                    Icons.radio_button_checked,
                   ),
                 ),
               ],
@@ -203,186 +234,126 @@ class _ActiveSessionsPageState extends ConsumerState<ActiveSessionsPage> {
     );
   }
 
-  Widget _buildMetricItem(
-      String label, String value, IconData icon, Color color) {
+  Widget _buildSessionStats(Map<String, dynamic> stats) {
+    return Card(
+      margin: const EdgeInsets.all(16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'آمار نشست‌ها',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatItem(
+                    'کل نشست‌ها',
+                    '${stats['total_sessions'] ?? 0}',
+                    Icons.devices,
+                  ),
+                ),
+                Expanded(
+                  child: _buildStatItem(
+                    'نشست‌های فعال',
+                    '${stats['active_sessions'] ?? 0}',
+                    Icons.check_circle,
+                  ),
+                ),
+                Expanded(
+                  child: _buildStatItem(
+                    'نشست فعلی',
+                    '${stats['current_session'] ?? 0}',
+                    Icons.radio_button_checked,
+                  ),
+                ),
+              ],
+            ),
+            if (stats['device_types'] != null) ...[
+              const SizedBox(height: 12),
+              const Divider(),
+              const SizedBox(height: 8),
+              Text(
+                'نشست‌ها بر اساس نوع دستگاه:',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: (stats['device_types'] as Map<String, dynamic>)
+                    .entries
+                    .map((entry) => Chip(
+                          label: Text('${entry.key}: ${entry.value}'),
+                          backgroundColor: Colors.blue.shade100,
+                        ))
+                    .toList(),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatItem(String label, String value, IconData icon) {
     return Column(
       children: [
-        Icon(icon, color: color, size: 24),
+        Icon(icon, size: 24, color: Colors.blue),
         const SizedBox(height: 4),
         Text(
           value,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         Text(
           label,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.grey[600],
-              ),
+          style: const TextStyle(fontSize: 12, color: Colors.grey),
           textAlign: TextAlign.center,
         ),
       ],
     );
   }
 
-  Widget _buildErrorWidget(Object error) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.error, size: 64, color: Colors.red),
-          const SizedBox(height: 16),
-          Text(
-            'خطا در بارگذاری نشست‌ها',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            error.toString(),
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey[600],
-                ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: () {
-              ref.invalidate(activeSessionsProvider);
-              _loadSystemMetrics();
-            },
-            icon: const Icon(Icons.refresh),
-            label: const Text('تلاش مجدد'),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _buildSessionCard(
+      ActiveSessionModel session, ActiveSessionsState state) {
+    final isCurrentSession = session.isCurrent;
+    final isExpired = session.isExpired;
+    final isRecentlyActive = session.isRecentlyActive;
 
-  Widget _buildSessionsList(List<ActiveSessionModel> sessions) {
-    if (sessions.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.devices_other,
-              size: 64,
-              color: Colors.grey[400],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'هیچ نشست فعالی یافت نشد',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: Colors.grey[600],
-                  ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'شما در حال حاضر در هیچ دستگاهی وارد نشده‌اید',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey[500],
-                  ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      );
-    }
-
-    // گروه‌بندی نشست‌ها
-    final currentSessions = sessions.where((s) => s.isCurrent).toList();
-    final otherSessions = sessions.where((s) => !s.isCurrent).toList();
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        if (currentSessions.isNotEmpty) ...[
-          _buildSectionHeader('نشست فعلی', Icons.phone_android, Colors.green),
-          const SizedBox(height: 8),
-          ...currentSessions.map((session) => _buildSessionCard(session, true)),
-          const SizedBox(height: 24),
-        ],
-        if (otherSessions.isNotEmpty) ...[
-          _buildSectionHeader(
-              'سایر نشست‌ها', Icons.devices_other, Colors.orange),
-          const SizedBox(height: 8),
-          ...otherSessions.map((session) => _buildSessionCard(session, false)),
-        ],
-        const SizedBox(height: 24),
-        _buildGlobalSessionActions(),
-      ],
-    );
-  }
-
-  Widget _buildSectionHeader(String title, IconData icon, Color color) {
-    return Row(
-      children: [
-        Icon(icon, color: color, size: 24),
-        const SizedBox(width: 8),
-        Text(
-          title,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSessionCard(ActiveSessionModel session, bool isCurrent) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      child: ExpansionTile(
-        leading: _buildDeviceIcon(session.deviceType, isCurrent),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: isCurrentSession ? Colors.green : Colors.blue,
+          child: Text(
+            session.deviceIcon,
+            style: const TextStyle(fontSize: 20),
+          ),
+        ),
         title: Row(
           children: [
             Expanded(
               child: Text(
                 session.deviceName ?? 'دستگاه ناشناس',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+                style: TextStyle(
+                  fontWeight:
+                      isCurrentSession ? FontWeight.bold : FontWeight.normal,
                 ),
               ),
             ),
-            if (isCurrent)
+            if (isCurrentSession)
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 4,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: Colors.green,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text(
                   'فعلی',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            if (session.isTrusted)
-              Container(
-                margin: const EdgeInsets.only(left: 8),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.blue,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.verified,
-                  color: Colors.white,
-                  size: 16,
+                  style: TextStyle(color: Colors.white, fontSize: 12),
                 ),
               ),
           ],
@@ -390,98 +361,256 @@ class _ActiveSessionsPageState extends ConsumerState<ActiveSessionsPage> {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '${session.osName ?? 'OS نامشخص'} ${session.osVersion ?? ''}',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
+            Text('${session.osName} ${session.osVersion ?? ''}'),
+            Text('آخرین فعالیت: ${_formatTimeAgo(session.lastActivity)}'),
+            if (session.location != null)
+              Text('موقعیت: ${_formatLocation(session.location!)}'),
+            if (session.browserInfo != null)
+              Text('مرورگر: ${session.browserInfo}'),
+          ],
+        ),
+        trailing: PopupMenuButton<String>(
+          onSelected: (value) => _handleSessionAction(value, session, state),
+          itemBuilder: (context) => [
+            if (!isCurrentSession)
+              const PopupMenuItem(
+                value: 'terminate',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('ترمینیت نشست'),
+                  ],
+                ),
               ),
-            ),
-            Text(
-              'IP: ${session.ipAddress ?? 'نامشخص'}',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[500],
-              ),
-            ),
-            Text(
-              'آخرین فعالیت: ${_formatDateTime(session.lastActivity)}',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[500],
+            const PopupMenuItem(
+              value: 'details',
+              child: Row(
+                children: [
+                  Icon(Icons.info),
+                  SizedBox(width: 8),
+                  Text('جزئیات'),
+                ],
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildErrorWidget(String error) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildSessionDetail(
-                    'نوع دستگاه', _getDeviceTypeText(session.deviceType)),
-                _buildSessionDetail(
-                    'نام دستگاه', session.deviceName ?? 'نامشخص'),
-                _buildSessionDetail('سیستم عامل',
-                    '${session.osName ?? 'نامشخص'} ${session.osVersion ?? ''}'),
-                _buildSessionDetail('نسخه اپ', session.appVersion ?? 'نامشخص'),
-                _buildSessionDetail(
-                    'روش ورود', _getLoginMethodText(session.loginMethod)),
-                _buildSessionDetail('آدرس IP', session.ipAddress ?? 'نامشخص'),
-                _buildSessionDetail(
-                    'تاریخ ایجاد', _formatDateTime(session.createdAt)),
-                _buildSessionDetail(
-                    'تاریخ انقضا',
-                    session.expiresAt != null
-                        ? _formatDateTime(session.expiresAt!)
-                        : 'نامحدود'),
-                if (session.location != null) ...[
-                  _buildSessionDetail(
-                      'موقعیت', _formatLocation(session.location!)),
-                ],
-                if (session.browserInfo != null) ...[
-                  _buildSessionDetail('مرورگر', session.browserInfo!),
-                ],
-                if (session.platform != null) ...[
-                  _buildSessionDetail('پلتفرم', session.platform!),
-                ],
-                const SizedBox(height: 16),
-                _buildSessionActions(session, isCurrent),
-              ],
-            ),
+          const Icon(Icons.error_outline, size: 64, color: Colors.red),
+          const SizedBox(height: 16),
+          Text('خطا در بارگذاری نشست‌ها'),
+          Text(error, style: const TextStyle(color: Colors.grey)),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: () {
+              final currentUser = Supabase.instance.client.auth.currentUser;
+              if (currentUser != null) {
+                // پاک کردن کش و بارگذاری مجدد
+                ref.invalidate(userActiveSessionsProvider(currentUser.id));
+                ref.invalidate(currentActiveSessionProvider);
+                ref.invalidate(sessionStatsProvider(currentUser.id));
+
+                // بارگذاری مجدد از state provider
+                ref
+                    .read(activeSessionsStateProvider.notifier)
+                    .loadUserSessions(currentUser.id);
+              }
+            },
+            child: const Text('تلاش مجدد'),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildDeviceIcon(String? deviceType, bool isCurrent) {
-    IconData iconData;
-    Color color;
-
-    switch (deviceType?.toLowerCase()) {
-      case 'mobile':
-        iconData = Icons.phone_android;
-        break;
-      case 'web':
-        iconData = Icons.computer;
-        break;
-      case 'desktop':
-        iconData = Icons.laptop;
-        break;
-      case 'tablet':
-        iconData = Icons.tablet_android;
-        break;
-      default:
-        iconData = Icons.devices;
-    }
-
-    color = isCurrent ? Colors.green : Colors.grey;
-    return Icon(iconData, color: color, size: 32);
+  void _showSessionActions(BuildContext context, String userId) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.red),
+              title: const Text('ترمینیت تمام نشست‌های غیر فعلی'),
+              subtitle:
+                  const Text('شما از تمام دستگاه‌های دیگر خارج خواهید شد'),
+              onTap: () {
+                Navigator.pop(context);
+                _terminateAllOtherSessions(userId);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.refresh),
+              title: const Text('تمدید نشست فعلی'),
+              subtitle: const Text('نشست فعلی شما تمدید خواهد شد'),
+              onTap: () {
+                Navigator.pop(context);
+                _refreshCurrentSession(userId);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.security),
+              title: const Text('تغییر رمز عبور'),
+              subtitle:
+                  const Text('تغییر رمز عبور تمام نشست‌ها را باطل می‌کند'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/update-password');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  Widget _buildSessionDetail(String label, String value) {
+  void _handleSessionAction(
+      String action, ActiveSessionModel session, ActiveSessionsState state) {
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    if (currentUser == null) return;
+
+    switch (action) {
+      case 'terminate':
+        _terminateSession(session.id, currentUser.id);
+        break;
+      case 'details':
+        _showSessionDetails(session);
+        break;
+    }
+  }
+
+  Future<void> _terminateSession(String sessionId, String userId) async {
+    try {
+      final success = await ref
+          .read(activeSessionsStateProvider.notifier)
+          .terminateSession(sessionId, userId);
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('نشست با موفقیت ترمینیت شد')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('خطا در ترمینیت نشست')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا: $e')),
+      );
+    }
+  }
+
+  Future<void> _terminateAllOtherSessions(String userId) async {
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('تایید عملیات'),
+          content: const Text(
+              'آیا مطمئن هستید که می‌خواهید تمام نشست‌های غیر فعلی را ترمینیت کنید؟'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('انصراف'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('تایید'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed == true) {
+        final success = await ref
+            .read(activeSessionsStateProvider.notifier)
+            .terminateAllOtherSessions(userId);
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('تمام نشست‌های غیر فعلی ترمینیت شدند')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('خطا در ترمینیت نشست‌ها')),
+          );
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا: $e')),
+      );
+    }
+  }
+
+  Future<void> _refreshCurrentSession(String userId) async {
+    try {
+      await ref
+          .read(activeSessionsStateProvider.notifier)
+          .refreshCurrentSession(userId);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('نشست فعلی تمدید شد')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در تمدید نشست: $e')),
+      );
+    }
+  }
+
+  void _showSessionDetails(ActiveSessionModel session) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('جزئیات نشست ${session.deviceName ?? 'ناشناس'}'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildDetailRow('شناسه نشست', session.id),
+              _buildDetailRow('نوع دستگاه', session.deviceType ?? 'نامشخص'),
+              _buildDetailRow('نام دستگاه', session.deviceName ?? 'نامشخص'),
+              _buildDetailRow(
+                  'سیستم عامل', '${session.osName} ${session.osVersion ?? ''}'),
+              _buildDetailRow('نسخه اپ', session.appVersion ?? 'نامشخص'),
+              _buildDetailRow('آدرس IP', session.ipAddress ?? 'نامشخص'),
+              _buildDetailRow('مرورگر', session.browserInfo ?? 'نامشخص'),
+              _buildDetailRow('روش ورود', session.loginMethod),
+              _buildDetailRow(
+                  'آخرین فعالیت', _formatDateTime(session.lastActivity)),
+              _buildDetailRow(
+                  'تاریخ ایجاد', _formatDateTime(session.createdAt)),
+              if (session.expiresAt != null)
+                _buildDetailRow(
+                    'تاریخ انقضا', _formatDateTime(session.expiresAt!)),
+              if (session.location != null)
+                _buildDetailRow('موقعیت', _formatLocation(session.location!)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('بستن'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -491,108 +620,35 @@ class _ActiveSessionsPageState extends ConsumerState<ActiveSessionsPage> {
             width: 100,
             child: Text(
               '$label:',
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                color: Colors.grey,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
           Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                color: Colors.black87,
-              ),
-            ),
+            child: Text(value),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSessionActions(ActiveSessionModel session, bool isCurrent) {
-    return Row(
-      children: [
-        if (!isCurrent) ...[
-          Expanded(
-            child: ElevatedButton.icon(
-              onPressed: () => _terminateSession(session.id),
-              icon: const Icon(Icons.logout, size: 18),
-              label: const Text('خاتمه نشست'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-        ],
-        if (!session.isTrusted) ...[
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: () => _markSessionAsTrusted(session.id),
-              icon: const Icon(Icons.verified, size: 18),
-              label: const Text('علامت‌گذاری قابل اعتماد'),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
+  String _formatTimeAgo(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
 
-  Widget _buildGlobalSessionActions() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ElevatedButton.icon(
-          onPressed: _terminateAllOtherSessions,
-          icon: const Icon(Icons.logout),
-          label: const Text('خاتمه تمام نشست‌های دیگر'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.orange,
-            foregroundColor: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: _refreshSessions,
-          icon: const Icon(Icons.refresh),
-          label: const Text('به‌روزرسانی نشست‌ها'),
-        ),
-      ],
-    );
-  }
-
-  // ======================== HELPER METHODS ========================
-
-  String _getDeviceTypeText(String? deviceType) {
-    switch (deviceType?.toLowerCase()) {
-      case 'mobile':
-        return 'موبایل';
-      case 'web':
-        return 'وب';
-      case 'desktop':
-        return 'دسکتاپ';
-      case 'tablet':
-        return 'تبلت';
-      default:
-        return 'نامشخص';
+    if (difference.inMinutes < 1) {
+      return 'همین الان';
+    } else if (difference.inHours < 1) {
+      return '${difference.inMinutes} دقیقه پیش';
+    } else if (difference.inDays < 1) {
+      return '${difference.inHours} ساعت پیش';
+    } else {
+      return '${difference.inDays} روز پیش';
     }
   }
 
-  String _getLoginMethodText(String loginMethod) {
-    switch (loginMethod) {
-      case 'password':
-        return 'رمز عبور';
-      case '2fa':
-        return 'تایید دو مرحله‌ای';
-      case 'biometric':
-        return 'احراز هویت بیومتریک';
-      case 'social':
-        return 'شبکه اجتماعی';
-      default:
-        return loginMethod;
-    }
+  String _formatDateTime(DateTime dateTime) {
+    return '${dateTime.year}/${dateTime.month.toString().padLeft(2, '0')}/${dateTime.day.toString().padLeft(2, '0')} '
+        '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
 
   String _formatLocation(Map<String, dynamic> location) {
@@ -608,352 +664,6 @@ class _ActiveSessionsPageState extends ConsumerState<ActiveSessionsPage> {
       return country;
     } else {
       return 'نامشخص';
-    }
-  }
-
-  String _formatDateTime(DateTime dateTime) {
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
-
-    if (difference.inDays > 0) {
-      return '${difference.inDays} روز پیش';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours} ساعت پیش';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes} دقیقه پیش';
-    } else {
-      return 'همین الان';
-    }
-  }
-
-  // ======================== ACTION METHODS ========================
-
-  Future<void> _terminateSession(String sessionId) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تایید'),
-        content:
-            const Text('آیا مطمئن هستید که می‌خواهید این نشست را خاتمه دهید؟'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('انصراف'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('تایید'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      try {
-        // استفاده از SessionManagementService
-        final sessionService = ref.read(sessionManagementServiceProvider);
-        await sessionService.terminateSession(sessionId);
-
-        // پاک کردن کش و بارگذاری مجدد
-        _invalidateSessionsProvider();
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('نشست با موفقیت خاتمه یافت'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('خطا در خاتمه نشست: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    }
-  }
-
-  Future<void> _markSessionAsTrusted(String sessionId) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تایید'),
-        content: const Text(
-            'آیا مطمئن هستید که می‌خواهید این نشست را به عنوان قابل اعتماد علامت‌گذاری کنید؟'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('انصراف'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('تایید'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      try {
-        // استفاده از SessionManagementService
-        final sessionService = ref.read(sessionManagementServiceProvider);
-        await sessionService.markSessionAsTrusted(sessionId);
-
-        // پاک کردن کش و بارگذاری مجدد
-        _invalidateSessionsProvider();
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('نشست به عنوان قابل اعتماد علامت‌گذاری شد'),
-              backgroundColor: Colors.blue,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('خطا در علامت‌گذاری نشست: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    }
-  }
-
-  Future<void> _terminateAllOtherSessions() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تایید'),
-        content: const Text(
-            'آیا مطمئن هستید که می‌خواهید تمام نشست‌های دیگر را خاتمه دهید؟\n\nاین کار شما را از سایر دستگاه‌ها خارج خواهد کرد.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('انصراف'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('تایید'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      try {
-        // دریافت کاربر فعلی
-        final user = Supabase.instance.client.auth.currentUser;
-        if (user == null) {
-          throw Exception('کاربر وارد نشده است');
-        }
-
-        // دریافت نشست فعلی
-        final currentUser = Supabase.instance.client.auth.currentUser;
-        if (currentUser == null) {
-          throw Exception('کاربر وارد نشده است');
-        }
-
-        final sessionService = ref.read(sessionManagementServiceProvider);
-        final sessions = await sessionService.getActiveSessions(currentUser.id);
-
-        if (sessions.isEmpty) {
-          throw Exception('هیچ نشست فعالی یافت نشد');
-        }
-
-        final currentSession = sessions.firstWhere((s) => s.isCurrent);
-        await sessionService.terminateAllOtherSessions(
-            user.id, currentSession.sessionToken);
-
-        // پاک کردن کش و بارگذاری مجدد
-        _invalidateSessionsProvider();
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('تمام نشست‌های دیگر خاتمه یافتند'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('خطا در خاتمه نشست‌ها: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    }
-  }
-
-  void _refreshSessions() {
-    final currentUser = Supabase.instance.client.auth.currentUser;
-    if (currentUser != null) {
-      ref.invalidate(activeSessionsProvider(currentUser.id));
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('نشست‌ها به‌روزرسانی شدند'),
-        backgroundColor: Colors.blue,
-      ),
-    );
-  }
-
-  void _invalidateSessionsProvider() {
-    final currentUser = Supabase.instance.client.auth.currentUser;
-    if (currentUser != null) {
-      ref.invalidate(activeSessionsProvider(currentUser.id));
-    }
-  }
-
-  void _handleMenuAction(String action) {
-    if (action == 'test') {
-      _runSecurityTest();
-    } else if (action == 'optimize') {
-      _optimizeSystem();
-    } else if (action == 'diagnostic') {
-      _runDiagnostic();
-    }
-  }
-
-  Future<void> _runSecurityTest() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تست امنیت'),
-        content: const Text(
-            'آیا مطمئن هستید که می‌خواهید امنیت سیستم را تست کنید؟ این کار ممکن است باعث تغییرات در عملکرد سیستم شود.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('انصراف'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('تایید'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      try {
-        final testingService = ref.read(securityTestingServiceProvider);
-        await testingService.runSecurityValidationTest();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تست امنیت با موفقیت انجام شد.'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        _loadSystemMetrics(); // Refresh metrics after test
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطا در انجام تست امنیت: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _optimizeSystem() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('بهینه‌سازی سیستم'),
-        content: const Text(
-            'آیا مطمئن هستید که می‌خواهید سیستم را بهینه کنید؟ این کار ممکن است باعث تغییرات در عملکرد سیستم شود.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('انصراف'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('تایید'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      try {
-        final testingService = ref.read(securityTestingServiceProvider);
-        await testingService.optimizeSystem();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('سیستم با موفقیت بهینه شد.'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        _loadSystemMetrics(); // Refresh metrics after optimization
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطا در بهینه‌سازی سیستم: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _runDiagnostic() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تشخیص کامل سیستم'),
-        content: const Text(
-            'آیا مطمئن هستید که می‌خواهید تمام آمار و سیستم‌های جانبی را تشخیص دهید؟ این کار ممکن است باعث تغییرات در عملکرد سیستم شود.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('انصراف'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('تایید'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      try {
-        final testingService = ref.read(securityTestingServiceProvider);
-        await testingService.runFullDiagnostic();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تشخیص کامل سیستم با موفقیت انجام شد.'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        _loadSystemMetrics(); // Refresh metrics after diagnostic
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطا در انجام تشخیص کامل: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
     }
   }
 }

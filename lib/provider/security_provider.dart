@@ -8,63 +8,8 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import '../model/SecurityModels.dart';
 import '../security/totp_service.dart';
-
-// ============================================================================
-// SECURITY CACHE SERVICE
-// ============================================================================
-
-class SecurityCache {
-  static final Map<String, dynamic> _cache = {};
-  static const Duration _defaultTTL = Duration(minutes: 6);
-
-  static void store(String key, dynamic value, {Duration? ttl}) {
-    final expiry = DateTime.now().add(ttl ?? _defaultTTL);
-    _cache[key] = {
-      'value': value,
-      'expires_at': expiry,
-    };
-  }
-
-  static T? retrieve<T>(String key) {
-    final item = _cache[key];
-    if (item == null) return null;
-
-    final expiresAt = item['expires_at'] as DateTime;
-    if (DateTime.now().isAfter(expiresAt)) {
-      _cache.remove(key);
-      return null;
-    }
-
-    return item['value'] as T?;
-  }
-
-  static void clear() {
-    _cache.clear();
-  }
-
-  static void remove(String key) {
-    _cache.remove(key);
-  }
-
-  static bool has(String key) {
-    return _cache.containsKey(key) && !_isExpired(key);
-  }
-
-  static bool _isExpired(String key) {
-    final item = _cache[key];
-    if (item == null) return true;
-
-    final expiresAt = item['expires_at'] as DateTime;
-    return DateTime.now().isAfter(expiresAt);
-  }
-
-  static Map<String, dynamic> getStats() {
-    return {
-      'size': _cache.length,
-      'keys': _cache.keys.toList(),
-    };
-  }
-}
+import '../services/ActiveSessionsService.dart';
+import '../utils/security_cache.dart';
 
 // ============================================================================
 // SESSION MANAGEMENT SERVICE
@@ -321,6 +266,15 @@ class SessionManagementService {
         return cachedSessions;
       }
 
+      // بررسی وجود جدول
+      try {
+        await _supabase.from('active_sessions').select('id').limit(1);
+      } catch (e) {
+        debugPrint('❌ جدول active_sessions موجود نیست: $e');
+        throw Exception(
+            'جدول نشست‌های فعال موجود نیست. لطفاً ابتدا فایل database_migrations.sql را در Supabase اجرا کنید.');
+      }
+
       final response = await _supabase
           .from('active_sessions')
           .select()
@@ -336,6 +290,9 @@ class SessionManagementService {
       return sessions;
     } catch (e) {
       debugPrint('خطا در دریافت نشست‌های فعال: $e');
+      if (e.toString().contains('جدول نشست‌های فعال موجود نیست')) {
+        rethrow; // خطای جدول را دوباره پرتاب کن
+      }
       return [];
     }
   }
@@ -361,6 +318,46 @@ class SessionManagementService {
       );
     } catch (e) {
       debugPrint('خطا در قطع اتصال تمام نشست‌های دیگر: $e');
+      rethrow;
+    }
+  }
+
+  /// پاک کردن نشست‌های قدیمی و منقضی شده
+  Future<void> cleanupOldSessions() async {
+    try {
+      debugPrint('🧹 شروع پاک کردن نشست‌های قدیمی...');
+
+      final now = DateTime.now();
+      final thirtyDaysAgo = now.subtract(const Duration(days: 30));
+
+      // حذف نشست‌های منقضی شده
+      final expiredResult = await _supabase
+          .from('active_sessions')
+          .delete()
+          .lt('expires_at', now.toIso8601String());
+
+      // حذف نشست‌های قدیمی‌تر از 30 روز که غیرفعال هستند
+      final oldResult = await _supabase
+          .from('active_sessions')
+          .delete()
+          .eq('is_current', false)
+          .lt('created_at', thirtyDaysAgo.toIso8601String());
+
+      debugPrint('✅ نشست‌های قدیمی پاک شدند');
+      debugPrint('   - نشست‌های منقضی شده: ${expiredResult.length}');
+      debugPrint('   - نشست‌های قدیمی: ${oldResult.length}');
+
+      // پاک کردن کش
+      SecurityCache.clear();
+
+      // ثبت لاگ امنیتی
+      await _logSecurityEvent(
+        userId: 'system',
+        eventType: 'old_sessions_cleanup',
+        description: 'نشست‌های قدیمی و منقضی شده پاک شدند',
+      );
+    } catch (e) {
+      debugPrint('❌ خطا در پاک کردن نشست‌های قدیمی: $e');
       rethrow;
     }
   }
@@ -1161,12 +1158,13 @@ class SecurityNotifier extends StateNotifier<UserSecurityModel?> {
           id: 'default_${userId}_${now.millisecondsSinceEpoch}',
           userId: userId,
           twoFactorEnabled: false,
-          backupCodes: [],
-          lastSecurityCheck: now,
-          appLockEnabled: false,
-          failedLoginAttempts: 0,
+          backupCodes: null,
           createdAt: now,
           updatedAt: now,
+          loginAttempts: 0,
+          accountLocked: false,
+          maxLoginAttempts: 5,
+          lockDurationMinutes: 30,
         );
       }
     } catch (e) {
@@ -1177,74 +1175,153 @@ class SecurityNotifier extends StateNotifier<UserSecurityModel?> {
         id: 'error_${userId}_${now.millisecondsSinceEpoch}',
         userId: userId,
         twoFactorEnabled: false,
-        backupCodes: [],
-        lastSecurityCheck: now,
-        appLockEnabled: false,
-        failedLoginAttempts: 0,
+        backupCodes: null,
         createdAt: now,
         updatedAt: now,
+        loginAttempts: 0,
+        accountLocked: false,
+        maxLoginAttempts: 5,
+        lockDurationMinutes: 30,
       );
     }
   }
 
   Future<void> enableTwoFactor(String secret) async {
-    try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) throw Exception('کاربر وارد نشده است');
+    const int maxRetries = 3;
+    const Duration retryDelay = Duration(seconds: 2);
 
-      final backupCodes = TOTPService.generateBackupCodes();
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        final user = Supabase.instance.client.auth.currentUser;
+        if (user == null) throw Exception('کاربر وارد نشده است');
 
-      final now = DateTime.now();
-      final security = UserSecurityModel(
-        id: '2fa_${user.id}_${now.millisecondsSinceEpoch}',
-        userId: user.id,
-        twoFactorEnabled: true,
-        backupCodes: backupCodes,
-        lastSecurityCheck: now,
-        appLockEnabled: false,
-        failedLoginAttempts: 0,
-        createdAt: now,
-        updatedAt: now,
-      );
+        final backupCodes = TOTPService.generateBackupCodes();
+        final now = DateTime.now();
 
-      // ذخیره در دیتابیس
-      await Supabase.instance.client
-          .from('user_security')
-          .upsert(security.toMap());
+        // ابتدا رکورد موجود را پیدا کن
+        final existingResponse = await Supabase.instance.client
+            .from('user_security')
+            .select()
+            .eq('user_id', user.id)
+            .maybeSingle()
+            .timeout(const Duration(seconds: 30));
 
-      state = security;
-    } catch (e) {
-      debugPrint('خطا در فعال‌سازی 2FA: $e');
-      rethrow;
+        UserSecurityModel security;
+
+        if (existingResponse != null) {
+          // رکورد موجود را به‌روزرسانی کن
+          final existing = UserSecurityModel.fromMap(existingResponse);
+          debugPrint(
+              '🔍 رکورد موجود: twoFactorEnabled = ${existing.twoFactorEnabled}');
+
+          security = existing.copyWith(
+            twoFactorEnabled: true,
+            backupCodes: UserSecurityModel.backupCodesToString(backupCodes),
+            updatedAt: now,
+          );
+
+          debugPrint(
+              '✅ رکورد به‌روزرسانی شده: twoFactorEnabled = ${security.twoFactorEnabled}');
+        } else {
+          // رکورد جدید ایجاد کن
+          final random = Random.secure();
+          final uuid = _generateUUID(random);
+
+          security = UserSecurityModel(
+            id: uuid,
+            userId: user.id,
+            twoFactorEnabled: true,
+            backupCodes: UserSecurityModel.backupCodesToString(backupCodes),
+            createdAt: now,
+            updatedAt: now,
+            loginAttempts: 0,
+            accountLocked: false,
+            maxLoginAttempts: 5,
+            lockDurationMinutes: 30,
+          );
+        }
+
+        // ذخیره یا به‌روزرسانی در دیتابیس
+        if (existingResponse != null) {
+          final updateData = security.toMap();
+          debugPrint('📤 ارسال داده‌های به‌روزرسانی: $updateData');
+
+          await Supabase.instance.client
+              .from('user_security')
+              .update(updateData)
+              .eq('user_id', user.id)
+              .timeout(const Duration(seconds: 30));
+
+          debugPrint('✅ رکورد با موفقیت به‌روزرسانی شد');
+        } else {
+          final insertData = security.toMap();
+          debugPrint('📤 ارسال داده‌های جدید: $insertData');
+
+          await Supabase.instance.client
+              .from('user_security')
+              .insert(insertData)
+              .timeout(const Duration(seconds: 30));
+
+          debugPrint('✅ رکورد جدید با موفقیت ایجاد شد');
+        }
+
+        state = security;
+        debugPrint('✅ تایید دو مرحله‌ای با موفقیت فعال شد');
+        return; // موفقیت - از حلقه خارج شو
+      } catch (e) {
+        debugPrint('خطا در فعال‌سازی 2FA (تلاش $attempt/$maxRetries): $e');
+
+        // اگر آخرین تلاش بود، خطا را throw کن
+        if (attempt == maxRetries) {
+          throw Exception(_getNetworkErrorMessage(e));
+        }
+
+        // منتظر بمان و دوباره تلاش کن
+        await Future.delayed(retryDelay * attempt);
+      }
     }
   }
 
-  Future<void> enableSimpleTwoFactor(String password) async {
+  Future<void> enableSimpleTwoFactor(String password,
+      {List<String>? backupCodes}) async {
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) throw Exception('کاربر وارد نشده است');
 
+      debugPrint(
+          '[2FA_ENABLE] 🚀 شروع فعال‌سازی Simple 2FA برای کاربر: ${user.id}');
       final now = DateTime.now();
 
       // ابتدا بررسی کنیم که آیا رکورد امنیتی برای این کاربر وجود دارد یا نه
+      debugPrint('[2FA_ENABLE] 🔍 بررسی رکورد موجود...');
       final existingResponse = await Supabase.instance.client
           .from('user_security')
           .select()
           .eq('user_id', user.id)
           .maybeSingle();
 
+      debugPrint('[2FA_ENABLE] 📊 رکورد موجود: $existingResponse');
+
       UserSecurityModel security;
 
       if (existingResponse != null) {
         // رکورد موجود است، آن را به‌روزرسانی می‌کنیم
+        debugPrint('[2FA_ENABLE] 🔄 به‌روزرسانی رکورد موجود...');
         final existing = UserSecurityModel.fromMap(existingResponse);
+        debugPrint(
+            '[2FA_ENABLE] 📊 وضعیت قبلی: twoFactorEnabled=${existing.twoFactorEnabled}');
+
         security = existing.copyWith(
           twoFactorEnabled: true,
+          backupCodes: backupCodes != null
+              ? UserSecurityModel.backupCodesToString(backupCodes)
+              : null,
           twoFactorSetupAt: now,
-          securityScore: 75,
-          lastSecurityCheck: now,
           updatedAt: now,
         );
+
+        debugPrint(
+            '[2FA_ENABLE] 📊 وضعیت جدید: twoFactorEnabled=${security.twoFactorEnabled}');
       } else {
         // رکورد جدید ایجاد می‌کنیم
         final random = Random.secure();
@@ -1255,75 +1332,167 @@ class SecurityNotifier extends StateNotifier<UserSecurityModel?> {
           userId: user.id,
           twoFactorEnabled: true,
           twoFactorSecret: null, // در سیستم جدید نیازی به secret نیست
-          backupCodes: [], // کدهای پشتیبان در سیستم جدید جداگانه ذخیره می‌شوند
+          backupCodes: backupCodes != null
+              ? UserSecurityModel.backupCodesToString(backupCodes)
+              : null,
           twoFactorSetupAt: now,
-          appLockEnabled: false,
-          appLockType: null,
-          appLockHash: null,
-          lastLoginAt: null,
-          loginIpAddress: null,
-          deviceInfo: null,
-          failedLoginAttempts: 0,
-          lockedUntil: null,
-          securityScore: 75, // افزایش امتیاز امنیت
-          lastSecurityCheck: now,
           createdAt: now,
           updatedAt: now,
+          loginAttempts: 0,
+          accountLocked: false,
+          maxLoginAttempts: 5,
+          lockDurationMinutes: 30,
         );
       }
 
       // ذخیره یا به‌روزرسانی در دیتابیس
-      await Supabase.instance.client
-          .from('user_security')
-          .upsert(security.toMap());
+      debugPrint('[2FA_ENABLE] 💾 ذخیره‌سازی در دیتابیس...');
+      final dataToSave = security.toMap();
+      debugPrint('[2FA_ENABLE] 📤 داده‌های ارسالی: $dataToSave');
+
+      await Supabase.instance.client.from('user_security').upsert(dataToSave);
+
+      debugPrint('[2FA_ENABLE] 💾 ذخیره‌سازی کامل شد');
+      debugPrint(
+          '[2FA_ENABLE] 🔑 کدهای پشتیبان ذخیره شدند: ${backupCodes?.length ?? 0} کد');
 
       state = security;
-      debugPrint('✅ تایید دو مرحله‌ای با موفقیت فعال شد');
+      debugPrint('[2FA_ENABLE] ✅ تایید دو مرحله‌ای با موفقیت فعال شد');
+
+      // تست مجدد برای تایید
+      debugPrint('[2FA_ENABLE] 🔍 تست نهایی...');
+      final testResponse = await Supabase.instance.client
+          .from('user_security')
+          .select('two_factor_enabled, user_id')
+          .eq('user_id', user.id)
+          .single();
+      debugPrint(
+          '[2FA_ENABLE] 📊 تست نهایی - Two Factor Enabled: ${testResponse['two_factor_enabled']}');
     } catch (e) {
-      debugPrint('خطا در فعال‌سازی Simple 2FA: $e');
+      debugPrint('[2FA_ENABLE] ❌ خطا در فعال‌سازی Simple 2FA: $e');
       rethrow;
     }
   }
 
   Future<void> disableTwoFactor() async {
-    try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) throw Exception('کاربر وارد نشده است');
+    const int maxRetries = 3;
+    const Duration retryDelay = Duration(seconds: 2);
 
-      final now = DateTime.now();
-      final random = Random.secure();
-      final uuid = _generateUUID(random);
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        final user = Supabase.instance.client.auth.currentUser;
+        if (user == null) throw Exception('کاربر وارد نشده است');
 
-      final security = UserSecurityModel(
-        id: uuid,
-        userId: user.id,
-        twoFactorEnabled: false,
-        twoFactorSecret: null,
-        backupCodes: [],
-        twoFactorSetupAt: null,
-        appLockEnabled: false,
-        appLockType: null,
-        appLockHash: null,
-        lastLoginAt: null,
-        loginIpAddress: null,
-        deviceInfo: null,
-        failedLoginAttempts: 0,
-        lockedUntil: null,
-        securityScore: 50, // کاهش امتیاز امنیت
-        lastSecurityCheck: now,
-        createdAt: now,
-        updatedAt: now,
-      );
+        final now = DateTime.now();
 
-      // ذخیره در دیتابیس
-      await Supabase.instance.client
-          .from('user_security')
-          .upsert(security.toMap());
+        // ابتدا رکورد موجود را پیدا کن
+        final existingResponse = await Supabase.instance.client
+            .from('user_security')
+            .select()
+            .eq('user_id', user.id)
+            .maybeSingle()
+            .timeout(const Duration(seconds: 30)); // اضافه کردن timeout
 
-      state = security;
-    } catch (e) {
-      debugPrint('خطا در غیرفعال‌سازی 2FA: $e');
-      rethrow;
+        if (existingResponse != null) {
+          // رکورد موجود را به‌روزرسانی کن
+          final updatedSecurity = UserSecurityModel(
+            id: existingResponse['id']?.toString() ?? '',
+            userId: user.id,
+            twoFactorEnabled: false,
+            twoFactorSecret: null,
+            userCode: existingResponse['user_code']?.toString(),
+            backupCodes: existingResponse['backup_codes']?.toString(),
+            twoFactorSetupAt: null,
+            createdAt: DateTime.parse(existingResponse['created_at']),
+            updatedAt: now,
+            loginAttempts: existingResponse['login_attempts'] is int
+                ? existingResponse['login_attempts']
+                : int.tryParse(
+                    existingResponse['login_attempts']?.toString() ?? '0'),
+            lastLoginAttempt: existingResponse['last_login_attempt'] != null
+                ? DateTime.parse(existingResponse['last_login_attempt'])
+                : null,
+            accountLocked: existingResponse['account_locked'] == true,
+            lockExpiresAt: existingResponse['lock_expires_at'] != null
+                ? DateTime.parse(existingResponse['lock_expires_at'])
+                : null,
+            maxLoginAttempts: existingResponse['max_login_attempts'] is int
+                ? existingResponse['max_login_attempts']
+                : int.tryParse(
+                    existingResponse['max_login_attempts']?.toString() ?? '5'),
+            lockDurationMinutes:
+                existingResponse['lock_duration_minutes'] is int
+                    ? existingResponse['lock_duration_minutes']
+                    : int.tryParse(
+                        existingResponse['lock_duration_minutes']?.toString() ??
+                            '30'),
+          );
+
+          // به‌روزرسانی رکورد موجود
+          final updateData = updatedSecurity.toMap();
+          debugPrint(
+              '📤 ارسال داده‌های به‌روزرسانی (غیرفعال‌سازی): $updateData');
+
+          // اضافه کردن debug log برای بررسی نوع داده‌ها
+          debugPrint('🔍 بررسی نوع داده‌ها:');
+          updateData.forEach((key, value) {
+            debugPrint('   $key: ${value.runtimeType} = $value');
+          });
+
+          await Supabase.instance.client
+              .from('user_security')
+              .update(updateData)
+              .eq('user_id', user.id)
+              .timeout(const Duration(seconds: 30));
+
+          debugPrint('✅ رکورد با موفقیت به‌روزرسانی شد (غیرفعال‌سازی)');
+
+          state = updatedSecurity;
+        } else {
+          // اگر رکوردی وجود ندارد، رکورد جدید ایجاد کن
+          final random = Random.secure();
+          final uuid = _generateUUID(random);
+
+          final security = UserSecurityModel(
+            id: uuid,
+            userId: user.id,
+            twoFactorEnabled: false,
+            twoFactorSecret: null,
+            userCode: null,
+            backupCodes: null,
+            twoFactorSetupAt: null,
+            createdAt: now,
+            updatedAt: now,
+            loginAttempts: 0,
+            lastLoginAttempt: null,
+            accountLocked: false,
+            lockExpiresAt: null,
+            maxLoginAttempts: 5,
+            lockDurationMinutes: 30,
+          );
+
+          // ایجاد رکورد جدید
+          await Supabase.instance.client
+              .from('user_security')
+              .insert(security.toMap())
+              .timeout(const Duration(seconds: 30));
+
+          state = security;
+        }
+
+        debugPrint('✅ تایید دو مرحله‌ای با موفقیت غیرفعال شد');
+        return; // موفقیت - از حلقه خارج شو
+      } catch (e) {
+        debugPrint('خطا در غیرفعال‌سازی 2FA (تلاش $attempt/$maxRetries): $e');
+
+        // اگر آخرین تلاش بود، خطا را throw کن
+        if (attempt == maxRetries) {
+          throw Exception(_getNetworkErrorMessage(e));
+        }
+
+        // منتظر بمان و دوباره تلاش کن
+        await Future.delayed(retryDelay * attempt);
+      }
     }
   }
 
@@ -1338,6 +1507,164 @@ class SecurityNotifier extends StateNotifier<UserSecurityModel?> {
     final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
 
     return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20, 32)}';
+  }
+
+  /// مدیریت خطاهای شبکه
+  String _getNetworkErrorMessage(dynamic error) {
+    final errorString = error.toString();
+
+    if (errorString.contains('Connection reset by peer') ||
+        errorString.contains('SocketException') ||
+        errorString.contains('ClientException')) {
+      return 'مشکل اتصال به سرور. لطفاً اتصال اینترنت خود را بررسی کنید و دوباره تلاش کنید.';
+    } else if (errorString.contains('timeout')) {
+      return 'درخواست شما زمان زیادی طول کشید. لطفاً دوباره تلاش کنید.';
+    } else if (errorString.contains('network') ||
+        errorString.contains('connection')) {
+      return 'مشکل اتصال شبکه. لطفاً اتصال اینترنت خود را بررسی کنید.';
+    } else {
+      return 'خطا در عملیات: ${error.toString()}';
+    }
+  }
+
+  /// تست: بررسی وضعیت فعلی 2FA
+  Future<void> debugTwoFactorStatus() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        debugPrint('❌ کاربر وارد نشده است');
+        return;
+      }
+
+      debugPrint('🔍 بررسی وضعیت 2FA برای کاربر: ${user.id}');
+
+      final response = await Supabase.instance.client
+          .from('user_security')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      if (response == null) {
+        debugPrint('⚠️ هیچ رکورد امنیتی یافت نشد');
+      } else {
+        debugPrint('📊 رکورد امنیتی موجود:');
+        debugPrint('   - ID: ${response['id']}');
+        debugPrint('   - User ID: ${response['user_id']}');
+        debugPrint(
+            '   - Two Factor Enabled: ${response['two_factor_enabled']}');
+        debugPrint('   - Two Factor Secret: ${response['two_factor_secret']}');
+        debugPrint('   - Backup Codes: ${response['backup_codes']}');
+        debugPrint('   - Security Score: ${response['security_score']}');
+        debugPrint('   - Created At: ${response['created_at']}');
+        debugPrint('   - Updated At: ${response['updated_at']}');
+      }
+    } catch (e) {
+      debugPrint('❌ خطا در بررسی وضعیت 2FA: $e');
+    }
+  }
+
+  /// تست: بررسی مستقیم وضعیت 2FA در دیتابیس
+  Future<void> debugDirectDatabaseCheck() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        debugPrint('❌ کاربر وارد نشده است');
+        return;
+      }
+
+      debugPrint('🔍 بررسی مستقیم دیتابیس برای کاربر: ${user.id}');
+
+      // بررسی مستقیم در دیتابیس
+      final response = await Supabase.instance.client
+          .from('user_security')
+          .select('two_factor_enabled, user_id, id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      if (response == null) {
+        debugPrint('⚠️ هیچ رکورد امنیتی در دیتابیس یافت نشد');
+
+        // بررسی اینکه آیا جدول وجود دارد
+        try {
+          await Supabase.instance.client
+              .from('user_security')
+              .select('id')
+              .limit(1);
+          debugPrint('✅ جدول user_security قابل دسترسی است');
+        } catch (e) {
+          debugPrint('❌ مشکل در دسترسی به جدول user_security: $e');
+        }
+      } else {
+        debugPrint('📊 وضعیت مستقیم دیتابیس:');
+        debugPrint('   - User ID: ${response['user_id']}');
+        debugPrint(
+            '   - Two Factor Enabled: ${response['two_factor_enabled']}');
+        debugPrint('   - Type: ${response['two_factor_enabled'].runtimeType}');
+        debugPrint(
+            '   - Boolean Check: ${response['two_factor_enabled'] == true}');
+      }
+    } catch (e) {
+      debugPrint('❌ خطا در بررسی مستقیم دیتابیس: $e');
+    }
+  }
+
+  /// تست: بررسی دقیق‌تر مشکل 2FA
+  Future<void> debugTwoFactorIssue() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        debugPrint('❌ کاربر وارد نشده است');
+        return;
+      }
+
+      debugPrint('🔍 بررسی دقیق مشکل 2FA برای کاربر: ${user.id}');
+
+      // 1. بررسی وضعیت فعلی در state
+      debugPrint('📊 وضعیت فعلی در state:');
+      debugPrint('   - State: $state');
+      if (state != null) {
+        debugPrint('   - Two Factor Enabled: ${state!.twoFactorEnabled}');
+        debugPrint('   - User ID: ${state!.userId}');
+      }
+
+      // 2. بررسی مستقیم در دیتابیس
+      final dbResponse = await Supabase.instance.client
+          .from('user_security')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      debugPrint('📊 وضعیت در دیتابیس:');
+      if (dbResponse == null) {
+        debugPrint('   - هیچ رکوردی یافت نشد');
+      } else {
+        debugPrint(
+            '   - Two Factor Enabled: ${dbResponse['two_factor_enabled']}');
+        debugPrint('   - User ID: ${dbResponse['user_id']}');
+        debugPrint('   - ID: ${dbResponse['id']}');
+
+        // 3. بررسی mapping
+        try {
+          final mappedModel = UserSecurityModel.fromMap(dbResponse);
+          debugPrint('📊 وضعیت پس از mapping:');
+          debugPrint(
+              '   - Two Factor Enabled: ${mappedModel.twoFactorEnabled}');
+          debugPrint('   - User ID: ${mappedModel.userId}');
+        } catch (e) {
+          debugPrint('❌ خطا در mapping: $e');
+        }
+      }
+
+      // 4. بررسی اینکه آیا مشکل در نام فیلد است
+      debugPrint('🔍 بررسی نام فیلدها:');
+      if (dbResponse != null) {
+        dbResponse.forEach((key, value) {
+          debugPrint('   - $key: $value (${value.runtimeType})');
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ خطا در بررسی دقیق مشکل 2FA: $e');
+    }
   }
 }
 
@@ -1403,3 +1730,196 @@ class SecurityService {
 final securityServiceProvider = Provider<SecurityService>((ref) {
   return SecurityService();
 });
+
+// ============================================================================
+// ACTIVE SESSIONS PROVIDER - NEW IMPLEMENTATION
+// ============================================================================
+
+/// Provider برای مدیریت نشست‌های فعال
+/// Note: Using static methods directly from ActiveSessionsService
+
+/// Provider برای دریافت نشست فعلی کاربر
+final currentActiveSessionProvider =
+    FutureProvider<ActiveSessionModel?>((ref) async {
+  final user = Supabase.instance.client.auth.currentUser;
+  if (user == null) return null;
+
+  final sessionData = await ActiveSessionsService.getCurrentSession(user.id);
+  if (sessionData == null) return null;
+
+  // Convert Map<String, dynamic> to ActiveSessionModel
+  return ActiveSessionModel.fromMap(sessionData);
+});
+
+/// Provider برای دریافت تمام نشست‌های فعال کاربر
+final userActiveSessionsProvider =
+    FutureProvider.family<List<ActiveSessionModel>, String>(
+        (ref, userId) async {
+  final sessionsData =
+      await ActiveSessionsService.getUserActiveSessions(userId);
+
+  // Convert List<Map<String, dynamic>> to List<ActiveSessionModel>
+  return sessionsData
+      .map((sessionData) => ActiveSessionModel.fromMap(sessionData))
+      .toList();
+});
+
+/// Provider برای آمار نشست‌های کاربر
+final sessionStatsProvider =
+    FutureProvider.family<Map<String, dynamic>, String>((ref, userId) async {
+  // Use the static method directly since getUserSessionStats doesn't exist
+  return await ActiveSessionsService.getSessionStats(userId);
+});
+
+/// Provider برای مدیریت وضعیت نشست‌ها
+final activeSessionsStateProvider =
+    StateNotifierProvider<ActiveSessionsNotifier, ActiveSessionsState>((ref) {
+  return ActiveSessionsNotifier(ref);
+});
+
+/// State برای مدیریت نشست‌های فعال
+class ActiveSessionsState {
+  final List<ActiveSessionModel> sessions;
+  final bool isLoading;
+  final String? error;
+  final Map<String, dynamic>? stats;
+  final DateTime? lastUpdated;
+
+  const ActiveSessionsState({
+    this.sessions = const [],
+    this.isLoading = false,
+    this.error,
+    this.stats,
+    this.lastUpdated,
+  });
+
+  ActiveSessionsState copyWith({
+    List<ActiveSessionModel>? sessions,
+    bool? isLoading,
+    String? error,
+    Map<String, dynamic>? stats,
+    DateTime? lastUpdated,
+  }) {
+    return ActiveSessionsState(
+      sessions: sessions ?? this.sessions,
+      isLoading: isLoading ?? this.isLoading,
+      error: error ?? this.error,
+      stats: stats ?? this.stats,
+      lastUpdated: lastUpdated ?? this.lastUpdated,
+    );
+  }
+}
+
+/// Notifier برای مدیریت وضعیت نشست‌های فعال
+class ActiveSessionsNotifier extends StateNotifier<ActiveSessionsState> {
+  final Ref _ref;
+
+  ActiveSessionsNotifier(this._ref) : super(const ActiveSessionsState());
+
+  /// بارگذاری نشست‌های کاربر
+  Future<void> loadUserSessions(String userId) async {
+    if (state.isLoading) return;
+
+    state = state.copyWith(isLoading: true, error: null);
+
+    try {
+      final sessions =
+          await ActiveSessionsService.getUserActiveSessions(userId);
+      final stats = await ActiveSessionsService.getSessionStats(userId);
+
+      // Convert List<Map<String, dynamic>> to List<ActiveSessionModel>
+      final convertedSessions = sessions
+          .map((sessionData) => ActiveSessionModel.fromMap(sessionData))
+          .toList();
+
+      state = state.copyWith(
+        sessions: convertedSessions,
+        stats: stats,
+        isLoading: false,
+        lastUpdated: DateTime.now(),
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: e.toString(),
+      );
+    }
+  }
+
+  /// ترمینیت نشست
+  Future<bool> terminateSession(String sessionId, String userId) async {
+    try {
+      final success = await ActiveSessionsService.terminateSessionCompletely(
+          sessionId, userId);
+
+      if (success) {
+        // بارگذاری مجدد نشست‌ها
+        await loadUserSessions(userId);
+      }
+
+      return success;
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+      return false;
+    }
+  }
+
+  /// ترمینیت تمام نشست‌های غیر فعلی
+  Future<bool> terminateAllOtherSessions(String userId) async {
+    try {
+      final success =
+          await ActiveSessionsService.terminateAllOtherSessions(userId);
+
+      if (success) {
+        // بارگذاری مجدد نشست‌ها
+        await loadUserSessions(userId);
+      }
+
+      return success;
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+      return false;
+    }
+  }
+
+  /// به‌روزرسانی فعالیت نشست
+  Future<void> updateSessionActivity(String sessionId) async {
+    try {
+      await ActiveSessionsService.updateSessionActivity(sessionId);
+
+      // به‌روزرسانی state
+      final updatedSessions = state.sessions.map((session) {
+        if (session.id == sessionId) {
+          return session.copyWith(lastActivity: DateTime.now());
+        }
+        return session;
+      }).toList();
+
+      state = state.copyWith(sessions: updatedSessions);
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+    }
+  }
+
+  /// تمدید نشست فعلی
+  Future<void> refreshCurrentSession(String userId) async {
+    try {
+      await ActiveSessionsService.refreshCurrentSession(userId);
+
+      // بارگذاری مجدد نشست‌ها
+      await loadUserSessions(userId);
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+    }
+  }
+
+  /// پاک کردن خطا
+  void clearError() {
+    state = state.copyWith(error: null);
+  }
+
+  /// پاک کردن state
+  void clear() {
+    state = const ActiveSessionsState();
+  }
+}

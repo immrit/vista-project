@@ -1,23 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../main.dart';
-import '../homeScreen.dart';
-import '../../../provider/security_provider.dart';
-import '../../../model/SecurityModels.dart';
-import '../../../security/totp_service.dart';
+import 'dart:developer' as developer;
+import '../../../security/simple_2fa_service.dart';
+import '../../../provider/theme_provider.dart';
 
 class TwoFactorVerificationScreen extends ConsumerStatefulWidget {
   final String userId;
-  final String? redirectRoute;
-  final Map<String, dynamic>? routeArguments;
+  final VoidCallback onSuccess;
 
   const TwoFactorVerificationScreen({
     super.key,
     required this.userId,
-    this.redirectRoute,
-    this.routeArguments,
+    required this.onSuccess,
   });
 
   @override
@@ -27,57 +22,38 @@ class TwoFactorVerificationScreen extends ConsumerStatefulWidget {
 
 class _TwoFactorVerificationScreenState
     extends ConsumerState<TwoFactorVerificationScreen> {
-  final List<TextEditingController> _controllers = List.generate(
-    6,
-    (index) => TextEditingController(),
-  );
-  final List<FocusNode> _focusNodes = List.generate(
-    6,
-    (index) => FocusNode(),
-  );
-
-  bool _isLoading = false;
-  bool _isVerifying = false;
-  String _errorMessage = '';
-  bool _showBackupCodeInput = false;
+  final TextEditingController _totpCodeController = TextEditingController();
   final TextEditingController _backupCodeController = TextEditingController();
+  final FocusNode _totpCodeFocusNode = FocusNode();
+  final FocusNode _backupCodeFocusNode = FocusNode();
+
+  bool _isVerifying = false;
+  bool _showBackupCodeInput = false;
+  String _errorMessage = '';
 
   @override
   void dispose() {
-    for (final controller in _controllers) {
-      controller.dispose();
-    }
-    for (final node in _focusNodes) {
-      node.dispose();
-    }
+    _totpCodeController.dispose();
     _backupCodeController.dispose();
+    _totpCodeFocusNode.dispose();
+    _backupCodeFocusNode.dispose();
     super.dispose();
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _setupFocusListeners();
-  }
+  /// تایید کد 6 رقمی کاربر
+  Future<void> _verifyUserCode() async {
+    final code = _totpCodeController.text.trim();
 
-  void _setupFocusListeners() {
-    for (int i = 0; i < _controllers.length; i++) {
-      _controllers[i].addListener(() {
-        if (_controllers[i].text.length == 1 && i < _controllers.length - 1) {
-          _focusNodes[i + 1].requestFocus();
-        }
-      });
-    }
-  }
-
-  String _getCode() {
-    return _controllers.map((controller) => controller.text).join();
-  }
-
-  Future<void> _verifyCode() async {
-    if (_getCode().length != 6) {
+    if (code.isEmpty) {
       setState(() {
-        _errorMessage = 'لطفاً کد ۶ رقمی را کامل وارد کنید';
+        _errorMessage = 'لطفاً کد 6 رقمی را وارد کنید';
+      });
+      return;
+    }
+
+    if (code.length != 6) {
+      setState(() {
+        _errorMessage = 'کد باید دقیقاً 6 رقم باشد';
       });
       return;
     }
@@ -88,65 +64,43 @@ class _TwoFactorVerificationScreenState
     });
 
     try {
-      // بررسی کد در جدول user_security
-      final response = await supabase
-          .from('user_security')
-          .select('*')
-          .eq('user_id', widget.userId)
-          .single();
+      developer.log('Verifying user code for user: ${widget.userId}',
+          name: 'TwoFactorVerification');
 
-      if (response == null) {
-        throw Exception('اطلاعات امنیتی کاربر یافت نشد');
-      }
+      // اعتبارسنجی کد کاربر
+      final isValid =
+          await Simple2FAService.validateUserCode(widget.userId, code);
 
-      final twoFactorSecret = response['two_factor_secret'] as String?;
-      if (twoFactorSecret == null) {
-        throw Exception('تایید دو مرحله‌ای فعال نشده است');
-      }
+      developer.log('Code validation result: $isValid',
+          name: 'TwoFactorVerification');
 
-      // تایید کد TOTP با استفاده از سرویس
-      final isValidCode = TOTPService.verifyCode(twoFactorSecret, _getCode());
-      if (!isValidCode) {
-        throw Exception('کد وارد شده صحیح نیست');
-      }
+      if (isValid) {
+        developer.log('Code validation successful, marking session as verified',
+            name: 'TwoFactorVerification');
 
-      // ثبت لاگ امنیتی
-      await supabase.from('security_logs').insert({
-        'user_id': widget.userId,
-        'event_type': '2fa_verification_success',
-        'description': 'تایید دو مرحله‌ای موفق',
-        'created_at': DateTime.now().toIso8601String(),
-      });
+        // علامت‌گذاری نشست فعلی به عنوان تایید شده
+        await Simple2FAService.markSessionAsVerified(widget.userId);
 
-      // انتقال به صفحه اصلی
-      if (mounted) {
-        if (widget.redirectRoute != null) {
-          Navigator.of(context).pushReplacementNamed(
-            widget.redirectRoute!,
-            arguments: widget.routeArguments,
-          );
-        } else {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => const HomeScreen()),
-          );
+        developer.log('Session marked as verified, calling onSuccess',
+            name: 'TwoFactorVerification');
+
+        // کمی صبر کن و سپس به صفحه اصلی برو
+        await Future.delayed(const Duration(seconds: 1));
+
+        if (mounted) {
+          widget.onSuccess();
         }
-      }
-    } catch (e) {
-      setState(() {
-        _errorMessage = 'کد وارد شده صحیح نیست. لطفاً دوباره تلاش کنید.';
-      });
-
-      // ثبت لاگ امنیتی ناموفق
-      try {
-        await supabase.from('security_logs').insert({
-          'user_id': widget.userId,
-          'event_type': '2fa_verification_failed',
-          'description': 'تایید دو مرحله‌ای ناموفق',
-          'created_at': DateTime.now().toIso8601String(),
+      } else {
+        setState(() {
+          _errorMessage = 'کد وارد شده صحیح نیست';
         });
-      } catch (logError) {
-        print('خطا در ثبت لاگ: $logError');
       }
+    } catch (e) {
+      developer.log('Error verifying user code: $e',
+          name: 'TwoFactorVerification');
+      setState(() {
+        _errorMessage = 'خطا در تایید کد: $e';
+      });
     } finally {
       setState(() {
         _isVerifying = false;
@@ -154,11 +108,20 @@ class _TwoFactorVerificationScreenState
     }
   }
 
+  /// تایید کد بکاپ
   Future<void> _verifyBackupCode() async {
-    final backupCode = _backupCodeController.text.trim();
-    if (backupCode.isEmpty) {
+    final code = _backupCodeController.text.trim();
+
+    if (code.isEmpty) {
       setState(() {
-        _errorMessage = 'لطفاً کد پشتیبان را وارد کنید';
+        _errorMessage = 'لطفاً کد بکاپ را وارد کنید';
+      });
+      return;
+    }
+
+    if (code.length != 8) {
+      setState(() {
+        _errorMessage = 'کد بکاپ باید دقیقاً 8 رقم باشد';
       });
       return;
     }
@@ -169,52 +132,37 @@ class _TwoFactorVerificationScreenState
     });
 
     try {
-      // بررسی کد پشتیبان در جدول user_security
-      final response = await supabase
-          .from('user_security')
-          .select('backup_codes')
-          .eq('user_id', widget.userId)
-          .single();
+      developer.log('Verifying backup code for user: ${widget.userId}',
+          name: 'TwoFactorVerification');
 
-      if (response == null) {
-        throw Exception('اطلاعات امنیتی کاربر یافت نشد');
-      }
+      // اعتبارسنجی کد بکاپ
+      final isValid =
+          await Simple2FAService.validateBackupCode(widget.userId, code);
 
-      final backupCodes = List<String>.from(response['backup_codes'] ?? []);
-      if (!backupCodes.contains(backupCode)) {
-        throw Exception('کد پشتیبان صحیح نیست');
-      }
+      developer.log('Backup code validation result: $isValid',
+          name: 'TwoFactorVerification');
 
-      // حذف کد پشتیبان استفاده شده
-      backupCodes.remove(backupCode);
-      await supabase.from('user_security').update({
-        'backup_codes': backupCodes,
-      }).eq('user_id', widget.userId);
+      if (isValid) {
+        developer.log(
+            'Backup code validation successful, marking session as verified',
+            name: 'TwoFactorVerification');
 
-      // ثبت لاگ امنیتی
-      await supabase.from('security_logs').insert({
-        'user_id': widget.userId,
-        'event_type': 'backup_code_used',
-        'description': 'استفاده از کد پشتیبان',
-        'created_at': DateTime.now().toIso8601String(),
-      });
+        // علامت‌گذاری نشست فعلی به عنوان تایید شده
+        await Simple2FAService.markSessionAsVerified(widget.userId);
 
-      // انتقال به صفحه اصلی
-      if (mounted) {
-        if (widget.redirectRoute != null) {
-          Navigator.of(context).pushReplacementNamed(
-            widget.redirectRoute!,
-            arguments: widget.routeArguments,
-          );
-        } else {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => const HomeScreen()),
-          );
-        }
+        developer.log('Session marked as verified, calling onSuccess',
+            name: 'TwoFactorVerification');
+        widget.onSuccess();
+      } else {
+        setState(() {
+          _errorMessage = 'کد بکاپ وارد شده صحیح نیست';
+        });
       }
     } catch (e) {
+      developer.log('Error verifying backup code: $e',
+          name: 'TwoFactorVerification');
       setState(() {
-        _errorMessage = 'کد پشتیبان صحیح نیست. لطفاً دوباره تلاش کنید.';
+        _errorMessage = 'خطا در تایید کد بکاپ: $e';
       });
     } finally {
       setState(() {
@@ -223,287 +171,272 @@ class _TwoFactorVerificationScreenState
     }
   }
 
-  void _toggleBackupCodeInput() {
+  /// تغییر به حالت ورود کد بکاپ
+  void _switchToBackupCode() {
     setState(() {
-      _showBackupCodeInput = !_showBackupCodeInput;
+      _showBackupCodeInput = true;
       _errorMessage = '';
     });
+    _backupCodeFocusNode.requestFocus();
+  }
+
+  /// تغییر به حالت ورود کد کاربر
+  void _switchToTOTPCode() {
+    setState(() {
+      _showBackupCodeInput = false;
+      _errorMessage = '';
+    });
+    _totpCodeFocusNode.requestFocus();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: const Text('تایید دو مرحله‌ای'),
-        centerTitle: true,
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        foregroundColor: Colors.black87,
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            children: [
-              const SizedBox(height: 40),
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final primaryColor = theme.primaryColor;
 
-              // آیکون و عنوان
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(40),
+    return Scaffold(
+      backgroundColor:
+          isDark ? theme.scaffoldBackgroundColor : Colors.grey.shade50,
+      appBar: AppBar(
+        title: const Text(
+          'تایید احراز هویت دو مرحله‌ای',
+          style: TextStyle(fontFamily: 'Vazir', fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // آیکون امنیت
+            Icon(
+              Icons.security,
+              size: 80,
+              color: primaryColor,
+            ),
+            const SizedBox(height: 32),
+
+            // عنوان
+            Text(
+              'احراز هویت دو مرحله‌ای',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontFamily: 'Vazir',
+                    fontWeight: FontWeight.bold,
+                    color: isDark
+                        ? theme.textTheme.headlineMedium?.color
+                        : primaryColor,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+
+            // توضیحات
+            Text(
+              _showBackupCodeInput
+                  ? 'کد بکاپ 8 رقمی خود را وارد کنید'
+                  : 'کد 6 رقمی احراز هویت خود را وارد کنید',
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    fontFamily: 'Vazir',
+                    color: Colors.grey.shade600,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 32),
+
+            // ورودی کد
+            if (!_showBackupCodeInput) ...[
+              // ورودی کد 6 رقمی
+              TextField(
+                controller: _totpCodeController,
+                focusNode: _totpCodeFocusNode,
+                decoration: InputDecoration(
+                  labelText: 'کد 6 رقمی',
+                  hintText: '123456',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  prefixIcon: const Icon(Icons.security),
+                  counterText: '',
                 ),
-                child: const Icon(
-                  Icons.security,
-                  size: 40,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontFamily: 'Vazir',
+                  fontSize: 18,
+                  letterSpacing: 2,
+                ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(6),
+                ],
+                onSubmitted: (_) => _verifyUserCode(),
+              ),
+            ] else ...[
+              // ورودی کد بکاپ
+              TextField(
+                controller: _backupCodeController,
+                focusNode: _backupCodeFocusNode,
+                decoration: InputDecoration(
+                  labelText: 'کد بکاپ 8 رقمی',
+                  hintText: '12345678',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  prefixIcon: const Icon(Icons.backup),
+                  counterText: '',
+                ),
+                keyboardType: TextInputType.number,
+                maxLength: 8,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontFamily: 'Vazir',
+                  fontSize: 18,
+                  letterSpacing: 2,
+                ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(8),
+                ],
+                onSubmitted: (_) => _verifyBackupCode(),
+              ),
+            ],
+
+            const SizedBox(height: 24),
+
+            // دکمه تایید
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isVerifying
+                    ? null
+                    : (_showBackupCodeInput
+                        ? _verifyBackupCode
+                        : _verifyUserCode),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.all(16),
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: _isVerifying
+                    ? const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          ),
+                          SizedBox(width: 8),
+                          Text('در حال تایید...'),
+                        ],
+                      )
+                    : Text(
+                        _showBackupCodeInput ? 'تایید کد بکاپ' : 'تایید کد',
+                        style: const TextStyle(
+                          fontFamily: 'Vazir',
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // دکمه تغییر حالت
+            TextButton(
+              onPressed: _showBackupCodeInput
+                  ? _switchToTOTPCode
+                  : _switchToBackupCode,
+              child: Text(
+                _showBackupCodeInput
+                    ? 'استفاده از کد 6 رقمی'
+                    : 'استفاده از کد بکاپ',
+                style: const TextStyle(
+                  fontFamily: 'Vazir',
                   color: Colors.blue,
                 ),
               ),
+            ),
 
-              const SizedBox(height: 24),
+            const SizedBox(height: 16),
 
-              const Text(
-                'تایید دو مرحله‌ای',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-
-              const SizedBox(height: 12),
-
-              const Text(
-                'کد ۶ رقمی ارسال شده به اپلیکیشن احراز هویت خود را وارد کنید',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey,
-                ),
-                textAlign: TextAlign.center,
-              ),
-
-              const SizedBox(height: 40),
-
-              // ورودی کد ۶ رقمی
-              if (!_showBackupCodeInput) ...[
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: List.generate(
-                    6,
-                    (index) => SizedBox(
-                      width: 50,
-                      child: TextField(
-                        controller: _controllers[index],
-                        focusNode: _focusNodes[index],
-                        textAlign: TextAlign.center,
-                        keyboardType: TextInputType.number,
-                        maxLength: 1,
-                        decoration: InputDecoration(
-                          counterText: '',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: _errorMessage.isNotEmpty
-                                  ? Colors.red
-                                  : Colors.grey[300]!,
-                            ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                              color: Colors.blue,
-                              width: 2,
-                            ),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.grey[300]!,
-                            ),
-                          ),
-                        ),
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        onChanged: (value) {
-                          if (value.length == 1 && index < 5) {
-                            _focusNodes[index + 1].requestFocus();
-                          }
-                        },
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // دکمه تایید
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _isVerifying ? null : _verifyCode,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: _isVerifying
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        : const Text(
-                            'تایید',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                  ),
-                ),
-              ],
-
-              // ورودی کد پشتیبان
-              if (_showBackupCodeInput) ...[
-                TextField(
-                  controller: _backupCodeController,
-                  decoration: InputDecoration(
-                    labelText: 'کد پشتیبان',
-                    hintText: 'کد ۸ رقمی پشتیبان را وارد کنید',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    prefixIcon: const Icon(Icons.backup),
-                  ),
-                  keyboardType: TextInputType.number,
-                  maxLength: 9, // فرمت: XXXX-XXXX
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _isVerifying ? null : _verifyBackupCode,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: _isVerifying
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        : const Text(
-                            'تایید کد پشتیبان',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                  ),
-                ),
-              ],
-
-              const SizedBox(height: 24),
-
-              // دکمه تغییر نوع ورودی
-              TextButton(
-                onPressed: _toggleBackupCodeInput,
-                child: Text(
-                  _showBackupCodeInput
-                      ? 'ورود با کد تایید'
-                      : 'استفاده از کد پشتیبان',
-                  style: const TextStyle(
-                    color: Colors.blue,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-
-              // نمایش خطا
-              if (_errorMessage.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.error_outline, color: Colors.red),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _errorMessage,
-                          style: const TextStyle(color: Colors.red),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-
-              const Spacer(),
-
-              // راهنما
+            // نمایش خطا
+            if (_errorMessage.isNotEmpty)
               Container(
-                padding: const EdgeInsets.all(16),
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                  color: Colors.red.shade50,
+                  border: Border.all(color: Colors.red.shade200),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: Column(
-                  children: [
-                    const Icon(
-                      Icons.info_outline,
-                      color: Colors.blue,
-                      size: 24,
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'راهنما',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'اگر اپلیکیشن احراز هویت در دسترس نیست، می‌توانید از کدهای پشتیبان استفاده کنید.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
+                child: Text(
+                  _errorMessage,
+                  style: TextStyle(
+                    fontFamily: 'Vazir',
+                    color: Colors.red.shade700,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
               ),
-            ],
-          ),
+
+            const SizedBox(height: 32),
+
+            // راهنما
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                border: Border.all(color: Colors.blue.shade200),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: Colors.blue.shade600,
+                    size: 24,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'راهنما',
+                    style: TextStyle(
+                      fontFamily: 'Vazir',
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _showBackupCodeInput
+                        ? 'کدهای بکاپ 8 رقمی هستند و پس از استفاده حذف می‌شوند'
+                        : 'کد 6 رقمی خود را که هنگام فعال‌سازی 2FA تعیین کرده‌اید وارد کنید',
+                    style: TextStyle(
+                      fontFamily: 'Vazir',
+                      color: Colors.blue.shade600,
+                      fontSize: 12,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

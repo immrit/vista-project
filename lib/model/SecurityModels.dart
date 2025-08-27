@@ -8,98 +8,68 @@ class UserSecurityModel {
   final String userId;
   final bool twoFactorEnabled;
   final String? twoFactorSecret;
-  final List<String>? backupCodes;
+  final String? userCode;
+  final String? backupCodes; // Changed from List<String> to String to match DB
   final DateTime? twoFactorSetupAt;
-  final bool appLockEnabled;
-  final String? appLockType; // 'pin', 'pattern', 'biometric'
-  final String? appLockHash;
-  final DateTime? lastLoginAt;
-  final String? loginIpAddress;
-  final Map<String, dynamic>? deviceInfo;
-  final int failedLoginAttempts;
-  final DateTime? lockedUntil;
-  final int? securityScore;
-  final DateTime? lastSecurityCheck;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final int? loginAttempts;
+  final DateTime? lastLoginAttempt;
+  final bool? accountLocked;
+  final DateTime? lockExpiresAt;
+  final int? maxLoginAttempts;
+  final int? lockDurationMinutes;
 
   UserSecurityModel({
     required this.id,
     required this.userId,
     required this.twoFactorEnabled,
     this.twoFactorSecret,
+    this.userCode,
     this.backupCodes,
     this.twoFactorSetupAt,
-    required this.appLockEnabled,
-    this.appLockType,
-    this.appLockHash,
-    this.lastLoginAt,
-    this.loginIpAddress,
-    this.deviceInfo,
-    required this.failedLoginAttempts,
-    this.lockedUntil,
-    this.securityScore,
-    this.lastSecurityCheck,
     required this.createdAt,
     required this.updatedAt,
+    this.loginAttempts,
+    this.lastLoginAttempt,
+    this.accountLocked,
+    this.lockExpiresAt,
+    this.maxLoginAttempts,
+    this.lockDurationMinutes,
   });
 
   factory UserSecurityModel.fromMap(Map<String, dynamic> map) {
     try {
-      debugPrint('🔧 UserSecurityModel.fromMap شروع شد');
-      debugPrint('📄 داده ورودی: $map');
-
-      // بررسی فیلدهای اجباری
-      if (map['id'] == null) {
-        debugPrint('❌ فیلد id موجود نیست');
-        throw Exception('فیلد id در UserSecurityModel موجود نیست');
-      }
-
-      if (map['user_id'] == null) {
-        debugPrint('❌ فیلد user_id موجود نیست');
-        throw Exception('فیلد user_id در UserSecurityModel موجود نیست');
-      }
-
-      // مدیریت فیلدهای تاریخ با مقدار پیش‌فرض
-      final now = DateTime.now();
-      final createdAt =
-          map['created_at'] != null ? DateTime.parse(map['created_at']) : now;
-      final updatedAt =
-          map['updated_at'] != null ? DateTime.parse(map['updated_at']) : now;
-
-      debugPrint('📅 تاریخ‌ها: createdAt=$createdAt, updatedAt=$updatedAt');
+      debugPrint('🔍 Creating UserSecurityModel from map: $map');
 
       final model = UserSecurityModel(
-        id: map['id'] ?? '',
-        userId: map['user_id'] ?? '',
-        twoFactorEnabled: map['two_factor_enabled'] ?? false,
-        twoFactorSecret: map['two_factor_secret'],
-        backupCodes: map['backup_codes'] != null
-            ? List<String>.from(map['backup_codes'])
-            : null,
+        id: map['id']?.toString() ?? '',
+        userId: map['user_id']?.toString() ?? '',
+        twoFactorEnabled: map['two_factor_enabled'] == true,
+        twoFactorSecret: map['two_factor_secret']?.toString(),
+        userCode: map['user_code']?.toString(),
+        backupCodes: map['backup_codes']?.toString(),
         twoFactorSetupAt: map['two_factor_setup_at'] != null
-            ? DateTime.parse(map['two_factor_setup_at'])
+            ? DateTime.parse(map['two_factor_setup_at'].toString())
             : null,
-        appLockEnabled: map['app_lock_enabled'] ?? false,
-        appLockType: map['app_lock_type'],
-        appLockHash: map['app_lock_hash'],
-        lastLoginAt: map['last_login_at'] != null
-            ? DateTime.parse(map['last_login_at'])
+        createdAt: DateTime.parse(map['created_at']),
+        updatedAt: DateTime.parse(map['updated_at']),
+        loginAttempts: map['login_attempts'] is int
+            ? map['login_attempts']
+            : int.tryParse(map['login_attempts']?.toString() ?? '0'),
+        lastLoginAttempt: map['last_login_attempt'] != null
+            ? DateTime.parse(map['last_login_attempt'].toString())
             : null,
-        loginIpAddress: map['login_ip_address'],
-        deviceInfo: map['device_info'] != null
-            ? Map<String, dynamic>.from(map['device_info'])
+        accountLocked: map['account_locked'] == true,
+        lockExpiresAt: map['lock_expires_at'] != null
+            ? DateTime.parse(map['lock_expires_at'].toString())
             : null,
-        failedLoginAttempts: map['failed_login_attempts'] ?? 0,
-        lockedUntil: map['locked_until'] != null
-            ? DateTime.parse(map['locked_until'])
-            : null,
-        securityScore: map['security_score'],
-        lastSecurityCheck: map['last_security_check'] != null
-            ? DateTime.parse(map['last_security_check'])
-            : null,
-        createdAt: createdAt,
-        updatedAt: updatedAt,
+        maxLoginAttempts: map['max_login_attempts'] is int
+            ? map['max_login_attempts']
+            : int.tryParse(map['max_login_attempts']?.toString() ?? '5'),
+        lockDurationMinutes: map['lock_duration_minutes'] is int
+            ? map['lock_duration_minutes']
+            : int.tryParse(map['lock_duration_minutes']?.toString() ?? '30'),
       );
 
       debugPrint('✅ UserSecurityModel با موفقیت ایجاد شد');
@@ -117,20 +87,17 @@ class UserSecurityModel {
       'user_id': userId,
       'two_factor_enabled': twoFactorEnabled,
       'two_factor_secret': twoFactorSecret,
+      'user_code': userCode,
       'backup_codes': backupCodes,
       'two_factor_setup_at': twoFactorSetupAt?.toIso8601String(),
-      'app_lock_enabled': appLockEnabled,
-      'app_lock_type': appLockType,
-      'app_lock_hash': appLockHash,
-      'last_login_at': lastLoginAt?.toIso8601String(),
-      'login_ip_address': loginIpAddress,
-      'device_info': deviceInfo,
-      'failed_login_attempts': failedLoginAttempts,
-      'locked_until': lockedUntil?.toIso8601String(),
-      'security_score': securityScore,
-      'last_security_check': lastSecurityCheck?.toIso8601String(),
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
+      'login_attempts': loginAttempts,
+      'last_login_attempt': lastLoginAttempt?.toIso8601String(),
+      'account_locked': accountLocked,
+      'lock_expires_at': lockExpiresAt?.toIso8601String(),
+      'max_login_attempts': maxLoginAttempts,
+      'lock_duration_minutes': lockDurationMinutes,
     };
   }
 
@@ -144,47 +111,41 @@ class UserSecurityModel {
     String? userId,
     bool? twoFactorEnabled,
     String? twoFactorSecret,
-    List<String>? backupCodes,
+    String? userCode,
+    String? backupCodes,
     DateTime? twoFactorSetupAt,
-    bool? appLockEnabled,
-    String? appLockType,
-    String? appLockHash,
-    DateTime? lastLoginAt,
-    String? loginIpAddress,
-    Map<String, dynamic>? deviceInfo,
-    int? failedLoginAttempts,
-    DateTime? lockedUntil,
-    int? securityScore,
-    DateTime? lastSecurityCheck,
     DateTime? createdAt,
     DateTime? updatedAt,
+    int? loginAttempts,
+    DateTime? lastLoginAttempt,
+    bool? accountLocked,
+    DateTime? lockExpiresAt,
+    int? maxLoginAttempts,
+    int? lockDurationMinutes,
   }) {
     return UserSecurityModel(
       id: id ?? this.id,
       userId: userId ?? this.userId,
       twoFactorEnabled: twoFactorEnabled ?? this.twoFactorEnabled,
       twoFactorSecret: twoFactorSecret ?? this.twoFactorSecret,
+      userCode: userCode ?? this.userCode,
       backupCodes: backupCodes ?? this.backupCodes,
       twoFactorSetupAt: twoFactorSetupAt ?? this.twoFactorSetupAt,
-      appLockEnabled: appLockEnabled ?? this.appLockEnabled,
-      appLockType: appLockType ?? this.appLockType,
-      appLockHash: appLockHash ?? this.appLockHash,
-      lastLoginAt: lastLoginAt ?? this.lastLoginAt,
-      loginIpAddress: loginIpAddress ?? this.loginIpAddress,
-      deviceInfo: deviceInfo ?? this.deviceInfo,
-      failedLoginAttempts: failedLoginAttempts ?? this.failedLoginAttempts,
-      lockedUntil: lockedUntil ?? this.lockedUntil,
-      securityScore: securityScore ?? this.securityScore,
-      lastSecurityCheck: lastSecurityCheck ?? this.lastSecurityCheck,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      loginAttempts: loginAttempts ?? this.loginAttempts,
+      lastLoginAttempt: lastLoginAttempt ?? this.lastLoginAttempt,
+      accountLocked: accountLocked ?? this.accountLocked,
+      lockExpiresAt: lockExpiresAt ?? this.lockExpiresAt,
+      maxLoginAttempts: maxLoginAttempts ?? this.maxLoginAttempts,
+      lockDurationMinutes: lockDurationMinutes ?? this.lockDurationMinutes,
     );
   }
 
-  /// بررسی اینکه آیا حساب قفل شده یا نه
+  /// بررسی اینکه حساب قفل شده یا نه
   bool get isLocked {
-    if (lockedUntil == null) return false;
-    return DateTime.now().isBefore(lockedUntil!);
+    if (lockExpiresAt == null) return false;
+    return DateTime.now().isBefore(lockExpiresAt!);
   }
 
   /// بررسی اینکه آیا 2FA فعال و تنظیم شده یا نه
@@ -192,12 +153,15 @@ class UserSecurityModel {
     return twoFactorEnabled && twoFactorSecret != null;
   }
 
-  /// محاسبه سطح امنیت بر اساس امتیاز
-  SecurityLevel get securityLevel {
-    final score = securityScore ?? 50;
-    if (score >= 80) return SecurityLevel.high;
-    if (score >= 60) return SecurityLevel.medium;
-    return SecurityLevel.low;
+  /// تبدیل backup_codes از رشته به لیست
+  List<String> get backupCodesList {
+    if (backupCodes == null || backupCodes!.isEmpty) return [];
+    return backupCodes!.split(',').map((e) => e.trim()).toList();
+  }
+
+  /// تبدیل لیست به رشته برای ذخیره در دیتابیس
+  static String backupCodesToString(List<String> codes) {
+    return codes.join(',');
   }
 }
 
@@ -248,33 +212,79 @@ class ActiveSessionModel {
   });
 
   factory ActiveSessionModel.fromMap(Map<String, dynamic> map) {
-    return ActiveSessionModel(
-      id: map['id'] ?? '',
-      userId: map['user_id'] ?? '',
-      sessionToken: map['session_token'] ?? '',
-      refreshTokenHash: map['refresh_token_hash'],
-      deviceType: map['device_type'],
-      deviceName: map['device_name'],
-      osName: map['os_name'],
-      osVersion: map['os_version'],
-      appVersion: map['app_version'],
-      ipAddress: map['ip_address'],
-      location: map['location'] != null
-          ? Map<String, dynamic>.from(map['location'])
-          : null,
-      isCurrent: map['is_current'] ?? false,
-      lastActivity: DateTime.parse(map['last_activity']),
-      createdAt: DateTime.parse(map['created_at']),
-      expiresAt:
-          map['expires_at'] != null ? DateTime.parse(map['expires_at']) : null,
-      browserInfo: map['browser_info'],
-      platform: map['platform'],
-      isTrusted: map['is_trusted'] ?? false,
-      loginMethod: map['login_method'] ?? 'password',
-      sessionMetadata: map['session_metadata'] != null
-          ? Map<String, dynamic>.from(map['session_metadata'])
-          : null,
-    );
+    try {
+      // بررسی فیلدهای اجباری
+      if (map['id'] == null ||
+          map['user_id'] == null ||
+          map['session_token'] == null) {
+        debugPrint('❌ فیلدهای اجباری در ActiveSessionModel موجود نیستند: $map');
+        throw Exception('فیلدهای اجباری در ActiveSessionModel موجود نیستند');
+      }
+
+      // مدیریت فیلدهای تاریخ با مقدار پیش‌فرض
+      final now = DateTime.now();
+      DateTime lastActivity;
+      DateTime createdAt;
+      DateTime? expiresAt;
+
+      try {
+        lastActivity = map['last_activity'] != null
+            ? DateTime.parse(map['last_activity'].toString())
+            : now;
+      } catch (e) {
+        debugPrint('⚠️ خطا در پارس last_activity، استفاده از زمان فعلی: $e');
+        lastActivity = now;
+      }
+
+      try {
+        createdAt = map['created_at'] != null
+            ? DateTime.parse(map['created_at'].toString())
+            : now;
+      } catch (e) {
+        debugPrint('⚠️ خطا در پارس created_at، استفاده از زمان فعلی: $e');
+        createdAt = now;
+      }
+
+      try {
+        expiresAt = map['expires_at'] != null
+            ? DateTime.parse(map['expires_at'].toString())
+            : null;
+      } catch (e) {
+        debugPrint('⚠️ خطا در پارس expires_at، تنظیم null: $e');
+        expiresAt = null;
+      }
+
+      return ActiveSessionModel(
+        id: map['id']?.toString() ?? '',
+        userId: map['user_id']?.toString() ?? '',
+        sessionToken: map['session_token']?.toString() ?? '',
+        refreshTokenHash: map['refresh_token_hash']?.toString(),
+        deviceType: map['device_type']?.toString(),
+        deviceName: map['device_name']?.toString(),
+        osName: map['os_name']?.toString(),
+        osVersion: map['os_version']?.toString(),
+        appVersion: map['app_version']?.toString(),
+        ipAddress: map['ip_address']?.toString(),
+        location: map['location'] != null
+            ? Map<String, dynamic>.from(map['location'])
+            : null,
+        isCurrent: map['is_current'] ?? false,
+        lastActivity: lastActivity,
+        createdAt: createdAt,
+        expiresAt: expiresAt,
+        browserInfo: map['browser_info']?.toString(),
+        platform: map['platform']?.toString(),
+        isTrusted: map['is_trusted'] ?? false,
+        loginMethod: map['login_method']?.toString() ?? 'password',
+        sessionMetadata: map['session_metadata'] != null
+            ? Map<String, dynamic>.from(map['session_metadata'])
+            : null,
+      );
+    } catch (e) {
+      debugPrint('❌ خطا در ایجاد ActiveSessionModel: $e');
+      debugPrint('📄 داده ورودی: $map');
+      rethrow;
+    }
   }
 
   Map<String, dynamic> toMap() {
@@ -330,6 +340,105 @@ class ActiveSessionModel {
       default:
         return '📟';
     }
+  }
+
+  /// بررسی اینکه آیا نشست در 24 ساعت گذشته فعال بوده
+  bool get isRecentlyActive {
+    return timeSinceLastActivity.inHours < 24;
+  }
+
+  /// مدت زمان باقی‌مانده تا انقضا
+  Duration? get timeUntilExpiry {
+    if (expiresAt == null) return null;
+    final now = DateTime.now();
+    if (now.isAfter(expiresAt!)) return Duration.zero;
+    return expiresAt!.difference(now);
+  }
+
+  /// نمایش وضعیت نشست
+  String get statusText {
+    if (isExpired) return 'منقضی شده';
+    if (isCurrent) return 'فعلی';
+    if (isRecentlyActive) return 'فعال اخیر';
+    return 'غیرفعال';
+  }
+
+  /// کپی کردن با تغییرات
+  ActiveSessionModel copyWith({
+    String? id,
+    String? userId,
+    String? sessionToken,
+    String? refreshTokenHash,
+    String? deviceType,
+    String? deviceName,
+    String? osName,
+    String? osVersion,
+    String? appVersion,
+    String? ipAddress,
+    Map<String, dynamic>? location,
+    bool? isCurrent,
+    DateTime? lastActivity,
+    DateTime? createdAt,
+    DateTime? expiresAt,
+    String? browserInfo,
+    String? platform,
+    bool? isTrusted,
+    String? loginMethod,
+    Map<String, dynamic>? sessionMetadata,
+  }) {
+    return ActiveSessionModel(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      sessionToken: sessionToken ?? this.sessionToken,
+      refreshTokenHash: refreshTokenHash ?? this.refreshTokenHash,
+      deviceType: deviceType ?? this.deviceType,
+      deviceName: deviceName ?? this.deviceName,
+      osName: osName ?? this.osName,
+      osVersion: osVersion ?? this.osVersion,
+      appVersion: appVersion ?? this.appVersion,
+      ipAddress: ipAddress ?? this.ipAddress,
+      location: location ?? this.location,
+      isCurrent: isCurrent ?? this.isCurrent,
+      lastActivity: lastActivity ?? this.lastActivity,
+      createdAt: createdAt ?? this.createdAt,
+      expiresAt: expiresAt ?? this.expiresAt,
+      browserInfo: browserInfo ?? this.browserInfo,
+      platform: platform ?? this.platform,
+      isTrusted: isTrusted ?? this.isTrusted,
+      loginMethod: loginMethod ?? this.loginMethod,
+      sessionMetadata: sessionMetadata ?? this.sessionMetadata,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is ActiveSessionModel &&
+        other.id == id &&
+        other.userId == userId &&
+        other.sessionToken == sessionToken;
+  }
+
+  @override
+  int get hashCode {
+    return Object.hash(id, userId, sessionToken);
+  }
+
+  @override
+  String toString() {
+    return 'ActiveSessionModel(id: $id, userId: $userId, deviceType: $deviceType, isCurrent: $isCurrent, status: $statusText)';
+  }
+
+  /// ایجاد نشست خالی
+  static ActiveSessionModel empty() {
+    return ActiveSessionModel(
+      id: '',
+      userId: '',
+      sessionToken: '',
+      isCurrent: false,
+      lastActivity: DateTime.now(),
+      createdAt: DateTime.now(),
+    );
   }
 }
 

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:developer' as developer;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -20,6 +21,8 @@ import '../screen/PublicPosts/profileScreen.dart';
 import 'themes.dart';
 import '../../DB/message_cache_service.dart';
 import '../../DB/conversation_cache_service.dart';
+import '../../security/simple_2fa_service.dart';
+import 'const.dart';
 
 class topText extends StatelessWidget {
   topText({
@@ -415,11 +418,42 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
             style: TextStyle(color: dynamicTheme.colorScheme.error),
           ),
           onTap: () async {
-            await MessageCacheService().clearAllCache();
-            await ConversationCacheService()
-                .clearCache(supabase.auth.currentUser!.id);
-            await supabase.auth.signOut();
-            Navigator.pushReplacementNamed(context, '/welcome');
+            try {
+              // پاک کردن کش پیام‌ها و مکالمات
+              try {
+                await MessageCacheService().clearAllCache();
+                await ConversationCacheService()
+                    .clearCache(supabase.auth.currentUser!.id);
+              } catch (e) {
+                developer.log('Error clearing message/conversation cache: $e');
+                // ادامه کار حتی اگر پاک کردن کش با خطا مواجه شود
+              }
+
+              // پاک کردن اطلاعات تایید 2FA نشست
+              if (supabase.auth.currentUser != null) {
+                try {
+                  await Simple2FAService.forceClearSessionVerification();
+                } catch (e) {
+                  developer.log('Error clearing 2FA session verification: $e');
+                  // ادامه کار حتی اگر پاک کردن 2FA با خطا مواجه شود
+                }
+              }
+
+              // خروج از حساب
+              await supabase.auth.signOut();
+              Navigator.pushReplacementNamed(context, '/welcome');
+            } catch (e) {
+              developer.log('Error during logout: $e');
+              // در صورت خطا، باز هم سعی کن از حساب خارج شو
+              try {
+                await supabase.auth.signOut();
+                Navigator.pushReplacementNamed(context, '/welcome');
+              } catch (finalError) {
+                developer.log('Final logout error: $finalError');
+                // آخرین تلاش: بازگشت به صفحه welcome
+                Navigator.pushReplacementNamed(context, '/welcome');
+              }
+            }
           },
         ),
       ],

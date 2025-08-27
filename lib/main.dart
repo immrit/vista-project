@@ -40,6 +40,9 @@ import 'view/screen/PublicPosts/profileScreen.dart';
 import 'view/screen/ouathUser/TwoFactorVerificationScreen.dart';
 import 'view/screen/ouathUser/TwoFactorSetupScreen.dart';
 import 'security/e2ee_service.dart';
+import 'security/simple_2fa_service.dart';
+import 'services/ActiveSessionsService.dart';
+import 'services/DatabaseSchemaService.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -80,6 +83,16 @@ void main() async {
 
   // راه‌اندازی Supabase
   await initializeSupabaseWithFailover();
+
+  // راه‌اندازی ساختار دیتابیس
+  try {
+    await DatabaseSchemaService.initializeDatabase();
+    debugPrint('✅ ساختار دیتابیس با موفقیت راه‌اندازی شد');
+  } catch (e) {
+    debugPrint('⚠️ خطا در راه‌اندازی ساختار دیتابیس: $e');
+    debugPrint(
+        '💡 لطفاً فایل database_migrations.sql را در Supabase اجرا کنید');
+  }
 
   // راه‌اندازی اعلان‌های محلی
   await flutterLocalNotificationsPlugin.initialize(
@@ -168,24 +181,67 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
     supabase.auth.onAuthStateChange.listen((data) async {
       if (data.event == AuthChangeEvent.signedIn) {
+        debugPrint('کاربر وارد شد - بررسی تایید دو مرحله‌ای');
+
         // به‌روزرسانی وضعیت آنلاین کاربر
         final chatService = ChatService();
         chatService.updateUserOnlineStatus();
 
-        // بررسی قفل برنامه بعد از لاگین
-        WidgetsBinding.instance.addPostFrameCallback((_) {
+        // بررسی تایید دو مرحله‌ای بعد از لاگین
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
           if (mounted) {
-            debugPrint('بررسی قفل برنامه بعد از لاگین');
-            // _checkAppLockStatus(); // Removed app lock check
+            await _checkTwoFactorAuth();
           }
         });
       } else if (data.event == AuthChangeEvent.signedOut) {
-        // بازنشانی وضعیت قفل بعد از خروج
-        debugPrint('بازنشانی وضعیت قفل بعد از خروج');
-        // await ref.read(appLockServiceProvider).resetLockState(); // Removed app lock reset
-        // ref.read(appLockStateProvider.notifier).markLockAsUnlocked(); // Removed app lock state update
+        debugPrint('کاربر خارج شد - پاک کردن نشست‌ها');
+
+        // پاک کردن نشست‌های 2FA
+        final user = data.session?.user;
+        if (user != null) {
+          await Simple2FAService.forceClearSessionVerification();
+        }
       }
     });
+  }
+
+  /// بررسی تایید دو مرحله‌ای
+  Future<void> _checkTwoFactorAuth() async {
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) return;
+
+      // پاک کردن نشست‌های منقضی شده
+      await Simple2FAService.cleanupExpiredSessions();
+
+      // آماده‌سازی برای ورود جدید
+      await Simple2FAService.prepareForNewLogin(user.id);
+
+      final requires2FA = await Simple2FAService.requiresTwoFactorAuth(user.id);
+
+      debugPrint('User ${user.id} requires 2FA: $requires2FA');
+
+      if (requires2FA) {
+        debugPrint('نمایش صفحه تایید دو مرحله‌ای');
+
+        if (mounted) {
+          Navigator.of(context).pushReplacementNamed('/two-factor-verification',
+              arguments: {'userId': user.id});
+        }
+      } else {
+        debugPrint('تایید دو مرحله‌ای مورد نیاز نیست');
+
+        // ایجاد نشست فعال در دیتابیس
+        try {
+          await ActiveSessionsService.createLoginSession(user.id);
+          debugPrint('نشست فعال در دیتابیس ایجاد شد');
+        } catch (e) {
+          debugPrint('خطا در ایجاد نشست فعال: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('خطا در بررسی تایید دو مرحله‌ای: $e');
+    }
   }
 
   @override
@@ -503,15 +559,14 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                   final args = ModalRoute.of(context)?.settings.arguments
                       as Map<String, dynamic>?;
                   final userId = args?['userId'] as String?;
-                  final redirectRoute = args?['redirectRoute'] as String?;
-                  final routeArguments =
-                      args?['routeArguments'] as Map<String, dynamic>?;
 
                   if (userId != null) {
                     return TwoFactorVerificationScreen(
                       userId: userId,
-                      redirectRoute: redirectRoute,
-                      routeArguments: routeArguments,
+                      onSuccess: () {
+                        // Navigate to home after successful 2FA verification
+                        Navigator.of(context).pushReplacementNamed('/home');
+                      },
                     );
                   }
                   return const Scaffold(
