@@ -394,13 +394,13 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
                   child: Center(
                     child: Container(
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.3),
+                        color: Colors.black.withValues(alpha: 0.3),
                         shape: BoxShape.circle,
                       ),
                       padding: const EdgeInsets.all(16),
                       child: Icon(
                         Icons.play_arrow,
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withValues(alpha: 0.9),
                         size: 48,
                         semanticLabel: 'پخش ویدیو',
                       ),
@@ -421,7 +421,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
                       scale: value,
                       child: Icon(
                         Icons.favorite,
-                        color: Colors.red.withOpacity(0.9),
+                        color: Colors.red.withValues(alpha: 0.9),
                         size: 100,
                       ),
                     );
@@ -437,7 +437,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
                 child: Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.4),
+                    color: Colors.black.withValues(alpha: 0.4),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -457,7 +457,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.6),
+                    color: Colors.black.withValues(alpha: 0.6),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Icon(
@@ -482,7 +482,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
                         ? _currentPosition.inMilliseconds /
                             _videoDuration.inMilliseconds
                         : 0.0,
-                    backgroundColor: Colors.white.withOpacity(0.3),
+                    backgroundColor: Colors.white.withValues(alpha: 0.3),
                     valueColor:
                         const AlwaysStoppedAnimation<Color>(Colors.white),
                     minHeight: 3,

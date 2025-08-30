@@ -177,6 +177,16 @@ class Settings extends ConsumerWidget {
                       ),
                       _buildDivider(),
                       TelegramSettingsItem(
+                        icon: Icons.bug_report,
+                        iconColor: Colors.orange,
+                        title: 'گزارش مشکل',
+                        subtitle: 'گزارش باگ یا پیشنهاد بهبود',
+                        onTap: () {
+                          _showBugReportBottomSheet(context, ref);
+                        },
+                      ),
+                      _buildDivider(),
+                      TelegramSettingsItem(
                         icon: Icons.info,
                         iconColor: Colors.grey,
                         title: 'درباره ویستا',
@@ -481,6 +491,370 @@ class Settings extends ConsumerWidget {
               child: const Text('متوجه شدم'),
             ),
           ],
+        );
+      },
+    );
+  }
+
+  // نمایش BottomSheet برای گزارش مشکل
+  void _showBugReportBottomSheet(BuildContext context, WidgetRef ref) {
+    final getprofile = ref.read(profileProvider);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.8,
+        builder: (context, scrollController) => Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[400],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              // Title with icon
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.bug_report,
+                        color: Colors.orange,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      'گزارش مشکل',
+                      style:
+                          Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                    ),
+                  ],
+                ),
+              ),
+              // Description
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  'لطفاً مشکل یا پیشنهاد خود را با جزئیات کامل شرح دهید تا بتوانیم بهتر به شما کمک کنیم.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.grey[600],
+                      ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Form
+              Flexible(
+                child: SingleChildScrollView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: _buildBugReportForm(context, getprofile),
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // فرم گزارش مشکل
+  Widget _buildBugReportForm(
+      BuildContext context, AsyncValue<Map<String, dynamic>?> getprofile) {
+    return StatefulBuilder(
+      builder: (context, setState) {
+        final _formKey = GlobalKey<FormState>();
+        final _subjectController = TextEditingController();
+        final _messageController = TextEditingController();
+        bool _isSubmitting = false;
+
+        return Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // موضوع
+              TextFormField(
+                controller: _subjectController,
+                decoration: InputDecoration(
+                  labelText: 'موضوع',
+                  hintText: 'مثال: مشکل در ورود به برنامه',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey[300]!),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey[300]!),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                        color: Theme.of(context).primaryColor, width: 2),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.red[300]!),
+                  ),
+                  prefixIcon: Icon(
+                    Icons.subject,
+                    color: Theme.of(context).primaryColor,
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'لطفاً موضوع پیام را وارد کنید';
+                  }
+                  if (value.length < 5) {
+                    return 'موضوع باید حداقل ۵ کاراکتر باشد';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 20),
+
+              // پیام
+              TextFormField(
+                controller: _messageController,
+                decoration: InputDecoration(
+                  labelText: 'توضیح مشکل یا پیشنهاد',
+                  hintText: 'لطفاً مشکل خود را با جزئیات کامل شرح دهید...',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey[300]!),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey[300]!),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                        color: Theme.of(context).primaryColor, width: 2),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.red[300]!),
+                  ),
+                  alignLabelWithHint: true,
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                ),
+                maxLines: 6,
+                minLines: 4,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'لطفاً پیام خود را وارد کنید';
+                  }
+                  if (value.length < 20) {
+                    return 'پیام باید حداقل ۲۰ کاراکتر باشد';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 24),
+
+              // دکمه ارسال
+              SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: ElevatedButton(
+                  onPressed: _isSubmitting
+                      ? null
+                      : () async {
+                          if (_formKey.currentState!.validate()) {
+                            setState(() {
+                              _isSubmitting = true;
+                            });
+
+                            try {
+                              // دریافت اطلاعات کاربر از profile
+                              final profile = getprofile.value;
+                              final fullName = profile?['full_name'] ?? '';
+                              final email =
+                                  supabase.auth.currentUser?.email ?? '';
+                              final username = profile?['username'] ?? '';
+
+                              // ارسال به سرور - مطابق با ساختار جدول contact_requests
+                              final contactData = {
+                                'full_name': fullName,
+                                'email': email,
+                                'username': username,
+                                'subject': _subjectController.text,
+                                'message': _messageController.text,
+                                'user_id': supabase.auth.currentUser?.id,
+                              };
+
+                              await supabase
+                                  .from('contact_requests')
+                                  .insert(contactData);
+
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                // نمایش TOAST موفقیت‌آمیز
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.check_circle,
+                                          color: Colors.white,
+                                          size: 20,
+                                        ),
+                                        const SizedBox(width: 12),
+                                        const Expanded(
+                                          child: Text(
+                                            'گزارش مشکل شما با موفقیت ارسال شد. متشکریم!',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    backgroundColor: Colors.green[600],
+                                    behavior: SnackBarBehavior.floating,
+                                    margin: const EdgeInsets.all(16),
+                                    duration: const Duration(seconds: 4),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                );
+                              }
+                            } catch (error) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.error_outline,
+                                          color: Colors.white,
+                                          size: 20,
+                                        ),
+                                        const SizedBox(width: 12),
+                                        const Expanded(
+                                          child: Text(
+                                            'خطا در ارسال گزارش. لطفاً دوباره تلاش کنید.',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    backgroundColor: Colors.red[600],
+                                    behavior: SnackBarBehavior.floating,
+                                    margin: const EdgeInsets.all(16),
+                                    duration: const Duration(seconds: 4),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                );
+                              }
+                            } finally {
+                              setState(() {
+                                _isSubmitting = false;
+                              });
+                            }
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 2,
+                    shadowColor:
+                        Theme.of(context).primaryColor.withOpacity(0.3),
+                  ),
+                  child: _isSubmitting
+                      ? Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            const Text(
+                              'در حال ارسال...',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.send,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'ارسال گزارش',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
         );
       },
     );

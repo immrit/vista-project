@@ -52,7 +52,7 @@ class ChatSettingsScreen extends ConsumerWidget {
       margin: const EdgeInsets.symmetric(vertical: 8.0),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16), // گردی بیشتر
-        side: BorderSide(color: theme.dividerColor.withOpacity(0.2)),
+        side: BorderSide(color: theme.dividerColor.withValues(alpha: 0.2)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -63,7 +63,7 @@ class ChatSettingsScreen extends ConsumerWidget {
             leading: Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withOpacity(0.1),
+                color: theme.colorScheme.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -92,7 +92,7 @@ class ChatSettingsScreen extends ConsumerWidget {
             trailing: Icon(
               Icons.arrow_forward_ios_rounded,
               size: 18,
-              color: theme.hintColor.withOpacity(0.7),
+              color: theme.hintColor.withValues(alpha: 0.7),
             ),
           ),
           Divider(
@@ -100,7 +100,7 @@ class ChatSettingsScreen extends ConsumerWidget {
             thickness: 0.5,
             indent: 20,
             endIndent: 20,
-            color: theme.dividerColor.withOpacity(0.2),
+            color: theme.dividerColor.withValues(alpha: 0.2),
           ),
           Padding(
             padding:
@@ -131,7 +131,7 @@ class ChatSettingsScreen extends ConsumerWidget {
                 color: (size == "خالی" ||
                         size.startsWith("خطا") ||
                         size == "نامشخص")
-                    ? theme.hintColor.withOpacity(0.9)
+                    ? theme.hintColor.withValues(alpha: 0.9)
                     : theme.colorScheme.primary,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 0.5),
@@ -141,7 +141,7 @@ class ChatSettingsScreen extends ConsumerWidget {
             height: 18,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              color: theme.colorScheme.primary.withOpacity(0.7),
+              color: theme.colorScheme.primary.withValues(alpha: 0.7),
             ),
           ),
           error: (err, stack) {

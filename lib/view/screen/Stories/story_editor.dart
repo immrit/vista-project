@@ -479,7 +479,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
                           border: InputBorder.none,
                           hintText: 'متن خود را وارد کنید...',
                           hintStyle: TextStyle(
-                            color: _currentColor.withOpacity(0.5),
+                            color: _currentColor.withValues(alpha: 0.5),
                           ),
                         ),
                       ),
@@ -714,7 +714,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
           boxShadow: [
             if (_currentColor == color)
               BoxShadow(
-                color: Colors.blue.withOpacity(0.5),
+                color: Colors.blue.withValues(alpha: 0.5),
                 blurRadius: 6,
                 spreadRadius: 1,
               ),
@@ -778,14 +778,14 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
             children: [
               Icon(
                 Icons.image_not_supported_outlined,
-                color: Colors.white.withOpacity(0.6),
+                color: Colors.white.withValues(alpha: 0.6),
                 size: 64,
               ),
               const SizedBox(height: 16),
               Text(
                 'تصویری انتخاب نشده است',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.8),
+                  color: Colors.white.withValues(alpha: 0.8),
                   fontSize: 16,
                 ),
               ),
@@ -1076,7 +1076,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
           height: 1.2,
           shadows: [
             Shadow(
-              color: Colors.black.withOpacity(0.6),
+              color: Colors.black.withValues(alpha: 0.6),
               offset: const Offset(1, 1),
               blurRadius: 3,
             ),
@@ -1130,7 +1130,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withValues(alpha: 0.3),
               blurRadius: 8,
               offset: const Offset(0, -2),
             ),
@@ -1159,7 +1159,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
               child: TabBar(
                 controller: _tabController,
                 indicator: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.2),
+                  color: Colors.blue.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 labelColor: Colors.blue,
@@ -1377,7 +1377,8 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
                                   boxShadow: isSelected
                                       ? [
                                           BoxShadow(
-                                            color: Colors.blue.withOpacity(0.6),
+                                            color: Colors.blue
+                                                .withValues(alpha: 0.6),
                                             blurRadius: 8,
                                           )
                                         ]
@@ -1486,7 +1487,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.2),
+          color: color.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: color, width: 1),
         ),
@@ -1604,7 +1605,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
                           border: InputBorder.none,
                           hintText: 'متن خود را وارد کنید...',
                           hintStyle: TextStyle(
-                            color: _currentColor.withOpacity(0.5),
+                            color: _currentColor.withValues(alpha: 0.5),
                           ),
                         ),
                       ),
@@ -1787,7 +1788,8 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
                                 boxShadow: isSelected
                                     ? [
                                         BoxShadow(
-                                          color: Colors.blue.withOpacity(0.6),
+                                          color: Colors.blue
+                                              .withValues(alpha: 0.6),
                                           blurRadius: 8,
                                         )
                                       ]
@@ -1833,12 +1835,12 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
   Widget _buildSideToolbar() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.6),
+        color: Colors.black.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white10, width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withValues(alpha: 0.2),
             blurRadius: 10,
           ),
         ],
@@ -1883,7 +1885,9 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 16),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.blue.withOpacity(0.3) : Colors.transparent,
+          color: isSelected
+              ? Colors.blue.withValues(alpha: 0.3)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -1927,7 +1931,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.6),
+          color: Colors.black.withValues(alpha: 0.6),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.white10, width: 1),
         ),
@@ -1971,7 +1975,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
             decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.3),
+              color: Colors.blue.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -1997,7 +2001,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.3),
+                color: Colors.orange.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -2043,8 +2047,8 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
             decoration: BoxDecoration(
               color: _isDrawingMode
-                  ? Colors.blue.withOpacity(0.3)
-                  : Colors.grey.withOpacity(0.3),
+                  ? Colors.blue.withValues(alpha: 0.3)
+                  : Colors.grey.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -2124,7 +2128,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
                   child: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.grey.withOpacity(0.3),
+                      color: Colors.grey.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Icon(Icons.undo, color: Colors.white),
@@ -2139,7 +2143,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.3),
+                    color: Colors.red.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Icon(Icons.delete, color: Colors.white),
@@ -2198,7 +2202,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
                           boxShadow: isSelected
                               ? [
                                   BoxShadow(
-                                    color: Colors.blue.withOpacity(0.3),
+                                    color: Colors.blue.withValues(alpha: 0.3),
                                     blurRadius: 6,
                                   )
                                 ]
@@ -2259,7 +2263,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
               padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
               margin: const EdgeInsets.only(bottom: 8),
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.3),
+                color: Colors.red.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
@@ -2283,7 +2287,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
               padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
               margin: const EdgeInsets.only(bottom: 8),
               decoration: BoxDecoration(
-                color: Colors.purple.withOpacity(0.3),
+                color: Colors.purple.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
@@ -2307,7 +2311,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
               padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
               margin: const EdgeInsets.only(bottom: 8),
               decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.3),
+                color: Colors.green.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
@@ -2330,7 +2334,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen>
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.3),
+                color: Colors.orange.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(

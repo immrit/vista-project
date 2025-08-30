@@ -106,16 +106,6 @@ class AboutSettingsPage extends StatelessWidget {
                 ),
                 _buildDivider(),
                 SettingsListItem(
-                  icon: Icons.bug_report,
-                  iconColor: Colors.red,
-                  title: 'گزارش مشکل',
-                  subtitle: 'گزارش باگ یا پیشنهاد بهبود',
-                  onTap: () {
-                    _showBugReportDialog(context);
-                  },
-                ),
-                _buildDivider(),
-                SettingsListItem(
                   icon: Icons.star,
                   iconColor: Colors.amber,
                   title: 'امتیاز به ویستا',
@@ -261,47 +251,6 @@ class AboutSettingsPage extends StatelessWidget {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('متوجه شدم'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showBugReportDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('گزارش مشکل'),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              decoration: InputDecoration(
-                hintText: 'توضیح مشکل یا پیشنهاد خود را بنویسید...',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 4,
-            ),
-            SizedBox(height: 16),
-            Text(
-              'گزارش شما برای ما ارزشمند است و به بهبود ویستا کمک می‌کند.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('انصراف'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('گزارش شما ارسال شد. متشکریم!')),
-              );
-            },
-            child: const Text('ارسال'),
           ),
         ],
       ),

@@ -98,7 +98,7 @@ class _ChatMessageSearchScreenState
     final style =
         TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color);
     final highlightStyle =
-        style.copyWith(backgroundColor: Colors.amber.withOpacity(0.5));
+        style.copyWith(backgroundColor: Colors.amber.withValues(alpha: 0.5));
 
     final spans = <TextSpan>[];
     int start = 0;

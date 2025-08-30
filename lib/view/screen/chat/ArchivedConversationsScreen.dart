@@ -45,7 +45,7 @@ class ArchivedConversationsScreen extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.archive_outlined,
-                      size: 64, color: theme.hintColor.withOpacity(0.5)),
+                      size: 64, color: theme.hintColor.withValues(alpha: 0.5)),
                   const SizedBox(height: 16),
                   Text(
                     'هیچ گفتگوی بایگانی شده‌ای وجود ندارد.',
@@ -71,7 +71,7 @@ class ArchivedConversationsScreen extends ConsumerWidget {
               thickness: 0.5,
               indent: 82,
               endIndent: 16,
-              color: theme.dividerColor.withOpacity(0.3),
+              color: theme.dividerColor.withValues(alpha: 0.3),
             ),
             itemBuilder: (context, index) {
               final item = archivedConversations[index];
@@ -133,7 +133,7 @@ class ArchivedConversationsScreen extends ConsumerWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(
-              color: theme.dividerColor.withOpacity(0.2),
+              color: theme.dividerColor.withValues(alpha: 0.2),
               width: 1.5,
             ),
           ),
@@ -164,7 +164,7 @@ class ArchivedConversationsScreen extends ConsumerWidget {
       fit: BoxFit.cover,
       errorBuilder: (context, error, stackTrace) {
         return Container(
-          color: theme.colorScheme.secondary.withOpacity(0.1),
+          color: theme.colorScheme.secondary.withValues(alpha: 0.1),
           child: Icon(
             Icons.person_rounded,
             color: theme.colorScheme.secondary,

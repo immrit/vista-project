@@ -1016,7 +1016,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     padding: EdgeInsets.all(8),
                     margin: EdgeInsets.only(top: 8),
                     decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.1),
+                      color: Colors.red.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
@@ -1444,7 +1444,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget _buildUploadProgress() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.35),
+        color: Colors.black.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Center(
@@ -1473,7 +1473,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Widget _buildCloseButton() {
     return Material(
-      color: Colors.black.withOpacity(0.5),
+      color: Colors.black.withValues(alpha: 0.5),
       shape: const CircleBorder(),
       child: IconButton(
         icon: const Icon(Icons.close, color: Colors.white, size: 22),
@@ -1849,7 +1849,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.35),
+                        color: Colors.black.withValues(alpha: 0.35),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Row(
@@ -1890,8 +1890,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final double opacity = isTemp ? 0.6 : 1.0;
     final Color? tempColor = isTemp
         ? (isMe
-            ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
-            : Colors.grey[400]?.withOpacity(0.5))
+            ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.5)
+            : Colors.grey[400]?.withValues(alpha: 0.5))
         : null;
 
     return TweenAnimationBuilder<double>(
@@ -1981,7 +1981,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           color: Theme.of(context)
                               .colorScheme
                               .primary
-                              .withOpacity(0.3),
+                              .withValues(alpha: 0.3),
                           blurRadius: 4,
                           spreadRadius: 1,
                         ),
@@ -1995,7 +1995,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 1, horizontal: 4),
                 decoration: BoxDecoration(
                   color: _highlightedMessageId == message.id
-                      ? Theme.of(context).colorScheme.primary.withOpacity(0.2)
+                      ? Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.2)
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(20),
                 ),
@@ -2054,13 +2057,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                     ),
                                     decoration: BoxDecoration(
                                       color: isMe
-                                          ? outgoingBubbleColor.withOpacity(0.8)
+                                          ? outgoingBubbleColor.withValues(
+                                              alpha: 0.8)
                                           : Colors.grey[100],
                                       borderRadius: BorderRadius.circular(
                                           math.max(12, fontSize * 0.7)),
                                       border: Border.all(
                                         color: isMe
-                                            ? Colors.white.withOpacity(0.2)
+                                            ? Colors.white
+                                                .withValues(alpha: 0.2)
                                             : Colors.grey[300]!,
                                         width: 1,
                                       ),
@@ -2624,15 +2629,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.10),
+            color:
+                Theme.of(context).colorScheme.primary.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.25),
+              color:
+                  Theme.of(context).colorScheme.primary.withValues(alpha: 0.25),
               width: 1.2,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.03),
+                color: Colors.black.withValues(alpha: 0.03),
                 blurRadius: 4,
                 offset: const Offset(0, 2),
               ),
@@ -2683,8 +2690,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Color _getWallpaperOverlayColor(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return isDarkMode
-        ? Colors.black.withOpacity(0.3)
-        : Colors.white.withOpacity(0.4);
+        ? Colors.black.withValues(alpha: 0.3)
+        : Colors.white.withValues(alpha: 0.4);
   }
 
   /// Returns a placeholder widget while wallpaper is loading
@@ -3340,7 +3347,8 @@ class _KeyboardVisibilityObserver extends WidgetsBindingObserver {
 
   @override
   void didChangeMetrics() {
-    final bottomInset = WidgetsBinding.instance.window.viewInsets.bottom;
+    final bottomInset = WidgetsBinding
+        .instance.platformDispatcher.views.first.viewInsets.bottom;
     final isKeyboardVisible = bottomInset > 0;
 
     if (_isKeyboardVisible != isKeyboardVisible) {

@@ -421,7 +421,7 @@ class StoryBar extends ConsumerWidget {
                   width: 74,
                   height: 74,
                   decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.2),
+                    color: Colors.grey.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -430,7 +430,7 @@ class StoryBar extends ConsumerWidget {
                   width: 60,
                   height: 12,
                   decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.2),
+                    color: Colors.grey.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(6),
                   ),
                 ),
@@ -508,7 +508,8 @@ class StoryRing extends ConsumerWidget {
                         end: Alignment.bottomRight,
                       )
                     : null,
-                color: hasUnseenStories ? null : seenColor.withOpacity(0.2),
+                color:
+                    hasUnseenStories ? null : seenColor.withValues(alpha: 0.2),
               ),
               child: Container(
                 padding: const EdgeInsets.all(2.5),
@@ -860,7 +861,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.5),
+          color: Colors.black.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -897,7 +898,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
+                color: Colors.black.withValues(alpha: 0.2),
                 blurRadius: 20,
                 spreadRadius: 5,
               ),
@@ -910,7 +911,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                 width: 80,
                 height: 80,
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
+                  color: Colors.red.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Center(
@@ -1212,14 +1213,14 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       children: [
         Icon(
           Icons.keyboard_arrow_up_rounded,
-          color: Colors.white.withOpacity(0.8),
+          color: Colors.white.withValues(alpha: 0.8),
           size: 30,
         ),
         const SizedBox(height: 4),
         Text(
           'بالا بکشید تا بازدیدکنندگان را ببینید',
           style: TextStyle(
-            color: Colors.white.withOpacity(0.8),
+            color: Colors.white.withValues(alpha: 0.8),
             fontSize: 12,
             fontWeight: FontWeight.w500,
           ),
@@ -1292,7 +1293,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                 color: backgroundColor,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     offset: const Offset(0, 1),
                     blurRadius: 3,
                   ),
@@ -1305,7 +1306,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: Colors.grey.withOpacity(0.3),
+                      color: Colors.grey.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -1391,7 +1392,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                             style: ElevatedButton.styleFrom(
                               backgroundColor: isDarkMode
                                   ? Colors.white10
-                                  : Colors.black.withOpacity(0.05),
+                                  : Colors.black.withValues(alpha: 0.05),
                               foregroundColor: textColor,
                               elevation: 0,
                               padding: const EdgeInsets.symmetric(
@@ -1416,7 +1417,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                           Icon(
                             Icons.visibility_off_outlined,
                             size: 48,
-                            color: subtitleColor.withOpacity(0.7),
+                            color: subtitleColor.withValues(alpha: 0.7),
                           ),
                           const SizedBox(height: 16),
                           Text(
@@ -1471,7 +1472,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                    color: Colors.grey.withOpacity(0.2),
+                                    color: Colors.grey.withValues(alpha: 0.2),
                                     width: 1,
                                   ),
                                 ),
@@ -1590,7 +1591,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                   },
                   style: OutlinedButton.styleFrom(
                     foregroundColor: textColor,
-                    side: BorderSide(color: textColor.withOpacity(0.3)),
+                    side: BorderSide(color: textColor.withValues(alpha: 0.3)),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -2043,7 +2044,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
             activeIndex: _currentStoryIndex,
             itemCount: currentUser.stories.length,
             activeColor: Colors.white,
-            passiveColor: Colors.white.withOpacity(0.3),
+            passiveColor: Colors.white.withValues(alpha: 0.3),
           ),
         ),
       ),
@@ -2176,8 +2177,9 @@ class StoryProgressBar extends StatelessWidget {
               margin: const EdgeInsets.symmetric(horizontal: 2),
               height: 3,
               decoration: BoxDecoration(
-                color:
-                    isCompleted ? activeColor : passiveColor.withOpacity(0.5),
+                color: isCompleted
+                    ? activeColor
+                    : passiveColor.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(5),
               ),
               child: isActive
@@ -2245,7 +2247,7 @@ class _ErrorView extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.red.withOpacity(0.1),
+          color: Colors.red.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: Colors.red.shade300),
         ),

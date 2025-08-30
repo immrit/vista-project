@@ -180,7 +180,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
                 Icon(
                   Icons.search_off,
                   size: 64,
-                  color: Theme.of(context).iconTheme.color?.withOpacity(0.5),
+                  color: Theme.of(context).iconTheme.color?.withValues(alpha: 0.5),
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -191,7 +191,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
                         .textTheme
                         .bodyLarge
                         ?.color
-                        ?.withOpacity(0.6),
+                        ?.withValues(alpha: 0.6),
                   ),
                 ),
               ],
@@ -206,7 +206,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
             return ListTile(
               leading: CircleAvatar(
                 backgroundColor:
-                    Theme.of(context).primaryColor.withOpacity(0.1),
+                    Theme.of(context).primaryColor.withValues(alpha: 0.1),
                 child: Icon(
                   search.searchType == SearchType.hashtag
                       ? Icons.tag
@@ -242,7 +242,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
                       Icons.close,
                       size: 18,
                       color:
-                          Theme.of(context).iconTheme.color?.withOpacity(0.6),
+                          Theme.of(context).iconTheme.color?.withValues(alpha: 0.6),
                     ),
                     onPressed: () => search.delete(),
                   ),

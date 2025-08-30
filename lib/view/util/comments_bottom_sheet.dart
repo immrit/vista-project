@@ -176,7 +176,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
         color: theme.colorScheme.surface,
         border: Border(
           bottom: BorderSide(
-            color: theme.dividerColor.withOpacity(0.1),
+            color: theme.dividerColor.withValues(alpha: 0.1),
             width: 1,
           ),
         ),
@@ -188,7 +188,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: theme.dividerColor.withOpacity(0.3),
+              color: theme.dividerColor.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -199,7 +199,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
             children: [
               Icon(
                 Icons.chat_bubble_outline,
-                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                 size: 24,
               ),
               const SizedBox(width: 12),
@@ -211,7 +211,8 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
                       'نظرات',
                       style: theme.textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.onSurface.withOpacity(0.6),
+                        color:
+                            theme.colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                   ],
@@ -225,7 +226,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
                 },
                 icon: Icon(
                   Icons.refresh,
-                  color: theme.colorScheme.onSurface.withOpacity(0.6),
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                 ),
               ),
             ],
@@ -282,20 +283,20 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
             Icon(
               Icons.chat_bubble_outline,
               size: 64,
-              color: theme.colorScheme.onSurface.withOpacity(0.3),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
             ),
             const SizedBox(height: 16),
             Text(
               'هنوز کامنتی ثبت نشده',
               style: theme.textTheme.titleMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
               ),
             ),
             const SizedBox(height: 8),
             Text(
               'اولین نفری باشید که کامنت می‌گذارد!',
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.4),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
               ),
             ),
           ],
@@ -338,13 +339,13 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
         color: theme.colorScheme.surface,
         border: Border(
           top: BorderSide(
-            color: theme.dividerColor.withOpacity(0.1),
+            color: theme.dividerColor.withValues(alpha: 0.1),
             width: 1,
           ),
         ),
         boxShadow: [
           BoxShadow(
-            color: theme.shadowColor.withOpacity(0.1),
+            color: theme.shadowColor.withValues(alpha: 0.1),
             blurRadius: 8,
             offset: const Offset(0, -2),
           ),
@@ -361,10 +362,11 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
                 padding: const EdgeInsets.all(12),
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.primaryContainer.withOpacity(0.3),
+                  color:
+                      theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: theme.colorScheme.primary.withOpacity(0.2),
+                    color: theme.colorScheme.primary.withValues(alpha: 0.2),
                     width: 1,
                   ),
                 ),
@@ -413,7 +415,8 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
                       currentUser?.userMetadata?['avatar_url'] as String?;
                   return CircleAvatar(
                     radius: 18,
-                    backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
+                    backgroundColor:
+                        theme.colorScheme.primary.withValues(alpha: 0.1),
                     backgroundImage:
                         avatarUrl != null ? NetworkImage(avatarUrl) : null,
                     child: avatarUrl == null
@@ -436,10 +439,11 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
                       maxHeight: 120,
                     ),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
+                      color: theme.colorScheme.surfaceVariant
+                          .withValues(alpha: 0.5),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: theme.colorScheme.outline.withOpacity(0.2),
+                        color: theme.colorScheme.outline.withValues(alpha: 0.2),
                         width: 1,
                       ),
                     ),
@@ -454,7 +458,8 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
                             ? 'پاسخ خود را بنویسید...'
                             : 'نظر خود را بنویسید...',
                         hintStyle: TextStyle(
-                          color: theme.colorScheme.onSurface.withOpacity(0.5),
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.5),
                         ),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
@@ -483,7 +488,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
                       decoration: BoxDecoration(
                         color: _commentController.text.trim().isNotEmpty
                             ? theme.colorScheme.primary
-                            : theme.colorScheme.outline.withOpacity(0.2),
+                            : theme.colorScheme.outline.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Icon(
@@ -491,7 +496,8 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
                         size: 20,
                         color: _commentController.text.trim().isNotEmpty
                             ? theme.colorScheme.onPrimary
-                            : theme.colorScheme.onSurface.withOpacity(0.4),
+                            : theme.colorScheme.onSurface
+                                .withValues(alpha: 0.4),
                       ),
                     ),
                   ),
@@ -715,12 +721,12 @@ class _CommentItemState extends ConsumerState<CommentItem>
             color: theme.colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: theme.colorScheme.primary.withOpacity(0.5),
+              color: theme.colorScheme.primary.withValues(alpha: 0.5),
               width: 2,
             ),
             boxShadow: [
               BoxShadow(
-                color: theme.colorScheme.primary.withOpacity(0.1),
+                color: theme.colorScheme.primary.withValues(alpha: 0.1),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -740,7 +746,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
               border: InputBorder.none,
               contentPadding: EdgeInsets.zero,
               hintStyle: TextStyle(
-                color: theme.colorScheme.onSurface.withOpacity(0.5),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
               ),
             ),
           ),
@@ -764,7 +770,8 @@ class _CommentItemState extends ConsumerState<CommentItem>
                 icon: const Icon(Icons.close),
                 label: const Text('انصراف'),
                 style: TextButton.styleFrom(
-                  foregroundColor: theme.colorScheme.onSurface.withOpacity(0.7),
+                  foregroundColor:
+                      theme.colorScheme.onSurface.withValues(alpha: 0.7),
                 ),
               ),
               const SizedBox(width: 12),
@@ -837,7 +844,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
                           ? NetworkImage(widget.comment.avatarUrl!)
                           : null,
                       backgroundColor:
-                          theme.colorScheme.primary.withOpacity(0.1),
+                          theme.colorScheme.primary.withValues(alpha: 0.1),
                       child: widget.comment.avatarUrl == null
                           ? Icon(
                               Icons.person,
@@ -891,7 +898,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
                               _getTimeAgo(widget.comment.createdAt),
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: theme.colorScheme.onSurface
-                                    .withOpacity(0.6),
+                                    .withValues(alpha: 0.6),
                               ),
                             ),
                             if (isOwner) ...[
@@ -899,8 +906,8 @@ class _CommentItemState extends ConsumerState<CommentItem>
                               Icon(
                                 Icons.edit,
                                 size: 14,
-                                color:
-                                    theme.colorScheme.primary.withOpacity(0.7),
+                                color: theme.colorScheme.primary
+                                    .withValues(alpha: 0.7),
                               ),
                             ],
                           ],
@@ -945,7 +952,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                       Icons.reply,
                                       size: 16,
                                       color: theme.colorScheme.onSurface
-                                          .withOpacity(0.6),
+                                          .withValues(alpha: 0.6),
                                     ),
                                     const SizedBox(width: 4),
                                     Text(
@@ -953,7 +960,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                       style:
                                           theme.textTheme.bodySmall?.copyWith(
                                         color: theme.colorScheme.onSurface
-                                            .withOpacity(0.6),
+                                            .withValues(alpha: 0.6),
                                       ),
                                     ),
                                   ],
@@ -1002,7 +1009,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                 Icons.more_horiz,
                                 size: 18,
                                 color: theme.colorScheme.onSurface
-                                    .withOpacity(0.5),
+                                    .withValues(alpha: 0.5),
                               ),
                               onSelected: (value) async {
                                 switch (value) {
@@ -1064,7 +1071,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                             color: canEdit
                                                 ? theme.colorScheme.primary
                                                 : theme.colorScheme.onSurface
-                                                    .withOpacity(0.3),
+                                                    .withValues(alpha: 0.3),
                                           ),
                                           SizedBox(width: 8),
                                           Text(
@@ -1073,7 +1080,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                               color: canEdit
                                                   ? null
                                                   : theme.colorScheme.onSurface
-                                                      .withOpacity(0.3),
+                                                      .withValues(alpha: 0.3),
                                             ),
                                           ),
                                           if (!canEdit) ...[
@@ -1082,8 +1089,8 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                             Icon(
                                               Icons.verified,
                                               size: 14,
-                                              color:
-                                                  Colors.amber.withOpacity(0.5),
+                                              color: Colors.amber
+                                                  .withValues(alpha: 0.5),
                                             ),
                                           ],
                                         ],
@@ -1158,7 +1165,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
                           color: Theme.of(context)
                               .colorScheme
                               .onSurface
-                              .withOpacity(0.6),
+                              .withValues(alpha: 0.6),
                           fontStyle: FontStyle.italic,
                         ),
                         textAlign: TextAlign.center,

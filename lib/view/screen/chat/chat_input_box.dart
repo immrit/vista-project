@@ -504,10 +504,10 @@ class _ChatInputBoxState extends State<ChatInputBox>
             margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: colorScheme.primary.withOpacity(0.1),
+              color: colorScheme.primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: colorScheme.primary.withOpacity(0.3),
+                color: colorScheme.primary.withValues(alpha: 0.3),
                 width: 1,
               ),
             ),
@@ -553,7 +553,7 @@ class _ChatInputBoxState extends State<ChatInputBox>
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: isDark
-                ? colorScheme.surface.withOpacity(0.8)
+                ? colorScheme.surface.withValues(alpha: 0.8)
                 : colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border(
@@ -564,7 +564,7 @@ class _ChatInputBoxState extends State<ChatInputBox>
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -593,7 +593,7 @@ class _ChatInputBoxState extends State<ChatInputBox>
                     Text(
                       widget.replyData!.message,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurface.withOpacity(0.7),
+                        color: colorScheme.onSurface.withValues(alpha: 0.7),
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -663,11 +663,11 @@ class _ChatInputBoxState extends State<ChatInputBox>
         color: colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: colorScheme.outline.withOpacity(0.2),
+          color: colorScheme.outline.withValues(alpha: 0.2),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -754,7 +754,7 @@ class _ChatInputBoxState extends State<ChatInputBox>
           margin: const EdgeInsets.symmetric(horizontal: 16),
           child: LinearProgressIndicator(
             value: value,
-            backgroundColor: colorScheme.outline.withOpacity(0.2),
+            backgroundColor: colorScheme.outline.withValues(alpha: 0.2),
             valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
           ),
         );
@@ -773,24 +773,24 @@ class _ChatInputBoxState extends State<ChatInputBox>
       margin: const EdgeInsets.fromLTRB(8, 8, 8, 16),
       decoration: BoxDecoration(
         color: isRecording
-            ? colorScheme.error.withOpacity(0.1)
+            ? colorScheme.error.withValues(alpha: 0.1)
             : colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
             color: isRecording
-                ? colorScheme.error.withOpacity(0.2)
-                : Colors.black.withOpacity(0.08),
+                ? colorScheme.error.withValues(alpha: 0.2)
+                : Colors.black.withValues(alpha: 0.08),
             blurRadius: isRecording ? 15 : 10,
             offset: const Offset(0, 2),
           ),
         ],
         border: Border.all(
           color: isRecording
-              ? colorScheme.error.withOpacity(0.6)
+              ? colorScheme.error.withValues(alpha: 0.6)
               : showCompactMode
-                  ? colorScheme.primary.withOpacity(0.4)
-                  : colorScheme.outline.withOpacity(0.2),
+                  ? colorScheme.primary.withValues(alpha: 0.4)
+                  : colorScheme.outline.withValues(alpha: 0.2),
           width: isRecording ? 2 : (showCompactMode ? 2 : 1),
         ),
       ),
@@ -860,7 +860,7 @@ class _ChatInputBoxState extends State<ChatInputBox>
     final effectiveColor = color ??
         (isActive
             ? colorScheme.primary
-            : colorScheme.onSurface.withOpacity(0.6));
+            : colorScheme.onSurface.withValues(alpha: 0.6));
 
     final button = Material(
       color: Colors.transparent,
@@ -874,7 +874,7 @@ class _ChatInputBoxState extends State<ChatInputBox>
           alignment: Alignment.center, // تراز در وسط
           decoration: BoxDecoration(
             color: isActive
-                ? colorScheme.primary.withOpacity(0.1)
+                ? colorScheme.primary.withValues(alpha: 0.1)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(size / 2),
           ),
@@ -932,7 +932,7 @@ class _ChatInputBoxState extends State<ChatInputBox>
                       ? 'در حال ضبط صوت...'
                       : 'پیام خود را بنویسید...',
                   hintStyle: TextStyle(
-                    color: colorScheme.onSurface.withOpacity(0.5),
+                    color: colorScheme.onSurface.withValues(alpha: 0.5),
                     fontSize: 16,
                   ),
                   border: InputBorder.none,
@@ -961,7 +961,7 @@ class _ChatInputBoxState extends State<ChatInputBox>
                     '$charCount کاراکتر',
                     style: TextStyle(
                       fontSize: 10,
-                      color: colorScheme.onSurface.withOpacity(0.5),
+                      color: colorScheme.onSurface.withValues(alpha: 0.5),
                     ),
                   ),
                 ],
@@ -1026,7 +1026,7 @@ class _ChatInputBoxState extends State<ChatInputBox>
       decoration: BoxDecoration(
         color: colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colorScheme.outline.withOpacity(0.2)),
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: CustomPaint(
@@ -1054,7 +1054,7 @@ class _ChatInputBoxState extends State<ChatInputBox>
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.red.withOpacity(0.3 * _pulseAnimation.value),
+                    color: Colors.red.withValues(alpha: 0.3 * _pulseAnimation.value),
                     blurRadius: 8 * _pulseAnimation.value,
                     spreadRadius: 2 * _pulseAnimation.value,
                   ),
@@ -1084,7 +1084,7 @@ class _ChatInputBoxState extends State<ChatInputBox>
           width: 60,
           height: 4,
           decoration: BoxDecoration(
-            color: colorScheme.outline.withOpacity(0.2),
+            color: colorScheme.outline.withValues(alpha: 0.2),
             borderRadius: BorderRadius.circular(2),
           ),
           child: ClipRRect(
@@ -1115,11 +1115,11 @@ class _ChatInputBoxState extends State<ChatInputBox>
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
             color: colorScheme.primary
-                .withOpacity(0.1 * _recordingGlowAnimation.value),
+                .withValues(alpha: 0.1 * _recordingGlowAnimation.value),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: colorScheme.primary
-                  .withOpacity(0.3 * _recordingGlowAnimation.value),
+                  .withValues(alpha: 0.3 * _recordingGlowAnimation.value),
               width: 1,
             ),
           ),
@@ -1171,7 +1171,7 @@ class _ChatInputBoxState extends State<ChatInputBox>
                   ? Colors.red
                   : canSend
                       ? colorScheme.primary
-                      : colorScheme.onSurface.withOpacity(0.3),
+                      : colorScheme.onSurface.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(20),
               elevation: canSend ? 2 : 0,
               child: AnimatedBuilder(
@@ -1186,7 +1186,7 @@ class _ChatInputBoxState extends State<ChatInputBox>
                             boxShadow: [
                               BoxShadow(
                                 color: Colors.red
-                                    .withOpacity(0.3 * _pulseAnimation.value),
+                                    .withValues(alpha: 0.3 * _pulseAnimation.value),
                                 blurRadius: 8 * _pulseAnimation.value,
                                 spreadRadius: 2 * _pulseAnimation.value,
                               ),

@@ -19,7 +19,7 @@ import 'DB/hive_initialize.dart';
 import 'firebase_options.dart';
 import 'model/Hive Model/RecentSearch.dart';
 import 'provider/theme_provider.dart';
-import 'security/security.dart';
+
 import 'services/ChatService.dart';
 import 'services/deep_link_service.dart' as new_deep_link;
 import 'services/PushNotificationService.dart';
@@ -37,12 +37,7 @@ import 'services/wallpaper_cache_service.dart';
 import 'view/screen/PublicPosts/publicPosts.dart';
 import 'view/screen/PublicPosts/PostDetailPage.dart';
 import 'view/screen/PublicPosts/profileScreen.dart';
-import 'view/screen/ouathUser/TwoFactorVerificationScreen.dart';
-import 'view/screen/ouathUser/TwoFactorSetupScreen.dart';
 import 'security/e2ee_service.dart';
-import 'security/simple_2fa_service.dart';
-import 'services/ActiveSessionsService.dart';
-import 'services/DatabaseSchemaService.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -83,16 +78,6 @@ void main() async {
 
   // راه‌اندازی Supabase
   await initializeSupabaseWithFailover();
-
-  // راه‌اندازی ساختار دیتابیس
-  try {
-    await DatabaseSchemaService.initializeDatabase();
-    debugPrint('✅ ساختار دیتابیس با موفقیت راه‌اندازی شد');
-  } catch (e) {
-    debugPrint('⚠️ خطا در راه‌اندازی ساختار دیتابیس: $e');
-    debugPrint(
-        '💡 لطفاً فایل database_migrations.sql را در Supabase اجرا کنید');
-  }
 
   // راه‌اندازی اعلان‌های محلی
   await flutterLocalNotificationsPlugin.initialize(
@@ -186,62 +171,10 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         // به‌روزرسانی وضعیت آنلاین کاربر
         final chatService = ChatService();
         chatService.updateUserOnlineStatus();
-
-        // بررسی تایید دو مرحله‌ای بعد از لاگین
-        WidgetsBinding.instance.addPostFrameCallback((_) async {
-          if (mounted) {
-            await _checkTwoFactorAuth();
-          }
-        });
       } else if (data.event == AuthChangeEvent.signedOut) {
         debugPrint('کاربر خارج شد - پاک کردن نشست‌ها');
-
-        // پاک کردن نشست‌های 2FA
-        final user = data.session?.user;
-        if (user != null) {
-          await Simple2FAService.forceClearSessionVerification();
-        }
       }
     });
-  }
-
-  /// بررسی تایید دو مرحله‌ای
-  Future<void> _checkTwoFactorAuth() async {
-    try {
-      final user = supabase.auth.currentUser;
-      if (user == null) return;
-
-      // پاک کردن نشست‌های منقضی شده
-      await Simple2FAService.cleanupExpiredSessions();
-
-      // آماده‌سازی برای ورود جدید
-      await Simple2FAService.prepareForNewLogin(user.id);
-
-      final requires2FA = await Simple2FAService.requiresTwoFactorAuth(user.id);
-
-      debugPrint('User ${user.id} requires 2FA: $requires2FA');
-
-      if (requires2FA) {
-        debugPrint('نمایش صفحه تایید دو مرحله‌ای');
-
-        if (mounted) {
-          Navigator.of(context).pushReplacementNamed('/two-factor-verification',
-              arguments: {'userId': user.id});
-        }
-      } else {
-        debugPrint('تایید دو مرحله‌ای مورد نیاز نیست');
-
-        // ایجاد نشست فعال در دیتابیس
-        try {
-          await ActiveSessionsService.createLoginSession(user.id);
-          debugPrint('نشست فعال در دیتابیس ایجاد شد');
-        } catch (e) {
-          debugPrint('خطا در ایجاد نشست فعال: $e');
-        }
-      }
-    } catch (e) {
-      debugPrint('خطا در بررسی تایید دو مرحله‌ای: $e');
-    }
   }
 
   @override
@@ -555,26 +488,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                 '/verification-store': (context) {
                   return VerificationBadgeStore();
                 },
-                '/two-factor-verification': (context) {
-                  final args = ModalRoute.of(context)?.settings.arguments
-                      as Map<String, dynamic>?;
-                  final userId = args?['userId'] as String?;
 
-                  if (userId != null) {
-                    return TwoFactorVerificationScreen(
-                      userId: userId,
-                      onSuccess: () {
-                        // Navigate to home after successful 2FA verification
-                        Navigator.of(context).pushReplacementNamed('/home');
-                      },
-                    );
-                  }
-                  return const Scaffold(
-                      body: Center(child: Text('خطا: شناسه کاربر یافت نشد')));
-                },
-                '/two-factor-setup': (context) {
-                  return const TwoFactorSetupScreen();
-                },
                 // '/app-lock': (context) => const AppLockScreen(), // Removed app lock screen
                 // '/app-lock-test-simple': (context) => const AppLockTestSimple(), // Removed app lock test simple
               },

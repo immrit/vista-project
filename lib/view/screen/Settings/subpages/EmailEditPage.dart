@@ -63,10 +63,10 @@ class _EmailEditPageState extends ConsumerState<EmailEditPage> {
               padding: const EdgeInsets.all(16.0),
               decoration: BoxDecoration(
                 color: (isDark
-                    ? Colors.blue.withOpacity(0.2)
-                    : Colors.blue.withOpacity(0.1)),
+                    ? Colors.blue.withValues(alpha: 0.2)
+                    : Colors.blue.withValues(alpha: 0.1)),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -273,10 +273,10 @@ class _EmailEditPageState extends ConsumerState<EmailEditPage> {
               padding: const EdgeInsets.all(16.0),
               decoration: BoxDecoration(
                 color: (isDark
-                    ? Colors.orange.withOpacity(0.2)
-                    : Colors.orange.withOpacity(0.1)),
+                    ? Colors.orange.withValues(alpha: 0.2)
+                    : Colors.orange.withValues(alpha: 0.1)),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
               ),
               child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

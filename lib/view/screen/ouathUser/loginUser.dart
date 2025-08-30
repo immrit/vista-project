@@ -10,8 +10,6 @@ import '../../util/widgets.dart';
 import '../../../provider/provider.dart';
 import 'VerifyCodePage.dart';
 import 'signupUser.dart';
-import 'TwoFactorVerificationScreen.dart';
-import '../../../security/simple_2fa_service.dart';
 
 class Loginuser extends ConsumerStatefulWidget {
   const Loginuser({super.key});
@@ -75,31 +73,9 @@ class _LoginuserState extends ConsumerState<Loginuser> {
       if (authResponse.user != null) {
         await updateUserMetadata(authResponse.user!, userProfile);
 
-        // بررسی تایید دو مرحله‌ای
-        debugPrint(
-            '[2FA_LOGIN] 🚀 شروع بررسی 2FA برای کاربر: ${authResponse.user!.id}');
-        final twoFactorRequired =
-            await Simple2FAService.requires2FAVerification(
-                authResponse.user!.id);
-        debugPrint('[2FA_LOGIN] 📋 نتیجه بررسی 2FA: $twoFactorRequired');
-
+        // انتقال مستقیم به صفحه اصلی
         if (mounted) {
-          if (twoFactorRequired) {
-            // تمدید خودکار نشست 2FA اگر وجود داشته باشد
-            await Simple2FAService.autoExtend2FASession(authResponse.user!.id);
-
-            Navigator.pushReplacementNamed(context, '/2fa-verification',
-                arguments: {
-                  'userId': authResponse.user!.id,
-                  'onSuccess': () {
-                    Navigator.pushReplacementNamed(context, '/home');
-                  },
-                });
-          } else {
-            // تمدید خودکار نشست 2FA
-            await Simple2FAService.autoExtend2FASession(authResponse.user!.id);
-            Navigator.pushReplacementNamed(context, '/home');
-          }
+          Navigator.pushReplacementNamed(context, '/home');
         }
       }
     } catch (e) {
@@ -149,47 +125,6 @@ class _LoginuserState extends ConsumerState<Loginuser> {
           SnackBar(content: Text('خطا در بروزرسانی اطلاعات: $e')),
         );
       }
-    }
-  }
-
-  /// بررسی نیاز به تایید دو مرحله‌ای
-  Future<bool> _checkTwoFactorRequired(String userId) async {
-    try {
-      debugPrint('[2FA_LOGIN] 🔍 بررسی تایید دو مرحله‌ای برای کاربر: $userId');
-
-      // استفاده از تابع get_2fa_status
-      final response = await supabase.rpc('get_2fa_status', params: {
-        'user_uuid': userId,
-      });
-
-      debugPrint('[2FA_LOGIN] 📊 پاسخ دیتابیس: $response');
-
-      if (response == null) {
-        debugPrint('[2FA_LOGIN] ⚠️ رکورد امنیتی یافت نشد، ایجاد رکورد جدید...');
-        // اگر رکورد امنیتی وجود ندارد، ایجاد کن
-        await supabase.from('user_security').insert({
-          'user_id': userId,
-          'two_factor_enabled': false,
-        });
-        debugPrint('[2FA_LOGIN] ✅ رکورد امنیتی جدید ایجاد شد');
-        return false;
-      }
-
-      final isEnabled = response['enabled'] == true;
-      debugPrint(
-          '[2FA_LOGIN] 🔐 وضعیت 2FA: $isEnabled (مقدار: ${response['enabled']})');
-      debugPrint('[2FA_LOGIN] 🔐 نوع داده: ${response['enabled'].runtimeType}');
-
-      if (isEnabled) {
-        debugPrint('[2FA_LOGIN] ✅ 2FA فعال است - انتقال به صفحه تایید');
-      } else {
-        debugPrint('[2FA_LOGIN] ❌ 2FA غیرفعال است - انتقال مستقیم به خانه');
-      }
-
-      return isEnabled;
-    } catch (e) {
-      debugPrint('[2FA_LOGIN] ❌ خطا در بررسی تایید دو مرحله‌ای: $e');
-      return false; // در صورت خطا، تایید دو مرحله‌ای را غیرفعال در نظر بگیر
     }
   }
 

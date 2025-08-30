@@ -275,7 +275,7 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
                 : Center(
                     child: CircularProgressIndicator(color: Colors.white),
                   ),
-            Container(color: Colors.black.withOpacity(0.3)),
+            Container(color: Colors.black.withValues(alpha: 0.3)),
             if (_showLikeAnim)
               Center(
                 child: AnimatedOpacity(
@@ -305,7 +305,7 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
                 child: Container(
                   padding: EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.6),
+                    color: Colors.black.withValues(alpha: 0.6),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
@@ -460,7 +460,8 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
                                   TextSpan(
                                     text: " ... بیشتر",
                                     style: TextStyle(
-                                      color: Colors.white.withOpacity(0.7),
+                                      color:
+                                          Colors.white.withValues(alpha: 0.7),
                                       fontSize: 14,
                                     ),
                                   ),
@@ -502,7 +503,8 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
                               min: 0.0,
                               max: _videoDuration.inMilliseconds.toDouble(),
                               activeColor: Colors.white,
-                              inactiveColor: Colors.white.withOpacity(0.5),
+                              inactiveColor:
+                                  Colors.white.withValues(alpha: 0.5),
                               onChanged: (value) {
                                 _controller?.seekTo(
                                     Duration(milliseconds: value.toInt()));
@@ -524,7 +526,7 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
               Center(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withValues(alpha: 0.3),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(

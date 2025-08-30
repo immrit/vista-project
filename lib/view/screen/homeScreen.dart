@@ -51,7 +51,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void initState() {
     super.initState();
     _checkProfileCompletion();
-    _checkTwoFactorVerification();
     // ساخت یکبار صفحات در initState
     _tabs = [
       const PublicPostsScreen(), // صفحه پست‌های عمومی
@@ -72,28 +71,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (!isComplete && mounted) {
       // انتقال به صفحه ویرایش پروفایل
       Navigator.pushNamed(context, '/editeProfile');
-    }
-  }
-
-  /// بررسی تایید دو مرحله‌ای
-  void _checkTwoFactorVerification() async {
-    try {
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null) return;
-
-      final response = await supabase
-          .from('user_security')
-          .select('two_factor_enabled')
-          .eq('user_id', userId)
-          .maybeSingle();
-
-      if (response != null && response['two_factor_enabled'] == true) {
-        // اگر تایید دو مرحله‌ای فعال است، بررسی کن که آیا کاربر تایید شده یا نه
-        // این بررسی در صفحه لاگین انجام می‌شود، اما برای اطمینان اینجا هم چک می‌کنیم
-        // در نسخه واقعی باید از session یا token خاصی استفاده کنیم
-      }
-    } catch (e) {
-      print('خطا در بررسی تایید دو مرحله‌ای: $e');
     }
   }
 

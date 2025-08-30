@@ -254,12 +254,12 @@ class _ChatConversationsScreenState
             color: theme.cardColor,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: theme.dividerColor.withOpacity(0.3),
+              color: theme.dividerColor.withValues(alpha: 0.3),
               width: 1,
             ),
             boxShadow: [
               BoxShadow(
-                color: theme.shadowColor.withOpacity(0.08),
+                color: theme.shadowColor.withValues(alpha: 0.08),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -462,12 +462,12 @@ class _ChatConversationsScreenState
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(
-              color: theme.dividerColor.withOpacity(0.2),
+              color: theme.dividerColor.withValues(alpha: 0.2),
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: theme.shadowColor.withOpacity(0.1),
+                color: theme.shadowColor.withValues(alpha: 0.1),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -506,8 +506,8 @@ class _ChatConversationsScreenState
       errorBuilder: (context, error, stackTrace) {
         return Container(
           color: item.isChannel
-              ? theme.primaryColor.withOpacity(0.1)
-              : theme.colorScheme.secondary.withOpacity(0.1),
+              ? theme.primaryColor.withValues(alpha: 0.1)
+              : theme.colorScheme.secondary.withValues(alpha: 0.1),
           child: Icon(
             item.isChannel ? Icons.campaign_rounded : Icons.person_rounded,
             color: item.isChannel
@@ -664,7 +664,7 @@ class _ChatConversationsScreenState
           'کانال',
           style: TextStyle(
             fontSize: 14,
-            color: theme.primaryColor.withOpacity(0.7),
+            color: theme.primaryColor.withValues(alpha: 0.7),
             fontWeight: FontWeight.w500,
           ),
         );
@@ -735,7 +735,7 @@ class _ChatConversationsScreenState
             '${_formatNumber(item.memberCount!)} عضو',
             style: TextStyle(
               fontSize: 11,
-              color: theme.hintColor.withOpacity(0.7),
+              color: theme.hintColor.withValues(alpha: 0.7),
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -750,7 +750,7 @@ class _ChatConversationsScreenState
       thickness: 0.5,
       indent: 82,
       endIndent: 16,
-      color: theme.dividerColor.withOpacity(0.3),
+      color: theme.dividerColor.withValues(alpha: 0.3),
     );
   }
 
@@ -773,7 +773,7 @@ class _ChatConversationsScreenState
             width: 54,
             height: 54,
             decoration: BoxDecoration(
-              color: theme.hintColor.withOpacity(0.1),
+              color: theme.hintColor.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
           ),
@@ -786,7 +786,7 @@ class _ChatConversationsScreenState
                   width: double.infinity,
                   height: 16,
                   decoration: BoxDecoration(
-                    color: theme.hintColor.withOpacity(0.1),
+                    color: theme.hintColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -795,7 +795,7 @@ class _ChatConversationsScreenState
                   width: 200,
                   height: 14,
                   decoration: BoxDecoration(
-                    color: theme.hintColor.withOpacity(0.05),
+                    color: theme.hintColor.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -806,7 +806,7 @@ class _ChatConversationsScreenState
             width: 40,
             height: 12,
             decoration: BoxDecoration(
-              color: theme.hintColor.withOpacity(0.05),
+              color: theme.hintColor.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(4),
             ),
           ),
@@ -826,13 +826,13 @@ class _ChatConversationsScreenState
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: theme.primaryColor.withOpacity(0.1),
+                color: theme.primaryColor.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 icon,
                 size: 48,
-                color: theme.primaryColor.withOpacity(0.7),
+                color: theme.primaryColor.withValues(alpha: 0.7),
               ),
             ),
             const SizedBox(height: 24),
@@ -852,7 +852,7 @@ class _ChatConversationsScreenState
                   : 'عبارت دیگری را امتحان کنید',
               style: TextStyle(
                 fontSize: 14,
-                color: theme.hintColor.withOpacity(0.7),
+                color: theme.hintColor.withValues(alpha: 0.7),
               ),
               textAlign: TextAlign.center,
             ),
@@ -889,13 +889,13 @@ class _ChatConversationsScreenState
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: theme.colorScheme.error.withOpacity(0.1),
+                color: theme.colorScheme.error.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 Icons.error_outline_rounded,
                 size: 48,
-                color: theme.colorScheme.error.withOpacity(0.8),
+                color: theme.colorScheme.error.withValues(alpha: 0.8),
               ),
             ),
             const SizedBox(height: 24),
@@ -1268,7 +1268,7 @@ class _ChatConversationsScreenState
         color: theme.cardColor,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: theme.dividerColor.withOpacity(0.1),
+          color: theme.dividerColor.withValues(alpha: 0.1),
           width: 1,
         ),
       ),
@@ -1277,8 +1277,8 @@ class _ChatConversationsScreenState
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: isDestructive
-                ? theme.colorScheme.error.withOpacity(0.1)
-                : theme.primaryColor.withOpacity(0.1),
+                ? theme.colorScheme.error.withValues(alpha: 0.1)
+                : theme.primaryColor.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(

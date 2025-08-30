@@ -126,7 +126,7 @@ class _YourVideoTrimmerPageState extends State<YourVideoTrimmerPage> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: gradientColors[0].withOpacity(0.3),
+            color: gradientColors[0].withValues(alpha: 0.3),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -158,7 +158,7 @@ class _YourVideoTrimmerPageState extends State<YourVideoTrimmerPage> {
                       ? 'شما می‌توانید ویدیوهای تا ۲ دقیقه آپلود کنید'
                       : 'کاربران نشان‌دار می‌توانند ویدیوهای تا ۲ دقیقه آپلود کنند',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
+                    color: Colors.white.withValues(alpha: 0.9),
                     fontSize: 13,
                   ),
                 ),
@@ -280,7 +280,8 @@ class _YourVideoTrimmerPageState extends State<YourVideoTrimmerPage> {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                            color: Colors.blue.withOpacity(0.3), width: 2),
+                            color: Colors.blue.withValues(alpha: 0.3),
+                            width: 2),
                       ),
                       clipBehavior: Clip.antiAlias,
                       child: VideoViewer(trimmer: _trimmer),
@@ -330,7 +331,7 @@ class _YourVideoTrimmerPageState extends State<YourVideoTrimmerPage> {
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.blue.withOpacity(0.3),
+                          color: Colors.blue.withValues(alpha: 0.3),
                           blurRadius: 12,
                           spreadRadius: 2,
                         )

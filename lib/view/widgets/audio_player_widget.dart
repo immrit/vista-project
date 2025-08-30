@@ -168,7 +168,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget>
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Colors.black.withValues(alpha: 0.1),
                 blurRadius: 4,
                 offset: const Offset(0, 2),
               ),
@@ -199,8 +199,8 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget>
                   height: 40,
                   decoration: BoxDecoration(
                     color: _hasError
-                        ? Colors.red.withOpacity(0.2)
-                        : Colors.white.withOpacity(0.2),
+                        ? Colors.red.withValues(alpha: 0.2)
+                        : Colors.white.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                   ),
                   child: _isLoading
@@ -251,7 +251,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget>
                       ? '${_formatDuration(_position)} / ${_formatDuration(_duration)}'
                       : '--:--',
                   style: TextStyle(
-                    color: textColor.withOpacity(0.8),
+                    color: textColor.withValues(alpha: 0.8),
                     fontSize: 11,
                     fontFamily: 'monospace',
                   ),
@@ -268,7 +268,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget>
                         onPressed: widget.onReply,
                         icon: Icon(
                           Icons.reply_rounded,
-                          color: textColor.withOpacity(0.8),
+                          color: textColor.withValues(alpha: 0.8),
                           size: 16,
                         ),
                         constraints:
@@ -280,7 +280,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget>
                         onPressed: widget.onDelete,
                         icon: Icon(
                           Icons.delete_outline_rounded,
-                          color: textColor.withOpacity(0.8),
+                          color: textColor.withValues(alpha: 0.8),
                           size: 16,
                         ),
                         constraints:
@@ -311,10 +311,10 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget>
               trackShape: const RectangularSliderTrackShape(),
               thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
               overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-              activeTrackColor: textColor.withOpacity(0.4),
+              activeTrackColor: textColor.withValues(alpha: 0.4),
               inactiveTrackColor: Colors.transparent,
               thumbColor: textColor,
-              overlayColor: textColor.withOpacity(0.2),
+              overlayColor: textColor.withValues(alpha: 0.2),
             ),
             child: Slider(
               value: _duration.inSeconds > 0
@@ -349,7 +349,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget>
             width: 2.5,
             height: height.clamp(4.0, 22.0),
             decoration: BoxDecoration(
-              color: textColor.withOpacity(opacity),
+              color: textColor.withValues(alpha: opacity),
               borderRadius: BorderRadius.circular(2),
             ),
           );
@@ -366,13 +366,13 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget>
         height: 40,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
           '${_playbackSpeed.toStringAsFixed(1)}x',
           style: TextStyle(
-            color: textColor.withOpacity(0.9),
+            color: textColor.withValues(alpha: 0.9),
             fontSize: 11,
             fontWeight: FontWeight.w600,
           ),

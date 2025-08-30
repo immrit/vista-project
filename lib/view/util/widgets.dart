@@ -21,7 +21,6 @@ import '../screen/PublicPosts/profileScreen.dart';
 import 'themes.dart';
 import '../../DB/message_cache_service.dart';
 import '../../DB/conversation_cache_service.dart';
-import '../../security/simple_2fa_service.dart';
 import 'const.dart';
 
 class topText extends StatelessWidget {
@@ -427,16 +426,6 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
               } catch (e) {
                 developer.log('Error clearing message/conversation cache: $e');
                 // ادامه کار حتی اگر پاک کردن کش با خطا مواجه شود
-              }
-
-              // پاک کردن اطلاعات تایید 2FA نشست
-              if (supabase.auth.currentUser != null) {
-                try {
-                  await Simple2FAService.forceClearSessionVerification();
-                } catch (e) {
-                  developer.log('Error clearing 2FA session verification: $e');
-                  // ادامه کار حتی اگر پاک کردن 2FA با خطا مواجه شود
-                }
               }
 
               // خروج از حساب
@@ -888,7 +877,8 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
               decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(
-                    color: Theme.of(context).dividerColor.withOpacity(0.1),
+                    color:
+                        Theme.of(context).dividerColor.withValues(alpha: 0.1),
                     width: 1,
                   ),
                 ),
@@ -902,7 +892,9 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
                       bottom: 0,
                       width: 2,
                       child: Container(
-                        color: Theme.of(context).dividerColor.withOpacity(0.5),
+                        color: Theme.of(context)
+                            .dividerColor
+                            .withValues(alpha: 0.5),
                       ),
                     ),
                   Column(
@@ -959,8 +951,9 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
                         width: 20,
                         height: 2,
                         child: Container(
-                          color:
-                              Theme.of(context).dividerColor.withOpacity(0.5),
+                          color: Theme.of(context)
+                              .dividerColor
+                              .withValues(alpha: 0.5),
                         ),
                       ),
                       Padding(
@@ -989,7 +982,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
                       // افزودن استایل محو برای دکمه
                       shadows: [
                         Shadow(
-                          color: Colors.black.withOpacity(0.3),
+                          color: Colors.black.withValues(alpha: 0.3),
                           blurRadius: 2,
                         )
                       ],
@@ -1843,7 +1836,7 @@ class _PostImageViewerState extends State<PostImageViewer> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black.withOpacity(_opacity),
+      backgroundColor: Colors.black.withValues(alpha: _opacity),
       body: GestureDetector(
         onVerticalDragUpdate: _handleVerticalDragUpdate,
         onVerticalDragEnd: _handleVerticalDragEnd,
@@ -1929,7 +1922,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black.withOpacity(_opacity),
+      backgroundColor: Colors.black.withValues(alpha: _opacity),
       body: GestureDetector(
         onVerticalDragUpdate: _handleVerticalDragUpdate,
         onVerticalDragEnd: _handleVerticalDragEnd,
