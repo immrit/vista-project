@@ -118,8 +118,10 @@ void main() async {
           AndroidFlutterLocalNotificationsPlugin>()
       ?.createNotificationChannel(socialChannel);
 
-  // پیش‌بارگذاری والپیپرهای چت در background
-  unawaited(WallpaperCacheService.preloadWallpapers());
+  // پیش‌بارگذاری والپیپرهای چت در background با تأخیر
+  Future.delayed(const Duration(seconds: 3), () {
+    unawaited(WallpaperCacheService.preloadWallpapers());
+  });
 
   runApp(
     ProviderScope(

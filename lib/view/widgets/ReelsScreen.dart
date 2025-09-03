@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:share_plus/share_plus.dart';
 // removed unused imports
 
 import '../../model/publicPostModel.dart';
 import '../../provider/provider.dart';
+import '../../services/smart_share_service.dart';
 import 'ReelsVideoPlayer.dart';
 
 class ReelsScreen extends ConsumerStatefulWidget {
@@ -139,15 +139,8 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
   }*/
 
   void _sharePost(PublicPostModel post) {
-    // ایجاد deep link برای پست
-    String deepLink = 'https://coffevista.ir/post/${post.id}';
-
-    String shareText = "ویدیوی جالب از ${post.username}";
-    if (post.title != null && post.title!.isNotEmpty) {
-      shareText += ": ${post.title}";
-    }
-
-    Share.share('$shareText\n\nمشاهده در اپلیکیشن Vista:\n$deepLink');
+    // استفاده از قابلیت جدید اشتراک‌گذاری تصویری
+    SmartShareService().showShareOptions(post, context);
   }
 
   void _showComments(PublicPostModel post) {

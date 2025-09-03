@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
+
 import 'package:shamsi_date/shamsi_date.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -24,6 +24,7 @@ import '../ouathUser/editeProfile.dart';
 import '../searchPage.dart';
 import '/model/publicPostModel.dart';
 import '../../../provider/provider.dart';
+import '../../../services/smart_share_service.dart';
 import 'MusicWaveform.dart';
 import 'followers and followings/FollowersScreen.dart';
 import 'followers and followings/FollowingScreen.dart';
@@ -1195,12 +1196,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   void _sharePost(PublicPostModel post) {
-    // ایجاد deep link برای پست
-    String deepLink = 'https://coffevista.ir/post/${post.id}';
-
-    String shareText =
-        '${post.username}: \n${post.content}\n\nمشاهده در اپلیکیشن Vista:\n$deepLink';
-    Share.share(shareText);
+    // استفاده از قابلیت جدید اشتراک‌گذاری تصویری
+    SmartShareService().showShareOptions(post, context);
   }
 
   void showEditPostDialog(

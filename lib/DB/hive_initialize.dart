@@ -21,8 +21,7 @@ class HiveInitialize {
     //   _adaptersRegistered = true;
     // }
 
-    // // باز کردن باکس‌ها
-    // await Hive.openBox<ConversationHiveModel>('conversations');
-    // await Hive.openBox<MessageHiveModel>('messages');
+    // باز کردن باکس settings قبل از استفاده در theme provider
+    await Hive.openBox('settings');
   }
 }

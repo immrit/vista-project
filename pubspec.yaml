@@ -163,6 +163,7 @@ flutter:
     - lib/view/util/images/vistalogo-new.png
     - lib/view/util/images/headerBack.jpg
     - lib/view/util/images/default-avatar.jpg
+    - lib/view/util/images/logo/
     - lib/view/util/images/bottomnavigation/
     - lib/view/util/images/component/
   #   - images/a_dot_ham.jpeg

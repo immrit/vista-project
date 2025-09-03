@@ -920,7 +920,7 @@ Widget _buildPostItem(
               // دکمه اشتراک‌گذاری با انیمیشن کلیک
               GestureDetector(
                 onTap: () {
-                  SmartShareService().sharePost(post, context: context);
+                  SmartShareService().showShareOptions(post, context);
                 },
                 child: Container(
                   padding: const EdgeInsets.all(8),

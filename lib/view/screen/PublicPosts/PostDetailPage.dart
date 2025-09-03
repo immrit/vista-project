@@ -5,7 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shamsi_date/shamsi_date.dart';
-import 'package:share_plus/share_plus.dart';
+import '../../../services/smart_share_service.dart';
 import '../../../model/publicPostModel.dart';
 import '../../util/widgets.dart';
 import '../searchPage.dart';
@@ -79,12 +79,8 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
 
   // سیستم اشتراک‌گذاری هوشمند
   void _sharePost(PublicPostModel post) {
-    final String webUrl = 'https://coffevista.ir/post/${post.id}';
-
-    String shareText = '${post.username}:\n${post.content}\n\n';
-    shareText += 'مشاهده در Vista: $webUrl';
-
-    Share.share(shareText);
+    // استفاده از قابلیت جدید اشتراک‌گذاری تصویری
+    SmartShareService().showShareOptions(post, context);
   }
 
   // مدیریت خطا و retry

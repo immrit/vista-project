@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../model/publicPostModel.dart';
+import '../view/widgets/post_image_share_widget.dart';
 
 class SmartShareService {
   static final SmartShareService _instance = SmartShareService._internal();
@@ -118,5 +119,151 @@ class SmartShareService {
     } catch (e) {
       print('Error sharing with choice: $e');
     }
+  }
+
+  /// نمایش دیالوگ انتخاب نوع اشتراک‌گذاری (متنی یا تصویری)
+  Future<void> showShareOptions(PublicPostModel post, BuildContext context) async {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).brightness == Brightness.dark
+              ? Colors.grey[900]
+              : Colors.white,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'انتخاب نوع اشتراک‌گذاری',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white
+                    : Colors.black,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildShareOption(
+                    context: context,
+                    icon: Icons.text_fields,
+                    title: 'اشتراک‌گذاری متنی',
+                    subtitle: 'لینک و متن پست',
+                    color: Colors.blue,
+                    onTap: () {
+                      Navigator.pop(context);
+                      sharePost(post, context: context);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildShareOption(
+                    context: context,
+                    icon: Icons.image,
+                    title: 'اشتراک‌گذاری تصویری',
+                    subtitle: 'تصویر پست آماده',
+                    color: Colors.purple,
+                    onTap: () {
+                      Navigator.pop(context);
+                      _openImageShare(context, post);
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'لغو',
+                style: TextStyle(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.grey[400]
+                      : Colors.grey[600],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildShareOption({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: color.withOpacity(0.3),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 32),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: TextStyle(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white
+                    : Colors.black,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: TextStyle(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.grey[400]
+                    : Colors.grey[600],
+                fontSize: 12,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// باز کردن صفحه اشتراک‌گذاری تصویری
+  void _openImageShare(BuildContext context, PublicPostModel post) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PostImageShareWidget(
+          post: post,
+          onShareComplete: () {
+            // عملیات پس از اشتراک‌گذاری موفق
+          },
+        ),
+      ),
+    );
   }
 }
