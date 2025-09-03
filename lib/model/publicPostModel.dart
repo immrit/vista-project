@@ -14,6 +14,7 @@ class PublicPostModel extends Equatable {
   final DateTime createdAt;
   final String username;
   final String avatarUrl;
+  final Map<String, dynamic>? profiles; // افزودن فیلد profiles
   final List<String> hashtags;
   int likeCount;
   bool isLiked;
@@ -38,6 +39,7 @@ class PublicPostModel extends Equatable {
     required this.createdAt,
     required this.username,
     this.avatarUrl = '',
+    this.profiles, // افزودن پارامتر profiles
     this.likeCount = 0,
     this.isLiked = false,
     this.isVerified = false,
@@ -78,6 +80,7 @@ class PublicPostModel extends Equatable {
       createdAt: _parseDateTime(map, 'created_at') ?? DateTime.now(),
       username: _parseUsername(map),
       avatarUrl: _parseAvatarUrl(map),
+      profiles: map['profiles'] as Map<String, dynamic>?,
       likeCount: _parseInt(map, 'like_count'),
       isLiked: _parseBool(map, 'is_liked'),
       isVerified: map['is_verified'] ?? false,
@@ -124,16 +127,8 @@ class PublicPostModel extends Equatable {
     return map['profiles']?['username']?.toString() ?? 'نام کاربری ناشناخته';
   }
 
-  static String _parseFullName(Map<String, dynamic> map) {
-    return map['profiles']?['full_name']?.toString() ?? 'نام کاربری ناشناخته';
-  }
-
   static String _parseAvatarUrl(Map<String, dynamic> map) {
     return map['profiles']?['avatar_url']?.toString() ?? '';
-  }
-
-  static bool _parseVerified(Map<String, dynamic> map) {
-    return map['profiles']?['is_verified'] ?? false;
   }
 
   static VerificationType _parseVerificationType(Map<String, dynamic> map) {
@@ -167,13 +162,14 @@ class PublicPostModel extends Equatable {
       'image_url': imageUrl,
       'video_url': videoUrl, // افزودن ویدیو به Map
       'created_at': createdAt.toIso8601String(),
-      'profiles': {
-        'username': username,
-        'full_name': fullName,
-        'avatar_url': avatarUrl,
-        'is_verified': isVerified,
-        'verification_type': verificationType.name,
-      },
+      'profiles': profiles ??
+          {
+            'username': username,
+            'full_name': fullName,
+            'avatar_url': avatarUrl,
+            'is_verified': isVerified,
+            'verification_type': verificationType.name,
+          },
       'like_count': likeCount,
       'is_liked': isLiked,
       'comment_count': commentCount,
@@ -202,6 +198,7 @@ class PublicPostModel extends Equatable {
     DateTime? createdAt,
     String? username,
     String? avatarUrl,
+    Map<String, dynamic>? profiles, // افزودن پارامتر profiles به copyWith
     int? likeCount,
     bool? isLiked,
     bool? isVerified,
@@ -226,6 +223,7 @@ class PublicPostModel extends Equatable {
       createdAt: createdAt ?? this.createdAt,
       username: username ?? this.username,
       avatarUrl: avatarUrl ?? this.avatarUrl,
+      profiles: profiles ?? this.profiles,
       likeCount: likeCount ?? this.likeCount,
       isLiked: isLiked ?? this.isLiked,
       isVerified: isVerified ?? this.isVerified,
@@ -280,6 +278,7 @@ class PublicPostModel extends Equatable {
         createdAt,
         username,
         avatarUrl,
+        profiles,
         likeCount,
         isLiked,
         isVerified,

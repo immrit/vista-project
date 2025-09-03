@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../model/publicPostModel.dart';
-import '../view/widgets/post_image_share_widget.dart';
+import '../view/screen/PublicPosts/VistaStoryTemplateScreen.dart';
 
 class SmartShareService {
   static final SmartShareService _instance = SmartShareService._internal();
@@ -122,7 +122,8 @@ class SmartShareService {
   }
 
   /// نمایش دیالوگ انتخاب نوع اشتراک‌گذاری (متنی یا تصویری)
-  Future<void> showShareOptions(PublicPostModel post, BuildContext context) async {
+  Future<void> showShareOptions(
+      PublicPostModel post, BuildContext context) async {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -170,13 +171,13 @@ class SmartShareService {
                 Expanded(
                   child: _buildShareOption(
                     context: context,
-                    icon: Icons.image,
-                    title: 'اشتراک‌گذاری تصویری',
-                    subtitle: 'تصویر پست آماده',
-                    color: Colors.purple,
+                    icon: Icons.auto_stories,
+                    title: 'قالب استوری Vista',
+                    subtitle: 'قالب سفارشی برای استوری',
+                    color: const Color(0xFF833AB4),
                     onTap: () {
                       Navigator.pop(context);
-                      _openImageShare(context, post);
+                      _openVistaStoryTemplate(context, post);
                     },
                   ),
                 ),
@@ -252,17 +253,12 @@ class SmartShareService {
     );
   }
 
-  /// باز کردن صفحه اشتراک‌گذاری تصویری
-  void _openImageShare(BuildContext context, PublicPostModel post) {
+  /// باز کردن صفحه قالب استوری Vista
+  void _openVistaStoryTemplate(BuildContext context, PublicPostModel post) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => PostImageShareWidget(
-          post: post,
-          onShareComplete: () {
-            // عملیات پس از اشتراک‌گذاری موفق
-          },
-        ),
+        builder: (context) => VistaStoryTemplateScreen(post: post),
       ),
     );
   }
