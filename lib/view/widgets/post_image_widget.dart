@@ -407,7 +407,7 @@ class PostImageWidget extends StatelessWidget {
           ),
           SizedBox(width: 8.w),
           Text(
-            'Vista - coffevista.ir',
+            'Vista - cafevista.ir',
             style: TextStyle(
               fontSize: 14.sp,
               color: isDarkMode ? Colors.grey[400] : Colors.grey[600],

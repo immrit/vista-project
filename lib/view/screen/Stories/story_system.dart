@@ -1658,7 +1658,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   Future<void> _shareStory(AppStoryContent story) async {
     try {
       // ایجاد deep link برای استوری
-      String deepLink = 'https://coffevista.ir/story/${story.id}';
+      String deepLink = 'https://cafevista.ir/story/${story.id}';
 
       await Share.share(
         'مشاهده استوری در اپلیکیشن Vista:\n$deepLink',

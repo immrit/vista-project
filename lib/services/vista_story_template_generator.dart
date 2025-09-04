@@ -7,7 +7,7 @@ import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:image_gallery_saver/image_gallery_saver.dart';
+import 'package:gal/gal.dart';
 
 import '../model/publicPostModel.dart';
 
@@ -43,6 +43,46 @@ class VistaStoryTemplateGenerator {
     }
   }
 
+  /// تولید فقط بک‌گراند VISTA (بدون کارت پست)
+  Future<File?> generateBackgroundOnly({
+    required GlobalKey repaintBoundaryKey,
+    String? customBackgroundText,
+    Color? backgroundColor,
+    Color? textColor,
+  }) async {
+    try {
+      return await _generateBackgroundFromWidget(
+        repaintBoundaryKey,
+        customBackgroundText: customBackgroundText,
+        backgroundColor: backgroundColor,
+        textColor: textColor,
+      );
+    } catch (e) {
+      debugPrint('Error generating Vista background: $e');
+      return null;
+    }
+  }
+
+  /// تولید فقط کارت پست (بدون بک‌گراند)
+  Future<File?> generatePostCardOnly({
+    required PublicPostModel post,
+    required GlobalKey repaintBoundaryKey,
+    String? customPostText,
+    String? customImageUrl,
+  }) async {
+    try {
+      return await _generatePostCardFromWidget(
+        repaintBoundaryKey,
+        post,
+        customPostText: customPostText,
+        customImageUrl: customImageUrl,
+      );
+    } catch (e) {
+      debugPrint('Error generating Vista post card: $e');
+      return null;
+    }
+  }
+
   /// تولید تصویر از ویجت Flutter
   Future<File?> _generateFromWidget(
     GlobalKey repaintBoundaryKey,
@@ -57,13 +97,19 @@ class VistaStoryTemplateGenerator {
       debugPrint('=== شروع تولید تصویر از ویجت ===');
       debugPrint('RepaintBoundary key: $repaintBoundaryKey');
 
-      final RenderRepaintBoundary boundary = repaintBoundaryKey.currentContext!
-          .findRenderObject() as RenderRepaintBoundary;
+      final BuildContext? context = repaintBoundaryKey.currentContext;
+      if (context == null) {
+        debugPrint(
+            '❌ خطا: repaintBoundaryKey.currentContext is null for story template');
+        return null;
+      }
+      final RenderRepaintBoundary boundary =
+          context.findRenderObject() as RenderRepaintBoundary;
       debugPrint('RenderRepaintBoundary پیدا شد');
 
-      // گرفتن تصویر با رزولوشن مناسب برای استوری
+      // گرفتن تصویر با رزولوشن بالا برای کیفیت بهتر
       debugPrint('تبدیل ویجت به تصویر...');
-      final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
+      final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
       debugPrint('اندازه تصویر: ${image.width}x${image.height}');
 
       // تبدیل به ByteData
@@ -199,33 +245,16 @@ class VistaStoryTemplateGenerator {
         return false;
       }
 
-      // استفاده از image_gallery_saver برای ذخیره در گالری
-      debugPrint('شروع ذخیره با image_gallery_saver...');
+      // استفاده از gal برای ذخیره در گالری
+      debugPrint('شروع ذخیره با gal...');
 
       try {
-        final Uint8List imageBytes = await imageFile.readAsBytes();
-
-        final result = await ImageGallerySaver.saveImage(
-          imageBytes,
-          quality: 100,
-          name: 'Vista_Story_${DateTime.now().millisecondsSinceEpoch}',
-        );
-
-        debugPrint('نتیجه ذخیره image_gallery_saver: $result');
-
-        if (result['isSuccess'] == true) {
-          debugPrint('✅ تصویر با موفقیت در گالری ذخیره شد');
-          debugPrint('مسیر ذخیره: ${result['filePath']}');
-          debugPrint('=== پایان ذخیره تصویر ===');
-          return true;
-        } else {
-          debugPrint(
-              '❌ خطا در ذخیره با image_gallery_saver: ${result['errorMessage']}');
-          debugPrint('تلاش با روش fallback...');
-          return await _saveToGalleryFallback(imageFile);
-        }
+        await Gal.putImage(imageFile.path);
+        debugPrint('✅ تصویر با موفقیت در گالری ذخیره شد');
+        debugPrint('=== پایان ذخیره تصویر ===');
+        return true;
       } catch (e) {
-        debugPrint('❌ خطا در image_gallery_saver: $e');
+        debugPrint('❌ خطا در gal: $e');
         debugPrint('تلاش با روش fallback...');
         return await _saveToGalleryFallback(imageFile);
       }
@@ -286,6 +315,90 @@ class VistaStoryTemplateGenerator {
       debugPrint('Stack trace: $stackTrace');
       debugPrint('=== پایان fallback ذخیره با خطا ===');
       return false;
+    }
+  }
+
+  /// تولید تصویر بک‌گراند از ویجت Flutter
+  Future<File?> _generateBackgroundFromWidget(
+    GlobalKey repaintBoundaryKey, {
+    String? customBackgroundText,
+    Color? backgroundColor,
+    Color? textColor,
+  }) async {
+    try {
+      final BuildContext? context = repaintBoundaryKey.currentContext;
+      if (context == null) {
+        debugPrint(
+            '❌ خطا: repaintBoundaryKey.currentContext is null for background');
+        return null;
+      }
+      final RenderRepaintBoundary boundary =
+          context.findRenderObject() as RenderRepaintBoundary;
+
+      // تولید تصویر با کیفیت بالا
+      final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+      final ByteData? byteData =
+          await image.toByteData(format: ui.ImageByteFormat.png);
+
+      if (byteData == null) {
+        debugPrint('❌ خطا در تبدیل تصویر به byte data');
+        return null;
+      }
+
+      // ذخیره فایل
+      final Directory tempDir = await getTemporaryDirectory();
+      final String fileName =
+          'Vista_Background_${DateTime.now().millisecondsSinceEpoch}.png';
+      final File file = File('${tempDir.path}/$fileName');
+      await file.writeAsBytes(byteData.buffer.asUint8List());
+
+      debugPrint('✅ تصویر بک‌گراند تولید شد: ${file.path}');
+      return file;
+    } catch (e) {
+      debugPrint('❌ خطا در تولید تصویر بک‌گراند: $e');
+      return null;
+    }
+  }
+
+  /// تولید تصویر کارت پست از ویجت Flutter
+  Future<File?> _generatePostCardFromWidget(
+    GlobalKey repaintBoundaryKey,
+    PublicPostModel post, {
+    String? customPostText,
+    String? customImageUrl,
+  }) async {
+    try {
+      final BuildContext? context = repaintBoundaryKey.currentContext;
+      if (context == null) {
+        debugPrint(
+            '❌ خطا: repaintBoundaryKey.currentContext is null for post card');
+        return null;
+      }
+      final RenderRepaintBoundary boundary =
+          context.findRenderObject() as RenderRepaintBoundary;
+
+      // تولید تصویر با کیفیت بالا
+      final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+      final ByteData? byteData =
+          await image.toByteData(format: ui.ImageByteFormat.png);
+
+      if (byteData == null) {
+        debugPrint('❌ خطا در تبدیل تصویر کارت پست به byte data');
+        return null;
+      }
+
+      // ذخیره فایل
+      final Directory tempDir = await getTemporaryDirectory();
+      final String fileName =
+          'Vista_PostCard_${DateTime.now().millisecondsSinceEpoch}.png';
+      final File file = File('${tempDir.path}/$fileName');
+      await file.writeAsBytes(byteData.buffer.asUint8List());
+
+      debugPrint('✅ تصویر کارت پست تولید شد: ${file.path}');
+      return file;
+    } catch (e) {
+      debugPrint('❌ خطا در تولید تصویر کارت پست: $e');
+      return null;
     }
   }
 }

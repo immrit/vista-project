@@ -66,8 +66,8 @@ class DeepLinkService {
     final path = uri.path;
     final pathSegments = uri.pathSegments;
 
-    // فقط پشتیبانی از https://coffevista.ir
-    if (scheme == 'https' && host == 'coffevista.ir') {
+    // فقط پشتیبانی از https://cafevista.ir
+    if (scheme == 'https' && host == 'cafevista.ir') {
       // پردازش مسیرهای مختلف
       if (path.startsWith('/post/') && pathSegments.length >= 2) {
         final postId = pathSegments[1];

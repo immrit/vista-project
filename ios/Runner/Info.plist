@@ -51,7 +51,7 @@
 	<!-- Associated Domains for Universal Links -->
 	<key>com.apple.developer.associated-domains</key>
 	<array>
-		<string>applinks:coffevista.ir</string>
+		<string>applinks:cafevista.ir</string>
 	</array>
 </dict>
 </plist>

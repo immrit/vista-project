@@ -41,13 +41,13 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- اینتنت فیلتر جامع برای همه لینک‌های coffevista.ir -->
+            <!-- اینتنت فیلتر جامع برای همه لینک‌های cafevista.ir -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" />
-                <data android:host="coffevista.ir" />
+                <data android:host="cafevista.ir" />
             </intent-filter>
 
             <!-- اینتنت فیلتر برای دیپ لینک custom scheme vista:// -->
@@ -109,6 +109,17 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- FileProvider for sharing files -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="ir.coffevista.vista.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
     <queries>
@@ -120,5 +131,15 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
         </intent>
+        <!-- Queries for Instagram sharing -->
+        <intent>
+            <action android:name="com.instagram.share.ADD_TO_STORY" />
+            <data android:mimeType="image/*" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="image/*" />
+        </intent>
+        <package android:name="com.instagram.android" />
     </queries>
 </manifest>

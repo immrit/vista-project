@@ -156,7 +156,7 @@ class Settings extends ConsumerWidget {
                           if (accessToken != null && refreshToken != null) {
                             // به‌جای ارسال توکن در URL، از یک endpoint امن با POST در WebView یا deep link امضاشده استفاده کنید.
                             // اینجا صرفاً باز کردن صفحه عمومی بدون افشای توکن‌ها انجام می‌شود.
-                            final url = Uri.parse('https://coffevista.ir');
+                            final url = Uri.parse('https://cafevista.ir');
                             if (await canLaunchUrl(url)) {
                               await launchUrl(url,
                                   mode: LaunchMode.externalApplication);

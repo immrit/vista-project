@@ -217,10 +217,6 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         await deleteConversationCacheDbFile();
       }
     } else if (state == AppLifecycleState.resumed) {
-      // بررسی قفل برنامه وقتی اپ از پس‌زمینه باز می‌شود (مثل تلگرام)
-      // AppLockLogger.lifecycle('برنامه resumed شد - بررسی قفل برنامه');
-      debugPrint('بررسی قفل برنامه بعد از بازگشت از پس‌زمینه');
-      // کمی صبر کن تا context آماده شود
       Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted) {
           // _checkAppLockStatus(); // Removed app lock check
