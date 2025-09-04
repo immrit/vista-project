@@ -48,15 +48,10 @@ class VistaStoryTemplateWidget extends StatelessWidget {
 
   /// ساخت پس‌زمینه با نوشته VISTA
   Widget _buildBackgroundText() {
-    return Positioned.fill(
-      child: Container(
-        color: backgroundColor ?? Colors.white,
-        child: CustomPaint(
-          painter: VistaThreadsStylePainter(
-            textColor: textColor ?? Colors.black,
-          ),
-          size: Size.infinite,
-        ),
+    return CustomPaint(
+      size: const Size(1080, 1920),
+      painter: VistavistaStylePainter(
+        textColor: textColor ?? Colors.black,
       ),
     );
   }
@@ -420,259 +415,101 @@ class VistaStoryTemplateWidget extends StatelessWidget {
   }
 }
 
-/// CustomPainter برای ایجاد الگوی موجی VISTA مشابه تردز
-class VistaThreadsStylePainter extends CustomPainter {
+/// CustomPainter برای ایجاد پس‌زمینه زیبا و ساده
+class VistavistaStylePainter extends CustomPainter {
   final Color textColor;
 
-  VistaThreadsStylePainter({required this.textColor});
+  VistavistaStylePainter({required this.textColor});
 
   @override
   void paint(Canvas canvas, Size size) {
-    // الگوی اصلی - کمان‌های بزرگ VISTA
-    _drawMainArcs(canvas, size);
+    // پس‌زمینه سفید
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      Paint()..color = Colors.white,
+    );
 
-    // الگوی تکمیلی - متن‌های کوچک‌تر
-    _drawSecondaryTexts(canvas, size);
-
-    // الگوی گوشه‌ها
-    _drawCornerTexts(canvas, size);
+    // رسم سه دایره بزرگ و زیبا
+    _drawCircles(canvas, size);
   }
 
-  void _drawMainArcs(Canvas canvas, Size size) {
-    // کمان اصلی بالا-چپ
-    _drawArcText(
-      canvas,
-      size,
-      centerX: size.width * 0.25,
-      centerY: size.height * 0.2,
-      radius: size.width * 0.4,
-      startAngle: -math.pi * 0.3,
-      endAngle: math.pi * 0.8,
-      fontSize: 180,
-      opacity: 0.12,
+  void _drawCircles(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.black
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 120;
+
+    // دایره اول - بالا چپ (نصفش توی صفحه)
+    canvas.drawCircle(
+      Offset(size.width * 0.1, size.height * 0.1),
+      size.width * 0.4,
+      paint,
     );
 
-    // کمان اصلی پایین-راست
-    _drawArcText(
-      canvas,
-      size,
-      centerX: size.width * 0.75,
-      centerY: size.height * 0.8,
-      radius: size.width * 0.35,
-      startAngle: math.pi * 0.2,
-      endAngle: math.pi * 1.3,
-      fontSize: 160,
-      opacity: 0.10,
+    // دایره دوم - وسط راست (نصفش توی صفحه)
+    canvas.drawCircle(
+      Offset(size.width * 0.9, size.height * 0.5),
+      size.width * 0.35,
+      paint,
     );
 
-    // کمان کوچک‌تر بالا-راست
-    _drawArcText(
-      canvas,
-      size,
-      centerX: size.width * 0.8,
-      centerY: size.height * 0.15,
-      radius: size.width * 0.25,
-      startAngle: -math.pi * 0.1,
-      endAngle: math.pi * 0.6,
-      fontSize: 120,
-      opacity: 0.08,
+    // دایره سوم - پایین چپ (نصفش توی صفحه)
+    canvas.drawCircle(
+      Offset(size.width * 0.2, size.height * 0.9),
+      size.width * 0.45,
+      paint,
     );
 
-    // کمان کوچک‌تر پایین-چپ
-    _drawArcText(
-      canvas,
-      size,
-      centerX: size.width * 0.2,
-      centerY: size.height * 0.85,
-      radius: size.width * 0.3,
-      startAngle: math.pi * 0.4,
-      endAngle: math.pi * 1.1,
-      fontSize: 140,
-      opacity: 0.09,
-    );
+    // رسم متن VISTA روی دایره‌ها
+    _drawTextOnCircles(canvas, size);
   }
 
-  void _drawArcText(
-    Canvas canvas,
-    Size size, {
-    required double centerX,
-    required double centerY,
-    required double radius,
-    required double startAngle,
-    required double endAngle,
-    required double fontSize,
-    required double opacity,
-  }) {
-    final text = 'VISTA';
+  void _drawTextOnCircles(Canvas canvas, Size size) {
+    final textStyle = TextStyle(
+      fontSize: 80,
+      fontWeight: FontWeight.w900,
+      color: Colors.white,
+      letterSpacing: 6,
+    );
+
     final textPainter = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: TextStyle(
-          fontSize: fontSize,
-          fontWeight: FontWeight.w900,
-          fontFamily: 'Arial',
-          letterSpacing: 15,
-          color: textColor.withOpacity(opacity),
-        ),
-      ),
+      text: TextSpan(text: 'VISTA', style: textStyle),
       textDirection: TextDirection.ltr,
     );
     textPainter.layout();
 
-    // محاسبه تعداد تکرارها برای کمان با فاصله
-    final textWidth = textPainter.width;
-    final spacing = textWidth * 0.5; // فاصله 50% از عرض متن برای فاصله بیشتر
-    final totalWidth = textWidth + spacing;
-    final arcLength = radius * (endAngle - startAngle);
-    final repetitions =
-        (arcLength / totalWidth * 1.1).ceil(); // تراکم کمان کاهش یافته
+    // متن روی دایره اول
+    _drawTextOnCircle(canvas, size.width * 0.1, size.height * 0.1,
+        size.width * 0.4, textPainter);
+
+    // متن روی دایره دوم
+    _drawTextOnCircle(canvas, size.width * 0.9, size.height * 0.5,
+        size.width * 0.35, textPainter);
+
+    // متن روی دایره سوم
+    _drawTextOnCircle(canvas, size.width * 0.2, size.height * 0.9,
+        size.width * 0.45, textPainter);
+  }
+
+  void _drawTextOnCircle(Canvas canvas, double centerX, double centerY,
+      double radius, TextPainter textPainter) {
+    final circumference = 2 * math.pi * radius;
+    final repetitions = (circumference / textPainter.width * 0.8).floor();
 
     for (int i = 0; i < repetitions; i++) {
-      final progress = i / (repetitions - 1);
-      final angle = startAngle + (endAngle - startAngle) * progress;
-
-      final x = centerX + math.cos(angle) * radius;
-      final y = centerY + math.sin(angle) * radius;
+      final angle = (i / repetitions) * 2 * math.pi;
+      final x = centerX + radius * math.cos(angle);
+      final y = centerY + radius * math.sin(angle);
 
       canvas.save();
       canvas.translate(x, y);
-      canvas.rotate(angle + math.pi / 2); // عمود بر کمان
+      canvas.rotate(angle + math.pi / 2);
       textPainter.paint(
         canvas,
-        Offset(-textWidth / 2, -textPainter.height / 2.0),
+        Offset(-textPainter.width / 2, -textPainter.height / 2),
       );
       canvas.restore();
     }
-  }
-
-  void _drawSecondaryTexts(Canvas canvas, Size size) {
-    final positions = [
-      {
-        'x': size.width * 0.1,
-        'y': size.height * 0.4,
-        'size': 100.0,
-        'opacity': 0.06,
-        'rotation': 0.3,
-      },
-      {
-        'x': size.width * 0.9,
-        'y': size.height * 0.3,
-        'size': 90.0,
-        'opacity': 0.05,
-        'rotation': -0.2,
-      },
-      {
-        'x': size.width * 0.15,
-        'y': size.height * 0.6,
-        'size': 80.0,
-        'opacity': 0.04,
-        'rotation': 0.4,
-      },
-      {
-        'x': size.width * 0.85,
-        'y': size.height * 0.7,
-        'size': 95.0,
-        'opacity': 0.05,
-        'rotation': -0.3,
-      },
-      {
-        'x': size.width * 0.05,
-        'y': size.height * 0.1,
-        'size': 70.0,
-        'opacity': 0.03,
-        'rotation': 0.5,
-      },
-      {
-        'x': size.width * 0.95,
-        'y': size.height * 0.9,
-        'size': 85.0,
-        'opacity': 0.04,
-        'rotation': -0.4,
-      },
-    ];
-
-    for (final pos in positions) {
-      _drawSingleText(
-        canvas,
-        x: pos['x'] as double,
-        y: pos['y'] as double,
-        size: pos['size'] as double,
-        opacity: pos['opacity'] as double,
-        rotation: pos['rotation'] as double,
-      );
-    }
-  }
-
-  void _drawCornerTexts(Canvas canvas, Size size) {
-    // گوشه‌های خارج از صفحه
-    final cornerPositions = [
-      {'x': -100, 'y': -100, 'size': 120.0, 'opacity': 0.07, 'rotation': -0.6},
-      {
-        'x': size.width + 100,
-        'y': -100,
-        'size': 110.0,
-        'opacity': 0.06,
-        'rotation': 0.5,
-      },
-      {
-        'x': -100,
-        'y': size.height + 100,
-        'size': 130.0,
-        'opacity': 0.08,
-        'rotation': 0.7,
-      },
-      {
-        'x': size.width + 100,
-        'y': size.height + 100,
-        'size': 115.0,
-        'opacity': 0.07,
-        'rotation': -0.8,
-      },
-    ];
-
-    for (final pos in cornerPositions) {
-      _drawSingleText(
-        canvas,
-        x: pos['x'] as double,
-        y: pos['y'] as double,
-        size: pos['size'] as double,
-        opacity: pos['opacity'] as double,
-        rotation: pos['rotation'] as double,
-      );
-    }
-  }
-
-  void _drawSingleText(
-    Canvas canvas, {
-    required double x,
-    required double y,
-    required double size,
-    required double opacity,
-    required double rotation,
-  }) {
-    final textPainter = TextPainter(
-      text: TextSpan(
-        text: 'VISTA',
-        style: TextStyle(
-          fontSize: size,
-          fontWeight: FontWeight.w900,
-          fontFamily: 'Arial',
-          letterSpacing: 12,
-          color: textColor.withOpacity(opacity),
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    );
-    textPainter.layout();
-
-    canvas.save();
-    canvas.translate(x, y);
-    canvas.rotate(rotation);
-    textPainter.paint(
-      canvas,
-      Offset(-textPainter.width / 2.0, -textPainter.height / 2.0),
-    );
-    canvas.restore();
   }
 
   @override

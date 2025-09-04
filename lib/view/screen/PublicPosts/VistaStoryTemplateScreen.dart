@@ -50,9 +50,11 @@ class _VistaStoryTemplateScreenState extends State<VistaStoryTemplateScreen> {
                     height: 355, // نسبت 9:16
                     child: Transform.scale(
                       scale: 0.185, // مقیاس برای نمایش کوچک‌تر در پیش‌نمایش
-                      child: VistaStoryTemplateWidget(
-                        post: widget.post,
-                        repaintBoundaryKey: _repaintBoundaryKey,
+                      child: RepaintBoundary(
+                        key: _repaintBoundaryKey,
+                        child: VistaStoryTemplateWidget(
+                          post: widget.post,
+                        ),
                       ),
                     ),
                   ),
