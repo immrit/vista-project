@@ -82,9 +82,9 @@ class PostController {
     try {
       final currentPage = _ref.read(currentPageProvider);
       final nextPage = currentPage + 1;
-      
+
       final newPosts = await getPosts(page: nextPage);
-      
+
       if (newPosts.isNotEmpty) {
         _ref.read(currentPageProvider.notifier).state = nextPage;
       }
@@ -102,7 +102,7 @@ class PostController {
       }
 
       final supabase = Supabase.instance.client;
-      
+
       // جستجو در محتوای پست‌ها
       final response = await supabase
           .from('posts')
@@ -121,12 +121,9 @@ class PostController {
   Future<Map<String, dynamic>?> getPostById(String postId) async {
     try {
       final supabase = Supabase.instance.client;
-      
-      final response = await supabase
-          .from('posts')
-          .select('*')
-          .eq('id', postId)
-          .single();
+
+      final response =
+          await supabase.from('posts').select('*').eq('id', postId).single();
 
       return response;
     } catch (e) {
@@ -146,11 +143,8 @@ class PostController {
   Future<int> getTotalPostsCount() async {
     try {
       final supabase = Supabase.instance.client;
-      
-      final response = await supabase
-          .from('posts')
-          .select('id')
-          .count();
+
+      final response = await supabase.from('posts').select('id').count();
 
       return response.count;
     } catch (e) {
@@ -167,10 +161,9 @@ class PostController {
   /// حذف پست از کش
   void removePostFromCache(String postId) {
     final currentPosts = _ref.read(cachedPostsProvider);
-    final updatedPosts = currentPosts
-        .where((post) => post['id'] != postId)
-        .toList();
-    
+    final updatedPosts =
+        currentPosts.where((post) => post['id'] != postId).toList();
+
     // استفاده از clearPosts و addPosts برای اجتناب از دسترسی مستقیم به state
     _ref.read(cachedPostsProvider.notifier).clearPosts();
     _ref.read(cachedPostsProvider.notifier).addPosts(updatedPosts);
@@ -180,7 +173,7 @@ class PostController {
   Future<List<Map<String, dynamic>>> getUserPosts(String userId) async {
     try {
       final supabase = Supabase.instance.client;
-      
+
       final response = await supabase
           .from('posts')
           .select('*')
@@ -198,7 +191,7 @@ class PostController {
   Future<void> incrementPostView(String postId) async {
     try {
       final supabase = Supabase.instance.client;
-      
+
       // افزایش view count پست
       await supabase.rpc('increment_post_views', params: {
         'post_id': postId,
@@ -207,7 +200,7 @@ class PostController {
       // به‌روزرسانی کش محلی
       final cachedPosts = _ref.read(cachedPostsProvider);
       final postIndex = cachedPosts.indexWhere((post) => post['id'] == postId);
-      
+
       if (postIndex != -1) {
         final updatedPost = Map<String, dynamic>.from(cachedPosts[postIndex]);
         updatedPost['views_count'] = (updatedPost['views_count'] ?? 0) + 1;
@@ -226,7 +219,8 @@ final postControllerProvider = Provider<PostController>((ref) {
 });
 
 /// Provider برای مدیریت وضعیت صفحه اصلی پست‌ها
-final homePostsProvider = StateNotifierProvider<HomePostsNotifier, HomePostsState>((ref) {
+final homePostsProvider =
+    StateNotifierProvider<HomePostsNotifier, HomePostsState>((ref) {
   return HomePostsNotifier(ref);
 });
 
@@ -335,7 +329,7 @@ class HomePostsNotifier extends StateNotifier<HomePostsState> {
   void updatePost(Map<String, dynamic> updatedPost) {
     final posts = List<Map<String, dynamic>>.from(state.posts);
     final index = posts.indexWhere((post) => post['id'] == updatedPost['id']);
-    
+
     if (index != -1) {
       posts[index] = updatedPost;
       state = state.copyWith(posts: posts);

@@ -17,8 +17,8 @@ class $CachedConversationsTable extends CachedConversations
   static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
   @override
   late final GeneratedColumn<String> userId = GeneratedColumn<String>(
-      'user_id', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
+      'user_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _createdAtMeta =
       const VerificationMeta('createdAt');
   @override
@@ -144,8 +144,6 @@ class $CachedConversationsTable extends CachedConversations
     if (data.containsKey('user_id')) {
       context.handle(_userIdMeta,
           userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta));
-    } else if (isInserting) {
-      context.missing(_userIdMeta);
     }
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
@@ -227,7 +225,7 @@ class $CachedConversationsTable extends CachedConversations
       id: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
       userId: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}user_id'])!,
+          .read(DriftSqlType.string, data['${effectivePrefix}user_id']),
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
       updatedAt: attachedDatabase.typeMapping
@@ -264,7 +262,7 @@ class $CachedConversationsTable extends CachedConversations
 class CachedConversation extends DataClass
     implements Insertable<CachedConversation> {
   final String id;
-  final String userId;
+  final String? userId;
   final DateTime createdAt;
   final DateTime updatedAt;
   final String? lastMessage;
@@ -279,7 +277,7 @@ class CachedConversation extends DataClass
   final bool isArchived;
   const CachedConversation(
       {required this.id,
-      required this.userId,
+      this.userId,
       required this.createdAt,
       required this.updatedAt,
       this.lastMessage,
@@ -296,7 +294,9 @@ class CachedConversation extends DataClass
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
-    map['user_id'] = Variable<String>(userId);
+    if (!nullToAbsent || userId != null) {
+      map['user_id'] = Variable<String>(userId);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || lastMessage != null) {
@@ -325,7 +325,8 @@ class CachedConversation extends DataClass
   CachedConversationsCompanion toCompanion(bool nullToAbsent) {
     return CachedConversationsCompanion(
       id: Value(id),
-      userId: Value(userId),
+      userId:
+          userId == null && nullToAbsent ? const Value.absent() : Value(userId),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       lastMessage: lastMessage == null && nullToAbsent
@@ -356,7 +357,7 @@ class CachedConversation extends DataClass
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return CachedConversation(
       id: serializer.fromJson<String>(json['id']),
-      userId: serializer.fromJson<String>(json['userId']),
+      userId: serializer.fromJson<String?>(json['userId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       lastMessage: serializer.fromJson<String?>(json['lastMessage']),
@@ -376,7 +377,7 @@ class CachedConversation extends DataClass
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
-      'userId': serializer.toJson<String>(userId),
+      'userId': serializer.toJson<String?>(userId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'lastMessage': serializer.toJson<String?>(lastMessage),
@@ -394,7 +395,7 @@ class CachedConversation extends DataClass
 
   CachedConversation copyWith(
           {String? id,
-          String? userId,
+          Value<String?> userId = const Value.absent(),
           DateTime? createdAt,
           DateTime? updatedAt,
           Value<String?> lastMessage = const Value.absent(),
@@ -409,7 +410,7 @@ class CachedConversation extends DataClass
           bool? isArchived}) =>
       CachedConversation(
         id: id ?? this.id,
-        userId: userId ?? this.userId,
+        userId: userId.present ? userId.value : this.userId,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
         lastMessage: lastMessage.present ? lastMessage.value : this.lastMessage,
@@ -518,7 +519,7 @@ class CachedConversation extends DataClass
 
 class CachedConversationsCompanion extends UpdateCompanion<CachedConversation> {
   final Value<String> id;
-  final Value<String> userId;
+  final Value<String?> userId;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<String?> lastMessage;
@@ -551,7 +552,7 @@ class CachedConversationsCompanion extends UpdateCompanion<CachedConversation> {
   });
   CachedConversationsCompanion.insert({
     required String id,
-    required String userId,
+    this.userId = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
     this.lastMessage = const Value.absent(),
@@ -566,7 +567,6 @@ class CachedConversationsCompanion extends UpdateCompanion<CachedConversation> {
     this.isArchived = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
-        userId = Value(userId),
         createdAt = Value(createdAt),
         updatedAt = Value(updatedAt);
   static Insertable<CachedConversation> custom({
@@ -607,7 +607,7 @@ class CachedConversationsCompanion extends UpdateCompanion<CachedConversation> {
 
   CachedConversationsCompanion copyWith(
       {Value<String>? id,
-      Value<String>? userId,
+      Value<String?>? userId,
       Value<DateTime>? createdAt,
       Value<DateTime>? updatedAt,
       Value<String?>? lastMessage,
@@ -730,7 +730,7 @@ abstract class _$ConversationCacheDatabase extends GeneratedDatabase {
 typedef $$CachedConversationsTableCreateCompanionBuilder
     = CachedConversationsCompanion Function({
   required String id,
-  required String userId,
+  Value<String?> userId,
   required DateTime createdAt,
   required DateTime updatedAt,
   Value<String?> lastMessage,
@@ -748,7 +748,7 @@ typedef $$CachedConversationsTableCreateCompanionBuilder
 typedef $$CachedConversationsTableUpdateCompanionBuilder
     = CachedConversationsCompanion Function({
   Value<String> id,
-  Value<String> userId,
+  Value<String?> userId,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
   Value<String?> lastMessage,
@@ -958,7 +958,7 @@ class $$CachedConversationsTableTableManager extends RootTableManager<
                   $db: db, $table: table),
           updateCompanionCallback: ({
             Value<String> id = const Value.absent(),
-            Value<String> userId = const Value.absent(),
+            Value<String?> userId = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
             Value<String?> lastMessage = const Value.absent(),
@@ -992,7 +992,7 @@ class $$CachedConversationsTableTableManager extends RootTableManager<
           ),
           createCompanionCallback: ({
             required String id,
-            required String userId,
+            Value<String?> userId = const Value.absent(),
             required DateTime createdAt,
             required DateTime updatedAt,
             Value<String?> lastMessage = const Value.absent(),

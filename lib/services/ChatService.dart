@@ -233,14 +233,24 @@ class ChatService {
                     }
                   } catch (_) {}
                   if (otherId != null && otherId.isNotEmpty) {
+                    // Prepare keys for both users
                     await E2EEService.instance.prepareConversationKey(
                       conversationId: conversationId,
                       otherUserId: otherId,
                     );
-                    lastContent = await E2EEService.instance.maybeDecryptFast(
+
+                    // Also prepare key for current user
+                    final currentUserId = _supabase.auth.currentUser?.id;
+                    if (currentUserId != null && currentUserId.isNotEmpty) {
+                      await E2EEService.instance.prepareConversationKey(
+                        conversationId: conversationId,
+                        otherUserId: currentUserId,
+                      );
+                    }
+
+                    lastContent = await E2EEService.instance.maybeDecrypt(
                       content: lastContent,
                       conversationId: conversationId,
-                      otherUserId: otherId,
                     );
                   } else {
                     lastContent = 'پیام جدید';
@@ -376,34 +386,53 @@ class ChatService {
       String encryptedContent = content;
       String? encryptedReplyContent = replyToContent;
       try {
+        print('[encode] Starting E2EE encryption process...');
         await E2EEService.instance.ensureInitialized();
+        print('[encode] E2EE service initialized successfully');
+
         // پیدا کردن طرف مقابل مکالمه (چت دو نفره)
+        print('[encode] Fetching conversation participants...');
         final participantsJson = await _supabase
             .from('conversation_participants')
             .select('user_id')
             .eq('conversation_id', conversationId);
+        print('[encode] Participants found: ${participantsJson.length}');
+
         final String? recipientId = (participantsJson as List)
             .map((e) => e['user_id'] as String)
             .firstWhere((uid) => uid != userId, orElse: () => '');
+
+        print('[encode] Current user ID: $userId');
+        print('[encode] Recipient ID: $recipientId');
+
         if (recipientId != null && recipientId.isNotEmpty) {
+          print('[encode] Encrypting main content...');
           encryptedContent =
               await E2EEService.instance.maybeEncryptForRecipient(
             plaintext: content,
             conversationId: conversationId,
             recipientUserId: recipientId,
           );
+          print(
+              '[encode] Main content encryption result: ${encryptedContent.length} chars');
+
           if (replyToContent != null && replyToContent.isNotEmpty) {
+            print('[encode] Encrypting reply content...');
             encryptedReplyContent =
                 await E2EEService.instance.maybeEncryptForRecipient(
               plaintext: replyToContent,
               conversationId: conversationId,
               recipientUserId: recipientId,
             );
+            print(
+                '[encode] Reply content encryption result: ${encryptedReplyContent.length} chars');
           }
+        } else {
+          print('[encode] No recipient found, skipping encryption');
         }
       } catch (e) {
         // اگر هر مشکلی رخ داد، بدون رمزنگاری ارسال می‌کنیم
-        print('E2EE encrypt skipped: $e');
+        print('[encode] E2EE encrypt skipped: $e');
       }
 
       // ساخت داده‌های پیام برای insert مستقیم
@@ -423,6 +452,12 @@ class ChatService {
       };
 
       print('📝 ارسال پیام به سرور (insert مستقیم): $messageData');
+      print(
+          '[encode] Content being sent to database: ${messageData['content']}');
+      print(
+          '[encode] Content length: ${(messageData['content'] as String).length}');
+      print(
+          '[encode] Content starts with e2ee: ${(messageData['content'] as String).startsWith('e2ee:')}');
 
       // ارسال پیام به سرور با insert مستقیم
       final response = await _supabase
@@ -432,6 +467,11 @@ class ChatService {
           .single();
 
       print('✅ پیام با موفقیت ارسال شد');
+      print('[encode] Response from database: ${response['content']}');
+      print(
+          '[encode] Response content length: ${(response['content'] as String).length}');
+      print(
+          '[encode] Response content starts with e2ee: ${(response['content'] as String).startsWith('e2ee:')}');
 
       // *** اضافه شد: رفرش کردن اطلاعات مکالمه در کش پس از ارسال پیام ***
       await refreshConversation(conversationId);
@@ -1181,10 +1221,9 @@ class ChatService {
             otherId = cached?.otherUserId;
           }
           if (otherId != null && otherId.isNotEmpty) {
-            lastContent = await E2EEService.instance.maybeDecryptWithOtherUser(
+            lastContent = await E2EEService.instance.maybeDecrypt(
               content: lastContent,
               conversationId: conversationId,
-              otherUserId: otherId,
             );
           } else {
             // در صورت عدم دسترسی، از متن رمز جلوگیری کن

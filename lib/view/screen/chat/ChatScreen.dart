@@ -1541,6 +1541,474 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
+  Future<bool> _isMessageDecrypted(MessageModel message) async {
+    try {
+      // Check if message content is already decrypted (not encrypted)
+      if (message.content.isEmpty || !message.content.startsWith('e2ee:v1:')) {
+        return true;
+      }
+
+      // Try to decrypt to see if it's ready
+      await E2EEService.instance.maybeDecryptWithSender(
+        content: message.content,
+        conversationId: widget.conversationId,
+        senderId: message.senderId,
+        messageId: message.id,
+        userId: supabase.auth.currentUser?.id ?? '',
+        messageCreatedAt: message.createdAt,
+      );
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Widget _buildMessageShimmer(bool isMe, double fontSize) {
+    final shimmerWidth = isMe ? 180.0 : 220.0;
+    final shimmerHeight = fontSize * 1.8;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: math.max(12, fontSize * 0.6),
+        vertical: math.max(2, fontSize * 0.15),
+      ),
+      child: Align(
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: TweenAnimationBuilder<double>(
+          duration: const Duration(milliseconds: 800),
+          tween: Tween(begin: 0.0, end: 1.0),
+          curve: Curves.easeOutCubic,
+          builder: (context, animation, child) {
+            return Transform.scale(
+              scale: 0.9 + (animation * 0.1),
+              child: Opacity(
+                opacity: animation,
+                child: Shimmer.fromColors(
+                  baseColor: isDarkMode
+                      ? (isMe ? Colors.grey[700]! : Colors.grey[800]!)
+                      : (isMe ? Colors.grey[600]! : Colors.grey[300]!),
+                  highlightColor: isDarkMode
+                      ? (isMe ? Colors.grey[600]! : Colors.grey[700]!)
+                      : (isMe ? Colors.grey[500]! : Colors.grey[100]!),
+                  period: const Duration(milliseconds: 1200),
+                  child: Container(
+                    height: shimmerHeight,
+                    width: shimmerWidth,
+                    decoration: BoxDecoration(
+                      color: isDarkMode
+                          ? (isMe ? Colors.grey[700] : Colors.grey[800])
+                          : (isMe ? Colors.grey[600] : Colors.grey[300]),
+                      borderRadius: _getTelegramXBorderRadius(isMe, fontSize),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 2,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChatShimmer() {
+    return Column(
+      children: [
+        // Header shimmer
+        _buildHeaderShimmer(),
+        Expanded(
+          child: ListView.builder(
+            reverse: true,
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+            itemCount: 8, // تعداد پیام‌های shimmer
+            itemBuilder: (context, index) {
+              final isMe = index % 3 == 0; // هر سومین پیام از کاربر فعلی
+              final fontSize = 16.0; // اندازه فونت پیش‌فرض
+
+              return TweenAnimationBuilder<double>(
+                duration: Duration(milliseconds: 600 + (index * 100)),
+                tween: Tween(begin: 0.0, end: 1.0),
+                curve: Curves.easeOutCubic,
+                builder: (context, animation, child) {
+                  return Transform.translate(
+                    offset: Offset(0, (1 - animation) * 20),
+                    child: Opacity(
+                      opacity: animation,
+                      child: Column(
+                        children: [
+                          // Date divider shimmer (هر چند پیام یک بار)
+                          if (index % 4 == 0)
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 16.0),
+                              child: Center(
+                                child: TweenAnimationBuilder<double>(
+                                  duration: const Duration(milliseconds: 800),
+                                  tween: Tween(begin: 0.0, end: 1.0),
+                                  curve: Curves.easeOutCubic,
+                                  builder: (context, animation, child) {
+                                    return Transform.scale(
+                                      scale: 0.8 + (animation * 0.2),
+                                      child: Opacity(
+                                        opacity: animation,
+                                        child: Shimmer.fromColors(
+                                          baseColor:
+                                              Theme.of(context).brightness ==
+                                                      Brightness.dark
+                                                  ? Colors.grey[700]!
+                                                  : Colors.grey[300]!,
+                                          highlightColor:
+                                              Theme.of(context).brightness ==
+                                                      Brightness.dark
+                                                  ? Colors.grey[600]!
+                                                  : Colors.grey[100]!,
+                                          period: const Duration(
+                                              milliseconds: 1000),
+                                          child: Container(
+                                            height: 20,
+                                            width: 120,
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(context)
+                                                          .brightness ==
+                                                      Brightness.dark
+                                                  ? Colors.grey[700]
+                                                  : Colors.grey[300],
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.black
+                                                      .withValues(alpha: 0.03),
+                                                  blurRadius: 1,
+                                                  offset: const Offset(0, 1),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          _buildMessageShimmer(isMe, fontSize),
+                          const SizedBox(height: 4),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        // Input box shimmer
+        _buildInputShimmer(),
+      ],
+    );
+  }
+
+  Widget _buildHeaderShimmer() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 800),
+      tween: Tween(begin: 0.0, end: 1.0),
+      curve: Curves.easeOutCubic,
+      builder: (context, animation, child) {
+        return Transform.translate(
+          offset: Offset(0, (1 - animation) * -20),
+          child: Opacity(
+            opacity: animation,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                border: Border(
+                  bottom: BorderSide(
+                    color: isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
+                    width: 0.5,
+                  ),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 2,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  // Back button shimmer
+                  Shimmer.fromColors(
+                    baseColor:
+                        isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
+                    highlightColor:
+                        isDarkMode ? Colors.grey[600]! : Colors.grey[100]!,
+                    period: const Duration(milliseconds: 1000),
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: isDarkMode ? Colors.grey[700] : Colors.grey[300],
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Avatar shimmer
+                  Shimmer.fromColors(
+                    baseColor:
+                        isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
+                    highlightColor:
+                        isDarkMode ? Colors.grey[600]! : Colors.grey[100]!,
+                    period: const Duration(milliseconds: 1000),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: isDarkMode ? Colors.grey[700] : Colors.grey[300],
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Name and status shimmer
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Shimmer.fromColors(
+                          baseColor: isDarkMode
+                              ? Colors.grey[700]!
+                              : Colors.grey[300]!,
+                          highlightColor: isDarkMode
+                              ? Colors.grey[600]!
+                              : Colors.grey[100]!,
+                          period: const Duration(milliseconds: 1000),
+                          child: Container(
+                            height: 16,
+                            width: 120,
+                            decoration: BoxDecoration(
+                              color: isDarkMode
+                                  ? Colors.grey[700]
+                                  : Colors.grey[300],
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Shimmer.fromColors(
+                          baseColor: isDarkMode
+                              ? Colors.grey[700]!
+                              : Colors.grey[300]!,
+                          highlightColor: isDarkMode
+                              ? Colors.grey[600]!
+                              : Colors.grey[100]!,
+                          period: const Duration(milliseconds: 1000),
+                          child: Container(
+                            height: 12,
+                            width: 80,
+                            decoration: BoxDecoration(
+                              color: isDarkMode
+                                  ? Colors.grey[700]
+                                  : Colors.grey[300],
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // More button shimmer
+                  Shimmer.fromColors(
+                    baseColor:
+                        isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
+                    highlightColor:
+                        isDarkMode ? Colors.grey[600]! : Colors.grey[100]!,
+                    period: const Duration(milliseconds: 1000),
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: isDarkMode ? Colors.grey[700] : Colors.grey[300],
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildInputShimmer() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 1000),
+      tween: Tween(begin: 0.0, end: 1.0),
+      curve: Curves.easeOutCubic,
+      builder: (context, animation, child) {
+        return Transform.translate(
+          offset: Offset(0, (1 - animation) * 30),
+          child: Opacity(
+            opacity: animation,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                border: Border(
+                  top: BorderSide(
+                    color: isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
+                    width: 0.5,
+                  ),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 4,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  // Attachment button shimmer
+                  TweenAnimationBuilder<double>(
+                    duration: const Duration(milliseconds: 1200),
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, animation, child) {
+                      return Transform.scale(
+                        scale: 0.8 + (animation * 0.2),
+                        child: Shimmer.fromColors(
+                          baseColor: isDarkMode
+                              ? Colors.grey[700]!
+                              : Colors.grey[300]!,
+                          highlightColor: isDarkMode
+                              ? Colors.grey[600]!
+                              : Colors.grey[100]!,
+                          period: const Duration(milliseconds: 1000),
+                          child: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: isDarkMode
+                                  ? Colors.grey[700]
+                                  : Colors.grey[300],
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.05),
+                                  blurRadius: 2,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 12),
+                  // Text input shimmer
+                  Expanded(
+                    child: TweenAnimationBuilder<double>(
+                      duration: const Duration(milliseconds: 1400),
+                      tween: Tween(begin: 0.0, end: 1.0),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, animation, child) {
+                        return Transform.scale(
+                          scale: 0.9 + (animation * 0.1),
+                          child: Shimmer.fromColors(
+                            baseColor: isDarkMode
+                                ? Colors.grey[700]!
+                                : Colors.grey[300]!,
+                            highlightColor: isDarkMode
+                                ? Colors.grey[600]!
+                                : Colors.grey[100]!,
+                            period: const Duration(milliseconds: 1000),
+                            child: Container(
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: isDarkMode
+                                    ? Colors.grey[700]
+                                    : Colors.grey[300],
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.03),
+                                    blurRadius: 1,
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Send button shimmer
+                  TweenAnimationBuilder<double>(
+                    duration: const Duration(milliseconds: 1600),
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, animation, child) {
+                      return Transform.scale(
+                        scale: 0.8 + (animation * 0.2),
+                        child: Shimmer.fromColors(
+                          baseColor: isDarkMode
+                              ? Colors.grey[700]!
+                              : Colors.grey[300]!,
+                          highlightColor: isDarkMode
+                              ? Colors.grey[600]!
+                              : Colors.grey[100]!,
+                          period: const Duration(milliseconds: 1000),
+                          child: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: isDarkMode
+                                  ? Colors.grey[700]
+                                  : Colors.grey[300],
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.05),
+                                  blurRadius: 2,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildMessageItemContent(
       BuildContext context, MessageModel message, bool isMe, double fontSize) {
     final theme = Theme.of(context);
@@ -2040,318 +2508,367 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               borderRadius:
                                   _getTelegramXBorderRadius(isMe, fontSize),
                             ),
-                            child: Column(
-                              crossAxisAlignment: isMe
-                                  ? CrossAxisAlignment.end
-                                  : CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (message.replyToMessageId != null)
-                                  Container(
-                                    padding: EdgeInsets.all(
-                                        math.max(8, fontSize * 0.5)),
-                                    margin: EdgeInsets.only(
-                                      bottom: math.max(6, fontSize * 0.35),
-                                      left: math.max(8, fontSize * 0.5),
-                                      right: math.max(8, fontSize * 0.5),
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: isMe
-                                          ? outgoingBubbleColor.withValues(
-                                              alpha: 0.8)
-                                          : Colors.grey[100],
-                                      borderRadius: BorderRadius.circular(
-                                          math.max(12, fontSize * 0.7)),
-                                      border: Border.all(
-                                        color: isMe
-                                            ? Colors.white
-                                                .withValues(alpha: 0.2)
-                                            : Colors.grey[300]!,
-                                        width: 1,
-                                      ),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
+                            child: FutureBuilder<bool>(
+                              future: _isMessageDecrypted(message),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState ==
+                                    ConnectionState.waiting) {
+                                  return _buildMessageShimmer(isMe, fontSize);
+                                }
+                                return Column(
+                                  crossAxisAlignment: isMe
+                                      ? CrossAxisAlignment.end
+                                      : CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (message.replyToMessageId != null)
+                                      Container(
+                                        padding: EdgeInsets.all(
+                                            math.max(8, fontSize * 0.5)),
+                                        margin: EdgeInsets.only(
+                                          bottom: math.max(6, fontSize * 0.35),
+                                          left: math.max(8, fontSize * 0.5),
+                                          right: math.max(8, fontSize * 0.5),
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: isMe
+                                              ? outgoingBubbleColor.withValues(
+                                                  alpha: 0.8)
+                                              : Colors.grey[100],
+                                          borderRadius: BorderRadius.circular(
+                                              math.max(12, fontSize * 0.7)),
+                                          border: Border.all(
+                                            color: isMe
+                                                ? Colors.white
+                                                    .withValues(alpha: 0.2)
+                                                : Colors.grey[300]!,
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
-                                            Icon(Icons.reply,
-                                                size: 14,
-                                                color: isMe
-                                                    ? Colors.white70
-                                                    : Colors.black45),
-                                            SizedBox(width: 6),
-                                            Expanded(
-                                              child: Text(
-                                                _getReplySenderName(message),
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  color: isMe
-                                                      ? Colors.white
-                                                      : Colors.black87,
-                                                  fontSize: 12,
+                                            Row(
+                                              children: [
+                                                Icon(Icons.reply,
+                                                    size: 14,
+                                                    color: isMe
+                                                        ? Colors.white70
+                                                        : Colors.black45),
+                                                SizedBox(width: 6),
+                                                Expanded(
+                                                  child: Text(
+                                                    _getReplySenderName(
+                                                        message),
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: isMe
+                                                          ? Colors.white
+                                                          : Colors.black87,
+                                                      fontSize: 12,
+                                                    ),
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
                                                 ),
-                                                overflow: TextOverflow.ellipsis,
+                                              ],
+                                            ),
+                                            SizedBox(height: 4),
+                                            FutureBuilder<String?>(
+                                              future: E2EEService.instance
+                                                  .maybeDecryptWithSender(
+                                                content:
+                                                    message.replyToContent ??
+                                                        '',
+                                                conversationId:
+                                                    widget.conversationId,
+                                                senderId: message.senderId,
+                                                messageId: message.id,
+                                                userId: supabase
+                                                        .auth.currentUser?.id ??
+                                                    '',
+                                                messageCreatedAt:
+                                                    message.createdAt,
                                               ),
+                                              builder: (context, snapshot) {
+                                                final text = snapshot.data ??
+                                                    message.replyToContent ??
+                                                    '';
+                                                return Text(
+                                                  text,
+                                                  style: TextStyle(
+                                                    color: isMe
+                                                        ? Colors.white70
+                                                        : Colors.black87,
+                                                    fontSize: 12,
+                                                  ),
+                                                  maxLines: 2,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                );
+                                              },
                                             ),
                                           ],
                                         ),
-                                        SizedBox(height: 4),
-                                        FutureBuilder<String?>(
-                                          future: E2EEService.instance
-                                              .maybeDecryptWithOtherUserNullable(
-                                            content: message.replyToContent,
-                                            conversationId:
-                                                widget.conversationId,
-                                            otherUserId: widget.otherUserId,
-                                          ),
-                                          builder: (context, snapshot) {
-                                            final text = snapshot.data ??
-                                                message.replyToContent ??
-                                                '';
-                                            return Text(
-                                              text,
-                                              style: TextStyle(
-                                                color: isMe
-                                                    ? Colors.white70
-                                                    : Colors.black87,
-                                                fontSize: 12,
-                                              ),
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                            );
-                                          },
+                                      ),
+                                    if (message.attachmentUrl != null &&
+                                        message.attachmentUrl!.isNotEmpty &&
+                                        (message.attachmentType == 'image' ||
+                                            message.attachmentType == 'audio'))
+                                      Padding(
+                                        padding: EdgeInsets.only(
+                                            top:
+                                                message.replyToMessageId != null
+                                                    ? 4
+                                                    : 12,
+                                            left: 12,
+                                            right: 12,
+                                            bottom: message.content.isNotEmpty
+                                                ? 4
+                                                : 12),
+                                        child: Container(
+                                          decoration: isImageOnly
+                                              ? BoxDecoration(
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          math.max(12,
+                                                              fontSize * 0.8)),
+                                                )
+                                              : null,
+                                          child: attachmentWidget,
                                         ),
-                                      ],
-                                    ),
-                                  ),
-                                if (message.attachmentUrl != null &&
-                                    message.attachmentUrl!.isNotEmpty &&
-                                    (message.attachmentType == 'image' ||
-                                        message.attachmentType == 'audio'))
-                                  Padding(
-                                    padding: EdgeInsets.only(
-                                        top: message.replyToMessageId != null
-                                            ? 4
-                                            : 12,
-                                        left: 12,
-                                        right: 12,
-                                        bottom: message.content.isNotEmpty
-                                            ? 4
-                                            : 12),
-                                    child: Container(
-                                      decoration: isImageOnly
-                                          ? BoxDecoration(
-                                              borderRadius:
-                                                  BorderRadius.circular(math
-                                                      .max(12, fontSize * 0.8)),
-                                            )
-                                          : null,
-                                      child: attachmentWidget,
-                                    ),
-                                  ),
-                                if (message.content.isNotEmpty)
-                                  Padding(
-                                    padding: EdgeInsets.only(
-                                      top: (message.attachmentUrl != null &&
-                                              message.attachmentUrl!.isNotEmpty)
-                                          ? math.max(4, fontSize * 0.25)
-                                          : math.max(12, fontSize * 0.75),
-                                      left: math.max(12, fontSize * 0.75),
-                                      right: math.max(12, fontSize * 0.75),
-                                      bottom: math.max(12, fontSize * 0.75),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment: isMe
-                                          ? CrossAxisAlignment.end
-                                          : CrossAxisAlignment.start,
-                                      children: [
-                                        if (message.content.isNotEmpty)
-                                          Padding(
-                                            padding: EdgeInsets.only(
-                                              top: message.attachmentUrl != null
-                                                  ? 8
-                                                  : 0,
-                                            ),
-                                            child: Directionality(
-                                              textDirection: getTextDirection(
-                                                  message.content),
-                                              child: FutureBuilder<String>(
-                                                future: E2EEService.instance
-                                                    .maybeDecryptFast(
-                                                  content: message.content,
-                                                  conversationId:
-                                                      widget.conversationId,
-                                                  otherUserId:
-                                                      widget.otherUserId,
+                                      ),
+                                    if (message.content.isNotEmpty)
+                                      Padding(
+                                        padding: EdgeInsets.only(
+                                          top: (message.attachmentUrl != null &&
+                                                  message.attachmentUrl!
+                                                      .isNotEmpty)
+                                              ? math.max(4, fontSize * 0.25)
+                                              : math.max(12, fontSize * 0.75),
+                                          left: math.max(12, fontSize * 0.75),
+                                          right: math.max(12, fontSize * 0.75),
+                                          bottom: math.max(12, fontSize * 0.75),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: isMe
+                                              ? CrossAxisAlignment.end
+                                              : CrossAxisAlignment.start,
+                                          children: [
+                                            if (message.content.isNotEmpty)
+                                              Padding(
+                                                padding: EdgeInsets.only(
+                                                  top: message.attachmentUrl !=
+                                                          null
+                                                      ? 8
+                                                      : 0,
                                                 ),
-                                                builder: (context, snapshot) {
-                                                  final text = snapshot.data ??
-                                                      message.content;
-                                                  return Text(
-                                                    text,
-                                                    style: TextStyle(
-                                                      color: isMe
-                                                          ? myTextColor
-                                                          : otherTextColor,
-                                                      fontSize: fontSize,
-                                                      height: 1.3,
+                                                child: Directionality(
+                                                  textDirection:
+                                                      getTextDirection(
+                                                          message.content),
+                                                  child: FutureBuilder<String>(
+                                                    future: E2EEService.instance
+                                                        .maybeDecryptWithSender(
+                                                      content: message.content,
+                                                      conversationId:
+                                                          widget.conversationId,
+                                                      senderId:
+                                                          message.senderId,
+                                                      messageId: message.id,
+                                                      userId: supabase
+                                                              .auth
+                                                              .currentUser
+                                                              ?.id ??
+                                                          '',
+                                                      messageCreatedAt:
+                                                          message.createdAt,
                                                     ),
-                                                  );
-                                                },
-                                              ),
-                                            ),
-                                          ),
-                                        if (!isImageOnly)
-                                          Padding(
-                                            padding: EdgeInsets.only(
-                                                top: math.max(
-                                                    6, fontSize * 0.3)),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.end,
-                                              children: [
-                                                Container(
-                                                  padding: EdgeInsets.symmetric(
-                                                    horizontal: math.max(
-                                                        8, fontSize * 0.5),
-                                                    vertical: math.max(
-                                                        3, fontSize * 0.2),
+                                                    builder:
+                                                        (context, snapshot) {
+                                                      final text =
+                                                          snapshot.data ??
+                                                              message.content;
+                                                      return Text(
+                                                        text,
+                                                        style: TextStyle(
+                                                          color: isMe
+                                                              ? myTextColor
+                                                              : otherTextColor,
+                                                          fontSize: fontSize,
+                                                          height: 1.3,
+                                                        ),
+                                                      );
+                                                    },
                                                   ),
-                                                  decoration: BoxDecoration(
-                                                    color: isMe
-                                                        ? (isWhiteTheme &&
-                                                                !isLightMode
-                                                            ? Colors.black
+                                                ),
+                                              ),
+                                            if (!isImageOnly)
+                                              Padding(
+                                                padding: EdgeInsets.only(
+                                                    top: math.max(
+                                                        6, fontSize * 0.3)),
+                                                child: Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.end,
+                                                  children: [
+                                                    Container(
+                                                      padding:
+                                                          EdgeInsets.symmetric(
+                                                        horizontal: math.max(
+                                                            8, fontSize * 0.5),
+                                                        vertical: math.max(
+                                                            3, fontSize * 0.2),
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: isMe
+                                                            ? (isWhiteTheme &&
+                                                                    !isLightMode
+                                                                ? Colors.black
+                                                                    .withValues(
+                                                                        alpha:
+                                                                            0.2)
+                                                                : Colors.black
+                                                                    .withValues(
+                                                                        alpha:
+                                                                            0.15))
+                                                            : colorScheme
+                                                                .surfaceContainerHighest
                                                                 .withValues(
-                                                                    alpha: 0.2)
-                                                            : Colors.black
+                                                                    alpha: 0.7),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                                math.max(
+                                                                    12,
+                                                                    fontSize *
+                                                                        0.8)),
+                                                        boxShadow: [
+                                                          BoxShadow(
+                                                            color: Colors.black
                                                                 .withValues(
                                                                     alpha:
-                                                                        0.15))
-                                                        : colorScheme
-                                                            .surfaceContainerHighest
-                                                            .withValues(
-                                                                alpha: 0.7),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            math.max(
-                                                                12,
-                                                                fontSize *
-                                                                    0.8)),
-                                                    boxShadow: [
-                                                      BoxShadow(
-                                                        color: Colors.black
-                                                            .withValues(
-                                                                alpha: 0.05),
-                                                        blurRadius: 2,
-                                                        offset:
-                                                            const Offset(0, 1),
+                                                                        0.05),
+                                                            blurRadius: 2,
+                                                            offset:
+                                                                const Offset(
+                                                                    0, 1),
+                                                          ),
+                                                        ],
                                                       ),
-                                                    ],
-                                                  ),
-                                                  child: Text(
-                                                    _formatMessageHour(
-                                                        message.createdAt),
-                                                    style: TextStyle(
-                                                      fontSize: math.max(
-                                                          10, fontSize * 0.75),
-                                                      color: isMe
-                                                          ? myTimeColor
-                                                          : otherTimeColor,
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                      letterSpacing: 0.1,
+                                                      child: Text(
+                                                        _formatMessageHour(
+                                                            message.createdAt),
+                                                        style: TextStyle(
+                                                          fontSize: math.max(10,
+                                                              fontSize * 0.75),
+                                                          color: isMe
+                                                              ? myTimeColor
+                                                              : otherTimeColor,
+                                                          fontWeight:
+                                                              FontWeight.w500,
+                                                          letterSpacing: 0.1,
+                                                        ),
+                                                      ),
                                                     ),
-                                                  ),
-                                                ),
-                                                SizedBox(
-                                                    width: math.max(
-                                                        6, fontSize * 0.3)),
-                                                if (isMe) ...[
-                                                  if (message.isPending)
-                                                    Container(
-                                                      padding:
-                                                          const EdgeInsets.all(
-                                                              2),
-                                                      decoration: BoxDecoration(
-                                                        color: myTimeColor
-                                                            .withValues(
-                                                                alpha: 0.2),
-                                                        shape: BoxShape.circle,
-                                                      ),
-                                                      child: Icon(
-                                                        Icons.schedule_rounded,
-                                                        size: math.max(
-                                                            12, fontSize * 0.8),
-                                                        color: myTimeColor,
-                                                      ),
-                                                    )
-                                                  else if (!message.isSent)
-                                                    GestureDetector(
-                                                      onTap: () {
-                                                        ref
-                                                            .read(
-                                                                messageNotifierProvider
+                                                    SizedBox(
+                                                        width: math.max(
+                                                            6, fontSize * 0.3)),
+                                                    if (isMe) ...[
+                                                      if (message.isPending)
+                                                        Container(
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .all(2),
+                                                          decoration:
+                                                              BoxDecoration(
+                                                            color: myTimeColor
+                                                                .withValues(
+                                                                    alpha: 0.2),
+                                                            shape:
+                                                                BoxShape.circle,
+                                                          ),
+                                                          child: Icon(
+                                                            Icons
+                                                                .schedule_rounded,
+                                                            size: math.max(12,
+                                                                fontSize * 0.8),
+                                                            color: myTimeColor,
+                                                          ),
+                                                        )
+                                                      else if (!message.isSent)
+                                                        GestureDetector(
+                                                          onTap: () {
+                                                            ref
+                                                                .read(messageNotifierProvider
                                                                     .notifier)
-                                                            .retrySendMessage(
-                                                                message);
-                                                        ScaffoldMessenger.of(
-                                                                context)
-                                                            .showSnackBar(
-                                                          SnackBar(
-                                                              content: Text(
-                                                                  'درحال تلاش مجدد برای ارسال...')),
-                                                        );
-                                                      },
-                                                      child: Container(
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .all(2),
-                                                        decoration:
-                                                            BoxDecoration(
-                                                          color: Colors.red
-                                                              .withValues(
-                                                                  alpha: 0.15),
-                                                          shape:
-                                                              BoxShape.circle,
+                                                                .retrySendMessage(
+                                                                    message);
+                                                            ScaffoldMessenger
+                                                                    .of(context)
+                                                                .showSnackBar(
+                                                              SnackBar(
+                                                                  content: Text(
+                                                                      'درحال تلاش مجدد برای ارسال...')),
+                                                            );
+                                                          },
+                                                          child: Container(
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .all(2),
+                                                            decoration:
+                                                                BoxDecoration(
+                                                              color: Colors.red
+                                                                  .withValues(
+                                                                      alpha:
+                                                                          0.15),
+                                                              shape: BoxShape
+                                                                  .circle,
+                                                            ),
+                                                            child: Icon(
+                                                              Icons
+                                                                  .refresh_rounded,
+                                                              size: math.max(
+                                                                  12,
+                                                                  fontSize *
+                                                                      0.8),
+                                                              color: Colors.red,
+                                                            ),
+                                                          ),
+                                                        )
+                                                      else
+                                                        Container(
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .all(2),
+                                                          decoration:
+                                                              BoxDecoration(
+                                                            color: myTimeColor
+                                                                .withValues(
+                                                                    alpha: 0.2),
+                                                            shape:
+                                                                BoxShape.circle,
+                                                          ),
+                                                          child: Icon(
+                                                            Icons.done_rounded,
+                                                            size: math.max(12,
+                                                                fontSize * 0.8),
+                                                            color: myTimeColor,
+                                                          ),
                                                         ),
-                                                        child: Icon(
-                                                          Icons.refresh_rounded,
-                                                          size: math.max(12,
-                                                              fontSize * 0.8),
-                                                          color: Colors.red,
-                                                        ),
-                                                      ),
-                                                    )
-                                                  else
-                                                    Container(
-                                                      padding:
-                                                          const EdgeInsets.all(
-                                                              2),
-                                                      decoration: BoxDecoration(
-                                                        color: myTimeColor
-                                                            .withValues(
-                                                                alpha: 0.2),
-                                                        shape: BoxShape.circle,
-                                                      ),
-                                                      child: Icon(
-                                                        Icons.done_rounded,
-                                                        size: math.max(
-                                                            12, fontSize * 0.8),
-                                                        color: myTimeColor,
-                                                      ),
-                                                    ),
-                                                ],
-                                              ],
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                              ],
+                                                    ],
+                                                  ],
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              },
                             ),
                           ),
                         ),
@@ -3052,11 +3569,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     builder: (context) {
                       final messages = ref.watch(
                           conversationMessagesProvider(widget.conversationId));
+
+                      // Show shimmer while messages are loading
                       if (messages.isEmpty) {
-                        return const Center(
-                            child: Text(
-                                'پیامی وجود ندارد. اولین پیام را ارسال کنید!'));
+                        return _buildChatShimmer();
                       }
+
                       // Filter out temporary messages replaced by real ones
                       final realLocalIds = messages
                           .where((m) =>
@@ -3068,6 +3586,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             realLocalIds.contains(m.id)) return false;
                         return true;
                       }).toList();
+
+                      if (filteredMessages.isEmpty) {
+                        return const Center(
+                            child: Text(
+                                'پیامی وجود ندارد. اولین پیام را ارسال کنید!'));
+                      }
 
                       return ScrollablePositionedList.builder(
                         itemScrollController: _itemScrollController,

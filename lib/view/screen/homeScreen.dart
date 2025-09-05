@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:badges/badges.dart' as badges;
 import '../../provider/profile_completion_provider.dart';
-import '../../provider/provider.dart';
 import '/main.dart';
 import 'PublicPosts/AddPost.dart';
 import 'PublicPosts/profileScreen.dart';

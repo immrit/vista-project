@@ -13,10 +13,8 @@ import '../security/e2ee_service.dart';
 // لیست مکالمات
 final conversationsProvider =
     FutureProvider.autoDispose<List<ConversationModel>>((ref) async {
-  final userId = supabase.auth.currentUser!.id;
-  final chatService = ref.watch(chatServiceProvider);
-  final conversations = await chatService.getConversations();
-  // conversations فقط مکالمات userId جاری را واکشی می‌کند
+  final conversations = await ref.watch(chatServiceProvider).getConversations();
+  // conversations فقط مکالمات کاربر جاری را واکشی می‌کند
   return conversations;
 });
 
@@ -1364,24 +1362,34 @@ final conversationMessagesProvider = StateNotifierProvider.family
                   otherUserId = conv?.otherUserId;
                 } catch (_) {}
                 if (otherUserId != null && otherUserId.isNotEmpty) {
+                  // Prepare keys for both users in the conversation
                   await E2EEService.instance.prepareConversationKey(
                     conversationId: conversationId,
                     otherUserId: otherUserId,
                   );
+
+                  // Also prepare key for current user (for own messages)
+                  final currentUserId = supabase.auth.currentUser?.id;
+                  if (currentUserId != null && currentUserId.isNotEmpty) {
+                    await E2EEService.instance.prepareConversationKey(
+                      conversationId: conversationId,
+                      otherUserId: currentUserId,
+                    );
+                  }
+
                   serverMessagesRaw = await Future.wait(
                     serverMessagesRaw.map((m) async {
                       if (m.content.startsWith('e2ee:v1:')) {
                         final decrypted =
-                            await E2EEService.instance.maybeDecryptFast(
+                            await E2EEService.instance.maybeDecryptWithSender(
                           content: m.content,
                           conversationId: conversationId,
-                          otherUserId: otherUserId!,
+                          senderId: m.senderId,
                         );
-                        final replyDec = await E2EEService.instance
-                            .maybeDecryptWithOtherUserNullable(
+                        final replyDec =
+                            await E2EEService.instance.maybeDecryptNullable(
                           content: m.replyToContent,
                           conversationId: conversationId,
-                          otherUserId: otherUserId!,
                         );
                         return m.copyWith(
                           content: decrypted,

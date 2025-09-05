@@ -693,10 +693,10 @@ class _ChatConversationsScreenState
     }
 
     return FutureBuilder<String>(
-      future: E2EEService.instance.maybeDecryptFast(
+      future: E2EEService.instance.maybeDecryptWithSender(
         content: subtitleText,
         conversationId: item.id,
-        otherUserId: otherUserId,
+        senderId: otherUserId,
       ),
       builder: (context, snapshot) {
         final text = snapshot.data ?? 'پیام جدید';

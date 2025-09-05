@@ -5,7 +5,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../../provider/provider.dart';
 import '../../../../provider/chat_provider.dart';
-import '../../../../services/ChatService.dart';
 
 class BlockedUsersPage extends ConsumerStatefulWidget {
   const BlockedUsersPage({super.key});

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
 import '../DB/message_cache_service.dart';
 import '../DB/channel_cache_service.dart';
+import '../security/e2ee_service.dart';
 import 'cache_manager.dart';
 
 /// سرویس پاکسازی خودکار داده‌های قدیمی
@@ -98,6 +99,15 @@ class AutoCleanupService {
       await _channelCache.clearAll();
       totalItemsRemoved += 100; // تخمین
       totalSpaceFreed += 10.0; // تخمین
+
+      // پاکسازی کش پیام‌های رمزگشایی شده قدیمی
+      try {
+        await E2EEService.instance.cleanupOldDecryptedCache(daysOld: 30);
+        totalItemsRemoved += 50; // تخمین
+        totalSpaceFreed += 5.0; // تخمین
+      } catch (e) {
+        print('خطا در پاکسازی کش رمزگشایی: $e');
+      }
 
       // پاکسازی فایل‌های temp قدیمی
       final tempCleanup = await _cleanupOldTempFiles();

@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import '/main.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
-import 'dart:developer' as developer;
 
-import 'homeScreen.dart';
 import 'ouathUser/welcome.dart';
 
 class SplashScreen extends StatefulWidget {

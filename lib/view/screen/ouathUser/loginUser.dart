@@ -1,13 +1,9 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../main.dart';
-import '../homeScreen.dart';
 import '../../util/widgets.dart';
 
-import '../../../provider/provider.dart';
 import 'VerifyCodePage.dart';
 import 'signupUser.dart';
 
@@ -130,23 +126,6 @@ class _LoginuserState extends ConsumerState<Loginuser> {
 
   @override
   Widget build(BuildContext context) {
-    final isLoading = ref.watch(isLoadingProvider);
-    final redirecting = ref.watch(isRedirectingProvider);
-    Future<String> getIpAddress() async {
-      try {
-        final response =
-            await http.get(Uri.parse('https://api.ipify.org?format=json'));
-        if (response.statusCode == 200) {
-          final data = json.decode(response.body);
-          return data['ip'];
-        } else {
-          throw Exception('Failed to fetch IP address');
-        }
-      } catch (error) {
-        throw Exception('Failed to fetch IP address');
-      }
-    }
-
     Future<void> resetPassword() async {
       setState(() => _isLoading = true);
 

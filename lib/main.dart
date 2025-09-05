@@ -38,7 +38,6 @@ import 'services/wallpaper_cache_service.dart';
 import 'view/screen/PublicPosts/publicPosts.dart';
 import 'view/screen/PublicPosts/PostDetailPage.dart';
 import 'view/screen/PublicPosts/profileScreen.dart';
-import 'security/e2ee_service.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -49,11 +48,6 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 /// Notification response handler
 Future<void> notificationResponseHandler(NotificationResponse response) async {
   print('Notification response received: ${response.actionId}');
-}
-
-/// Background message handler for FCM
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  print('Background message received: ${message.messageId}');
 }
 
 void main() async {

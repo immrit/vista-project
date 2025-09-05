@@ -5,7 +5,6 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -18,18 +17,16 @@ import '../../model/publicPostModel.dart';
 import '../../provider/provider.dart';
 import '../../provider/theme_provider.dart';
 import '../screen/PublicPosts/profileScreen.dart';
-import 'themes.dart';
 import '../../DB/message_cache_service.dart';
 import '../../DB/conversation_cache_service.dart';
-import 'const.dart';
 
 class topText extends StatelessWidget {
-  topText({
+  const topText({
     super.key,
     required this.text,
   });
 
-  String text;
+  final String text;
 
   @override
   Widget build(BuildContext context) {
@@ -1206,15 +1203,14 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
         print('ParentCommentID: $replyToCommentId');
         print('MentionedUsers: $mentionedUserIds');
 
-        final result =
-            await ref.read(commentNotifierProvider.notifier).addComment(
-                  postId: widget.postId,
-                  content: content,
-                  postOwnerId: supabase.auth.currentUser!.id,
-                  mentionedUserIds: mentionedUserIds,
-                  parentCommentId: replyToCommentId,
-                  ref: ref,
-                );
+        await ref.read(commentNotifierProvider.notifier).addComment(
+              postId: widget.postId,
+              content: content,
+              postOwnerId: supabase.auth.currentUser!.id,
+              mentionedUserIds: mentionedUserIds,
+              parentCommentId: replyToCommentId,
+              ref: ref,
+            );
 
         // Clear input and states
         commentController.clear();
@@ -1444,117 +1440,6 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
       _scaffoldMessengerKey.currentState?.showSnackBar(
         SnackBar(content: Text('خطا در حذف کامنت: $e')),
       );
-    }
-  }
-
-  Future<void> _showReportDialog(BuildContext context, WidgetRef ref,
-      CommentModel comment, String currentUserId) async {
-    String selectedReason = '';
-    TextEditingController additionalDetailsController = TextEditingController();
-
-    final confirmed = await showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            final theme = Theme.of(context);
-            return AlertDialog(
-              title: const Text('گزارش تخلف'),
-              content: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('لطفاً دلیل گزارش را انتخاب کنید:'),
-                    ...[
-                      'محتوای نامناسب',
-                      'هرزنگاری',
-                      'توهین آمیز',
-                      'اسپم',
-                      'محتوای تبلیغاتی',
-                      'سایر موارد'
-                    ].map((reason) {
-                      return RadioListTile<String>(
-                        title: Text(reason),
-                        value: reason,
-                        groupValue: selectedReason,
-                        onChanged: (value) {
-                          setState(() {
-                            selectedReason = value!;
-                          });
-                        },
-                      );
-                    }),
-                    if (selectedReason == 'سایر موارد')
-                      TextField(
-                        controller: additionalDetailsController,
-                        decoration: const InputDecoration(
-                          hintText: 'جزئیات بیشتر را وارد کنید',
-                        ),
-                        maxLines: 3,
-                      ),
-                  ],
-                ),
-              ),
-              actions: <Widget>[
-                TextButton(
-                  style: TextButton.styleFrom(
-                    foregroundColor: theme.textTheme.bodyLarge?.color,
-                  ),
-                  child: const Text('لغو'),
-                  onPressed: () {
-                    Navigator.of(context).pop(false);
-                  },
-                ),
-                TextButton(
-                  style: TextButton.styleFrom(
-                    backgroundColor: theme.colorScheme.secondary,
-                    foregroundColor: theme.colorScheme.onSecondary,
-                  ),
-                  child: const Text('گزارش'),
-                  onPressed: () {
-                    if (selectedReason.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('لطفاً دلیل گزارش را انتخاب کنید'),
-                        ),
-                      );
-                      return;
-                    }
-                    Navigator.of(context).pop(true);
-                  },
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    if (confirmed == true) {
-      try {
-        await ref.read(reportCommentServiceProvider).reportComment(
-              commentId: comment.id,
-              reporterId: currentUserId,
-              reason: selectedReason,
-              additionalDetails: selectedReason == 'سایر موارد'
-                  ? additionalDetailsController.text.trim()
-                  : null,
-            );
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('کامنت با موفقیت گزارش شد.'),
-          ),
-        );
-      } catch (e) {
-        print('خطا در گزارش تخلف: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('خطا در گزارش کامنت.'),
-          ),
-        );
-      }
     }
   }
 
