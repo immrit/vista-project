@@ -8,7 +8,7 @@ import '../../../main.dart';
 import '../../../provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'subpages/AccountSettingsPage.dart';
-import 'subpages/VideoPlaybackSettingsPage.dart';
+import 'subpages/StorageAndMemorySettingsPage.dart';
 import 'subpages/ChatSettingsGroupPage.dart';
 import 'subpages/AboutSettingsPage.dart';
 import 'subpages/ThemeSettingsPage.dart';
@@ -99,16 +99,16 @@ class Settings extends ConsumerWidget {
                       ),
                       _buildDivider(),
                       TelegramSettingsItem(
-                        icon: Icons.play_circle,
+                        icon: Icons.storage_rounded,
                         iconColor: Colors.purple,
-                        title: 'تنظیمات پخش ویدیو',
-                        subtitle: 'پخش خودکار، ذخیره داده، تنظیمات پیشرفته',
+                        title: 'حافظه و ذخیره‌سازی',
+                        subtitle: 'مدیریت حافظه، کش، تنظیمات ویدیو',
                         onTap: () {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (context) =>
-                                  const VideoPlaybackSettingsPage(),
+                                  const StorageAndMemorySettingsPage(),
                             ),
                           );
                         },

@@ -17,10 +17,11 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'DB/hive_initialize.dart';
 import 'firebase_options.dart';
-import 'model/Hive Model/RecentSearch.dart';
 import 'provider/theme_provider.dart';
 
 import 'services/ChatService.dart';
+import 'services/auto_cleanup_service.dart';
+import 'services/cache_manager.dart';
 import 'services/deep_link_service.dart' as new_deep_link;
 import 'services/PushNotificationService.dart';
 import 'view/screen/chat/ChatScreen.dart';
@@ -78,6 +79,17 @@ void main() async {
 
   // راه‌اندازی Supabase
   await initializeSupabaseWithFailover();
+
+  // راه‌اندازی سیستم مدیریت کش مرکزی
+  final cacheManager = UnifiedCacheManager();
+  await cacheManager.initialize();
+
+  // راه‌اندازی سرویس پاکسازی خودکار
+  final autoCleanupService = AutoCleanupService();
+  await autoCleanupService.initialize();
+
+  // شروع نظارت بر حافظه
+  cacheManager.startMemoryMonitoring();
 
   // راه‌اندازی اعلان‌های محلی
   await flutterLocalNotificationsPlugin.initialize(
