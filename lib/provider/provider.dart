@@ -5,9 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:hive_flutter/hive_flutter.dart';
-import '../DB/message_cache_service.dart';
-import '../DB/conversation_cache_service.dart';
+import 'package:sembast/sembast.dart' show Database, StoreRef;
+import 'package:sembast/sembast_io.dart';
+import 'package:path_provider/path_provider.dart';
+import '../DB/message_cache_service_wrapper.dart';
+import '../DB/conversation_cache_service_wrapper.dart';
+import '../DB/unified_conversation_cache_service.dart';
+import '../DB/unified_message_cache_service.dart';
 import '../model/SearchResut.dart';
 import '../services/PostImageUploadService.dart';
 import '../view/widgets/VideoPlayerConfig.dart';
@@ -2411,22 +2415,48 @@ class AutoPlayNotifier extends StateNotifier<bool> {
 
 // Font size settings provider
 class MessageFontSizeNotifier extends StateNotifier<double> {
+  Database? _database;
+  final StoreRef<String, double> _store = StoreRef<String, double>.main();
+
   MessageFontSizeNotifier() : super(14.0) {
-    _loadFontSize();
+    _initDatabase();
   }
 
   static const String _fontSizeKey = 'message_font_size';
 
+  Future<void> _initDatabase() async {
+    try {
+      String dbPath = 'settings.db';
+      if (!kIsWeb) {
+        final appDir = await getApplicationDocumentsDirectory();
+        dbPath = '${appDir.path}/settings.db';
+      }
+      _database = await databaseFactoryIo.openDatabase(dbPath);
+      _loadFontSize();
+    } catch (e) {
+      debugPrint('خطا در باز کردن دیتابیس تنظیمات: $e');
+    }
+  }
+
   Future<void> _loadFontSize() async {
-    final box = await Hive.openBox('settings');
-    final savedSize = box.get(_fontSizeKey, defaultValue: 14.0);
-    state = savedSize.toDouble();
+    if (_database == null) return;
+    try {
+      final savedSize =
+          await _store.record(_fontSizeKey).get(_database!) as double? ?? 14.0;
+      state = savedSize;
+    } catch (e) {
+      debugPrint('خطا در بارگذاری اندازه فونت: $e');
+    }
   }
 
   Future<void> setFontSize(double size) async {
     state = size;
-    final box = await Hive.openBox('settings');
-    await box.put(_fontSizeKey, size);
+    if (_database == null) return;
+    try {
+      await _store.record(_fontSizeKey).put(_database!, size);
+    } catch (e) {
+      debugPrint('خطا در ذخیره اندازه فونت: $e');
+    }
   }
 
   String getFontSizeLabel(double size) {
@@ -2480,18 +2510,40 @@ class AutoDownloadSettings {
 }
 
 class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
+  Database? _database;
+  final StoreRef<String, dynamic> _store = StoreRef<String, dynamic>.main();
+
   AutoDownloadNotifier() : super(AutoDownloadSettings()) {
-    _loadSettings();
+    _initDatabase();
   }
 
   static const String _autoDownloadKey = 'auto_download_settings';
 
+  Future<void> _initDatabase() async {
+    try {
+      String dbPath = 'settings.db';
+      if (!kIsWeb) {
+        final appDir = await getApplicationDocumentsDirectory();
+        dbPath = '${appDir.path}/settings.db';
+      }
+      _database = await databaseFactoryIo.openDatabase(dbPath);
+      _loadSettings();
+    } catch (e) {
+      debugPrint('خطا در باز کردن دیتابیس تنظیمات: $e');
+    }
+  }
+
   Future<void> _loadSettings() async {
-    final box = await Hive.openBox('settings');
-    final savedSettings = box.get(_autoDownloadKey);
-    if (savedSettings != null) {
-      state = AutoDownloadSettings.fromMap(
-          Map<String, dynamic>.from(savedSettings));
+    if (_database == null) return;
+    try {
+      final savedSettings = await _store
+          .record(_autoDownloadKey)
+          .get(_database!) as Map<String, dynamic>?;
+      if (savedSettings != null) {
+        state = AutoDownloadSettings.fromMap(savedSettings);
+      }
+    } catch (e) {
+      debugPrint('خطا در بارگذاری تنظیمات دانلود خودکار: $e');
     }
   }
 
@@ -2506,8 +2558,12 @@ class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
   }
 
   Future<void> _saveSettings() async {
-    final box = await Hive.openBox('settings');
-    await box.put(_autoDownloadKey, state.toMap());
+    if (_database == null) return;
+    try {
+      await _store.record(_autoDownloadKey).put(_database!, state.toMap());
+    } catch (e) {
+      debugPrint('خطا در ذخیره تنظیمات دانلود خودکار: $e');
+    }
   }
 
   String getSettingLabel(String setting) {
@@ -2571,18 +2627,39 @@ class PerformanceSettings {
 }
 
 class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
+  Database? _database;
+  final StoreRef<String, dynamic> _store = StoreRef<String, dynamic>.main();
+
   PerformanceNotifier() : super(PerformanceSettings()) {
-    _loadSettings();
+    _initDatabase();
   }
 
   static const String _performanceKey = 'performance_settings';
 
+  Future<void> _initDatabase() async {
+    try {
+      String dbPath = 'settings.db';
+      if (!kIsWeb) {
+        final appDir = await getApplicationDocumentsDirectory();
+        dbPath = '${appDir.path}/settings.db';
+      }
+      _database = await databaseFactoryIo.openDatabase(dbPath);
+      _loadSettings();
+    } catch (e) {
+      debugPrint('خطا در باز کردن دیتابیس تنظیمات: $e');
+    }
+  }
+
   Future<void> _loadSettings() async {
-    final box = await Hive.openBox('settings');
-    final savedSettings = box.get(_performanceKey);
-    if (savedSettings != null) {
-      state =
-          PerformanceSettings.fromMap(Map<String, dynamic>.from(savedSettings));
+    if (_database == null) return;
+    try {
+      final savedSettings = await _store.record(_performanceKey).get(_database!)
+          as Map<String, dynamic>?;
+      if (savedSettings != null) {
+        state = PerformanceSettings.fromMap(savedSettings);
+      }
+    } catch (e) {
+      debugPrint('خطا در بارگذاری تنظیمات عملکرد: $e');
     }
   }
 
@@ -2616,31 +2693,40 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
   }
 
   Future<void> _saveSettings() async {
-    final box = await Hive.openBox('settings');
-    await box.put(_performanceKey, state.toMap());
+    if (_database == null) return;
+    try {
+      await _store.record(_performanceKey).put(_database!, state.toMap());
+    } catch (e) {
+      debugPrint('خطا در ذخیره تنظیمات عملکرد: $e');
+    }
   }
 
   Future<void> _applyBatterySaverMode() async {
-    // کاهش کیفیت تصاویر
-    await Hive.openBox('settings').then((box) {
-      box.put('image_quality', 'low');
-      box.put('auto_sync', false);
-      box.put('background_refresh', false);
-    });
+    if (_database == null) return;
+    try {
+      await _store.record('image_quality').put(_database!, 'low');
+      await _store.record('auto_sync').put(_database!, false);
+      await _store.record('background_refresh').put(_database!, false);
+    } catch (e) {
+      debugPrint('خطا در اعمال حالت کم‌مصرف: $e');
+    }
   }
 
   Future<void> _disableBatterySaverMode() async {
-    await Hive.openBox('settings').then((box) {
-      box.put('image_quality', 'high');
-      box.put('auto_sync', true);
-      box.put('background_refresh', true);
-    });
+    if (_database == null) return;
+    try {
+      await _store.record('image_quality').put(_database!, 'high');
+      await _store.record('auto_sync').put(_database!, true);
+      await _store.record('background_refresh').put(_database!, true);
+    } catch (e) {
+      debugPrint('خطا در غیرفعال کردن حالت کم‌مصرف: $e');
+    }
   }
 
   Future<void> _enableSmartCache() async {
     // پاکسازی خودکار کش قدیمی
-    final messageCacheService = MessageCacheService();
-    final conversationCacheService = ConversationCacheService();
+    final messageCacheService = UnifiedMessageCacheService();
+    final conversationCacheService = UnifiedConversationCacheService();
 
     // حذف پیام‌های قدیمی‌تر از 30 روز
     final cutoffDate = DateTime.now().subtract(const Duration(days: 30));
@@ -2648,10 +2734,12 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
   }
 
   Future<void> _disableSmartCache() async {
-    // غیرفعال کردن پاکسازی خودکار
-    await Hive.openBox('settings').then((box) {
-      box.put('auto_cache_cleanup', false);
-    });
+    if (_database == null) return;
+    try {
+      await _store.record('auto_cache_cleanup').put(_database!, false);
+    } catch (e) {
+      debugPrint('خطا در غیرفعال کردن کش هوشمند: $e');
+    }
   }
 
   String getBatterySaverDescription() {

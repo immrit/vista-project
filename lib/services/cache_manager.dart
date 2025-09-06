@@ -2,8 +2,8 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'dart:convert';
-import '../DB/message_cache_service.dart';
-import '../DB/conversation_cache_service.dart';
+import '../DB/message_cache_service_wrapper.dart';
+import '../DB/conversation_cache_service_wrapper.dart';
 
 /// سیستم مدیریت کش مرکزی و هوشمند
 class UnifiedCacheManager {

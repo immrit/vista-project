@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../DB/conversation_cache_service.dart';
-import '../DB/message_cache_service.dart';
+import '../DB/conversation_cache_service_wrapper.dart';
+import '../DB/message_cache_service_wrapper.dart';
+import '../DB/database_file_utils.dart';
+import '../DB/unified_cache_system.dart';
 import '../main.dart';
 import '../model/conversation_model.dart';
 import '../model/message_model.dart';
@@ -22,7 +24,6 @@ final conversationsProvider =
 final conversationsStreamProvider =
     StreamProvider.autoDispose<List<ConversationModel>>((ref) {
   final userId = supabase.auth.currentUser!.id;
-  final chatService = ref.watch(chatServiceProvider);
   final conversationCache = ConversationCacheService();
 
   // استریم تغییرات مکالمات فقط برای userId جاری
@@ -63,6 +64,263 @@ final messagesProvider = FutureProvider.family
   // اگر کش نداریم، از سرور دریافت کن
   return chatService.getMessages(conversationId);
 });
+
+// Lazy loading provider برای پیام‌های بیشتر (با سیستم کش پیشرفته)
+final lazyMessagesProvider = StateNotifierProvider.family
+    .autoDispose<LazyMessagesNotifier, LazyMessagesState, String>(
+        (ref, conversationId) {
+  return LazyMessagesNotifier(conversationId);
+});
+
+// سیستم کش یکپارچه پیشرفته
+final unifiedCacheProvider = Provider<UnifiedCacheSystem>((ref) {
+  return UnifiedCacheSystem();
+});
+
+// State برای lazy loading
+class LazyMessagesState {
+  final List<MessageModel> messages;
+  final bool isLoading;
+  final bool hasMore;
+  final String? error;
+
+  const LazyMessagesState({
+    this.messages = const [],
+    this.isLoading = false,
+    this.hasMore = true,
+    this.error,
+  });
+
+  LazyMessagesState copyWith({
+    List<MessageModel>? messages,
+    bool? isLoading,
+    bool? hasMore,
+    String? error,
+  }) {
+    return LazyMessagesState(
+      messages: messages ?? this.messages,
+      isLoading: isLoading ?? this.isLoading,
+      hasMore: hasMore ?? this.hasMore,
+      error: error ?? this.error,
+    );
+  }
+}
+
+// Notifier برای lazy loading
+class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
+  final String conversationId;
+  final ChatService _chatService = ChatService();
+  final MessageCacheService _messageCache = MessageCacheService();
+  static const int _pageSize = 10;
+  int _currentPage = 0;
+
+  LazyMessagesNotifier(this.conversationId) : super(const LazyMessagesState()) {
+    _loadInitialMessages();
+    _setupRealTimeListener();
+  }
+
+  Future<void> _loadInitialMessages() async {
+    state = state.copyWith(isLoading: true, error: null);
+
+    try {
+      final userId = supabase.auth.currentUser!.id;
+      final cachedMessages =
+          await _messageCache.getConversationMessages(conversationId, userId);
+
+      if (cachedMessages.isNotEmpty) {
+        // Decrypt cached messages
+        final decryptedMessages = await _decryptMessages(cachedMessages);
+        state = state.copyWith(
+          messages: decryptedMessages,
+          isLoading: false,
+          hasMore: cachedMessages.length >= _pageSize,
+        );
+        _currentPage = (cachedMessages.length / _pageSize).ceil();
+      } else {
+        await _loadMoreMessages();
+      }
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: e.toString(),
+      );
+    }
+  }
+
+  Future<void> loadMoreMessages() async {
+    if (state.isLoading || !state.hasMore) return;
+    await _loadMoreMessages();
+  }
+
+  Future<void> _loadMoreMessages() async {
+    state = state.copyWith(isLoading: true, error: null);
+
+    try {
+      final newMessages = await _chatService.getMessages(
+        conversationId,
+        offset: _currentPage * _pageSize,
+        limit: _pageSize,
+      );
+
+      if (newMessages.isEmpty) {
+        state = state.copyWith(
+          isLoading: false,
+          hasMore: false,
+        );
+        return;
+      }
+
+      // Decrypt messages before adding to state
+      final decryptedMessages = await _decryptMessages(newMessages);
+      final updatedMessages = [...state.messages, ...decryptedMessages];
+
+      state = state.copyWith(
+        messages: updatedMessages,
+        isLoading: false,
+        hasMore: newMessages.length >= _pageSize,
+      );
+
+      _currentPage++;
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: e.toString(),
+      );
+    }
+  }
+
+  void _setupRealTimeListener() {
+    // Listen to new messages from the messages stream
+    supabase
+        .from('messages')
+        .stream(primaryKey: ['id'])
+        .eq('conversation_id', conversationId)
+        .order('created_at', ascending: false)
+        .listen((jsonList) {
+          final userId = supabase.auth.currentUser!.id;
+          final newMessages = jsonList
+              .map((json) => MessageModel.fromJson(json, currentUserId: userId))
+              .where((msg) => !msg.id.startsWith('temp_'))
+              .toList();
+
+          // Add new messages that aren't already in the state
+          final existingIds = state.messages.map((m) => m.id).toSet();
+          final trulyNewMessages = newMessages
+              .where((msg) => !existingIds.contains(msg.id))
+              .toList();
+
+          if (trulyNewMessages.isNotEmpty) {
+            addNewMessages(trulyNewMessages);
+          }
+        });
+  }
+
+  void addNewMessages(List<MessageModel> newMessages) async {
+    // Decrypt new messages
+    final decryptedMessages = await _decryptMessages(newMessages);
+    final updatedMessages = [...decryptedMessages, ...state.messages];
+    state = state.copyWith(messages: updatedMessages);
+  }
+
+  void addTempMessageToLazy(MessageModel tempMessage) async {
+    // Decrypt temp message
+    final decryptedMessages = await _decryptMessages([tempMessage]);
+    final decryptedMessage = decryptedMessages.first;
+    final updatedMessages = [decryptedMessage, ...state.messages];
+    state = state.copyWith(messages: updatedMessages);
+  }
+
+  void replaceTempWithRealInLazy(
+      String tempId, MessageModel realMessage) async {
+    // Decrypt real message
+    final decryptedMessages = await _decryptMessages([realMessage]);
+    final decryptedMessage = decryptedMessages.first;
+    final updatedMessages = state.messages.map((m) {
+      return m.id == tempId ? decryptedMessage : m;
+    }).toList();
+    state = state.copyWith(messages: updatedMessages);
+  }
+
+  Future<List<MessageModel>> _decryptMessages(
+      List<MessageModel> messages) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return messages;
+
+    return await Future.wait(messages.map((m) async {
+      if (m.content.startsWith('e2ee:v1:')) {
+        try {
+          // Check cache first
+          final cachedDecrypted =
+              await E2EEService.instance.getCachedDecryptedContent(
+            messageId: m.id,
+            conversationId: conversationId,
+            userId: userId,
+          );
+
+          String? decrypted;
+          if (cachedDecrypted != null && cachedDecrypted.isNotEmpty) {
+            decrypted = cachedDecrypted;
+          } else {
+            // Try to decrypt
+            decrypted = await E2EEService.instance.maybeDecryptWithSender(
+              content: m.content,
+              conversationId: conversationId,
+              senderId: m.senderId,
+              messageId: m.id,
+              userId: userId,
+              messageCreatedAt: m.createdAt,
+            );
+          }
+
+          // Decrypt reply content if exists
+          final replyDecrypted =
+              await E2EEService.instance.maybeDecryptNullable(
+            content: m.replyToContent,
+            conversationId: conversationId,
+          );
+
+          // Only return decrypted content if decryption was successful
+          if (decrypted.isNotEmpty && !decrypted.contains('خطا در رمزگشایی')) {
+            return m.copyWith(
+              content: decrypted,
+              replyToContent: replyDecrypted,
+            );
+          } else {
+            // If decryption failed, show a user-friendly message
+            return m.copyWith(
+              content: 'پیام رمزنگاری شده (در حال پردازش...)',
+              replyToContent: replyDecrypted,
+            );
+          }
+        } catch (e) {
+          print('[LazyMessages] Error decrypting message ${m.id}: $e');
+          return m.copyWith(
+            content: 'پیام رمزنگاری شده (در حال پردازش...)',
+          );
+        }
+      }
+      return m;
+    }));
+  }
+
+  void addNewMessage(MessageModel message) async {
+    // Decrypt the new message before adding
+    final decryptedMessages = await _decryptMessages([message]);
+    final decryptedMessage = decryptedMessages.first;
+    final updatedMessages = [decryptedMessage, ...state.messages];
+    state = state.copyWith(messages: updatedMessages);
+  }
+
+  void updateMessage(MessageModel message) async {
+    // Decrypt the updated message
+    final decryptedMessages = await _decryptMessages([message]);
+    final decryptedMessage = decryptedMessages.first;
+    final updatedMessages = state.messages.map((m) {
+      return m.id == message.id ? decryptedMessage : m;
+    }).toList();
+    state = state.copyWith(messages: updatedMessages);
+  }
+}
 
 // استریم پیام‌های یک مکالمه (real-time, بدون پیام temp برای مقصد)
 final messagesStreamProvider = StreamProvider.family
@@ -116,7 +374,6 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
 
   final Ref ref;
   bool _disposed = false;
-  final MessageCacheService _messageCache = MessageCacheService();
 
   @override
   void dispose() {
@@ -311,6 +568,11 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
         ref.read(conversationMessagesProvider(conversationId).notifier);
     notifier.addTempMessage(tempMessage);
 
+    // Also add to lazy messages provider for ChatScreen compatibility
+    final lazyNotifier =
+        ref.read(lazyMessagesProvider(conversationId).notifier);
+    lazyNotifier.addTempMessageToLazy(tempMessage);
+
     // فقط اگر آنلاین بود، تیک بلافاصله بخورد
     final chatService = ref.read(chatServiceProvider);
     final isOnline = await chatService.isDeviceOnline();
@@ -403,6 +665,11 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
       ref
           .read(conversationMessagesProvider(conversationId).notifier)
           .replaceTempWithReal(tempMessage.id, serverMessage);
+
+      // Also replace in lazy messages provider
+      ref
+          .read(lazyMessagesProvider(conversationId).notifier)
+          .replaceTempWithRealInLazy(tempMessage.id, serverMessage);
     } catch (e) {
       print(
           '❌ خطا در ارسال پیام ${tempMessage.id} (تلاش ${retryCount + 1}): $e');
@@ -683,7 +950,6 @@ final userOnlineNotifierProvider = Provider<UserOnlineNotifier>((ref) {
 // استریم وضعیت آنلاین کاربر - بروزرسانی بیشتر
 final userOnlineStatusStreamProvider =
     StreamProvider.family.autoDispose<bool, String>((ref, userId) {
-  final chatService = ref.watch(chatServiceProvider);
   // به جای Stream.periodic، به تغییرات جدول profiles گوش می‌دهیم
   return supabase
       .from('profiles')
@@ -900,6 +1166,50 @@ final unreadMessageCountProvider =
   return 0;
 });
 
+// Provider برای ردیابی وضعیت رمزگشایی کل مکالمه
+final conversationDecryptionStatusProvider =
+    FutureProvider.family<bool, String>((ref, conversationId) async {
+  final userId = supabase.auth.currentUser?.id;
+  if (userId == null) return true;
+
+  final e2eeService = E2EEService.instance;
+
+  // دریافت پیام‌های مکالمه
+  final messages = ref.watch(conversationMessagesProvider(conversationId));
+
+  // بررسی اینکه آیا پیام رمزنگاری شده‌ای وجود دارد که هنوز رمزگشایی نشده
+  for (final message in messages) {
+    if (message.content.startsWith('e2ee:v1:')) {
+      try {
+        // Try to decrypt the message to see if it's already decrypted
+        final decrypted = await e2eeService.maybeDecryptWithSender(
+          content: message.content,
+          conversationId: conversationId,
+          senderId: message.senderId,
+          messageId: message.id,
+          userId: userId,
+          messageCreatedAt: message.createdAt,
+        );
+
+        if (decrypted.isEmpty) {
+          // حداقل یک پیام رمزنگاری شده وجود دارد که هنوز رمزگشایی نشده
+          return false;
+        }
+      } catch (e) {
+        // اگر رمزگشایی با خطا مواجه شد، احتمالاً هنوز رمزگشایی نشده
+        print(
+            '[conversationDecryptionStatusProvider] Error decrypting message ${message.id}: $e');
+        return false;
+      }
+    }
+  }
+
+  return true; // تمام پیام‌ها رمزگشایی شده‌اند
+});
+
+// Provider برای دریافت محتوای رمزگشایی شده پیام - حذف شد
+// پیام‌ها در conversationMessagesProvider رمزگشایی می‌شوند
+
 // حذف پیام‌های قدیمی‌تر از یک تاریخ خاص
 final deleteOldMessagesProvider =
     FutureProvider.family<void, DateTime>((ref, date) async {
@@ -1067,6 +1377,46 @@ final deviceOnlineStatusProvider = StreamProvider<bool>((ref) async* {
     if (isOnline != lastStatus) {
       lastStatus = isOnline;
       yield isOnline;
+    }
+  }
+});
+
+// Provider برای پیش رمزگشایی پیام‌های کش شده
+final preDecryptMessagesProvider =
+    FutureProvider.family<void, String>((ref, conversationId) async {
+  final userId = supabase.auth.currentUser!.id;
+  final messageCache = MessageCacheService();
+  final e2eeService = E2EEService.instance;
+
+  // دریافت پیام‌های کش شده
+  final cachedMessages =
+      await messageCache.getConversationMessages(conversationId, userId);
+
+  // پیش رمزگشایی پیام‌هایی که رمزنگاری شده‌اند و هنوز کش رمزگشایی ندارند
+  for (final message in cachedMessages) {
+    if (message.content.startsWith('e2ee:v1:')) {
+      final cachedDecrypted = await e2eeService.getCachedDecryptedContent(
+        messageId: message.id,
+        conversationId: conversationId,
+        userId: userId,
+      );
+
+      if (cachedDecrypted == null) {
+        // پیام رمزگشایی نشده، پس رمزگشایی کن
+        try {
+          await e2eeService.maybeDecryptWithSender(
+            content: message.content,
+            conversationId: conversationId,
+            senderId: message.senderId,
+            messageId: message.id,
+            userId: userId,
+            messageCreatedAt: message.createdAt,
+          );
+          // Note: caching is handled internally by maybeDecryptWithSender
+        } catch (e) {
+          print('Error pre-decrypting message ${message.id}: $e');
+        }
+      }
     }
   }
 });
@@ -1297,7 +1647,7 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
 
   // Update unread count for the conversation
   Future<void> updateConversationUnreadCount() async {
-    final unreadCount = await _cacheService.countUnreadMessages(conversationId);
+    await _cacheService.countUnreadMessages(conversationId);
     // state = [
     //   for (final message in state) message.copyWith(unreadCount: unreadCount)
     // ];
@@ -1328,6 +1678,8 @@ final conversationMessagesProvider = StateNotifierProvider.family
     // --- اضافه شد: گوش دادن به استریم Supabase برای بروزرسانی سریع ---
     final userId = supabase.auth.currentUser?.id;
     if (userId != null) {
+      // پیش رمزگشایی پیام‌ها برای عملکرد بهتر
+      ref.watch(preDecryptMessagesProvider(conversationId));
       final sub = supabase
           .from('messages')
           .stream(primaryKey: ['id'])
@@ -1361,45 +1713,67 @@ final conversationMessagesProvider = StateNotifierProvider.family
                       .getConversation(conversationId, userId);
                   otherUserId = conv?.otherUserId;
                 } catch (_) {}
-                if (otherUserId != null && otherUserId.isNotEmpty) {
-                  // Prepare keys for both users in the conversation
-                  await E2EEService.instance.prepareConversationKey(
-                    conversationId: conversationId,
-                    otherUserId: otherUserId,
-                  );
+                // Always try to decrypt messages, even if otherUserId is not found
+                serverMessagesRaw = await Future.wait(
+                  serverMessagesRaw.map((m) async {
+                    print(
+                        '[DEBUG] Processing message ${m.id}: ${m.content.substring(0, m.content.length > 50 ? 50 : m.content.length)}...');
+                    if (m.content.startsWith('e2ee:v1:')) {
+                      print(
+                          '[DEBUG] Message ${m.id} is encrypted, attempting decryption...');
+                      // Check cache first
+                      final cachedDecrypted =
+                          await E2EEService.instance.getCachedDecryptedContent(
+                        messageId: m.id,
+                        conversationId: conversationId,
+                        userId: userId,
+                      );
 
-                  // Also prepare key for current user (for own messages)
-                  final currentUserId = supabase.auth.currentUser?.id;
-                  if (currentUserId != null && currentUserId.isNotEmpty) {
-                    await E2EEService.instance.prepareConversationKey(
-                      conversationId: conversationId,
-                      otherUserId: currentUserId,
-                    );
-                  }
+                      String? decrypted;
+                      if (cachedDecrypted != null) {
+                        decrypted = cachedDecrypted;
+                      } else {
+                        // Try to prepare keys if otherUserId is available
+                        if (otherUserId != null && otherUserId.isNotEmpty) {
+                          try {
+                            await E2EEService.instance.prepareConversationKey(
+                              conversationId: conversationId,
+                              otherUserId: otherUserId,
+                            );
+                          } catch (e) {
+                            print(
+                                '[conversationMessagesProvider] Error preparing conversation key: $e');
+                          }
+                        }
 
-                  serverMessagesRaw = await Future.wait(
-                    serverMessagesRaw.map((m) async {
-                      if (m.content.startsWith('e2ee:v1:')) {
-                        final decrypted =
+                        print(
+                            '[conversationMessagesProvider] Attempting to decrypt message ${m.id}');
+                        decrypted =
                             await E2EEService.instance.maybeDecryptWithSender(
                           content: m.content,
                           conversationId: conversationId,
                           senderId: m.senderId,
+                          messageId: m.id,
+                          userId: userId,
+                          messageCreatedAt: m.createdAt,
                         );
-                        final replyDec =
-                            await E2EEService.instance.maybeDecryptNullable(
-                          content: m.replyToContent,
-                          conversationId: conversationId,
-                        );
-                        return m.copyWith(
-                          content: decrypted,
-                          replyToContent: replyDec,
-                        );
+                        print(
+                            '[conversationMessagesProvider] Decryption result for message ${m.id}: ${decrypted.substring(0, decrypted.length > 50 ? 50 : decrypted.length)}...');
                       }
-                      return m;
-                    }),
-                  );
-                }
+
+                      final replyDec =
+                          await E2EEService.instance.maybeDecryptNullable(
+                        content: m.replyToContent,
+                        conversationId: conversationId,
+                      );
+                      return m.copyWith(
+                        content: decrypted,
+                        replyToContent: replyDec,
+                      );
+                    }
+                    return m;
+                  }),
+                );
               }
             } catch (_) {}
             if (notifier._clearedAt != null) {
@@ -1484,17 +1858,37 @@ final conversationMessagesProvider = StateNotifierProvider.family
 
 // --- Provider جدید برای گوش دادن به تغییرات کش مکالمات (Drift) ---
 final cachedConversationsStreamProvider =
-    StreamProvider.autoDispose<List<ConversationModel>>((ref) {
+    StreamProvider.autoDispose<List<ConversationModel>>((ref) async* {
   final conversationCache = ConversationCacheService();
+
+  // Ensure the service is initialized before using it
+  try {
+    await conversationCache.unifiedService.initialize();
+  } catch (e) {
+    print('Error initializing conversation cache service in provider: $e');
+    yield [];
+    return;
+  }
+
   // Make sure ConversationCacheService is a singleton or provided correctly
-  return conversationCache
+  yield* conversationCache
       .watchCachedConversations(supabase.auth.currentUser!.id);
 });
 
 // --- اضافه کنید: Provider برای دریافت آنی اطلاعات یک گفتگوی خاص ---
 final conversationProvider = StreamProvider.family
-    .autoDispose<ConversationModel?, String>((ref, conversationId) {
+    .autoDispose<ConversationModel?, String>((ref, conversationId) async* {
   final cache = ConversationCacheService();
+
+  // Ensure the service is initialized before using it
+  try {
+    await cache.unifiedService.initialize();
+  } catch (e) {
+    print(
+        'Error initializing conversation cache service in conversation provider: $e');
+    yield null;
+    return;
+  }
 
   // همچنین، یکبار اطلاعات را از سرور برای اطمینان از به‌روز بودن کش، درخواست می‌دهیم.
   // نیازی به await کردن نیست؛ استریم به محض آپدیت شدن کش، UI را به‌روز می‌کند.
@@ -1503,7 +1897,7 @@ final conversationProvider = StreamProvider.family
   });
 
   final userId = supabase.auth.currentUser!.id;
-  return cache.watchConversation(conversationId, userId);
+  yield* cache.watchConversation(conversationId, userId);
 });
 
 // --- اضافه کنید: Provider برای دریافت رسانه‌های اشتراک‌گذاری شده در یک گفتگو ---
@@ -1534,7 +1928,7 @@ final chatCacheSizeProvider = FutureProvider<String>((ref) async {
 
   try {
     final file = await getMessageCacheDbFile(); // استفاده از تابع کمکی
-    if (await file.exists()) {
+    if (file != null && await file.exists()) {
       sizeInBytes = await file.length();
       if (sizeInBytes == 0) {
         return "خالی"; // اگر فایل وجود دارد ولی خالی است
@@ -1550,9 +1944,7 @@ final chatCacheSizeProvider = FutureProvider<String>((ref) async {
   }
 
   // اگر sizeInBytes هنوز -1 است و خطایی هم نداشتیم، یعنی وضعیت نامشخص
-  if (sizeInBytes < 0 && errorMessage == null) return "نامشخص";
-  if (errorMessage != null)
-    return errorMessage; // این خط اضافی است چون بالا return شده
+  if (sizeInBytes < 0) return "نامشخص";
 
   if (sizeInBytes < 1024)
     return "$sizeInBytes بایت"; // sizeInBytes اینجا حتما >= 0 است

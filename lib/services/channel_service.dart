@@ -4,12 +4,11 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../model/channel_model.dart';
 import '../model/channel_message_model.dart';
-import '../DB/channel_cache_service.dart';
 import '/main.dart';
 
 class ChannelService {
   final SupabaseClient _supabase = supabase;
-  final ChannelCacheService _cache = ChannelCacheService();
+  // final ChannelCacheService _cache = ChannelCacheService(); // حذف شده
 
   // Singleton pattern
   static final ChannelService _instance = ChannelService._internal();
@@ -18,7 +17,7 @@ class ChannelService {
 
   // مقداردهی اولیه
   Future<void> initialize() async {
-    await _cache.initialize();
+    // Channel cache removed, no initialization needed
   }
 
   // 📸 آپلود تصویر به آروان کلود
@@ -141,36 +140,22 @@ class ChannelService {
     try {
       final userId = _supabase.auth.currentUser!.id;
 
-      // اگر force refresh نباشه، اول کش رو چک کن
+      // Channel cache removed - always fetch from server
       if (!forceRefresh) {
-        final cachedChannels = await _cache.getCachedChannels();
-        if (cachedChannels.isNotEmpty) {
-          print('${cachedChannels.length} کانال از کش بارگذاری شد');
-
-          // در پس‌زمینه آپدیت کن
-          _refreshChannelsInBackground(userId);
-
-          return cachedChannels;
-        }
+        // No cache check needed
       }
 
       // دریافت از سرور
       final channels = await _fetchChannelsFromServer(userId);
 
-      // کش کردن
-      await _cache.cacheChannels(channels);
+      // Channel cache removed
 
       print('${channels.length} کانال از سرور دریافت و کش شد');
       return channels;
     } catch (e) {
       print('خطا در دریافت کانال‌ها: $e');
 
-      // در صورت خطا، کش رو برگردون
-      final cachedChannels = await _cache.getCachedChannels();
-      if (cachedChannels.isNotEmpty) {
-        print('در صورت خطا، ${cachedChannels.length} کانال از کش برگردانده شد');
-        return cachedChannels;
-      }
+      // Channel cache removed - no fallback available
 
       rethrow;
     }
@@ -209,7 +194,7 @@ class ChannelService {
   void _refreshChannelsInBackground(String userId) async {
     try {
       final channels = await _fetchChannelsFromServer(userId);
-      await _cache.cacheChannels(channels);
+      // Channel cache removed
       print('کش کانال‌ها در پس‌زمینه آپدیت شد');
     } catch (e) {
       print('خطا در آپدیت پس‌زمینه: $e');
@@ -223,17 +208,7 @@ class ChannelService {
       final userId = _supabase.auth.currentUser!.id;
 
       // چک کردن کش
-      if (!forceRefresh) {
-        final cachedChannel = await _cache.getChannel(channelId);
-        if (cachedChannel != null) {
-          print('کانال ${cachedChannel.name} از کش بارگذاری شد');
-
-          // آپدیت در پس‌زمینه
-          _refreshChannelInBackground(channelId, userId);
-
-          return cachedChannel;
-        }
-      }
+      // Channel cache removed - always fetch from server
 
       // دریافت از سرور
       final response = await _supabase.from('channel_members').select('''
@@ -265,17 +240,13 @@ class ChannelService {
       final channel = ChannelModel.fromJson(channelData, currentUserId: userId);
 
       // کش کردن
-      await _cache.cacheChannel(channel);
+      // Channel cache removed
 
       return channel;
     } catch (e) {
       print('خطا در دریافت کانال: $e');
 
-      // در صورت خطا، کش رو چک کن
-      final cachedChannel = await _cache.getChannel(channelId);
-      if (cachedChannel != null) {
-        return cachedChannel;
-      }
+      // Channel cache removed - no fallback available
 
       rethrow;
     }
@@ -286,7 +257,7 @@ class ChannelService {
     try {
       final channel = await getChannel(channelId, forceRefresh: true);
       if (channel != null) {
-        await _cache.cacheChannel(channel);
+        // Channel cache removed
         print('کش کانال $channelId در پس‌زمینه آپدیت شد');
       }
     } catch (e) {
@@ -345,8 +316,8 @@ class ChannelService {
       }, currentUserId: userId);
 
       // کش کردن
-      await _cache.cacheChannel(channel);
-      await _cache.clearChannelsCache(); // برای آپدیت لیست
+      // Channel cache removed
+      // Channel cache removed // برای آپدیت لیست
 
       print('کانال ${channel.name} با موفقیت ایجاد شد');
       return channel;
@@ -386,8 +357,8 @@ class ChannelService {
           params: {'channel_id_param': channelId});
 
       // آپدیت کش
-      await _invalidateChannelCache(channelId);
-      await _cache.clearChannelsCache();
+      // Channel cache removed
+      // Channel cache removed
 
       print('با موفقیت به کانال پیوستید');
     } catch (e) {
@@ -429,8 +400,8 @@ class ChannelService {
           params: {'channel_id_param': channelId});
 
       // آپدیت کش
-      await _invalidateChannelCache(channelId);
-      await _cache.clearChannelsCache();
+      // Channel cache removed
+      // Channel cache removed
 
       print('با موفقیت کانال را ترک کردید');
     } catch (e) {
@@ -482,16 +453,7 @@ class ChannelService {
         throw Exception('شما عضو این کانال نیستید');
       }
 
-      // چک کردن کش
-      if (!forceRefresh && before == null) {
-        final cachedMessages = await _cache.getChannelMessages(channelId);
-        print(
-            'Loaded ${cachedMessages.length} messages from cache'); // Debug log
-        if (cachedMessages.isNotEmpty) {
-          _refreshMessagesInBackground(channelId, limit);
-          return cachedMessages;
-        }
-      }
+      // Channel cache removed - always fetch from server
 
       // دریافت از سرور
       final messages =
@@ -500,7 +462,7 @@ class ChannelService {
 
       // کش کردن
       if (before == null) {
-        await _cache.cacheChannelMessages(channelId, messages);
+        // Channel cache removed
       }
 
       return messages;
@@ -578,7 +540,7 @@ class ChannelService {
       final userId = _supabase.auth.currentUser!.id;
       final messages =
           await _fetchMessagesFromServer(channelId, limit, null, userId);
-      await _cache.cacheChannelMessages(channelId, messages);
+      // Channel cache removed
       print('کش پیام‌ها در پس‌زمینه آپدیت شد');
     } catch (e) {
       print('خطا در آپدیت پس‌زمینه پیام‌ها: $e');
@@ -762,10 +724,10 @@ class ChannelService {
           ChannelMessageModel.fromJson(response, currentUserId: userId);
 
       // اضافه کردن به کش
-      await _cache.cacheChannelMessage(channelId, message);
+      // Channel cache removed
 
       // آپدیت کش کانال
-      await _invalidateChannelCache(channelId);
+      // Channel cache removed
 
       print('پیام با موفقیت ارسال شد');
       return message;
@@ -1300,8 +1262,8 @@ class ChannelService {
       }, currentUserId: userId);
 
       // آپدیت کش
-      await _cache.cacheChannel(channel);
-      await _invalidateChannelCache(channelId);
+      // Channel cache removed
+      // Channel cache removed
 
       print('تنظیمات کانال با موفقیت آپدیت شد');
       return channel;
@@ -1349,8 +1311,8 @@ class ChannelService {
       await _supabase.from('channels').delete().eq('id', channelId);
 
       // پاک کردن کش
-      await _cache.clearChannelCache(channelId);
-      await _cache.clearChannelsCache();
+      // Channel cache removed
+      // Channel cache removed
 
       print('کانال با موفقیت حذف شد');
     } catch (e) {
@@ -1362,7 +1324,7 @@ class ChannelService {
   // پاک کردن کش
   Future<void> clearCache() async {
     try {
-      await _cache.clearAll();
+      // Channel cache removed
     } catch (e) {
       print('خطا در پاک کردن کش: $e');
       rethrow;
@@ -1372,25 +1334,12 @@ class ChannelService {
   // دریافت آمار کش
   Future<Map<String, dynamic>> getCacheStats() async {
     try {
-      return await _cache.getStats();
+      return {'cache_size_kb': 0.0, 'item_count': 0};
     } catch (e) {
       print('خطا در دریافت آمار کش: $e');
       rethrow;
     }
   }
 
-  // اضافه کردن متد clearChannelCache
-  Future<void> clearChannelCache(String channelId) async {
-    await _invalidateChannelCache(channelId);
-  }
-
-  // پاک کردن کش کانال
-  Future<void> _invalidateChannelCache(String channelId) async {
-    await _cache.clearChannelCache(channelId);
-  }
-
-  // پاک کردن کل کش
-  Future<void> clearAllCache() async {
-    await _cache.clearAll();
-  }
+  // Channel cache methods removed
 }

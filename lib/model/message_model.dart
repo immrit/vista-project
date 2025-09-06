@@ -39,6 +39,17 @@ class MessageModel {
     this.retryCount = 0, // مقدار پیش‌فرض
   });
 
+  factory MessageModel.empty() {
+    return MessageModel(
+      id: '',
+      conversationId: '',
+      senderId: '',
+      content: '',
+      createdAt: DateTime.now(),
+      isMe: false,
+    );
+  }
+
   factory MessageModel.fromJson(Map<String, dynamic> json,
       {required String currentUserId}) {
     String conversationId = json['conversation_id'] ??

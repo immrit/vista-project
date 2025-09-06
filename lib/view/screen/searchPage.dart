@@ -3,8 +3,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
-import 'package:hive_flutter/hive_flutter.dart';
-import '../../model/Hive Model/RecentSearch.dart';
+import 'package:sembast/sembast.dart' show Database, StoreRef;
+import 'package:sembast/sembast_io.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../model/ProfileModel.dart';
 import '../../model/SearchResut.dart';
 import '../../model/publicPostModel.dart';
@@ -21,12 +23,50 @@ class SearchPage extends ConsumerStatefulWidget {
   ConsumerState<SearchPage> createState() => _SearchPageState();
 }
 
+// Recent search model for Sembast
+class RecentSearch {
+  final String query;
+  final DateTime timestamp;
+  final SearchType searchType;
+
+  RecentSearch({
+    required this.query,
+    required this.timestamp,
+    required this.searchType,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'query': query,
+      'timestamp': timestamp.toIso8601String(),
+      'searchType': searchType.name,
+    };
+  }
+
+  static RecentSearch fromMap(Map<String, dynamic> map) {
+    return RecentSearch(
+      query: map['query'] as String,
+      timestamp: DateTime.parse(map['timestamp'] as String),
+      searchType: SearchType.values.firstWhere(
+        (e) => e.name == map['searchType'],
+        orElse: () => SearchType.user,
+      ),
+    );
+  }
+}
+
+enum SearchType {
+  hashtag,
+  user,
+}
+
 class _SearchPageState extends ConsumerState<SearchPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounceTimer;
-  Box<RecentSearch>? _recentSearchesBox;
+  Database? _database;
+  final StoreRef<String, Map<String, dynamic>> _store = StoreRef<String, Map<String, dynamic>>.main();
   bool _showRecentSearches = true;
   bool _isInitialized = false;
   bool _isSearching = false;
@@ -39,7 +79,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
   }
 
   Future<void> _initializeApp() async {
-    await _initHive();
+    await _initSembast();
     if (mounted) {
       setState(() {
         _isInitialized = true;
@@ -75,48 +115,53 @@ class _SearchPageState extends ConsumerState<SearchPage>
     }
   }
 
-  Future<void> _initHive() async {
+  Future<void> _initSembast() async {
     try {
-      _recentSearchesBox = await Hive.openBox<RecentSearch>('recent_searches');
+      String dbPath = 'recent_searches.db';
+      if (!kIsWeb) {
+        final appDir = await getApplicationDocumentsDirectory();
+        dbPath = '${appDir.path}/recent_searches.db';
+      }
+      
+      _database = await databaseFactoryIo.openDatabase(dbPath);
     } catch (e) {
-      debugPrint('خطا در باز کردن باکس Hive: $e');
-      // در صورت خطا، سعی به بازیابی باکس
-      await Hive.deleteBoxFromDisk('recent_searches');
-      _recentSearchesBox = await Hive.openBox<RecentSearch>('recent_searches');
+      debugPrint('خطا در باز کردن دیتابیس Sembast: $e');
     }
   }
 
-  void _addToRecentSearches(String query) {
-    if (query.isEmpty || _recentSearchesBox == null) return;
+  Future<void> _addToRecentSearches(String query) async {
+    if (query.isEmpty || _database == null) return;
 
     final searchType =
         query.startsWith('#') ? SearchType.hashtag : SearchType.user;
 
-    // حذف جستجوی تکراری قبلی
-    final itemsToRemove = _recentSearchesBox!.values
-        .where((search) =>
-            search.query == query && search.searchType == searchType)
-        .toList();
+    try {
+      // حذف جستجوی تکراری قبلی
+      await _store.record(query).delete(_database!);
 
-    for (var item in itemsToRemove) {
-      item.delete();
-    }
+      // اضافه کردن جستجوی جدید
+      final recentSearch = RecentSearch(
+        query: query,
+        timestamp: DateTime.now(),
+        searchType: searchType,
+      );
+      
+      await _store.record(query).put(_database!, recentSearch.toMap());
 
-    // اضافه کردن جستجوی جدید
-    _recentSearchesBox!.add(RecentSearch(
-      query: query,
-      timestamp: DateTime.now(),
-      searchType: searchType,
-    ));
+      // محدود کردن تعداد جستجوها به 20 مورد
+      final allRecords = await _store.find(_database!);
+      if (allRecords.length > 20) {
+        final searches = allRecords
+            .map((record) => RecentSearch.fromMap(record.value))
+            .toList()
+          ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-    // محدود کردن تعداد جستجوها به 20 مورد
-    if (_recentSearchesBox!.length > 20) {
-      final searches = _recentSearchesBox!.values.toList()
-        ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
-
-      for (var i = 20; i < searches.length; i++) {
-        searches[i].delete();
+        for (var i = 20; i < searches.length; i++) {
+          await _store.record(searches[i].query).delete(_database!);
+        }
       }
+    } catch (e) {
+      debugPrint('خطا در ذخیره جستجوی اخیر: $e');
     }
   }
 
@@ -127,9 +172,9 @@ class _SearchPageState extends ConsumerState<SearchPage>
     });
 
     _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () async {
       if (mounted && query.isNotEmpty) {
-        _addToRecentSearches(query);
+        await _addToRecentSearches(query);
 
         // تنظیم تب مناسب برای نوع جستجو
         if (query.startsWith('#') && _tabController.index != 0) {
@@ -157,20 +202,29 @@ class _SearchPageState extends ConsumerState<SearchPage>
     _debounceTimer?.cancel();
     _tabController.dispose();
     _searchController.dispose();
-    _recentSearchesBox?.close();
+    _database?.close();
     super.dispose();
   }
 
   Widget _buildRecentSearches() {
-    if (!_isInitialized || _recentSearchesBox == null) {
+    if (!_isInitialized || _database == null) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    return ValueListenableBuilder(
-      valueListenable: _recentSearchesBox!.listenable(),
-      builder: (context, Box<RecentSearch> box, _) {
-        final searches = box.values.toList()
-          ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return FutureBuilder<List<RecentSearch>>(
+      future: _getRecentSearches(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Text('خطا در بارگذاری جستجوهای اخیر: ${snapshot.error}'),
+          );
+        }
+
+        final searches = snapshot.data ?? [];
 
         if (searches.isEmpty) {
           return Center(
@@ -244,7 +298,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
                       color:
                           Theme.of(context).iconTheme.color?.withValues(alpha: 0.6),
                     ),
-                    onPressed: () => search.delete(),
+                    onPressed: () => _deleteRecentSearch(search.query),
                   ),
                 ],
               ),
@@ -262,6 +316,33 @@ class _SearchPageState extends ConsumerState<SearchPage>
         );
       },
     );
+  }
+
+  Future<List<RecentSearch>> _getRecentSearches() async {
+    if (_database == null) return [];
+    
+    try {
+      final records = await _store.find(_database!);
+      final searches = records
+          .map((record) => RecentSearch.fromMap(record.value))
+          .toList()
+        ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      return searches;
+    } catch (e) {
+      debugPrint('خطا در دریافت جستجوهای اخیر: $e');
+      return [];
+    }
+  }
+
+  Future<void> _deleteRecentSearch(String query) async {
+    if (_database == null) return;
+    
+    try {
+      await _store.record(query).delete(_database!);
+      setState(() {}); // Refresh the UI
+    } catch (e) {
+      debugPrint('خطا در حذف جستجوی اخیر: $e');
+    }
   }
 
   String _getTimeAgo(DateTime dateTime) {
@@ -300,7 +381,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
     return AppBar(
       title: _buildSearchBar(),
       actions: [
-        if (_showRecentSearches && _recentSearchesBox?.isNotEmpty == true)
+        if (_showRecentSearches)
           IconButton(
             icon: const Icon(Icons.delete_sweep),
             onPressed: _showClearHistoryDialog,
@@ -332,8 +413,8 @@ class _SearchPageState extends ConsumerState<SearchPage>
             child: const Text('انصراف'),
           ),
           TextButton(
-            onPressed: () {
-              _recentSearchesBox?.clear();
+            onPressed: () async {
+              await _clearAllRecentSearches();
               Navigator.pop(context);
             },
             child: const Text('پاک کردن'),
@@ -341,6 +422,17 @@ class _SearchPageState extends ConsumerState<SearchPage>
         ],
       ),
     );
+  }
+
+  Future<void> _clearAllRecentSearches() async {
+    if (_database == null) return;
+    
+    try {
+      await _store.delete(_database!);
+      setState(() {}); // Refresh the UI
+    } catch (e) {
+      debugPrint('خطا در پاک کردن تمام جستجوهای اخیر: $e');
+    }
   }
 
   Widget _buildBody(SearchState searchState) {

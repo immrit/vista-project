@@ -5,8 +5,8 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import '../DB/conversation_cache_service.dart';
-import '../DB/message_cache_service.dart';
+import '../DB/conversation_cache_service_wrapper.dart';
+import '../DB/message_cache_service_wrapper.dart';
 import '../model/conversation_model.dart';
 import '../model/message_model.dart';
 import '../view/Exeption/app_exceptions.dart';
@@ -642,10 +642,8 @@ class ChatService {
           localId: pendingMessage['temporaryId'] as String?,
         );
         await _messageCache.replaceTempMessage(
-          pendingMessage['conversationId'] as String,
-          pendingMessage['temporaryId'] as String,
           message,
-          userId,
+          message,
         );
         _pendingMessages.removeWhere(
           (msg) => msg['temporaryId'] == pendingMessage['temporaryId'],

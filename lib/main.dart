@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:Vista/DB/conversation_cache_service.dart';
+import 'package:Vista/DB/conversation_cache_service_wrapper.dart';
 import 'package:Vista/view/screen/Settings/vistaStore/store.dart';
 import 'package:Vista/view/screen/SplashScreen.dart';
 import 'package:Vista/view/util/const.dart';
@@ -9,13 +9,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_links/app_links.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'DB/hive_initialize.dart';
+import 'DB/unified_message_cache_service.dart';
+import 'DB/unified_conversation_cache_service.dart';
+import 'DB/unified_e2ee_cache_service.dart';
+import 'DB/database_file_utils.dart';
+import 'DB/cache_initializer.dart';
 import 'firebase_options.dart';
 import 'provider/theme_provider.dart';
 
@@ -33,7 +36,7 @@ import 'view/screen/ouathUser/signupUser.dart';
 import 'view/screen/ouathUser/welcome.dart';
 import 'view/screen/ouathUser/editeProfile.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'DB/message_cache_service.dart';
+import 'DB/message_cache_service_wrapper.dart';
 import 'services/wallpaper_cache_service.dart';
 import 'view/screen/PublicPosts/publicPosts.dart';
 import 'view/screen/PublicPosts/PostDetailPage.dart';
@@ -51,20 +54,10 @@ Future<void> notificationResponseHandler(NotificationResponse response) async {
 }
 
 void main() async {
-  await HiveInitialize.initialize();
-
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize date formatting for all locales
   await initializeDateFormatting('fa', null);
-
-  // فقط برای غیر وب مسیر را ست کن
-  if (!kIsWeb) {
-    final appDocumentDir = await getApplicationDocumentsDirectory();
-    await Hive.initFlutter(appDocumentDir.path);
-  } else {
-    await Hive.initFlutter();
-  }
 
   // راه‌اندازی Firebase
   await Firebase.initializeApp(
@@ -81,6 +74,9 @@ void main() async {
   // راه‌اندازی سرویس پاکسازی خودکار
   final autoCleanupService = AutoCleanupService();
   await autoCleanupService.initialize();
+
+  // راه‌اندازی سرویس‌های دیتابیس یکپارچه
+  await _initializeDatabaseServices();
 
   // شروع نظارت بر حافظه
   cacheManager.startMemoryMonitoring();
@@ -215,13 +211,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
     if (state == AppLifecycleState.detached) {
       // AppLockLogger.lifecycle('برنامه detached شد');
-      final box = await Hive.openBox('settings');
-      bool clearDriftCacheOnExit =
-          box.get('clearDriftCacheOnExit', defaultValue: true);
-      if (clearDriftCacheOnExit) {
-        await deleteMessageCacheDbFile();
-        await deleteConversationCacheDbFile();
-      }
+      // Cache cleanup is now handled by Sembast automatically
     } else if (state == AppLifecycleState.resumed) {
       Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted) {
@@ -501,5 +491,23 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         );
       },
     );
+  }
+}
+
+/// Initialize database services based on platform
+Future<void> _initializeDatabaseServices() async {
+  try {
+    // Initialize legacy unified database services
+    await UnifiedMessageCacheService().initialize();
+    await UnifiedConversationCacheService().initialize();
+    await UnifiedE2EECacheService().initialize();
+
+    // Initialize advanced cache system
+    await CacheInitializer().initialize();
+
+    print(
+        '[Database] All database and cache services initialized successfully');
+  } catch (e) {
+    print('[Database] Error initializing database services: $e');
   }
 }

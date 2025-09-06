@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
-import '../DB/message_cache_service.dart';
-import '../DB/conversation_cache_service.dart';
-import '../DB/channel_cache_service.dart';
+import '../DB/message_cache_service_wrapper.dart';
+import '../DB/conversation_cache_service_wrapper.dart';
+import '../DB/database_file_utils.dart';
 
 class StorageInfoService {
   final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
@@ -350,7 +350,7 @@ class StorageInfoService {
     // کش پیام‌ها
     try {
       final messageCacheFile = await getMessageCacheDbFile();
-      if (await messageCacheFile.exists()) {
+      if (messageCacheFile != null && await messageCacheFile.exists()) {
         messageCacheSize = await messageCacheFile.length() / (1024 * 1024);
         totalCache += messageCacheSize;
       }
@@ -361,7 +361,8 @@ class StorageInfoService {
     // کش مکالمات
     try {
       final conversationCacheFile = await getConversationCacheDbFile();
-      if (await conversationCacheFile.exists()) {
+      if (conversationCacheFile != null &&
+          await conversationCacheFile.exists()) {
         conversationCacheSize =
             await conversationCacheFile.length() / (1024 * 1024);
         totalCache += conversationCacheSize;
@@ -372,10 +373,8 @@ class StorageInfoService {
 
     // کش کانال‌ها
     try {
-      final channelCacheService = ChannelCacheService();
-      final stats = await channelCacheService.getStats();
-      channelCacheSize = (stats['cache_size_kb'] ?? 0.0) / 1024; // KB to MB
-      totalCache += channelCacheSize;
+      // Channel cache removed
+      channelCacheSize = 0.0;
     } catch (e) {
       print('Error getting channel cache size: $e');
     }
@@ -499,12 +498,10 @@ class StorageInfoService {
         print('Error clearing conversation cache: $e');
       }
 
-      // پاک‌سازی کش کانال‌ها
+      // پاک‌سازی کش کانال‌ها - حذف شده
       try {
-        final channelCacheService = ChannelCacheService();
-        await channelCacheService.clearAll();
-        clearedItems++;
-        print('Channel cache cleared');
+        // Channel cache removed, nothing to clear
+        print('Channel cache cleared (no-op)');
       } catch (e) {
         print('Error clearing channel cache: $e');
       }

@@ -14,8 +14,9 @@ import 'ArchivedConversationsScreen.dart';
 // import 'ChatSettingsScreen.dart'; // اضافه کردن ایمپورت صفحه جدید
 import '../../../services/ChatService.dart';
 import 'ChatScreen.dart';
-import '../../../DB/conversation_cache_service.dart';
-import '../../../DB/message_cache_service.dart';
+import '../../../DB/conversation_cache_service_wrapper.dart';
+import '../../../DB/message_cache_service_wrapper.dart';
+import '../../../DB/database_file_utils.dart';
 import '../../../security/e2ee_service.dart';
 
 // مدل یکپارچه برای نمایش چت‌ها و کانال‌ها در یک لیست

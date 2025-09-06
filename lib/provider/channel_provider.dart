@@ -131,8 +131,7 @@ class ChannelNotifier extends StateNotifier<AsyncValue<void>> {
       // بروزرسانی لیست کانال‌ها
       await loadChannels();
 
-      // پاک کردن کش کانال
-      await _channelService.clearChannelCache(channelId);
+      // Channel cache removed
     } catch (e) {
       print('Error in leaveChannel: $e');
       rethrow;

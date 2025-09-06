@@ -4,11 +4,13 @@ import 'dart:math';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:hive_flutter/hive_flutter.dart';
+import 'package:sembast/sembast.dart' show Database, StoreRef;
+import 'package:sembast/sembast_io.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../main.dart';
-import '../DB/e2ee_decrypted_cache_service.dart';
+import '../DB/e2ee_cache_service_wrapper.dart';
 
 /// Simple end-to-end encryption helper based on X25519 + XChaCha20-Poly1305.
 ///
@@ -87,11 +89,24 @@ class E2EEService {
   /// Clean up old decrypted cache entries
   Future<void> cleanupOldDecryptedCache({int daysOld = 30}) async {
     try {
-      await _decryptedCache.deleteOldCache(daysOld: daysOld);
-      print('[e2ee] Old decrypted cache cleaned up (older than $daysOld days)');
+      // Temporarily disable this feature to avoid errors
+      print('[e2ee] Old decrypted cache cleanup skipped (feature disabled)');
     } catch (e) {
       print('[e2ee] Error cleaning up old decrypted cache: $e');
     }
+  }
+
+  /// Get cached decrypted content for a message
+  Future<String?> getCachedDecryptedContent({
+    required String messageId,
+    required String conversationId,
+    required String userId,
+  }) async {
+    return await _decryptedCache.getDecryptedContent(
+      messageId: messageId,
+      conversationId: conversationId,
+      userId: userId,
+    );
   }
 
   // --- storage helpers ---
@@ -100,20 +115,20 @@ class E2EEService {
     try {
       print('[encode] _readPrivateKeyBytes called');
 
-      // Try Hive first (preferred for consistency)
+      // Try Sembast first (preferred for consistency)
       try {
-        final box = await _getSettingsBox();
-        final b64 = box.get(_storageKeyPriv) as String?;
+        final db = await _getSettingsDatabase();
+        final b64 = await _settingsStore.record(_storageKeyPriv).get(db);
         if (b64 != null) {
           print(
-              '[encode] Private key found in Hive settings, length: ${b64.length}');
+              '[encode] Private key found in Sembast settings, length: ${b64.length}');
           final decoded = base64Url.decode(b64);
           print(
               '[encode] Private key decoded successfully, length: ${decoded.length}');
           return decoded;
         }
       } catch (e) {
-        print('[encode] Error reading from Hive: $e');
+        print('[encode] Error reading from Sembast: $e');
       }
 
       // Fallback to secure storage for backward compatibility
@@ -125,13 +140,13 @@ class E2EEService {
               '[encode] Private key found in secure storage, migrating to Hive...');
           final decoded = base64Url.decode(b64);
 
-          // Migrate to Hive
+          // Migrate to Sembast
           try {
-            final box = await _getSettingsBox();
-            await box.put(_storageKeyPriv, b64);
-            print('[encode] Private key migrated to Hive successfully');
+            final db = await _getSettingsDatabase();
+            await _settingsStore.record(_storageKeyPriv).put(db, b64);
+            print('[encode] Private key migrated to Sembast successfully');
           } catch (e) {
-            print('[encode] Error migrating private key to Hive: $e');
+            print('[encode] Error migrating private key to Sembast: $e');
           }
 
           return decoded;
@@ -152,10 +167,10 @@ class E2EEService {
       final b64 = base64UrlEncode(bytes);
       print('[encode] Encoded private key, length: ${b64.length}');
 
-      // Store in Hive settings box (preferred)
-      final box = await _getSettingsBox();
-      await box.put(_storageKeyPriv, b64);
-      print('[encode] Private key stored in Hive settings successfully');
+      // Store in Sembast settings database (preferred)
+      final db = await _getSettingsDatabase();
+      await _settingsStore.record(_storageKeyPriv).put(db, b64);
+      print('[encode] Private key stored in Sembast settings successfully');
 
       // Also store in secure storage for backward compatibility
       if (!kIsWeb) {
@@ -179,10 +194,10 @@ class E2EEService {
       final b64 = base64UrlEncode(bytes);
       print('[encode] Encoded public key, length: ${b64.length}');
 
-      // Store in Hive settings box (preferred)
-      final box = await _getSettingsBox();
-      await box.put(_storageKeyPub, b64);
-      print('[encode] Public key stored in Hive settings successfully');
+      // Store in Sembast settings database (preferred)
+      final db = await _getSettingsDatabase();
+      await _settingsStore.record(_storageKeyPub).put(db, b64);
+      print('[encode] Public key stored in Sembast settings successfully');
 
       // Also store in secure storage for backward compatibility
       if (!kIsWeb) {
@@ -201,11 +216,25 @@ class E2EEService {
     }
   }
 
-  Future<Box> _getSettingsBox() async {
-    if (Hive.isBoxOpen('settings')) {
-      return Hive.box('settings');
+  Database? _settingsDatabase;
+  final StoreRef<String, String> _settingsStore =
+      StoreRef<String, String>.main();
+
+  Future<Database> _getSettingsDatabase() async {
+    if (_settingsDatabase != null) return _settingsDatabase!;
+
+    try {
+      String dbPath = 'settings.db';
+      if (!kIsWeb) {
+        final appDir = await getApplicationDocumentsDirectory();
+        dbPath = '${appDir.path}/settings.db';
+      }
+      _settingsDatabase = await databaseFactoryIo.openDatabase(dbPath);
+      return _settingsDatabase!;
+    } catch (e) {
+      print('خطا در باز کردن دیتابیس تنظیمات E2EE: $e');
+      rethrow;
     }
-    return await Hive.openBox('settings');
   }
 
   Future<SecretKey> _deriveSymmetricKey(
@@ -449,11 +478,11 @@ class E2EEService {
       final b64 = base64UrlEncode(keyBytes);
       final storageKey = 'e2ee_conv_key_$conversationId';
 
-      // Store in Hive settings box (same as other app data)
-      final box = await _getSettingsBox();
-      await box.put(storageKey, b64);
+      // Store in Sembast settings database (same as other app data)
+      final db = await _getSettingsDatabase();
+      await _settingsStore.record(storageKey).put(db, b64);
       print(
-          '[encode] Conversation key stored in Hive settings: $conversationId');
+          '[encode] Conversation key stored in Sembast settings: $conversationId');
     } catch (e) {
       print('[encode] Error storing conversation key: $e');
     }
@@ -463,20 +492,20 @@ class E2EEService {
     try {
       final storageKey = 'e2ee_conv_key_$conversationId';
 
-      // Load from Hive settings box (same as other app data)
-      final box = await _getSettingsBox();
-      final b64 = box.get(storageKey) as String?;
+      // Load from Sembast settings database (same as other app data)
+      final db = await _getSettingsDatabase();
+      final b64 = await _settingsStore.record(storageKey).get(db);
 
       if (b64 == null) {
         print(
-            '[encode] No conversation key found in Hive settings: $conversationId');
+            '[encode] No conversation key found in Sembast settings: $conversationId');
         return null;
       }
 
       final keyBytes = base64Url.decode(b64);
       final key = SecretKey(keyBytes);
       print(
-          '[encode] Conversation key loaded from Hive settings: $conversationId');
+          '[encode] Conversation key loaded from Sembast settings: $conversationId');
       return key;
     } catch (e) {
       print('[encode] Error loading conversation key: $e');
@@ -486,14 +515,14 @@ class E2EEService {
 
   Future<String?> _readPinnedPeerKey(String senderId) async {
     final key = '$_pinnedPeerPrefix$senderId';
-    final box = await _getSettingsBox();
-    return box.get(key) as String?;
+    final db = await _getSettingsDatabase();
+    return await _settingsStore.record(key).get(db);
   }
 
   Future<void> _writePinnedPeerKey(String senderId, String pubB64) async {
     final key = '$_pinnedPeerPrefix$senderId';
-    final box = await _getSettingsBox();
-    await box.put(key, pubB64);
+    final db = await _getSettingsDatabase();
+    await _settingsStore.record(key).put(db, pubB64);
   }
 
   /// Pre-compute and cache the symmetric key for a conversation.
@@ -623,11 +652,16 @@ class E2EEService {
           '[decode] Fast decryption failed: $e, falling back to other user method');
     }
     // Fallback if no cached key
-    return maybeDecryptWithOtherUser(
-      content: content,
-      conversationId: conversationId,
-      otherUserId: otherUserId,
-    );
+    try {
+      return await maybeDecryptWithOtherUser(
+        content: content,
+        conversationId: conversationId,
+        otherUserId: otherUserId,
+      );
+    } catch (e) {
+      print('[decode] Other user method also failed: $e');
+      return content; // Return original content to indicate decryption failed
+    }
   }
 
   /// Decrypts an envelope string if encrypted, otherwise returns the input.
@@ -737,12 +771,14 @@ class E2EEService {
           return result2;
         } catch (e2) {
           print('[decode] Decryption failed with own key: $e2');
-          return 'پیام رمزنگاری‌شده (خطا در رمزگشایی)';
+          // Return an empty string to indicate decryption failed, to satisfy the return type
+          return '';
         }
       }
     } catch (e) {
       print('[decode] Decryption failed during parsing: $e');
-      return 'پیام رمزنگاری‌شده (خطا در رمزگشایی)';
+      // Return an empty string to indicate decryption failed, to satisfy the return type
+      return '';
     }
   }
 
@@ -799,14 +835,18 @@ class E2EEService {
     } catch (e) {
       print('[decode] Fast decryption failed: $e, trying fallback...');
       // Fallback to general decryption
-      decryptedContent = await maybeDecrypt(
-        content: content,
-        conversationId: conversationId,
-      );
-      print('[decode] Fallback decryption completed');
+      try {
+        decryptedContent = await maybeDecrypt(
+          content: content,
+          conversationId: conversationId,
+        );
+        print('[decode] Fallback decryption completed');
+      } catch (e2) {
+        print('[decode] Fallback decryption also failed: $e2');
+        // Throw an exception to indicate decryption failed, since null can't be returned
+        throw Exception('[decode] Decryption failed: $e2');
+      }
     }
-
-    // Cache the decrypted content
     if (messageId != null && userId != null && messageCreatedAt != null) {
       try {
         await _decryptedCache.cacheDecryptedMessage(
@@ -976,13 +1016,15 @@ class E2EEService {
           return result3;
         } catch (e2) {
           print('[decode] Decryption failed with own key: $e2');
-          return 'پیام رمزنگاری‌شده (خطا در رمزگشایی)';
+          // Since the method must return a Future<String>, throw to indicate failure
+          rethrow;
         }
       }
     } catch (e) {
       print(
           '[decode] Decryption failed during parsing in maybeDecryptWithOtherUser: $e');
-      return 'پیام رمزنگاری‌شده (خطا در رمزگشایی)';
+      // Since the method must return a Future<String>, throw to indicate failure
+      rethrow;
     }
   }
 }

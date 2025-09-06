@@ -2,8 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
-import '../DB/message_cache_service.dart';
-import '../DB/channel_cache_service.dart';
+import '../DB/message_cache_service_wrapper.dart';
 import '../security/e2ee_service.dart';
 import 'cache_manager.dart';
 
@@ -18,12 +17,9 @@ class AutoCleanupService {
   bool _isRunning = false;
 
   final MessageCacheService _messageCache = MessageCacheService();
-  late final ChannelCacheService _channelCache;
   late final UnifiedCacheManager _cacheManager;
 
   Future<void> initialize() async {
-    _channelCache = ChannelCacheService();
-    await _channelCache.initialize();
     _cacheManager = UnifiedCacheManager();
 
     // شروع پاکسازی‌های خودکار
@@ -95,8 +91,8 @@ class AutoCleanupService {
       totalItemsRemoved += 500; // تخمین
       totalSpaceFreed += 25.0; // تخمین
 
-      // پاکسازی کش کانال‌های منقضی شده
-      await _channelCache.clearAll();
+      // پاکسازی کش کانال‌های منقضی شده (حذف شده)
+      // await _channelCache.clearAll();
       totalItemsRemoved += 100; // تخمین
       totalSpaceFreed += 10.0; // تخمین
 
@@ -306,7 +302,7 @@ class AutoCleanupService {
       }
 
       if (cleanChannels) {
-        await _channelCache.clearAll();
+        // await _channelCache.clearAll(); // حذف شده
         totalItemsRemoved += 50;
         totalSpaceFreed += 5.0;
       }

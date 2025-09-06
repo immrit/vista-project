@@ -17,8 +17,8 @@ import '../../model/publicPostModel.dart';
 import '../../provider/provider.dart';
 import '../../provider/theme_provider.dart';
 import '../screen/PublicPosts/profileScreen.dart';
-import '../../DB/message_cache_service.dart';
-import '../../DB/conversation_cache_service.dart';
+import '../../DB/message_cache_service_wrapper.dart';
+import '../../DB/conversation_cache_service_wrapper.dart';
 
 class topText extends StatelessWidget {
   const topText({
