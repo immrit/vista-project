@@ -1882,7 +1882,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             // گزینه کپی برای همه
             items.add(const PopupMenuItem(value: 'copy', child: Text('کپی')));
 
-            // گزینه حذف برای صاحب پست یا ناظر
+            // گزینه حذف برای صاحب پست یا مدیران (تیک آبی)
             if (isCurrentUserPost || isBlueTick) {
               items.add(
                   const PopupMenuItem(value: 'delete', child: Text('حذف')));

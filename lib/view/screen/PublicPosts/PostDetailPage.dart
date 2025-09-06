@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import '../../../services/smart_share_service.dart';
@@ -11,6 +12,7 @@ import '../../util/widgets.dart';
 import '../searchPage.dart';
 import '/main.dart';
 import '/view/screen/PublicPosts/profileScreen.dart';
+import '/view/screen/PublicPosts/publicPosts.dart';
 import '../../../model/CommentModel.dart';
 import '../../../model/UserModel.dart';
 import '../../../provider/provider.dart';
@@ -597,26 +599,234 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
               : CachedNetworkImageProvider(post.avatarUrl),
         ),
         const SizedBox(width: 10),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(
-                  post.username,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(width: 5),
-                if (post.isVerified) _buildVerificationBadge(post)
-              ],
-            ),
-            Text(
-              _formatDate(post.createdAt),
-              style: const TextStyle(color: Colors.grey, fontSize: 14),
-            ),
-          ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    post.username,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(width: 5),
+                  if (post.isVerified) _buildVerificationBadge(post)
+                ],
+              ),
+              Text(
+                _formatDate(post.createdAt),
+                style: const TextStyle(color: Colors.grey, fontSize: 14),
+              ),
+            ],
+          ),
         ),
+        _buildPostActionsMenu(post),
       ],
+    );
+  }
+
+  Widget _buildPostActionsMenu(dynamic post) {
+    return Consumer(
+      builder: (context, ref, child) {
+        final profileAsync = ref.watch(profileProvider);
+        final currentUserId = supabase.auth.currentUser?.id;
+        final isCurrentUserPost = post.userId == currentUserId;
+
+        return profileAsync.when(
+          data: (profile) {
+            final isBlueTick = profile != null &&
+                profile['is_verified'] == true &&
+                profile['verification_type'] == 'blueTick';
+
+            return PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: Colors.grey),
+              onSelected: (value) async {
+                switch (value) {
+                  case 'delete':
+                    // مدیران (تیک آبی) می‌توانند همه پست‌ها را حذف کنند، کاربران عادی فقط پست خودشان
+                    if (isCurrentUserPost || isBlueTick) {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('حذف پست'),
+                          content:
+                              const Text('آیا از حذف این پست اطمینان دارید؟'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('انصراف'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.red,
+                              ),
+                              child: const Text('حذف'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmed == true) {
+                        try {
+                          await ref
+                              .read(supabaseServiceProvider)
+                              .deletePost(ref, post.id);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('پست با موفقیت حذف شد')),
+                            );
+                            Navigator.of(context).pop(); // Close detail page
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('خطا در حذف پست')),
+                            );
+                          }
+                        }
+                      }
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('شما نمی‌توانید این پست را حذف کنید'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                    break;
+                  case 'edit':
+                    if (isBlueTick) {
+                      // Use the same edit dialog from publicPosts.dart
+                      showEditPostDialog(context, ref, post);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('شما مجوز ویرایش این پست را ندارید'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                    break;
+                  case 'report':
+                    if (!isCurrentUserPost) {
+                      showDialog(
+                        context: context,
+                        builder: (context) => ReportDialog(post: post),
+                      );
+                    }
+                    break;
+                  case 'copy':
+                    await Clipboard.setData(ClipboardData(text: post.content));
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('متن پست کپی شد')),
+                      );
+                    }
+                    break;
+                }
+              },
+              itemBuilder: (context) {
+                final items = <PopupMenuItem<String>>[];
+
+                // گزینه گزارش برای پست‌های دیگران
+                if (!isCurrentUserPost) {
+                  items.add(
+                    const PopupMenuItem(
+                      value: 'report',
+                      child: Row(
+                        children: [
+                          Icon(Icons.flag, color: Colors.orange),
+                          SizedBox(width: 8),
+                          Text('گزارش پست'),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                // گزینه کپی برای همه
+                items.add(
+                  const PopupMenuItem(
+                    value: 'copy',
+                    child: Row(
+                      children: [
+                        Icon(Icons.content_copy, color: Colors.blue),
+                        SizedBox(width: 8),
+                        Text('کپی متن'),
+                      ],
+                    ),
+                  ),
+                );
+
+                // گزینه حذف برای صاحب پست یا مدیران (تیک آبی)
+                if (isCurrentUserPost || isBlueTick) {
+                  items.add(
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete, color: Colors.red),
+                          SizedBox(width: 8),
+                          Text('حذف پست'),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                // گزینه ویرایش فقط برای کاربران با تیک آبی
+                if (isBlueTick) {
+                  items.add(
+                    const PopupMenuItem(
+                      value: 'edit',
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit, color: Colors.green),
+                          SizedBox(width: 8),
+                          Text('ویرایش پست'),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                return items;
+              },
+            );
+          },
+          loading: () => PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.grey),
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'copy',
+                child: Row(
+                  children: [
+                    Icon(Icons.content_copy, color: Colors.blue),
+                    SizedBox(width: 8),
+                    Text('کپی متن'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          error: (_, __) => PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.grey),
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'copy',
+                child: Row(
+                  children: [
+                    Icon(Icons.content_copy, color: Colors.blue),
+                    SizedBox(width: 8),
+                    Text('کپی متن'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

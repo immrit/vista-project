@@ -1823,8 +1823,8 @@ Widget _buildPostActions(
             ),
           ];
 
-          // فقط صاحب پست مجاز به حذف است
-          if (currentUserId == post.userId) {
+          // صاحب پست یا مدیران (تیک آبی) مجاز به حذف هستند
+          if (currentUserId == post.userId || isBlueTick) {
             items.add(const PopupMenuItem<String>(
               value: 'delete',
               child: Row(
@@ -1872,7 +1872,7 @@ Widget _buildPostActions(
               ),
             );
           } else if (value == 'delete') {
-            // فقط صاحب پست یا blueTick مجاز به حذف هستند
+            // مدیران (تیک آبی) می‌توانند همه پست‌ها را حذف کنند، کاربران عادی فقط پست خودشان
             final isBlueTick = profile != null &&
                 profile['is_verified'] == true &&
                 profile['verification_type'] == 'blueTick';
