@@ -303,18 +303,18 @@ class EngagementPostService {
         } else if (!current.isLiked && !next.isLiked) {
           if (currentEngagement >= nextEngagement) {
             print(
-                '✅ درست: امتیاز تعامل نزولی (${currentEngagement} >= ${nextEngagement})');
+                '✅ درست: امتیاز تعامل نزولی ($currentEngagement >= $nextEngagement)');
           } else {
             print(
-                '❌ مشکل: امتیاز تعامل صعودی (${currentEngagement} < ${nextEngagement})');
+                '❌ مشکل: امتیاز تعامل صعودی ($currentEngagement < $nextEngagement)');
           }
         } else if (current.isLiked && next.isLiked) {
           if (currentEngagement >= nextEngagement) {
             print(
-                '✅ درست: پست‌های لایک شده بر اساس تعامل (${currentEngagement} >= ${nextEngagement})');
+                '✅ درست: پست‌های لایک شده بر اساس تعامل ($currentEngagement >= $nextEngagement)');
           } else {
             print(
-                '❌ مشکل: پست‌های لایک شده بر اساس تعامل نیست (${currentEngagement} < ${nextEngagement})');
+                '❌ مشکل: پست‌های لایک شده بر اساس تعامل نیست ($currentEngagement < $nextEngagement)');
           }
         }
       }

@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../provider/provider.dart';
-import '../../../../provider/security_provider.dart';
 import 'BlockedUsersPage.dart';
 
 class PrivacySettingsPage extends ConsumerWidget {

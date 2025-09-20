@@ -15,7 +15,7 @@ class VistaStoryTemplateWidget extends StatelessWidget {
   final GlobalKey? repaintBoundaryKey;
 
   const VistaStoryTemplateWidget({
-    Key? key,
+    super.key,
     required this.post,
     this.customBackgroundText,
     this.backgroundColor,
@@ -23,7 +23,7 @@ class VistaStoryTemplateWidget extends StatelessWidget {
     this.customPostText,
     this.customImageUrl,
     this.repaintBoundaryKey,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

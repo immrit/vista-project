@@ -10,7 +10,6 @@ import '../main.dart';
 import '../model/conversation_model.dart';
 import '../model/message_model.dart';
 import '../services/ChatService.dart';
-import '../security/e2ee_service.dart';
 
 // لیست مکالمات
 final conversationsProvider =
@@ -119,6 +118,83 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
     _setupRealTimeListener();
   }
 
+  // متد کمکی برای فیلتر کردن پیام‌های تکراری
+  List<MessageModel> _filterDuplicateMessages(List<MessageModel> messages) {
+    print('🔍 شروع فیلتر کردن ${messages.length} پیام...');
+    print('🔍 ==========================================');
+
+    // نمایش تمام پیام‌ها قبل از فیلتر
+    for (final msg in messages) {
+      print('🔍 پیام قبل از فیلتر: ${msg.id} (localId: ${msg.localId})');
+    }
+
+    // 1. حذف پیام‌های temp که پیام واقعی‌شان آمده
+    final realLocalIds = messages
+        .where((m) => !m.id.startsWith('temp_') && m.localId != null)
+        .map((m) => m.localId)
+        .toSet();
+
+    print('🔍 شناسه‌های محلی واقعی: $realLocalIds');
+
+    // 2. حذف پیام‌های تکراری بر اساس ID
+    final seenIds = <String>{};
+    final seenLocalIds = <String>{};
+
+    final filteredMessages = messages.where((message) {
+      // حذف پیام‌های temp که پیام واقعی‌شان آمده
+      if (message.id.startsWith('temp_') && realLocalIds.contains(message.id)) {
+        print(
+            '🗑️ حذف پیام temp ${message.id} (پیام واقعی ${message.localId} آمده)');
+        return false;
+      }
+
+      // حذف پیام‌های تکراری بر اساس ID
+      if (seenIds.contains(message.id)) {
+        print('🗑️ حذف پیام تکراری بر اساس ID: ${message.id}');
+        return false;
+      }
+      seenIds.add(message.id);
+
+      // حذف پیام‌های تکراری بر اساس localId
+      if (message.localId != null) {
+        if (seenLocalIds.contains(message.localId!)) {
+          print('🗑️ حذف پیام تکراری بر اساس localId: ${message.localId}');
+          return false;
+        }
+        seenLocalIds.add(message.localId!);
+      }
+
+      return true;
+    }).toList();
+
+    if (messages.length != filteredMessages.length) {
+      print(
+          '🧹 فیلتر کردن پیام‌های تکراری: ${messages.length} -> ${filteredMessages.length}');
+      final removedCount = messages.length - filteredMessages.length;
+      print('🗑️ تعداد پیام‌های حذف شده: $removedCount');
+
+      // نمایش جزئیات پیام‌های حذف شده
+      final removedMessages =
+          messages.where((m) => !filteredMessages.contains(m)).toList();
+      for (final msg in removedMessages) {
+        print('🗑️ حذف شده: ${msg.id} (localId: ${msg.localId})');
+      }
+    } else {
+      print('✅ هیچ پیام تکراری یافت نشد');
+    }
+
+    // نمایش تمام پیام‌ها بعد از فیلتر
+    print('🔍 پیام‌های بعد از فیلتر:');
+    for (final msg in filteredMessages) {
+      print('🔍 پیام بعد از فیلتر: ${msg.id} (localId: ${msg.localId})');
+    }
+
+    print('🔍 پایان فیلتر کردن پیام‌ها');
+    print('🔍 ==========================================');
+
+    return filteredMessages;
+  }
+
   Future<void> _loadInitialMessages() async {
     state = state.copyWith(isLoading: true, error: null);
 
@@ -128,15 +204,20 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
           await _messageCache.getConversationMessages(conversationId, userId);
 
       if (cachedMessages.isNotEmpty) {
-        // Decrypt cached messages
-        final decryptedMessages = await _decryptMessages(cachedMessages);
+        print('💾 بارگذاری ${cachedMessages.length} پیام از کش');
+        final filteredMessages = _filterDuplicateMessages(cachedMessages);
         state = state.copyWith(
-          messages: decryptedMessages,
+          messages: filteredMessages,
           isLoading: false,
-          hasMore: cachedMessages.length >= _pageSize,
+          hasMore: filteredMessages.length >= _pageSize,
         );
-        _currentPage = (cachedMessages.length / _pageSize).ceil();
+        _currentPage = (filteredMessages.length / _pageSize).ceil();
+        print(
+            '✅ بارگذاری از کش با موفقیت انجام شد. تعداد نهایی: ${filteredMessages.length}');
+        print('✅ ==========================================');
       } else {
+        print('💾 کش خالی است، بارگذاری از سرور...');
+        print('💾 ==========================================');
         await _loadMoreMessages();
       }
     } catch (e) {
@@ -171,14 +252,19 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
       }
 
       // Decrypt messages before adding to state
-      final decryptedMessages = await _decryptMessages(newMessages);
-      final updatedMessages = [...state.messages, ...decryptedMessages];
+      print('📥 بارگذاری ${newMessages.length} پیام جدید از سرور');
+      final updatedMessages = [...state.messages, ...newMessages];
+      final filteredMessages = _filterDuplicateMessages(updatedMessages);
 
       state = state.copyWith(
-        messages: updatedMessages,
+        messages: filteredMessages,
         isLoading: false,
         hasMore: newMessages.length >= _pageSize,
       );
+
+      print(
+          '✅ بارگذاری پیام‌ها با موفقیت انجام شد. تعداد نهایی: ${filteredMessages.length}');
+      print('✅ ==========================================');
 
       _currentPage++;
     } catch (e) {
@@ -205,120 +291,223 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
 
           // Add new messages that aren't already in the state
           final existingIds = state.messages.map((m) => m.id).toSet();
-          final trulyNewMessages = newMessages
-              .where((msg) => !existingIds.contains(msg.id))
-              .toList();
+          final existingLocalIds = state.messages
+              .where((m) => m.localId != null)
+              .map((m) => m.localId!)
+              .toSet();
+
+          final trulyNewMessages = newMessages.where((msg) {
+            // حذف پیام‌هایی که قبلاً وجود دارند
+            if (existingIds.contains(msg.id)) {
+              print('🗑️ حذف پیام تکراری از استریم (ID): ${msg.id}');
+              return false;
+            }
+
+            // حذف پیام‌هایی که localId مشابه دارند
+            if (msg.localId != null &&
+                existingLocalIds.contains(msg.localId!)) {
+              print('🗑️ حذف پیام تکراری از استریم (localId): ${msg.localId}');
+              return false;
+            }
+
+            return true;
+          }).toList();
 
           if (trulyNewMessages.isNotEmpty) {
+            print('📨 دریافت ${trulyNewMessages.length} پیام جدید از استریم');
+            print('📨 ==========================================');
+            for (final msg in trulyNewMessages) {
+              print(
+                  '📨 پیام جدید از استریم: ${msg.id} (localId: ${msg.localId})');
+            }
             addNewMessages(trulyNewMessages);
+          } else {
+            print('📨 هیچ پیام جدیدی از استریم دریافت نشد');
+            print('📨 پیام‌های دریافتی: ${newMessages.length}');
+            print('📨 پیام‌های موجود: ${existingIds.length}');
+            print('📨 پیام‌های localId موجود: ${existingLocalIds.length}');
+
+            // نمایش جزئیات پیام‌های دریافتی
+            for (final msg in newMessages) {
+              print('📨 پیام دریافتی: ${msg.id} (localId: ${msg.localId})');
+            }
+
+            print('📨 پایان بررسی پیام‌های استریم');
+            print('📨 ==========================================');
           }
         });
   }
 
   void addNewMessages(List<MessageModel> newMessages) async {
-    // Decrypt new messages
-    final decryptedMessages = await _decryptMessages(newMessages);
-    final updatedMessages = [...decryptedMessages, ...state.messages];
-    state = state.copyWith(messages: updatedMessages);
+    print('➕ اضافه کردن ${newMessages.length} پیام جدید');
+    print('📊 تعداد پیام‌ها قبل از اضافه کردن: ${state.messages.length}');
+
+    // بررسی پیام‌های تکراری قبل از اضافه کردن
+    final existingIds = state.messages.map((m) => m.id).toSet();
+    final existingLocalIds = state.messages
+        .where((m) => m.localId != null)
+        .map((m) => m.localId!)
+        .toSet();
+
+    final uniqueNewMessages = newMessages.where((message) {
+      if (existingIds.contains(message.id)) {
+        print('🗑️ حذف پیام تکراری (ID): ${message.id}');
+        return false;
+      }
+
+      if (message.localId != null &&
+          existingLocalIds.contains(message.localId!)) {
+        print('🗑️ حذف پیام تکراری (localId): ${message.localId}');
+        return false;
+      }
+
+      return true;
+    }).toList();
+
+    if (uniqueNewMessages.isEmpty) {
+      print('⚠️ هیچ پیام جدیدی وجود ندارد');
+      print('⚠️ پیام‌های دریافتی: ${newMessages.length}');
+      print('⚠️ پیام‌های موجود: ${existingIds.length}');
+      print('⚠️ پیام‌های localId موجود: ${existingLocalIds.length}');
+
+      // نمایش جزئیات پیام‌های دریافتی
+      for (final msg in newMessages) {
+        print('⚠️ پیام دریافتی: ${msg.id} (localId: ${msg.localId})');
+      }
+
+      print('⚠️ پایان بررسی پیام‌های جدید');
+      print('⚠️ ==========================================');
+      return; // هیچ پیام جدیدی وجود ندارد
+    }
+
+    print('✅ ${uniqueNewMessages.length} پیام جدید منحصر به فرد یافت شد');
+    print('✅ ==========================================');
+
+    final updatedMessages = [...uniqueNewMessages, ...state.messages];
+    final filteredMessages = _filterDuplicateMessages(updatedMessages);
+    state = state.copyWith(messages: filteredMessages);
+
+    print(
+        '✅ پیام‌های جدید با موفقیت اضافه شدند. تعداد نهایی: ${filteredMessages.length}');
+    print('✅ ==========================================');
   }
 
   void addTempMessageToLazy(MessageModel tempMessage) async {
-    // Decrypt temp message
-    final decryptedMessages = await _decryptMessages([tempMessage]);
-    final decryptedMessage = decryptedMessages.first;
-    final updatedMessages = [decryptedMessage, ...state.messages];
-    state = state.copyWith(messages: updatedMessages);
+    print(
+        '➕ اضافه کردن پیام موقت: ${tempMessage.id} (localId: ${tempMessage.localId})');
+    print('📊 تعداد پیام‌ها قبل از اضافه کردن: ${state.messages.length}');
+
+    // بررسی اینکه آیا پیامی با همین ID یا localId وجود دارد یا خیر
+    final existingMessage = state.messages.any((m) =>
+        m.id == tempMessage.id ||
+        (m.localId != null && m.localId == tempMessage.localId) ||
+        (tempMessage.localId != null && m.id == tempMessage.localId));
+
+    if (existingMessage) {
+      print('⚠️ پیام موقت قبلاً وجود دارد، اضافه نمی‌شود');
+      print(
+          '⚠️ پیام موقت موجود: ${tempMessage.id} (localId: ${tempMessage.localId})');
+      print('⚠️ تعداد پیام‌های موجود: ${state.messages.length}');
+
+      // نمایش جزئیات پیام‌های موجود
+      for (final msg in state.messages) {
+        print('⚠️ پیام موجود: ${msg.id} (localId: ${msg.localId})');
+      }
+
+      print('⚠️ پایان بررسی پیام موقت موجود');
+      print('⚠️ ==========================================');
+      return; // پیام قبلاً وجود دارد
+    }
+
+    final updatedMessages = [tempMessage, ...state.messages];
+    final filteredMessages = _filterDuplicateMessages(updatedMessages);
+    state = state.copyWith(messages: filteredMessages);
+
+    print(
+        '✅ پیام موقت با موفقیت اضافه شد. تعداد نهایی: ${filteredMessages.length}');
+    print('✅ ==========================================');
   }
 
   void replaceTempWithRealInLazy(
       String tempId, MessageModel realMessage) async {
-    // Decrypt real message
-    final decryptedMessages = await _decryptMessages([realMessage]);
-    final decryptedMessage = decryptedMessages.first;
-    final updatedMessages = state.messages.map((m) {
-      return m.id == tempId ? decryptedMessage : m;
-    }).toList();
-    state = state.copyWith(messages: updatedMessages);
-  }
+    print('🔄 جایگزینی پیام موقت $tempId با پیام واقعی ${realMessage.id}');
+    print('📊 تعداد پیام‌ها قبل از جایگزینی: ${state.messages.length}');
 
-  Future<List<MessageModel>> _decryptMessages(
-      List<MessageModel> messages) async {
-    final userId = supabase.auth.currentUser?.id;
-    if (userId == null) return messages;
-
-    return await Future.wait(messages.map((m) async {
-      if (m.content.startsWith('e2ee:v1:')) {
-        try {
-          // Check cache first
-          final cachedDecrypted =
-              await E2EEService.instance.getCachedDecryptedContent(
-            messageId: m.id,
-            conversationId: conversationId,
-            userId: userId,
-          );
-
-          String? decrypted;
-          if (cachedDecrypted != null && cachedDecrypted.isNotEmpty) {
-            decrypted = cachedDecrypted;
-          } else {
-            // Try to decrypt
-            decrypted = await E2EEService.instance.maybeDecryptWithSender(
-              content: m.content,
-              conversationId: conversationId,
-              senderId: m.senderId,
-              messageId: m.id,
-              userId: userId,
-              messageCreatedAt: m.createdAt,
-            );
-          }
-
-          // Decrypt reply content if exists
-          final replyDecrypted =
-              await E2EEService.instance.maybeDecryptNullable(
-            content: m.replyToContent,
-            conversationId: conversationId,
-          );
-
-          // Only return decrypted content if decryption was successful
-          if (decrypted.isNotEmpty && !decrypted.contains('خطا در رمزگشایی')) {
-            return m.copyWith(
-              content: decrypted,
-              replyToContent: replyDecrypted,
-            );
-          } else {
-            // If decryption failed, show a user-friendly message
-            return m.copyWith(
-              content: 'پیام رمزنگاری شده (در حال پردازش...)',
-              replyToContent: replyDecrypted,
-            );
-          }
-        } catch (e) {
-          print('[LazyMessages] Error decrypting message ${m.id}: $e');
-          return m.copyWith(
-            content: 'پیام رمزنگاری شده (در حال پردازش...)',
-          );
-        }
+    // بررسی وجود پیام موقت
+    final tempMessageExists = state.messages.any((m) => m.id == tempId);
+    if (!tempMessageExists) {
+      print('⚠️ پیام موقت $tempId یافت نشد');
+      print('⚠️ تعداد پیام‌های موجود: ${state.messages.length}');
+      for (final msg in state.messages) {
+        print('⚠️ پیام موجود: ${msg.id} (localId: ${msg.localId})');
       }
-      return m;
-    }));
+      print(
+          '⚠️ پیام واقعی: ${realMessage.id} (localId: ${realMessage.localId})');
+      print('⚠️ پایان بررسی پیام موقت');
+      print('⚠️ ==========================================');
+      return;
+    }
+
+    final updatedMessages = state.messages.map((m) {
+      return m.id == tempId ? realMessage : m;
+    }).toList();
+
+    final filteredMessages = _filterDuplicateMessages(updatedMessages);
+    print('📊 تعداد پیام‌ها بعد از فیلتر: ${filteredMessages.length}');
+
+    state = state.copyWith(messages: filteredMessages);
+    print('✅ جایگزینی پیام با موفقیت انجام شد');
+    print('✅ ==========================================');
   }
 
   void addNewMessage(MessageModel message) async {
-    // Decrypt the new message before adding
-    final decryptedMessages = await _decryptMessages([message]);
-    final decryptedMessage = decryptedMessages.first;
-    final updatedMessages = [decryptedMessage, ...state.messages];
-    state = state.copyWith(messages: updatedMessages);
+    print(
+        '➕ اضافه کردن پیام جدید: ${message.id} (localId: ${message.localId})');
+    print('📊 تعداد پیام‌ها قبل از اضافه کردن: ${state.messages.length}');
+
+    // بررسی اینکه آیا پیامی با همین ID یا localId وجود دارد یا خیر
+    final existingMessage = state.messages.any((m) =>
+        m.id == message.id ||
+        (m.localId != null && m.localId == message.localId) ||
+        (message.localId != null && m.id == message.localId));
+
+    if (existingMessage) {
+      print('⚠️ پیام قبلاً وجود دارد، اضافه نمی‌شود');
+      print('⚠️ پیام موجود: ${message.id} (localId: ${message.localId})');
+      print('⚠️ تعداد پیام‌های موجود: ${state.messages.length}');
+
+      // نمایش جزئیات پیام‌های موجود
+      for (final msg in state.messages) {
+        print('⚠️ پیام موجود: ${msg.id} (localId: ${msg.localId})');
+      }
+
+      print('⚠️ پایان بررسی پیام موجود');
+      print('⚠️ ==========================================');
+      return; // پیام قبلاً وجود دارد
+    }
+
+    final updatedMessages = [message, ...state.messages];
+    final filteredMessages = _filterDuplicateMessages(updatedMessages);
+    state = state.copyWith(messages: filteredMessages);
+
+    print('✅ پیام با موفقیت اضافه شد. تعداد نهایی: ${filteredMessages.length}');
+    print('✅ ==========================================');
   }
 
   void updateMessage(MessageModel message) async {
-    // Decrypt the updated message
-    final decryptedMessages = await _decryptMessages([message]);
-    final decryptedMessage = decryptedMessages.first;
+    print('🔄 به‌روزرسانی پیام: ${message.id} (localId: ${message.localId})');
+    print('📊 تعداد پیام‌ها قبل از به‌روزرسانی: ${state.messages.length}');
+
     final updatedMessages = state.messages.map((m) {
-      return m.id == message.id ? decryptedMessage : m;
+      return m.id == message.id ? message : m;
     }).toList();
-    state = state.copyWith(messages: updatedMessages);
+
+    final filteredMessages = _filterDuplicateMessages(updatedMessages);
+    state = state.copyWith(messages: filteredMessages);
+
+    print(
+        '✅ به‌روزرسانی پیام با موفقیت انجام شد. تعداد نهایی: ${filteredMessages.length}');
+    print('✅ ==========================================');
   }
 }
 
@@ -639,11 +828,6 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
         '🚀 تلاش برای ارسال پیام (تلاش ${retryCount + 1}): ${tempMessage.id}');
     try {
       final chatService = ref.read(chatServiceProvider);
-      // Ensure crypto is initialized and own public key published (best-effort)
-      try {
-        await E2EEService.instance.ensureInitialized();
-        await E2EEService.instance.publishOwnPublicKeyIfNeeded();
-      } catch (_) {}
 
       final serverMessage = await chatService.sendMessage(
         conversationId: tempMessage.conversationId, // استفاده از tempMessage
@@ -1166,46 +1350,7 @@ final unreadMessageCountProvider =
   return 0;
 });
 
-// Provider برای ردیابی وضعیت رمزگشایی کل مکالمه
-final conversationDecryptionStatusProvider =
-    FutureProvider.family<bool, String>((ref, conversationId) async {
-  final userId = supabase.auth.currentUser?.id;
-  if (userId == null) return true;
-
-  final e2eeService = E2EEService.instance;
-
-  // دریافت پیام‌های مکالمه
-  final messages = ref.watch(conversationMessagesProvider(conversationId));
-
-  // بررسی اینکه آیا پیام رمزنگاری شده‌ای وجود دارد که هنوز رمزگشایی نشده
-  for (final message in messages) {
-    if (message.content.startsWith('e2ee:v1:')) {
-      try {
-        // Try to decrypt the message to see if it's already decrypted
-        final decrypted = await e2eeService.maybeDecryptWithSender(
-          content: message.content,
-          conversationId: conversationId,
-          senderId: message.senderId,
-          messageId: message.id,
-          userId: userId,
-          messageCreatedAt: message.createdAt,
-        );
-
-        if (decrypted.isEmpty) {
-          // حداقل یک پیام رمزنگاری شده وجود دارد که هنوز رمزگشایی نشده
-          return false;
-        }
-      } catch (e) {
-        // اگر رمزگشایی با خطا مواجه شد، احتمالاً هنوز رمزگشایی نشده
-        print(
-            '[conversationDecryptionStatusProvider] Error decrypting message ${message.id}: $e');
-        return false;
-      }
-    }
-  }
-
-  return true; // تمام پیام‌ها رمزگشایی شده‌اند
-});
+// Provider برای ردیابی وضعیت رمزگشایی کل مکالمه - حذف شد
 
 // Provider برای دریافت محتوای رمزگشایی شده پیام - حذف شد
 // پیام‌ها در conversationMessagesProvider رمزگشایی می‌شوند
@@ -1381,45 +1526,7 @@ final deviceOnlineStatusProvider = StreamProvider<bool>((ref) async* {
   }
 });
 
-// Provider برای پیش رمزگشایی پیام‌های کش شده
-final preDecryptMessagesProvider =
-    FutureProvider.family<void, String>((ref, conversationId) async {
-  final userId = supabase.auth.currentUser!.id;
-  final messageCache = MessageCacheService();
-  final e2eeService = E2EEService.instance;
-
-  // دریافت پیام‌های کش شده
-  final cachedMessages =
-      await messageCache.getConversationMessages(conversationId, userId);
-
-  // پیش رمزگشایی پیام‌هایی که رمزنگاری شده‌اند و هنوز کش رمزگشایی ندارند
-  for (final message in cachedMessages) {
-    if (message.content.startsWith('e2ee:v1:')) {
-      final cachedDecrypted = await e2eeService.getCachedDecryptedContent(
-        messageId: message.id,
-        conversationId: conversationId,
-        userId: userId,
-      );
-
-      if (cachedDecrypted == null) {
-        // پیام رمزگشایی نشده، پس رمزگشایی کن
-        try {
-          await e2eeService.maybeDecryptWithSender(
-            content: message.content,
-            conversationId: conversationId,
-            senderId: message.senderId,
-            messageId: message.id,
-            userId: userId,
-            messageCreatedAt: message.createdAt,
-          );
-          // Note: caching is handled internally by maybeDecryptWithSender
-        } catch (e) {
-          print('Error pre-decrypting message ${message.id}: $e');
-        }
-      }
-    }
-  }
-});
+// Provider برای پیش رمزگشایی پیام‌های کش شده - حذف شد
 
 // --- اضافه کنید: Provider برای ارسال پیام‌های آفلاین به محض آنلاین شدن ---
 final pendingMessagesSyncProvider = Provider<void>((ref) {
@@ -1678,8 +1785,6 @@ final conversationMessagesProvider = StateNotifierProvider.family
     // --- اضافه شد: گوش دادن به استریم Supabase برای بروزرسانی سریع ---
     final userId = supabase.auth.currentUser?.id;
     if (userId != null) {
-      // پیش رمزگشایی پیام‌ها برای عملکرد بهتر
-      ref.watch(preDecryptMessagesProvider(conversationId));
       final sub = supabase
           .from('messages')
           .stream(primaryKey: ['id'])
@@ -1703,77 +1808,10 @@ final conversationMessagesProvider = StateNotifierProvider.family
                     !hiddenIds.contains(m.id) &&
                     !notifier._locallyDeletedMessageIds.contains(m.id))
                 .toList();
-            // E2EE: decrypt in stream for immediate UI
+            // Process messages in stream for immediate UI
             try {
               if (serverMessagesRaw.isNotEmpty) {
-                // Determine otherUserId once
-                String? otherUserId;
-                try {
-                  final conv = await notifier._conversationCache
-                      .getConversation(conversationId, userId);
-                  otherUserId = conv?.otherUserId;
-                } catch (_) {}
-                // Always try to decrypt messages, even if otherUserId is not found
-                serverMessagesRaw = await Future.wait(
-                  serverMessagesRaw.map((m) async {
-                    print(
-                        '[DEBUG] Processing message ${m.id}: ${m.content.substring(0, m.content.length > 50 ? 50 : m.content.length)}...');
-                    if (m.content.startsWith('e2ee:v1:')) {
-                      print(
-                          '[DEBUG] Message ${m.id} is encrypted, attempting decryption...');
-                      // Check cache first
-                      final cachedDecrypted =
-                          await E2EEService.instance.getCachedDecryptedContent(
-                        messageId: m.id,
-                        conversationId: conversationId,
-                        userId: userId,
-                      );
-
-                      String? decrypted;
-                      if (cachedDecrypted != null) {
-                        decrypted = cachedDecrypted;
-                      } else {
-                        // Try to prepare keys if otherUserId is available
-                        if (otherUserId != null && otherUserId.isNotEmpty) {
-                          try {
-                            await E2EEService.instance.prepareConversationKey(
-                              conversationId: conversationId,
-                              otherUserId: otherUserId,
-                            );
-                          } catch (e) {
-                            print(
-                                '[conversationMessagesProvider] Error preparing conversation key: $e');
-                          }
-                        }
-
-                        print(
-                            '[conversationMessagesProvider] Attempting to decrypt message ${m.id}');
-                        decrypted =
-                            await E2EEService.instance.maybeDecryptWithSender(
-                          content: m.content,
-                          conversationId: conversationId,
-                          senderId: m.senderId,
-                          messageId: m.id,
-                          userId: userId,
-                          messageCreatedAt: m.createdAt,
-                        );
-                        print(
-                            '[conversationMessagesProvider] Decryption result for message ${m.id}: ${decrypted.substring(0, decrypted.length > 50 ? 50 : decrypted.length)}...');
-                      }
-
-                      final replyDec =
-                          await E2EEService.instance.maybeDecryptNullable(
-                        content: m.replyToContent,
-                        conversationId: conversationId,
-                      );
-                      return m.copyWith(
-                        content: decrypted,
-                        replyToContent: replyDec,
-                      );
-                    }
-                    return m;
-                  }),
-                );
+                // Process messages
               }
             } catch (_) {}
             if (notifier._clearedAt != null) {
@@ -1946,10 +1984,12 @@ final chatCacheSizeProvider = FutureProvider<String>((ref) async {
   // اگر sizeInBytes هنوز -1 است و خطایی هم نداشتیم، یعنی وضعیت نامشخص
   if (sizeInBytes < 0) return "نامشخص";
 
-  if (sizeInBytes < 1024)
+  if (sizeInBytes < 1024) {
     return "$sizeInBytes بایت"; // sizeInBytes اینجا حتما >= 0 است
-  if (sizeInBytes < 1024 * 1024)
+  }
+  if (sizeInBytes < 1024 * 1024) {
     return "${(sizeInBytes / 1024).toStringAsFixed(2)} کیلوبایت"; // دقت بیشتر
+  }
   return "${(sizeInBytes / (1024 * 1024)).toStringAsFixed(2)} مگابایت"; // دقت بیشتر
 });
 

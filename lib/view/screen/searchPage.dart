@@ -3,7 +3,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
-import 'package:sembast/sembast.dart' show Database, StoreRef;
 import 'package:sembast/sembast_io.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -66,7 +65,8 @@ class _SearchPageState extends ConsumerState<SearchPage>
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounceTimer;
   Database? _database;
-  final StoreRef<String, Map<String, dynamic>> _store = StoreRef<String, Map<String, dynamic>>.main();
+  final StoreRef<String, Map<String, dynamic>> _store =
+      StoreRef<String, Map<String, dynamic>>.main();
   bool _showRecentSearches = true;
   bool _isInitialized = false;
   bool _isSearching = false;
@@ -122,7 +122,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
         final appDir = await getApplicationDocumentsDirectory();
         dbPath = '${appDir.path}/recent_searches.db';
       }
-      
+
       _database = await databaseFactoryIo.openDatabase(dbPath);
     } catch (e) {
       debugPrint('خطا در باز کردن دیتابیس Sembast: $e');
@@ -145,7 +145,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
         timestamp: DateTime.now(),
         searchType: searchType,
       );
-      
+
       await _store.record(query).put(_database!, recentSearch.toMap());
 
       // محدود کردن تعداد جستجوها به 20 مورد
@@ -234,7 +234,8 @@ class _SearchPageState extends ConsumerState<SearchPage>
                 Icon(
                   Icons.search_off,
                   size: 64,
-                  color: Theme.of(context).iconTheme.color?.withValues(alpha: 0.5),
+                  color:
+                      Theme.of(context).iconTheme.color?.withValues(alpha: 0.5),
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -295,8 +296,10 @@ class _SearchPageState extends ConsumerState<SearchPage>
                     icon: Icon(
                       Icons.close,
                       size: 18,
-                      color:
-                          Theme.of(context).iconTheme.color?.withValues(alpha: 0.6),
+                      color: Theme.of(context)
+                          .iconTheme
+                          .color
+                          ?.withValues(alpha: 0.6),
                     ),
                     onPressed: () => _deleteRecentSearch(search.query),
                   ),
@@ -320,7 +323,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
 
   Future<List<RecentSearch>> _getRecentSearches() async {
     if (_database == null) return [];
-    
+
     try {
       final records = await _store.find(_database!);
       final searches = records
@@ -336,7 +339,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
 
   Future<void> _deleteRecentSearch(String query) async {
     if (_database == null) return;
-    
+
     try {
       await _store.record(query).delete(_database!);
       setState(() {}); // Refresh the UI
@@ -426,7 +429,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
 
   Future<void> _clearAllRecentSearches() async {
     if (_database == null) return;
-    
+
     try {
       await _store.delete(_database!);
       setState(() {}); // Refresh the UI

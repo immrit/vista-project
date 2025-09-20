@@ -285,10 +285,12 @@ class ArchivedConversationsScreen extends ConsumerWidget {
     final difference = now.difference(time);
 
     if (difference.inDays > 6) return '${time.day}/${time.month}';
-    if (difference.inDays > 0)
+    if (difference.inDays > 0) {
       return difference.inDays == 1 ? 'دیروز' : '${difference.inDays} روز پیش';
-    if (difference.inHours > 0)
+    }
+    if (difference.inHours > 0) {
       return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    }
     if (difference.inMinutes > 0) return '${difference.inMinutes} دقیقه پیش';
     return 'اکنون';
   }

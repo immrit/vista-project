@@ -7,10 +7,10 @@ class EmojiPickerWidget extends StatelessWidget {
   final VoidCallback onBackspacePressed;
 
   const EmojiPickerWidget({
-    Key? key,
+    super.key,
     required this.onEmojiSelected,
     required this.onBackspacePressed,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

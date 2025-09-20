@@ -14,12 +14,12 @@ class CustomVideoTrimmer extends ConsumerStatefulWidget {
   final Duration maxDuration;
 
   const CustomVideoTrimmer({
-    Key? key,
+    super.key,
     required this.videoFile,
     required this.onVideoSaved,
     this.isWeb = kIsWeb,
     this.maxDuration = const Duration(minutes: 1),
-  }) : super(key: key);
+  });
 
   @override
   ConsumerState<CustomVideoTrimmer> createState() =>
@@ -261,7 +261,7 @@ class _CustomVideoTrimmerState extends ConsumerState<CustomVideoTrimmer> {
           _selectedDuration.inMilliseconds;
     }
 
-    return Container(
+    return SizedBox(
       height: 2,
       child: LinearProgressIndicator(
         value: progress.clamp(0.0, 1.0),

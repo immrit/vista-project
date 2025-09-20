@@ -812,12 +812,12 @@ class CalendarWidget extends StatefulWidget {
   final Function(Jalali) onDateSelected;
 
   const CalendarWidget({
-    Key? key,
+    super.key,
     required this.initialDate,
     required this.firstDate,
     required this.lastDate,
     required this.onDateSelected,
-  }) : super(key: key);
+  });
 
   @override
   State<CalendarWidget> createState() => _CalendarWidgetState();

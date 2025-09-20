@@ -382,7 +382,7 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
                 : Icons.light_mode,
             color: dynamicTheme.primaryColor,
           ),
-          activeColor: dynamicTheme.primaryColor,
+          activeThumbColor: dynamicTheme.primaryColor,
         ),
         ListTile(
           leading: Icon(Icons.settings, color: dynamicTheme.primaryColor),

@@ -68,7 +68,7 @@ class ChatInputBox extends StatefulWidget {
   final VoidCallback? onImageCancel;
 
   const ChatInputBox({
-    Key? key,
+    super.key,
     required this.messageController,
     required this.messageFocusNode,
     required this.toggleEmojiPicker,
@@ -91,7 +91,7 @@ class ChatInputBox extends StatefulWidget {
     this.onAudioCancel,
     this.selectedAudioBytes,
     this.onImageCancel,
-  }) : super(key: key);
+  });
 
   @override
   State<ChatInputBox> createState() => _ChatInputBoxState();
@@ -126,11 +126,11 @@ class _ChatInputBoxState extends State<ChatInputBox>
   double _recordingDuration = 0.0;
   double _audioLevel = 0.0;
   bool _isLongPress = false; // برای تشخیص لمس طولانی
-  bool _showRecordingHint = false; // نمایش راهنما
+  final bool _showRecordingHint = false; // نمایش راهنما
   int _typingIndicator = 0; // برای نمایش نقطه‌های تایپ
 
   // متغیرهای جدید برای ضبط مدرن
-  List<double> _audioLevels = []; // تاریخچه سطح صدا
+  final List<double> _audioLevels = []; // تاریخچه سطح صدا
   Timer? _audioLevelTimer; // تایمر برای به‌روزرسانی سطح صدا
   double _maxAudioLevel = 0.0; // حداکثر سطح صدا
   bool _isRecordingActive = false; // وضعیت فعال بودن ضبط
@@ -1054,7 +1054,8 @@ class _ChatInputBoxState extends State<ChatInputBox>
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.red.withValues(alpha: 0.3 * _pulseAnimation.value),
+                    color: Colors.red
+                        .withValues(alpha: 0.3 * _pulseAnimation.value),
                     blurRadius: 8 * _pulseAnimation.value,
                     spreadRadius: 2 * _pulseAnimation.value,
                   ),
@@ -1185,8 +1186,8 @@ class _ChatInputBoxState extends State<ChatInputBox>
                             borderRadius: BorderRadius.circular(20),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.red
-                                    .withValues(alpha: 0.3 * _pulseAnimation.value),
+                                color: Colors.red.withValues(
+                                    alpha: 0.3 * _pulseAnimation.value),
                                 blurRadius: 8 * _pulseAnimation.value,
                                 spreadRadius: 2 * _pulseAnimation.value,
                               ),

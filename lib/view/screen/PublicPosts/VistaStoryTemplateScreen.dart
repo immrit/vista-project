@@ -8,9 +8,9 @@ class VistaStoryTemplateScreen extends StatefulWidget {
   final PublicPostModel post;
 
   const VistaStoryTemplateScreen({
-    Key? key,
+    super.key,
     required this.post,
-  }) : super(key: key);
+  });
 
   @override
   State<VistaStoryTemplateScreen> createState() =>

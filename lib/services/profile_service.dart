@@ -28,7 +28,7 @@ class ProfileService {
           .single()
           .timeout(const Duration(seconds: 10));
 
-      logger.d('پاسخ دریافت پروفایل: ${response}');
+      logger.d('پاسخ دریافت پروفایل: $response');
       return response;
     } on PostgrestException catch (e) {
       // اگر کاربر جدید است و هنوز در جدول profiles نیست

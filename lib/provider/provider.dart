@@ -1916,7 +1916,7 @@ class FollowingPostsNotifier
         'post_id': postId,
         'owner_id': ownerId,
       });
-    } catch (e, stackTrace) {
+    } catch (e) {
       print('خطا در لایک کردن پست: $e');
       // در صورت خطا، وضعیت قبلی را برمی‌گردانیم
       state = AsyncValue.data(currentPosts);
@@ -2442,7 +2442,7 @@ class MessageFontSizeNotifier extends StateNotifier<double> {
     if (_database == null) return;
     try {
       final savedSize =
-          await _store.record(_fontSizeKey).get(_database!) as double? ?? 14.0;
+          await _store.record(_fontSizeKey).get(_database!) ?? 14.0;
       state = savedSize;
     } catch (e) {
       debugPrint('خطا در بارگذاری اندازه فونت: $e');

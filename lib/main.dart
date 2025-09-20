@@ -6,18 +6,14 @@ import 'package:Vista/view/util/const.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_links/app_links.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'DB/unified_message_cache_service.dart';
 import 'DB/unified_conversation_cache_service.dart';
-import 'DB/unified_e2ee_cache_service.dart';
-import 'DB/database_file_utils.dart';
 import 'DB/cache_initializer.dart';
 import 'firebase_options.dart';
 import 'provider/theme_provider.dart';
@@ -35,8 +31,6 @@ import 'view/screen/ouathUser/resetPassword.dart';
 import 'view/screen/ouathUser/signupUser.dart';
 import 'view/screen/ouathUser/welcome.dart';
 import 'view/screen/ouathUser/editeProfile.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'DB/message_cache_service_wrapper.dart';
 import 'services/wallpaper_cache_service.dart';
 import 'view/screen/PublicPosts/publicPosts.dart';
 import 'view/screen/PublicPosts/PostDetailPage.dart';
@@ -500,7 +494,6 @@ Future<void> _initializeDatabaseServices() async {
     // Initialize legacy unified database services
     await UnifiedMessageCacheService().initialize();
     await UnifiedConversationCacheService().initialize();
-    await UnifiedE2EECacheService().initialize();
 
     // Initialize advanced cache system
     await CacheInitializer().initialize();

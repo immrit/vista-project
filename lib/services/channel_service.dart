@@ -30,7 +30,7 @@ class ChannelService {
 
       // ساخت نام فایل یونیک
       final String fileName =
-          '${folder}/${DateTime.now().millisecondsSinceEpoch}_${imageFile.path.split('/').last}';
+          '$folder/${DateTime.now().millisecondsSinceEpoch}_${imageFile.path.split('/').last}';
 
       // خواندن فایل
       final bytes = await imageFile.readAsBytes();

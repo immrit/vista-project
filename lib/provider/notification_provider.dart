@@ -127,7 +127,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
             value: userId,
           ),
           callback: (payload) async {
-            final newData = payload.newRecord as Map<String, dynamic>;
+            final newData = payload.newRecord;
             var notif = NotificationModel.fromMap(newData);
             try {
               final senderData = await supabase
@@ -151,7 +151,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
 
             if (!state.any((n) => n.id == notif.id)) {
               // برای اطمینان، پروفایل کامل را دوباره بگیر
-              if (notif.username == null || notif.avatarUrl == null) {
+              if (notif.avatarUrl == null) {
                 try {
                   final sender = await supabase
                       .from('profiles')

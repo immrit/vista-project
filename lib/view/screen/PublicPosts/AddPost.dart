@@ -12,7 +12,6 @@ import '../../../main.dart';
 import '../../../model/UserModel.dart';
 import '../../../services/PostImageUploadService.dart';
 import '../../../provider/provider.dart';
-import '../../widgets/CustomVideoTrimmer.dart';
 import '../../widgets/YourVideoTrimmerPage .dart';
 
 class AddPublicPostScreen extends ConsumerStatefulWidget {

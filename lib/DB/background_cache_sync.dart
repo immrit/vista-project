@@ -5,7 +5,6 @@ import '../services/ChatService.dart';
 import 'advanced_cache_manager.dart';
 import 'smart_message_cache.dart';
 import 'conversation_list_cache.dart';
-import 'decryption_cache_manager.dart';
 
 /// Background cache synchronization and cleanup service
 class BackgroundCacheSync {
@@ -16,7 +15,6 @@ class BackgroundCacheSync {
   final AdvancedCacheManager _cacheManager = AdvancedCacheManager();
   final SmartMessageCache _smartCache = SmartMessageCache();
   final ConversationListCache _conversationCache = ConversationListCache();
-  final DecryptionCacheManager _decryptionCache = DecryptionCacheManager();
 
   // Sync configuration
   static const Duration _syncInterval = Duration(minutes: 15);
@@ -50,7 +48,6 @@ class BackgroundCacheSync {
       _cacheManager.initialize(),
       _smartCache.initialize(),
       _conversationCache.initialize(),
-      _decryptionCache.initialize(),
     ]);
 
     // Initialize network monitoring
@@ -165,7 +162,6 @@ class BackgroundCacheSync {
     try {
       // Clear expired entries
       await _cacheManager.clearExpiredEntries();
-      await _decryptionCache.clearExpiredEntries();
 
       // Optimize cache based on usage patterns
       await _smartCache.optimizeCache();
@@ -196,17 +192,12 @@ class BackgroundCacheSync {
   Future<void> _validateCacheIntegrity() async {
     try {
       final cacheStats = _cacheManager.getCacheStatistics();
-      final decryptionStats = _decryptionCache.getDecryptionStatistics();
 
       // Check for inconsistencies
       final issues = <String>[];
 
       if (cacheStats['hit_rate'] < 0.5) {
         issues.add('Low cache hit rate detected');
-      }
-
-      if (decryptionStats['hit_rate'] < 0.7) {
-        issues.add('Low decryption cache hit rate detected');
       }
 
       if (issues.isNotEmpty) {
@@ -341,19 +332,11 @@ class BackgroundCacheSync {
   Future<void> _performHealthCheck() async {
     try {
       final cacheStats = _cacheManager.getCacheStatistics();
-      final decryptionStats = _decryptionCache.getDecryptionStatistics();
 
       // Check memory usage
       final memoryUsage = cacheStats['memory_cache_size'] as int;
       if (memoryUsage > 900) {
         print('⚠️ High memory usage detected: $memoryUsage items');
-      }
-
-      // Check decryption performance
-      final avgDecryptionTime =
-          decryptionStats['average_decryption_time'] as int;
-      if (avgDecryptionTime > 200) {
-        print('⚠️ Slow decryption detected: ${avgDecryptionTime}ms average');
       }
 
       _syncMetrics['health_checks'] = (_syncMetrics['health_checks'] ?? 0) + 1;
@@ -373,7 +356,6 @@ class BackgroundCacheSync {
       'operation_times': _operationTimes
           .map((key, value) => MapEntry(key, value.inMilliseconds)),
       'cache_stats': _cacheManager.getCacheStatistics(),
-      'decryption_stats': _decryptionCache.getDecryptionStatistics(),
     };
   }
 

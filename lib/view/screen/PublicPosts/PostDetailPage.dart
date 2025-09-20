@@ -42,10 +42,8 @@ final postDetailProvider =
           )
         ''').eq('id', postId).single();
 
-    if (response == null) return null;
-
     // تبدیل به PublicPostModel
-    return PublicPostModel.fromMap(response as Map<String, dynamic>);
+    return PublicPostModel.fromMap(response);
   } catch (e) {
     print('Error fetching post: $e');
     throw Exception('خطا در بارگذاری پست: $e');

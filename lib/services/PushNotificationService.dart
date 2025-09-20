@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../provider/notification_provider.dart';
-import '../security/e2ee_service.dart';
 
 /// Provider برای دسترسی به PushNotificationService
 final pushNotificationServiceProvider =
@@ -164,60 +163,6 @@ class PushNotificationService {
     String body =
         data['message'] ?? data['content'] ?? notification?.body ?? '';
 
-    // Attempt to decrypt E2EE chat message bodies before showing
-    try {
-      final type = data['type'];
-      if (type == 'chat_message' && body.startsWith('e2ee:v1:')) {
-        final conversationId = (data['conversation_id'] ?? '').toString();
-        String? otherUserId =
-            (data['sender_id'] ?? data['other_user_id'])?.toString();
-        final currentUserId = _supabase.auth.currentUser?.id;
-
-        // If otherUserId not provided, resolve from conversation participants
-        if ((otherUserId == null || otherUserId.isEmpty) &&
-            conversationId.isNotEmpty) {
-          try {
-            final participants = await _supabase
-                .from('conversation_participants')
-                .select('user_id')
-                .eq('conversation_id', conversationId);
-            if (participants is List && participants.isNotEmpty) {
-              for (final p in participants) {
-                final uid = p['user_id']?.toString();
-                if (uid != null && uid.isNotEmpty && uid != currentUserId) {
-                  otherUserId = uid;
-                  break;
-                }
-              }
-            }
-          } catch (_) {}
-        }
-
-        if (conversationId.isNotEmpty &&
-            otherUserId != null &&
-            otherUserId.isNotEmpty) {
-          await E2EEService.instance.ensureInitialized();
-          final decrypted =
-              await E2EEService.instance.maybeDecryptWithOtherUser(
-            content: body,
-            conversationId: conversationId,
-            otherUserId: otherUserId,
-          );
-          if (decrypted.isNotEmpty && !decrypted.startsWith('e2ee:v1:')) {
-            body = decrypted;
-          } else {
-            body = 'پیام جدید';
-          }
-        } else {
-          // If we can't resolve keys, avoid showing ciphertext
-          body = 'پیام جدید';
-        }
-      }
-    } catch (_) {
-      // On any failure, avoid leaking ciphertext
-      if (body.startsWith('e2ee:v1:')) body = 'پیام جدید';
-    }
-
     await _flutterLocalNotifications.show(
       message.hashCode,
       title,
@@ -230,7 +175,7 @@ class PushNotificationService {
   /// کوتاه کردن متن طولانی
   String _shorten(String text, [int maxLength = 80]) {
     if (text.length <= maxLength) return text;
-    return text.substring(0, maxLength) + "...";
+    return "${text.substring(0, maxLength)}...";
   }
 
   /// هدایت کاربر به صفحات مرتبط بر اساس دیتای ارسالی سرور

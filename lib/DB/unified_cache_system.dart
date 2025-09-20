@@ -6,7 +6,6 @@ import 'advanced_cache_manager.dart';
 import 'smart_message_cache.dart';
 import 'realtime_cache_manager.dart';
 import 'conversation_list_cache.dart';
-import 'decryption_cache_manager.dart';
 import 'background_cache_sync.dart';
 import 'attachment_cache_manager.dart';
 
@@ -21,7 +20,6 @@ class UnifiedCacheSystem {
   final SmartMessageCache _smartCache = SmartMessageCache();
   final RealtimeCacheManager _realtimeCache = RealtimeCacheManager();
   final ConversationListCache _conversationCache = ConversationListCache();
-  final DecryptionCacheManager _decryptionCache = DecryptionCacheManager();
   final BackgroundCacheSync _backgroundSync = BackgroundCacheSync();
   final AttachmentCacheManager _attachmentCache = AttachmentCacheManager();
 
@@ -41,7 +39,6 @@ class UnifiedCacheSystem {
         _smartCache.initialize(),
         _realtimeCache.initialize(),
         _conversationCache.initialize(),
-        _decryptionCache.initialize(),
         _backgroundSync.initialize(),
         _attachmentCache.initialize(),
       ]);
@@ -161,35 +158,6 @@ class UnifiedCacheSystem {
     await _realtimeCache.handleConversationUpdate(conversation);
   }
 
-  /// Decryption Operations
-
-  /// Cache decryption result
-  Future<void> cacheDecryptionResult(String encryptedContent,
-      String decryptedContent, String conversationId) async {
-    await _decryptionCache.cacheDecryptionResult(
-        encryptedContent, decryptedContent, conversationId);
-  }
-
-  /// Get cached decryption result
-  Future<String?> getDecryptionResult(
-      String encryptedContent, String conversationId) async {
-    return await _decryptionCache.getDecryptionResult(
-        encryptedContent, conversationId);
-  }
-
-  /// Decrypt with intelligent caching
-  Future<String?> decryptWithCache(
-    String encryptedContent,
-    String conversationId,
-    Future<String?> Function() decryptFunction,
-  ) async {
-    return await _decryptionCache.decryptWithCache(
-      encryptedContent,
-      conversationId,
-      decryptFunction,
-    );
-  }
-
   /// Attachment Operations
 
   /// Cache attachment
@@ -234,7 +202,6 @@ class UnifiedCacheSystem {
       'smart_cache': _smartCache.getCacheInsights(),
       'realtime_cache': _realtimeCache.getRealtimeStatistics(),
       'conversation_cache': _conversationCache.getCacheStatistics(),
-      'decryption_cache': _decryptionCache.getDecryptionStatistics(),
       'background_sync': _backgroundSync.getSyncStatistics(),
       'attachment_cache': _attachmentCache.getCacheStatistics(),
       'total_unread_count': getTotalUnreadCount(),
@@ -249,7 +216,6 @@ class UnifiedCacheSystem {
     // Analyze cache performance
     final advancedStats = stats['advanced_cache'] as Map<String, dynamic>;
     final smartStats = stats['smart_cache'] as Map<String, dynamic>;
-    final decryptionStats = stats['decryption_cache'] as Map<String, dynamic>;
 
     if ((advancedStats['hit_rate'] as double) < 0.7) {
       recommendations.add(
@@ -259,11 +225,6 @@ class UnifiedCacheSystem {
     if ((smartStats['statistics']['hit_rate'] as double) < 0.75) {
       recommendations
           .add('Smart cache hit rate is low. Consider optimizing prefetching.');
-    }
-
-    if ((decryptionStats['hit_rate'] as double) < 0.8) {
-      recommendations.add(
-          'Decryption cache hit rate is low. Consider increasing decryption cache size.');
     }
 
     final memorySize = advancedStats['memory_cache_size'] as int;
@@ -286,7 +247,6 @@ class UnifiedCacheSystem {
       _smartCache.optimizeCache(),
       _backgroundSync.performIntelligentCleanup(),
       _attachmentCache.cleanupOldAttachments(),
-      _decryptionCache.clearExpiredEntries(),
     ]);
 
     await _performSystemHealthCheck();
@@ -360,7 +320,6 @@ class UnifiedCacheSystem {
     _backgroundSync.dispose();
     _realtimeCache.dispose();
     _attachmentCache.dispose();
-    _decryptionCache.dispose();
 
     print('🧹 Unified Cache System disposed');
   }

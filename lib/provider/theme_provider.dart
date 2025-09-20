@@ -51,7 +51,8 @@ class SelectedColorNotifier extends StateNotifier<ThemeColor> {
   void _loadFromSembast() async {
     if (_database == null) return;
     try {
-      final colorName = await _store.record('selectedColor').get(_database!) as String? ?? 'white';
+      final colorName =
+          await _store.record('selectedColor').get(_database!) ?? 'white';
       state = _parseThemeColor(colorName);
     } catch (e) {
       debugPrint('خطا در بارگذاری رنگ: $e');
@@ -66,7 +67,9 @@ class SelectedColorNotifier extends StateNotifier<ThemeColor> {
   void _saveToSembast() async {
     if (_database == null) return;
     try {
-      await _store.record('selectedColor').put(_database!, _themeColorToString(state));
+      await _store
+          .record('selectedColor')
+          .put(_database!, _themeColorToString(state));
     } catch (e) {
       debugPrint('خطا در ذخیره رنگ: $e');
     }
@@ -131,7 +134,7 @@ class BrightnessNotifier extends StateNotifier<Brightness> {
   void _loadFromSembast() async {
     if (_database == null) return;
     try {
-      final isDark = await _store.record('isDark').get(_database!) as bool? ?? false;
+      final isDark = await _store.record('isDark').get(_database!) ?? false;
       state = isDark ? Brightness.dark : Brightness.light;
     } catch (e) {
       debugPrint('خطا در بارگذاری brightness: $e');

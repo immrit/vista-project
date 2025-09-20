@@ -893,8 +893,8 @@ Widget _buildPostItem(
                           .updateLikeState(post.id, !isLiked);
                       try {
                         await ref.read(supabaseServiceProvider).toggleLike(
-                              postId: post.id!,
-                              ownerId: post.userId!,
+                              postId: post.id,
+                              ownerId: post.userId,
                               ref: ref,
                             );
                       } catch (e) {
@@ -913,7 +913,7 @@ Widget _buildPostItem(
                 commentCount: post.commentCount,
                 onTap: () {
                   showCommentsBottomSheet2(context,
-                      postId: post.id!, postTitle: post.title!);
+                      postId: post.id, postTitle: post.title!);
                 },
               ),
               const SizedBox(width: 16),
@@ -1123,7 +1123,6 @@ Widget _buildPostContent(PublicPostModel post, BuildContext context) {
                     }
                   },
                 ));
-            ;
           },
         ),
     ],

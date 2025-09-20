@@ -11,11 +11,11 @@ class CommentsBottomSheet extends ConsumerStatefulWidget {
   final int initialCommentsCount;
 
   const CommentsBottomSheet({
-    Key? key,
+    super.key,
     required this.postId,
     required this.postTitle,
     this.initialCommentsCount = 0,
-  }) : super(key: key);
+  });
 
   @override
   ConsumerState<CommentsBottomSheet> createState() =>
@@ -439,7 +439,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
                       maxHeight: 120,
                     ),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceVariant
+                      color: theme.colorScheme.surfaceContainerHighest
                           .withValues(alpha: 0.5),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
@@ -519,12 +519,12 @@ class CommentItem extends ConsumerStatefulWidget {
   final bool isReply;
 
   const CommentItem({
-    Key? key,
+    super.key,
     required this.comment,
     required this.onReply,
     required this.postId,
     this.isReply = false,
-  }) : super(key: key);
+  });
 
   @override
   ConsumerState<CommentItem> createState() => _CommentItemState();
@@ -840,18 +840,10 @@ class _CommentItemState extends ConsumerState<CommentItem>
                     },
                     child: CircleAvatar(
                       radius: widget.isReply ? 16 : 20,
-                      backgroundImage: widget.comment.avatarUrl != null
-                          ? NetworkImage(widget.comment.avatarUrl!)
-                          : null,
+                      backgroundImage: NetworkImage(widget.comment.avatarUrl!),
                       backgroundColor:
                           theme.colorScheme.primary.withValues(alpha: 0.1),
-                      child: widget.comment.avatarUrl == null
-                          ? Icon(
-                              Icons.person,
-                              size: widget.isReply ? 16 : 20,
-                              color: theme.colorScheme.primary,
-                            )
-                          : null,
+                      child: null,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -881,7 +873,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                 },
                                 child: Text(
                                   // Text فرزند GestureDetector است
-                                  '${widget.comment.username}',
+                                  widget.comment.username,
                                   style: theme.textTheme.bodyMedium?.copyWith(
                                     fontWeight: FontWeight.bold,
                                     color: theme.colorScheme.onSurface,

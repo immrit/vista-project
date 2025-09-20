@@ -1,7 +1,5 @@
-import 'package:sembast/sembast.dart' show Database, StoreRef;
 import 'package:sembast/sembast_io.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io';
 import '../model/conversation_model.dart';
 
@@ -82,7 +80,8 @@ class SembastConversationCacheService {
   }
 
   /// Watch cached conversations (stream)
-  Stream<List<ConversationModel>> watchCachedConversations(String userId) async* {
+  Stream<List<ConversationModel>> watchCachedConversations(
+      String userId) async* {
     try {
       // For now, we'll use a simple approach - periodically fetch conversations
       // Sembast doesn't have a direct equivalent to onSnapshots for multiple records
@@ -509,7 +508,7 @@ class SembastConversationCacheService {
           }),
         ),
       );
-      
+
       for (final record in records) {
         await _store.record(record.key).delete(_db);
       }

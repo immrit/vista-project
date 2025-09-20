@@ -595,19 +595,19 @@ class Settings extends ConsumerWidget {
       BuildContext context, AsyncValue<Map<String, dynamic>?> getprofile) {
     return StatefulBuilder(
       builder: (context, setState) {
-        final _formKey = GlobalKey<FormState>();
-        final _subjectController = TextEditingController();
-        final _messageController = TextEditingController();
-        bool _isSubmitting = false;
+        final formKey = GlobalKey<FormState>();
+        final subjectController = TextEditingController();
+        final messageController = TextEditingController();
+        bool isSubmitting = false;
 
         return Form(
-          key: _formKey,
+          key: formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // موضوع
               TextFormField(
-                controller: _subjectController,
+                controller: subjectController,
                 decoration: InputDecoration(
                   labelText: 'موضوع',
                   hintText: 'مثال: مشکل در ورود به برنامه',
@@ -651,7 +651,7 @@ class Settings extends ConsumerWidget {
 
               // پیام
               TextFormField(
-                controller: _messageController,
+                controller: messageController,
                 decoration: InputDecoration(
                   labelText: 'توضیح مشکل یا پیشنهاد',
                   hintText: 'لطفاً مشکل خود را با جزئیات کامل شرح دهید...',
@@ -697,12 +697,12 @@ class Settings extends ConsumerWidget {
                 width: double.infinity,
                 height: 54,
                 child: ElevatedButton(
-                  onPressed: _isSubmitting
+                  onPressed: isSubmitting
                       ? null
                       : () async {
-                          if (_formKey.currentState!.validate()) {
+                          if (formKey.currentState!.validate()) {
                             setState(() {
-                              _isSubmitting = true;
+                              isSubmitting = true;
                             });
 
                             try {
@@ -718,8 +718,8 @@ class Settings extends ConsumerWidget {
                                 'full_name': fullName,
                                 'email': email,
                                 'username': username,
-                                'subject': _subjectController.text,
-                                'message': _messageController.text,
+                                'subject': subjectController.text,
+                                'message': messageController.text,
                                 'user_id': supabase.auth.currentUser?.id,
                               };
 
@@ -796,7 +796,7 @@ class Settings extends ConsumerWidget {
                               }
                             } finally {
                               setState(() {
-                                _isSubmitting = false;
+                                isSubmitting = false;
                               });
                             }
                           }
@@ -809,7 +809,7 @@ class Settings extends ConsumerWidget {
                     shadowColor:
                         Theme.of(context).primaryColor.withOpacity(0.3),
                   ),
-                  child: _isSubmitting
+                  child: isSubmitting
                       ? Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [

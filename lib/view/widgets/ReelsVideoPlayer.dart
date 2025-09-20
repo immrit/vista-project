@@ -20,7 +20,7 @@ class ReelsVideoPlayer extends ConsumerStatefulWidget {
   final bool autoPlayInFeed; // پارامتر جدید
 
   const ReelsVideoPlayer({
-    Key? key,
+    super.key,
     required this.post,
     required this.isActive,
     required this.onLike,
@@ -29,7 +29,7 @@ class ReelsVideoPlayer extends ConsumerStatefulWidget {
     this.initialPosition,
     this.onPositionChanged,
     this.autoPlayInFeed = false, // مقدار پیش‌فرض false
-  }) : super(key: key);
+  });
 
   @override
   ConsumerState<ReelsVideoPlayer> createState() => _ReelsVideoPlayerState();
@@ -45,7 +45,7 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
   Timer? _likeAnimTimer;
   Duration _currentPosition = Duration.zero;
   Duration _videoDuration = Duration.zero;
-  bool _showVolumeControl = false;
+  final bool _showVolumeControl = false;
   Timer? _volumeControlTimer;
   bool _isCaptionExpanded = false;
 
@@ -192,7 +192,7 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
       // آپدیت وضعیت لایک در provider
       ref
           .read(likeStateProvider.notifier)
-          .updateLikeState(widget.post.id!, currentLikeState);
+          .updateLikeState(widget.post.id, currentLikeState);
 
       // آپدیت UI محلی
       setState(() {
@@ -214,7 +214,7 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
       final previousLikeState = !widget.post.isLiked;
       ref
           .read(likeStateProvider.notifier)
-          .updateLikeState(widget.post.id!, previousLikeState);
+          .updateLikeState(widget.post.id, previousLikeState);
 
       setState(() {
         widget.post.isLiked = previousLikeState;
@@ -354,8 +354,7 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
                     children: [
                       IconButton(
                         onPressed: () {
-                          showCommentsBottomSheet(
-                              context, widget.post.id!, ref);
+                          showCommentsBottomSheet(context, widget.post.id, ref);
                         },
                         icon: Image.asset(
                           'lib/view/util/images/component/comment.png',
@@ -405,12 +404,8 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
                       children: [
                         CircleAvatar(
                           radius: 20,
-                          backgroundImage: widget.post.avatarUrl != null
-                              ? NetworkImage(widget.post.avatarUrl!)
-                              : null,
-                          child: widget.post.avatarUrl == null
-                              ? Icon(Icons.person, color: Colors.white)
-                              : null,
+                          backgroundImage: NetworkImage(widget.post.avatarUrl!),
+                          child: null,
                         ),
                         SizedBox(width: 8),
                         Row(
@@ -431,8 +426,7 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
                         ),
                       ],
                     ),
-                    if (widget.post.content != null &&
-                        widget.post.content.isNotEmpty)
+                    if (widget.post.content.isNotEmpty)
                       GestureDetector(
                         onTap: () {
                           setState(() {

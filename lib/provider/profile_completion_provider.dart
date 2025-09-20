@@ -22,8 +22,7 @@ class ProfileCompletionNotifier extends StateNotifier<bool> {
           .eq('id', user.id)
           .single();
 
-      final bool isComplete = response != null &&
-          response['username'] != null &&
+      final bool isComplete = response['username'] != null &&
           response['username'].toString().isNotEmpty &&
           response['full_name'] != null &&
           response['full_name'].toString().isNotEmpty &&

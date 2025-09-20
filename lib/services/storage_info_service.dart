@@ -238,16 +238,21 @@ class StorageInfoService {
     }
 
     // اگر هیچ‌کدام منطقی نبود، نزدیک‌ترین اندازه را انتخاب می‌کنیم
-    if (availableSpace < 10000)
+    if (availableSpace < 10000) {
       return 32000.0; // کمتر از 10GB آزاد -> 32GB دستگاه
-    if (availableSpace < 20000)
+    }
+    if (availableSpace < 20000) {
       return 64000.0; // کمتر از 20GB آزاد -> 64GB دستگاه
-    if (availableSpace < 40000)
+    }
+    if (availableSpace < 40000) {
       return 128000.0; // کمتر از 40GB آزاد -> 128GB دستگاه
-    if (availableSpace < 80000)
+    }
+    if (availableSpace < 80000) {
       return 256000.0; // کمتر از 80GB آزاد -> 256GB دستگاه
-    if (availableSpace < 150000)
+    }
+    if (availableSpace < 150000) {
       return 512000.0; // کمتر از 150GB آزاد -> 512GB دستگاه
+    }
     return 1024000.0; // بیشتر از 150GB آزاد -> 1TB دستگاه
   }
 

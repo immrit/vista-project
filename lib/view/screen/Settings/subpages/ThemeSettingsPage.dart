@@ -125,7 +125,7 @@ class ThemeSettingsPage extends ConsumerWidget {
                   ),
                 ),
               ),
-              activeColor:
+              activeThumbColor:
                   brightness == Brightness.dark ? Colors.amber : Colors.blue,
             ),
           ),

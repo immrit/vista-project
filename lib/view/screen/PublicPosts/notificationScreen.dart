@@ -571,7 +571,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     // final isLoading = ref.watch(notificationsLoadingProvider);
 
     // تعریف تب‌ها
-    final _tabs = [
+    final tabs = [
       {
         'title': 'همه',
         'type': 'all',
@@ -625,7 +625,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
               ],
             )
           : DefaultTabController(
-              length: _tabs.length,
+              length: tabs.length,
               child: Column(
                 children: [
                   // تب‌های اعلان‌ها با طراحی بهبود یافته
@@ -655,7 +655,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                           ? Colors.transparent
                           : Colors.grey.shade300,
                       height: 40,
-                      tabs: _tabs
+                      tabs: tabs
                           .map(
                             (tab) => Tab(
                               child: Row(
@@ -709,7 +709,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                   // محتوای اعلان‌ها
                   Expanded(
                     child: TabBarView(
-                      children: _tabs
+                      children: tabs
                           .map(
                             (tab) => Builder(
                               builder: (context) {

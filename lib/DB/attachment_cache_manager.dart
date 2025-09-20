@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
-import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import '../model/message_model.dart';
 import 'advanced_cache_manager.dart';
@@ -453,4 +452,3 @@ class AttachmentMetadata {
     );
   }
 }
-

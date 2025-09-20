@@ -1,5 +1,4 @@
 import '../model/message_model.dart';
-import 'database_platform.dart';
 import 'sembast_message_cache_service.dart';
 
 /// Unified message cache service that works on all platforms

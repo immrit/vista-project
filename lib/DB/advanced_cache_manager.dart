@@ -75,7 +75,7 @@ class AdvancedCacheManager {
   /// Get cached message with fallback to persistent storage
   Future<MessageModel?> getMessage(
       String conversationId, String messageId) async {
-    final key = 'message_${conversationId}_${messageId}';
+    final key = 'message_${conversationId}_$messageId';
 
     // Check memory cache first
     final memoryEntry = _memoryCache[key];
@@ -220,42 +220,6 @@ class AdvancedCacheManager {
       _conversationCache[conversationId] =
           persistentEntry.data as ConversationModel;
       return persistentEntry.data as ConversationModel;
-    }
-
-    _memoryMisses++;
-    return null;
-  }
-
-  /// Cache decryption result
-  Future<void> cacheDecryptionResult(
-      String messageId, String decryptedContent) async {
-    final key = 'decryption_$messageId';
-    final cacheEntry = CacheEntry(
-      data: decryptedContent,
-      timestamp: DateTime.now(),
-      ttl: _longTTL, // Decryption results can be cached longer
-      type: CacheType.decryption,
-    );
-
-    _memoryCache[key] = cacheEntry;
-    await _cacheInPersistentStorage(key, cacheEntry);
-  }
-
-  /// Get cached decryption result
-  Future<String?> getDecryptionResult(String messageId) async {
-    final key = 'decryption_$messageId';
-    final entry = _memoryCache[key];
-
-    if (entry != null && !entry.isExpired) {
-      _memoryHits++;
-      return entry.data as String;
-    }
-
-    final persistentEntry = await _getFromPersistentStorage(key);
-    if (persistentEntry != null && !persistentEntry.isExpired) {
-      _persistentHits++;
-      _memoryCache[key] = persistentEntry;
-      return persistentEntry.data as String;
     }
 
     _memoryMisses++;
@@ -418,7 +382,6 @@ class CacheEntry {
 enum CacheType {
   message,
   conversation,
-  decryption,
   attachment,
   metadata,
 }

@@ -47,7 +47,7 @@ ThemeData createTheme(ThemeColor color, Brightness brightness) {
       primaryColor: primaryColor,
       scaffoldBackgroundColor: background,
       appBarTheme: AppBarTheme(
-        color: surface,
+        backgroundColor: surface,
         iconTheme: const IconThemeData(color: Colors.white),
         titleTextStyle: const TextStyle(color: Colors.white, fontSize: 20),
         elevation: 0,
@@ -88,7 +88,8 @@ ThemeData createTheme(ThemeColor color, Brightness brightness) {
       primaryColor: primaryColor,
       scaffoldBackgroundColor: background,
       appBarTheme: AppBarTheme(
-        color: color == ThemeColor.white ? Colors.white : primaryColor,
+        backgroundColor:
+            color == ThemeColor.white ? Colors.white : primaryColor,
         foregroundColor:
             color == ThemeColor.white ? Colors.black : Colors.white,
         iconTheme: IconThemeData(

@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'unified_cache_system.dart';
 
 /// Cache system initializer for app startup
@@ -67,4 +66,3 @@ class CacheInitializer {
     print('🔄 All cache systems reset');
   }
 }
-

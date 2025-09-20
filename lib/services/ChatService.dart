@@ -13,7 +13,6 @@ import '../view/Exeption/app_exceptions.dart';
 import '/main.dart';
 import 'uploadImageChatService.dart';
 import 'uploadAudioChatService.dart';
-import '../security/e2ee_service.dart';
 
 class ChatService {
   final SupabaseClient _supabase = supabase;
@@ -211,52 +210,9 @@ class ChatService {
                 .limit(1)
                 .maybeSingle();
 
-            // اگر پیامی وجود داشت، آن را در json قرار بده (و تلاش برای رمزگشایی)
+            // اگر پیامی وجود داشت، آن را در json قرار بده
             if (lastMessageQuery != null) {
               String? lastContent = lastMessageQuery['content'] as String?;
-              try {
-                await E2EEService.instance.ensureInitialized();
-                if (lastContent != null && lastContent.startsWith('e2ee:v1:')) {
-                  // Resolve otherUserId for this conversation
-                  String? otherId;
-                  try {
-                    final participants = await _supabase
-                        .from('conversation_participants')
-                        .select('user_id')
-                        .eq('conversation_id', conversationId);
-                    for (final p in participants) {
-                      final uid = p['user_id']?.toString();
-                      if (uid != null && uid.isNotEmpty && uid != userId) {
-                        otherId = uid;
-                        break;
-                      }
-                    }
-                  } catch (_) {}
-                  if (otherId != null && otherId.isNotEmpty) {
-                    // Prepare keys for both users
-                    await E2EEService.instance.prepareConversationKey(
-                      conversationId: conversationId,
-                      otherUserId: otherId,
-                    );
-
-                    // Also prepare key for current user
-                    final currentUserId = _supabase.auth.currentUser?.id;
-                    if (currentUserId != null && currentUserId.isNotEmpty) {
-                      await E2EEService.instance.prepareConversationKey(
-                        conversationId: conversationId,
-                        otherUserId: currentUserId,
-                      );
-                    }
-
-                    lastContent = await E2EEService.instance.maybeDecrypt(
-                      content: lastContent,
-                      conversationId: conversationId,
-                    );
-                  } else {
-                    lastContent = 'پیام جدید';
-                  }
-                }
-              } catch (_) {}
               json['last_message'] = lastContent;
               json['last_message_time'] = lastMessageQuery['created_at'];
               // *** مهم: updated_at خود مکالمه را با زمان آخرین پیام به‌روز کن ***
@@ -382,68 +338,15 @@ class ChatService {
     try {
       final userId = _supabase.auth.currentUser!.id;
 
-      // --- E2EE: encrypt content for recipient if possible ---
-      String encryptedContent = content;
-      String? encryptedReplyContent = replyToContent;
-      try {
-        print('[encode] Starting E2EE encryption process...');
-        await E2EEService.instance.ensureInitialized();
-        print('[encode] E2EE service initialized successfully');
-
-        // پیدا کردن طرف مقابل مکالمه (چت دو نفره)
-        print('[encode] Fetching conversation participants...');
-        final participantsJson = await _supabase
-            .from('conversation_participants')
-            .select('user_id')
-            .eq('conversation_id', conversationId);
-        print('[encode] Participants found: ${participantsJson.length}');
-
-        final String? recipientId = (participantsJson as List)
-            .map((e) => e['user_id'] as String)
-            .firstWhere((uid) => uid != userId, orElse: () => '');
-
-        print('[encode] Current user ID: $userId');
-        print('[encode] Recipient ID: $recipientId');
-
-        if (recipientId != null && recipientId.isNotEmpty) {
-          print('[encode] Encrypting main content...');
-          encryptedContent =
-              await E2EEService.instance.maybeEncryptForRecipient(
-            plaintext: content,
-            conversationId: conversationId,
-            recipientUserId: recipientId,
-          );
-          print(
-              '[encode] Main content encryption result: ${encryptedContent.length} chars');
-
-          if (replyToContent != null && replyToContent.isNotEmpty) {
-            print('[encode] Encrypting reply content...');
-            encryptedReplyContent =
-                await E2EEService.instance.maybeEncryptForRecipient(
-              plaintext: replyToContent,
-              conversationId: conversationId,
-              recipientUserId: recipientId,
-            );
-            print(
-                '[encode] Reply content encryption result: ${encryptedReplyContent.length} chars');
-          }
-        } else {
-          print('[encode] No recipient found, skipping encryption');
-        }
-      } catch (e) {
-        // اگر هر مشکلی رخ داد، بدون رمزنگاری ارسال می‌کنیم
-        print('[encode] E2EE encrypt skipped: $e');
-      }
-
       // ساخت داده‌های پیام برای insert مستقیم
       final messageData = {
         'conversation_id': conversationId,
         'sender_id': userId,
-        'content': encryptedContent,
+        'content': content,
         'attachment_url': attachmentUrl,
         'attachment_type': attachmentType,
         'reply_to_message_id': replyToMessageId,
-        'reply_to_content': encryptedReplyContent,
+        'reply_to_content': replyToContent,
         'reply_to_sender_name': replyToSenderName,
         'local_id': localId, // شناسه محلی برای تطبیق در کلاینت
         'is_sent': true, // فرض بر اینکه سرور با موفقیت دریافت می‌کند
@@ -452,12 +355,6 @@ class ChatService {
       };
 
       print('📝 ارسال پیام به سرور (insert مستقیم): $messageData');
-      print(
-          '[encode] Content being sent to database: ${messageData['content']}');
-      print(
-          '[encode] Content length: ${(messageData['content'] as String).length}');
-      print(
-          '[encode] Content starts with e2ee: ${(messageData['content'] as String).startsWith('e2ee:')}');
 
       // ارسال پیام به سرور با insert مستقیم
       final response = await _supabase
@@ -467,11 +364,6 @@ class ChatService {
           .single();
 
       print('✅ پیام با موفقیت ارسال شد');
-      print('[encode] Response from database: ${response['content']}');
-      print(
-          '[encode] Response content length: ${(response['content'] as String).length}');
-      print(
-          '[encode] Response content starts with e2ee: ${(response['content'] as String).startsWith('e2ee:')}');
 
       // *** اضافه شد: رفرش کردن اطلاعات مکالمه در کش پس از ارسال پیام ***
       await refreshConversation(conversationId);
@@ -623,7 +515,6 @@ class ChatService {
   // ارسال پیام‌های در صف
   Future<void> sendPendingMessages() async {
     if (_pendingMessages.isEmpty) return;
-    final userId = _supabase.auth.currentUser!.id;
     final isOnline = await isDeviceOnline();
     if (!isOnline) return;
     final pendingMessagesCopy = List<Map<String, dynamic>>.from(
@@ -1205,30 +1096,6 @@ class ChatService {
 
     if (lastMessageQuery != null) {
       String? lastContent = lastMessageQuery['content'] as String?;
-      try {
-        if (lastContent != null && lastContent.startsWith('e2ee:v1:')) {
-          await E2EEService.instance.ensureInitialized();
-          // تلاش برای رمزگشایی با کلید طرف مقابل
-          String? otherId = otherParticipantUserId;
-          if (otherId == null) {
-            // سعی در یافتن otherUserId از کش مکالمه
-            final cached = await _conversationCache.getConversation(
-              conversationId,
-              userId,
-            );
-            otherId = cached?.otherUserId;
-          }
-          if (otherId != null && otherId.isNotEmpty) {
-            lastContent = await E2EEService.instance.maybeDecrypt(
-              content: lastContent,
-              conversationId: conversationId,
-            );
-          } else {
-            // در صورت عدم دسترسی، از متن رمز جلوگیری کن
-            lastContent = 'پیام جدید';
-          }
-        }
-      } catch (_) {}
       updatedConversationData['last_message'] = lastContent;
       updatedConversationData['last_message_time'] =
           lastMessageQuery['created_at'] as String?;
@@ -1398,24 +1265,6 @@ class ChatService {
               senderName: profileResponse?['username'] ?? 'کاربر',
               senderAvatar: profileResponse?['avatar_url'],
             );
-
-            // E2EE: Best-effort decrypt for caching a readable preview (optional)
-            try {
-              await E2EEService.instance.ensureInitialized();
-              final decrypted = await E2EEService.instance.maybeDecrypt(
-                content: message.content,
-                conversationId: conversationId,
-              );
-              final replyDecrypted =
-                  await E2EEService.instance.maybeDecryptNullable(
-                content: message.replyToContent,
-                conversationId: conversationId,
-              );
-              message = message.copyWith(
-                content: decrypted,
-                replyToContent: replyDecrypted,
-              );
-            } catch (_) {}
 
             await _messageCache.cacheMessage(message, userId);
             return message;

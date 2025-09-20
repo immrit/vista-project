@@ -152,8 +152,9 @@ class NotificationModel extends Equatable {
     }
 
     bool getUserIsVerified() {
-      if (map.containsKey('user_is_verified'))
+      if (map.containsKey('user_is_verified')) {
         return map['user_is_verified'] ?? false;
+      }
       if (map.containsKey('sender') && map['sender'] != null) {
         final senderMap = map['sender'] as Map<String, dynamic>;
         return senderMap['is_verified'] ?? false;

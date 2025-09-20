@@ -29,7 +29,7 @@ class CustomVideoPlayer extends StatefulWidget {
   final VerificationType verificationType;
 
   const CustomVideoPlayer({
-    Key? key,
+    super.key,
     required this.videoUrl,
     this.autoplay = true,
     this.muted = true,
@@ -49,7 +49,7 @@ class CustomVideoPlayer extends StatefulWidget {
     this.content,
     this.isVerified = false,
     this.verificationType = VerificationType.none,
-  }) : super(key: key);
+  });
 
   @override
   State<CustomVideoPlayer> createState() => _CustomVideoPlayerState();
@@ -88,7 +88,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
     return _isInitialized && _playCount > 3;
   }
 
-  int _playCount = 0;
+  final int _playCount = 0;
   bool _isDataSaverMode = false;
 
   @override
@@ -475,7 +475,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
                 left: 0,
                 right: 0,
                 bottom: 0,
-                child: Container(
+                child: SizedBox(
                   height: 3,
                   child: LinearProgressIndicator(
                     value: _videoDuration.inMilliseconds > 0

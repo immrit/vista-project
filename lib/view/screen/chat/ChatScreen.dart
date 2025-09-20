@@ -32,7 +32,6 @@ import '../../util/time_utils.dart';
 import '../../util/widgets.dart';
 import 'package:flutter/foundation.dart' as foundation;
 import '../../../DB/message_cache_service_wrapper.dart';
-import '../../../DB/unified_cache_system.dart';
 import '../../../services/ChatService.dart';
 import '../../../services/cache_manager.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -42,7 +41,6 @@ import '../../widgets/web files/image_downloader.dart';
 import '/main.dart';
 import 'ChatDetailsScreen.dart';
 import 'chat_input_box.dart';
-import '../../../security/e2ee_service.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String conversationId;
@@ -94,15 +92,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String _buildThumbnailUrl(String url) {
     // Supabase Transform API (fast, low-cost) if path matches
     if (url.contains('/storage/v1/object/public/')) {
-      return url.replaceFirst('/object/public/', '/render/image/public/') +
-          (url.contains('?') ? '&' : '?') +
-          'width=64&quality=20';
+      return '${url.replaceFirst('/object/public/', '/render/image/public/')}${url.contains('?') ? '&' : '?'}width=64&quality=20';
     }
     // Generic CDNs that accept width/quality query params
     if (url.contains('coffevista') ||
         url.contains('arvan') ||
         url.contains('cdn')) {
-      return url + (url.contains('?') ? '&' : '?') + 'w=64&q=20';
+      return '$url${url.contains('?') ? '&' : '?'}w=64&q=20';
     }
     // Fallback: return original (data usage will be higher). Consider adding a proxy later.
     return url;
@@ -124,15 +120,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isSending = false;
 
   // کش محلی برای رمزگشایی پیام‌ها جهت بهبود عملکرد
-  final Map<String, String> _decryptionCache = {};
-  final Map<String, Future<String>> _decryptionFutures = {};
   // cache service instance (lazy read via service when needed)
   // final MessageCacheService _messageCache = MessageCacheService();
 
   // متغیرهای جدید برای انیمیشن پاسخ به پیام
-  Map<String, AnimationController> _messageAnimationControllers = {};
+  final Map<String, AnimationController> _messageAnimationControllers = {};
   // Map<String, Animation<double>> _messageSlideAnimations = {};
-  Map<String, bool> _messageReplyStates = {};
+  final Map<String, bool> _messageReplyStates = {};
   // String? _currentlyReplyingToMessageId; // current reply target id
 
   @override
@@ -183,15 +177,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _preloadCache();
     }
 
-    // Precompute E2EE conversation key for faster decrypt
-    // فقط اگر مکالمه موجود باشد
-    if (widget.conversationId.isNotEmpty) {
-      E2EEService.instance.prepareConversationKey(
-        conversationId: widget.conversationId,
-        otherUserId: widget.otherUserId,
-      );
-    }
-
     // فعال‌سازی مکانیزم ارسال پیام‌های آفلاین به محض آنلاین شدن
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(pendingMessagesSyncProvider);
@@ -199,89 +184,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     // پیش‌بارگذاری والپیپر برای عملکرد بهتر
     _preloadWallpaper();
-  }
-
-  /// رمزگشایی محتوای پیام به صورت شفاف برای کاربر
-  Future<String> _decryptMessageContent(
-    String content,
-    String messageId,
-    String senderId,
-    DateTime createdAt,
-  ) async {
-    // اگر محتوا رمزنگاری نشده، مستقیم برگردان
-    if (!content.startsWith('e2ee:v1:')) {
-      return content;
-    }
-
-    // ابتدا کش محلی را چک کن
-    if (_decryptionCache.containsKey(messageId)) {
-      return _decryptionCache[messageId]!;
-    }
-
-    // اگر در حال رمزگشایی این پیام هستیم، از future موجود استفاده کن
-    if (_decryptionFutures.containsKey(messageId)) {
-      return await _decryptionFutures[messageId]!;
-    }
-
-    // یک future برای رمزگشایی ایجاد کن
-    final decryptionFuture =
-        _performDecryption(content, messageId, senderId, createdAt);
-    _decryptionFutures[messageId] = decryptionFuture;
-
-    try {
-      final result = await decryptionFuture;
-      // نتیجه را در کش محلی ذخیره کن
-      _decryptionCache[messageId] = result;
-      return result;
-    } finally {
-      // future را پاک کن
-      _decryptionFutures.remove(messageId);
-    }
-  }
-
-  Future<String> _performDecryption(
-    String content,
-    String messageId,
-    String senderId,
-    DateTime createdAt,
-  ) async {
-    try {
-      // ابتدا کش سرویس را چک کن
-      final userId = supabase.auth.currentUser?.id;
-      if (userId != null) {
-        final cachedContent =
-            await E2EEService.instance.getCachedDecryptedContent(
-          messageId: messageId,
-          conversationId: widget.conversationId,
-          userId: userId,
-        );
-
-        if (cachedContent != null && cachedContent.isNotEmpty) {
-          return cachedContent;
-        }
-      }
-
-      // اگر در کش نبود، رمزگشایی کن
-      final decrypted = await E2EEService.instance.maybeDecryptWithSender(
-        content: content,
-        conversationId: widget.conversationId,
-        senderId: senderId,
-        messageId: messageId,
-        userId: userId,
-        messageCreatedAt: createdAt,
-      );
-
-      // اگر رمزگشایی موفق بود، نتیجه را برگردان
-      if (decrypted.isNotEmpty) {
-        return decrypted;
-      }
-
-      // اگر رمزگشایی شکست خورد، پیام خطا نمایش بده
-      return 'پیام رمزنگاری شده (در حال پردازش...)';
-    } catch (e) {
-      print('[ChatScreen] Error decrypting message $messageId: $e');
-      return 'پیام رمزنگاری شده (در حال پردازش...)';
-    }
   }
 
   String _getReplySenderName(MessageModel message) {
@@ -396,8 +298,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _messageAnimationControllers.clear();
 
     // پاک کردن کش رمزگشایی
-    _decryptionCache.clear();
-    _decryptionFutures.clear();
 
     // هنگام خروج از صفحه چت، conversationId فعال را پاک کن
     if (ChatService.activeConversationId == widget.conversationId) {
@@ -455,7 +355,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             _selectedImageName = pickedFile.name;
             _selectedImage = null;
           });
-          print('Web Image selected: ${_selectedImageName}'); // Debug log
+          print('Web Image selected: $_selectedImageName'); // Debug log
         } else {
           setState(() {
             _selectedImage = File(pickedFile.path);
@@ -548,7 +448,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _selectedImage == null &&
         _selectedImageBytes == null &&
         _selectedAudio == null && // اضافه
-        _selectedAudioBytes == null) return; // اضافه
+        _selectedAudioBytes == null) {
+      return; // اضافه
+    }
 
     // ذخیره مقادیر موقت
     final tempMessage = message;
@@ -590,16 +492,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
           // پیش‌بارگذاری کش برای مکالمه جدید
           await _preloadCacheForNewConversation(conversationId);
-
-          // آماده‌سازی E2EE برای مکالمه جدید
-          try {
-            await E2EEService.instance.prepareConversationKey(
-              conversationId: conversationId,
-              otherUserId: widget.otherUserId,
-            );
-          } catch (e) {
-            print('خطا در آماده‌سازی E2EE: $e');
-          }
         } catch (e) {
           print('خطا در ایجاد مکالمه: $e');
           if (mounted) {
@@ -837,7 +729,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: DropdownButtonFormField<String>(
-                  value: selectedReason,
+                  initialValue: selectedReason,
                   dropdownColor: isLightMode ? Colors.white : Color(0xFF2A2A2A),
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
@@ -2483,36 +2375,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                           ],
                                         ),
                                         SizedBox(height: 4),
-                                        FutureBuilder<String?>(
-                                          future: E2EEService.instance
-                                              .maybeDecryptWithSender(
-                                            content:
-                                                message.replyToContent ?? '',
-                                            conversationId:
-                                                widget.conversationId,
-                                            senderId: message.senderId,
-                                            messageId: message.id,
-                                            userId:
-                                                supabase.auth.currentUser?.id ??
-                                                    '',
-                                            messageCreatedAt: message.createdAt,
+                                        Text(
+                                          message.replyToContent ?? '',
+                                          style: TextStyle(
+                                            color: isMe
+                                                ? Colors.white70
+                                                : Colors.black87,
+                                            fontSize: 12,
                                           ),
-                                          builder: (context, snapshot) {
-                                            final text = snapshot.data ??
-                                                message.replyToContent ??
-                                                '';
-                                            return Text(
-                                              text,
-                                              style: TextStyle(
-                                                color: isMe
-                                                    ? Colors.white70
-                                                    : Colors.black87,
-                                                fontSize: 12,
-                                              ),
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                            );
-                                          },
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       ],
                                     ),
@@ -2565,33 +2437,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                                   ? 8
                                                   : 0,
                                             ),
-                                            child: FutureBuilder<String>(
-                                              future: _decryptMessageContent(
+                                            child: Directionality(
+                                              textDirection: getTextDirection(
+                                                  message.content),
+                                              child: Text(
                                                 message.content,
-                                                message.id,
-                                                message.senderId,
-                                                message.createdAt,
+                                                style: TextStyle(
+                                                  color: isMe
+                                                      ? myTextColor
+                                                      : otherTextColor,
+                                                  fontSize: fontSize,
+                                                  height: 1.3,
+                                                ),
                                               ),
-                                              builder: (context, snapshot) {
-                                                final displayContent =
-                                                    snapshot.data ??
-                                                        message.content;
-                                                return Directionality(
-                                                  textDirection:
-                                                      getTextDirection(
-                                                          displayContent),
-                                                  child: Text(
-                                                    displayContent,
-                                                    style: TextStyle(
-                                                      color: isMe
-                                                          ? myTextColor
-                                                          : otherTextColor,
-                                                      fontSize: fontSize,
-                                                      height: 1.3,
-                                                    ),
-                                                  ),
-                                                );
-                                              },
                                             ),
                                           ),
                                         if (!isImageOnly)
@@ -2791,14 +2649,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 title: Text('کپی پیام'),
                 onTap: () async {
                   Navigator.pop(context);
-                  // رمزگشایی محتوا قبل از کپی
-                  final decryptedContent = await _decryptMessageContent(
-                    message.content,
-                    message.id,
-                    message.senderId,
-                    message.createdAt,
-                  );
-                  Clipboard.setData(ClipboardData(text: decryptedContent));
+                  // کپی محتوا
+                  Clipboard.setData(ClipboardData(text: message.content));
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('پیام کپی شد')),
                   );
@@ -2840,7 +2692,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<String>(
-              value: selectedReason,
+              initialValue: selectedReason,
               items: reportReasons.map((reason) {
                 return DropdownMenuItem(
                   value: reason,
@@ -3125,9 +2977,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     // --- اضافه شد: گوش دادن به تغییرات استریم پیام‌ها و بروزرسانی UI ---
     ref.watch(messagesStreamProvider(widget.conversationId));
-
-    // پیش رمزگشایی پیام‌های کش شده برای عملکرد بهتر
-    ref.watch(preDecryptMessagesProvider(widget.conversationId));
 
     // ابتدا پیام‌های کش شده را نمایش بده، سپس استریم پیام‌ها را گوش بده
     return SafeArea(
@@ -3475,7 +3324,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           .toSet();
                       final filteredMessages = lazyState.messages.where((m) {
                         if (m.id.startsWith('temp_') &&
-                            realLocalIds.contains(m.id)) return false;
+                            realLocalIds.contains(m.id)) {
+                          return false;
+                        }
                         return true;
                       }).toList();
 
@@ -3619,7 +3470,7 @@ class BlockedUserBanner extends StatelessWidget {
 }
 
 class ChatMessagesShimmer extends StatelessWidget {
-  const ChatMessagesShimmer({Key? key}) : super(key: key);
+  const ChatMessagesShimmer({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -3657,10 +3508,10 @@ class EmojiPickerWidget extends StatelessWidget {
   final VoidCallback onBackspacePressed;
 
   const EmojiPickerWidget({
-    Key? key,
+    super.key,
     required this.onEmojiSelected,
     required this.onBackspacePressed,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -3881,7 +3732,7 @@ class MessageSender {
       );
     } catch (e) {
       await messageCache.markMessageAsFailed(conversationId, tempMessage.id);
-      throw e;
+      rethrow;
     }
   }
 

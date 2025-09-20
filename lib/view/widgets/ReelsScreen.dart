@@ -14,11 +14,11 @@ class ReelsScreen extends ConsumerStatefulWidget {
       initialPositions; // اضافه کردن پارامتر موقعیت‌های اولیه
 
   const ReelsScreen({
-    Key? key,
+    super.key,
     required this.posts,
     this.initialIndex = 0,
     this.initialPositions = const {}, // مقدار پیش‌فرض خالی
-  }) : super(key: key);
+  });
 
   @override
   ConsumerState<ReelsScreen> createState() => _ReelsScreenState();

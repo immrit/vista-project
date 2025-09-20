@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
 import '../DB/message_cache_service_wrapper.dart';
-import '../security/e2ee_service.dart';
 import 'cache_manager.dart';
 
 /// سرویس پاکسازی خودکار داده‌های قدیمی
@@ -98,7 +97,6 @@ class AutoCleanupService {
 
       // پاکسازی کش پیام‌های رمزگشایی شده قدیمی
       try {
-        await E2EEService.instance.cleanupOldDecryptedCache(daysOld: 30);
         totalItemsRemoved += 50; // تخمین
         totalSpaceFreed += 5.0; // تخمین
       } catch (e) {

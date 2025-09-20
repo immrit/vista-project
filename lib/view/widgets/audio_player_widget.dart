@@ -13,14 +13,14 @@ class AudioPlayerWidget extends StatefulWidget {
   final VoidCallback? onReply;
 
   const AudioPlayerWidget({
-    Key? key,
+    super.key,
     required this.audioUrl,
     this.audioBytes,
     required this.isMe,
     this.isPreview = false,
     this.onDelete,
     this.onReply,
-  }) : super(key: key);
+  });
 
   @override
   State<AudioPlayerWidget> createState() => _AudioPlayerWidgetState();
@@ -328,7 +328,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget>
   }
 
   Widget _buildWaveform(Color textColor) {
-    return Container(
+    return SizedBox(
       height: 30,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,

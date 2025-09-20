@@ -11,12 +11,12 @@ class VistaPostCardWidget extends StatelessWidget {
   final GlobalKey? repaintBoundaryKey;
 
   const VistaPostCardWidget({
-    Key? key,
+    super.key,
     required this.post,
     this.customPostText,
     this.customImageUrl,
     this.repaintBoundaryKey,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

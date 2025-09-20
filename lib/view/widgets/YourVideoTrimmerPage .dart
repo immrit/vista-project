@@ -9,10 +9,10 @@ class YourVideoTrimmerPage extends StatefulWidget {
   final Duration maxDuration;
 
   const YourVideoTrimmerPage({
-    Key? key,
+    super.key,
     required this.videoFile,
     required this.maxDuration,
-  }) : super(key: key);
+  });
 
   @override
   _YourVideoTrimmerPageState createState() => _YourVideoTrimmerPageState();

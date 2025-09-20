@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import '../model/message_model.dart';
 import '../model/conversation_model.dart';
 import 'advanced_cache_manager.dart';

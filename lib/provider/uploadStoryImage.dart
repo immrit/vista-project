@@ -119,7 +119,7 @@ class StoryImageUploadService {
           format: CompressFormat.jpeg,
         );
 
-        if (result != null && result.isNotEmpty) {
+        if (result.isNotEmpty) {
           print('تصویر فشرده شد: ${bytes.length} -> ${result.length} bytes');
           return result;
         }
@@ -160,7 +160,7 @@ class StoryImageUploadService {
         ..writeAsBytesSync(img);
 
       print(
-          'تصویر فشرده شد: ${fileSize} -> ${await compressedFile.length()} bytes');
+          'تصویر فشرده شد: $fileSize -> ${await compressedFile.length()} bytes');
 
       return compressedFile;
     } catch (e) {
