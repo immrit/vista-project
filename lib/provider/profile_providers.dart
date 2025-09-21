@@ -94,9 +94,9 @@ class ProfileNotifier extends StateNotifier<ProfileState> {
     logger.i('ذخیره اطلاعات پروفایل با مقادیر: $updates');
 
     try {
-      // Timeout 10 ثانیه
+      // Timeout 30 ثانیه
       await ProfileService.upsertProfile(updates).timeout(
-        const Duration(seconds: 10),
+        const Duration(seconds: 30),
         onTimeout: () {
           logger.w('تایم‌اوت در ذخیره‌سازی پروفایل');
           throw 'مدت‌زمان ذخیره‌سازی بیش از حد معمول شد.';

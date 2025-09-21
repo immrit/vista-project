@@ -151,26 +151,6 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
 
             if (!state.any((n) => n.id == notif.id)) {
               // برای اطمینان، پروفایل کامل را دوباره بگیر
-              if (notif.avatarUrl == null) {
-                try {
-                  final sender = await supabase
-                      .from('profiles')
-                      .select(
-                          'username, avatar_url, is_verified, verification_type')
-                      .eq('id', notif.senderId)
-                      .maybeSingle();
-                  if (sender != null) {
-                    notif = notif.copyWith(
-                      username: sender['username'] ?? notif.username,
-                      avatarUrl: sender['avatar_url'] ?? notif.avatarUrl,
-                      userIsVerified:
-                          sender['is_verified'] ?? notif.userIsVerified,
-                      verificationType:
-                          sender['verification_type'] ?? notif.verificationType,
-                    );
-                  }
-                } catch (_) {}
-              }
               state = [notif, ...state];
               await _showLocalNotification(notif);
             }

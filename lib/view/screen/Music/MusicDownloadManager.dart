@@ -286,7 +286,7 @@ class MusicDownloadManagerNotifier
 
       // بررسی می‌کنیم که فایل قابل دسترسی باشد
       final response = await http.head(uri).timeout(
-            const Duration(seconds: 5),
+            const Duration(seconds: 30),
             onTimeout: () => http.Response('', 408),
           );
 

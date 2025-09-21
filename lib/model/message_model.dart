@@ -158,4 +158,26 @@ class MessageModel {
       retryCount: retryCount ?? this.retryCount,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'conversation_id': conversationId,
+      'sender_id': senderId,
+      'content': content,
+      'created_at': createdAt.toIso8601String(),
+      'attachment_url': attachmentUrl,
+      'attachment_type': attachmentType,
+      'is_read': isRead,
+      'is_sent': isSent,
+      'sender_name': senderName,
+      'sender_avatar': senderAvatar,
+      'reply_to_message_id': replyToMessageId,
+      'reply_to_content': replyToContent,
+      'reply_to_sender_name': replyToSenderName,
+      'is_pending': isPending,
+      'local_id': localId,
+      'retry_count': retryCount,
+    };
+  }
 }

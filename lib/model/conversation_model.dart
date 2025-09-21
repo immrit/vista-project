@@ -49,6 +49,39 @@ class ConversationModel {
         throw Exception('فیلد updated_at در JSON موجود نیست');
       }
 
+      // Parse participants and extract other user info
+      List<ConversationParticipantModel> participants = [];
+      String? otherUserName;
+      String? otherUserAvatar;
+      String? otherUserId;
+
+      final participantsData =
+          json['conversation_participants'] ?? json['participants'];
+      if (participantsData != null) {
+        participants = List<ConversationParticipantModel>.from(participantsData
+            .map((x) => ConversationParticipantModel.fromJson(x)));
+
+        // Find other user info if currentUserId is provided
+        if (currentUserId != null) {
+          for (final participantData in participantsData) {
+            final participantUserId = participantData['user_id'] as String?;
+            if (participantUserId != null &&
+                participantUserId != currentUserId) {
+              otherUserId = participantUserId;
+
+              // Extract profile info
+              final profiles = participantData['profiles'];
+              if (profiles != null) {
+                otherUserName =
+                    profiles['username'] as String? ?? 'کاربر ناشناس';
+                otherUserAvatar = profiles['avatar_url'] as String?;
+              }
+              break;
+            }
+          }
+        }
+      }
+
       return ConversationModel(
         id: json['id'] as String,
         createdAt: DateTime.parse(json['created_at'] as String),
@@ -57,13 +90,11 @@ class ConversationModel {
         lastMessageTime: json['last_message_time'] != null
             ? DateTime.parse(json['last_message_time'] as String)
             : null,
-        participants: json['participants'] != null
-            ? List<ConversationParticipantModel>.from(json['participants']
-                .map((x) => ConversationParticipantModel.fromJson(x)))
-            : [],
-        otherUserName: json['otherUserName'] as String?,
-        otherUserAvatar: json['otherUserAvatar'] as String?,
-        otherUserId: json['otherUserId'] as String?,
+        participants: participants,
+        otherUserName:
+            otherUserName ?? json['otherUserName'] as String? ?? 'کاربر ناشناس',
+        otherUserAvatar: otherUserAvatar ?? json['otherUserAvatar'] as String?,
+        otherUserId: otherUserId ?? json['otherUserId'] as String?,
         hasUnreadMessages: json['hasUnreadMessages'] ?? false,
         unreadCount: json['unreadCount'] ?? 0,
         isPinned: json['is_pinned'] ?? false,

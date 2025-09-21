@@ -13,6 +13,8 @@ import 'subpages/ChatSettingsGroupPage.dart';
 import 'subpages/AboutSettingsPage.dart';
 import 'subpages/ThemeSettingsPage.dart';
 import 'subpages/PrivacySettingsPage.dart';
+import 'subpages/OfflineSettingsPage.dart';
+import '../../../test_offline_functionality.dart';
 
 class Settings extends ConsumerWidget {
   const Settings({super.key});
@@ -128,6 +130,21 @@ class Settings extends ConsumerWidget {
                           );
                         },
                       ),
+                      _buildDivider(),
+                      TelegramSettingsItem(
+                        icon: Icons.cloud_off,
+                        iconColor: Colors.blue,
+                        title: 'تنظیمات آفلاین',
+                        subtitle: 'دسترسی به تنظیمات بدون اینترنت',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const OfflineSettingsPage(),
+                            ),
+                          );
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -183,6 +200,22 @@ class Settings extends ConsumerWidget {
                         subtitle: 'گزارش باگ یا پیشنهاد بهبود',
                         onTap: () {
                           _showBugReportBottomSheet(context, ref);
+                        },
+                      ),
+                      _buildDivider(),
+                      TelegramSettingsItem(
+                        icon: Icons.bug_report_outlined,
+                        iconColor: Colors.purple,
+                        title: 'تست عملکرد آفلاین',
+                        subtitle: 'بررسی عملکرد کش و آفلاین',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  const OfflineFunctionalityTest(),
+                            ),
+                          );
                         },
                       ),
                       _buildDivider(),

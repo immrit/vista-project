@@ -41,6 +41,10 @@ import '../../widgets/web files/image_downloader.dart';
 import '/main.dart';
 import 'ChatDetailsScreen.dart';
 import 'chat_input_box.dart';
+import '../../../services/instant_message_deletion.dart';
+import '../../../widgets/simple_animated_deletion.dart';
+import '../../../services/optimized_messaging_system.dart';
+import '../../../services/memory_leak_detector.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String conversationId;
@@ -62,7 +66,8 @@ class ChatScreen extends ConsumerStatefulWidget {
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends ConsumerState<ChatScreen> {
+class _ChatScreenState extends ConsumerState<ChatScreen>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
   // Tracks which message images are allowed to load inline after user action
   final Set<String> _inlineImageGrants = <String>{};
@@ -73,6 +78,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final ItemScrollController _itemScrollController = ItemScrollController();
   final ItemPositionsListener _itemPositionsListener =
       ItemPositionsListener.create();
+
+  // Performance optimization
+  late final OptimizedMessagingSystem _optimizedMessaging;
+  late final MemoryLeakDetector _memoryDetector;
+  Timer? _performanceTimer;
 
   final imagePicker = ImagePicker();
   File? _selectedImage;
@@ -85,6 +95,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   // اضافه شد: برای ذخیره conversationId پس از ایجاد مکالمه جدید
   String? _localConversationId;
+
+  // Animation state for deletion
+  final Set<String> _deletingMessageIds = {};
 
   // (deprecated) placeholder gradient generator – no longer used
   // List<Color> _placeholderColorsFromSeed(String seed) { ... }
@@ -132,6 +145,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void initState() {
     super.initState();
+
+    // Performance optimization initialization
+    _optimizedMessaging = OptimizedMessagingSystem();
+    _memoryDetector = MemoryLeakDetector();
+    _memoryDetector.trackObjectCreation('ChatScreen', widget.conversationId);
+
+    // Observer lifecycle events
+    WidgetsBinding.instance.addObserver(this);
+
     _checkBlockStatus();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.invalidate(userBlockStatusProvider(widget.otherUserId));
@@ -285,6 +307,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
+    // Memory leak tracking
+    _memoryDetector.trackObjectDisposal('ChatScreen', widget.conversationId);
+
+    // Cancel performance timer
+    _performanceTimer?.cancel();
+
+    // Remove observer
+    WidgetsBinding.instance.removeObserver(this);
+
+    // Remove optimized messaging listener
+    _optimizedMessaging.removeRealtimeListener(widget.conversationId);
+
     _messageController.dispose();
     _itemPositionsListener.itemPositions
         .removeListener(_handleScrollToBottomBtn);
@@ -304,6 +338,40 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ChatService.activeConversationId = null;
     }
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    // Performance optimization based on app state
+    switch (state) {
+      case AppLifecycleState.paused:
+        // Pause non-essential operations
+        _performanceTimer?.cancel();
+        break;
+      case AppLifecycleState.resumed:
+        // Resume performance monitoring
+        _startPerformanceMonitoring();
+        break;
+      case AppLifecycleState.detached:
+        // Clean up resources
+        _optimizedMessaging.removeRealtimeListener(widget.conversationId);
+        break;
+      default:
+        break;
+    }
+  }
+
+  void _startPerformanceMonitoring() {
+    _performanceTimer?.cancel();
+    _performanceTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      final stats = _optimizedMessaging.getPerformanceStats();
+      if (mounted) {
+        print(
+            '📊 ChatScreen Performance: ${stats['memory_usage_kb']}KB memory, ${stats['active_subscriptions']} connections');
+      }
+    });
   }
 
   // متد جدید برای پرش به پیام
@@ -922,24 +990,60 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _deleteMessage(String messageId, bool forEveryone) async {
     try {
-      await ref
-          .read(messageNotifierProvider.notifier)
-          .deleteMessage(messageId, forEveryone: forEveryone);
+      // 🎬 شروع انیمیشن حذف
+      setState(() {
+        _deletingMessageIds.add(messageId);
+      });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                forEveryone ? 'پیام برای همه حذف شد' : 'پیام برای شما حذف شد'),
-          ),
-        );
-      }
+      // 🎬 استفاده از انیمیشن پودر شدن
+      await ref.deleteMessageInstantly(
+        messageId,
+        widget.conversationId,
+        forEveryone: forEveryone,
+        enableAnimation: true, // فعال کردن انیمیشن
+        onSuccess: () {
+          if (mounted) {
+            setState(() {
+              _deletingMessageIds.remove(messageId);
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(forEveryone
+                    ? '✅ پیام برای همه حذف شد'
+                    : '✅ پیام برای شما حذف شد'),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        },
+        onError: () {
+          if (mounted) {
+            setState(() {
+              _deletingMessageIds.remove(messageId);
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('❌ خطا در حذف پیام'),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 3),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        },
+      );
     } catch (e) {
       if (mounted) {
+        setState(() {
+          _deletingMessageIds.remove(messageId);
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطا در حذف پیام: ${e.toString()}'),
+            content: Text('❌ خطا در حذف پیام: ${e.toString()}'),
             backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -1222,7 +1326,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   bool _isSameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
+    return !TimeUtils.shouldShowDateDivider(b, a);
   }
 
   // جایگزینی _buildMessageInput با استفاده از ChatInputBox
@@ -1525,6 +1629,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
+  // حذف شد - استفاده نمی‌شود
   Widget _buildHeaderShimmer() {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
@@ -1663,6 +1768,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
+  // حذف شد - استفاده نمی‌شود
   Widget _buildInputShimmer() {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
@@ -2296,9 +2402,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
                             curve: Curves.easeOutQuart,
-                            margin: EdgeInsets.symmetric(
-                                horizontal: math.max(12, fontSize * 0.6),
-                                vertical: math.max(2, fontSize * 0.15)),
+                            margin: EdgeInsets.only(
+                              left: isMe ? 64.0 : 12.0,
+                              right: isMe ? 12.0 : 64.0,
+                              top: 0, // فاصله‌گذاری توسط TimeUtils انجام می‌شه
+                              bottom: 0,
+                            ),
                             decoration: BoxDecoration(
                               color: (isImageOnly
                                   ? Colors.transparent
@@ -2849,13 +2958,42 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   String _formatMessageHour(DateTime time) {
-    final tehranOffset = const Duration(hours: 3, minutes: 30);
-    final tehranTime = time.toUtc().add(tehranOffset);
-    return '${tehranTime.hour.toString().padLeft(2, '0')}:${tehranTime.minute.toString().padLeft(2, '0')}';
+    return TimeUtils.formatMessageTime(time);
   }
 
   // متدهای باقی‌مانده
   Widget _buildDateDivider(DateTime date) {
+    return Container(
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(vertical: 16.0),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(16.0),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Text(
+          TimeUtils.formatDateDivider(date),
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+            letterSpacing: 0.2,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // حذف شد - استفاده نمی‌شود
+  Widget _buildOldDateDivider(DateTime date) {
     final now = DateTime.now();
     final jNow = Jalali.fromDateTime(now);
     final jDate = Jalali.fromDateTime(date);
@@ -3376,21 +3514,42 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             final message = filteredMessages[index];
                             final isMe = message.senderId ==
                                 supabase.auth.currentUser?.id;
-                            bool showDateDivider = false;
-                            if (index == filteredMessages.length - 1) {
-                              showDateDivider = true;
-                            } else {
-                              final prevMsg = filteredMessages[index + 1];
-                              if (!_isSameDay(
-                                  message.createdAt, prevMsg.createdAt)) {
-                                showDateDivider = true;
-                              }
-                            }
+
+                            // پیام قبلی برای فاصله‌گذاری
+                            final previousMessage =
+                                index < filteredMessages.length - 1
+                                    ? filteredMessages[index + 1]
+                                    : null;
+
+                            // تشخیص نیاز به جداکننده تاریخ
+                            final showDateDivider =
+                                TimeUtils.shouldShowDateDivider(
+                              message.createdAt,
+                              previousMessage?.createdAt,
+                            );
+
+                            final messageWidget =
+                                _buildMessageItem(context, message, isMe)
+                                    .withDeletionAnimation(
+                              message: message,
+                              deletingMessageIds: _deletingMessageIds,
+                            );
+
                             return Column(
                               children: [
                                 if (showDateDivider)
                                   _buildDateDivider(message.createdAt),
-                                _buildMessageItem(context, message, isMe),
+                                Padding(
+                                  padding: EdgeInsets.only(
+                                    top: TimeUtils.calculateMessageSpacing(
+                                      message.createdAt,
+                                      previousMessage?.createdAt,
+                                      message.senderId,
+                                      previousMessage?.senderId,
+                                    ),
+                                  ),
+                                  child: messageWidget,
+                                ),
                               ],
                             );
                           },

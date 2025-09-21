@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:persian_datetime_picker/persian_datetime_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:shamsi_date/shamsi_date.dart';
 import 'package:logger/logger.dart';
 
 import '../../../provider/ProfileImageUploadService.dart';

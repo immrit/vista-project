@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../DB/conversation_cache_service_wrapper.dart';
 import '../DB/message_cache_service_wrapper.dart';
 import '../DB/database_file_utils.dart';
-import '../DB/unified_cache_system.dart';
 import '../main.dart';
 import '../model/conversation_model.dart';
 import '../model/message_model.dart';
@@ -72,9 +71,6 @@ final lazyMessagesProvider = StateNotifierProvider.family
 });
 
 // سیستم کش یکپارچه پیشرفته
-final unifiedCacheProvider = Provider<UnifiedCacheSystem>((ref) {
-  return UnifiedCacheSystem();
-});
 
 // State برای lazy loading
 class LazyMessagesState {
@@ -112,90 +108,54 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
   final MessageCacheService _messageCache = MessageCacheService();
   static const int _pageSize = 10;
   int _currentPage = 0;
+  // مجموعه پیام‌هایی که کاربر به‌صورت خوشبینانه حذف کرده
+  final Set<String> _locallyDeletedMessageIds = <String>{};
+  bool _disposed = false;
 
   LazyMessagesNotifier(this.conversationId) : super(const LazyMessagesState()) {
     _loadInitialMessages();
     _setupRealTimeListener();
   }
 
-  // متد کمکی برای فیلتر کردن پیام‌های تکراری
+  // متد بهینه شده برای فیلتر کردن پیام‌های تکراری
   List<MessageModel> _filterDuplicateMessages(List<MessageModel> messages) {
-    print('🔍 شروع فیلتر کردن ${messages.length} پیام...');
-    print('🔍 ==========================================');
+    if (messages.isEmpty) return messages;
 
-    // نمایش تمام پیام‌ها قبل از فیلتر
-    for (final msg in messages) {
-      print('🔍 پیام قبل از فیلتر: ${msg.id} (localId: ${msg.localId})');
+    // استفاده از Map برای عملکرد O(n) به جای O(n²)
+    final Map<String, MessageModel> uniqueMessages = {};
+    final Set<String> realLocalIds = {};
+
+    // ابتدا پیام‌های واقعی را شناسایی کنیم
+    for (final message in messages) {
+      if (!message.id.startsWith('temp_') && message.localId != null) {
+        realLocalIds.add(message.localId!);
+      }
     }
 
-    // 1. حذف پیام‌های temp که پیام واقعی‌شان آمده
-    final realLocalIds = messages
-        .where((m) => !m.id.startsWith('temp_') && m.localId != null)
-        .map((m) => m.localId)
-        .toSet();
-
-    print('🔍 شناسه‌های محلی واقعی: $realLocalIds');
-
-    // 2. حذف پیام‌های تکراری بر اساس ID
-    final seenIds = <String>{};
-    final seenLocalIds = <String>{};
-
-    final filteredMessages = messages.where((message) {
+    // سپس پیام‌های منحصر به فرد را انتخاب کنیم
+    for (final message in messages) {
       // حذف پیام‌های temp که پیام واقعی‌شان آمده
       if (message.id.startsWith('temp_') && realLocalIds.contains(message.id)) {
-        print(
-            '🗑️ حذف پیام temp ${message.id} (پیام واقعی ${message.localId} آمده)');
-        return false;
+        continue;
       }
 
-      // حذف پیام‌های تکراری بر اساس ID
-      if (seenIds.contains(message.id)) {
-        print('🗑️ حذف پیام تکراری بر اساس ID: ${message.id}');
-        return false;
+      // اولویت با ID اصلی، سپس localId
+      final key = message.localId ?? message.id;
+
+      // اگر پیام با این کلید وجود ندارد، یا پیام فعلی واقعی‌تر است
+      if (!uniqueMessages.containsKey(key) ||
+          (!uniqueMessages[key]!.id.startsWith('temp_') &&
+              message.id.startsWith('temp_'))) {
+        uniqueMessages[key] = message;
       }
-      seenIds.add(message.id);
-
-      // حذف پیام‌های تکراری بر اساس localId
-      if (message.localId != null) {
-        if (seenLocalIds.contains(message.localId!)) {
-          print('🗑️ حذف پیام تکراری بر اساس localId: ${message.localId}');
-          return false;
-        }
-        seenLocalIds.add(message.localId!);
-      }
-
-      return true;
-    }).toList();
-
-    if (messages.length != filteredMessages.length) {
-      print(
-          '🧹 فیلتر کردن پیام‌های تکراری: ${messages.length} -> ${filteredMessages.length}');
-      final removedCount = messages.length - filteredMessages.length;
-      print('🗑️ تعداد پیام‌های حذف شده: $removedCount');
-
-      // نمایش جزئیات پیام‌های حذف شده
-      final removedMessages =
-          messages.where((m) => !filteredMessages.contains(m)).toList();
-      for (final msg in removedMessages) {
-        print('🗑️ حذف شده: ${msg.id} (localId: ${msg.localId})');
-      }
-    } else {
-      print('✅ هیچ پیام تکراری یافت نشد');
     }
 
-    // نمایش تمام پیام‌ها بعد از فیلتر
-    print('🔍 پیام‌های بعد از فیلتر:');
-    for (final msg in filteredMessages) {
-      print('🔍 پیام بعد از فیلتر: ${msg.id} (localId: ${msg.localId})');
-    }
-
-    print('🔍 پایان فیلتر کردن پیام‌ها');
-    print('🔍 ==========================================');
-
-    return filteredMessages;
+    return uniqueMessages.values.toList();
   }
 
   Future<void> _loadInitialMessages() async {
+    if (_disposed) return;
+
     state = state.copyWith(isLoading: true, error: null);
 
     try {
@@ -204,20 +164,19 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
           await _messageCache.getConversationMessages(conversationId, userId);
 
       if (cachedMessages.isNotEmpty) {
-        print('💾 بارگذاری ${cachedMessages.length} پیام از کش');
-        final filteredMessages = _filterDuplicateMessages(cachedMessages);
+        // فیلتر پیام‌های حذف شده محلی
+        final filteredCachedMessages = cachedMessages
+            .where((m) => !_locallyDeletedMessageIds.contains(m.id))
+            .toList();
+        final filteredMessages =
+            _filterDuplicateMessages(filteredCachedMessages);
         state = state.copyWith(
           messages: filteredMessages,
           isLoading: false,
           hasMore: filteredMessages.length >= _pageSize,
         );
         _currentPage = (filteredMessages.length / _pageSize).ceil();
-        print(
-            '✅ بارگذاری از کش با موفقیت انجام شد. تعداد نهایی: ${filteredMessages.length}');
-        print('✅ ==========================================');
       } else {
-        print('💾 کش خالی است، بارگذاری از سرور...');
-        print('💾 ==========================================');
         await _loadMoreMessages();
       }
     } catch (e) {
@@ -229,11 +188,13 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
   }
 
   Future<void> loadMoreMessages() async {
-    if (state.isLoading || !state.hasMore) return;
+    if (_disposed || state.isLoading || !state.hasMore) return;
     await _loadMoreMessages();
   }
 
   Future<void> _loadMoreMessages() async {
+    if (_disposed) return;
+
     state = state.copyWith(isLoading: true, error: null);
 
     try {
@@ -251,9 +212,11 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
         return;
       }
 
-      // Decrypt messages before adding to state
-      print('📥 بارگذاری ${newMessages.length} پیام جدید از سرور');
-      final updatedMessages = [...state.messages, ...newMessages];
+      // فیلتر پیام‌های حذف شده محلی از پیام‌های جدید
+      final filteredNewMessages = newMessages
+          .where((m) => !_locallyDeletedMessageIds.contains(m.id))
+          .toList();
+      final updatedMessages = [...state.messages, ...filteredNewMessages];
       final filteredMessages = _filterDuplicateMessages(updatedMessages);
 
       state = state.copyWith(
@@ -261,10 +224,6 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
         isLoading: false,
         hasMore: newMessages.length >= _pageSize,
       );
-
-      print(
-          '✅ بارگذاری پیام‌ها با موفقیت انجام شد. تعداد نهایی: ${filteredMessages.length}');
-      print('✅ ==========================================');
 
       _currentPage++;
     } catch (e) {
@@ -275,21 +234,27 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
     }
   }
 
+  StreamSubscription? _realTimeSubscription;
+
   void _setupRealTimeListener() {
+    if (_disposed) return;
+
     // Listen to new messages from the messages stream
-    supabase
+    _realTimeSubscription = supabase
         .from('messages')
         .stream(primaryKey: ['id'])
         .eq('conversation_id', conversationId)
         .order('created_at', ascending: false)
         .listen((jsonList) {
+          if (_disposed) return;
+
           final userId = supabase.auth.currentUser!.id;
           final newMessages = jsonList
               .map((json) => MessageModel.fromJson(json, currentUserId: userId))
               .where((msg) => !msg.id.startsWith('temp_'))
               .toList();
 
-          // Add new messages that aren't already in the state
+          // سریعاً بررسی کنیم که آیا پیام جدیدی وجود دارد
           final existingIds = state.messages.map((m) => m.id).toSet();
           final existingLocalIds = state.messages
               .where((m) => m.localId != null)
@@ -297,52 +262,22 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
               .toSet();
 
           final trulyNewMessages = newMessages.where((msg) {
-            // حذف پیام‌هایی که قبلاً وجود دارند
-            if (existingIds.contains(msg.id)) {
-              print('🗑️ حذف پیام تکراری از استریم (ID): ${msg.id}');
-              return false;
-            }
-
-            // حذف پیام‌هایی که localId مشابه دارند
-            if (msg.localId != null &&
-                existingLocalIds.contains(msg.localId!)) {
-              print('🗑️ حذف پیام تکراری از استریم (localId): ${msg.localId}');
-              return false;
-            }
-
-            return true;
+            return !existingIds.contains(msg.id) &&
+                !_locallyDeletedMessageIds.contains(msg.id) &&
+                !(msg.localId != null &&
+                    existingLocalIds.contains(msg.localId!));
           }).toList();
 
           if (trulyNewMessages.isNotEmpty) {
-            print('📨 دریافت ${trulyNewMessages.length} پیام جدید از استریم');
-            print('📨 ==========================================');
-            for (final msg in trulyNewMessages) {
-              print(
-                  '📨 پیام جدید از استریم: ${msg.id} (localId: ${msg.localId})');
-            }
             addNewMessages(trulyNewMessages);
-          } else {
-            print('📨 هیچ پیام جدیدی از استریم دریافت نشد');
-            print('📨 پیام‌های دریافتی: ${newMessages.length}');
-            print('📨 پیام‌های موجود: ${existingIds.length}');
-            print('📨 پیام‌های localId موجود: ${existingLocalIds.length}');
-
-            // نمایش جزئیات پیام‌های دریافتی
-            for (final msg in newMessages) {
-              print('📨 پیام دریافتی: ${msg.id} (localId: ${msg.localId})');
-            }
-
-            print('📨 پایان بررسی پیام‌های استریم');
-            print('📨 ==========================================');
           }
         });
   }
 
   void addNewMessages(List<MessageModel> newMessages) async {
-    print('➕ اضافه کردن ${newMessages.length} پیام جدید');
-    print('📊 تعداد پیام‌ها قبل از اضافه کردن: ${state.messages.length}');
+    if (_disposed || newMessages.isEmpty) return;
 
-    // بررسی پیام‌های تکراری قبل از اضافه کردن
+    // بررسی سریع پیام‌های تکراری قبل از اضافه کردن
     final existingIds = state.messages.map((m) => m.id).toSet();
     final existingLocalIds = state.messages
         .where((m) => m.localId != null)
@@ -350,153 +285,72 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
         .toSet();
 
     final uniqueNewMessages = newMessages.where((message) {
-      if (existingIds.contains(message.id)) {
-        print('🗑️ حذف پیام تکراری (ID): ${message.id}');
-        return false;
-      }
-
-      if (message.localId != null &&
-          existingLocalIds.contains(message.localId!)) {
-        print('🗑️ حذف پیام تکراری (localId): ${message.localId}');
-        return false;
-      }
-
-      return true;
+      return !existingIds.contains(message.id) &&
+          !_locallyDeletedMessageIds.contains(message.id) &&
+          !(message.localId != null &&
+              existingLocalIds.contains(message.localId!));
     }).toList();
 
-    if (uniqueNewMessages.isEmpty) {
-      print('⚠️ هیچ پیام جدیدی وجود ندارد');
-      print('⚠️ پیام‌های دریافتی: ${newMessages.length}');
-      print('⚠️ پیام‌های موجود: ${existingIds.length}');
-      print('⚠️ پیام‌های localId موجود: ${existingLocalIds.length}');
-
-      // نمایش جزئیات پیام‌های دریافتی
-      for (final msg in newMessages) {
-        print('⚠️ پیام دریافتی: ${msg.id} (localId: ${msg.localId})');
-      }
-
-      print('⚠️ پایان بررسی پیام‌های جدید');
-      print('⚠️ ==========================================');
-      return; // هیچ پیام جدیدی وجود ندارد
-    }
-
-    print('✅ ${uniqueNewMessages.length} پیام جدید منحصر به فرد یافت شد');
-    print('✅ ==========================================');
+    if (uniqueNewMessages.isEmpty) return;
 
     final updatedMessages = [...uniqueNewMessages, ...state.messages];
     final filteredMessages = _filterDuplicateMessages(updatedMessages);
     state = state.copyWith(messages: filteredMessages);
-
-    print(
-        '✅ پیام‌های جدید با موفقیت اضافه شدند. تعداد نهایی: ${filteredMessages.length}');
-    print('✅ ==========================================');
   }
 
   void addTempMessageToLazy(MessageModel tempMessage) async {
-    print(
-        '➕ اضافه کردن پیام موقت: ${tempMessage.id} (localId: ${tempMessage.localId})');
-    print('📊 تعداد پیام‌ها قبل از اضافه کردن: ${state.messages.length}');
+    if (_disposed) return;
 
-    // بررسی اینکه آیا پیامی با همین ID یا localId وجود دارد یا خیر
+    // بررسی سریع وجود پیام تکراری
     final existingMessage = state.messages.any((m) =>
         m.id == tempMessage.id ||
         (m.localId != null && m.localId == tempMessage.localId) ||
         (tempMessage.localId != null && m.id == tempMessage.localId));
 
-    if (existingMessage) {
-      print('⚠️ پیام موقت قبلاً وجود دارد، اضافه نمی‌شود');
-      print(
-          '⚠️ پیام موقت موجود: ${tempMessage.id} (localId: ${tempMessage.localId})');
-      print('⚠️ تعداد پیام‌های موجود: ${state.messages.length}');
-
-      // نمایش جزئیات پیام‌های موجود
-      for (final msg in state.messages) {
-        print('⚠️ پیام موجود: ${msg.id} (localId: ${msg.localId})');
-      }
-
-      print('⚠️ پایان بررسی پیام موقت موجود');
-      print('⚠️ ==========================================');
-      return; // پیام قبلاً وجود دارد
-    }
+    if (existingMessage) return; // پیام قبلاً وجود دارد
 
     final updatedMessages = [tempMessage, ...state.messages];
     final filteredMessages = _filterDuplicateMessages(updatedMessages);
     state = state.copyWith(messages: filteredMessages);
-
-    print(
-        '✅ پیام موقت با موفقیت اضافه شد. تعداد نهایی: ${filteredMessages.length}');
-    print('✅ ==========================================');
   }
 
   void replaceTempWithRealInLazy(
       String tempId, MessageModel realMessage) async {
-    print('🔄 جایگزینی پیام موقت $tempId با پیام واقعی ${realMessage.id}');
-    print('📊 تعداد پیام‌ها قبل از جایگزینی: ${state.messages.length}');
+    if (_disposed) return;
 
-    // بررسی وجود پیام موقت
+    // بررسی سریع وجود پیام موقت
     final tempMessageExists = state.messages.any((m) => m.id == tempId);
-    if (!tempMessageExists) {
-      print('⚠️ پیام موقت $tempId یافت نشد');
-      print('⚠️ تعداد پیام‌های موجود: ${state.messages.length}');
-      for (final msg in state.messages) {
-        print('⚠️ پیام موجود: ${msg.id} (localId: ${msg.localId})');
-      }
-      print(
-          '⚠️ پیام واقعی: ${realMessage.id} (localId: ${realMessage.localId})');
-      print('⚠️ پایان بررسی پیام موقت');
-      print('⚠️ ==========================================');
-      return;
-    }
+    if (!tempMessageExists) return;
 
     final updatedMessages = state.messages.map((m) {
       return m.id == tempId ? realMessage : m;
     }).toList();
 
     final filteredMessages = _filterDuplicateMessages(updatedMessages);
-    print('📊 تعداد پیام‌ها بعد از فیلتر: ${filteredMessages.length}');
-
     state = state.copyWith(messages: filteredMessages);
-    print('✅ جایگزینی پیام با موفقیت انجام شد');
-    print('✅ ==========================================');
   }
 
   void addNewMessage(MessageModel message) async {
-    print(
-        '➕ اضافه کردن پیام جدید: ${message.id} (localId: ${message.localId})');
-    print('📊 تعداد پیام‌ها قبل از اضافه کردن: ${state.messages.length}');
+    if (_disposed) return;
 
-    // بررسی اینکه آیا پیامی با همین ID یا localId وجود دارد یا خیر
+    // بررسی سریع وجود پیام تکراری
     final existingMessage = state.messages.any((m) =>
         m.id == message.id ||
         (m.localId != null && m.localId == message.localId) ||
         (message.localId != null && m.id == message.localId));
 
-    if (existingMessage) {
-      print('⚠️ پیام قبلاً وجود دارد، اضافه نمی‌شود');
-      print('⚠️ پیام موجود: ${message.id} (localId: ${message.localId})');
-      print('⚠️ تعداد پیام‌های موجود: ${state.messages.length}');
+    if (existingMessage) return; // پیام قبلاً وجود دارد
 
-      // نمایش جزئیات پیام‌های موجود
-      for (final msg in state.messages) {
-        print('⚠️ پیام موجود: ${msg.id} (localId: ${msg.localId})');
-      }
-
-      print('⚠️ پایان بررسی پیام موجود');
-      print('⚠️ ==========================================');
-      return; // پیام قبلاً وجود دارد
-    }
+    // بررسی اینکه پیام حذف شده محلی نباشد
+    if (_locallyDeletedMessageIds.contains(message.id)) return;
 
     final updatedMessages = [message, ...state.messages];
     final filteredMessages = _filterDuplicateMessages(updatedMessages);
     state = state.copyWith(messages: filteredMessages);
-
-    print('✅ پیام با موفقیت اضافه شد. تعداد نهایی: ${filteredMessages.length}');
-    print('✅ ==========================================');
   }
 
   void updateMessage(MessageModel message) async {
-    print('🔄 به‌روزرسانی پیام: ${message.id} (localId: ${message.localId})');
-    print('📊 تعداد پیام‌ها قبل از به‌روزرسانی: ${state.messages.length}');
+    if (_disposed) return;
 
     final updatedMessages = state.messages.map((m) {
       return m.id == message.id ? message : m;
@@ -504,10 +358,21 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
 
     final filteredMessages = _filterDuplicateMessages(updatedMessages);
     state = state.copyWith(messages: filteredMessages);
+  }
 
-    print(
-        '✅ به‌روزرسانی پیام با موفقیت انجام شد. تعداد نهایی: ${filteredMessages.length}');
-    print('✅ ==========================================');
+  void removeMessage(String messageId) {
+    if (_disposed) return;
+    _locallyDeletedMessageIds.add(messageId);
+    final updatedMessages =
+        state.messages.where((m) => m.id != messageId).toList();
+    state = state.copyWith(messages: updatedMessages);
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _realTimeSubscription?.cancel();
+    super.dispose();
   }
 }
 
@@ -798,18 +663,22 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
     final messageToRetry = failedMessage.copyWith(
       isPending: true,
       isSent: false,
-      retryCount: 0, // Reset retry count for a new set of retries
+      retryCount: 0,
     );
 
-    notifier.updateMessage(messageToRetry); // Update UI to show pending
+    notifier.updateMessage(messageToRetry);
 
-    unawaited(_trySendWithRetry(
-      tempMessage: messageToRetry, // Pass the message with its original tempId
-      conversationId: messageToRetry.conversationId, // اضافه شد
-      content: messageToRetry.content, // اضافه شد
-      // سایر پارامترها از messageToRetry خوانده می‌شوند
-      retryCount: 0, // Start retries from 0 for this attempt sequence
-    ));
+    return _trySendWithRetry(
+      tempMessage: messageToRetry,
+      conversationId: messageToRetry.conversationId,
+      content: messageToRetry.content,
+      attachmentUrl: messageToRetry.attachmentUrl,
+      attachmentType: messageToRetry.attachmentType,
+      replyToMessageId: messageToRetry.replyToMessageId,
+      replyToContent: messageToRetry.replyToContent,
+      replyToSenderName: messageToRetry.replyToSenderName,
+      retryCount: 0,
+    );
   }
 
   Future<void> _trySendWithRetry({
@@ -823,70 +692,57 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
     String? replyToSenderName,
     required int retryCount,
   }) async {
-    // پارامترهای content و ... را از tempMessage بگیرید
-    print(
-        '🚀 تلاش برای ارسال پیام (تلاش ${retryCount + 1}): ${tempMessage.id}');
     try {
       final chatService = ref.read(chatServiceProvider);
 
       final serverMessage = await chatService.sendMessage(
-        conversationId: tempMessage.conversationId, // استفاده از tempMessage
-        content: tempMessage.content, // استفاده از tempMessage
-        attachmentUrl:
-            tempMessage.attachmentUrl, //  <-- اصلاح شد: استفاده از tempMessage
-        attachmentType:
-            tempMessage.attachmentType, //  <-- اصلاح شد: استفاده از tempMessage
-        replyToMessageId: tempMessage
-            .replyToMessageId, //  <-- اصلاح شد: استفاده از tempMessage
-        replyToContent:
-            tempMessage.replyToContent, //  <-- اصلاح شد: استفاده از tempMessage
-        replyToSenderName: tempMessage
-            .replyToSenderName, //  <-- اصلاح شد: استفاده از tempMessage
-        localId: tempMessage.id, // اطمینان از ارسال localId صحیح
+        conversationId: tempMessage.conversationId,
+        content: tempMessage.content,
+        attachmentUrl: tempMessage.attachmentUrl,
+        attachmentType: tempMessage.attachmentType,
+        replyToMessageId: tempMessage.replyToMessageId,
+        replyToContent: tempMessage.replyToContent,
+        replyToSenderName: tempMessage.replyToSenderName,
+        localId: tempMessage.id,
       );
-      print(
-          '✅ پیام ${tempMessage.id} با موفقیت به سرور ارسال و با ${serverMessage.id} جایگزین شد.');
+
+      // جایگزینی پیام موقت با پیام واقعی
       ref
           .read(conversationMessagesProvider(conversationId).notifier)
           .replaceTempWithReal(tempMessage.id, serverMessage);
 
-      // Also replace in lazy messages provider
       ref
           .read(lazyMessagesProvider(conversationId).notifier)
           .replaceTempWithRealInLazy(tempMessage.id, serverMessage);
     } catch (e) {
-      print(
-          '❌ خطا در ارسال پیام ${tempMessage.id} (تلاش ${retryCount + 1}): $e');
       if (retryCount < maxRetry - 1) {
-        // افزایش شمارنده و تلاش مجدد بعد از کمی تاخیر
+        // تلاش مجدد با تاخیر تصاعدی
+        final delayDuration = Duration(seconds: (retryCount + 1) * 2);
+        await Future.delayed(delayDuration);
+
         final updatedTemp = tempMessage.copyWith(
             retryCount: retryCount + 1, isPending: true, isSent: false);
+
         ref
             .read(conversationMessagesProvider(conversationId).notifier)
-            .updateMessage(updatedTemp); // Use updateMessage to keep it as temp
-        await Future.delayed(const Duration(seconds: 2));
-        unawaited(_trySendWithRetry(
+            .updateMessage(updatedTemp);
+
+        return _trySendWithRetry(
           tempMessage: updatedTemp,
-          conversationId: updatedTemp.conversationId,
-          content: updatedTemp.content,
-          attachmentUrl:
-              updatedTemp.attachmentUrl, //  <-- اصلاح شد: ارسال از updatedTemp
-          attachmentType:
-              updatedTemp.attachmentType, //  <-- اصلاح شد: ارسال از updatedTemp
-          replyToMessageId: updatedTemp
-              .replyToMessageId, //  <-- اصلاح شد: ارسال از updatedTemp
-          replyToContent:
-              updatedTemp.replyToContent, //  <-- اصلاح شد: ارسال از updatedTemp
-          replyToSenderName: updatedTemp
-              .replyToSenderName, //  <-- اصلاح شد: ارسال از updatedTemp
+          conversationId: conversationId,
+          content: content,
+          attachmentUrl: attachmentUrl,
+          attachmentType: attachmentType,
+          replyToMessageId: replyToMessageId,
+          replyToContent: replyToContent,
+          replyToSenderName: replyToSenderName,
           retryCount: retryCount + 1,
-        ));
+        );
       } else {
-        // اگر به سقف رسید failed کن
+        // علامت‌گذاری به عنوان ناموفق
         ref
             .read(conversationMessagesProvider(conversationId).notifier)
             .markTempFailed(tempMessage.id);
-        print("❌ ارسال پیام ${tempMessage.id} ناموفق پس از $maxRetry بار تلاش");
       }
     }
   }
@@ -1139,6 +995,7 @@ final userOnlineStatusStreamProvider =
       .from('profiles')
       .stream(primaryKey: ['id'])
       .eq('id', userId)
+      .timeout(const Duration(seconds: 30))
       .asyncMap((list) async {
         if (list.isEmpty) return false;
 
@@ -1577,15 +1434,21 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
   }
 
   Future<void> _init() async {
+    if (_disposed) return;
+
     final userId = supabase.auth.currentUser!.id;
     final cached =
         await _cacheService.getConversationMessages(conversationId, userId);
-    state = [...cached];
-    _updateUnreadCount();
+    if (!_disposed) {
+      state = [...cached];
+      _updateUnreadCount();
+    }
   }
 
   // شمارش دقیق پیام‌های خوانده‌نشده و بروزرسانی کش مکالمه
   Future<void> _updateUnreadCount() async {
+    if (_disposed) return;
+
     final currentUserId = supabase.auth.currentUser?.id;
     if (currentUserId == null) return;
 
@@ -1622,6 +1485,8 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
   }
 
   void addTempMessage(MessageModel message) {
+    if (_disposed) return;
+
     // ابتدا بررسی کن که آیا پیامی با همین localId (که در اینجا message.id است) وجود دارد یا خیر
     // این کار برای جلوگیری از افزودن مجدد پیام موقت در صورت رفرش‌های ناخواسته است.
     if (state.any((m) => m.id == message.id)) {
@@ -1671,6 +1536,8 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
 
   // برای آپدیت کردن پیام موجود در لیست (مثلا برای retry)
   void updateMessage(MessageModel updatedMessage) {
+    if (_disposed) return;
+
     final newState = state.map((m) {
       if (m.id == updatedMessage.id) {
         return updatedMessage;
@@ -1688,6 +1555,8 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
 
   // اضافه کردن پیام جدید به state (بدون invalidate کردن کل provider)
   void addMessage(MessageModel message) {
+    if (_disposed) return;
+
     final newState = [...state, message];
     state = _filterTempDuplicates(newState);
     final userId = supabase.auth.currentUser!.id;
@@ -1696,6 +1565,8 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
 
   // حذف پیام از state (بدون invalidate کردن کل provider)
   void removeMessage(String messageId) {
+    if (_disposed) return;
+
     final newState = state.where((m) => m.id != messageId).toList();
     state = _filterTempDuplicates(newState);
     final userId = supabase.auth.currentUser!.id;
@@ -1704,25 +1575,34 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
 
   // علامت‌گذاری حذف خوشبینانه برای همگام‌سازی با استریم
   void markLocallyDeleted(String messageId) {
+    if (_disposed) return;
+
     _locallyDeletedMessageIds.add(messageId);
     removeMessage(messageId);
   }
 
   // متد جدید برای پاک کردن تمام پیام‌ها از state
   void clearAll() {
+    if (_disposed) return;
     state = [];
   }
 
   // پاک‌سازی کامل + ثبت زمان پاک‌سازی و حذف کش لوکال
   Future<void> clearAllAndMark() async {
+    if (_disposed) return;
+
     _clearedAt = DateTime.now();
-    state = [];
+    if (!_disposed) {
+      state = [];
+    }
     final userId = supabase.auth.currentUser!.id;
     await _cacheService.clearConversationMessages(conversationId, userId);
   }
 
   // جایگزینی پیام موقت با پیام واقعی (بدون invalidate کردن کل provider)
   void replaceTempMessage(String tempId, MessageModel realMessage) {
+    if (_disposed) return;
+
     final newState = state.map((m) {
       if (m.id == tempId) {
         return realMessage;
@@ -1741,6 +1621,8 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
   }
 
   void markMessageAsFailed(String messageId) {
+    if (_disposed) return;
+
     final newState = [
       for (final m in state)
         if (m.id == messageId)
@@ -1771,6 +1653,14 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
     Future.microtask(() {
       _updateUnreadCount();
     });
+  }
+
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }
 
@@ -1894,7 +1784,7 @@ final conversationMessagesProvider = StateNotifierProvider.family
   },
 );
 
-// --- Provider جدید برای گوش دادن به تغییرات کش مکالمات (Drift) ---
+// --- Provider جدید برای گوش دادن به تغییرات کش مکالمات (Advanced Cache) ---
 final cachedConversationsStreamProvider =
     StreamProvider.autoDispose<List<ConversationModel>>((ref) async* {
   final conversationCache = ConversationCacheService();
@@ -1908,7 +1798,7 @@ final cachedConversationsStreamProvider =
     return;
   }
 
-  // Make sure ConversationCacheService is a singleton or provided correctly
+  // Use the advanced cache system for better performance
   yield* conversationCache
       .watchCachedConversations(supabase.auth.currentUser!.id);
 });

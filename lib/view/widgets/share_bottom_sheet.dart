@@ -91,6 +91,12 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                       icon: Icons.share,
                       label: 'اشتراک‌گذاری...',
                       onTap: _shareVia,
+                      customIcon: Image.asset(
+                        'lib/view/util/images/component/send.png',
+                        width: 24,
+                        height: 24,
+                        color: Colors.black,
+                      ),
                     ),
                   ],
                 ),
@@ -178,6 +184,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
     required IconData icon,
     required String label,
     required VoidCallback onTap,
+    Widget? customIcon,
   }) {
     return Column(
       children: [
@@ -189,7 +196,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
             shape: BoxShape.circle,
           ),
           child: IconButton(
-            icon: Icon(icon, color: Colors.black, size: 24),
+            icon: customIcon ?? Icon(icon, color: Colors.black, size: 24),
             onPressed: onTap,
           ),
         ),

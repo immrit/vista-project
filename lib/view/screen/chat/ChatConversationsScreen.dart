@@ -9,6 +9,7 @@ import '../../../model/channel_model.dart';
 import '../../../model/conversation_model.dart';
 import '../../../provider/channel_provider.dart';
 import '../../../provider/chat_provider.dart';
+import '../../../provider/advanced_chat_providers.dart';
 import '../../util/const.dart';
 import 'ArchivedConversationsScreen.dart';
 // import 'ChatSettingsScreen.dart'; // اضافه کردن ایمپورت صفحه جدید
@@ -305,9 +306,8 @@ class _ChatConversationsScreenState
 
   // لیست یکپارچه چت‌ها و کانال‌ها
   Widget _buildUnifiedList(ThemeData theme) {
-    // ترکیب داده‌ها از هر دو provider
-    // ** تغییر: استفاده از cachedConversationsStreamProvider برای به‌روزرسانی فوری **
-    final conversationsAsync = ref.watch(cachedConversationsStreamProvider);
+    // استفاده از سیستم کش پیشرفته
+    final conversationsAsync = ref.watch(advancedConversationsProvider);
     final channelsAsync = ref.watch(channelsProvider);
 
     return conversationsAsync.when(

@@ -404,7 +404,7 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
                       children: [
                         CircleAvatar(
                           radius: 20,
-                          backgroundImage: NetworkImage(widget.post.avatarUrl!),
+                          backgroundImage: NetworkImage(widget.post.avatarUrl),
                           child: null,
                         ),
                         SizedBox(width: 8),

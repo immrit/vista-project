@@ -840,7 +840,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
                     },
                     child: CircleAvatar(
                       radius: widget.isReply ? 16 : 20,
-                      backgroundImage: NetworkImage(widget.comment.avatarUrl!),
+                      backgroundImage: NetworkImage(widget.comment.avatarUrl),
                       backgroundColor:
                           theme.colorScheme.primary.withValues(alpha: 0.1),
                       child: null,

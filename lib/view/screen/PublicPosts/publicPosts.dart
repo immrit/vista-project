@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -928,9 +927,13 @@ Widget _buildPostItem(
                     shape: BoxShape.circle,
                     color: Colors.transparent,
                   ),
-                  child: const Icon(
-                    Icons.share_outlined,
-                    size: 22,
+                  child: Image.asset(
+                    'lib/view/util/images/component/send.png',
+                    width: 20,
+                    height: 20,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white
+                        : Colors.black87,
                   ),
                 ),
               ),

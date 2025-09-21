@@ -11,6 +11,11 @@ class ConversationCacheService {
   final UnifiedConversationCacheService _unifiedService =
       UnifiedConversationCacheService();
 
+  /// Initialize the cache service
+  Future<void> initialize() async {
+    await _unifiedService.initialize();
+  }
+
   /// Cache a conversation
   Future<void> cacheConversation(
       ConversationModel conversation, String userId) async {

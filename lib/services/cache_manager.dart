@@ -29,8 +29,11 @@ class UnifiedCacheManager {
   bool _smartCacheEnabled = true;
   bool _batterySaverMode = false;
   int _maxCacheSizeMB = 200; // حداکثر حجم کش 200MB (قابل تنظیم)
+  bool _isInitialized = false;
 
   Future<void> initialize() async {
+    if (_isInitialized) return;
+
     // مقداردهی اولیه کش‌های تصویر
     storyInstance = CacheManager(
       Config(
@@ -64,6 +67,8 @@ class UnifiedCacheManager {
         fileService: HttpFileService(),
       ),
     );
+
+    _isInitialized = true;
 
     // شروع پاکسازی هوشمند
     _startSmartCleanup();
@@ -623,6 +628,8 @@ class UnifiedCacheManager {
 
     print('=== پایان تست کش ===');
   }
+
+  bool get isInitialized => _isInitialized;
 }
 
 // کلاس قدیمی برای سازگاری به عقب
@@ -630,9 +637,20 @@ class CustomCacheManager {
   static const storyKey = 'storyImageCache';
   static const postKey = 'postImageCache';
 
-  static CacheManager get storyInstance => UnifiedCacheManager().storyInstance;
-  static CacheManager get postInstance => UnifiedCacheManager().postInstance;
-  static CacheManager get chatInstance => UnifiedCacheManager().chatInstance;
-  static CacheManager get wallpaperInstance =>
-      UnifiedCacheManager().wallpaperInstance;
+  static CacheManager get storyInstance => _getInstance().storyInstance;
+  static CacheManager get postInstance => _getInstance().postInstance;
+  static CacheManager get chatInstance => _getInstance().chatInstance;
+  static CacheManager get wallpaperInstance => _getInstance().wallpaperInstance;
+
+  static UnifiedCacheManager _getInstance() {
+    final instance = UnifiedCacheManager();
+    if (!instance.isInitialized) {
+      // اگر initialize نشده، یک عملیات synchronous انجام می‌دهیم
+      // اما در عمل باید مطمئن شویم که initialize قبلاً انجام شده
+      instance.initialize();
+    }
+    return instance;
+  }
+
+  bool get isInitialized => UnifiedCacheManager().isInitialized;
 }

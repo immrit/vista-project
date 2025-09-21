@@ -1114,7 +1114,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Widget _buildShareButton(PublicPostModel post) {
     return IconButton(
-        icon: const Icon(Icons.share), onPressed: () => _sharePost(post));
+        icon: Image.asset(
+          'lib/view/util/images/component/send.png',
+          width: 20,
+          height: 20,
+          color: Theme.of(context).brightness == Brightness.dark
+              ? Colors.white
+              : Colors.black87,
+        ),
+        onPressed: () => _sharePost(post));
   }
 
   void _handleLike(PublicPostModel post) async {

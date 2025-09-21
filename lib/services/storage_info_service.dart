@@ -1,8 +1,6 @@
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
-import '../DB/message_cache_service_wrapper.dart';
-import '../DB/conversation_cache_service_wrapper.dart';
 import '../DB/database_file_utils.dart';
 
 class StorageInfoService {

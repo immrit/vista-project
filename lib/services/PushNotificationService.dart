@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../provider/notification_provider.dart';
 
 /// Provider برای دسترسی به PushNotificationService
-final pushNotificationServiceProvider =
-    Provider<PushNotificationService>((ref) => PushNotificationService(ref));
+final pushNotificationServiceProvider = Provider<PushNotificationService>(
+  (ref) => PushNotificationService(ref),
+);
 
 class PushNotificationService {
   final Ref ref;
@@ -24,78 +26,99 @@ class PushNotificationService {
 
   /// مقداردهی اولیه سرویس
   Future<void> init(BuildContext context) async {
-    // درخواست اجازه دسترسی به نوتیفیکیشن (iOS / Android 13+)
-    await _firebaseMessaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
+    try {
+      // بررسی اینکه Firebase initialize شده یا نه
+      if (Firebase.apps.isEmpty) {
+        print(
+          '⚠️ Firebase not initialized, skipping PushNotificationService init',
+        );
+        return;
+      }
 
-    // مقداردهی flutter_local_notifications
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const iOSInit = DarwinInitializationSettings();
-    const initSettings =
-        InitializationSettings(android: androidInit, iOS: iOSInit);
+      // درخواست اجازه دسترسی به نوتیفیکیشن (iOS / Android 13+)
+      await _firebaseMessaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
 
-    await _flutterLocalNotifications.initialize(
-      initSettings,
-      onDidReceiveNotificationResponse: (details) {
-        if (details.payload != null) {
-          try {
-            final data = jsonDecode(details.payload!) as Map<String, dynamic>;
+      // مقداردهی flutter_local_notifications
+      const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const iOSInit = DarwinInitializationSettings();
+      const initSettings = InitializationSettings(
+        android: androidInit,
+        iOS: iOSInit,
+      );
 
-            // هندل پاسخ سریع
-            if (details.actionId == 'reply' && details.input != null) {
-              final conversationId = data['conversation_id'];
-              if (conversationId != null &&
-                  conversationId.toString().isNotEmpty) {
-                handleQuickReply(conversationId.toString(), details.input!);
+      await _flutterLocalNotifications.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: (details) {
+          if (details.payload != null) {
+            try {
+              final data = jsonDecode(details.payload!) as Map<String, dynamic>;
+
+              // هندل پاسخ سریع
+              if (details.actionId == 'reply' && details.input != null) {
+                final conversationId = data['conversation_id'];
+                if (conversationId != null &&
+                    conversationId.toString().isNotEmpty) {
+                  handleQuickReply(conversationId.toString(), details.input!);
+                }
+              } else {
+                // هندل ناوبری عادی
+                handleNotificationNavigation(context, data);
               }
-            } else {
-              // هندل ناوبری عادی
-              handleNotificationNavigation(context, data);
+            } catch (e) {
+              print('❌ خطا در پردازش payload نوتیفیکیشن: $e');
             }
-          } catch (e) {
-            print('❌ خطا در پردازش payload نوتیفیکیشن: $e');
           }
-        }
-      },
-    );
+        },
+      );
 
-    // گرفتن و ذخیره توکن FCM در سوپابیس
-    await _saveFcmToken();
+      // گرفتن و ذخیره توکن FCM در سوپابیس
+      await _saveFcmToken();
 
-    // گوش دادن به پیام‌ها در فورگراند
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      _notifications.add(message);
-      _showNotification(message);
+      // گوش دادن به پیام‌ها در فورگراند
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        _notifications.add(message);
+        _showNotification(message);
 
-      // اضافه کردن اعلان به notificationsProvider
-      _addNotificationToProvider(message);
-    });
+        // اضافه کردن اعلان به notificationsProvider
+        _addNotificationToProvider(message);
+      });
 
-    // وقتی کاربر روی نوتیفیکیشن در بک‌گراند کلیک می‌کنه
-    FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      handleNotificationNavigation(context, message.data);
-    });
+      // وقتی کاربر روی نوتیفیکیشن در بک‌گراند کلیک می‌کنه
+      FirebaseMessaging.onMessageOpenedApp.listen((message) {
+        handleNotificationNavigation(context, message.data);
+      });
 
-    // اگر اپ از حالت بسته با نوتیف باز شد
-    final initialMessage = await _firebaseMessaging.getInitialMessage();
-    if (initialMessage != null) {
-      handleNotificationNavigation(context, initialMessage.data);
+      // اگر اپ از حالت بسته با نوتیف باز شد
+      final initialMessage = await _firebaseMessaging.getInitialMessage();
+      if (initialMessage != null) {
+        handleNotificationNavigation(context, initialMessage.data);
+      }
+    } catch (e) {
+      print('❌ خطا در راه‌اندازی PushNotificationService: $e');
     }
   }
 
   /// ذخیره توکن FCM در جدول profiles
   Future<void> _saveFcmToken() async {
     try {
+      // بررسی اینکه Firebase initialize شده یا نه
+      if (Firebase.apps.isEmpty) {
+        print('⚠️ Firebase not initialized, skipping FCM token save');
+        return;
+      }
+
       final token = await _firebaseMessaging.getToken();
       if (token != null) {
         final user = _supabase.auth.currentUser;
         if (user != null) {
           await _supabase
               .from("profiles")
-              .update({"fcm_token": token}).eq("id", user.id);
+              .update({"fcm_token": token})
+              .eq("id", user.id);
           print('✅ FCM Token با موفقیت در سوپابیس ذخیره شد');
         } else {
           print('⚠️ کاربر لاگین نشده، FCM Token ذخیره نشد');
@@ -155,8 +178,10 @@ class PushNotificationService {
 
     const iOSDetails = DarwinNotificationDetails();
 
-    final platformDetails =
-        NotificationDetails(android: androidDetails, iOS: iOSDetails);
+    final platformDetails = NotificationDetails(
+      android: androidDetails,
+      iOS: iOSDetails,
+    );
 
     // استفاده از محتوای FCM data یا notification body
     final title = data['title'] ?? notification?.title ?? 'اعلان جدید';
@@ -180,7 +205,9 @@ class PushNotificationService {
 
   /// هدایت کاربر به صفحات مرتبط بر اساس دیتای ارسالی سرور
   void handleNotificationNavigation(
-      BuildContext context, Map<String, dynamic> data) {
+    BuildContext context,
+    Map<String, dynamic> data,
+  ) {
     // لاگ امن: از چاپ کامل دیتای اعلان خودداری کنید
     try {
       final keys = data.keys.take(6).join(',');
@@ -192,11 +219,7 @@ class PushNotificationService {
       case "chat":
         final conversationId = data["conversation_id"];
         if (conversationId != null && conversationId.toString().isNotEmpty) {
-          Navigator.pushNamed(
-            context,
-            "/chat",
-            arguments: conversationId,
-          );
+          Navigator.pushNamed(context, "/chat", arguments: conversationId);
         }
         break;
 

@@ -10,6 +10,11 @@ class MessageCacheService {
   final UnifiedMessageCacheService _unifiedService =
       UnifiedMessageCacheService();
 
+  /// Initialize the cache service
+  Future<void> initialize() async {
+    await _unifiedService.initialize();
+  }
+
   /// Cache a message
   Future<void> cacheMessage(MessageModel message, String userId) async {
     return await _unifiedService.cacheMessage(message, userId);

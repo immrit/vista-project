@@ -26,7 +26,7 @@ class ProfileService {
           .select()
           .eq('id', userId)
           .single()
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 30));
 
       logger.d('پاسخ دریافت پروفایل: $response');
       return response;
@@ -66,7 +66,7 @@ class ProfileService {
       await supabase
           .from('profiles')
           .upsert(payload)
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 30));
 
       logger.i('پروفایل با موفقیت ذخیره شد');
       return;
@@ -97,7 +97,7 @@ class ProfileService {
           .from('profiles')
           .update({'avatar_url': avatarUrl})
           .eq('id', userId)
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 30));
 
       logger.i('تصویر پروفایل با موفقیت به‌روزرسانی شد');
       return;

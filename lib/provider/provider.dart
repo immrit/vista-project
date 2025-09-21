@@ -5,13 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:sembast/sembast.dart' show Database, StoreRef;
 import 'package:sembast/sembast_io.dart';
 import 'package:path_provider/path_provider.dart';
-import '../DB/message_cache_service_wrapper.dart';
-import '../DB/conversation_cache_service_wrapper.dart';
 import '../DB/unified_conversation_cache_service.dart';
 import '../DB/unified_message_cache_service.dart';
+import '../DB/profile_cache_service.dart';
+import '../DB/settings_cache_service.dart';
 import '../model/SearchResut.dart';
 import '../services/PostImageUploadService.dart';
 import '../view/widgets/VideoPlayerConfig.dart';
@@ -23,7 +22,6 @@ import '../model/CommentModel.dart';
 import '../model/UserModel.dart';
 import '../view/util/themes.dart';
 // Import security provider
-import 'security_provider.dart';
 
 // Export security providers
 export 'security_provider.dart';
@@ -1342,6 +1340,7 @@ final commentNotifierProvider =
 
 class ProfileNotifier extends StateNotifier<ProfileModel?> {
   final Ref ref;
+  final ProfileCacheService _profileCache = ProfileCacheService();
 
   ProfileNotifier(this.ref) : super(null);
 
@@ -1349,6 +1348,37 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
     try {
       final supabase = Supabase.instance.client;
       final currentUserId = supabase.auth.currentUser?.id;
+
+      // ابتدا سعی کن از کش استفاده کن
+      if (_profileCache.shouldUseCache(userId)) {
+        try {
+          final cachedProfile = await _profileCache.getProfile(userId);
+          final cachedPosts = await _profileCache.getUserPosts(userId);
+
+          // بررسی وضعیت فالو از سرور (این اطلاعات معمولاً در کش نیست)
+          final followStatusResponse = await supabase
+              .from('follows')
+              .select()
+              .eq('follower_id', currentUserId!)
+              .eq('following_id', userId)
+              .maybeSingle();
+
+          // به‌روزرسانی استیت با داده‌های کش شده
+          state = cachedProfile.copyWith(
+            posts: cachedPosts,
+            isFollowed: followStatusResponse != null,
+          );
+
+          // به‌روزرسانی پس‌زمینه کش
+          _profileCache.refreshCacheInBackground(userId);
+          return;
+        } catch (e) {
+          print('⚠️ Failed to use cached profile, fetching from server: $e');
+        }
+      }
+
+      // اگر کش در دسترس نیست، از سرور دریافت کن
+      print('🌐 Fetching profile from server for user: $userId');
 
       // دریافت اطلاعات پروفایل
       final profileResponse = await supabase.from('profiles').select('''
@@ -1379,13 +1409,16 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
 
       final followingCount = followingResponse.length;
 
-      // دریافت پست‌ها
-      final postsResponse = await supabase.from('posts').select('''
+      // دریافت آخرین 10 پست
+      final postsResponse = await supabase
+          .from('posts')
+          .select('''
             *,
             profiles!posts_user_id_fkey (
               username,
               avatar_url,
-              is_verified
+              is_verified,
+              verification_type
             ),
             likes (
               user_id
@@ -1393,7 +1426,10 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
             comments (
               id
             )
-          ''').eq('user_id', userId).order('created_at', ascending: false);
+          ''')
+          .eq('user_id', userId)
+          .order('created_at', ascending: false)
+          .limit(10);
 
       // ساخت مدل پروفایل با اطلاعات به‌روز شده
       final profile = ProfileModel.fromMap({
@@ -1427,6 +1463,13 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
           .eq('following_id', userId)
           .maybeSingle();
 
+      // کش کردن پروفایل و پست‌ها
+      try {
+        await _profileCache.cacheProfileAndPosts(userId);
+      } catch (e) {
+        print('⚠️ Failed to cache profile: $e');
+      }
+
       // به‌روزرسانی استیت
       state = profile.copyWith(
         posts: posts,
@@ -1434,7 +1477,52 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
       );
     } catch (e) {
       print('خطا در دریافت پروفایل: $e');
+
+      // در صورت خطا، سعی کن از کش استفاده کن
+      try {
+        final cachedProfile = _profileCache.getCachedProfile(userId);
+        final cachedPosts = _profileCache.getCachedPosts(userId);
+
+        if (cachedProfile != null) {
+          state = cachedProfile.copyWith(posts: cachedPosts);
+          print('📱 Using cached profile due to network error');
+          return;
+        }
+      } catch (cacheError) {
+        print('⚠️ Failed to use cached profile: $cacheError');
+      }
+
       rethrow;
+    }
+  }
+
+  /// اضافه کردن پست جدید به کش
+  Future<void> addPostToCache(PublicPostModel post) async {
+    try {
+      await _profileCache.addPostToCache(post.userId, post);
+      print('✅ Added post to cache: ${post.id}');
+    } catch (e) {
+      print('⚠️ Failed to add post to cache: $e');
+    }
+  }
+
+  /// حذف پست از کش
+  Future<void> removePostFromCache(String userId, String postId) async {
+    try {
+      await _profileCache.removePostFromCache(userId, postId);
+      print('✅ Removed post from cache: $postId');
+    } catch (e) {
+      print('⚠️ Failed to remove post from cache: $e');
+    }
+  }
+
+  /// پاک کردن کش کاربر
+  Future<void> clearUserCache(String userId) async {
+    try {
+      await _profileCache.clearUserCache(userId);
+      print('✅ Cleared cache for user: $userId');
+    } catch (e) {
+      print('⚠️ Failed to clear user cache: $e');
     }
   }
 

@@ -1198,6 +1198,42 @@ class ChatService {
     }
   }
 
+  // دریافت پیام‌های جدید بعد از تاریخ مشخص (برای sync)
+  Future<List<MessageModel>> getMessagesAfter(
+      String conversationId, DateTime after) async {
+    final userId = _supabase.auth.currentUser!.id;
+
+    try {
+      final response = await _supabase
+          .from('messages')
+          .select()
+          .eq('conversation_id', conversationId)
+          .gt('created_at', after.toIso8601String())
+          .order('created_at', ascending: false)
+          .limit(50);
+
+      final messages = await Future.wait(
+        response.map((json) async {
+          final profileResponse = await _supabase
+              .from('profiles')
+              .select()
+              .eq('id', json['sender_id'])
+              .maybeSingle();
+
+          return MessageModel.fromJson(json, currentUserId: userId).copyWith(
+            senderName: profileResponse?['username'] ?? 'کاربر',
+            senderAvatar: profileResponse?['avatar_url'],
+          );
+        }),
+      );
+
+      return messages;
+    } catch (e) {
+      print('خطا در دریافت پیام‌های جدید: $e');
+      return [];
+    }
+  }
+
   // دریافت پیام‌های یک مکالمه
   Future<List<MessageModel>> getMessages(
     String conversationId, {
@@ -1389,6 +1425,35 @@ class ChatService {
         });
   }
 
+  // حذف مکالمه برای همه (مثل تلگرام)
+  Future<void> deleteConversationForEveryone(String conversationId) async {
+    final userId = _supabase.auth.currentUser!.id;
+
+    try {
+      print('🔥 حذف مکالمه برای همه شرکت‌کنندگان: $conversationId');
+
+      // حذف همه شرکت‌کنندگان از مکالمه
+      await _supabase
+          .from('conversation_participants')
+          .delete()
+          .eq('conversation_id', conversationId);
+
+      // حذف تمام پیام‌های این گفتگو
+      await _supabase
+          .from('messages')
+          .delete()
+          .eq('conversation_id', conversationId);
+
+      // حذف خود گفتگو
+      await _supabase.from('conversations').delete().eq('id', conversationId);
+
+      print('✅ مکالمه برای همه حذف شد');
+    } catch (e) {
+      print('❌ خطا در حذف مکالمه برای همه: $e');
+      rethrow;
+    }
+  }
+
   // حذف یک گفتگو
   Future<void> deleteConversation(String conversationId) async {
     final userId = _supabase.auth.currentUser!.id;
@@ -1404,6 +1469,13 @@ class ChatService {
     }
     // --- پایان اضافه شده ---
     try {
+      // ابتدا اطلاعات مکالمه را دریافت کن
+      final conversationData = await _supabase
+          .from('conversations')
+          .select('id, type')
+          .eq('id', conversationId)
+          .single();
+
       // حذف مشارکت کاربر از گفتگو
       await _supabase
           .from('conversation_participants')
@@ -1414,7 +1486,7 @@ class ChatService {
       // بررسی آیا کاربر دیگری در این گفتگو باقی مانده است
       final remainingParticipants = await _supabase
           .from('conversation_participants')
-          .select('id')
+          .select('id, user_id')
           .eq('conversation_id', conversationId);
 
       // اگر هیچ شرکت کننده‌ای باقی نمانده، کل گفتگو و پیام‌های آن را حذف کنیم (از سرور)
@@ -1434,6 +1506,32 @@ class ChatService {
         print(
           'کاربر گفتگو را ترک کرد، شرکت‌کنندگان دیگر باقی مانده‌اند: $conversationId',
         );
+
+        // 🔥 راهکار جدید: برای جلوگیری از نمایش "کاربر" به طرف مقابل
+        // مکالمه را برای همه شرکت‌کنندگان حذف کن (مثل تلگرام)
+        if (conversationData['type'] == 'private') {
+          print('🔥 حذف مکالمه خصوصی برای همه شرکت‌کنندگان (مثل تلگرام)');
+
+          // حذف همه شرکت‌کنندگان از مکالمه
+          await _supabase
+              .from('conversation_participants')
+              .delete()
+              .eq('conversation_id', conversationId);
+
+          // حذف تمام پیام‌های این گفتگو
+          await _supabase
+              .from('messages')
+              .delete()
+              .eq('conversation_id', conversationId);
+
+          // حذف خود گفتگو
+          await _supabase
+              .from('conversations')
+              .delete()
+              .eq('id', conversationId);
+
+          print('✅ مکالمه خصوصی برای همه حذف شد');
+        }
       }
 
       // --- اضافه شد: حذف از کش لوکال Drift ---
