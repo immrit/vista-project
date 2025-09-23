@@ -69,13 +69,13 @@ class ConversationModel {
                 participantUserId != currentUserId) {
               otherUserId = participantUserId;
 
-              // Extract profile info if available
+              // Extract profile info if available - prioritize cached data
               final profiles = participantData['profiles'];
               if (profiles != null) {
                 otherUserName = profiles['username'] as String?;
                 otherUserAvatar = profiles['avatar_url'] as String?;
               } else {
-                // No profile info available - will be enriched later
+                // No profile info available - will be enriched by ProfileService later
                 otherUserName = null;
                 otherUserAvatar = null;
               }

@@ -117,7 +117,9 @@ class _EnrichedConversationListItemState
     String displayName = 'در حال بارگذاری...';
     String? avatarUrl;
 
-    if (conversation.otherUserName?.isNotEmpty == true) {
+    final nameIsPlaceholder = conversation.otherUserName == 'کاربر ناشناس' ||
+        conversation.otherUserName == 'Unknown User';
+    if (conversation.otherUserName?.isNotEmpty == true && !nameIsPlaceholder) {
       displayName = conversation.otherUserName!;
       avatarUrl = conversation.otherUserAvatar;
     } else {

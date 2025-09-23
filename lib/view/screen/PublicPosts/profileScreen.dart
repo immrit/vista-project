@@ -14,7 +14,7 @@ import '../../../main.dart';
 import '../../../model/MusicModel.dart';
 import '../../../model/ProfileModel.dart';
 import '../../../provider/MusicProvider.dart';
-import '../../../provider/chat_provider.dart';
+import '../../../provider/chat_provider.dart' as chat_provider;
 import '../../util/const.dart';
 import '../../util/widgets.dart';
 import '../../widgets/CustomVideoPlayer.dart';
@@ -487,13 +487,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
       // دریافت اطلاعات پروفایل برای عکس
       final profileState = ref.read(userProfileProvider(otherUserId));
+      final avatarUrl = profileState?.avatarUrl;
 
       // ابتدا بررسی کن که آیا مکالمه قبلی وجود دارد یا نه
       String? existingConversationId;
       bool isNewConversation = true;
 
       try {
-        final chatService = ref.read(chatServiceProvider);
+        final chatService = ref.read(chat_provider.chatServiceProvider);
         // نمایش نشانگر بارگذاری
         showDialog(
           context: context,
@@ -585,8 +586,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   existingConversationId ?? '', // اگر وجود داشت، آن را ارسال کن
               otherUserId: otherUserId,
               otherUserName: otherUsername,
-              otherUserAvatar:
-                  profileState?.avatarUrl, // اضافه شد: ارسال عکس پروفایل
+              otherUserAvatar: avatarUrl, // اضافه شد: ارسال عکس پروفایل
               isNewConversation:
                   isNewConversation, // بر اساس وجود یا عدم وجود مکالمه
             ),

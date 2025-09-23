@@ -13,12 +13,14 @@ import '../view/Exeption/app_exceptions.dart';
 import '/main.dart';
 import 'uploadImageChatService.dart';
 import 'uploadAudioChatService.dart';
+import 'profile_service.dart';
 
 class ChatService {
   final SupabaseClient _supabase = supabase;
   final ConversationCacheService _conversationCache =
       ConversationCacheService();
   final MessageCacheService _messageCache = MessageCacheService();
+  final ProfileService _profileService = ProfileService();
 
   // حذف فایل پیوست چت از استوریج (بر اساس نوع)
   Future<void> _tryDeleteChatAttachment(
@@ -68,26 +70,23 @@ class ChatService {
   // // نگهداری لیست پیام‌هایی که نوتیفیکیشن گرفته‌اند (در یک session)
   // static final Set<String> _notifiedMessageIds = {};
 
-  // دریافت تمامی مکالمات کاربر فعلی
+  // دریافت تمامی مکالمات کاربر فعلی - بهینه شده با ProfileService
   Future<List<ConversationModel>> getConversations() async {
     final userId = _supabase.auth.currentUser!.id;
-    final ConversationCacheService conversationCache =
-        ConversationCacheService();
 
     try {
-      // بررسی می‌کنیم که آیا آنلاین هستیم
+      // بررسی وضعیت آنلاین
       final isOnline = kIsWeb ? true : await isDeviceOnline();
 
       // ابتدا سعی می‌کنیم مکالمات را از کش بگیریم
       final cachedConversations =
-          await conversationCache.getCachedConversations(userId);
+          await _conversationCache.getCachedConversations(userId);
 
       // اگر آفلاین هستیم و کش داریم، از کش استفاده می‌کنیم
       if (!isOnline && cachedConversations.isNotEmpty) {
         return cachedConversations;
       }
 
-      // در حالت آنلاین، مکالمات را از سرور دریافت می‌کنیم
       if (isOnline) {
         // دریافت شناسه‌های مکالماتی که کاربر در آنها شرکت دارد
         final participantsResponse = await _supabase
@@ -97,80 +96,88 @@ class ChatService {
 
         if (participantsResponse.isEmpty) return [];
 
-        // تبدیل به لیستی از شناسه‌ها
         final conversationIds = participantsResponse
             .map((e) => e['conversation_id'] as String)
             .toList();
 
-        // دریافت مکالمات
+        // دریافت مکالمات به صورت باتچ
         final conversationsResponse = await _supabase
             .from('conversations')
             .select()
             .inFilter('id', conversationIds)
             .order('updated_at', ascending: false);
 
-        // برای هر مکالمه، شرکت‌کنندگان را دریافت می‌کنیم
-        final List<ConversationModel> conversationsFromServer =
-            await Future.wait(
+        // دریافت تمام شرکت‌کنندگان به صورت باتچ برای بهبود عملکرد
+        final participantsResponseAll = await _supabase
+            .from('conversation_participants')
+            .select('*, profiles:user_id(username, full_name, avatar_url)')
+            .inFilter('conversation_id', conversationIds);
+
+        // ایجاد مپ از conversation_id به لیست شرکت‌کنندگان
+        final Map<String, List<Map<String, dynamic>>>
+            participantsByConversation = {};
+        for (final participant in participantsResponseAll) {
+          final convId = participant['conversation_id'] as String;
+          if (participantsByConversation[convId] == null) {
+            participantsByConversation[convId] = [];
+          }
+          participantsByConversation[convId]!.add(participant);
+        }
+
+        // استخراج تمام userId های منحصر به فرد برای دریافت پروفایل
+        final allUserIds = participantsResponseAll
+            .map((p) => p['user_id'] as String)
+            .toSet()
+            .toList();
+
+        // پیش‌بارگذاری پروفایل‌ها با ProfileService
+        await _profileService.preloadProfiles(allUserIds);
+
+        // ساخت مکالمات با استفاده از پروفایل‌های کش شده
+        final conversationsFromServer = await Future.wait(
           conversationsResponse.map((json) async {
             final conversationId = json['id'] as String;
+            final participantsJson =
+                participantsByConversation[conversationId] ?? [];
 
-            // دریافت شرکت‌کنندگان - اصلاح کوئری
-            final participantsJson = await _supabase
-                .from('conversation_participants')
-                .select('*')
-                .eq('conversation_id', conversationId);
+            // ساخت شرکت‌کنندگان با استفاده از پروفایل‌های کش شده
+            final participants = participantsJson.map((participant) {
+              final String pUserId = participant['user_id'] as String;
 
-            // برای هر شرکت‌کننده، اطلاعات پروفایل را جداگانه دریافت می‌کنیم
-            final participants = await Future.wait(
-              participantsJson.map((participant) async {
-                final userId = participant['user_id'] as String;
-                final profileJson = await _supabase
-                    .from('profiles')
-                    .select()
-                    .eq('id', userId)
-                    .maybeSingle();
+              // استفاده از پروفایل کش شده
+              final cachedProfile = _profileService.getCachedProfile(pUserId);
 
-                final updatedParticipant = {...participant};
-                if (profileJson != null) {
-                  updatedParticipant['profile'] = profileJson;
-                }
+              final updatedParticipant = {...participant};
+              if (cachedProfile != null) {
+                updatedParticipant['profiles'] = {
+                  'username': cachedProfile.username,
+                  'full_name': cachedProfile.fullName,
+                  'avatar_url': cachedProfile.avatarUrl,
+                };
+              }
 
-                return ConversationParticipantModel.fromJson(
-                  updatedParticipant,
-                );
-              }),
-            );
+              return ConversationParticipantModel.fromJson(updatedParticipant);
+            }).toList();
 
-            // پیدا کردن کاربر دیگر در چت (برای چت دو نفره)
-            Map<String, dynamic>? otherParticipantData;
-            Map<String, dynamic>? otherParticipantProfile;
-
+            // پیدا کردن کاربر دیگر در چت
+            String? otherUserId;
             for (final participant in participantsJson) {
               if (participant['user_id'] != userId) {
-                otherParticipantData = participant;
-                final otherUserId = participant['user_id'] as String?;
-
-                // دریافت اطلاعات پروفایل کاربر دیگر
-                if (otherUserId != null) {
-                  otherParticipantProfile = await _supabase
-                      .from('profiles')
-                      .select()
-                      .eq(
-                        'id',
-                        otherUserId,
-                      )
-                      .maybeSingle();
-                }
-
+                otherUserId = participant['user_id'] as String?;
                 break;
               }
             }
 
-            // آخرین زمان خواندن پیام توسط کاربر فعلی
+            // دریافت پروفایل طرف مقابل از کش (یا دریافت از سرور اگر در کش نباشد)
+            final otherProfile = otherUserId != null
+                ? _profileService.getCachedProfile(otherUserId) ??
+                    await _profileService.getProfile(otherUserId)
+                : null;
+
+            // وضعیت کاربر فعلی
             String? myLastRead;
             bool currentUserIsMuted = false;
-            bool currentUserIsArchived = false; // مقدار پیش‌فرض برای بایگانی
+            bool currentUserIsArchived = false;
             for (final participant in participantsJson) {
               if (participant['user_id'] == userId) {
                 myLastRead = participant['last_read_time'];
@@ -180,7 +187,7 @@ class ChatService {
               }
             }
 
-            // بررسی وجود پیام‌های خوانده نشده
+            // بررسی پیام‌های خوانده نشده
             bool hasUnreadMessages = false;
             if (json['last_message_time'] != null && myLastRead != null) {
               final lastMessageTime = DateTime.parse(json['last_message_time']);
@@ -199,10 +206,7 @@ class ChatService {
                   (await _supabase
                           .from('hidden_messages')
                           .select('message_id')
-                          .eq(
-                            'user_id',
-                            userId,
-                          ))
+                          .eq('user_id', userId))
                       .map((e) => e['message_id'])
                       .toList(),
                 )
@@ -210,59 +214,55 @@ class ChatService {
                 .limit(1)
                 .maybeSingle();
 
-            // اگر پیامی وجود داشت، آن را در json قرار بده
             if (lastMessageQuery != null) {
-              String? lastContent = lastMessageQuery['content'] as String?;
-              json['last_message'] = lastContent;
+              json['last_message'] = lastMessageQuery['content'] as String?;
               json['last_message_time'] = lastMessageQuery['created_at'];
-              // *** مهم: updated_at خود مکالمه را با زمان آخرین پیام به‌روز کن ***
               json['updated_at'] = lastMessageQuery['created_at'];
             }
-
-            // محاسبه تعداد پیام‌های خوانده‌نشده: غیرفعال شده
 
             final conversation = ConversationModel.fromJson(
               json,
               currentUserId: userId,
             ).copyWith(
               participants: participants,
-              otherUserName: otherParticipantProfile?['username'] ?? 'کاربر',
-              otherUserAvatar: otherParticipantProfile?['avatar_url'],
-              otherUserId: otherParticipantData?['user_id'],
+              otherUserName: otherProfile?.displayName ??
+                  otherProfile?.username ??
+                  'کاربر ناشناس',
+              otherUserAvatar: otherProfile?.avatar,
+              otherUserId: otherUserId,
               hasUnreadMessages: hasUnreadMessages,
               unreadCount: 0,
-              // isPinned مقدار اولیه از کش خوانده می‌شود اگر وجود داشته باشد
-              isPinned: (await conversationCache.getConversation(
+              isPinned: (await _conversationCache.getConversation(
                     conversationId,
                     userId,
                   ))
                       ?.isPinned ??
                   false,
               isMuted: currentUserIsMuted,
-              isArchived: currentUserIsArchived, // اضافه کردن isArchived
+              isArchived: currentUserIsArchived,
             );
 
-            // ذخیره هر مکالمه در کش
-            await conversationCache.updateConversation(conversation, userId);
+            // ذخیره در کش
+            await _conversationCache.updateConversation(conversation, userId);
 
             return conversation;
           }),
         );
 
-        // اگر آنلاین هستی از سرور بگیر و در کش ذخیره کن
+        // ذخیره در کش
         for (final conversation in conversationsFromServer) {
-          await conversationCache.cacheConversation(conversation, userId);
+          await _conversationCache.cacheConversation(conversation, userId);
         }
 
         return conversationsFromServer;
       }
 
-      // اگر آنلاین نیستیم و تا اینجا رسیدیم، از هر کشی که داریم استفاده می‌کنیم
+      // اگر آفلاین هستیم، از کش استفاده می‌کنیم
       return cachedConversations;
     } catch (e) {
-      // در صورت خطا، اگر کش داریم از آن استفاده می‌کنیم
+      // فال‌بک به کش
       final fallbackCachedConversations =
-          await conversationCache.getCachedConversations(userId);
+          await _conversationCache.getCachedConversations(userId);
       if (fallbackCachedConversations.isNotEmpty) {
         print('خطا در دریافت مکالمات از سرور. استفاده از کش: $e');
         return fallbackCachedConversations;
@@ -1060,6 +1060,19 @@ class ChatService {
               .select()
               .eq('id', otherParticipantUserId)
               .maybeSingle();
+
+          // اگر پروفایل در دیتابیس پیدا نشد، از ProfileService استفاده کنیم
+          if (otherParticipantProfileData == null) {
+            final profile =
+                await _profileService.getProfile(otherParticipantUserId);
+            if (profile != null) {
+              otherParticipantProfileData = {
+                'username': profile.username,
+                'full_name': profile.fullName,
+                'avatar_url': profile.avatarUrl,
+              };
+            }
+          }
         }
         break;
       }
@@ -1112,7 +1125,7 @@ class ChatService {
     ).copyWith(
       participants: participants,
       otherUserName:
-          otherParticipantProfileData?['username'] as String? ?? 'کاربر',
+          otherParticipantProfileData?['username'] as String? ?? 'کاربر ناشناس',
       otherUserAvatar: otherParticipantProfileData?['avatar_url'] as String?,
       otherUserId: otherParticipantUserId,
       unreadCount: unreadCount,
@@ -1212,17 +1225,21 @@ class ChatService {
           .order('created_at', ascending: false)
           .limit(50);
 
+      // استخراج sender_id های منحصر به فرد
+      final senderIds =
+          response.map((m) => m['sender_id'] as String).toSet().toList();
+
+      // پیش‌بارگذاری پروفایل‌ها
+      await _profileService.preloadProfiles(senderIds);
+
       final messages = await Future.wait(
         response.map((json) async {
-          final profileResponse = await _supabase
-              .from('profiles')
-              .select()
-              .eq('id', json['sender_id'])
-              .maybeSingle();
+          final senderId = json['sender_id'] as String;
+          final senderProfile = _profileService.getCachedProfile(senderId);
 
           return MessageModel.fromJson(json, currentUserId: userId).copyWith(
-            senderName: profileResponse?['username'] ?? 'کاربر',
-            senderAvatar: profileResponse?['avatar_url'],
+            senderName: senderProfile?.displayName ?? 'کاربر',
+            senderAvatar: senderProfile?.avatar,
           );
         }),
       );
@@ -1287,19 +1304,26 @@ class ChatService {
 
         print('messagesResponse ${messagesResponse.length}');
 
+        // استخراج sender_id های منحصر به فرد
+        final senderIds = filteredMessages
+            .map((m) => m['sender_id'] as String)
+            .toSet()
+            .toList();
+
+        // پیش‌بارگذاری پروفایل‌ها
+        await _profileService.preloadProfiles(senderIds);
+
         final messages = await Future.wait(
           filteredMessages.map((json) async {
-            final profileResponse = await _supabase
-                .from('profiles')
-                .select('username, avatar_url')
-                .eq('id', json['sender_id'])
-                .maybeSingle();
+            final senderId = json['sender_id'] as String;
+            final senderProfile = _profileService.getCachedProfile(senderId);
+
             var message = MessageModel.fromJson(
               json,
               currentUserId: userId,
             ).copyWith(
-              senderName: profileResponse?['username'] ?? 'کاربر',
-              senderAvatar: profileResponse?['avatar_url'],
+              senderName: senderProfile?.displayName ?? 'کاربر',
+              senderAvatar: senderProfile?.avatar,
             );
 
             await _messageCache.cacheMessage(message, userId);
@@ -1345,21 +1369,25 @@ class ChatService {
         .eq('conversation_id', conversationId)
         .order('created_at')
         .map((data) async {
+          // استخراج sender_id های منحصر به فرد
+          final senderIds =
+              data.map((m) => m['sender_id'] as String).toSet().toList();
+
+          // پیش‌بارگذاری پروفایل‌ها
+          await _profileService.preloadProfiles(senderIds);
+
           // تبدیل به MessageModel
           final messages = await Future.wait(
             data.map((json) async {
-              final profileResponse = await _supabase
-                  .from('profiles')
-                  .select()
-                  .eq('id', json['sender_id'])
-                  .maybeSingle();
+              final senderId = json['sender_id'] as String;
+              final senderProfile = _profileService.getCachedProfile(senderId);
 
               return MessageModel.fromJson(
                 json,
                 currentUserId: userId,
               ).copyWith(
-                senderName: profileResponse?['username'] ?? 'کاربر',
-                senderAvatar: profileResponse?['avatar_url'],
+                senderName: senderProfile?.displayName ?? 'کاربر',
+                senderAvatar: senderProfile?.avatar,
               );
             }),
           );
@@ -1427,8 +1455,6 @@ class ChatService {
 
   // حذف مکالمه برای همه (مثل تلگرام)
   Future<void> deleteConversationForEveryone(String conversationId) async {
-    final userId = _supabase.auth.currentUser!.id;
-
     try {
       print('🔥 حذف مکالمه برای همه شرکت‌کنندگان: $conversationId');
 

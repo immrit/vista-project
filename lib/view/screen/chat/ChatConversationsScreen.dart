@@ -9,14 +9,12 @@ import '../../../model/channel_model.dart';
 import '../../../model/conversation_model.dart';
 import '../../../provider/channel_provider.dart';
 import '../../../provider/chat_provider.dart';
-import '../../../provider/advanced_chat_providers.dart';
 import '../../util/const.dart';
 import 'ArchivedConversationsScreen.dart';
 // import 'ChatSettingsScreen.dart'; // اضافه کردن ایمپورت صفحه جدید
 import '../../../services/ChatService.dart';
 import 'ChatScreen.dart';
 import '../../../DB/database_file_utils.dart';
-import '../../../view/widget/enriched_conversation_list_item.dart';
 
 // مدل یکپارچه برای نمایش چت‌ها و کانال‌ها در یک لیست
 @immutable
@@ -34,7 +32,6 @@ class UnifiedChatItem {
   final bool isArchived; // اضافه کردن فیلد isArchived
   final dynamic source;
   final int? memberCount;
-  final ConversationModel? conversation;
 
   const UnifiedChatItem({
     required this.id,
@@ -50,7 +47,6 @@ class UnifiedChatItem {
     this.isArchived = false, // مقدار پیش‌فرض
     this.source,
     this.memberCount,
-    this.conversation,
   });
 
   factory UnifiedChatItem.fromConversation(ConversationModel conversation) {
@@ -66,7 +62,6 @@ class UnifiedChatItem {
       isMuted: conversation.isMuted,
       isArchived: conversation.isArchived, // خواندن isArchived
       source: conversation,
-      conversation: conversation,
     );
   }
 
@@ -309,21 +304,21 @@ class _ChatConversationsScreenState
 
   // لیست یکپارچه چت‌ها و کانال‌ها
   Widget _buildUnifiedList(ThemeData theme) {
-    // استفاده از سیستم کش پیشرفته
-    final conversationsAsync = ref.watch(advancedConversationsProvider);
+    // ترکیب داده‌ها از هر دو provider
+    // ** تغییر: استفاده از enrichedConversationsStreamProvider برای دریافت اطلاعات پروفایل تکمیل شده و real-time **
+    final conversationsAsync = ref.watch(enrichedConversationsStreamProvider);
     final channelsAsync = ref.watch(channelsProvider);
 
     return conversationsAsync.when(
       loading: () => _buildLoadingState(theme),
       error: (error, stack) => _buildErrorState(theme, error.toString()),
-      data: (cachedConversations) {
-        // نام متغیر به cachedConversations تغییر کرد
+      data: (enrichedConversations) {
         return channelsAsync.when(
           loading: () => _buildLoadingState(theme),
           error: (error, stack) => _buildErrorState(theme, error.toString()),
           data: (channels) {
-            final unifiedItems = _combineAndFilterItems(cachedConversations,
-                channels); // استفاده از cachedConversations
+            final unifiedItems = _combineAndFilterItems(enrichedConversations,
+                channels); // استفاده از enrichedConversations
 
             if (unifiedItems.isEmpty) {
               return _buildEmptyState(
@@ -405,11 +400,12 @@ class _ChatConversationsScreenState
       // به جای فراخوانی مستقیم سرویس، از MessageNotifier استفاده می‌کنیم
       await messageNotifier.deleteConversation(item.id);
       // Invalidation ها در MessageNotifier.deleteConversation انجام می‌شود
-      // cachedConversationsStreamProvider به طور خودکار با تغییرات کش به‌روز می‌شود
-      ref.refresh(conversationsStreamProvider);
+      // providerهای جدید به طور خودکار با تغییرات کش به‌روز می‌شوند
+      ref.invalidate(conversationsWithProfilesProvider);
+      ref.invalidate(enrichedConversationsStreamProvider);
       // حتی میتونی بفرستی به صفحه اصلی یا SnackBar نشون بدی
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("گفتگو با موفقیت حذف شد!")),
+        const SnackBar(content: Text("گفتگو با موفقیت حذف شد!")),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -420,16 +416,6 @@ class _ChatConversationsScreenState
 
   // نمایش آیتم یکپارچه
   Widget _buildUnifiedItem(ThemeData theme, UnifiedChatItem item) {
-    // اگر آیتم یک مکالمه است، از EnrichedConversationListItem استفاده کن
-    if (!item.isChannel && item.conversation != null) {
-      return EnrichedConversationListItem(
-        conversation: item.conversation!,
-        onTap: () => _navigateToItem(item),
-        onLongPress: () => _showItemOptions(item),
-      );
-    }
-
-    // برای کانال‌ها از UI قدیمی استفاده کن
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -964,15 +950,19 @@ class _ChatConversationsScreenState
   }
 
   Future<void> _refreshData() async {
-    // رفرش کردن provider اصلی که از سرور دیتا می‌گیرد
-    // این کار باعث می‌شود ChatService.getConversations فراخوانی شود،
-    // که به نوبه خود کش را آپدیت می‌کند و cachedConversationsStreamProvider تغییرات را نشان می‌دهد.
+    // رفرش کردن providerهای اصلی
+    // این کار باعث می‌شود ChatService.getConversations فراخوانی شود و کش به‌روز شود
     ref.invalidate(conversationsProvider);
+    ref.invalidate(conversationsWithProfilesProvider);
+    ref.invalidate(enrichedConversationsStreamProvider);
     ref.invalidate(channelsProvider);
-    // نیازی به await مستقیم نیست، UI از طریق stream provider ها آپدیت می‌شود.
-    // یا اگر می‌خواهید منتظر بمانید:
-    // await ref.refresh(conversationsProvider.future);
-    // await ref.refresh(channelsProvider.future);
+
+    // منتظر بمانیم تا اطلاعات جدید دریافت شود
+    try {
+      await ref.read(conversationsWithProfilesProvider.future);
+    } catch (e) {
+      print('Error refreshing conversations: $e');
+    }
   }
 
   Future<void> _resetCacheAndRefresh() async {
@@ -1019,8 +1009,8 @@ class _ChatConversationsScreenState
           context,
           MaterialPageRoute(
             builder: (context) => ChatScreen(
-              otherUserName: (item.source as ConversationModel).otherUserName ??
-                  'در حال بارگذاری...',
+              otherUserName:
+                  (item.source as ConversationModel).otherUserName ?? '',
               otherUserAvatar:
                   (item.source as ConversationModel).otherUserAvatar ??
                       defaultAvatarUrl,

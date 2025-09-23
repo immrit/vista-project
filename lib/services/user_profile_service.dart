@@ -67,8 +67,11 @@ class UserProfileService {
     ConversationModel conversation,
     String currentUserId,
   ) async {
-    // If already has proper user info, return as is
-    if (conversation.otherUserName?.isNotEmpty == true) {
+    // If already has proper user info (and not placeholder), return as is
+    final hasValidName = (conversation.otherUserName?.isNotEmpty == true) &&
+        (conversation.otherUserName != 'کاربر ناشناس') &&
+        (conversation.otherUserName != 'Unknown User');
+    if (hasValidName) {
       return conversation;
     }
 
@@ -76,8 +79,14 @@ class UserProfileService {
     final otherUserInfo =
         await getOtherUserInConversation(conversation.id, currentUserId);
 
+    final enrichedName = (otherUserInfo['username']?.isNotEmpty == true)
+        ? otherUserInfo['username']
+        : (otherUserInfo['full_name']?.isNotEmpty == true
+            ? otherUserInfo['full_name']
+            : null);
+
     return conversation.copyWith(
-      otherUserName: otherUserInfo['username'] ?? otherUserInfo['full_name'],
+      otherUserName: enrichedName,
       otherUserAvatar: otherUserInfo['avatar_url'],
       otherUserId: otherUserInfo['user_id'],
     );

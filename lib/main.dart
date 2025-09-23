@@ -33,6 +33,7 @@ import 'view/screen/ouathUser/signupUser.dart';
 import 'view/screen/ouathUser/welcome.dart';
 import 'view/screen/ouathUser/editeProfile.dart';
 import 'services/wallpaper_cache_service.dart';
+import 'services/profile_service.dart';
 import 'view/screen/PublicPosts/publicPosts.dart';
 import 'view/screen/PublicPosts/PostDetailPage.dart';
 import 'view/screen/PublicPosts/profileScreen.dart';
@@ -115,6 +116,9 @@ void main() async {
     // 🚀 مقداردهی اولیه سرویس‌های کش جدید
     await ProfileCacheService().initialize();
     await SettingsCacheService().initialize();
+
+    // 🚀 مقداردهی اولیه ProfileService جدید با real-time updates
+    ProfileService().startRealtimeUpdates();
 
     // 🔍 راه‌اندازی memory leak detection
     _initializeMemoryLeakDetection();

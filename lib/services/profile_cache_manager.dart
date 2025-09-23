@@ -12,10 +12,11 @@ class ProfileCacheManager {
   final Map<String, DateTime> _cacheTimestamps = {};
   final Map<String, Completer<Map<String, String?>?>> _pendingRequests = {};
 
-  // تنظیمات کشینگ
-  static const Duration cacheValidityDuration = Duration(hours: 1);
-  static const int maxBatchSize = 10;
-  static const Duration batchDelay = Duration(milliseconds: 100);
+  // تنظیمات کشینگ - مدت زمان کش را افزایش دادیم تا در حالت اسکرول پاک نشود
+  static const Duration cacheValidityDuration = Duration(hours: 6);
+  static const int maxBatchSize = 15; // اندازه batch را افزایش دادیم
+  static const Duration batchDelay =
+      Duration(milliseconds: 50); // تاخیر را کاهش دادیم
 
   // Stream برای real-time updates
   final StreamController<Map<String, Map<String, String?>>> _profileUpdates =

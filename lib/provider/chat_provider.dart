@@ -9,6 +9,8 @@ import '../main.dart';
 import '../model/conversation_model.dart';
 import '../model/message_model.dart';
 import '../services/ChatService.dart';
+import '../services/profile_service.dart';
+import '../services/user_profile_service.dart';
 
 // لیست مکالمات
 final conversationsProvider =
@@ -31,6 +33,35 @@ final conversationsStreamProvider =
 // پرووایدر برای سرویس چت
 final chatServiceProvider = Provider<ChatService>((ref) {
   return ChatService();
+});
+
+// پرووایدر برای ProfileService
+final profileServiceProvider = Provider<ProfileService>((ref) {
+  return ProfileService();
+});
+
+// پرووایدر برای دریافت پروفایل کاربر
+final userProfileProvider =
+    FutureProvider.family<ProfileData?, String>((ref, userId) async {
+  return await ref.watch(profileServiceProvider).getProfile(userId);
+});
+
+// پرووایدر برای دریافت چندین پروفایل
+final multipleProfilesProvider =
+    FutureProvider.family<Map<String, ProfileData?>, List<String>>(
+        (ref, userIds) async {
+  return await ref.watch(profileServiceProvider).getMultipleProfiles(userIds);
+});
+
+// پرووایدر برای وضعیت آنلاین کاربر
+final userOnlineStatusProvider =
+    FutureProvider.family<bool, String>((ref, userId) async {
+  return await ref.watch(profileServiceProvider).isUserOnline(userId);
+});
+
+// پرووایدر برای آمار کشینگ
+final profileCacheStatsProvider = Provider<Map<String, dynamic>>((ref) {
+  return ref.watch(profileServiceProvider).getCacheStats();
 });
 
 // پیام‌های یک مکالمه
@@ -637,9 +668,6 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
       );
     }
 
-    // --- حذف شد: invalidate کردن کل provider پیام‌ها ---
-    // ref.invalidate(conversationMessagesProvider(conversationId));
-
     // تلاش برای ارسال پیام با منطق retry
     unawaited(_trySendWithRetry(
       tempMessage: tempMessage.copyWith(isSent: isOnline),
@@ -870,15 +898,6 @@ class SafeMessageHandler {
       rethrow;
     }
   }
-
-  // Future<void> clearConversation(String conversationId) async {
-  //   try {
-  //     await _notifier.clearConversation(conversationId);
-  //   } catch (e) {
-  //     print('خطا در پاکسازی مکالمه: $e');
-  //     rethrow;
-  //   }
-  // }
 
   Future<void> markAsRead(String conversationId) async {
     // قابلیت خوانده شده حذف شد
@@ -1207,11 +1226,6 @@ final unreadMessageCountProvider =
   return 0;
 });
 
-// Provider برای ردیابی وضعیت رمزگشایی کل مکالمه - حذف شد
-
-// Provider برای دریافت محتوای رمزگشایی شده پیام - حذف شد
-// پیام‌ها در conversationMessagesProvider رمزگشایی می‌شوند
-
 // حذف پیام‌های قدیمی‌تر از یک تاریخ خاص
 final deleteOldMessagesProvider =
     FutureProvider.family<void, DateTime>((ref, date) async {
@@ -1368,7 +1382,6 @@ class ConversationStateNotifier extends StateNotifier<AsyncValue<void>> {
   }
 }
 
-// --- اضافه کنید: StreamProvider برای وضعیت آنلاین بودن دستگاه ---
 final deviceOnlineStatusProvider = StreamProvider<bool>((ref) async* {
   final chatService = ref.watch(chatServiceProvider);
   bool lastStatus = await chatService.isDeviceOnline();
@@ -1383,9 +1396,6 @@ final deviceOnlineStatusProvider = StreamProvider<bool>((ref) async* {
   }
 });
 
-// Provider برای پیش رمزگشایی پیام‌های کش شده - حذف شد
-
-// --- اضافه کنید: Provider برای ارسال پیام‌های آفلاین به محض آنلاین شدن ---
 final pendingMessagesSyncProvider = Provider<void>((ref) {
   final chatService = ref.watch(chatServiceProvider);
   ref.listen<AsyncValue<bool>>(deviceOnlineStatusProvider, (prev, next) {
@@ -1395,7 +1405,6 @@ final pendingMessagesSyncProvider = Provider<void>((ref) {
   });
 });
 
-// --- اضافه کنید: Provider برای مدیریت وضعیت مکالمات (با قابلیت Refresh) ---
 final conversationRefreshProvider =
     StateNotifierProvider<ConversationRefreshNotifier, AsyncValue<void>>((ref) {
   return ConversationRefreshNotifier(ref);
@@ -1551,8 +1560,6 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
         updatedMessage, userId); // پیام آپدیت شده را در کش هم ذخیره کن
   }
 
-  // --- اضافه شد: متدهای optimistic update ---
-
   // اضافه کردن پیام جدید به state (بدون invalidate کردن کل provider)
   void addMessage(MessageModel message) {
     if (_disposed) return;
@@ -1664,7 +1671,6 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
   }
 }
 
-// --- Provider جدید برای پیام‌های هر مکالمه ---
 final conversationMessagesProvider = StateNotifierProvider.family
     .autoDispose<ConversationMessagesNotifier, List<MessageModel>, String>(
   (ref, conversationId) {
@@ -1672,7 +1678,6 @@ final conversationMessagesProvider = StateNotifierProvider.family
         .keepAlive(); // جلوگیری از dispose شدن زودهنگام تا زمانی که صفحه چت باز است
     final notifier = ConversationMessagesNotifier(conversationId);
 
-    // --- اضافه شد: گوش دادن به استریم Supabase برای بروزرسانی سریع ---
     final userId = supabase.auth.currentUser?.id;
     if (userId != null) {
       final sub = supabase
@@ -1784,7 +1789,6 @@ final conversationMessagesProvider = StateNotifierProvider.family
   },
 );
 
-// --- Provider جدید برای گوش دادن به تغییرات کش مکالمات (Advanced Cache) ---
 final cachedConversationsStreamProvider =
     StreamProvider.autoDispose<List<ConversationModel>>((ref) async* {
   final conversationCache = ConversationCacheService();
@@ -1803,7 +1807,112 @@ final cachedConversationsStreamProvider =
       .watchCachedConversations(supabase.auth.currentUser!.id);
 });
 
-// --- اضافه کنید: Provider برای دریافت آنی اطلاعات یک گفتگوی خاص ---
+// Provider ساده برای دریافت مکالمات با اطلاعات پروفایل کامل
+final conversationsWithProfilesProvider =
+    FutureProvider.autoDispose<List<ConversationModel>>((ref) async {
+  final currentUserId = supabase.auth.currentUser?.id;
+  if (currentUserId == null) {
+    return [];
+  }
+
+  try {
+    // دریافت مکالمات از ChatService
+    final chatService = ChatService();
+    final conversations = await chatService.getConversations();
+
+    // تکمیل اطلاعات پروفایل برای هر مکالمه
+    final userProfileService = UserProfileService();
+    final enrichedConversations = <ConversationModel>[];
+
+    for (final conversation in conversations) {
+      try {
+        final enrichedConversation =
+            await userProfileService.enrichConversationWithUserData(
+          conversation,
+          currentUserId,
+        );
+        enrichedConversations.add(enrichedConversation);
+      } catch (e) {
+        print('Error enriching conversation ${conversation.id}: $e');
+        enrichedConversations
+            .add(conversation); // در صورت خطا، مکالمه اصلی را اضافه کنیم
+      }
+    }
+
+    return enrichedConversations;
+  } catch (e) {
+    print('Error in conversationsWithProfilesProvider: $e');
+    return [];
+  }
+});
+
+// Provider استریم برای دریافت مکالمات با اطلاعات پروفایل تکمیل شده
+final enrichedConversationsStreamProvider =
+    StreamProvider.autoDispose<List<ConversationModel>>((ref) async* {
+  final currentUserId = supabase.auth.currentUser?.id;
+  if (currentUserId == null) {
+    yield [];
+    return;
+  }
+
+  final conversationCache = ConversationCacheService();
+
+  // Ensure the service is initialized before using it
+  try {
+    await conversationCache.unifiedService.initialize();
+  } catch (e) {
+    print('Error initializing conversation cache service in provider: $e');
+    yield [];
+    return;
+  }
+
+  // ابتدا اطلاعات اولیه را دریافت کنیم
+  final conversationsAsync = ref.read(conversationsWithProfilesProvider);
+  final conversations = conversationsAsync.when(
+    data: (data) => data,
+    loading: () => <ConversationModel>[],
+    error: (error, stack) => <ConversationModel>[],
+  );
+  yield conversations;
+
+  // سپس استریم real-time را شروع کنیم و اطلاعات پروفایل را تکمیل کنیم
+  await for (final cachedConversations
+      in conversationCache.watchCachedConversations(currentUserId)) {
+    try {
+      // تکمیل اطلاعات پروفایل برای مکالمات جدید
+      final userProfileService = UserProfileService();
+      final enrichedConversations = <ConversationModel>[];
+
+      for (final conversation in cachedConversations) {
+        try {
+          // اگر اطلاعات پروفایل کامل نیست، آن را تکمیل کنیم
+          if (conversation.otherUserName == null ||
+              conversation.otherUserName == 'کاربر ناشناس' ||
+              conversation.otherUserName!.isEmpty) {
+            final enrichedConversation =
+                await userProfileService.enrichConversationWithUserData(
+              conversation,
+              currentUserId,
+            );
+
+            enrichedConversations.add(enrichedConversation);
+          } else {
+            enrichedConversations.add(conversation);
+          }
+        } catch (e) {
+          print('Error enriching conversation ${conversation.id}: $e');
+          enrichedConversations.add(conversation);
+        }
+      }
+
+      yield enrichedConversations;
+    } catch (e) {
+      print('Error processing cached conversations: $e');
+      yield conversations; // در صورت خطا، از اطلاعات اولیه استفاده کن
+    }
+  }
+});
+
 final conversationProvider = StreamProvider.family
     .autoDispose<ConversationModel?, String>((ref, conversationId) async* {
   final cache = ConversationCacheService();
@@ -1828,7 +1937,6 @@ final conversationProvider = StreamProvider.family
   yield* cache.watchConversation(conversationId, userId);
 });
 
-// --- اضافه کنید: Provider برای دریافت رسانه‌های اشتراک‌گذاری شده در یک گفتگو ---
 final sharedMediaProvider = FutureProvider.family
     .autoDispose<List<MessageModel>, String>((ref, conversationId) async {
   final userId = supabase.auth.currentUser!.id;
@@ -1883,7 +1991,6 @@ final chatCacheSizeProvider = FutureProvider<String>((ref) async {
   return "${(sizeInBytes / (1024 * 1024)).toStringAsFixed(2)} مگابایت"; // دقت بیشتر
 });
 
-// --- اضافه کنید: Provider برای دریافت جزئیات کامل پروفایل کاربر ---
 final userProfileDetailsProvider = FutureProvider.family
     .autoDispose<Map<String, dynamic>?, String>((ref, userId) async {
   try {

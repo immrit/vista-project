@@ -68,15 +68,15 @@ class ProfileNotifier extends StateNotifier<ProfileState> {
     logger.i('دریافت اطلاعات پروفایل برای کاربر با آی‌دی: $userId');
 
     try {
-      final data = await ProfileService.getProfile(userId);
+      final data = await ProfileService().getProfile(userId);
       if (data != null) {
         logger.d('$data اطلاعات پروفایل دریافت شد');
         state = state.copyWith(
-          username: data['username'] ?? '',
-          fullName: data['full_name'] ?? '',
-          bio: data['bio'] ?? '',
-          avatarUrl: data['avatar_url'] ?? '',
-          birthDate: data['birth_date'] ?? '',
+          username: data.username ?? '',
+          fullName: data.fullName ?? '',
+          bio: '', // ProfileData doesn't have bio field
+          avatarUrl: data.avatarUrl ?? '',
+          birthDate: '', // ProfileData doesn't have birth_date field
           loading: false,
         );
       } else {
