@@ -85,7 +85,7 @@ class ArchivedConversationsScreen extends ConsumerWidget {
                           builder: (context) => ChatScreen(
                             otherUserName: (item.source as ConversationModel)
                                     .otherUserName ??
-                                '',
+                                'در حال بارگذاری...',
                             otherUserAvatar: (item.source as ConversationModel)
                                     .otherUserAvatar ??
                                 defaultAvatarUrl,

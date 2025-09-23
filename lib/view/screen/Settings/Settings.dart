@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 // ایمپورت‌های مربوط به پروژه شما
 import '../../../main.dart';
@@ -13,8 +14,6 @@ import 'subpages/ChatSettingsGroupPage.dart';
 import 'subpages/AboutSettingsPage.dart';
 import 'subpages/ThemeSettingsPage.dart';
 import 'subpages/PrivacySettingsPage.dart';
-import 'subpages/OfflineSettingsPage.dart';
-import '../../../test_offline_functionality.dart';
 
 class Settings extends ConsumerWidget {
   const Settings({super.key});
@@ -130,21 +129,7 @@ class Settings extends ConsumerWidget {
                           );
                         },
                       ),
-                      _buildDivider(),
-                      TelegramSettingsItem(
-                        icon: Icons.cloud_off,
-                        iconColor: Colors.blue,
-                        title: 'تنظیمات آفلاین',
-                        subtitle: 'دسترسی به تنظیمات بدون اینترنت',
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const OfflineSettingsPage(),
-                            ),
-                          );
-                        },
-                      ),
+                      // آیتم تنظیمات آفلاین حذف شد
                     ],
                   ),
                 ),
@@ -203,22 +188,7 @@ class Settings extends ConsumerWidget {
                         },
                       ),
                       _buildDivider(),
-                      TelegramSettingsItem(
-                        icon: Icons.bug_report_outlined,
-                        iconColor: Colors.purple,
-                        title: 'تست عملکرد آفلاین',
-                        subtitle: 'بررسی عملکرد کش و آفلاین',
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  const OfflineFunctionalityTest(),
-                            ),
-                          );
-                        },
-                      ),
-                      _buildDivider(),
+                      // آیتم تست عملکرد آفلاین حذف شد
                       TelegramSettingsItem(
                         icon: Icons.info,
                         iconColor: Colors.grey,
@@ -992,13 +962,25 @@ class VersionNumber extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Text(
-      'نسخه ویستا ۱.۲.۸',
-      style: TextStyle(
-        fontSize: 13,
-        color: isDark ? Colors.grey[400] : Colors.grey[600],
-        fontWeight: FontWeight.w400,
-      ),
+    return FutureBuilder<PackageInfo>(
+      future: PackageInfo.fromPlatform(),
+      builder: (context, snapshot) {
+        final version = snapshot.data?.version;
+        final buildNumber = snapshot.data?.buildNumber;
+        final text = version != null
+            ? (buildNumber != null && buildNumber.isNotEmpty
+                ? 'نسخه ویستا $version+$buildNumber اندروید'
+                : 'نسخه ویستا $version')
+            : 'نسخه ویستا';
+        return Text(
+          text,
+          style: TextStyle(
+            fontSize: 13,
+            color: isDark ? Colors.grey[400] : Colors.grey[600],
+            fontWeight: FontWeight.w400,
+          ),
+        );
+      },
     );
   }
 }

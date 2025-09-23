@@ -69,12 +69,15 @@ class ConversationModel {
                 participantUserId != currentUserId) {
               otherUserId = participantUserId;
 
-              // Extract profile info
+              // Extract profile info if available
               final profiles = participantData['profiles'];
               if (profiles != null) {
-                otherUserName =
-                    profiles['username'] as String? ?? 'کاربر ناشناس';
+                otherUserName = profiles['username'] as String?;
                 otherUserAvatar = profiles['avatar_url'] as String?;
+              } else {
+                // No profile info available - will be enriched later
+                otherUserName = null;
+                otherUserAvatar = null;
               }
               break;
             }
@@ -159,6 +162,18 @@ class ConversationModel {
       isMuted: isMuted ?? this.isMuted, // استفاده از isMuted
       isArchived: isArchived ?? this.isArchived,
     );
+  }
+
+  /// Format last message for display (handle encrypted messages)
+  String? get formattedLastMessage {
+    if (lastMessage == null || lastMessage!.isEmpty) return null;
+
+    // Check if message is encrypted
+    if (lastMessage!.startsWith('e2ee:v1:')) {
+      return '🔒 پیام رمزگذاری شده';
+    }
+
+    return lastMessage;
   }
 
   static ConversationModel empty() {

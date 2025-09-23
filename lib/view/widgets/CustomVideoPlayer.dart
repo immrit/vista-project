@@ -112,9 +112,15 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
 
   @override
   void dispose() {
+    // Cancel all timers first
+    _likeAnimTimer?.cancel();
+    _likeAnimTimer = null;
+
+    // Remove listener and dispose controller
     _controller?.removeListener(_videoListener);
     _controller?.dispose();
-    _likeAnimTimer?.cancel();
+    _controller = null;
+
     super.dispose();
   }
 
@@ -172,7 +178,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
 
     // بررسی وضعیت پخش
     final isPlaying = _controller!.value.isPlaying;
-    if (isPlaying != _isPlaying) {
+    if (isPlaying != _isPlaying && mounted) {
       setState(() {
         _isPlaying = isPlaying;
       });
@@ -180,7 +186,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
 
     // بررسی وضعیت بافرینگ
     final isBuffering = _controller!.value.isBuffering;
-    if (isBuffering != _isBuffering) {
+    if (isBuffering != _isBuffering && mounted) {
       setState(() {
         _isBuffering = isBuffering;
       });
@@ -188,7 +194,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
 
     // به‌روزرسانی موقعیت پخش
     final currentPosition = _controller!.value.position;
-    if (currentPosition != _currentPosition) {
+    if (currentPosition != _currentPosition && mounted) {
       setState(() {
         _currentPosition = currentPosition;
       });
@@ -196,7 +202,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
   }
 
   void _playVideo() {
-    if (!_isInitialized || _controller == null) return;
+    if (!_isInitialized || _controller == null || !mounted) return;
 
     _controller?.play();
     setState(() {
@@ -214,7 +220,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
   }
 
   void _pauseVideo() {
-    if (!_isInitialized || _controller == null) return;
+    if (!_isInitialized || _controller == null || !mounted) return;
 
     _controller?.pause();
     setState(() {
@@ -240,9 +246,10 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
   }
 
   void _toggleMute() {
+    if (!mounted) return;
     setState(() {
       _isMuted = !_isMuted;
-      _controller!.setVolume(_isMuted ? 0.0 : 1.0);
+      _controller?.setVolume(_isMuted ? 0.0 : 1.0);
     });
   }
 
@@ -252,9 +259,11 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
     }
 
     _likeAnimTimer?.cancel();
-    setState(() {
-      _showLikeAnim = true;
-    });
+    if (mounted) {
+      setState(() {
+        _showLikeAnim = true;
+      });
+    }
 
     _likeAnimTimer = Timer(const Duration(milliseconds: 1500), () {
       if (mounted) {
@@ -268,6 +277,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
   // Removed unused _formatDuration to satisfy linter
 
   void _toggleFullScreen() {
+    if (!mounted) return;
     setState(() {
       _isFullScreen = !_isFullScreen;
     });
@@ -334,7 +344,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
         // اگر بیش از 50% نمایش داده می‌شود، آن را قابل مشاهده در نظر بگیرید
         final newIsVisible = visibleFraction > 0.5;
 
-        if (newIsVisible != _isVisible) {
+        if (newIsVisible != _isVisible && mounted) {
           setState(() {
             _isVisible = newIsVisible;
           });

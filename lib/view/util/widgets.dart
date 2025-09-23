@@ -8,7 +8,6 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:timelines_plus/timelines_plus.dart';
 import '../screen/Settings/ContactUs.dart';
 import '/main.dart';
 import '../../model/CommentModel.dart';
@@ -990,51 +989,6 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
           ),
         );
       },
-    );
-  }
-
-  Widget _buildTimelineComment(CommentModel comment, bool isRoot) {
-    final theme = Theme.of(context);
-    final timelineColor = theme.brightness == Brightness.dark
-        ? Colors.grey[700]
-        : Colors.grey[300];
-
-    return TimelineTile(
-      nodePosition: 0, // Changed from 0.1 to 0 to remove indentation
-      node: TimelineNode(
-        indicator: DotIndicator(
-          color: timelineColor,
-          size: 16, // Reduced size for better appearance
-        ),
-        startConnector: isRoot
-            ? null
-            : SolidLineConnector(
-                color: timelineColor,
-              ),
-        endConnector: comment.replies.isEmpty
-            ? null
-            : SolidLineConnector(
-                color: timelineColor,
-              ),
-      ),
-      contents: Padding(
-        padding: const EdgeInsets.only(left: 8.0, bottom: 8.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildCommentItem(comment),
-            if (comment.replies.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(left: 16.0),
-                child: Column(
-                  children: comment.replies
-                      .map((reply) => _buildTimelineComment(reply, false))
-                      .toList(),
-                ),
-              ),
-          ],
-        ),
-      ),
     );
   }
 

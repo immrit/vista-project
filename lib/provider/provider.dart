@@ -10,7 +10,6 @@ import 'package:path_provider/path_provider.dart';
 import '../DB/unified_conversation_cache_service.dart';
 import '../DB/unified_message_cache_service.dart';
 import '../DB/profile_cache_service.dart';
-import '../DB/settings_cache_service.dart';
 import '../model/SearchResut.dart';
 import '../services/PostImageUploadService.dart';
 import '../view/widgets/VideoPlayerConfig.dart';
@@ -684,7 +683,23 @@ class SupabaseService {
 
       // بروزرسانی UI
       ref.invalidate(fetchPublicPosts);
-      ref.invalidate(userProfileProvider(userId));
+      // پیدا کردن owner واقعی پست برای invalidation صحیح صفحه پروفایل
+      try {
+        final postOwner = await supabase
+            .from('posts')
+            .select('user_id')
+            .eq('id', postId)
+            .maybeSingle();
+        final ownerId =
+            (postOwner != null ? postOwner['user_id'] : null) as String?;
+        if (ownerId != null && ownerId.isNotEmpty) {
+          ref.invalidate(userProfileProvider(ownerId));
+        } else {
+          ref.invalidate(userProfileProvider(userId));
+        }
+      } catch (_) {
+        ref.invalidate(userProfileProvider(userId));
+      }
 
       print('پست و تمام فایل‌های مرتبط با موفقیت حذف شدند.');
     } catch (e) {
@@ -1442,7 +1457,13 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
         final postLikes = post['likes'] as List? ?? [];
         final comments = post['comments'] as List<dynamic>? ?? [];
 
-        return PublicPostModel.fromMap({
+        // Debug logging
+        print('🔍 Profile Post Debug - Post ID: ${post['id']}');
+        print('🔍 Likes array: $postLikes (length: ${postLikes.length})');
+        print('🔍 Comments array: $comments (length: ${comments.length})');
+        print('🔍 Current user ID: $currentUserId');
+
+        final mappedPost = PublicPostModel.fromMap({
           ...post,
           'like_count': postLikes.length,
           'is_liked': postLikes.any((like) => like['user_id'] == currentUserId),
@@ -1453,6 +1474,11 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
           'verification_type': post['profiles']
               ['verification_type'], // اضافه کردن verification_type
         });
+
+        print(
+            '🔍 Final mapped post - likeCount: ${mappedPost.likeCount}, commentCount: ${mappedPost.commentCount}, isLiked: ${mappedPost.isLiked}');
+
+        return mappedPost;
       }).toList();
 
       // بررسی وضعیت فالو

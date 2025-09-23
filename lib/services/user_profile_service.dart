@@ -1,51 +1,23 @@
 import '../main.dart';
 import '../model/conversation_model.dart';
+import 'profile_cache_manager.dart';
 
-/// سرویس برای دریافت اطلاعات پروفایل کاربران
+/// سرویس برای دریافت اطلاعات پروفایل کاربران با کشینگ مرکزی
 class UserProfileService {
   static final UserProfileService _instance = UserProfileService._internal();
   factory UserProfileService() => _instance;
   UserProfileService._internal();
 
-  // Cache برای اطلاعات کاربران
-  final Map<String, Map<String, String?>> _userProfileCache = {};
+  final ProfileCacheManager _cacheManager = ProfileCacheManager();
 
-  /// دریافت اطلاعات پروفایل کاربر
-  Future<Map<String, String?>> getUserProfile(String userId) async {
-    // Check cache first
-    if (_userProfileCache.containsKey(userId)) {
-      return _userProfileCache[userId]!;
-    }
+  /// دسترسی سریع به پروفایل کش‌شده (Memory)
+  Map<String, String?>? getCachedProfile(String userId) {
+    return _cacheManager.getCachedProfile(userId);
+  }
 
-    try {
-      final response = await supabase
-          .from('profiles')
-          .select('username, avatar_url, full_name')
-          .eq('id', userId)
-          .maybeSingle();
-
-      final profile = {
-        'username': response?['username'] as String?,
-        'avatar_url': response?['avatar_url'] as String?,
-        'full_name': response?['full_name'] as String?,
-      };
-
-      // Cache the result
-      _userProfileCache[userId] = profile;
-      return profile;
-    } catch (e) {
-      print('⚠️ Error fetching user profile for $userId: $e');
-
-      // Return default profile
-      final defaultProfile = {
-        'username': 'کاربر ${userId.substring(0, 8)}',
-        'avatar_url': null,
-        'full_name': null,
-      };
-
-      _userProfileCache[userId] = defaultProfile;
-      return defaultProfile;
-    }
+  /// دریافت اطلاعات پروفایل کاربر از کش مرکزی
+  Future<Map<String, String?>?> getUserProfile(String userId) async {
+    return _cacheManager.getProfile(userId);
   }
 
   /// دریافت اطلاعات کاربر دیگر در مکالمه (بدون join روی FK)
@@ -64,23 +36,25 @@ class UserProfileService {
       final otherUserId = otherParticipant?['user_id'] as String?;
       if (otherUserId == null) {
         return {
-          'username': 'کاربر ناشناس',
+          'username': null,
           'avatar_url': null,
           'full_name': null,
           'user_id': null,
         };
       }
 
-      // 2) سپس پروفایل را مستقیماً از جدول profiles می‌خوانیم
+      // 2) پروفایل را از کش مرکزی دریافت کنیم
       final profile = await getUserProfile(otherUserId);
       return {
-        ...profile,
+        'username': profile?['username'],
+        'avatar_url': profile?['avatar_url'],
+        'full_name': profile?['full_name'],
         'user_id': otherUserId,
       };
     } catch (e) {
       print('⚠️ Error fetching other user in conversation $conversationId: $e');
       return {
-        'username': 'کاربر ناشناس',
+        'username': null,
         'avatar_url': null,
         'full_name': null,
         'user_id': null,
@@ -93,9 +67,8 @@ class UserProfileService {
     ConversationModel conversation,
     String currentUserId,
   ) async {
-    // If already has user info, return as is
-    if (conversation.otherUserName?.isNotEmpty == true &&
-        conversation.otherUserName != 'کاربر ناشناس') {
+    // If already has proper user info, return as is
+    if (conversation.otherUserName?.isNotEmpty == true) {
       return conversation;
     }
 
@@ -104,32 +77,37 @@ class UserProfileService {
         await getOtherUserInConversation(conversation.id, currentUserId);
 
     return conversation.copyWith(
-      otherUserName: otherUserInfo['username'] ??
-          otherUserInfo['full_name'] ??
-          'کاربر ناشناس',
+      otherUserName: otherUserInfo['username'] ?? otherUserInfo['full_name'],
       otherUserAvatar: otherUserInfo['avatar_url'],
       otherUserId: otherUserInfo['user_id'],
     );
   }
 
+  /// دریافت stream بروزرسانی‌های پروفایل
+  Stream<Map<String, Map<String, String?>>> get profileUpdates =>
+      _cacheManager.profileUpdates;
+
   /// پاک کردن cache
   void clearCache() {
-    _userProfileCache.clear();
+    _cacheManager.clearCache();
   }
 
-  /// Pre-load profiles برای چندین کاربر
+  /// Pre-load profiles برای چندین کاربر (با batching)
   Future<void> preloadProfiles(List<String> userIds) async {
-    final uncachedUserIds =
-        userIds.where((id) => !_userProfileCache.containsKey(id)).toList();
-    if (uncachedUserIds.isEmpty) return;
+    if (userIds.isEmpty) return;
 
     try {
-      // به جای استفاده از in_ از چند درخواست یا بهینه‌سازی‌های بعدی استفاده می‌شود
-      for (final id in uncachedUserIds) {
-        await getUserProfile(id);
-      }
+      // کش مرکزی خودش batching انجام می‌ده
+      await Future.wait(
+        userIds.map((userId) => _cacheManager.getProfile(userId)),
+      );
     } catch (e) {
       print('⚠️ Error preloading profiles: $e');
     }
+  }
+
+  /// آمار کشینگ
+  Map<String, dynamic> getCacheStats() {
+    return _cacheManager.getCacheStats();
   }
 }

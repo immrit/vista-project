@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../provider/settings_providers.dart';
 import '../../../../DB/settings_cache_service.dart';
 import '../../../../main.dart';
 

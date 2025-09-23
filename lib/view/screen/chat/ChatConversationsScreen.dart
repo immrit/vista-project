@@ -16,6 +16,7 @@ import 'ArchivedConversationsScreen.dart';
 import '../../../services/ChatService.dart';
 import 'ChatScreen.dart';
 import '../../../DB/database_file_utils.dart';
+import '../../../view/widget/enriched_conversation_list_item.dart';
 
 // مدل یکپارچه برای نمایش چت‌ها و کانال‌ها در یک لیست
 @immutable
@@ -33,6 +34,7 @@ class UnifiedChatItem {
   final bool isArchived; // اضافه کردن فیلد isArchived
   final dynamic source;
   final int? memberCount;
+  final ConversationModel? conversation;
 
   const UnifiedChatItem({
     required this.id,
@@ -48,6 +50,7 @@ class UnifiedChatItem {
     this.isArchived = false, // مقدار پیش‌فرض
     this.source,
     this.memberCount,
+    this.conversation,
   });
 
   factory UnifiedChatItem.fromConversation(ConversationModel conversation) {
@@ -59,11 +62,11 @@ class UnifiedChatItem {
       lastActivity: conversation.lastMessageTime,
       unreadCount: 0, // قابلیت خوانده نشده حذف شد
       isChannel: false,
-
       isPinned: conversation.isPinned,
       isMuted: conversation.isMuted,
       isArchived: conversation.isArchived, // خواندن isArchived
       source: conversation,
+      conversation: conversation,
     );
   }
 
@@ -417,6 +420,16 @@ class _ChatConversationsScreenState
 
   // نمایش آیتم یکپارچه
   Widget _buildUnifiedItem(ThemeData theme, UnifiedChatItem item) {
+    // اگر آیتم یک مکالمه است، از EnrichedConversationListItem استفاده کن
+    if (!item.isChannel && item.conversation != null) {
+      return EnrichedConversationListItem(
+        conversation: item.conversation!,
+        onTap: () => _navigateToItem(item),
+        onLongPress: () => _showItemOptions(item),
+      );
+    }
+
+    // برای کانال‌ها از UI قدیمی استفاده کن
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -1006,8 +1019,8 @@ class _ChatConversationsScreenState
           context,
           MaterialPageRoute(
             builder: (context) => ChatScreen(
-              otherUserName:
-                  (item.source as ConversationModel).otherUserName ?? '',
+              otherUserName: (item.source as ConversationModel).otherUserName ??
+                  'در حال بارگذاری...',
               otherUserAvatar:
                   (item.source as ConversationModel).otherUserAvatar ??
                       defaultAvatarUrl,

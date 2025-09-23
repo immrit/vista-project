@@ -34,16 +34,29 @@ final postDetailProvider =
             is_verified,
             verification_type
           ),
-          likes!posts_likes_post_id_fkey (
-            user_id
-          ),
-          comments!posts_comments_post_id_fkey (
-            count
-          )
+          likes!posts_likes_post_id_fkey (user_id),
+          comments!posts_comments_post_id_fkey (id)
         ''').eq('id', postId).single();
 
-    // تبدیل به PublicPostModel
-    return PublicPostModel.fromMap(response);
+    // محاسبه مقادیر مشتق‌شده برای مدل پست
+    final profile = response['profiles'] as Map<String, dynamic>? ?? {};
+    final likes = response['likes'] as List<dynamic>? ?? [];
+    final likeCount = likes.length;
+    final isLiked =
+        likes.any((like) => like['user_id'] == supabase.auth.currentUser?.id);
+    final comments = response['comments'] as List<dynamic>? ?? [];
+    final commentCount = comments.length;
+
+    return PublicPostModel.fromMap({
+      ...response,
+      'like_count': likeCount,
+      'is_liked': isLiked,
+      'comment_count': commentCount,
+      'username': profile['username'] ?? 'Unknown',
+      'avatar_url': profile['avatar_url'] ?? '',
+      'is_verified': profile['is_verified'] ?? false,
+      'verification_type': profile['verification_type'],
+    });
   } catch (e) {
     print('Error fetching post: $e');
     throw Exception('خطا در بارگذاری پست: $e');

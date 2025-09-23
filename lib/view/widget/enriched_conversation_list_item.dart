@@ -1,15 +1,18 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../model/conversation_model.dart';
+import '../../services/user_profile_service.dart';
 import '../util/time_utils.dart';
+import '../../main.dart';
 
-/// ویجت برای نمایش یک آیتم مکالمه با اطلاعات کاربر
-class ConversationListItem extends StatelessWidget {
+/// ویجت برای نمایش یک آیتم مکالمه با enrichment خودکار
+class EnrichedConversationListItem extends StatefulWidget {
   final ConversationModel conversation;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
-  const ConversationListItem({
+  const EnrichedConversationListItem({
     super.key,
     required this.conversation,
     this.onTap,
@@ -17,14 +20,103 @@ class ConversationListItem extends StatelessWidget {
   });
 
   @override
+  State<EnrichedConversationListItem> createState() =>
+      _EnrichedConversationListItemState();
+}
+
+class _EnrichedConversationListItemState
+    extends State<EnrichedConversationListItem> {
+  ConversationModel? _enrichedConversation;
+  bool _isEnriching = false;
+  final UserProfileService _userProfileService = UserProfileService();
+
+  StreamSubscription<Map<String, Map<String, String?>>>?
+      _profileUpdatesSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // 1) Try memory cache immediately to avoid flicker
+    final cached = _userProfileService.getCachedProfile(
+      widget.conversation.otherUserId ?? '',
+    );
+    if (cached != null && widget.conversation.otherUserName == null) {
+      _enrichedConversation = widget.conversation.copyWith(
+        otherUserName: cached['username'] ?? cached['full_name'],
+        otherUserAvatar: cached['avatar_url'],
+      );
+    }
+
+    // 2) Listen to real-time profile updates
+    _profileUpdatesSubscription = _userProfileService.profileUpdates.listen(
+      (updates) {
+        final userId = widget.conversation.otherUserId;
+        if (userId != null && updates.containsKey(userId)) {
+          final updatedProfile = updates[userId];
+          if (updatedProfile != null && mounted) {
+            setState(() {
+              _enrichedConversation =
+                  (_enrichedConversation ?? widget.conversation).copyWith(
+                otherUserName:
+                    updatedProfile['username'] ?? updatedProfile['full_name'],
+                otherUserAvatar: updatedProfile['avatar_url'],
+              );
+            });
+          }
+        }
+      },
+    );
+
+    // 3) Then ensure enrichment (no-op if already enriched)
+    _enrichConversation();
+  }
+
+  Future<void> _enrichConversation() async {
+    if (_enrichedConversation != null || _isEnriching) return;
+
+    setState(() {
+      _isEnriching = true;
+    });
+
+    try {
+      final currentUserId = supabase.auth.currentUser?.id;
+      if (currentUserId != null) {
+        final enriched = await _userProfileService
+            .enrichConversationWithUserData(widget.conversation, currentUserId);
+
+        if (mounted) {
+          setState(() {
+            _enrichedConversation = enriched;
+            _isEnriching = false;
+          });
+        }
+      }
+    } catch (e) {
+      print('⚠️ Error enriching conversation ${widget.conversation.id}: $e');
+      if (mounted) {
+        setState(() {
+          _isEnriching = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _profileUpdatesSubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final conversation = _enrichedConversation ?? widget.conversation;
 
     // تشخیص نام و آواتار کاربر دیگر
     String displayName = 'در حال بارگذاری...';
     String? avatarUrl;
 
-    // اگر اطلاعات کاربر در conversation موجود است
     if (conversation.otherUserName?.isNotEmpty == true) {
       displayName = conversation.otherUserName!;
       avatarUrl = conversation.otherUserAvatar;
@@ -37,8 +129,8 @@ class ConversationListItem extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
+        onTap: widget.onTap,
+        onLongPress: widget.onLongPress,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(

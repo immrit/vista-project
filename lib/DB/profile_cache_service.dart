@@ -126,6 +126,11 @@ class ProfileCacheService {
     return _profileMemoryCache[userId];
   }
 
+  /// اضافه کردن پروفایل به کش (برای استفاده خارجی)
+  void addProfileToCache(String userId, ProfileModel profile) {
+    _profileMemoryCache[userId] = profile;
+  }
+
   /// دریافت پست‌های کش شده کاربر
   List<PublicPostModel> getCachedPosts(String userId) {
     return _postsMemoryCache[userId] ?? [];
@@ -193,8 +198,32 @@ class ProfileCacheService {
       });
 
       // ساخت لیست پست‌ها
+      final currentUserId = supabase.auth.currentUser?.id;
       final posts = postsResponse.map((post) {
-        return PublicPostModel.fromMap(post);
+        final postLikes = post['likes'] as List? ?? [];
+        final comments = post['comments'] as List<dynamic>? ?? [];
+
+        // Debug logging for cache
+        print('🔍 Cache Post Debug - Post ID: ${post['id']}');
+        print('🔍 Cache Likes array: $postLikes (length: ${postLikes.length})');
+        print(
+            '🔍 Cache Comments array: $comments (length: ${comments.length})');
+
+        final mappedPost = PublicPostModel.fromMap({
+          ...post,
+          'like_count': postLikes.length,
+          'is_liked': postLikes.any((like) => like['user_id'] == currentUserId),
+          'username': post['profiles']['username'] ?? 'Unknown',
+          'avatar_url': post['profiles']['avatar_url'] ?? '',
+          'is_verified': post['profiles']['is_verified'] ?? false,
+          'comment_count': comments.length,
+          'verification_type': post['profiles']['verification_type'],
+        });
+
+        print(
+            '🔍 Cache Final mapped post - likeCount: ${mappedPost.likeCount}, commentCount: ${mappedPost.commentCount}, isLiked: ${mappedPost.isLiked}');
+
+        return mappedPost;
       }).toList();
 
       // ذخیره در memory cache

@@ -474,17 +474,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  // متد برای بررسی وضعیت مکالمه
-  Future<String?> _checkConversationStatus(String otherUserId) async {
-    try {
-      final chatService = ref.read(chatServiceProvider);
-      return await chatService.findExistingConversation(otherUserId);
-    } catch (e) {
-      print('خطا در بررسی وضعیت مکالمه: $e');
-      return null;
-    }
-  }
-
   // متد برای شروع گفتگو با کاربر دیگر
   void _startConversation(String otherUserId, String otherUsername) async {
     try {
@@ -995,7 +984,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   isVerified: post.isVerified, // حتما از post
                   verificationType: post.verificationType, // حتما از post
                   onLike: () async {
-                    _toggleLike(post);
+                    _handleLike(post);
                   },
                   onComment: () => showCommentsBottomSheet2(context,
                       postId: post.id, postTitle: post.title ?? ''),
@@ -1074,19 +1063,38 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Widget _buildLikeButton(PublicPostModel post) {
-    return Row(
-      children: [
-        IconButton(
-          icon: Icon(post.isLiked ? Icons.favorite : Icons.favorite_border,
-              color: post.isLiked ? Colors.red : null),
-          onPressed: () => _handleLike(post),
-        ),
-        Text('${post.likeCount}'),
-      ],
+    return Consumer(
+      builder: (context, ref, child) {
+        final isLiked = ref.watch(likeStateProvider)[post.id] ?? post.isLiked;
+        final likeCount =
+            post.likeCount + (isLiked != post.isLiked ? (isLiked ? 1 : -1) : 0);
+
+        // Debug logging
+        print('🔍 UI Like Button Debug - Post ID: ${post.id}');
+        print('🔍 Base likeCount: ${post.likeCount}, isLiked: ${post.isLiked}');
+        print(
+            '🔍 LikeStateProvider value: ${ref.watch(likeStateProvider)[post.id]}');
+        print('🔍 Final likeCount: $likeCount, final isLiked: $isLiked');
+
+        return Row(
+          children: [
+            IconButton(
+              icon: Icon(isLiked ? Icons.favorite : Icons.favorite_border,
+                  color: isLiked ? Colors.red : null),
+              onPressed: () => _handleLike(post),
+            ),
+            Text('$likeCount'),
+          ],
+        );
+      },
     );
   }
 
   Widget _buildCommentButton(PublicPostModel post) {
+    // Debug logging
+    print('🔍 UI Comment Button Debug - Post ID: ${post.id}');
+    print('🔍 Comment count: ${post.commentCount}');
+
     return Row(
       children: [
         GestureDetector(
@@ -1129,16 +1137,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     try {
       final currentLikeState = !post.isLiked;
 
-      // آپدیت وضعیت در provider
+      // آپدیت وضعیت در provider (optimistic update)
       ref
           .read(likeStateProvider.notifier)
           .updateLikeState(post.id, currentLikeState);
-
-      // آپدیت مدل پست
-      setState(() {
-        post.isLiked = currentLikeState;
-        post.likeCount += currentLikeState ? 1 : -1;
-      });
 
       // ارسال به سرور
       await ref.watch(supabaseServiceProvider).toggleLike(
@@ -1146,6 +1148,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ownerId: post.userId,
             ref: ref,
           );
+
+      // Invalidate profile provider to refresh the data
+      ref.invalidate(userProfileProvider(widget.userId));
     } catch (e) {
       // برگرداندن وضعیت در صورت خطا
       final previousLikeState = post.isLiked;
@@ -1153,36 +1158,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           .read(likeStateProvider.notifier)
           .updateLikeState(post.id, previousLikeState);
 
-      setState(() {
-        post.isLiked = previousLikeState;
-        post.likeCount += previousLikeState ? 1 : -1;
-      });
-      debugPrint('Error in handleLike: e');
-    }
-  }
-
-  void _toggleLike(PublicPostModel post) async {
-    final updatedPost = post.copyWith(
-        isLiked: !post.isLiked,
-        likeCount: post.isLiked ? post.likeCount - 1 : post.likeCount + 1);
-    ref
-        .read(userProfileProvider(widget.userId).notifier)
-        .updatePost(updatedPost);
-    try {
-      if (updatedPost.isLiked) {
-        await supabase.from('likes').insert({
-          'post_id': updatedPost.id,
-          'user_id': supabase.auth.currentUser!.id
-        });
-      } else {
-        await supabase
-            .from('likes')
-            .delete()
-            .eq('post_id', updatedPost.id)
-            .eq('user_id', supabase.auth.currentUser!.id);
-      }
-    } catch (e) {
-      print('خطا در ثبت لایک: $e');
+      debugPrint('Error in handleLike: $e');
     }
   }
 

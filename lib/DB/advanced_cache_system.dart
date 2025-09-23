@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../model/message_model.dart';
 import '../model/conversation_model.dart';
 import '../main.dart';
+import '../services/profile_cache_manager.dart';
 import 'performance_cache_optimizer.dart';
 
 /// سیستم کش پیشرفته مشابه تلگرام
@@ -41,7 +42,7 @@ class AdvancedCacheSystem {
   bool _isInitialized = false;
   bool _isSyncing = false;
   Timer? _periodicSyncTimer;
-  Set<String> _pendingUploads = <String>{};
+  final Set<String> _pendingUploads = <String>{};
 
   /// Initialize the advanced cache system
   Future<void> initialize() async {
@@ -160,9 +161,35 @@ class AdvancedCacheSystem {
       print('⚠️ Failed to setup conversation realtime stream: $e');
     }
 
+    // Listen to profile changes for real-time updates
+    try {
+      supabase.from('profiles').stream(primaryKey: ['id']).listen(
+        (data) {
+          _handleProfileUpdates(List<Map<String, dynamic>>.from(data));
+        },
+        onError: (error) {
+          print('⚠️ Realtime profile stream error: $error');
+        },
+      );
+    } catch (e) {
+      print('⚠️ Failed to setup profile realtime stream: $e');
+    }
+
     // Listen to message changes for active conversations
     for (final conversationId in _conversationMemoryCache.keys) {
       _setupMessageListener(conversationId);
+    }
+  }
+
+  /// Handle profile updates from real-time
+  void _handleProfileUpdates(List<Map<String, dynamic>> data) {
+    for (final profileData in data) {
+      final userId = profileData['id'] as String?;
+      if (userId != null) {
+        // Update profile cache manager
+        final profileCacheManager = ProfileCacheManager();
+        profileCacheManager.updateProfileFromRealtime(userId, profileData);
+      }
     }
   }
 
@@ -189,32 +216,69 @@ class AdvancedCacheSystem {
   }
 
   /// Handle conversation updates from real-time
-  void _handleConversationUpdates(List<Map<String, dynamic>> data) {
+  void _handleConversationUpdates(List<Map<String, dynamic>> data) async {
     bool hasChanges = false;
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return;
 
     for (final convData in data) {
-      final conversation =
-          ConversationModel.fromJson(convData, currentUserId: userId);
+      try {
+        // Fetch full conversation data with participants (without profiles join)
+        final fullConvData = await supabase.from('conversations').select('''
+              *,
+              conversation_participants (
+                id,
+                conversation_id,
+                user_id,
+                created_at,
+                last_read_time,
+                is_muted
+              )
+            ''').eq('id', convData['id']).single();
 
-      // Only process conversations for current user
-      // ConversationModel doesn't have userOneId/userTwoId, check participants instead
-      final isUserParticipant =
-          conversation.participants.any((p) => p.userId == userId);
-      if (!isUserParticipant) {
-        continue;
-      }
+        final conversation =
+            ConversationModel.fromJson(fullConvData, currentUserId: userId);
 
-      final existingConv = _conversationMemoryCache[conversation.id];
-      if (existingConv == null ||
-          existingConv.updatedAt.isBefore(conversation.updatedAt)) {
-        _conversationMemoryCache[conversation.id] = conversation;
-        hasChanges = true;
+        // Only process conversations for current user
+        final isUserParticipant =
+            conversation.participants.any((p) => p.userId == userId);
+        if (!isUserParticipant) {
+          continue;
+        }
 
-        // Setup message listener for new conversations
-        if (existingConv == null) {
-          _setupMessageListener(conversation.id);
+        final existingConv = _conversationMemoryCache[conversation.id];
+        if (existingConv == null ||
+            existingConv.updatedAt.isBefore(conversation.updatedAt)) {
+          _conversationMemoryCache[conversation.id] = conversation;
+          hasChanges = true;
+
+          // Setup message listener for new conversations
+          if (existingConv == null) {
+            _setupMessageListener(conversation.id);
+          }
+        }
+      } catch (e) {
+        print(
+            '⚠️ Error fetching full conversation data for ${convData['id']}: $e');
+        // Fallback to basic conversation data if full fetch fails
+        final conversation =
+            ConversationModel.fromJson(convData, currentUserId: userId);
+
+        final isUserParticipant =
+            conversation.participants.any((p) => p.userId == userId);
+        if (!isUserParticipant) {
+          continue;
+        }
+
+        final existingConv = _conversationMemoryCache[conversation.id];
+        if (existingConv == null ||
+            existingConv.updatedAt.isBefore(conversation.updatedAt)) {
+          _conversationMemoryCache[conversation.id] = conversation;
+          hasChanges = true;
+
+          if (existingConv == null) {
+            _setupMessageListener(conversation.id);
+          }
         }
       }
     }
@@ -336,9 +400,20 @@ class AdvancedCacheSystem {
       final userId = supabase.auth.currentUser?.id;
       if (userId == null) return;
 
+      // Fetch conversations with participant information (without profiles join)
       final response = await supabase
           .from('conversations')
-          .select('*')
+          .select('''
+            *,
+            conversation_participants (
+              id,
+              conversation_id,
+              user_id,
+              created_at,
+              last_read_time,
+              is_muted
+            )
+          ''')
           .order('updated_at', ascending: false)
           .timeout(const Duration(seconds: 30)); // Add timeout
 

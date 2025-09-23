@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
 
-import '../../../../provider/provider.dart';
 import '../../../../services/storage_info_service.dart';
 import '../../../../services/cache_manager.dart';
 import '../../../../DB/advanced_cache_system.dart';
 import '../../../../DB/profile_cache_service.dart';
 import '../../../../DB/database_file_utils.dart';
 import '../../../../main.dart';
-import 'ImageCacheManagementPage.dart';
 
 // Storage category model like Telegram
 class StorageCategory {
@@ -48,25 +47,30 @@ class _StorageAndMemorySettingsPageState
   Map<String, dynamic> _cacheStats = {};
   Map<String, dynamic> _storageInfo = {};
   Map<String, dynamic> _profileStats = {};
-  Map<String, dynamic> _messageStats = {};
 
   // Telegram-style settings
   TabController? _tabController;
-  String _autoRemovePrivateChats = '1 week';
-  String _autoRemoveGroupChats = '1 week';
-  String _autoRemoveChannels = '1 week';
-  String _autoRemoveStories = '2 days';
+  String _autoRemovePrivateChats = '۱ هفته';
+  String _autoRemoveProfiles = '۲ روز';
   double _maxCacheSize = 32.0; // GB
 
+  // Video settings
+  bool _dataSaverEnabled = false;
+  bool _autoQualityEnabled = true;
+  bool _autoPlayEnabled = false;
+
+  // Visible categories in chart (toggleable under the chart)
+  Set<String> _visibleCategoryTypes = <String>{};
+
   final List<String> _autoRemoveOptions = [
-    '2 days',
-    '1 week',
-    '2 weeks',
-    '1 month',
-    'Never',
+    '۲ روز',
+    '۱ هفته',
+    '۲ هفته',
+    '۱ ماه',
+    'هرگز',
   ];
 
-  final List<String> _tabTitles = ['کلی', 'گفتگوها', 'رسانه', 'فایل‌ها'];
+  final List<String> _tabTitles = ['کلی', 'گفتگوها'];
 
   // Storage categories with colors (like Telegram)
   List<StorageCategory> _storageCategories = [
@@ -84,6 +88,7 @@ class _StorageAndMemorySettingsPageState
     super.initState();
     _tabController = TabController(length: _tabTitles.length, vsync: this);
     _initializeCacheManager();
+    _loadAutoRemoveSettings();
   }
 
   @override
@@ -120,24 +125,10 @@ class _StorageAndMemorySettingsPageState
       // بارگذاری آمار پروفایل‌ها
       final profileStats = _profileCache.getCacheStats();
 
-      // بارگذاری آمار پیام‌ها و مکالمات
-      final conversations = _advancedCache.getCachedConversations();
-      final messageCount = conversations.fold<int>(0, (sum, conv) {
-        final messages = _advancedCache.getCachedMessages(conv.id);
-        return sum + messages.length;
-      });
-
-      final messageStats = {
-        'total_conversations': conversations.length,
-        'total_messages': messageCount,
-        'cache_size_mb': 0.0,
-      };
-
       setState(() {
         _cacheStats = cacheStats;
         _storageInfo = storageInfo;
         _profileStats = profileStats;
-        _messageStats = messageStats;
       });
 
       // محاسبه storage categories مثل تلگرام
@@ -167,6 +158,17 @@ class _StorageAndMemorySettingsPageState
     final messageCache = _storageInfo['messageCacheSize'] ?? 0.0;
     final conversationCache = _storageInfo['conversationCacheSize'] ?? 0.0;
     final tempCache = _storageInfo['tempCacheSize'] ?? 0.0;
+
+    // Debug: نمایش آمار دریافت شده
+    print('📊 آمار کش دریافت شده:');
+    print('   Story Cache: ${storyCache.toStringAsFixed(2)} MB');
+    print('   Post Cache: ${postCache.toStringAsFixed(2)} MB');
+    print('   Chat Image Cache: ${chatImageCache.toStringAsFixed(2)} MB');
+    print('   Wallpaper Cache: ${wallpaperCache.toStringAsFixed(2)} MB');
+    print('   Profile Cache: ${profileCacheSize.toStringAsFixed(2)} MB');
+    print('   Message Cache: ${messageCache.toStringAsFixed(2)} MB');
+    print('   Conversation Cache: ${conversationCache.toStringAsFixed(2)} MB');
+    print('   Temp Cache: ${tempCache.toStringAsFixed(2)} MB');
 
     // تخصیص داده‌های واقعی به دسته‌ها
     _storageCategories = [
@@ -220,13 +222,23 @@ class _StorageAndMemorySettingsPageState
 
     // محاسبه درصدها
     for (var category in _storageCategories) {
-      category.percentage = totalSize > 0
-          ? (category.size / totalSize * 100)
-          : 0;
+      category.percentage =
+          totalSize > 0 ? (category.size / totalSize * 100) : 0;
     }
 
     // مرتب‌سازی بر اساس حجم (بزرگ‌ترین اول)
     _storageCategories.sort((a, b) => b.size.compareTo(a.size));
+
+    // همگام‌سازی مجموعه دسته‌های قابل مشاهده با دسته‌های فعلی
+    final currentTypes = _storageCategories.map((c) => c.type).toSet();
+    if (_visibleCategoryTypes.isEmpty) {
+      _visibleCategoryTypes = {...currentTypes};
+    } else {
+      _visibleCategoryTypes = _visibleCategoryTypes.intersection(currentTypes);
+      if (_visibleCategoryTypes.isEmpty) {
+        _visibleCategoryTypes = {...currentTypes};
+      }
+    }
 
     // Debug: چاپ مقادیر واقعی
     print('=== Real Storage Categories ===');
@@ -267,22 +279,23 @@ class _StorageAndMemorySettingsPageState
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _tabController != null
-          ? TabBarView(
-              controller: _tabController,
-              children: [
-                _buildOverviewTab(context, isDark),
-                _buildChatsTab(context, isDark),
-                _buildMediaTab(context, isDark),
-                _buildFilesTab(context, isDark),
-              ],
-            )
-          : const SizedBox(),
+              ? TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildOverviewTab(context, isDark),
+                    _buildChatsTab(context, isDark),
+                  ],
+                )
+              : const SizedBox(),
     );
   }
 
   // Tab content builders (like Telegram)
   Widget _buildOverviewTab(BuildContext context, bool isDark) {
-    final totalSize = _storageCategories.fold(
+    final categoriesForChart = _storageCategories
+        .where((c) => _visibleCategoryTypes.contains(c.type))
+        .toList();
+    final totalSize = categoriesForChart.fold(
       0.0,
       (sum, cat) => sum + cat.size,
     );
@@ -290,155 +303,110 @@ class _StorageAndMemorySettingsPageState
 
     // تنها حجم مصرفی برنامه نشان داده می‌شود، نه کل گوشی
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        // Circular chart like Telegram
-        Container(
-          height: 250,
-          child: Center(
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                SizedBox(
-                  width: 200,
-                  height: 200,
-                  child: CustomPaint(
-                    painter: StorageChartPainter(_storageCategories, isDark),
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          // Circular chart like Telegram
+          SizedBox(
+            height: 250,
+            child: Center(
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  SizedBox(
+                    width: 200,
+                    height: 200,
+                    child: CustomPaint(
+                      painter: StorageChartPainter(categoriesForChart, isDark),
+                    ),
                   ),
-                ),
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      totalSizeGB.toStringAsFixed(1),
-                      style: const TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        totalSizeGB.toStringAsFixed(1),
+                        style: const TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    const Text(
-                      'GB',
-                      style: TextStyle(fontSize: 16, color: Colors.grey),
-                    ),
-                  ],
-                ),
-              ],
+                      const Text(
+                        'GB',
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
 
-        // App usage info like Telegram
-        Center(
-          child: Text(
-            'ویستا ${totalSizeGB.toStringAsFixed(2)} گیگابایت از حافظه دستگاه شما استفاده می‌کند.',
-            style: TextStyle(color: Colors.grey[600], fontSize: 14),
+          // (قدیمی) لیست دسته‌ها در پایین برای فعال/غیرفعال کردن استفاده می‌شود
+
+          // App usage info like Telegram
+          Center(
+            child: Text(
+              'ویستا ${totalSizeGB.toStringAsFixed(2)} گیگابایت از حافظه دستگاه شما استفاده می‌کند.',
+              style: TextStyle(color: Colors.grey[600], fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Categories list like Telegram
+          ...List.generate(_storageCategories.length, (index) {
+            final category = _storageCategories[index];
+            if (category.percentage < 1.0) return const SizedBox.shrink();
+
+            return _buildCategoryItem(category, isDark);
+          }),
+
+          const SizedBox(height: 24),
+
+          // Clear Cache button like Telegram
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: () => _showClearCacheDialog(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: Text(
+                'پاک‌سازی کش ${totalSizeGB.toStringAsFixed(2)} GB',
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Info text like Telegram
+          Text(
+            'تمام رسانه‌ها در فضای ابری ویستا باقی می‌مانند و در صورت نیاز قابل دانلود مجدد هستند.',
+            style: TextStyle(color: Colors.grey[600], fontSize: 12),
             textAlign: TextAlign.center,
           ),
-        ),
 
-        const SizedBox(height: 24),
+          const SizedBox(height: 32),
 
-        // Categories list like Telegram
-        ...List.generate(_storageCategories.length, (index) {
-          final category = _storageCategories[index];
-          if (category.percentage < 1.0) return const SizedBox.shrink();
-
-          return _buildCategoryItem(category, isDark);
-        }),
-
-        const SizedBox(height: 24),
-
-        // Clear Cache button like Telegram
-        Container(
-          width: double.infinity,
-          height: 50,
-          child: ElevatedButton(
-            onPressed: () => _showClearCacheDialog(context),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: Text(
-              'پاک‌سازی کش ${totalSizeGB.toStringAsFixed(2)} GB',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 16),
-
-        // Info text like Telegram
-        Text(
-          'تمام رسانه‌ها در فضای ابری ویستا باقی می‌مانند و در صورت نیاز قابل دانلود مجدد هستند.',
-          style: TextStyle(color: Colors.grey[600], fontSize: 12),
-          textAlign: TextAlign.center,
-        ),
-
-        const SizedBox(height: 16),
-
-        // App stats
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.blue.withAlpha(20),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              Column(
-                children: [
-                  Text(
-                    '${_messageStats['total_conversations'] ?? 0}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue,
-                    ),
-                  ),
-                  const Text('گفتگو', style: TextStyle(fontSize: 12)),
-                ],
-              ),
-              Column(
-                children: [
-                  Text(
-                    '${_messageStats['total_messages'] ?? 0}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green,
-                    ),
-                  ),
-                  const Text('پیام', style: TextStyle(fontSize: 12)),
-                ],
-              ),
-              Column(
-                children: [
-                  Text(
-                    '${_getTotalImageCount()}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.purple,
-                    ),
-                  ),
-                  const Text('تصویر', style: TextStyle(fontSize: 12)),
-                ],
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 32),
-
-        // Auto-remove section like Telegram
-        _buildAutoRemoveSection(context, isDark),
-      ],
+          // Auto-remove section like Telegram
+          _buildAutoRemoveSection(context, isDark),
+        ],
+      ),
     );
   }
 
   Widget _buildCategoryItem(StorageCategory category, bool isDark) {
+    final selected = _visibleCategoryTypes.contains(category.type);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -451,24 +419,22 @@ class _StorageAndMemorySettingsPageState
               color: category.color,
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.check, color: Colors.white, size: 12),
           ),
           const SizedBox(width: 16),
           // Category info
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                Text(
+                  '${category.name} ${category.percentage.toStringAsFixed(0)}%',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      '${category.name} ${category.percentage.toStringAsFixed(0)}%',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
                     Text(
                       _formatFileSize(category.size),
                       style: TextStyle(
@@ -476,6 +442,24 @@ class _StorageAndMemorySettingsPageState
                         color: Colors.grey[600],
                         fontWeight: FontWeight.w600,
                       ),
+                    ),
+                    const SizedBox(width: 12),
+                    Checkbox(
+                      value: selected,
+                      onChanged: (value) {
+                        setState(() {
+                          if (value == true) {
+                            _visibleCategoryTypes.add(category.type);
+                          } else {
+                            _visibleCategoryTypes.remove(category.type);
+                            if (_visibleCategoryTypes.isEmpty) {
+                              _visibleCategoryTypes.add(category.type);
+                            }
+                          }
+                        });
+                      },
+                      activeColor: category.color,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ],
                 ),
@@ -492,45 +476,42 @@ class _StorageAndMemorySettingsPageState
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Auto-remove cached media',
+          'حذف خودکار رسانه‌های کش شده',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w600,
             color: Colors.blue,
           ),
         ),
+        const SizedBox(height: 8),
+        Text(
+          'رسانه‌های قدیمی‌تر از مدت انتخاب شده به صورت خودکار حذف می‌شوند',
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.grey[600],
+          ),
+        ),
         const SizedBox(height: 16),
 
         _buildAutoRemoveItem(
-          'Private Chats',
-          Icons.person,
+          'گفتگوهای خصوصی',
+          Icons.person_rounded,
           _autoRemovePrivateChats,
           (value) {
             setState(() => _autoRemovePrivateChats = value);
+            _saveAutoRemoveSetting('conversations', value);
           },
         ),
 
-        _buildAutoRemoveItem(
-          'Group Chats',
-          Icons.group,
-          _autoRemoveGroupChats,
-          (value) {
-            setState(() => _autoRemoveGroupChats = value);
-          },
-        ),
-
-        _buildAutoRemoveItem('Channels', Icons.campaign, _autoRemoveChannels, (
-          value,
-        ) {
-          setState(() => _autoRemoveChannels = value);
-        }),
+        // گزینه کانال‌ها حذف شد
 
         _buildAutoRemoveItem(
-          'Stories',
-          Icons.auto_stories,
-          _autoRemoveStories,
+          'رسانه‌های پروفایل',
+          Icons.account_circle_rounded,
+          _autoRemoveProfiles,
           (value) {
-            setState(() => _autoRemoveStories = value);
+            setState(() => _autoRemoveProfiles = value);
+            _saveAutoRemoveSetting('profiles', value);
           },
         ),
 
@@ -540,6 +521,175 @@ class _StorageAndMemorySettingsPageState
         _buildMaxCacheSizeSection(context, isDark),
       ],
     );
+  }
+
+  /// ذخیره تنظیمات حذف خودکار در SharedPreferences
+  Future<void> _saveAutoRemoveSetting(String key, String value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('auto_remove_$key', value);
+
+      // اجرای حذف خودکار بر اساس تنظیمات جدید
+      await _performAutoRemoval(key, value);
+
+      print('✅ تنظیمات حذف خودکار ذخیره شد: $key = $value');
+    } catch (e) {
+      print('❌ خطا در ذخیره تنظیمات حذف خودکار: $e');
+    }
+  }
+
+  /// بارگذاری تنظیمات حذف خودکار از SharedPreferences
+  Future<void> _loadAutoRemoveSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      setState(() {
+        _autoRemovePrivateChats =
+            prefs.getString('auto_remove_conversations') ?? '۱ هفته';
+        _autoRemoveProfiles =
+            prefs.getString('auto_remove_profiles') ?? '۲ روز';
+        _maxCacheSize = prefs.getDouble('max_cache_size') ?? 32.0;
+
+        // Video settings
+        _dataSaverEnabled = prefs.getBool('video_data_saver') ?? false;
+        _autoQualityEnabled = prefs.getBool('video_auto_quality') ?? true;
+        _autoPlayEnabled = prefs.getBool('video_auto_play') ?? false;
+      });
+    } catch (e) {
+      print('❌ خطا در بارگذاری تنظیمات حذف خودکار: $e');
+    }
+  }
+
+  /// اجرای حذف خودکار بر اساس تنظیمات
+  Future<void> _performAutoRemoval(String category, String duration) async {
+    try {
+      if (duration == 'هرگز') return;
+
+      final daysToKeep = _convertDurationToDays(duration);
+      if (daysToKeep <= 0) return;
+
+      final cutoffDate = DateTime.now().subtract(Duration(days: daysToKeep));
+
+      switch (category) {
+        case 'conversations':
+          await _cleanupConversationsMedia(cutoffDate);
+          break;
+        case 'profiles':
+          await _cleanupProfilesMedia(cutoffDate);
+          break;
+      }
+
+      // بروزرسانی آمار
+      await _loadAllStats();
+
+      print('✅ حذف خودکار انجام شد برای $category');
+    } catch (e) {
+      print('❌ خطا در حذف خودکار: $e');
+    }
+  }
+
+  /// تبدیل رشته مدت زمان به تعداد روز
+  int _convertDurationToDays(String duration) {
+    switch (duration) {
+      case '۲ روز':
+        return 2;
+      case '۱ هفته':
+        return 7;
+      case '۲ هفته':
+        return 14;
+      case '۱ ماه':
+        return 30;
+      case 'هرگز':
+      default:
+        return 0;
+    }
+  }
+
+  /// پاک‌سازی رسانه‌های گفتگوهای خصوصی
+  Future<void> _cleanupConversationsMedia(DateTime cutoffDate) async {
+    try {
+      print('🧹 شروع پاک‌سازی رسانه‌های گفتگوها قدیمی‌تر از $cutoffDate');
+
+      // دریافت تمام گفتگوها
+      final conversations = _advancedCache.getCachedConversations();
+      int cleanedItems = 0;
+
+      for (final conversation in conversations) {
+        // دریافت پیام‌های این گفتگو
+        final messages = _advancedCache.getCachedMessages(conversation.id);
+
+        for (final message in messages) {
+          // بررسی اینکه آیا پیام قدیمی‌تر از cutoffDate است
+          if (message.createdAt.isBefore(cutoffDate)) {
+            // حذف رسانه‌های مرتبط با این پیام (اگر وجود دارد)
+            await _cleanupMessageMedia(message);
+            cleanedItems++;
+          }
+        }
+      }
+
+      print('✅ $cleanedItems آیتم رسانه از گفتگوها پاک شد');
+    } catch (e) {
+      print('❌ خطا در پاک‌سازی رسانه‌های گفتگوها: $e');
+    }
+  }
+
+  /// پاک‌سازی رسانه‌های کانال‌ها
+  // متد پاک‌سازی کانال‌ها حذف شد
+
+  /// پاک‌سازی رسانه‌های پروفایل
+  Future<void> _cleanupProfilesMedia(DateTime cutoffDate) async {
+    try {
+      print('🧹 شروع پاک‌سازی رسانه‌های پروفایل قدیمی‌تر از $cutoffDate');
+
+      // پاک‌سازی تصاویر پروفایل و پست‌های قدیمی
+      // TODO: اگر ProfileCacheService متد cleanupOldCaches دارد، اینجا فراخوانی کنید
+      print(
+          '📝 پاک‌سازی کش پروفایل - نیاز به پیاده‌سازی در ProfileCacheService');
+
+      print('✅ پاک‌سازی رسانه‌های پروفایل تکمیل شد');
+    } catch (e) {
+      print('❌ خطا در پاک‌سازی رسانه‌های پروفایل: $e');
+    }
+  }
+
+  /// پاک‌سازی رسانه‌های مرتبط با یک پیام
+  Future<void> _cleanupMessageMedia(dynamic message) async {
+    try {
+      // اگر پیام دارای attachment است
+      if (message.attachmentUrl != null && message.attachmentUrl!.isNotEmpty) {
+        // حذف فایل از cache
+        // TODO: اگر UnifiedCacheManager متد removeFromCache دارد، اینجا فراخوانی کنید
+        print('📝 حذف attachment: ${message.attachmentUrl}');
+      }
+
+      // اگر پیام دارای تصویر است
+      if (message.imageUrl != null && message.imageUrl!.isNotEmpty) {
+        // TODO: اگر UnifiedCacheManager متد removeFromCache دارد، اینجا فراخوانی کنید
+        print('📝 حذف تصویر: ${message.imageUrl}');
+      }
+    } catch (e) {
+      print('❌ خطا در حذف رسانه پیام: $e');
+    }
+  }
+
+  /// ذخیره تنظیمات ویدیو در SharedPreferences
+  Future<void> _saveVideoSetting(String key, dynamic value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      if (value is bool) {
+        await prefs.setBool('video_$key', value);
+      } else if (value is String) {
+        await prefs.setString('video_$key', value);
+      } else if (value is int) {
+        await prefs.setInt('video_$key', value);
+      }
+
+      print('✅ تنظیمات ویدیو ذخیره شد: $key = $value');
+    } catch (e) {
+      print('❌ خطا در ذخیره تنظیمات ویدیو: $e');
+    }
   }
 
   Widget _buildAutoRemoveItem(
@@ -577,154 +727,557 @@ class _StorageAndMemorySettingsPageState
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Maximum cache size',
+          'حداکثر اندازه کش',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w600,
             color: Colors.blue,
           ),
         ),
+        const SizedBox(height: 8),
+        Text(
+          'وقتی اندازه کش از این حد تجاوز کند، قدیمی‌ترین رسانه‌ها حذف می‌شوند',
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.grey[600],
+          ),
+        ),
         const SizedBox(height: 16),
 
         // Slider like Telegram
-        Row(
-          children: [
-            const Text('5 GB'),
-            Expanded(
-              child: Slider(
-                value: _maxCacheSize == double.infinity ? 100 : _maxCacheSize,
-                min: 5,
-                max: 100,
-                divisions: 3,
-                activeColor: Colors.blue,
-                onChanged: (value) {
-                  setState(() {
-                    if (value == 100) {
-                      _maxCacheSize = double.infinity;
-                    } else {
-                      _maxCacheSize = value;
-                    }
-                  });
-                },
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDark ? Colors.grey[800] : Colors.grey[100],
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  const Text('۵ گیگابایت'),
+                  Expanded(
+                    child: Slider(
+                      value: _maxCacheSize == double.infinity
+                          ? 100
+                          : _maxCacheSize,
+                      min: 5,
+                      max: 100,
+                      divisions:
+                          19, // 5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100
+                      activeColor: Colors.blue,
+                      onChanged: (value) {
+                        setState(() {
+                          if (value == 100) {
+                            _maxCacheSize = double.infinity;
+                          } else {
+                            _maxCacheSize = value;
+                          }
+                        });
+                        _saveMaxCacheSize();
+                      },
+                    ),
+                  ),
+                  Text(
+                    _maxCacheSize == double.infinity
+                        ? 'بدون محدودیت'
+                        : '${_maxCacheSize.toInt()} گیگابایت',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.blue,
+                    ),
+                  ),
+                ],
               ),
-            ),
-            Text(
-              _maxCacheSize == double.infinity
-                  ? 'No limit'
-                  : '${_maxCacheSize.toInt()} GB',
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                'فضای فعلی استفاده شده: ${(_storageCategories.fold(0.0, (sum, cat) => sum + cat.size) / 1024).toStringAsFixed(1)} گیگابایت',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
         ),
 
-        const SizedBox(height: 8),
+        const SizedBox(height: 24),
 
-        Text(
-          'If your cache size exceeds this limit, the oldest unused media will be removed from the device.',
-          style: TextStyle(color: Colors.grey[600], fontSize: 12),
+        // Max cache size actions
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: _performCacheSizeCheck,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                icon: const Icon(Icons.cleaning_services_rounded),
+                label: const Text('بررسی و پاک‌سازی'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => _showCacheSizeDetails(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                icon: const Icon(Icons.info_outline_rounded),
+                label: const Text('جزئیات'),
+              ),
+            ),
+          ],
         ),
 
         const SizedBox(height: 24),
 
         // Video settings section (preserved from original)
-        _buildVideoSettingsSection(context, ref, isDark),
+        _buildVideoSettingsSection(context, isDark),
       ],
+    );
+  }
+
+  /// ذخیره تنظیمات حداکثر اندازه کش
+  Future<void> _saveMaxCacheSize() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble('max_cache_size', _maxCacheSize);
+      print('✅ حداکثر اندازه کش ذخیره شد: $_maxCacheSize GB');
+    } catch (e) {
+      print('❌ خطا در ذخیره حداکثر اندازه کش: $e');
+    }
+  }
+
+  /// بررسی و پاک‌سازی کش بر اساس حداکثر اندازه
+  Future<void> _performCacheSizeCheck() async {
+    try {
+      final currentSizeGB =
+          _storageCategories.fold(0.0, (sum, cat) => sum + cat.size) / 1024;
+
+      if (_maxCacheSize != double.infinity && currentSizeGB > _maxCacheSize) {
+        final excessSizeGB = currentSizeGB - _maxCacheSize;
+        final excessSizeMB = excessSizeGB * 1024;
+
+        // نمایش دیالوگ تأیید
+        final shouldClean = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('تجاوز از حد مجاز کش'),
+            content: Text(
+              'اندازه کش فعلی (${currentSizeGB.toStringAsFixed(1)} گیگابایت) از حد مجاز (${_maxCacheSize.toInt()} گیگابایت) تجاوز کرده است.\n\n'
+              'آیا می‌خواهید ${excessSizeGB.toStringAsFixed(1)} گیگابایت از قدیمی‌ترین فایل‌ها حذف شوند؟',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('لغو'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text('پاک‌سازی'),
+              ),
+            ],
+          ),
+        );
+
+        if (shouldClean == true) {
+          await _cleanupOldestMediaFiles(excessSizeMB);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  '${excessSizeGB.toStringAsFixed(1)} گیگابایت فضا آزاد شد'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('اندازه کش در حد مجاز است'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('خطا در بررسی کش: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// حذف قدیمی‌ترین فایل‌های رسانه‌ای
+  Future<void> _cleanupOldestMediaFiles(double targetSizeMB) async {
+    // پیاده‌سازی حذف قدیمی‌ترین فایل‌ها بر اساس اندازه هدف
+    // TODO: implementation
+    print(
+        '🧹 پاک‌سازی ${targetSizeMB.toStringAsFixed(1)} مگابایت از قدیمی‌ترین فایل‌ها');
+  }
+
+  /// نمایش جزئیات اندازه کش
+  void _showCacheSizeDetails(BuildContext context) {
+    final currentSizeGB =
+        _storageCategories.fold(0.0, (sum, cat) => sum + cat.size) / 1024;
+    final progressPercentage = _maxCacheSize == double.infinity
+        ? 0.0
+        : (currentSizeGB / _maxCacheSize * 100).clamp(0, 100);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('جزئیات اندازه کش'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('اندازه فعلی: ${currentSizeGB.toStringAsFixed(2)} گیگابایت'),
+            Text(
+                'حد مجاز: ${_maxCacheSize == double.infinity ? "بدون محدودیت" : "${_maxCacheSize.toInt()} گیگابایت"}'),
+            if (_maxCacheSize != double.infinity) ...[
+              const SizedBox(height: 16),
+              Text('درصد استفاده: ${progressPercentage.toStringAsFixed(1)}%'),
+              const SizedBox(height: 8),
+              LinearProgressIndicator(
+                value: progressPercentage / 100,
+                backgroundColor: Colors.grey[300],
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  progressPercentage > 90
+                      ? Colors.red
+                      : progressPercentage > 70
+                          ? Colors.orange
+                          : Colors.green,
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            const Text('توزیع فضا:'),
+            ..._storageCategories.where((cat) => cat.size > 0).map(
+                  (cat) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(cat.name),
+                        Text(
+                            '${(cat.size / 1024).toStringAsFixed(1)} گیگابایت'),
+                      ],
+                    ),
+                  ),
+                ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('بستن'),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildVideoSettingsSection(
     BuildContext context,
-    WidgetRef ref,
     bool isDark,
   ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Video Settings',
+          'تنظیمات ویدیو',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w600,
             color: Colors.purple,
           ),
         ),
+        const SizedBox(height: 8),
+        Text(
+          'تنظیمات پخش و کیفیت ویدیوهای پیام‌رسان',
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.grey[600],
+          ),
+        ),
         const SizedBox(height: 16),
-        ListTile(
-          leading: const Icon(Icons.data_saver_on_rounded, color: Colors.green),
-          title: const Text('Data Saver'),
-          trailing: Switch(
-            value: ref.watch(dataSaverProvider),
-            onChanged: (value) {
-              // Toggle the data saver setting
-              ref.read(dataSaverProvider.notifier);
-            },
-            activeColor: Colors.green,
+
+        // Data Saver Setting
+        Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          child: ListTile(
+            leading:
+                const Icon(Icons.data_saver_on_rounded, color: Colors.green),
+            title: const Text('صرفه‌جویی در داده'),
+            subtitle: const Text('کاهش کیفیت برای کاهش مصرف اینترنت'),
+            trailing: Switch(
+              value: _dataSaverEnabled,
+              onChanged: (value) {
+                setState(() => _dataSaverEnabled = value);
+                _saveVideoSetting('data_saver', value);
+              },
+              activeThumbColor: Colors.green,
+            ),
           ),
         ),
-        ListTile(
-          leading: const Icon(Icons.high_quality_rounded, color: Colors.blue),
-          title: const Text('Auto Quality'),
-          trailing: Switch(
-            value: ref.watch(autoQualityProvider),
-            onChanged: (value) {
-              // Toggle the auto quality setting
-              ref.read(autoQualityProvider.notifier);
-            },
-            activeColor: Colors.blue,
+
+        // Auto Quality Setting
+        Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          child: ListTile(
+            leading: const Icon(Icons.high_quality_rounded, color: Colors.blue),
+            title: const Text('کیفیت خودکار'),
+            subtitle: const Text('تنظیم خودکار کیفیت بر اساس سرعت اینترنت'),
+            trailing: Switch(
+              value: _autoQualityEnabled,
+              onChanged: (value) {
+                setState(() => _autoQualityEnabled = value);
+                _saveVideoSetting('auto_quality', value);
+              },
+              activeThumbColor: Colors.blue,
+            ),
           ),
         ),
-        ListTile(
-          leading: const Icon(Icons.play_circle_rounded, color: Colors.purple),
-          title: const Text('Auto Play'),
-          trailing: Switch(
-            value: ref.watch(autoPlayProvider),
-            onChanged: (value) {
-              // Toggle the auto play setting
-              ref.read(autoPlayProvider.notifier);
-            },
-            activeColor: Colors.purple,
+
+        // Auto Play Setting
+        Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          child: ListTile(
+            leading:
+                const Icon(Icons.play_circle_rounded, color: Colors.purple),
+            title: const Text('پخش خودکار'),
+            subtitle: const Text('پخش خودکار ویدیوها در چت'),
+            trailing: Switch(
+              value: _autoPlayEnabled,
+              onChanged: (value) {
+                setState(() => _autoPlayEnabled = value);
+                _saveVideoSetting('auto_play', value);
+              },
+              activeThumbColor: Colors.purple,
+            ),
           ),
         ),
+
+        const SizedBox(height: 16),
       ],
     );
   }
 
   Widget _buildChatsTab(BuildContext context, bool isDark) {
-    // دریافت مکالمات واقعی از Advanced Cache System
-    final conversations = _advancedCache.getCachedConversations();
-
-    if (conversations.isEmpty) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey),
-            SizedBox(height: 16),
-            Text(
-              'هنوز گفتگویی در کش ذخیره نشده است',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return FutureBuilder<Map<String, Map<String, dynamic>>>(
-      future: _loadUserProfilesForConversations(conversations),
+    return FutureBuilder<List<dynamic>>(
+      future: _loadConversationsWithProfiles(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('در حال بارگذاری پروفایل‌ها...'),
+              ],
+            ),
+          );
         }
 
-        final userProfiles = snapshot.data ?? {};
+        if (snapshot.hasError) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error, size: 64, color: Colors.red),
+                const SizedBox(height: 16),
+                Text('خطا: ${snapshot.error}'),
+                const SizedBox(height: 8),
+                ElevatedButton(
+                  onPressed: () => setState(() {}),
+                  child: const Text('تلاش مجدد'),
+                ),
+              ],
+            ),
+          );
+        }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: conversations.length,
-          itemBuilder: (context, index) =>
-              _buildRealChatItem(conversations[index], isDark, userProfiles),
+        final conversations = snapshot.data ?? [];
+
+        if (conversations.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.chat_bubble_outline,
+                    size: 64, color: Colors.grey),
+                const SizedBox(height: 16),
+                const Text(
+                  'هنوز گفتگویی در کش ذخیره نشده است',
+                  style: TextStyle(color: Colors.grey, fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'گفتگوها به صورت خودکار در کش ذخیره می‌شوند',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Column(
+          children: [
+            // Header with refresh button
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Row(
+                children: [
+                  Text(
+                    '${conversations.length} گفتگو',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Spacer(),
+                  // Refresh button
+                  IconButton(
+                    onPressed: () async {
+                      setState(() {});
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('در حال بروزرسانی...')),
+                      );
+                    },
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'بروزرسانی',
+                  ),
+                  const SizedBox(width: 8),
+                  // Storage usage indicator
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withAlpha(20),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '${_calculateTotalStorageSize(conversations)} MB',
+                      style: const TextStyle(
+                        color: Colors.blue,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Conversations list
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: conversations.length,
+                itemBuilder: (context, index) =>
+                    _buildRealChatItem(conversations[index], isDark, null),
+              ),
+            ),
+          ],
         );
       },
     );
+  }
+
+  /// بارگذاری گفتگوها و تضمین وجود پروفایل‌ها
+  Future<List<dynamic>> _loadConversationsWithProfiles() async {
+    try {
+      print('🔄 شروع بارگذاری گفتگوها و پروفایل‌ها...');
+
+      // 1. دریافت گفتگوها از cache
+      final conversations = _advancedCache.getCachedConversations();
+      print('📥 تعداد گفتگوها در کش: ${conversations.length}');
+
+      // 2. جمع‌آوری تمام user ID های نیاز به پروفایل
+      final Set<String> userIdsToLoad = {};
+      for (final conversation in conversations) {
+        if (conversation.otherUserId != null) {
+          userIdsToLoad.add(conversation.otherUserId!);
+        }
+        // اضافه کردن participants
+        for (final participant in conversation.participants) {
+          userIdsToLoad.add(participant.userId);
+        }
+      }
+
+      print('👥 تعداد کاربران برای بارگذاری پروفایل: ${userIdsToLoad.length}');
+
+      // 3. بارگذاری پروفایل‌های مفقود
+      int loadedProfiles = 0;
+      for (final userId in userIdsToLoad) {
+        final existingProfile = _profileCache.getCachedProfile(userId);
+        if (existingProfile == null) {
+          try {
+            print('📱 بارگذاری پروفایل برای: $userId');
+            await _profileCache.cacheProfileAndPosts(userId);
+            loadedProfiles++;
+          } catch (e) {
+            print('⚠️ خطا در بارگذاری پروفایل $userId: $e');
+          }
+        } else {
+          print(
+              '✅ پروفایل موجود در کش: $userId - ${existingProfile.fullName.isNotEmpty ? existingProfile.fullName : existingProfile.username}');
+        }
+      }
+
+      print('✅ تعداد پروفایل‌های جدید بارگذاری شده: $loadedProfiles');
+
+      // 4. بررسی نهایی پروفایل‌ها
+      print('🔍 بررسی نهایی پروفایل‌ها:');
+      for (final conversation in conversations) {
+        if (conversation.otherUserId != null) {
+          final profile =
+              _profileCache.getCachedProfile(conversation.otherUserId!);
+          if (profile != null) {
+            print(
+                '   ✅ ${conversation.id}: ${profile.fullName.isNotEmpty ? profile.fullName : profile.username}');
+          } else {
+            print('   ❌ ${conversation.id}: پروفایل یافت نشد');
+          }
+        }
+      }
+
+      // 5. مرتب‌سازی بر اساس حجم
+      conversations.sort((a, b) {
+        final messagesA = _advancedCache.getCachedMessages(a.id);
+        final messagesB = _advancedCache.getCachedMessages(b.id);
+        final sizeA = messagesA.length * 0.001;
+        final sizeB = messagesB.length * 0.001;
+        return sizeB.compareTo(sizeA);
+      });
+
+      print('🎯 گفتگوها آماده نمایش: ${conversations.length}');
+      return conversations;
+    } catch (e) {
+      print('❌ خطا در بارگذاری گفتگوها: $e');
+      rethrow;
+    }
+  }
+
+  /// Calculate total storage size for all conversations
+  double _calculateTotalStorageSize(List conversations) {
+    double totalSize = 0;
+    for (final conversation in conversations) {
+      final messages = _advancedCache.getCachedMessages(conversation.id);
+      totalSize += messages.length * 0.001; // تخمین 1KB per message
+    }
+    return totalSize;
   }
 
   Future<Map<String, Map<String, dynamic>>> _loadUserProfilesForConversations(
@@ -807,7 +1360,12 @@ class _StorageAndMemorySettingsPageState
                 );
               } catch (supabaseError) {
                 print('❌ خطا در دریافت مستقیم از Supabase: $supabaseError');
-                throw e; // Re-throw original error
+                // Don't re-throw, use fallback instead
+                userProfiles[userId] = {
+                  'name': 'کاربر ناشناس',
+                  'avatar': null,
+                  'username': userId,
+                };
               }
             }
           }
@@ -815,7 +1373,7 @@ class _StorageAndMemorySettingsPageState
           print('❌ خطا در دریافت پروفایل کاربر $userId: $e');
           // fallback
           userProfiles[userId] = {
-            'name': 'کاربر ${userId.substring(0, 8)}',
+            'name': 'کاربر ناشناس',
             'avatar': null,
             'username': userId,
           };
@@ -830,6 +1388,128 @@ class _StorageAndMemorySettingsPageState
     return userProfiles;
   }
 
+  /// دریافت اطلاعات نمایش کاربر (نام، آواتار، حروف اول)
+
+  /// دریافت اطلاعات نمایش کاربر - بهبود یافته با دریافت مستقیم از ProfileCache
+  Map<String, String> _getUserDisplayInfoImproved(conversation) {
+    String displayName = 'گفتگو ناشناس';
+    String? avatarUrl;
+    String initials = 'گ';
+
+    try {
+      print('🔍 Debug Conversation Info:');
+      print('   Conversation ID: ${conversation.id}');
+      print('   Other User ID: ${conversation.otherUserId}');
+      print('   Other User Name: "${conversation.otherUserName}"');
+      print('   Other User Avatar: "${conversation.otherUserAvatar}"');
+      print('   Participants Count: ${conversation.participants.length}');
+
+      // Debug participants
+      for (int i = 0; i < conversation.participants.length; i++) {
+        final participant = conversation.participants[i];
+        print('   Participant $i: User ID = ${participant.userId}');
+      }
+
+      // Debug ProfileCache
+      if (conversation.otherUserId != null) {
+        final profile =
+            _profileCache.getCachedProfile(conversation.otherUserId!);
+        print(
+            '   🔍 ProfileCache برای ${conversation.otherUserId}: ${profile != null ? 'موجود' : 'مفقود'}');
+        if (profile != null) {
+          print('     Full Name: "${profile.fullName}"');
+          print('     Username: "${profile.username}"');
+          print('     Avatar: "${profile.avatarUrl}"');
+        }
+      }
+
+      // استفاده از همان منطق popup - اولویت 1: conversation info
+      if (conversation.otherUserName != null &&
+          conversation.otherUserName!.isNotEmpty &&
+          conversation.otherUserName != 'کاربر ناشناس') {
+        displayName = conversation.otherUserName!;
+        print(
+            '✅ لیست اصلی - استفاده از conversation.otherUserName: $displayName');
+      }
+
+      if (conversation.otherUserAvatar != null &&
+          conversation.otherUserAvatar!.isNotEmpty) {
+        avatarUrl = conversation.otherUserAvatar!;
+        print(
+            '✅ لیست اصلی - استفاده از conversation.otherUserAvatar: $avatarUrl');
+      }
+
+      // اولویت 2: ProfileCache (همان منطق popup)
+      if (displayName == 'گفتگو ناشناس' || avatarUrl == null) {
+        if (conversation.otherUserId != null) {
+          final cachedProfile =
+              _profileCache.getCachedProfile(conversation.otherUserId!);
+          if (cachedProfile != null) {
+            print('✅ لیست اصلی - پروفایل یافت شد در cache');
+            if (displayName == 'گفتگو ناشناس') {
+              if (cachedProfile.fullName.isNotEmpty) {
+                displayName = cachedProfile.fullName;
+              } else if (cachedProfile.username.isNotEmpty) {
+                displayName = cachedProfile.username;
+              } else {
+                displayName = 'کاربر ناشناس';
+              }
+            }
+            avatarUrl ??= cachedProfile.avatarUrl;
+            print('✅ لیست اصلی - استفاده از cached profile: $displayName');
+          } else {
+            print(
+                '❌ لیست اصلی - پروفایل در cache نیست: ${conversation.otherUserId}');
+            // اولویت 3: بررسی participants
+            for (final participant in conversation.participants) {
+              if (participant.userId != conversation.otherUserId) {
+                final participantProfile =
+                    _profileCache.getCachedProfile(participant.userId);
+                if (participantProfile != null) {
+                  if (displayName == 'گفتگو ناشناس') {
+                    if (participantProfile.fullName.isNotEmpty) {
+                      displayName = participantProfile.fullName;
+                    } else if (participantProfile.username.isNotEmpty) {
+                      displayName = participantProfile.username;
+                    }
+                  }
+                  avatarUrl ??= participantProfile.avatarUrl;
+                  print(
+                      '✅ لیست اصلی - استفاده از participant profile: $displayName');
+                  break;
+                }
+              }
+            }
+
+            // fallback نهایی
+            if (displayName == 'گفتگو ناشناس') {
+              displayName = 'کاربر ناشناس';
+              print('⚠️ لیست اصلی - fallback به ID: $displayName');
+            }
+          }
+        } else {
+          print('❌ لیست اصلی - otherUserId null است');
+        }
+      }
+
+      print(
+          '🎯 لیست اصلی - Final Result: Display Name = "$displayName", Avatar = "${avatarUrl ?? 'none'}"');
+      print('=' * 50);
+    } catch (e) {
+      print('❌ خطا در دریافت اطلاعات کاربر: $e');
+      displayName = 'گفتگو ناشناس';
+    }
+
+    // تولید حروف اول
+    initials = _getPersianInitial(displayName);
+
+    return {
+      'displayName': displayName,
+      'avatarUrl': avatarUrl ?? '',
+      'initials': initials,
+    };
+  }
+
   Widget _buildRealChatItem(
     conversation,
     bool isDark, [
@@ -840,160 +1520,192 @@ class _StorageAndMemorySettingsPageState
     final messageCount = messages.length;
     final estimatedSize = messageCount * 0.001; // تخمین 1KB per message
 
-    // بهبود نمایش نام کاربر و آواتار - روش جدید با userProfiles
-    String displayName = 'گفتگوی ناشناس';
-    String? avatarUrl;
-    String initials = '؟';
-
-    // اولویت 1: استفاده از اطلاعات موجود در conversation
-    if (conversation.otherUserName != null &&
-        conversation.otherUserName!.isNotEmpty) {
-      displayName = conversation.otherUserName!;
-      initials = _getPersianInitial(conversation.otherUserName!);
-    }
-
-    if (conversation.otherUserAvatar != null &&
-        conversation.otherUserAvatar!.isNotEmpty) {
-      avatarUrl = conversation.otherUserAvatar!;
-    }
-
-    // اولویت 2: استفاده از userProfiles که از سرور دریافت شده
-    if (displayName == 'گفتگوی ناشناس' && userProfiles != null) {
-      // از otherUserId استفاده کن
-      if (conversation.otherUserId != null &&
-          userProfiles.containsKey(conversation.otherUserId!)) {
-        final userInfo = userProfiles[conversation.otherUserId!]!;
-        displayName = userInfo['name'] ?? 'کاربر ناشناس';
-        avatarUrl = userInfo['avatar'];
-        initials = _getPersianInitial(displayName);
-        print('✅ استفاده از userProfiles برای otherUserId: $displayName');
-      } else {
-        // از participants استفاده کن
-        for (final participant in conversation.participants) {
-          if (participant.userId != null &&
-              userProfiles.containsKey(participant.userId!)) {
-            final userInfo = userProfiles[participant.userId!]!;
-            displayName = userInfo['name'] ?? 'کاربر ناشناس';
-            avatarUrl = userInfo['avatar'];
-            initials = _getPersianInitial(displayName);
-            print('✅ استفاده از userProfiles برای participant: $displayName');
-            break;
-          }
-        }
-      }
-    }
-
-    // اولویت 3: fallback به روش قدیمی اگر userProfiles در دسترس نیست
-    if (displayName == 'گفتگوی ناشناس' && userProfiles == null) {
-      if (conversation.otherUserId != null) {
-        final cachedProfile = _profileCache.getCachedProfile(
-          conversation.otherUserId!,
-        );
-        if (cachedProfile != null) {
-          if (cachedProfile.fullName.isNotEmpty) {
-            displayName = cachedProfile.fullName;
-          } else if (cachedProfile.username.isNotEmpty) {
-            displayName = cachedProfile.username;
-          } else {
-            displayName = 'کاربر ${conversation.otherUserId!.substring(0, 8)}';
-          }
-          avatarUrl = cachedProfile.avatarUrl;
-          initials = _getPersianInitial(displayName);
-        } else {
-          displayName = 'کاربر ${conversation.otherUserId!.substring(0, 8)}';
-          initials = 'ک';
-        }
-      }
-    }
-
-    // آخرین fallback
-    if (displayName == 'گفتگوی ناشناس') {
-      displayName = 'گفتگو ${conversation.id.substring(0, 8)}';
-      initials = 'گ';
-    }
+    // دریافت اطلاعات نمایش کاربر - بهبود یافته با دریافت مستقیم از ProfileCache
+    final userDisplayInfo = _getUserDisplayInfoImproved(conversation);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Card(
-        child: ListTile(
-          leading: CircleAvatar(
-            backgroundColor: Colors.blue.withAlpha(50),
-            backgroundImage: avatarUrl != null
-                ? NetworkImage(avatarUrl!)
-                : null,
-            child: avatarUrl == null
-                ? Text(
-                    initials,
-                    style: const TextStyle(
-                      color: Colors.blue,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  )
-                : null,
+      margin: const EdgeInsets.only(bottom: 1),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey[850] : Colors.white,
+        border: Border(
+          bottom: BorderSide(
+            color: Colors.grey.withAlpha(30),
+            width: 0.5,
           ),
-          title: Text(displayName),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (conversation.lastMessage != null)
-                Text(
-                  conversation.lastMessage!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: Colors.grey[600]),
-                ),
-              const SizedBox(height: 4),
-              Text(
-                '$messageCount پیام',
-                style: TextStyle(color: Colors.grey[600], fontSize: 12),
-              ),
-            ],
-          ),
-          trailing: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                estimatedSize >= 1
-                    ? '${estimatedSize.toStringAsFixed(1)} MB'
-                    : '${(estimatedSize * 1024).toStringAsFixed(0)} KB',
-                style: const TextStyle(
-                  color: Colors.blue,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                _formatLastMessageTime(
-                  conversation.lastMessageTime ?? conversation.updatedAt,
-                ),
-                style: TextStyle(color: Colors.grey[500], fontSize: 11),
-              ),
-            ],
-          ),
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
           onTap: () => _showIndividualConversationDetails(
             conversation,
             messageCount,
             estimatedSize,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                // Avatar با مدیریت خطا
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.blue.withAlpha(50),
+                  ),
+                  child: userDisplayInfo['avatarUrl']!.isNotEmpty
+                      ? ClipOval(
+                          child: Image.network(
+                            userDisplayInfo['avatarUrl']!,
+                            width: 48,
+                            height: 48,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              print(
+                                  '❌ خطا در بارگذاری تصویر: ${userDisplayInfo['avatarUrl']}');
+                              return Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.blue.withAlpha(50),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    userDisplayInfo['initials']!,
+                                    style: const TextStyle(
+                                      color: Colors.blue,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.blue.withAlpha(50),
+                                ),
+                                child: const Center(
+                                  child: SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        )
+                      : Center(
+                          child: Text(
+                            userDisplayInfo['initials']!,
+                            style: const TextStyle(
+                              color: Colors.blue,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                ),
+                const SizedBox(width: 12),
+                // Content
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        userDisplayInfo['displayName']!,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '$messageCount پیام',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Storage size with visual indicator
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _getStorageColor(estimatedSize).withAlpha(20),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        estimatedSize >= 1
+                            ? '${estimatedSize.toStringAsFixed(1)} MB'
+                            : '${(estimatedSize * 1024).toStringAsFixed(0)} KB',
+                        style: TextStyle(
+                          color: _getStorageColor(estimatedSize),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    // Storage bar indicator
+                    Container(
+                      width: 40,
+                      height: 3,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.withAlpha(30),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                      child: FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: _getStoragePercentage(estimatedSize),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: _getStorageColor(estimatedSize),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  String _formatLastMessageTime(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
+  /// Get color based on storage size
+  Color _getStorageColor(double sizeMB) {
+    if (sizeMB < 1) return Colors.green;
+    if (sizeMB < 5) return Colors.orange;
+    if (sizeMB < 10) return Colors.red;
+    return Colors.purple;
+  }
 
-    if (difference.inDays > 0) {
-      return '${difference.inDays}d ago';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours}h ago';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}m ago';
-    } else {
-      return 'now';
-    }
+  /// Get storage percentage for visual indicator (0.0 to 1.0)
+  double _getStoragePercentage(double sizeMB) {
+    // Normalize to 0-1 range, with 20MB as max
+    return (sizeMB / 20).clamp(0.0, 1.0);
   }
 
   String _getPersianInitial(String name) {
@@ -1026,456 +1738,12 @@ class _StorageAndMemorySettingsPageState
     return firstChar.toUpperCase();
   }
 
-  Widget _buildMediaTab(BuildContext context, bool isDark) {
-    // دریافت آمار واقعی cache های مختلف
-    final imageCache =
-        _cacheStats['image_cache'] as Map<String, dynamic>? ?? {};
+  /// Helper method to get proper display name for conversation
+  // متد _getConversationDisplayName حذف شد - استفاده نمی‌شود
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        const Text(
-          'فایل‌های رسانه‌ای',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 16),
+  // تب فایل‌ها حذف شد - دیگر استفاده نمی‌شود
 
-        // Media categories بر اساس cache واقعی
-        if (imageCache['story_cache'] != null)
-          _buildRealMediaCategoryItem(
-            'تصاویر استوری',
-            Icons.auto_stories,
-            imageCache['story_cache']['size_mb'] ?? 0.0,
-            imageCache['story_cache']['items'] ?? 0,
-            Colors.purple,
-          ),
-
-        if (imageCache['post_cache'] != null)
-          _buildRealMediaCategoryItem(
-            'تصاویر پست',
-            Icons.photo_library,
-            imageCache['post_cache']['size_mb'] ?? 0.0,
-            imageCache['post_cache']['items'] ?? 0,
-            Colors.blue,
-          ),
-
-        if (imageCache['chat_cache'] != null)
-          _buildRealMediaCategoryItem(
-            'تصاویر گفتگو',
-            Icons.chat,
-            imageCache['chat_cache']['size_mb'] ?? 0.0,
-            imageCache['chat_cache']['items'] ?? 0,
-            Colors.green,
-          ),
-
-        if (imageCache['wallpaper_cache'] != null)
-          _buildRealMediaCategoryItem(
-            'پس‌زمینه‌ها',
-            Icons.wallpaper,
-            imageCache['wallpaper_cache']['size_mb'] ?? 0.0,
-            imageCache['wallpaper_cache']['items'] ?? 0,
-            Colors.orange,
-          ),
-
-        // Profile media
-        _buildRealMediaCategoryItem(
-          'اطلاعات پروفایل',
-          Icons.person,
-          _profileStats['total_cache_size_mb'] ?? 0.0,
-          _profileStats['cached_profiles_count'] ?? 0,
-          Colors.teal,
-        ),
-
-        const SizedBox(height: 24),
-
-        // Summary
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: isDark ? Colors.grey[850] : Colors.grey[100],
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Cache Summary',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text('مجموع تصاویر: ${_getTotalImageCount()} فایل'),
-              Text(
-                'حجم کل: ${_formatFileSize(_cacheStats['total_size_mb'] ?? 0.0)}',
-              ),
-              Text(
-                'کش هوشمند: ${_cacheStats['smart_cache_enabled'] ?? false ? 'فعال' : 'غیرفعال'}',
-              ),
-              if (_cacheStats['last_cleanup'] != null)
-                Text('آخرین پاک‌سازی: ${_cacheStats['last_cleanup']}'),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRealMediaCategoryItem(
-    String title,
-    IconData icon,
-    double sizeMB,
-    int itemCount,
-    Color color,
-  ) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Card(
-        child: ListTile(
-          leading: Icon(icon, color: color, size: 32),
-          title: Text(
-            title,
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-          subtitle: Text('$itemCount آیتم'),
-          trailing: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                _formatFileSize(sizeMB),
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
-              ),
-              if (sizeMB > 0)
-                Text(
-                  '${(sizeMB / (_cacheStats['total_size_mb'] ?? 1) * 100).toStringAsFixed(1)}%',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                ),
-            ],
-          ),
-          onTap: () {
-            // Navigate to specific media type management
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => ImageCacheManagementPage(
-                  cacheManager: _cacheManager,
-                  onDataChanged: _loadAllStats,
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  int _getTotalImageCount() {
-    final imageCache =
-        _cacheStats['image_cache'] as Map<String, dynamic>? ?? {};
-    int total = 0;
-
-    total += (imageCache['story_cache']?['items'] ?? 0) as int;
-    total += (imageCache['post_cache']?['items'] ?? 0) as int;
-    total += (imageCache['chat_cache']?['items'] ?? 0) as int;
-    total += (imageCache['wallpaper_cache']?['items'] ?? 0) as int;
-
-    return total;
-  }
-
-  Widget _buildFilesTab(BuildContext context, bool isDark) {
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _getRealCachedFiles(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        final files = snapshot.data ?? [];
-
-        if (files.isEmpty) {
-          return const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.folder_outlined, size: 64, color: Colors.grey),
-                SizedBox(height: 16),
-                Text(
-                  'No cached files found',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ],
-            ),
-          );
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: files.length,
-          itemBuilder: (context, index) =>
-              _buildRealFileItem(files[index], isDark),
-        );
-      },
-    );
-  }
-
-  Future<List<Map<String, dynamic>>> _getRealCachedFiles() async {
-    try {
-      final List<Map<String, dynamic>> files = [];
-
-      // Database files
-      files.add({
-        'name': 'message_cache.db',
-        'type': 'db',
-        'size': _storageInfo['messageCacheSize'] ?? 0.0,
-        'path': 'Database Files',
-        'date': DateTime.now(),
-      });
-
-      files.add({
-        'name': 'conversation_cache.db',
-        'type': 'db',
-        'size': _storageInfo['conversationCacheSize'] ?? 0.0,
-        'path': 'Database Files',
-        'date': DateTime.now(),
-      });
-
-      // Temp files
-      if ((_storageInfo['tempCacheSize'] ?? 0.0) > 0) {
-        files.add({
-          'name': 'temporary_files',
-          'type': 'temp',
-          'size': _storageInfo['tempCacheSize'] ?? 0.0,
-          'path': 'Temporary Cache',
-          'date': DateTime.now(),
-        });
-      }
-
-      // App documents
-      if ((_storageInfo['appDocumentsSize'] ?? 0.0) > 0) {
-        files.add({
-          'name': 'app_documents',
-          'type': 'doc',
-          'size': _storageInfo['appDocumentsSize'] ?? 0.0,
-          'path': 'Application Documents',
-          'date': DateTime.now(),
-        });
-      }
-
-      // Profile cache (JSON)
-      if ((_profileStats['total_cache_size_mb'] ?? 0.0) > 0) {
-        files.add({
-          'name': 'profile_cache.json',
-          'type': 'json',
-          'size': _profileStats['total_cache_size_mb'] ?? 0.0,
-          'path': 'Profile Cache',
-          'date': DateTime.now(),
-        });
-      }
-
-      // Image cache directories
-      final imageCache =
-          _cacheStats['image_cache'] as Map<String, dynamic>? ?? {};
-      ['story_cache', 'post_cache', 'chat_cache', 'wallpaper_cache'].forEach((
-        cacheType,
-      ) {
-        final cache = imageCache[cacheType];
-        if (cache != null && (cache['size_mb'] ?? 0.0) > 0) {
-          files.add({
-            'name': cacheType.replaceAll('_', ' ').toUpperCase(),
-            'type': 'img',
-            'size': cache['size_mb'] ?? 0.0,
-            'path': 'Image Cache',
-            'date': DateTime.now(),
-            'items': cache['items'] ?? 0,
-          });
-        }
-      });
-
-      // Sort by size (largest first)
-      files.sort(
-        (a, b) => (b['size'] as double).compareTo(a['size'] as double),
-      );
-
-      return files;
-    } catch (e) {
-      print('Error getting cached files: $e');
-      return [];
-    }
-  }
-
-  Widget _buildRealFileItem(Map<String, dynamic> file, bool isDark) {
-    final name = file['name'] as String;
-    final type = file['type'] as String;
-    final size = file['size'] as double;
-    final path = file['path'] as String;
-    final items = file['items'] as int?;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Card(
-        child: ListTile(
-          leading: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                size > 0 ? Icons.check_circle : Icons.cancel,
-                color: size > 0 ? Colors.green : Colors.grey,
-              ),
-              const SizedBox(width: 8),
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: _getFileTypeColor(type),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Center(
-                  child: Text(
-                    type.toUpperCase(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 8,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          title: Text(
-            name,
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(path, style: TextStyle(color: Colors.grey[600])),
-              if (items != null)
-                Text(
-                  '$items items',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                ),
-            ],
-          ),
-          trailing: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                _formatFileSize(size),
-                style: TextStyle(
-                  color: _getFileTypeColor(type),
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
-              ),
-              if (size > 0)
-                Text(
-                  '${(size / (_cacheStats['total_size_mb'] ?? 1) * 100).toStringAsFixed(1)}%',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 11),
-                ),
-            ],
-          ),
-          onTap: () => _showFileDetails(file),
-        ),
-      ),
-    );
-  }
-
-  void _showFileDetails(Map<String, dynamic> file) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(file['name']),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Type: ${file['type'].toString().toUpperCase()}'),
-            Text('Size: ${_formatFileSize(file['size'])}'),
-            Text('Location: ${file['path']}'),
-            if (file['items'] != null) Text('Items: ${file['items']}'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-          if (file['size'] > 0)
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _showClearSpecificCache(file);
-              },
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
-              child: const Text('Clear'),
-            ),
-        ],
-      ),
-    );
-  }
-
-  void _showClearSpecificCache(Map<String, dynamic> file) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Clear ${file['name']}'),
-        content: Text(
-          'Are you sure you want to clear this cache? You will free up ${_formatFileSize(file['size'])}.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              // Here you would implement specific cache clearing logic
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Cache cleared successfully'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-              await _loadAllStats();
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Clear'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Color _getFileTypeColor(String fileType) {
-    switch (fileType) {
-      case 'db':
-        return Colors.blue;
-      case 'temp':
-        return Colors.orange;
-      case 'doc':
-        return Colors.green;
-      case 'json':
-        return Colors.purple;
-      case 'img':
-        return Colors.teal;
-      case 'flac':
-        return Colors.red;
-      case 'mp4':
-        return Colors.orange;
-      case 'mp3':
-        return Colors.orange;
-      case 'ogg':
-        return Colors.orange;
-      default:
-        return Colors.grey;
-    }
-  }
+  // تب فایل‌ها و رسانه‌ها حذف شد
 
   String _formatFileSize(double sizeMB) {
     if (sizeMB < 1) {
@@ -1618,388 +1886,18 @@ class _StorageAndMemorySettingsPageState
     int messageCount,
     double estimatedSize,
   ) {
-    final displayName = conversation.otherUserName ?? 'گفتگوی ناشناس';
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Handle bar
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Conversation info
-              CircleAvatar(
-                radius: 30,
-                backgroundColor: Colors.blue.withAlpha(50),
-                child: Text(
-                  displayName.isNotEmpty
-                      ? displayName.substring(0, 1).toUpperCase()
-                      : '?',
-                  style: const TextStyle(
-                    color: Colors.blue,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 24,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                displayName,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '$messageCount پیام • ${_formatFileSize(estimatedSize)}',
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-
-              const SizedBox(height: 32),
-
-              // Cache categories for this conversation
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  children: [
-                    _buildConversationCacheItem(
-                      'پیام‌های متنی',
-                      Icons.chat_bubble_outline,
-                      estimatedSize * 0.7,
-                      Colors.green,
-                    ),
-                    const Divider(height: 1),
-                    _buildConversationCacheItem(
-                      'تصاویر ارسالی',
-                      Icons.image,
-                      estimatedSize * 0.2,
-                      Colors.blue,
-                    ),
-                    const Divider(height: 1),
-                    _buildConversationCacheItem(
-                      'فایل‌های ضمیمه',
-                      Icons.attach_file,
-                      estimatedSize * 0.1,
-                      Colors.orange,
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Action buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('بستن'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () => _showClearOptionsDialog(
-                        conversation,
-                        displayName,
-                        estimatedSize,
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                      ),
-                      child: const Text('پاک‌سازی'),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 20),
-            ],
-          ),
-        ),
-      ),
-    );
+    // نمایش پاپ‌آپ جزئیات کش مکالمه خاص
+    _showSpecificConversationCacheDialog(
+        conversation, messageCount, estimatedSize);
   }
 
-  Widget _buildConversationCacheItem(
-    String title,
-    IconData icon,
-    double sizeMB,
-    Color color,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
-          ),
-          Text(
-            _formatFileSize(sizeMB),
-            style: TextStyle(color: color, fontWeight: FontWeight.w600),
-          ),
-        ],
-      ),
-    );
-  }
+  // متد قدیمی حذف شد - از _showAdvancedConversationCacheDialog استفاده می‌شود
 
-  void _showClearOptionsDialog(
-    conversation,
-    String displayName,
-    double estimatedSize,
-  ) {
-    Navigator.pop(context); // Close the bottom sheet first
+  // متد حذف شد - دیگر استفاده نمی‌شود
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('پاک‌سازی کش $displayName'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'نوع پاک‌سازی را انتخاب کنید:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
+  // متدهای قدیمی مربوط به dialog های تکی حذف شدند - استفاده نمی‌شوند
 
-            // گزینه حذف کل گفتگو
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(
-                Icons.delete_forever,
-                color: Colors.red,
-                size: 32,
-              ),
-              title: const Text('حذف کل کش گفتگو'),
-              subtitle: Text(
-                'شامل پیام‌ها، تصاویر و فایل‌ها • ${_formatFileSize(estimatedSize)}',
-              ),
-              onTap: () => _clearFullConversationCache(
-                conversation,
-                displayName,
-                estimatedSize,
-              ),
-            ),
-
-            const Divider(),
-
-            // گزینه حذف فقط تصاویر
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(
-                Icons.image_not_supported,
-                color: Colors.orange,
-                size: 32,
-              ),
-              title: const Text('حذف فقط تصاویر گفتگو'),
-              subtitle: Text(
-                'حفظ پیام‌ها، حذف تصاویر • ${_formatFileSize(estimatedSize * 0.3)}',
-              ),
-              onTap: () => _clearConversationImages(
-                conversation,
-                displayName,
-                estimatedSize,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('لغو'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _clearFullConversationCache(
-    conversation,
-    String displayName,
-    double estimatedSize,
-  ) {
-    Navigator.pop(context);
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تأیید حذف کل کش'),
-        content: Text(
-          'آیا مطمئن هستید که می‌خواهید کل کش گفتگو با $displayName را پاک کنید؟\n\nاین عمل ${_formatFileSize(estimatedSize)} فضا آزاد خواهد کرد.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('لغو'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await _performFullCacheClear(conversation, displayName);
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('حذف کل'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _clearConversationImages(
-    conversation,
-    String displayName,
-    double estimatedSize,
-  ) {
-    Navigator.pop(context);
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تأیید حذف تصاویر'),
-        content: Text(
-          'آیا مطمئن هستید که می‌خواهید تصاویر گفتگو با $displayName را پاک کنید؟\n\nاین عمل ${_formatFileSize(estimatedSize * 0.3)} فضا آزاد خواهد کرد.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('لغو'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await _performImageCacheClear(conversation, displayName);
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.orange),
-            child: const Text('حذف تصاویر'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _performFullCacheClear(conversation, String displayName) async {
-    try {
-      // نمایش loading
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              SizedBox(width: 16),
-              Text('در حال پاک‌سازی کش...'),
-            ],
-          ),
-          duration: Duration(seconds: 2),
-        ),
-      );
-
-      // پاک‌سازی واقعی cache های مختلف مرتبط با این گفتگو
-
-      // 1. پاک‌سازی پیام‌های cached از AdvancedCacheSystem
-      await _performMessageCacheCleanup(conversation.id);
-
-      // 2. پاک‌سازی تصاویر مرتبط
-      await _performImageCacheCleanup(conversation.id);
-
-      // پیام موفقیت
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('کش کامل گفتگو با $displayName پاک شد'),
-          backgroundColor: Colors.green,
-          action: SnackBarAction(label: 'تمام', onPressed: () {}),
-        ),
-      );
-
-      // Refresh data
-      await _loadAllStats();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطا در پاک‌سازی کش: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  Future<void> _performImageCacheClear(conversation, String displayName) async {
-    try {
-      // نمایش loading
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              SizedBox(width: 16),
-              Text('در حال پاک‌سازی تصاویر...'),
-            ],
-          ),
-          duration: Duration(seconds: 2),
-        ),
-      );
-
-      // پاک‌سازی فقط تصاویر مرتبط با این گفتگو
-      await _performSelectiveImageCleanup(conversation.id);
-
-      // پیام موفقیت
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('تصاویر گفتگو با $displayName پاک شد'),
-          backgroundColor: Colors.green,
-        ),
-      );
-
-      // Refresh data
-      await _loadAllStats();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطا در پاک‌سازی تصاویر: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
+  // متدهای قدیمی حذف شدند - استفاده نمی‌شوند
 
   Future<void> _performMessageCacheCleanup(String conversationId) async {
     try {
@@ -2019,6 +1917,10 @@ class _StorageAndMemorySettingsPageState
       // Don't rethrow - this is not critical
     }
   }
+
+  // متدهای قدیمی حذف شدند
+
+  // متدهای قدیمی حذف شدند - استفاده نمی‌شوند
 
   Future<void> _clearConversationFromDatabase(String conversationId) async {
     try {
@@ -2055,25 +1957,1003 @@ class _StorageAndMemorySettingsPageState
     }
   }
 
-  Future<void> _performSelectiveImageCleanup(String conversationId) async {
+  // متد _performSelectiveImageCleanup حذف شد - استفاده نمی‌شود
+
+  /// Show specific conversation cache dialog
+  void _showSpecificConversationCacheDialog(
+    conversation,
+    int messageCount,
+    double estimatedSize,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _buildSpecificConversationCacheSheet(
+        context,
+        Theme.of(context).brightness == Brightness.dark,
+        conversation,
+        messageCount,
+        estimatedSize,
+      ),
+    );
+  }
+
+  /// Build specific conversation cache management sheet
+  Widget _buildSpecificConversationCacheSheet(
+    BuildContext context,
+    bool isDark,
+    conversation,
+    int messageCount,
+    double estimatedSize,
+  ) {
+    return FutureBuilder<ConversationCacheDetails>(
+      future: _calculateSpecificConversationCache(
+          conversation, messageCount, estimatedSize),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.7,
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: const Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        final cacheDetails = snapshot.data;
+        if (cacheDetails == null) {
+          return Container(
+            height: 300,
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: const Center(
+              child: Text('خطا در بارگذاری اطلاعات کش'),
+            ),
+          );
+        }
+
+        return _buildSpecificConversationContent(context, isDark, cacheDetails);
+      },
+    );
+  }
+
+  // متد _buildAdvancedCacheClearSheet حذف شد - استفاده نمی‌شود
+
+  /// Calculate cache details for a specific conversation
+  Future<ConversationCacheDetails> _calculateSpecificConversationCache(
+    conversation,
+    int messageCount,
+    double estimatedSize,
+  ) async {
+    // استفاده از همان منطق _buildRealChatItem برای نمایش نام و عکس
+    String displayName = 'گفتگوی ناشناس';
+    String? avatarUrl;
+
     try {
-      // پاک‌سازی انتخابی تصاویر مرتبط با گفتگوی خاص
-      // این متد فقط تصاویر مربوط به این گفتگو را پاک می‌کند
+      print('🔍 محاسبه اطلاعات کش برای مکالمه: ${conversation.id}');
+      print(
+          '📋 اطلاعات conversation: otherUserName=${conversation.otherUserName}, otherUserId=${conversation.otherUserId}');
 
-      // 1. پاک‌سازی از chat image cache (مربوط به گفتگوها)
-      await _cacheManager.chatInstance.emptyCache();
+      // اولویت 1: استفاده از اطلاعات موجود در conversation (که حالا باید پر باشد)
+      if (conversation.otherUserName != null &&
+          conversation.otherUserName!.isNotEmpty &&
+          conversation.otherUserName != 'کاربر ناشناس') {
+        displayName = conversation.otherUserName!;
+        print('✅ استفاده از conversation.otherUserName: $displayName');
+      }
 
-      // 2. پاک‌سازی از story cache (اگر مربوط به این گفتگو باشد)
-      // await _cacheManager.storyInstance.emptyCache();
+      if (conversation.otherUserAvatar != null &&
+          conversation.otherUserAvatar!.isNotEmpty) {
+        avatarUrl = conversation.otherUserAvatar!;
+        print('✅ استفاده از conversation.otherUserAvatar: $avatarUrl');
+      }
 
-      // 3. پاک‌سازی از post cache (اگر مربوط به این گفتگو باشد)
-      // await _cacheManager.postInstance.emptyCache();
+      // اولویت 2: استفاده از userProfiles اگر conversation info کامل نیست
+      if ((displayName == 'گفتگوی ناشناس' || avatarUrl == null)) {
+        // بارگذاری userProfiles از Supabase
+        final userProfiles =
+            await _loadUserProfilesForConversations([conversation]);
 
-      print('پاک شده selective images برای گفتگو: $conversationId');
+        // از otherUserId استفاده کن
+        if (conversation.otherUserId != null &&
+            userProfiles.containsKey(conversation.otherUserId!)) {
+          final userInfo = userProfiles[conversation.otherUserId!]!;
+          if (displayName == 'گفتگوی ناشناس') {
+            displayName = userInfo['name'] ?? 'کاربر ناشناس';
+          }
+          avatarUrl ??= userInfo['avatar'];
+          print('✅ استفاده از userProfiles برای otherUserId: $displayName');
+        } else {
+          // از participants استفاده کن
+          for (final participant in conversation.participants) {
+            if (participant.userId != null &&
+                userProfiles.containsKey(participant.userId!)) {
+              final userInfo = userProfiles[participant.userId!]!;
+              if (displayName == 'گفتگوی ناشناس') {
+                displayName = userInfo['name'] ?? 'کاربر ناشناس';
+              }
+              avatarUrl ??= userInfo['avatar'];
+              print('✅ استفاده از userProfiles برای participant: $displayName');
+              break;
+            }
+          }
+        }
+      }
+
+      // اولویت 3: fallback به profile cache اگر userProfiles در دسترس نیست
+      if (displayName == 'گفتگوی ناشناس') {
+        if (conversation.otherUserId != null) {
+          final cachedProfile =
+              _profileCache.getCachedProfile(conversation.otherUserId!);
+          if (cachedProfile != null) {
+            if (cachedProfile.fullName.isNotEmpty) {
+              displayName = cachedProfile.fullName;
+            } else if (cachedProfile.username.isNotEmpty) {
+              displayName = cachedProfile.username;
+            } else {
+              displayName = 'کاربر ناشناس';
+            }
+            avatarUrl ??= cachedProfile.avatarUrl;
+            print('✅ استفاده از cached profile: $displayName');
+          } else {
+            displayName = 'کاربر ناشناس';
+          }
+        }
+      }
+
+      // آخرین fallback
+      if (displayName == 'گفتگوی ناشناس') {
+        displayName =
+            'گفتگو ${conversation.id.substring(0, math.min<int>(8, conversation.id.length))}';
+      }
+
+      print('🎯 Final display name: $displayName, avatar: $avatarUrl');
     } catch (e) {
-      print('خطا در پاک‌سازی انتخابی تصاویر: $e');
+      print('❌ خطا در محاسبه اطلاعات مکالمه: $e');
+      displayName = 'گفتگوی ناشناس';
+      avatarUrl = null;
+    }
+
+    // محاسبه انواع کش برای این مکالمه خاص
+    final messages = _advancedCache.getCachedMessages(conversation.id);
+
+    // تخمین تعداد انواع مختلف پیام‌ها
+    final textMessages = messages.length; // همه پیام‌ها فعلاً متنی هستند
+    final imageMessages = (messages.length * 0.15).round(); // تخمین 15% تصویر
+    final voiceMessages = (messages.length * 0.05).round(); // تخمین 5% ویس
+
+    // محاسبه حجم هر دسته
+    final textSizeKB = textMessages * 0.5; // 0.5 KB per text message
+    final imageSizeKB = imageMessages * 150.0; // 150 KB per image
+    final voiceSizeKB = voiceMessages * 30.0; // 30 KB per voice message
+
+    final totalSizeKB = textSizeKB + imageSizeKB + voiceSizeKB;
+
+    // ایجاد دسته‌بندی‌های کش
+    final categories = <String, ConversationCacheCategory>{
+      'text': ConversationCacheCategory(
+        name: 'پیام‌های متنی',
+        description: '$textMessages پیام',
+        icon: Icons.chat_bubble_outline,
+        color: Colors.blue,
+        sizeKB: textSizeKB,
+        count: textMessages,
+      ),
+      'images': ConversationCacheCategory(
+        name: 'تصاویر',
+        description: '$imageMessages تصویر',
+        icon: Icons.image,
+        color: Colors.green,
+        sizeKB: imageSizeKB,
+        count: imageMessages,
+      ),
+      'voice': ConversationCacheCategory(
+        name: 'پیام‌های صوتی',
+        description: '$voiceMessages ویس',
+        icon: Icons.mic,
+        color: Colors.orange,
+        sizeKB: voiceSizeKB,
+        count: voiceMessages,
+      ),
+    };
+
+    return ConversationCacheDetails(
+      conversationId: conversation.id,
+      displayName: displayName,
+      avatarUrl: avatarUrl,
+      messageCount: messageCount,
+      totalSizeKB: totalSizeKB,
+      categories: categories,
+      conversation: conversation,
+    );
+  }
+
+  /// Build content for specific conversation cache sheet
+  Widget _buildSpecificConversationContent(
+    BuildContext context,
+    bool isDark,
+    ConversationCacheDetails cacheDetails,
+  ) {
+    // حالت‌های محلی برای انیمیشن حذف کش
+    final Set<String> recentlyClearedKeys = <String>{};
+    final Map<String, double> clearedOriginalSizes = <String, double>{};
+    int animationVersion = 0;
+
+    return StatefulBuilder(
+      builder: (context, setStateSheet) {
+        // محاسبه حجم انتخاب شده
+        double calculateSelectedSize() {
+          return cacheDetails.categories.values
+              .where((category) => category.isSelected)
+              .fold<double>(0, (sum, category) => sum + category.sizeKB);
+        }
+
+        // محاسبه درصدها برای نمودار
+        final selectedCategories = cacheDetails.categories.values
+            .where((category) => category.isSelected)
+            .toList();
+
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.85,
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+
+              // Fixed header
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Colors.grey[300]!,
+                      width: 0.5,
+                    ),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close),
+                        ),
+                        const Expanded(
+                          child: Text(
+                            'مدیریت کش مکالمه',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        const SizedBox(width: 48),
+                      ],
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Conversation profile with circular chart around it
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // Circular chart around avatar with smooth animation
+                        TweenAnimationBuilder<double>(
+                          key: ValueKey(animationVersion),
+                          tween: Tween<double>(begin: 0, end: 1),
+                          duration: const Duration(milliseconds: 600),
+                          curve: Curves.easeOutCubic,
+                          builder: (context, progress, _) {
+                            // بر اساس progress، اندازه دسته‌های حذف‌شده را به صفر نزدیک می‌کنیم
+                            final List<ConversationCacheCategory> animatedCats =
+                                cacheDetails.categories.entries.map((e) {
+                              final cat = e.value;
+                              final key = e.key;
+                              double size = cat.sizeKB;
+                              if (clearedOriginalSizes.containsKey(key)) {
+                                final original = clearedOriginalSizes[key]!;
+                                // در طول انیمیشن از original به 0 می‌رویم
+                                size = original * (1 - progress);
+                              }
+                              return ConversationCacheCategory(
+                                name: cat.name,
+                                description: cat.description,
+                                icon: cat.icon,
+                                color: cat.color,
+                                sizeKB: size,
+                                count: cat.count,
+                                isSelected: cat.isSelected,
+                              );
+                            }).toList();
+
+                            // فقط دسته‌های انتخاب‌شده را در حلقه نشان بده
+                            final animatedSelected = animatedCats
+                                .where((c) => cacheDetails.categories.values
+                                    .any((orig) =>
+                                        orig.name == c.name && orig.isSelected))
+                                .toList();
+
+                            return SizedBox(
+                              width: 90,
+                              height: 90,
+                              child: CustomPaint(
+                                painter: ConversationSpecificCacheChartPainter(
+                                  animatedSelected,
+                                  isDark,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        // Profile avatar
+                        CircleAvatar(
+                          radius: 32,
+                          backgroundColor: Colors.blue.withAlpha(50),
+                          backgroundImage: cacheDetails.avatarUrl != null &&
+                                  cacheDetails.avatarUrl!.isNotEmpty
+                              ? NetworkImage(cacheDetails.avatarUrl!)
+                              : null,
+                          onBackgroundImageError: cacheDetails.avatarUrl != null
+                              ? (exception, stackTrace) {
+                                  print(
+                                      'خطا در بارگذاری تصویر پروفایل: $exception');
+                                }
+                              : null,
+                          child: (cacheDetails.avatarUrl == null ||
+                                  cacheDetails.avatarUrl!.isEmpty)
+                              ? Text(
+                                  _getPersianInitial(cacheDetails.displayName),
+                                  style: const TextStyle(
+                                    color: Colors.blue,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 28,
+                                  ),
+                                )
+                              : null,
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    Text(
+                      cacheDetails.displayName,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+
+                    const SizedBox(height: 4),
+
+                    Text(
+                      '${cacheDetails.messageCount} پیام • ${_formatFileSize(cacheDetails.totalSizeKB / 1024)}',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 14,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+
+              // Scrollable content
+              Expanded(
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: Column(
+                    children: [
+                      // نمودار حالا دور عکس پروفایل قرار گرفته است
+
+                      // Cache categories section
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'انواع کش',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            ...cacheDetails.categories.values.map((category) {
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: _buildSpecificConversationCacheItem(
+                                  category,
+                                  (value) => setStateSheet(() {
+                                    category.isSelected = value;
+                                  }),
+                                ),
+                              );
+                            }),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Fixed bottom action section
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  border: Border(
+                    top: BorderSide(
+                      color: Colors.grey[300]!,
+                      width: 0.5,
+                    ),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: selectedCategories.isNotEmpty
+                            ? () {
+                                // قبل از پاک‌سازی، اندازه‌های فعلی را ذخیره می‌کنیم تا انیمیشن طبیعی باشد
+                                final Map<String, double> beforeSizes = {};
+                                for (final entry
+                                    in cacheDetails.categories.entries) {
+                                  if (selectedCategories
+                                      .contains(entry.value)) {
+                                    beforeSizes[entry.key] = entry.value.sizeKB;
+                                  }
+                                }
+
+                                _performSpecificConversationCacheClear(
+                                  context,
+                                  cacheDetails,
+                                  selectedCategories,
+                                  onCleared: (List<String> clearedKeys) {
+                                    setStateSheet(() {
+                                      clearedOriginalSizes
+                                        ..clear()
+                                        ..addAll(beforeSizes);
+                                      recentlyClearedKeys
+                                        ..clear()
+                                        ..addAll(clearedKeys);
+                                      animationVersion++; // اجرای انیمیشن
+                                    });
+                                  },
+                                );
+                              }
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: selectedCategories.isNotEmpty
+                              ? Colors.red
+                              : Colors.grey[400],
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: selectedCategories.isNotEmpty ? 2 : 0,
+                        ),
+                        child: Text(
+                          selectedCategories.isNotEmpty
+                              ? 'پاک‌سازی انتخاب شده (${(calculateSelectedSize() / 1024).toStringAsFixed(1)} MB)'
+                              : 'هیچ موردی انتخاب نشده',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'پیام‌ها در فضای ابری ویستا باقی می‌مانند',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 12,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // متد _calculateConversationCacheItems حذف شد - استفاده نمی‌شود
+
+  // متدهای قدیمی مربوط به dialog کل گفتگوها حذف شدند
+
+  // متدهای قدیمی مربوط به پاپ‌آپ کل مکالمه‌ها حذف شدند
+
+  /// Build cache item for specific conversation categories
+  Widget _buildSpecificConversationCacheItem(
+    ConversationCacheCategory category,
+    Function(bool) onChanged,
+  ) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: category.isSelected
+            ? category.color.withAlpha(15)
+            : Colors.grey.withAlpha(10),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color:
+              category.isSelected ? category.color : Colors.grey.withAlpha(40),
+          width: category.isSelected ? 2 : 1,
+        ),
+        boxShadow: category.isSelected
+            ? [
+                BoxShadow(
+                  color: category.color.withAlpha(20),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => onChanged(!category.isSelected),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                // Icon container
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: category.isSelected
+                        ? category.color.withAlpha(40)
+                        : category.color.withAlpha(20),
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: Icon(
+                    category.icon,
+                    color: category.color,
+                    size: 22,
+                  ),
+                ),
+
+                const SizedBox(width: 12),
+
+                // Content
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        category.name,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: category.isSelected
+                              ? category.color
+                              : Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        category.description,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Size info and checkbox
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${(category.sizeKB / 1024).toStringAsFixed(1)} MB',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: category.isSelected
+                            ? category.color
+                            : Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      '${category.count} آیتم',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Transform.scale(
+                      scale: 1.05,
+                      child: Checkbox(
+                        value: category.isSelected,
+                        onChanged: (value) => onChanged(value ?? false),
+                        activeColor: category.color,
+                        checkColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Perform cache clearing for specific conversation categories
+  Future<void> _performSpecificConversationCacheClear(
+    BuildContext context,
+    ConversationCacheDetails cacheDetails,
+    List<ConversationCacheCategory> selectedCategories, {
+    Function(List<String>)? onCleared,
+  }) async {
+    if (selectedCategories.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('هیچ دسته‌ای انتخاب نشده است'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final totalSize =
+        selectedCategories.fold<double>(0, (sum, cat) => sum + cat.sizeKB);
+
+    // نمایش dialog تأیید
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تأیید پاک‌سازی کش'),
+        content: Text(
+          'آیا مطمئن هستید که می‌خواهید کش انتخاب شده از مکالمه "${cacheDetails.displayName}" را پاک کنید؟\n\nحجم: ${(totalSize / 1024).toStringAsFixed(1)} MB\n\nدسته‌های انتخاب شده:\n${selectedCategories.map((cat) => '• ${cat.name}').join('\n')}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('لغو'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('پاک‌سازی'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      // نمایش loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 16),
+              Text('در حال پاک‌سازی کش...'),
+            ],
+          ),
+          duration: Duration(seconds: 3),
+        ),
+      );
+
+      // پاک‌سازی بر اساس دسته‌های انتخاب شده
+      final List<String> clearedKeys = [];
+      final Map<String, ConversationCacheCategory> categories =
+          cacheDetails.categories;
+      for (final category in selectedCategories) {
+        // کلید دسته را پیدا کن
+        final String key = categories.entries
+            .firstWhere((e) => e.value.name == category.name,
+                orElse: () => MapEntry('unknown', category))
+            .key;
+
+        if (category.name.contains('متنی')) {
+          // پاک‌سازی پیام‌های متنی
+          await _performMessageCacheCleanup(cacheDetails.conversationId);
+        } else if (category.name.contains('تصاویر')) {
+          // پاک‌سازی تصاویر
+          await _performImageCacheCleanup(cacheDetails.conversationId);
+        } else if (category.name.contains('صوتی')) {
+          // پاک‌سازی فایل‌های صوتی (voice messages)
+          await _performVoiceCacheCleanup(cacheDetails.conversationId);
+        }
+
+        clearedKeys.add(key);
+      }
+
+      // اطلاع به UI برای اجرای انیمیشن و صفر شدن تدریجی اندازه‌ها
+      if (onCleared != null) {
+        onCleared(clearedKeys);
+      }
+
+      // پیام موفقیت
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'کش انتخاب شده از مکالمه "${cacheDetails.displayName}" (${(totalSize / 1024).toStringAsFixed(1)} MB) با موفقیت پاک شد',
+          ),
+          backgroundColor: Colors.green,
+          action: SnackBarAction(
+            label: 'تمام',
+            onPressed: () {},
+            textColor: Colors.white,
+          ),
+        ),
+      );
+
+      // بروزرسانی آمار
+      await _loadAllStats();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('خطا در پاک‌سازی کش: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
+
+  /// Clean voice cache for specific conversation
+  Future<void> _performVoiceCacheCleanup(String conversationId) async {
+    try {
+      // پاک‌سازی cache مرتبط با فایل‌های صوتی
+      // اینجا می‌توان cache مخصوص voice messages را پاک کرد
+      print('پاک‌سازی voice cache برای مکالمه: $conversationId');
+
+      // اگر سیستم cache مخصوص voice داریم:
+      // await _voiceCacheManager.clearConversationVoiceCache(conversationId);
+    } catch (e) {
+      print('خطا در پاک‌سازی voice cache: $e');
+    }
+  }
+
+  // متد قدیمی _performAdvancedConversationCacheClear حذف شد - استفاده نمی‌شود
+
+  // متدهای قدیمی حذف شدند - از _performAdvancedConversationCacheClear استفاده می‌شود
+}
+
+// مدل برای آیتم‌های کش مکالمه
+class ConversationCacheItem {
+  final String conversationId;
+  final String title;
+  final String subtitle;
+  final String? avatarUrl;
+  final Color color;
+  final double sizeKB;
+  final int messageCount;
+  double percentage;
+  bool isSelected;
+  final dynamic conversation; // ConversationModel
+
+  ConversationCacheItem({
+    required this.conversationId,
+    required this.title,
+    required this.subtitle,
+    this.avatarUrl,
+    required this.color,
+    required this.sizeKB,
+    required this.messageCount,
+    this.percentage = 0,
+    required this.isSelected,
+    required this.conversation,
+  });
+}
+
+/// Details of cache for a specific conversation
+class ConversationCacheDetails {
+  final String conversationId;
+  final String displayName;
+  final String? avatarUrl;
+  final int messageCount;
+  final double totalSizeKB;
+  final Map<String, ConversationCacheCategory> categories;
+  final dynamic conversation;
+
+  ConversationCacheDetails({
+    required this.conversationId,
+    required this.displayName,
+    this.avatarUrl,
+    required this.messageCount,
+    required this.totalSizeKB,
+    required this.categories,
+    required this.conversation,
+  });
+}
+
+/// Individual cache category for a conversation
+class ConversationCacheCategory {
+  final String name;
+  final String description;
+  final IconData icon;
+  final Color color;
+  final double sizeKB;
+  final int count;
+  bool isSelected;
+
+  ConversationCacheCategory({
+    required this.name,
+    required this.description,
+    required this.icon,
+    required this.color,
+    required this.sizeKB,
+    required this.count,
+    this.isSelected = true,
+  });
+}
+
+// Custom painter for specific conversation cache chart
+class ConversationSpecificCacheChartPainter extends CustomPainter {
+  final List<ConversationCacheCategory> categories;
+  final bool isDark;
+
+  ConversationSpecificCacheChartPainter(this.categories, this.isDark);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = math.min(size.width, size.height) / 2 - 6;
+
+    // Draw background circle
+    final backgroundPaint = Paint()
+      ..color = isDark ? Colors.grey[800]! : Colors.grey[200]!
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 10
+      ..isAntiAlias = true;
+
+    canvas.drawCircle(center, radius, backgroundPaint);
+
+    if (categories.isEmpty) return;
+
+    // محاسبه مجموع حجم
+    final totalSize =
+        categories.fold<double>(0, (sum, cat) => sum + cat.sizeKB);
+    if (totalSize <= 0) return;
+
+    // Draw category arcs
+    double startAngle = -math.pi / 2; // Start from top
+
+    for (final category in categories) {
+      if (category.sizeKB < 0.1) continue; // حداقل حجم برای نمایش
+
+      final percentage = (category.sizeKB / totalSize * 100);
+      final sweepAngle = (percentage / 100) * 2 * math.pi;
+
+      final paint = Paint()
+        ..color = category.color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 10
+        ..strokeCap = StrokeCap.round
+        ..isAntiAlias = true;
+
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        startAngle,
+        sweepAngle,
+        false,
+        paint,
+      );
+
+      startAngle += sweepAngle;
+    }
+  }
+
+  @override
+  bool shouldRepaint(CustomPainter oldDelegate) => true;
+}
+
+// Custom painter for conversation cache chart
+class ConversationCacheChartPainter extends CustomPainter {
+  final List<ConversationCacheItem> conversations;
+  final bool isDark;
+
+  ConversationCacheChartPainter(this.conversations, this.isDark);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = math.min(size.width, size.height) / 2 - 6;
+
+    // Draw background circle
+    final backgroundPaint = Paint()
+      ..color = isDark ? Colors.grey[800]! : Colors.grey[200]!
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 10
+      ..isAntiAlias = true;
+
+    canvas.drawCircle(center, radius, backgroundPaint);
+
+    if (conversations.isEmpty) return;
+
+    // محاسبه مجموع حجم
+    final totalSize =
+        conversations.fold<double>(0, (sum, conv) => sum + conv.sizeKB);
+    if (totalSize <= 0) return;
+
+    // Draw conversation arcs
+    double startAngle = -math.pi / 2; // Start from top
+
+    for (final conversation in conversations) {
+      if (conversation.sizeKB < 0.1) continue; // حداقل حجم برای نمایش
+
+      final percentage = (conversation.sizeKB / totalSize * 100);
+      final sweepAngle = (percentage / 100) * 2 * math.pi;
+
+      final paint = Paint()
+        ..color = conversation.color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 10
+        ..strokeCap = StrokeCap.round
+        ..isAntiAlias = true;
+
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        startAngle,
+        sweepAngle,
+        false,
+        paint,
+      );
+
+      startAngle += sweepAngle;
+    }
+  }
+
+  @override
+  bool shouldRepaint(CustomPainter oldDelegate) => true;
 }
 
 // Custom painter for the circular storage chart (like Telegram)

@@ -45,6 +45,7 @@ import '../../../services/instant_message_deletion.dart';
 import '../../../widgets/simple_animated_deletion.dart';
 import '../../../services/optimized_messaging_system.dart';
 import '../../../services/memory_leak_detector.dart';
+import '../../../services/user_profile_service.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String conversationId;
@@ -96,6 +97,43 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   // اضافه شد: برای ذخیره conversationId پس از ایجاد مکالمه جدید
   String? _localConversationId;
 
+  // برای به‌روزرسانی نام کاربر
+  String _currentOtherUserName = '';
+  String? _currentOtherUserAvatar;
+
+  /// Load user profile if name is not available
+  Future<void> _loadUserProfile() async {
+    if (_currentOtherUserName.isEmpty ||
+        _currentOtherUserName == 'در حال بارگذاری...' ||
+        _currentOtherUserName == 'کاربر ناشناس') {
+      try {
+        final userProfileService = UserProfileService();
+        final profile =
+            await userProfileService.getUserProfile(widget.otherUserId);
+
+        if (profile != null && mounted) {
+          setState(() {
+            // Prefer username, then full_name; avoid forcing 'کاربر ناشناس'
+            _currentOtherUserName =
+                (profile['username']?.toString().trim().isNotEmpty == true)
+                    ? profile['username'] as String
+                    : (profile['full_name']?.toString().trim().isNotEmpty ==
+                            true)
+                        ? profile['full_name'] as String
+                        : (_currentOtherUserName.isNotEmpty &&
+                                _currentOtherUserName != 'در حال بارگذاری...' &&
+                                _currentOtherUserName != 'کاربر ناشناس')
+                            ? _currentOtherUserName
+                            : '...';
+            _currentOtherUserAvatar = profile['avatar_url'];
+          });
+        }
+      } catch (e) {
+        print('⚠️ Error loading user profile in ChatScreen: $e');
+      }
+    }
+  }
+
   // Animation state for deletion
   final Set<String> _deletingMessageIds = {};
 
@@ -146,6 +184,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   void initState() {
     super.initState();
 
+    // Initialize user info
+    _currentOtherUserName = widget.otherUserName;
+    _currentOtherUserAvatar = widget.otherUserAvatar;
+
     // Performance optimization initialization
     _optimizedMessaging = OptimizedMessagingSystem();
     _memoryDetector = MemoryLeakDetector();
@@ -174,6 +216,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         flutterLocalNotificationsPlugin.cancel(notificationId);
       }
     });
+
+    // Load user profile if needed
+    _loadUserProfile();
 
     // هنگام ورود به صفحه چت، conversationId فعال را تنظیم کن
     // فقط اگر مکالمه موجود باشد
@@ -3158,10 +3203,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                       child: Material(
                         type: MaterialType.transparency,
                         child: ClipOval(
-                          child: widget.otherUserAvatar != null &&
-                                  widget.otherUserAvatar!.isNotEmpty
+                          child: (_currentOtherUserAvatar != null &&
+                                  _currentOtherUserAvatar!.isNotEmpty &&
+                                  _currentOtherUserAvatar!.startsWith('http'))
                               ? CachedNetworkImage(
-                                  imageUrl: widget.otherUserAvatar!,
+                                  imageUrl: _currentOtherUserAvatar!,
                                   width: 40,
                                   height: 40,
                                   fit: BoxFit.cover,
@@ -3178,15 +3224,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                                   errorWidget: (context, url, error) {
                                     print(
                                         'خطا در بارگذاری عکس پروفایل: $error');
-                                    return Container(
+                                    return Image.asset(
+                                      'lib/view/util/images/default-avatar.jpg',
                                       width: 40,
                                       height: 40,
-                                      color: Colors.grey[300],
-                                      child: const Icon(
-                                        Icons.person,
-                                        color: Colors.grey,
-                                        size: 20,
-                                      ),
+                                      fit: BoxFit.cover,
                                     );
                                   },
                                 )
@@ -3206,7 +3248,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            widget.otherUserName,
+                            _currentOtherUserName,
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,

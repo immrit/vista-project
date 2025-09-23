@@ -12,8 +12,6 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_links/app_links.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'DB/unified_message_cache_service.dart';
-import 'DB/unified_conversation_cache_service.dart';
 import 'DB/profile_cache_service.dart';
 import 'DB/settings_cache_service.dart';
 import 'firebase_options.dart';
@@ -529,7 +527,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                     final conversation = ConversationCacheService()
                         .getConversationSync(conversationId);
                     final otherUserName =
-                        conversation?.otherUserName ?? 'کاربر';
+                        conversation?.otherUserName ?? 'در حال بارگذاری...';
                     final otherUserId = conversation?.otherUserId ?? '';
                     final otherUserAvatar = conversation?.otherUserAvatar;
                     return ChatScreen(

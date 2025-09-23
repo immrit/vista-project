@@ -48,27 +48,9 @@ final advancedConversationsProvider =
     }
   });
 
-  // Enrich conversations with user data
-  return cache.watchConversations().asyncMap((conversations) async {
-    final currentUserId = supabase.auth.currentUser?.id;
-    if (currentUserId == null) return conversations;
-
-    final enrichedConversations = <ConversationModel>[];
-
-    for (final conversation in conversations) {
-      try {
-        final enriched = await userProfileService
-            .enrichConversationWithUserData(conversation, currentUserId);
-        enrichedConversations.add(enriched);
-      } catch (e) {
-        print('⚠️ Error enriching conversation ${conversation.id}: $e');
-        enrichedConversations
-            .add(conversation); // Add original if enrichment fails
-      }
-    }
-
-    return enrichedConversations;
-  });
+  // Return conversations directly without enrichment to avoid database relationship issues
+  // User profile enrichment will be handled separately in the UI layer
+  return cache.watchConversations();
 });
 
 /// Provider for messages in a specific conversation
@@ -215,6 +197,61 @@ final recentConversationsProvider =
 final advancedMessageSenderProvider = Provider<MessageSender>((ref) {
   final cache = ref.watch(advancedCacheProvider);
   return MessageSender(cache);
+});
+
+/// Provider for enriching conversations with user profile data (optimized)
+final enrichedConversationsProvider =
+    StreamProvider.autoDispose<List<ConversationModel>>((ref) {
+  final conversationsAsync = ref.watch(advancedConversationsProvider);
+  final userProfileService = UserProfileService();
+
+  return conversationsAsync.when(
+    data: (conversations) async* {
+      final currentUserId = supabase.auth.currentUser?.id;
+      if (currentUserId == null) {
+        yield conversations;
+        return;
+      }
+
+      // Preload all user profiles in batch to avoid individual requests
+      final userIds = conversations
+          .map((conv) => conv.otherUserId)
+          .where((id) => id != null)
+          .cast<String>()
+          .toList();
+
+      if (userIds.isNotEmpty) {
+        await userProfileService.preloadProfiles(userIds);
+      }
+
+      final enrichedConversations = <ConversationModel>[];
+
+      for (final conversation in conversations) {
+        try {
+          // Only enrich if we don't have user info
+          if (conversation.otherUserName == null) {
+            final enriched = await userProfileService
+                .enrichConversationWithUserData(conversation, currentUserId);
+            enrichedConversations.add(enriched);
+          } else {
+            enrichedConversations.add(conversation);
+          }
+        } catch (e) {
+          print('⚠️ Error enriching conversation ${conversation.id}: $e');
+          enrichedConversations.add(conversation);
+        }
+      }
+
+      yield enrichedConversations;
+    },
+    loading: () async* {
+      yield [];
+    },
+    error: (error, stack) async* {
+      print('⚠️ Error in enriched conversations provider: $error');
+      yield [];
+    },
+  );
 });
 
 /// Provider for performance statistics
