@@ -2,20 +2,29 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:path/path.dart' as path;
 import 'package:aws_s3_api/s3-2006-03-01.dart';
+import 'secure_config.dart';
+import 'user_friendly_error_handler.dart';
 import '/main.dart';
 
 class ChatAudioUploadService {
   // استفاده از همان تنظیمات S3 موجود
-  static final s3 = S3(
-    region: 'ir-thr-at1',
-    credentials: AwsClientCredentials(
-        accessKey: '4f4716fb-fa84-4ae7-9c8b-34d2a0896cdf',
-        secretKey:
-            'a6b4db27b4c54bfa46cbc4fd8a4ba2079e2da0cd2800acdc80dd758f8b2c1ec5'),
-    endpointUrl: 'https://coffevista.s3.ir-thr-at1.arvanstorage.ir',
-  );
+  static S3 get s3 {
+    if (!SecureConfig.isConfigured) {
+      throw Exception(
+          'AWS credentials not properly configured. Please set environment variables.');
+    }
 
-  static const String bucketName = 'coffevista';
+    return S3(
+      region: SecureConfig.awsRegion,
+      credentials: AwsClientCredentials(
+        accessKey: SecureConfig.awsAccessKey,
+        secretKey: SecureConfig.awsSecretKey,
+      ),
+      endpointUrl: SecureConfig.awsEndpointUrl,
+    );
+  }
+
+  static String get bucketName => SecureConfig.awsBucketName;
 
   /// آپلود فایل صوتی چت
   static Future<String?> uploadChatAudio(
@@ -72,8 +81,9 @@ class ChatAudioUploadService {
 
       return uploadedUrl;
     } catch (e) {
-      print('خطا در آپلود فایل صوتی چت: $e');
-      throw Exception('آپلود فایل صوتی چت شکست خورد: $e');
+      UserFriendlyErrorHandler.logError(e, context: 'audio_upload');
+      throw Exception(UserFriendlyErrorHandler.getFriendlyMessage(e,
+          context: 'audio_upload'));
     }
   }
 
@@ -115,8 +125,9 @@ class ChatAudioUploadService {
 
       return uploadedUrl;
     } catch (e) {
-      print('خطا در uploadChatAudioWeb: $e');
-      throw Exception('آپلود فایل صوتی شکست خورد: $e');
+      UserFriendlyErrorHandler.logError(e, context: 'audio_upload');
+      throw Exception(UserFriendlyErrorHandler.getFriendlyMessage(e,
+          context: 'audio_upload'));
     }
   }
 

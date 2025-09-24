@@ -15,6 +15,7 @@ import '../../../model/MusicModel.dart';
 import '../../../model/ProfileModel.dart';
 import '../../../provider/MusicProvider.dart';
 import '../../../provider/chat_provider.dart' as chat_provider;
+import '../../../services/secure_config.dart';
 import '../../util/const.dart';
 import '../../util/widgets.dart';
 import '../../widgets/CustomVideoPlayer.dart';
@@ -31,6 +32,7 @@ import 'followers and followings/FollowingScreen.dart';
 // removed unused imports
 import 'dart:async';
 import 'package:aws_s3_api/s3-2006-03-01.dart';
+import '../../../DB/profile_cache_service.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   final String userId;
@@ -43,16 +45,32 @@ class ProfileScreen extends ConsumerStatefulWidget {
   _ProfileScreenState createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+class _ProfileScreenState extends ConsumerState<ProfileScreen>
+    with SingleTickerProviderStateMixin {
   bool _isStartingConversation = false;
+  late TabController _tabController;
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref
           .read(userProfileProvider(widget.userId).notifier)
           .fetchProfile(widget.userId);
+      // رفرش کش پروفایل و 10 پست آخر در پس‌زمینه برای نمایش بهتر در حالت آفلاین
+      try {
+        unawaited(
+            ProfileCacheService().refreshCacheInBackground(widget.userId));
+      } catch (e) {
+        // ignore background refresh errors
+      }
     });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   @override
@@ -74,12 +92,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: _refreshProfile,
-              child: CustomScrollView(
-                slivers: [
-                  _buildSliverAppBar(profileState, getprofile, currentcolor,
-                      isCurrentUserProfile),
-                  _buildPostsList(profileState),
-                ],
+              child: NestedScrollView(
+                headerSliverBuilder: (context, innerBoxIsScrolled) {
+                  return [
+                    _buildSliverAppBar(profileState, getprofile, currentcolor,
+                        isCurrentUserProfile),
+                    _buildTabBar(),
+                  ];
+                },
+                body: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildPostsList(profileState),
+                    _buildMusicList(profileState),
+                    _buildClipsList(profileState),
+                  ],
+                ),
               ),
             ),
     );
@@ -706,7 +734,66 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     ]);
   }
 
-  SliverList _buildPostsList(ProfileModel profile) {
+  Widget _buildTabBar() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return SliverPersistentHeader(
+      pinned: true,
+      delegate: _SliverTabBarDelegate(
+        TabBar(
+          controller: _tabController,
+          labelColor: isDark ? Colors.white : Colors.black,
+          unselectedLabelColor: isDark ? Colors.white70 : Colors.black54,
+          indicatorColor: isDark ? Colors.white : Colors.black,
+          indicatorWeight: 2,
+          labelStyle:
+              const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          unselectedLabelStyle:
+              const TextStyle(fontWeight: FontWeight.normal, fontSize: 14),
+          tabs: [
+            Tab(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.grid_on, size: 18),
+                  SizedBox(width: 8),
+                  Text('پست‌ها'),
+                ],
+              ),
+            ),
+            Tab(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.music_note, size: 18),
+                  SizedBox(width: 8),
+                  Text('آهنگ‌ها'),
+                ],
+              ),
+            ),
+            Tab(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Image.asset(
+                    'lib/view/util/images/component/reels.png',
+                    width: 18,
+                    height: 18,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white
+                        : Colors.black,
+                  ),
+                  SizedBox(width: 8),
+                  Text('کلیپ‌ها'),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPostsList(ProfileModel profile) {
     // نمایش پیام «حساب کاربری خصوصی» در وسط صفحه شبیه اینستاگرام
     final isPrivateAsync = ref.watch(userSettingsByIdProvider(profile.id));
     final currentUserId = ref.read(authProvider)?.id;
@@ -716,51 +803,153 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         final blockedView =
             isPrivate && !profile.isFollowed && profile.id != currentUserId;
         if (blockedView) {
-          return SliverList(
-            delegate: SliverChildListDelegate([
-              SizedBox(
-                height: 240,
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Icon(Icons.lock_outline, size: 56, color: Colors.grey),
-                      SizedBox(height: 12),
-                      Text(
-                        'حساب کاربری خصوصی',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(Icons.lock_outline, size: 56, color: Colors.grey),
+                SizedBox(height: 12),
+                Text(
+                  'حساب کاربری خصوصی',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
-              ),
-            ]),
+              ],
+            ),
           );
         }
 
-        return SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              if (profile.posts.isEmpty) {
-                return const Center(child: Text('هنوز پستی وجود ندارد'));
-              }
-              return _buildPostItem(profile, profile.posts[index]);
-            },
-            childCount: profile.posts.isEmpty ? 1 : profile.posts.length,
-          ),
+        if (profile.posts.isEmpty) {
+          return const Center(child: Text('هنوز پستی وجود ندارد'));
+        }
+
+        return ListView.builder(
+          itemCount: profile.posts.length,
+          itemBuilder: (context, index) {
+            return _buildPostItem(profile, profile.posts[index]);
+          },
         );
       },
-      loading: () => SliverList(
-        delegate: SliverChildListDelegate([
-          const SizedBox(height: 120),
-        ]),
-      ),
-      error: (_, __) => SliverList(
-        delegate: SliverChildListDelegate([
-          const SizedBox(height: 120),
-        ]),
-      ),
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (_, __) => const Center(child: Text('خطا در بارگذاری پست‌ها')),
+    );
+  }
+
+  Widget _buildMusicList(ProfileModel profile) {
+    // نمایش پیام «حساب کاربری خصوصی» در وسط صفحه شبیه اینستاگرام
+    final isPrivateAsync = ref.watch(userSettingsByIdProvider(profile.id));
+    final currentUserId = ref.read(authProvider)?.id;
+    return isPrivateAsync.when(
+      data: (settings) {
+        final isPrivate = (settings?['is_private'] as bool?) ?? false;
+        final blockedView =
+            isPrivate && !profile.isFollowed && profile.id != currentUserId;
+        if (blockedView) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(Icons.lock_outline, size: 56, color: Colors.grey),
+                SizedBox(height: 12),
+                Text(
+                  'حساب کاربری خصوصی',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // فیلتر کردن پست‌هایی که موزیک دارند
+        final musicPosts =
+            profile.posts.where((post) => post.hasMusic).toList();
+
+        if (musicPosts.isEmpty) {
+          return const Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.music_off, size: 56, color: Colors.grey),
+                SizedBox(height: 12),
+                Text(
+                  'هنوز آهنگی وجود ندارد',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          itemCount: musicPosts.length,
+          itemBuilder: (context, index) {
+            return _buildPostItem(profile, musicPosts[index]);
+          },
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (_, __) => const Center(child: Text('خطا در بارگذاری آهنگ‌ها')),
+    );
+  }
+
+  Widget _buildClipsList(ProfileModel profile) {
+    // نمایش پیام «حساب کاربری خصوصی» در وسط صفحه شبیه اینستاگرام
+    final isPrivateAsync = ref.watch(userSettingsByIdProvider(profile.id));
+    final currentUserId = ref.read(authProvider)?.id;
+    return isPrivateAsync.when(
+      data: (settings) {
+        final isPrivate = (settings?['is_private'] as bool?) ?? false;
+        final blockedView =
+            isPrivate && !profile.isFollowed && profile.id != currentUserId;
+        if (blockedView) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(Icons.lock_outline, size: 56, color: Colors.grey),
+                SizedBox(height: 12),
+                Text(
+                  'حساب کاربری خصوصی',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // فیلتر کردن پست‌هایی که ویدیو دارند
+        final videoPosts =
+            profile.posts.where((post) => post.hasVideo).toList();
+
+        if (videoPosts.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Image.asset(
+                  'lib/view/util/images/component/reels.png',
+                  width: 56,
+                  height: 56,
+                  color: Colors.grey,
+                ),
+                SizedBox(height: 12),
+                Text(
+                  'هنوز کلیپی وجود ندارد',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          itemCount: videoPosts.length,
+          itemBuilder: (context, index) {
+            return _buildPostItem(profile, videoPosts[index]);
+          },
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (_, __) => const Center(child: Text('خطا در بارگذاری کلیپ‌ها')),
     );
   }
 
@@ -803,22 +992,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         );
       } else {
-        spans.add(
-          TextSpan(
-            text: matchedText,
-            style: const TextStyle(
-                color: Colors.blue, decoration: TextDecoration.underline),
-            recognizer: TapGestureRecognizer()
-              ..onTap = () async {
-                final url = matchedText.startsWith('http')
-                    ? matchedText
-                    : 'https://$matchedText';
-                if (await canLaunchUrl(Uri.parse(url))) {
-                  await launchUrl(Uri.parse(url));
-                }
-              },
-          ),
-        );
+        // فیلتر کردن لینک‌های Vista و پست‌های اشتراکی
+        if (!_isVistaOrSharedPostLink(matchedText)) {
+          spans.add(
+            TextSpan(
+              text: matchedText,
+              style: const TextStyle(
+                  color: Colors.blue, decoration: TextDecoration.underline),
+              recognizer: TapGestureRecognizer()
+                ..onTap = () async {
+                  final url = matchedText.startsWith('http')
+                      ? matchedText
+                      : 'https://$matchedText';
+                  if (await canLaunchUrl(Uri.parse(url))) {
+                    await launchUrl(Uri.parse(url));
+                  }
+                },
+            ),
+          );
+        } else {
+          // نمایش لینک‌های Vista به صورت متن عادی
+          spans.add(TextSpan(text: matchedText));
+        }
       }
       start = match.end;
     }
@@ -1228,17 +1423,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           final key = uri.pathSegments.sublist(1).join('/');
 
           final s3 = S3(
-            region: 'ir-thr-at1',
+            region: SecureConfig.awsRegion,
             credentials: AwsClientCredentials(
-              accessKey: '4f4716fb-fa84-4ae7-9c8b-34d2a0896cdf',
-              secretKey:
-                  'a6b4db27b4c54bfa46cbc4fd8a4ba2079e2da0cd2800acdc80dd758f8b2c1ec5',
+              accessKey: SecureConfig.awsAccessKey,
+              secretKey: SecureConfig.awsSecretKey,
             ),
-            endpointUrl: 'https://coffevista.s3.ir-thr-at1.arvanstorage.ir',
+            endpointUrl: SecureConfig.awsEndpointUrl,
           );
 
           await s3.deleteObject(
-            bucket: 'coffevista',
+            bucket: SecureConfig.awsBucketName,
             key: key,
           );
           print('فایل با موفقیت از آروان کلود حذف شد: $fileUrl');
@@ -1509,10 +1703,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               child: Stack(
                                 children: [
                                   Center(
-                                    child: Icon(
-                                      Icons.play_circle_outline,
+                                    child: Image.asset(
+                                      'lib/view/util/images/component/reels.png',
+                                      width: 50,
+                                      height: 50,
                                       color: Colors.white,
-                                      size: 50,
                                     ),
                                   ),
                                   Positioned(
@@ -1952,5 +2147,42 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
       ),
     );
+  }
+}
+
+// بررسی اینکه آیا لینک مربوط به Vista یا پست اشتراکی است
+bool _isVistaOrSharedPostLink(String url) {
+  return url.contains('vista') ||
+      url.contains('post/') ||
+      url.contains('m مشاهده در Vista') ||
+      url.contains('coffevista') ||
+      url.contains('arvan');
+}
+
+class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
+  final TabBar _tabBar;
+
+  _SliverTabBarDelegate(this._tabBar);
+
+  @override
+  double get minExtent => _tabBar.preferredSize.height;
+
+  @override
+  double get maxExtent => _tabBar.preferredSize.height;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      color: Theme.of(context).brightness == Brightness.dark
+          ? Colors.grey[900]
+          : Colors.white,
+      child: _tabBar,
+    );
+  }
+
+  @override
+  bool shouldRebuild(_SliverTabBarDelegate oldDelegate) {
+    return false;
   }
 }

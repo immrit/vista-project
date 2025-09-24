@@ -117,6 +117,17 @@ void main() async {
     await ProfileCacheService().initialize();
     await SettingsCacheService().initialize();
 
+    // اگر کاربر وارد است، پروفایل و 10 پست آخر او را برای حالت آفلاین پیش‌کش کن
+    try {
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser != null) {
+        // پیش‌کش کردن بدون بلاک کردن راه‌اندازی اپ
+        unawaited(ProfileCacheService().cacheProfileAndPosts(currentUser.id));
+      }
+    } catch (e) {
+      print('⚠️ Prefetch profile/posts failed at startup: $e');
+    }
+
     // 🚀 مقداردهی اولیه ProfileService جدید با real-time updates
     ProfileService().startRealtimeUpdates();
 
@@ -223,6 +234,16 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         // به‌روزرسانی وضعیت آنلاین کاربر
         final chatService = ChatService();
         chatService.updateUserOnlineStatus();
+
+        // پس از ورود، پروفایل و 10 پست آخر کاربر را کش کن تا در آفلاین نمایش داده شود
+        try {
+          final uid = Supabase.instance.client.auth.currentUser?.id;
+          if (uid != null) {
+            unawaited(ProfileCacheService().cacheProfileAndPosts(uid));
+          }
+        } catch (e) {
+          print('⚠️ Prefetch profile/posts on sign-in failed: $e');
+        }
       } else if (data.event == AuthChangeEvent.signedOut) {
         debugPrint('کاربر خارج شد - پاک کردن نشست‌ها');
       }

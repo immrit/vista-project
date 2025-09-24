@@ -93,7 +93,7 @@ class UnifiedMessagesNotifier extends StateNotifier<UnifiedMessagesState> {
     }
 
     return uniqueMessages.values.toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
   }
 
   /// مقداردهی اولیه پیام‌ها
@@ -116,7 +116,13 @@ class UnifiedMessagesNotifier extends StateNotifier<UnifiedMessagesState> {
           isInitialized: true,
         );
         _currentPage = (filteredMessages.length / _pageSize).ceil();
+
+        // Load more messages if we have less than a full page
+        if (filteredMessages.length < _pageSize) {
+          await loadMoreMessages();
+        }
       } else {
+        // Load initial batch of messages
         await loadMoreMessages();
         state = state.copyWith(isInitialized: true);
       }
@@ -150,7 +156,7 @@ class UnifiedMessagesNotifier extends StateNotifier<UnifiedMessagesState> {
         return;
       }
 
-      final updatedMessages = [...state.messages, ...newMessages];
+      final updatedMessages = [...newMessages, ...state.messages];
       final filteredMessages = _filterDuplicateMessages(updatedMessages);
 
       state = state.copyWith(
@@ -204,7 +210,7 @@ class UnifiedMessagesNotifier extends StateNotifier<UnifiedMessagesState> {
     }).toList();
 
     if (trulyNewMessages.isNotEmpty) {
-      final updatedMessages = [...trulyNewMessages, ...state.messages];
+      final updatedMessages = [...state.messages, ...trulyNewMessages];
       final filteredMessages = _filterDuplicateMessages(updatedMessages);
       state = state.copyWith(messages: filteredMessages);
     }
@@ -219,7 +225,7 @@ class UnifiedMessagesNotifier extends StateNotifier<UnifiedMessagesState> {
 
     if (existingMessage) return;
 
-    final updatedMessages = [tempMessage, ...state.messages];
+    final updatedMessages = [...state.messages, tempMessage];
     final filteredMessages = _filterDuplicateMessages(updatedMessages);
     state = state.copyWith(messages: filteredMessages);
   }

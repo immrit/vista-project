@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/user_friendly_error_handler.dart';
 
 /// سرویس مدیریت امنیت و احراز هویت کاربران
 class SecurityProvider extends ChangeNotifier {
@@ -41,7 +42,9 @@ class SecurityProvider extends ChangeNotifier {
 
       return false;
     } catch (e) {
-      _lastError = e.toString();
+      UserFriendlyErrorHandler.logError(e, context: 'login');
+      _lastError =
+          UserFriendlyErrorHandler.getFriendlyMessage(e, context: 'login');
       debugPrint('خطا در ورود: $e');
       return false;
     } finally {
@@ -61,7 +64,9 @@ class SecurityProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _lastError = e.toString();
+      UserFriendlyErrorHandler.logError(e, context: 'logout');
+      _lastError =
+          UserFriendlyErrorHandler.getFriendlyMessage(e, context: 'logout');
       debugPrint('خطا در خروج: $e');
       return false;
     } finally {

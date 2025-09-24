@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:typed_data';
+import 'dart:collection';
 import '../model/message_model.dart';
 import '../model/conversation_model.dart';
 import '../main.dart';
@@ -23,6 +25,10 @@ class AdvancedCacheSystem {
   final Map<String, ConversationModel> _conversationMemoryCache = {};
   final Map<String, List<MessageModel>> _messageMemoryCache = {};
   final Map<String, DateTime> _lastFetch = {};
+  // Video thumbnails cache (in-memory + persisted)
+  final Map<String, Uint8List> _videoThumbMemoryCache = {};
+  final ListQueue<String> _videoThumbOrder = ListQueue<String>();
+  static const int maxVideoThumbs = 200;
 
   // Stream Controllers for real-time updates
   final Map<String, StreamController<List<MessageModel>>> _messageStreams = {};
@@ -36,7 +42,10 @@ class AdvancedCacheSystem {
   // Configuration
   static const int maxMemoryCacheSize = 50; // Maximum conversations in memory
   static const int maxMessagesPerConversation = 100;
-  static const Duration cacheValidityDuration = Duration(minutes: 5);
+  static const Duration cacheValidityDuration =
+      Duration(minutes: 10); // Increased cache validity
+  static const Duration backgroundSyncInterval =
+      Duration(minutes: 10); // Reduced sync frequency
 
   // Sync status
   bool _isInitialized = false;
@@ -113,6 +122,22 @@ class AdvancedCacheSystem {
 
       print(
           '📥 Loaded messages for ${_messageMemoryCache.length} conversations from disk');
+
+      // Load video thumbnails
+      final thumbsJson = prefs.getString('cached_video_thumbs');
+      if (thumbsJson != null) {
+        final List<dynamic> list = jsonDecode(thumbsJson);
+        for (final item in list) {
+          final url = item['u'] as String?;
+          final dataB64 = item['d'] as String?;
+          if (url != null && dataB64 != null) {
+            try {
+              final bytes = base64Decode(dataB64);
+              _setVideoThumbInMemory(url, bytes);
+            } catch (_) {}
+          }
+        }
+      }
     } catch (e) {
       print('⚠️ Error loading from disk: $e');
     }
@@ -140,6 +165,17 @@ class AdvancedCacheSystem {
       }
 
       print('💾 Cache saved to disk');
+
+      // Save video thumbnails (limit to latest maxVideoThumbs)
+      final List<Map<String, String>> thumbList = [];
+      for (final url in _videoThumbOrder) {
+        final bytes = _videoThumbMemoryCache[url];
+        if (bytes != null) {
+          thumbList.add({'u': url, 'd': base64Encode(bytes)});
+        }
+      }
+      final toPersist = thumbList.take(maxVideoThumbs).toList();
+      await prefs.setString('cached_video_thumbs', jsonEncode(toPersist));
     } catch (e) {
       print('⚠️ Error saving to disk: $e');
     }
@@ -320,8 +356,8 @@ class AdvancedCacheSystem {
             !msg.id.startsWith('temp_')) // Filter out temporary messages
         .toList();
 
-    // Sort by creation time (newest first)
-    messages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    // Sort by creation time (oldest first)
+    messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
     // Update memory cache
     _messageMemoryCache[conversationId] = messages;
@@ -351,12 +387,13 @@ class AdvancedCacheSystem {
     // Cancel existing timer if any
     _periodicSyncTimer?.cancel();
 
-    _periodicSyncTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
+    _periodicSyncTimer = Timer.periodic(backgroundSyncInterval, (timer) {
       if (!_isSyncing) {
         _performBackgroundSync();
       }
     });
-    print('⏰ Periodic sync started (every 5 minutes)');
+    print(
+        '⏰ Periodic sync started (every ${backgroundSyncInterval.inMinutes} minutes)');
   }
 
   /// Perform initial sync on startup
@@ -669,8 +706,8 @@ class AdvancedCacheSystem {
         m.id == message.id ||
         (message.id.startsWith('temp_') && m.localId == message.id));
 
-    // Add new message at the beginning
-    messages.insert(0, message);
+    // Add new message at the end (chronological order)
+    messages.add(message);
 
     // Limit cache size
     if (messages.length > maxMessagesPerConversation) {
@@ -740,8 +777,42 @@ class AdvancedCacheSystem {
       controller.close();
     }
     _messageStreams.clear();
+    _videoThumbMemoryCache.clear();
+    _videoThumbOrder.clear();
 
     _isInitialized = false;
     print('🧹 Advanced Cache System disposed');
+  }
+}
+
+// Public API for video thumbnail caching
+extension VideoThumbnailCacheExt on AdvancedCacheSystem {
+  Uint8List? getVideoThumbnail(String url) {
+    final cached = _videoThumbMemoryCache[url];
+    if (cached != null) {
+      _videoThumbOrder.remove(url);
+      _videoThumbOrder.addLast(url);
+      return cached;
+    }
+    return null;
+  }
+
+  void cacheVideoThumbnail(String url, Uint8List bytes) {
+    _setVideoThumbInMemory(url, bytes);
+    // Persist lazily; don't block UI. Fire and forget.
+    // ignore: discarded_futures
+    _saveToDisk();
+  }
+
+  void _setVideoThumbInMemory(String url, Uint8List bytes) {
+    if (_videoThumbMemoryCache.containsKey(url)) {
+      _videoThumbOrder.remove(url);
+    }
+    _videoThumbMemoryCache[url] = bytes;
+    _videoThumbOrder.addLast(url);
+    while (_videoThumbOrder.length > AdvancedCacheSystem.maxVideoThumbs) {
+      final oldest = _videoThumbOrder.removeFirst();
+      _videoThumbMemoryCache.remove(oldest);
+    }
   }
 }

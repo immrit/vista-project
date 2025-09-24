@@ -247,7 +247,7 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
       final filteredNewMessages = newMessages
           .where((m) => !_locallyDeletedMessageIds.contains(m.id))
           .toList();
-      final updatedMessages = [...state.messages, ...filteredNewMessages];
+      final updatedMessages = [...filteredNewMessages, ...state.messages];
       final filteredMessages = _filterDuplicateMessages(updatedMessages);
 
       state = state.copyWith(
@@ -324,7 +324,7 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
 
     if (uniqueNewMessages.isEmpty) return;
 
-    final updatedMessages = [...uniqueNewMessages, ...state.messages];
+    final updatedMessages = [...state.messages, ...uniqueNewMessages];
     final filteredMessages = _filterDuplicateMessages(updatedMessages);
     state = state.copyWith(messages: filteredMessages);
   }
@@ -340,7 +340,7 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
 
     if (existingMessage) return; // پیام قبلاً وجود دارد
 
-    final updatedMessages = [tempMessage, ...state.messages];
+    final updatedMessages = [...state.messages, tempMessage];
     final filteredMessages = _filterDuplicateMessages(updatedMessages);
     state = state.copyWith(messages: filteredMessages);
   }
@@ -375,7 +375,7 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
     // بررسی اینکه پیام حذف شده محلی نباشد
     if (_locallyDeletedMessageIds.contains(message.id)) return;
 
-    final updatedMessages = [message, ...state.messages];
+    final updatedMessages = [...state.messages, message];
     final filteredMessages = _filterDuplicateMessages(updatedMessages);
     state = state.copyWith(messages: filteredMessages);
   }
@@ -1683,7 +1683,7 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
     final filtered = _filterTempDuplicates(value);
     // مرتب‌سازی
     final sortedList = [...filtered]
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     super.state = sortedList;
     Future.microtask(() {
       _updateUnreadCount();

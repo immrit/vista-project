@@ -2371,8 +2371,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             });
 
             // اگر کشیدن به اندازه کافی بود، پاسخ را فعال کن
-            if (dragRatio > 0.4) {
-              // آستانه 40%
+            if (dragRatio > 0.7) {
+              // آستانه 70% - کاهش حساسیت
               // اضافه کردن هپتیک فیدبک
               HapticFeedback.lightImpact();
               _setReplyMessage(message);
@@ -2488,69 +2488,76 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 if (message.replyToMessageId != null)
-                                  Container(
-                                    padding: EdgeInsets.all(
-                                        math.max(8, fontSize * 0.5)),
-                                    margin: EdgeInsets.only(
-                                      bottom: math.max(6, fontSize * 0.35),
-                                      left: math.max(8, fontSize * 0.5),
-                                      right: math.max(8, fontSize * 0.5),
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: isMe
-                                          ? outgoingBubbleColor.withValues(
-                                              alpha: 0.8)
-                                          : Colors.grey[100],
-                                      borderRadius: BorderRadius.circular(
-                                          math.max(12, fontSize * 0.7)),
-                                      border: Border.all(
-                                        color: isMe
-                                            ? Colors.white
-                                                .withValues(alpha: 0.2)
-                                            : Colors.grey[300]!,
-                                        width: 1,
+                                  GestureDetector(
+                                    onTap: () {
+                                      _jumpToMessage(message.replyToMessageId!);
+                                    },
+                                    child: Container(
+                                      padding: EdgeInsets.all(
+                                          math.max(8, fontSize * 0.5)),
+                                      margin: EdgeInsets.only(
+                                        bottom: math.max(6, fontSize * 0.35),
+                                        left: math.max(8, fontSize * 0.5),
+                                        right: math.max(8, fontSize * 0.5),
                                       ),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Icon(Icons.reply,
-                                                size: 14,
-                                                color: isMe
-                                                    ? Colors.white70
-                                                    : Colors.black45),
-                                            SizedBox(width: 6),
-                                            Expanded(
-                                              child: Text(
-                                                _getReplySenderName(message),
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
+                                      decoration: BoxDecoration(
+                                        color: isMe
+                                            ? outgoingBubbleColor.withValues(
+                                                alpha: 0.8)
+                                            : Colors.grey[100],
+                                        borderRadius: BorderRadius.circular(
+                                            math.max(12, fontSize * 0.7)),
+                                        border: Border.all(
+                                          color: isMe
+                                              ? Colors.white
+                                                  .withValues(alpha: 0.2)
+                                              : Colors.grey[300]!,
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Icon(Icons.reply,
+                                                  size: 14,
                                                   color: isMe
-                                                      ? Colors.white
-                                                      : Colors.black87,
-                                                  fontSize: 12,
+                                                      ? Colors.white70
+                                                      : Colors.black45),
+                                              SizedBox(width: 6),
+                                              Expanded(
+                                                child: Text(
+                                                  _getReplySenderName(message),
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    color: isMe
+                                                        ? Colors.white
+                                                        : Colors.black87,
+                                                    fontSize: 12,
+                                                  ),
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
                                                 ),
-                                                overflow: TextOverflow.ellipsis,
                                               ),
-                                            ),
-                                          ],
-                                        ),
-                                        SizedBox(height: 4),
-                                        Text(
-                                          message.replyToContent ?? '',
-                                          style: TextStyle(
-                                            color: isMe
-                                                ? Colors.white70
-                                                : Colors.black87,
-                                            fontSize: 12,
+                                            ],
                                           ),
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ],
+                                          SizedBox(height: 4),
+                                          Text(
+                                            _filterLinksFromText(
+                                                message.replyToContent ?? ''),
+                                            style: TextStyle(
+                                              color: isMe
+                                                  ? Colors.white70
+                                                  : Colors.black87,
+                                              fontSize: 12,
+                                            ),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 if (message.attachmentUrl != null &&
@@ -2847,6 +2854,36 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         );
       },
     );
+  }
+
+  // فیلتر کردن لینک‌ها از متن
+  String _filterLinksFromText(String text) {
+    if (text.isEmpty) return text;
+
+    // فیلتر کردن لینک‌های Vista و پست‌های اشتراکی
+    String filteredText = text;
+
+    // حذف لینک‌های Vista
+    filteredText =
+        filteredText.replaceAll(RegExp(r'https?://[^\s]*vista[^\s]*'), '');
+    filteredText =
+        filteredText.replaceAll(RegExp(r'https?://[^\s]*post/[^\s]*'), '');
+    filteredText =
+        filteredText.replaceAll(RegExp(r'https?://[^\s]*coffevista[^\s]*'), '');
+    filteredText =
+        filteredText.replaceAll(RegExp(r'https?://[^\s]*arvan[^\s]*'), '');
+
+    // حذف لینک‌های عمومی
+    filteredText = filteredText.replaceAll(RegExp(r'https?://[^\s]*'), '');
+
+    // حذف metadata های پست‌های اشتراکی
+    filteredText = filteredText.replaceAll(RegExp(r'🖼️ آواتار:.*'), '');
+    filteredText = filteredText.replaceAll(RegExp(r'🎥 ویدیو:.*'), '');
+    filteredText = filteredText.replaceAll(RegExp(r'🏷️ تگ‌ها:.*'), '');
+    filteredText = filteredText.replaceAll(RegExp(r'🔗.*'), '');
+    filteredText = filteredText.replaceAll(RegExp(r'📝 پست از.*'), '');
+
+    return filteredText.trim();
   }
 
   void _showReportMessageDialog(BuildContext context, MessageModel message) {
@@ -3187,168 +3224,224 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     // ابتدا پیام‌های کش شده را نمایش بده، سپس استریم پیام‌ها را گوش بده
     return SafeArea(
       top: false,
-      child: Scaffold(
-        appBar: AppBar(
-            elevation: 1,
-            titleSpacing: 0,
-            backgroundColor: Theme.of(context).brightness == Brightness.dark
-                ? Color(0xFF1A1A1A)
-                : Colors.white,
-            iconTheme: IconThemeData(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.white
-                  : Colors.black87,
+      child: Stack(
+        children: [
+          // Chat Wallpaper Background - Fixed position, not affected by keyboard
+          Positioned.fill(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Local asset as immediate fallback
+                Image.asset(
+                  WallpaperCacheService.getLocalWallpaperAsset(
+                      Theme.of(context).brightness == Brightness.dark),
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                ),
+                // Remote image with cache - overlays when loaded
+                CachedNetworkImage(
+                  imageUrl: _getChatWallpaperUrl(context),
+                  fit: BoxFit.cover,
+                  cacheManager: CustomCacheManager.wallpaperInstance,
+                  placeholder: (context, url) =>
+                      Container(), // Transparent - local asset shows
+                  errorWidget: (context, url, error) =>
+                      Container(), // Transparent - local asset shows
+                  fadeInDuration: const Duration(milliseconds: 300),
+                  fadeOutDuration: const Duration(milliseconds: 300),
+                  memCacheWidth: 1080,
+                  memCacheHeight: 1920,
+                ),
+              ],
             ),
-            title: InkWell(
-              onTap: () async {
-                final messageIdToJump = await Navigator.push<String?>(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ChatDetailsScreen(
-                      conversationId: widget.conversationId,
-                      otherUserName: widget.otherUserName,
-                      otherUserAvatar: widget.otherUserAvatar,
-                      otherUserId: widget.otherUserId,
-                    ),
-                  ),
-                );
+          ),
+          // Subtle overlay for better text readability - Adapts to theme
+          Positioned.fill(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              decoration: BoxDecoration(
+                color: _getWallpaperOverlayColor(context),
+              ),
+            ),
+          ),
+          // Main chat interface
+          Scaffold(
+            backgroundColor: Colors.transparent,
+            appBar: AppBar(
+                elevation: 1,
+                titleSpacing: 0,
+                backgroundColor: Theme.of(context).brightness == Brightness.dark
+                    ? Color(0xFF1A1A1A)
+                    : Colors.white,
+                iconTheme: IconThemeData(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white
+                      : Colors.black87,
+                ),
+                title: InkWell(
+                  onTap: () async {
+                    final messageIdToJump = await Navigator.push<String?>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ChatDetailsScreen(
+                          conversationId: widget.conversationId,
+                          otherUserName: widget.otherUserName,
+                          otherUserAvatar: widget.otherUserAvatar,
+                          otherUserId: widget.otherUserId,
+                        ),
+                      ),
+                    );
 
-                if (messageIdToJump != null && mounted) {
-                  _jumpToMessage(messageIdToJump);
-                }
-              },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: Row(
-                  children: [
-                    Hero(
-                      tag: 'avatar_${widget.otherUserId}',
-                      child: Material(
-                        type: MaterialType.transparency,
-                        child: ClipOval(
-                          child: (_currentOtherUserAvatar != null &&
-                                  _currentOtherUserAvatar!.isNotEmpty &&
-                                  _currentOtherUserAvatar!.startsWith('http'))
-                              ? CachedNetworkImage(
-                                  imageUrl: _currentOtherUserAvatar!,
-                                  width: 40,
-                                  height: 40,
-                                  fit: BoxFit.cover,
-                                  placeholder: (context, url) => Container(
-                                    width: 40,
-                                    height: 40,
-                                    color: Colors.grey[300],
-                                    child: const Icon(
-                                      Icons.person,
-                                      color: Colors.grey,
-                                      size: 20,
-                                    ),
-                                  ),
-                                  errorWidget: (context, url, error) {
-                                    print(
-                                        'خطا در بارگذاری عکس پروفایل: $error');
-                                    return Image.asset(
+                    if (messageIdToJump != null && mounted) {
+                      _jumpToMessage(messageIdToJump);
+                    }
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Row(
+                      children: [
+                        Hero(
+                          tag: 'avatar_${widget.otherUserId}',
+                          child: Material(
+                            type: MaterialType.transparency,
+                            child: ClipOval(
+                              child: (_currentOtherUserAvatar != null &&
+                                      _currentOtherUserAvatar!.isNotEmpty &&
+                                      _currentOtherUserAvatar!
+                                          .startsWith('http'))
+                                  ? CachedNetworkImage(
+                                      imageUrl: _currentOtherUserAvatar!,
+                                      width: 40,
+                                      height: 40,
+                                      fit: BoxFit.cover,
+                                      placeholder: (context, url) => Container(
+                                        width: 40,
+                                        height: 40,
+                                        color: Colors.grey[300],
+                                        child: const Icon(
+                                          Icons.person,
+                                          color: Colors.grey,
+                                          size: 20,
+                                        ),
+                                      ),
+                                      errorWidget: (context, url, error) {
+                                        print(
+                                            'خطا در بارگذاری عکس پروفایل: $error');
+                                        return Image.asset(
+                                          'lib/view/util/images/default-avatar.jpg',
+                                          width: 40,
+                                          height: 40,
+                                          fit: BoxFit.cover,
+                                        );
+                                      },
+                                    )
+                                  : Image.asset(
                                       'lib/view/util/images/default-avatar.jpg',
                                       width: 40,
                                       height: 40,
                                       fit: BoxFit.cover,
-                                    );
-                                  },
-                                )
-                              : Image.asset(
-                                  'lib/view/util/images/default-avatar.jpg',
-                                  width: 40,
-                                  height: 40,
-                                  fit: BoxFit.cover,
-                                ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _currentOtherUserName,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).brightness ==
-                                      Brightness.dark
-                                  ? Colors.white
-                                  : Colors.black87,
+                                    ),
                             ),
-                            overflow: TextOverflow.ellipsis,
                           ),
-                          Consumer(
-                            builder: (context, ref, child) {
-                              final isOnlineAsync = ref.watch(
-                                  userOnlineStatusStreamProvider(
-                                      widget.otherUserId));
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _currentOtherUserName,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.white
+                                      : Colors.black87,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Consumer(
+                                builder: (context, ref, child) {
+                                  final isOnlineAsync = ref.watch(
+                                      userOnlineStatusStreamProvider(
+                                          widget.otherUserId));
 
-                              return isOnlineAsync.when(
-                                data: (isOnline) {
-                                  if (isOnline) {
-                                    return Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Container(
-                                          width: 8,
-                                          height: 8,
-                                          decoration: const BoxDecoration(
-                                            color: Colors.green,
-                                            shape: BoxShape.circle,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        const Text(
-                                          'آنلاین',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.green,
-                                          ),
-                                        ),
-                                      ],
-                                    );
-                                  } else {
-                                    final canShowAsync = ref.watch(
-                                        canShowLastSeenProvider(
-                                            widget.otherUserId));
-                                    return canShowAsync.when(
-                                      data: (canShow) {
-                                        if (!canShow) {
-                                          return Text(
-                                            'آفلاین',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Theme.of(context)
-                                                          .brightness ==
-                                                      Brightness.dark
-                                                  ? Colors.grey[400]
-                                                  : Colors.grey[600],
+                                  return isOnlineAsync.when(
+                                    data: (isOnline) {
+                                      if (isOnline) {
+                                        return Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Container(
+                                              width: 8,
+                                              height: 8,
+                                              decoration: const BoxDecoration(
+                                                color: Colors.green,
+                                                shape: BoxShape.circle,
+                                              ),
                                             ),
-                                          );
-                                        }
-                                        final lastOnlineAsync = ref.watch(
-                                            userLastOnlineProvider(
-                                                widget.otherUserId));
-                                        return lastOnlineAsync.when(
-                                          data: (lastOnline) {
-                                            return Text(
-                                              lastOnline != null
-                                                  ? TimeUtils.formatLastSeen(
-                                                      lastOnline)
-                                                  : 'آفلاین',
+                                            const SizedBox(width: 4),
+                                            const Text(
+                                              'آنلاین',
                                               style: TextStyle(
                                                 fontSize: 12,
-                                                color: Theme.of(context)
-                                                            .brightness ==
-                                                        Brightness.dark
-                                                    ? Colors.grey[400]
-                                                    : Colors.grey[600],
+                                                color: Colors.green,
                                               ),
+                                            ),
+                                          ],
+                                        );
+                                      } else {
+                                        final canShowAsync = ref.watch(
+                                            canShowLastSeenProvider(
+                                                widget.otherUserId));
+                                        return canShowAsync.when(
+                                          data: (canShow) {
+                                            if (!canShow) {
+                                              return Text(
+                                                'آفلاین',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Theme.of(context)
+                                                              .brightness ==
+                                                          Brightness.dark
+                                                      ? Colors.grey[400]
+                                                      : Colors.grey[600],
+                                                ),
+                                              );
+                                            }
+                                            final lastOnlineAsync = ref.watch(
+                                                userLastOnlineProvider(
+                                                    widget.otherUserId));
+                                            return lastOnlineAsync.when(
+                                              data: (lastOnline) {
+                                                return Text(
+                                                  lastOnline != null
+                                                      ? TimeUtils
+                                                          .formatLastSeen(
+                                                              lastOnline)
+                                                      : 'آفلاین',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Theme.of(context)
+                                                                .brightness ==
+                                                            Brightness.dark
+                                                        ? Colors.grey[400]
+                                                        : Colors.grey[600],
+                                                  ),
+                                                );
+                                              },
+                                              loading: () => const Text(
+                                                  'در حال بارگذاری...',
+                                                  style:
+                                                      TextStyle(fontSize: 12)),
+                                              error: (_, __) => const Text(
+                                                  'آفلاین',
+                                                  style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.grey)),
                                             );
                                           },
                                           loading: () => const Text(
@@ -3359,146 +3452,114 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                                                   fontSize: 12,
                                                   color: Colors.grey)),
                                         );
-                                      },
-                                      loading: () => const Text(
-                                          'در حال بارگذاری...',
-                                          style: TextStyle(fontSize: 12)),
-                                      error: (_, __) => const Text('آفلاین',
+                                      }
+                                    },
+                                    loading: () => const Text(
+                                        'در حال بارگذاری...',
+                                        style: TextStyle(fontSize: 12)),
+                                    error: (error, _) {
+                                      print(
+                                          'خطا در دریافت وضعیت آنلاین: $error');
+                                      return const Text('آفلاین',
                                           style: TextStyle(
                                               fontSize: 12,
-                                              color: Colors.grey)),
-                                    );
-                                  }
+                                              color: Colors.grey));
+                                    },
+                                  );
                                 },
-                                loading: () => const Text('در حال بارگذاری...',
-                                    style: TextStyle(fontSize: 12)),
-                                error: (error, _) {
-                                  print('خطا در دریافت وضعیت آنلاین: $error');
-                                  return const Text('آفلاین',
-                                      style: TextStyle(
-                                          fontSize: 12, color: Colors.grey));
-                                },
-                              );
-                            },
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip: 'پاکسازی تاریخچه گفتگو',
+                    onPressed: () => _showClearConversationDialog(context),
+                  ),
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert),
+                    tooltip: 'گزینه‌های بیشتر',
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    onSelected: (value) {
+                      switch (value) {
+                        case 'search':
+                          _showSearchDialog(context);
+                          break;
+                        case 'block':
+                          _isOtherUserBlocked
+                              ? _showUnblockUserDialog(context)
+                              : _showBlockUserDialog(context);
+                          break;
+                        case 'report':
+                          _showReportUserDialog(context);
+                          break;
+                        case 'profile':
+                          Navigator.of(context).push(MaterialPageRoute(
+                              builder: (context) => ProfileScreen(
+                                  userId: widget.otherUserId,
+                                  username: widget.otherUserName)));
+                          break;
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: 'profile',
+                        child: Row(
+                          children: [
+                            Icon(Icons.person_outline,
+                                color: Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? Colors.white70
+                                    : Colors.black87),
+                            const SizedBox(width: 12),
+                            const Text('مشاهده پروفایل'),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.delete_outline),
-                tooltip: 'پاکسازی تاریخچه گفتگو',
-                onPressed: () => _showClearConversationDialog(context),
-              ),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert),
-                tooltip: 'گزینه‌های بیشتر',
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                onSelected: (value) {
-                  switch (value) {
-                    case 'search':
-                      _showSearchDialog(context);
-                      break;
-                    case 'block':
-                      _isOtherUserBlocked
-                          ? _showUnblockUserDialog(context)
-                          : _showBlockUserDialog(context);
-                      break;
-                    case 'report':
-                      _showReportUserDialog(context);
-                      break;
-                    case 'profile':
-                      Navigator.of(context).push(MaterialPageRoute(
-                          builder: (context) => ProfileScreen(
-                              userId: widget.otherUserId,
-                              username: widget.otherUserName)));
-                      break;
-                  }
-                },
-                itemBuilder: (context) => [
-                  PopupMenuItem(
-                    value: 'profile',
-                    child: Row(
-                      children: [
-                        Icon(Icons.person_outline,
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
+                      PopupMenuItem(
+                        value: 'block',
+                        child: Row(
+                          children: [
+                            Icon(
+                                _isOtherUserBlocked
+                                    ? Icons.lock_open
+                                    : Icons.block,
+                                color: Theme.of(context).brightness ==
+                                        Brightness.dark
                                     ? Colors.white70
                                     : Colors.black87),
-                        const SizedBox(width: 12),
-                        const Text('مشاهده پروفایل'),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'block',
-                    child: Row(
-                      children: [
-                        Icon(
-                            _isOtherUserBlocked ? Icons.lock_open : Icons.block,
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
+                            const SizedBox(width: 12),
+                            Text(_isOtherUserBlocked
+                                ? 'رفع مسدودیت'
+                                : 'مسدود کردن'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'report',
+                        child: Row(
+                          children: [
+                            Icon(Icons.report_problem_outlined,
+                                color: Theme.of(context).brightness ==
+                                        Brightness.dark
                                     ? Colors.white70
                                     : Colors.black87),
-                        const SizedBox(width: 12),
-                        Text(
-                            _isOtherUserBlocked ? 'رفع مسدودیت' : 'مسدود کردن'),
-                      ],
-                    ),
+                            const SizedBox(width: 12),
+                            const Text('گزارش کاربر'),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  PopupMenuItem(
-                    value: 'report',
-                    child: Row(
-                      children: [
-                        Icon(Icons.report_problem_outlined,
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.white70
-                                    : Colors.black87),
-                        const SizedBox(width: 12),
-                        const Text('گزارش کاربر'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ]),
-        body: Stack(
-          children: [
-            // Chat Wallpaper Background - Optimized with dedicated cache manager
-            Positioned.fill(
-              child: CachedNetworkImage(
-                imageUrl: _getChatWallpaperUrl(context),
-                fit: BoxFit.cover,
-                cacheManager: CustomCacheManager.wallpaperInstance,
-                placeholder: (context, url) =>
-                    _buildWallpaperPlaceholder(context),
-                errorWidget: (context, url, error) =>
-                    _buildWallpaperPlaceholder(context),
-                fadeInDuration: const Duration(milliseconds: 200),
-                fadeOutDuration: const Duration(milliseconds: 200),
-                memCacheWidth: 1080, // بهینه‌سازی حافظه
-                memCacheHeight: 1920,
-              ),
-            ),
-            // Subtle overlay for better text readability - Adapts to theme
-            Positioned.fill(
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-                decoration: BoxDecoration(
-                  color: _getWallpaperOverlayColor(context),
-                ),
-              ),
-            ),
-            // Chat content
-            Column(
+                ]),
+            body: Column(
               children: [
                 Expanded(
                   child: Consumer(
@@ -3541,9 +3602,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
                       return NotificationListener<ScrollNotification>(
                         onNotification: (ScrollNotification scrollInfo) {
-                          // Load more messages when reaching the top
-                          if (scrollInfo.metrics.pixels >=
-                              scrollInfo.metrics.maxScrollExtent - 200) {
+                          // With reverse: true, older messages are at the top.
+                          // Load more when approaching the top (min extent).
+                          if (scrollInfo.metrics.pixels <= 200) {
                             if (lazyState.hasMore && !lazyState.isLoading) {
                               ref
                                   .read(lazyMessagesProvider(
@@ -3561,7 +3622,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                           itemCount: filteredMessages.length +
                               (lazyState.isLoading ? 1 : 0),
                           itemBuilder: (context, index) {
-                            // Show loading indicator at the top
+                            // Show loading indicator at the end
                             if (index == filteredMessages.length) {
                               return Padding(
                                 padding: const EdgeInsets.all(16.0),
@@ -3581,10 +3642,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                                 supabase.auth.currentUser?.id;
 
                             // پیام قبلی برای فاصله‌گذاری
+                            // در ListView عادی، index 0 قدیمی‌ترین پیام است
+                            // پس پیام قبلی (قدیمی‌تر) در index - 1 قرار دارد
                             final previousMessage =
-                                index < filteredMessages.length - 1
-                                    ? filteredMessages[index + 1]
-                                    : null;
+                                index > 0 ? filteredMessages[index - 1] : null;
 
                             // تشخیص نیاز به جداکننده تاریخ
                             final showDateDivider =
@@ -3643,20 +3704,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                   ),
               ],
             ),
-            // دکمه رفتن به پایین
-            if (_showScrollToBottom)
-              Positioned(
-                bottom: 80,
-                right: 16,
-                child: FloatingActionButton(
-                  mini: true, // دکمه کوچکتر
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  onPressed: _scrollToBottom,
-                  child: const Icon(Icons.arrow_downward, color: Colors.white),
-                ),
+          ),
+          // دکمه رفتن به پایین - خارج از body برای عدم تأثیر کیبورد
+          if (_showScrollToBottom)
+            Positioned(
+              bottom: 80,
+              right: 16,
+              child: FloatingActionButton(
+                mini: true, // دکمه کوچکتر
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                onPressed: _scrollToBottom,
+                child: const Icon(Icons.arrow_downward, color: Colors.white),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -3702,7 +3763,7 @@ class ChatMessagesShimmer extends StatelessWidget {
       baseColor: Colors.grey[300]!,
       highlightColor: Colors.grey[100]!,
       child: ListView.builder(
-        reverse: true,
+        reverse: false,
         itemCount: 12,
         itemBuilder: (_, index) => Padding(
           padding: const EdgeInsets.all(8.0),

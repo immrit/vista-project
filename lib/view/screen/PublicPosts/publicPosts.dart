@@ -17,6 +17,7 @@ import '../../../main.dart';
 import '../../../model/MusicModel.dart';
 import '../../../provider/MusicProvider.dart';
 import '../../../provider/engagement_posts_provider.dart'; // تغییر به فایل جدید
+import '../../../services/secure_config.dart';
 import '../../util/widgets.dart';
 import '../../widgets/CustomVideoPlayer.dart';
 import '../../widgets/ReelsScreen.dart';
@@ -1042,22 +1043,28 @@ class LinkifyText extends StatelessWidget {
       }
 
       final url = match.group(0)!;
-      spans.add(
-        TextSpan(
-          text: url,
-          style: linkStyle ??
-              const TextStyle(
-                color: Colors.blue,
-                decoration: TextDecoration.underline,
-              ),
-          recognizer: TapGestureRecognizer()
-            ..onTap = () {
-              final formattedUrl =
-                  url.startsWith('http') ? url : 'https://$url';
-              onTap(formattedUrl);
-            },
-        ),
-      );
+      // فیلتر کردن لینک‌های Vista و پست‌های اشتراکی
+      if (!_isVistaOrSharedPostLink(url)) {
+        spans.add(
+          TextSpan(
+            text: url,
+            style: linkStyle ??
+                const TextStyle(
+                  color: Colors.blue,
+                  decoration: TextDecoration.underline,
+                ),
+            recognizer: TapGestureRecognizer()
+              ..onTap = () {
+                final formattedUrl =
+                    url.startsWith('http') ? url : 'https://$url';
+                onTap(formattedUrl);
+              },
+          ),
+        );
+      } else {
+        // نمایش لینک‌های Vista به صورت متن عادی
+        spans.add(TextSpan(text: url));
+      }
 
       start = match.end;
     }
@@ -1172,25 +1179,30 @@ Widget _buildPostContentText(String content, BuildContext context) {
         ),
       );
     } else {
-      // کد مربوط به URL بدون تغییر
-      spans.add(
-        TextSpan(
-          text: matchedText,
-          style: const TextStyle(
-            color: Colors.blue,
-            decoration: TextDecoration.underline,
+      // فیلتر کردن لینک‌های Vista و پست‌های اشتراکی
+      if (!_isVistaOrSharedPostLink(matchedText)) {
+        spans.add(
+          TextSpan(
+            text: matchedText,
+            style: const TextStyle(
+              color: Colors.blue,
+              decoration: TextDecoration.underline,
+            ),
+            recognizer: TapGestureRecognizer()
+              ..onTap = () async {
+                final url = matchedText.startsWith('http')
+                    ? matchedText
+                    : 'https://$matchedText';
+                if (await canLaunchUrl(Uri.parse(url))) {
+                  await launchUrl(Uri.parse(url));
+                }
+              },
           ),
-          recognizer: TapGestureRecognizer()
-            ..onTap = () async {
-              final url = matchedText.startsWith('http')
-                  ? matchedText
-                  : 'https://$matchedText';
-              if (await canLaunchUrl(Uri.parse(url))) {
-                await launchUrl(Uri.parse(url));
-              }
-            },
-        ),
-      );
+        );
+      } else {
+        // نمایش لینک‌های Vista به صورت متن عادی
+        spans.add(TextSpan(text: matchedText));
+      }
     }
     start = match.end;
   }
@@ -1205,6 +1217,15 @@ Widget _buildPostContentText(String content, BuildContext context) {
       children: spans,
     ),
   );
+}
+
+// بررسی اینکه آیا لینک مربوط به Vista یا پست اشتراکی است
+bool _isVistaOrSharedPostLink(String url) {
+  return url.contains('vista') ||
+      url.contains('post/') ||
+      url.contains('m مشاهده در Vista') ||
+      url.contains('coffevista') ||
+      url.contains('arvan');
 }
 
 void showEditPostDialog(
@@ -1251,17 +1272,16 @@ void showEditPostDialog(
         final key = uri.pathSegments.sublist(1).join('/');
 
         final s3 = S3(
-          region: 'ir-thr-at1',
+          region: SecureConfig.awsRegion,
           credentials: AwsClientCredentials(
-            accessKey: '4f4716fb-fa84-4ae7-9c8b-34d2a0896cdf',
-            secretKey:
-                'a6b4db27b4c54bfa46cbc4fd8a4ba2079e2da0cd2800acdc80dd758f8b2c1ec5',
+            accessKey: SecureConfig.awsAccessKey,
+            secretKey: SecureConfig.awsSecretKey,
           ),
-          endpointUrl: 'https://coffevista.s3.ir-thr-at1.arvanstorage.ir',
+          endpointUrl: SecureConfig.awsEndpointUrl,
         );
 
         await s3.deleteObject(
-          bucket: 'coffevista',
+          bucket: SecureConfig.awsBucketName,
           key: key,
         );
         print('فایل با موفقیت از آروان کلود حذف شد: $fileUrl');

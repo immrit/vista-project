@@ -167,6 +167,36 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
     }
   }
 
+  /// فیلتر کردن لینک‌ها از متن
+  String _filterLinksFromText(String text) {
+    if (text.isEmpty) return text;
+
+    // فیلتر کردن لینک‌های Vista و پست‌های اشتراکی
+    String filteredText = text;
+
+    // حذف لینک‌های Vista
+    filteredText =
+        filteredText.replaceAll(RegExp(r'https?://[^\s]*vista[^\s]*'), '');
+    filteredText =
+        filteredText.replaceAll(RegExp(r'https?://[^\s]*post/[^\s]*'), '');
+    filteredText =
+        filteredText.replaceAll(RegExp(r'https?://[^\s]*coffevista[^\s]*'), '');
+    filteredText =
+        filteredText.replaceAll(RegExp(r'https?://[^\s]*arvan[^\s]*'), '');
+
+    // حذف لینک‌های عمومی
+    filteredText = filteredText.replaceAll(RegExp(r'https?://[^\s]*'), '');
+
+    // حذف metadata های پست‌های اشتراکی
+    filteredText = filteredText.replaceAll(RegExp(r'🖼️ آواتار:.*'), '');
+    filteredText = filteredText.replaceAll(RegExp(r'🎥 ویدیو:.*'), '');
+    filteredText = filteredText.replaceAll(RegExp(r'🏷️ تگ‌ها:.*'), '');
+    filteredText = filteredText.replaceAll(RegExp(r'🔗.*'), '');
+    filteredText = filteredText.replaceAll(RegExp(r'📝 پست از.*'), '');
+
+    return filteredText.trim();
+  }
+
   // نمایش نوتیفیکیشن لوکال
   Future<void> _showLocalNotification(NotificationModel notif) async {
     String? title, body;
@@ -178,11 +208,11 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
         break;
       case 'comment':
         title = 'نظر جدید';
-        body = '$senderUsername: ${notif.content ?? ""}';
+        body = '$senderUsername: ${_filterLinksFromText(notif.content ?? "")}';
         break;
       case 'reply_comment':
         title = 'پاسخ به نظر شما';
-        body = '$senderUsername: ${notif.content ?? ""}';
+        body = '$senderUsername: ${_filterLinksFromText(notif.content ?? "")}';
         break;
       case 'follow':
         title = 'دنبال‌کننده جدید';

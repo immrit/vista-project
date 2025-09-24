@@ -66,10 +66,6 @@ class PublicPostModel extends Equatable {
 
   // متد سازنده از Map
   factory PublicPostModel.fromMap(Map<String, dynamic> map) {
-    // print("Music URL from API: ${map['music_url']}");
-    // print("Video URL from API: ${map['video_url']}"); // لاگ برای دیباگ ویدیو
-    // print("Image URL from API: ${map['image_url']}"); // لاگ برای دیباگ تصویر
-
     return PublicPostModel(
       id: _parseString(map, 'id') ?? '',
       userId: _parseString(map, 'user_id') ?? '',
@@ -89,7 +85,7 @@ class PublicPostModel extends Equatable {
           _parseVerificationType(map), // <-- فقط همین خط تغییر کند
       commentCount: _parseInt(map, 'comment_count'),
       hashtags: _parseHashtags(map),
-      musicUrl: _parseString(map, 'music_url', defaultValue: ""),
+      musicUrl: _parseString(map, 'music_url', defaultValue: null),
       title: _parseString(map, 'title'),
       moderatorId: _parseString(map, 'moderator_id'),
       moderatorUsername: _parseString(map, 'moderator_username'),
@@ -101,8 +97,11 @@ class PublicPostModel extends Equatable {
   // متدهای کمکی برای parse کردن
   static String? _parseString(Map<String, dynamic> map, String key,
       {String? defaultValue = ''}) {
-    final result = map[key]?.toString() ?? defaultValue;
-    return result;
+    if (map[key] == null) {
+      return defaultValue;
+    }
+    final result = map[key]?.toString();
+    return result?.isEmpty == true ? defaultValue : result;
   }
 
   static int _parseInt(Map<String, dynamic> map, String key,

@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../model/publicPostModel.dart';
 import '../../provider/chat_provider.dart';
+import '../../services/user_friendly_error_handler.dart';
 
 class UserSelectionBottomSheet extends ConsumerStatefulWidget {
   final PublicPostModel post;
@@ -526,13 +527,15 @@ class _UserSelectionBottomSheetState
               ? (widget.post.videoUrl ?? widget.post.imageUrl)
               : widget.post.imageUrl;
 
-          // اگر attachmentUrl خالی هست، پست رو رد می‌کنیم (برای پست‌های ویدیویی thumbnail ضروری هست)
-          if (attachmentUrl == null || attachmentUrl.isEmpty) {
-            continue;
-          }
-
-          final finalAttachmentUrl = attachmentUrl;
-          final attachmentType = widget.post.hasVideo ? 'video' : 'image';
+          // اگر هیچ پیوستی نداریم، اجازه بده فقط متن ارسال شود
+          final finalAttachmentUrl =
+              (attachmentUrl != null && attachmentUrl.isNotEmpty)
+                  ? attachmentUrl
+                  : null;
+          final attachmentType =
+              (widget.post.hasVideo && finalAttachmentUrl != null)
+                  ? 'video'
+                  : (finalAttachmentUrl != null ? 'image' : null);
 
           await ref.read(messageNotifierProvider.notifier).sendMessage(
                 conversationId: conversationId,
@@ -556,7 +559,9 @@ class _UserSelectionBottomSheetState
       }
     } catch (e) {
       if (mounted) {
-        _showErrorMessage(e.toString());
+        UserFriendlyErrorHandler.logError(e, context: 'post_share');
+        _showErrorMessage(UserFriendlyErrorHandler.getFriendlyMessage(e,
+            context: 'post_share'));
       }
     } finally {
       if (mounted) {

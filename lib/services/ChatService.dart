@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
@@ -10,6 +11,7 @@ import '../DB/message_cache_service_wrapper.dart';
 import '../model/conversation_model.dart';
 import '../model/message_model.dart';
 import '../view/Exeption/app_exceptions.dart';
+import 'user_friendly_error_handler.dart';
 import '/main.dart';
 import 'uploadImageChatService.dart';
 import 'uploadAudioChatService.dart';
@@ -268,11 +270,31 @@ class ChatService {
         return fallbackCachedConversations;
       }
 
+      UserFriendlyErrorHandler.logError(e, context: 'conversations');
       throw AppException(
-        userFriendlyMessage: 'دریافت مکالمات با مشکل مواجه شد',
+        userFriendlyMessage: UserFriendlyErrorHandler.getFriendlyMessage(e,
+            context: 'conversations'),
         technicalMessage: 'خطا در دریافت مکالمات: $e',
       );
     }
+  }
+
+  // Request throttling
+  final Map<String, DateTime> _lastRequestTime = {};
+  static const Duration _requestThrottleDuration = Duration(milliseconds: 500);
+
+  /// Throttle requests to prevent excessive server calls
+  bool _shouldThrottleRequest(String requestKey) {
+    final lastRequest = _lastRequestTime[requestKey];
+    if (lastRequest == null) return false;
+
+    final timeSinceLastRequest = DateTime.now().difference(lastRequest);
+    return timeSinceLastRequest < _requestThrottleDuration;
+  }
+
+  /// Mark request as made
+  void _markRequestMade(String requestKey) {
+    _lastRequestTime[requestKey] = DateTime.now();
   }
 
   // متد کمکی برای بررسی وضعیت آنلاین بودن
@@ -1259,6 +1281,20 @@ class ChatService {
   }) async {
     //final userId = _supabase.auth.currentUser!.id;
     final userId = _supabase.auth.currentUser!.id;
+
+    final requestKey = 'getMessages_${conversationId}_${offset}_${limit}';
+
+    // Throttle requests to prevent excessive server calls
+    if (_shouldThrottleRequest(requestKey)) {
+      print('🚫 Throttling request for $requestKey');
+      final cachedMessages = await _messageCache.getConversationMessages(
+        conversationId,
+        userId,
+        limit: limit,
+      );
+      return cachedMessages;
+    }
+
     try {
       // بررسی وضعیت آنلاین
       final isOnline = await isDeviceOnline();
@@ -1277,6 +1313,8 @@ class ChatService {
 
       // در حالت آنلاین، پیام‌ها را از سرور دریافت می‌کنیم
       if (isOnline) {
+        // Mark request as made
+        _markRequestMade(requestKey);
         // دریافت لیست پیام‌های مخفی شده برای کاربر
         final hiddenMessagesResponse = await _supabase
             .from('hidden_messages')

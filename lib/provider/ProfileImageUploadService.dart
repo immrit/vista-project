@@ -3,19 +3,28 @@ import 'dart:typed_data';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path/path.dart' as path;
 import 'package:aws_s3_api/s3-2006-03-01.dart';
+import '../services/secure_config.dart';
+import '../services/user_friendly_error_handler.dart';
 import '/main.dart';
 
 class ProfileImageUploadService {
-  static final s3 = S3(
-    region: 'ir-thr-at1',
-    credentials: AwsClientCredentials(
-        accessKey: '4f4716fb-fa84-4ae7-9c8b-34d2a0896cdf',
-        secretKey:
-            'a6b4db27b4c54bfa46cbc4fd8a4ba2079e2da0cd2800acdc80dd758f8b2c1ec5'),
-    endpointUrl: 'https://coffevista.s3.ir-thr-at1.arvanstorage.ir',
-  );
+  static S3 get s3 {
+    if (!SecureConfig.isConfigured) {
+      throw Exception(
+          'AWS credentials not properly configured. Please set environment variables.');
+    }
 
-  static const String bucketName = 'coffevista';
+    return S3(
+      region: SecureConfig.awsRegion,
+      credentials: AwsClientCredentials(
+        accessKey: SecureConfig.awsAccessKey,
+        secretKey: SecureConfig.awsSecretKey,
+      ),
+      endpointUrl: SecureConfig.awsEndpointUrl,
+    );
+  }
+
+  static String get bucketName => SecureConfig.awsBucketName;
 
   static String _getContentType(String filePath) {
     final extension = path.extension(filePath).toLowerCase();
@@ -90,8 +99,9 @@ class ProfileImageUploadService {
       print('تصویر با موفقیت آپلود شد: $uploadedUrl');
       return uploadedUrl;
     } catch (e) {
-      print('خطا در آپلود فایل: $e');
-      throw Exception('آپلود تصویر به ArvanCloud شکست خورد');
+      UserFriendlyErrorHandler.logError(e, context: 'profile_image_upload');
+      throw Exception(UserFriendlyErrorHandler.getFriendlyMessage(e,
+          context: 'profile_image_upload'));
     } finally {
       if (compressedFile != null && compressedFile.path != file.path) {
         try {
@@ -134,8 +144,9 @@ class ProfileImageUploadService {
       print('تصویر با موفقیت آپلود شد: $uploadedUrl');
       return uploadedUrl;
     } catch (e) {
-      print('خطا در آپلود فایل (وب): $e');
-      throw Exception('آپلود تصویر به ArvanCloud شکست خورد');
+      UserFriendlyErrorHandler.logError(e, context: 'profile_image_upload');
+      throw Exception(UserFriendlyErrorHandler.getFriendlyMessage(e,
+          context: 'profile_image_upload'));
     }
   }
 

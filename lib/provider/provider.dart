@@ -20,6 +20,7 @@ import '../main.dart';
 import '../model/CommentModel.dart';
 import '../model/UserModel.dart';
 import '../view/util/themes.dart';
+import '../services/user_friendly_error_handler.dart';
 // Import security provider
 
 // Export security providers
@@ -257,18 +258,10 @@ class PublicPostsNotifier
       final currentPosts = state.value ?? [];
       state = AsyncValue.data([...currentPosts, ...posts]);
     } catch (e, stackTrace) {
-      String errorMessage = 'خطا در بارگذاری پست‌ها';
-
-      if (e is PostgrestException) {
-        errorMessage =
-            'خطا در ارتباط با سرور. لطفا اتصال اینترنت خود را بررسی کنید';
-      } else if (e is TimeoutException) {
-        errorMessage =
-            'زمان پاسخگویی سرور به پایان رسید. لطفا دوباره تلاش کنید';
-      } else if (e is AuthException) {
-        errorMessage = 'لطفا دوباره وارد حساب کاربری خود شوید';
-      }
-
+      UserFriendlyErrorHandler.logError(e,
+          context: 'posts_loading', stackTrace: stackTrace);
+      final errorMessage = UserFriendlyErrorHandler.getFriendlyMessage(e,
+          context: 'posts_loading');
       state = AsyncValue.error(errorMessage, stackTrace);
     } finally {
       _isLoading = false;

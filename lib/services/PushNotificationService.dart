@@ -6,6 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../provider/notification_provider.dart';
+import 'ChatService.dart';
 
 /// Provider برای دسترسی به PushNotificationService
 final pushNotificationServiceProvider = Provider<PushNotificationService>(
@@ -117,8 +118,7 @@ class PushNotificationService {
         if (user != null) {
           await _supabase
               .from("profiles")
-              .update({"fcm_token": token})
-              .eq("id", user.id);
+              .update({"fcm_token": token}).eq("id", user.id);
           print('✅ FCM Token با موفقیت در سوپابیس ذخیره شد');
         } else {
           print('⚠️ کاربر لاگین نشده، FCM Token ذخیره نشد');
@@ -188,6 +188,9 @@ class PushNotificationService {
     String body =
         data['message'] ?? data['content'] ?? notification?.body ?? '';
 
+    // فیلتر کردن لینک‌ها از محتوای نوتیفیکیشن
+    body = _filterLinksFromText(body);
+
     await _flutterLocalNotifications.show(
       message.hashCode,
       title,
@@ -195,6 +198,36 @@ class PushNotificationService {
       platformDetails,
       payload: jsonEncode(message.data),
     );
+  }
+
+  /// فیلتر کردن لینک‌ها از متن
+  String _filterLinksFromText(String text) {
+    if (text.isEmpty) return text;
+
+    // فیلتر کردن لینک‌های Vista و پست‌های اشتراکی
+    String filteredText = text;
+
+    // حذف لینک‌های Vista
+    filteredText =
+        filteredText.replaceAll(RegExp(r'https?://[^\s]*vista[^\s]*'), '');
+    filteredText =
+        filteredText.replaceAll(RegExp(r'https?://[^\s]*post/[^\s]*'), '');
+    filteredText =
+        filteredText.replaceAll(RegExp(r'https?://[^\s]*coffevista[^\s]*'), '');
+    filteredText =
+        filteredText.replaceAll(RegExp(r'https?://[^\s]*arvan[^\s]*'), '');
+
+    // حذف لینک‌های عمومی
+    filteredText = filteredText.replaceAll(RegExp(r'https?://[^\s]*'), '');
+
+    // حذف metadata های پست‌های اشتراکی
+    filteredText = filteredText.replaceAll(RegExp(r'🖼️ آواتار:.*'), '');
+    filteredText = filteredText.replaceAll(RegExp(r'🎥 ویدیو:.*'), '');
+    filteredText = filteredText.replaceAll(RegExp(r'🏷️ تگ‌ها:.*'), '');
+    filteredText = filteredText.replaceAll(RegExp(r'🔗.*'), '');
+    filteredText = filteredText.replaceAll(RegExp(r'📝 پست از.*'), '');
+
+    return filteredText.trim();
   }
 
   /// کوتاه کردن متن طولانی
@@ -258,11 +291,19 @@ class PushNotificationService {
       // اینجا باید ChatService یا سرویس مربوطه را فراخوانی کنید
       print('📱 پاسخ سریع ارسال شد: $replyText به چت $conversationId');
 
-      // TODO: پیاده‌سازی ارسال پیام به سرور
-      // await ChatService().sendMessage(
-      //   conversationId: conversationId,
-      //   content: replyText,
-      // );
+      // ارسال پیام به سرور
+      try {
+        final chatService = ChatService();
+        await chatService.sendMessage(
+          conversationId: conversationId,
+          content: replyText,
+        );
+        print('✅ پیام پاسخ سریع با موفقیت ارسال شد');
+      } catch (e) {
+        print('❌ خطا در ارسال پیام به سرور: $e');
+        // در صورت خطا، پیام را به صورت محلی ذخیره کنید
+        // یا به کاربر اطلاع دهید که پیام ارسال نشده
+      }
     } catch (e) {
       print('❌ خطا در ارسال پاسخ سریع: $e');
     }

@@ -11,6 +11,7 @@ import 'package:video_player/video_player.dart';
 import '../../../main.dart';
 import '../../../model/UserModel.dart';
 import '../../../services/PostImageUploadService.dart';
+import '../../../services/user_friendly_error_handler.dart';
 import '../../../provider/provider.dart';
 import '../../widgets/YourVideoTrimmerPage .dart';
 
@@ -216,8 +217,10 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                     setState(() {});
                   }
                 } catch (e) {
-                  debugPrint('Error initializing video player: $e');
-                  _showError('خطا در بارگذاری ویدیو: $e');
+                  UserFriendlyErrorHandler.logError(e,
+                      context: 'video_loading');
+                  _showError(UserFriendlyErrorHandler.getFriendlyMessage(e,
+                      context: 'video_loading'));
                 }
 
                 debugPrint(
@@ -233,9 +236,10 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
         }
       }
     } catch (e, s) {
-      debugPrint('خطا در انتخاب/برش ویدیو: $e\n$s');
-      _showError(
-          'خطایی در انتخاب یا پردازش ویدیو رخ داد. لطفاً دوباره تلاش کنید.');
+      UserFriendlyErrorHandler.logError(e,
+          context: 'video_selection', stackTrace: s);
+      _showError(UserFriendlyErrorHandler.getFriendlyMessage(e,
+          context: 'video_selection'));
     }
   }
 

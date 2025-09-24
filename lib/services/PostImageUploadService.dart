@@ -5,19 +5,28 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'package:aws_s3_api/s3-2006-03-01.dart';
 import 'cache_manager.dart';
+import 'secure_config.dart';
+import 'user_friendly_error_handler.dart';
 import '/main.dart';
 
 class PostImageUploadService {
-  static final s3 = S3(
-    region: 'ir-thr-at1',
-    credentials: AwsClientCredentials(
-        accessKey: '4f4716fb-fa84-4ae7-9c8b-34d2a0896cdf',
-        secretKey:
-            'a6b4db27b4c54bfa46cbc4fd8a4ba2079e2da0cd2800acdc80dd758f8b2c1ec5'),
-    endpointUrl: 'https://coffevista.s3.ir-thr-at1.arvanstorage.ir',
-  );
+  static S3 get s3 {
+    if (!SecureConfig.isConfigured) {
+      throw Exception(
+          'AWS credentials not properly configured. Please set environment variables.');
+    }
 
-  static const String bucketName = 'coffevista';
+    return S3(
+      region: SecureConfig.awsRegion,
+      credentials: AwsClientCredentials(
+        accessKey: SecureConfig.awsAccessKey,
+        secretKey: SecureConfig.awsSecretKey,
+      ),
+      endpointUrl: SecureConfig.awsEndpointUrl,
+    );
+  }
+
+  static String get bucketName => SecureConfig.awsBucketName;
 
   static Future<File?> convertPngToJpeg(File file) async {
     final img = await FlutterImageCompress.compressWithFile(
@@ -78,8 +87,9 @@ class PostImageUploadService {
       print('تصویر پست با موفقیت آپلود شد: $uploadedUrl');
       return uploadedUrl;
     } catch (e) {
-      print('خطا در آپلود تصویر پست: $e');
-      throw Exception('آپلود تصویر پست به شکست خورد');
+      UserFriendlyErrorHandler.logError(e, context: 'image_upload');
+      throw Exception(UserFriendlyErrorHandler.getFriendlyMessage(e,
+          context: 'image_upload'));
     } finally {
       if (compressedFile != null && compressedFile.path != file.path) {
         try {
@@ -115,8 +125,9 @@ class PostImageUploadService {
       print('تصویر پست با موفقیت آپلود شد: $uploadedUrl');
       return uploadedUrl;
     } catch (e) {
-      print('خطا در آپلود تصویر پست (وب): $e');
-      throw Exception('آپلود تصویر پست به شکست خورد');
+      UserFriendlyErrorHandler.logError(e, context: 'image_upload');
+      throw Exception(UserFriendlyErrorHandler.getFriendlyMessage(e,
+          context: 'image_upload'));
     }
   }
 
@@ -235,8 +246,9 @@ class PostImageUploadService {
 
       return url;
     } catch (e) {
-      print("Music upload error: $e"); // اضافه کردن این خط
-      rethrow; // انتشار خطا برای مدیریت در AddPublicPostScreen
+      UserFriendlyErrorHandler.logError(e, context: 'audio_upload');
+      throw Exception(UserFriendlyErrorHandler.getFriendlyMessage(e,
+          context: 'audio_upload'));
     }
   }
 
@@ -293,8 +305,9 @@ class PostImageUploadService {
 
       return url;
     } catch (e) {
-      print("Video upload error: $e");
-      rethrow;
+      UserFriendlyErrorHandler.logError(e, context: 'video_upload');
+      throw Exception(UserFriendlyErrorHandler.getFriendlyMessage(e,
+          context: 'video_upload'));
     }
   }
 
@@ -329,8 +342,9 @@ class PostImageUploadService {
 
       return url;
     } catch (e) {
-      print("Video upload error: $e");
-      rethrow;
+      UserFriendlyErrorHandler.logError(e, context: 'video_upload');
+      throw Exception(UserFriendlyErrorHandler.getFriendlyMessage(e,
+          context: 'video_upload'));
     }
   }
 

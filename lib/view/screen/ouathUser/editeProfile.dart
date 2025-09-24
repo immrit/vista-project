@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../../main.dart';
 import '../../../provider/provider.dart';
 import '../../../provider/ProfileImageUploadService.dart';
+import '../../../services/user_friendly_error_handler.dart';
 
 class EditProfile extends ConsumerStatefulWidget {
   const EditProfile({super.key});
@@ -786,7 +787,8 @@ class _EditProfileState extends ConsumerState<EditProfile> {
                 const Icon(Icons.error_outline, size: 48, color: Colors.red),
                 const SizedBox(height: 16),
                 Text(
-                  'خطا در بارگذاری اطلاعات: $error',
+                  UserFriendlyErrorHandler.getFriendlyMessage(error,
+                      context: 'profile_loading'),
                   style: const TextStyle(color: Colors.red),
                   textAlign: TextAlign.center,
                 ),

@@ -230,7 +230,7 @@ class _OptimizedMessageWidgetState extends State<OptimizedMessageWidget>
           : dragDistance.clamp(0.0, maxDragDistance);
 
       final dragRatio = currentDragDistance / maxDragDistance;
-      if (dragRatio > 0.4) {
+      if (dragRatio > 0.7) {
         widget.onSetReply(widget.message);
       }
     }
@@ -322,7 +322,7 @@ class _OptimizedMessageWidgetState extends State<OptimizedMessageWidget>
           ),
           const SizedBox(height: 4),
           Text(
-            widget.message.replyToContent ?? '',
+            _filterLinksFromText(widget.message.replyToContent ?? ''),
             style: TextStyle(
               color: widget.isMe ? Colors.white70 : Colors.black87,
               fontSize: 12,
@@ -486,6 +486,36 @@ class _OptimizedMessageWidgetState extends State<OptimizedMessageWidget>
         ],
       ),
     );
+  }
+
+  // فیلتر کردن لینک‌ها از متن
+  String _filterLinksFromText(String text) {
+    if (text.isEmpty) return text;
+
+    // فیلتر کردن لینک‌های Vista و پست‌های اشتراکی
+    String filteredText = text;
+
+    // حذف لینک‌های Vista
+    filteredText =
+        filteredText.replaceAll(RegExp(r'https?://[^\s]*vista[^\s]*'), '');
+    filteredText =
+        filteredText.replaceAll(RegExp(r'https?://[^\s]*post/[^\s]*'), '');
+    filteredText =
+        filteredText.replaceAll(RegExp(r'https?://[^\s]*coffevista[^\s]*'), '');
+    filteredText =
+        filteredText.replaceAll(RegExp(r'https?://[^\s]*arvan[^\s]*'), '');
+
+    // حذف لینک‌های عمومی
+    filteredText = filteredText.replaceAll(RegExp(r'https?://[^\s]*'), '');
+
+    // حذف metadata های پست‌های اشتراکی
+    filteredText = filteredText.replaceAll(RegExp(r'🖼️ آواتار:.*'), '');
+    filteredText = filteredText.replaceAll(RegExp(r'🎥 ویدیو:.*'), '');
+    filteredText = filteredText.replaceAll(RegExp(r'🏷️ تگ‌ها:.*'), '');
+    filteredText = filteredText.replaceAll(RegExp(r'🔗.*'), '');
+    filteredText = filteredText.replaceAll(RegExp(r'📝 پست از.*'), '');
+
+    return filteredText.trim();
   }
 
   Widget _buildTimeAndStatus() {

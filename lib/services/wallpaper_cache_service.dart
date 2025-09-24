@@ -1,16 +1,28 @@
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'cache_manager.dart';
+import 'dart:io';
 
 /// سرویس مدیریت کش والپیپرهای چت
 class WallpaperCacheService {
   static const String _lightWallpaperUrl =
-      'https://coffevista.s3.ir-thr-at1.arvanstorage.ir/wallpaper-chat%2F9f649ff4-5ebf-4a68-b740-6f009453500b.png?versionId=';
+      'https://coffevista.s3.ir-thr-at1.arvanstorage.ir/wallpaper-chat%2F9f649ff4-5ebf-4a68-b740-6f009453500b.png';
   static const String _darkWallpaperUrl =
-      'https://coffevista.s3.ir-thr-at1.arvanstorage.ir/wallpaper-chat%2F784e1c0c-2b8a-443d-8231-67c100a081e1.png?versionId=';
+      'https://coffevista.s3.ir-thr-at1.arvanstorage.ir/wallpaper-chat%2F784e1c0c-2b8a-443d-8231-67c100a081e1.png';
+
+  // Local asset paths as fallback
+  static const String _lightWallpaperAsset =
+      'lib/view/util/images/wallpapers/light_wallpaper.png';
+  static const String _darkWallpaperAsset =
+      'lib/view/util/images/wallpapers/dark_wallpaper.png';
 
   /// دریافت URL والپیپر بر اساس حالت تم
   static String getWallpaperUrl(bool isDarkMode) {
     return isDarkMode ? _darkWallpaperUrl : _lightWallpaperUrl;
+  }
+
+  /// دریافت مسیر asset محلی والپیپر بر اساس حالت تم
+  static String getLocalWallpaperAsset(bool isDarkMode) {
+    return isDarkMode ? _darkWallpaperAsset : _lightWallpaperAsset;
   }
 
   /// پیش‌بارگذاری هوشمند والپیپرها
@@ -71,6 +83,20 @@ class WallpaperCacheService {
     } catch (e) {
       return false;
     }
+  }
+
+  /// دریافت فایل کش‌شده‌ی والپیپر (حتی اگر منقضی شده باشد برای استفاده به‌عنوان thumbnail)
+  static Future<File?> getLocalCachedFile(bool isDarkMode) async {
+    try {
+      final url = getWallpaperUrl(isDarkMode);
+      final cached =
+          await CustomCacheManager.wallpaperInstance.getFileFromCache(url);
+      if (cached != null) {
+        // حتی اگر منقضی شده، به‌عنوان fallback/thumbnail استفاده می‌کنیم
+        return cached.file;
+      }
+    } catch (_) {}
+    return null;
   }
 
   /// پاک کردن کش والپیپرها
