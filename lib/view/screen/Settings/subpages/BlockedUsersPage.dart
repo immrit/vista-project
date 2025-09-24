@@ -30,29 +30,15 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
 
   Future<void> _testSupabaseConnection() async {
     try {
-      print('🔌 تست اتصال به Supabase...');
-
       final client = Supabase.instance.client;
-      print('✅ کلاینت Supabase دریافت شد');
 
       final auth = client.auth;
-      print('✅ سرویس احراز هویت دریافت شد');
 
       final currentUser = auth.currentUser;
-      print('👤 کاربر فعلی: ${currentUser?.id ?? 'null'}');
-
-      if (currentUser != null) {
-        print('📧 ایمیل کاربر: ${currentUser.email}');
-        print(
-            '🔑 وضعیت احراز هویت: ${auth.currentSession != null ? 'فعال' : 'غیرفعال'}');
-      }
 
       // تست اتصال به دیتابیس
       try {
-        final testResponse =
-            await client.from('blocked_users').select('id').limit(1);
-        print('✅ اتصال به جدول blocked_users موفق');
-        print('📊 تعداد رکوردهای موجود: ${testResponse.length}');
+        await client.from('blocked_users').select('id').limit(1);
 
         // بررسی ساختار جدول
         try {
@@ -129,28 +115,22 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
         }
       }
     } catch (e) {
-      print('💥 خطا در تست اتصال Supabase: $e');
+      // Error testing Supabase connection
     }
   }
 
   Future<void> _loadBlockedUsers() async {
     try {
-      print('🔄 شروع بارگذاری کاربران مسدود شده...');
-
       setState(() {
         _isLoading = true;
         _error = null;
       });
 
       final currentUserId = Supabase.instance.client.auth.currentUser?.id;
-      print('👤 شناسه کاربر فعلی: $currentUserId');
 
       if (currentUserId == null) {
-        print('❌ خطا: کاربر وارد نشده است');
         throw Exception('کاربر وارد نشده است');
       }
-
-      print('🔍 در حال دریافت لیست کاربران مسدود شده...');
 
       // ابتدا لیست کاربران مسدود شده را دریافت می‌کنیم
       final blockedResponse = await Supabase.instance.client

@@ -68,15 +68,16 @@ class PublicPostModel extends Equatable {
   factory PublicPostModel.fromMap(Map<String, dynamic> map) {
     // print("Music URL from API: ${map['music_url']}");
     // print("Video URL from API: ${map['video_url']}"); // لاگ برای دیباگ ویدیو
+    // print("Image URL from API: ${map['image_url']}"); // لاگ برای دیباگ تصویر
 
     return PublicPostModel(
-      id: _parseString(map, 'id'),
-      userId: _parseString(map, 'user_id'),
-      fullName: _parseString(map, 'full_name'),
-      content: _parseString(map, 'content'),
-      imageUrl: _parseString(map, 'image_url', defaultValue: ""),
+      id: _parseString(map, 'id') ?? '',
+      userId: _parseString(map, 'user_id') ?? '',
+      fullName: _parseString(map, 'full_name') ?? '',
+      content: _parseString(map, 'content') ?? '',
+      imageUrl: _parseString(map, 'image_url', defaultValue: null),
       videoUrl: _parseString(map, 'video_url',
-          defaultValue: ""), // پارس کردن video_url
+          defaultValue: null), // پارس کردن video_url
       createdAt: _parseDateTime(map, 'created_at') ?? DateTime.now(),
       username: _parseUsername(map),
       avatarUrl: _parseAvatarUrl(map),
@@ -98,9 +99,10 @@ class PublicPostModel extends Equatable {
   }
 
   // متدهای کمکی برای parse کردن
-  static String _parseString(Map<String, dynamic> map, String key,
-      {String defaultValue = ''}) {
-    return map[key]?.toString() ?? defaultValue;
+  static String? _parseString(Map<String, dynamic> map, String key,
+      {String? defaultValue = ''}) {
+    final result = map[key]?.toString() ?? defaultValue;
+    return result;
   }
 
   static int _parseInt(Map<String, dynamic> map, String key,
@@ -150,7 +152,7 @@ class PublicPostModel extends Equatable {
     if (map['hashtags'] != null) {
       return List<String>.from(map['hashtags']);
     }
-    return _extractHashtags(_parseString(map, 'content'));
+    return _extractHashtags(_parseString(map, 'content') ?? '');
   }
 
   // متد تبدیل به Map

@@ -43,8 +43,8 @@ Future<void> updateIpAddress() async {
       throw Exception('Failed to update IP: ${result.error!.message}');
     }
 
-    print('IP updated successfully');
+    // IP updated successfully
   } catch (error) {
-    print('Error updating IP: $error');
+    // Error updating IP
   }
 }

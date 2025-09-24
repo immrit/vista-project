@@ -5,6 +5,7 @@ import '../../model/publicPostModel.dart';
 import '../../services/vista_story_template_generator.dart';
 import '../../services/smart_share_service.dart';
 import 'vista_story_template_widget.dart';
+import 'UserSelectionBottomSheet.dart';
 
 /// ویجت bottom sheet برای اشتراک‌گذاری پست
 class ShareBottomSheet extends StatefulWidget {
@@ -175,7 +176,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
       ),
       onTap: () {
         Navigator.pop(context);
-        // TODO: Implement direct message functionality
+        showUserSelectionBottomSheet(context, widget.post);
       },
     );
   }

@@ -63,14 +63,18 @@ class AdvancedCacheSystem {
       // Start real-time sync
       _startRealtimeSync();
 
-      // Start periodic background sync
+      // Start periodic background sync (only once)
       _startPeriodicSync();
 
       _isInitialized = true;
       print('✅ Advanced Cache System initialized successfully');
 
-      // Initial sync
-      _performInitialSync();
+      // Initial sync (only if cache is empty)
+      if (_conversationMemoryCache.isEmpty) {
+        _performInitialSync();
+      } else {
+        print('📦 Using existing cache, skipping initial sync');
+      }
     } catch (e) {
       print('❌ Failed to initialize Advanced Cache System: $e');
       rethrow;
@@ -142,12 +146,26 @@ class AdvancedCacheSystem {
   }
 
   /// Start real-time synchronization with server
+  // Stream subscriptions for cleanup
+  StreamSubscription? _conversationStreamSubscription;
+  StreamSubscription? _profileStreamSubscription;
+  final Map<String, StreamSubscription> _messageStreamSubscriptions = {};
+
   void _startRealtimeSync() {
     if (supabase.auth.currentUser == null) return;
 
+    // Cancel existing streams first
+    _conversationStreamSubscription?.cancel();
+    _profileStreamSubscription?.cancel();
+    for (final subscription in _messageStreamSubscriptions.values) {
+      subscription.cancel();
+    }
+    _messageStreamSubscriptions.clear();
+
     // Listen to conversation changes with error handling
     try {
-      supabase.from('conversations').stream(primaryKey: ['id']).listen(
+      _conversationStreamSubscription =
+          supabase.from('conversations').stream(primaryKey: ['id']).listen(
         (data) async {
           // Pass raw data; enrichment handled elsewhere to avoid FK join issues
           _handleConversationUpdates(List<Map<String, dynamic>>.from(data));
@@ -163,7 +181,8 @@ class AdvancedCacheSystem {
 
     // Listen to profile changes for real-time updates
     try {
-      supabase.from('profiles').stream(primaryKey: ['id']).listen(
+      _profileStreamSubscription =
+          supabase.from('profiles').stream(primaryKey: ['id']).listen(
         (data) {
           _handleProfileUpdates(List<Map<String, dynamic>>.from(data));
         },
@@ -329,11 +348,15 @@ class AdvancedCacheSystem {
 
   /// Start periodic background sync
   void _startPeriodicSync() {
-    _periodicSyncTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
+    // Cancel existing timer if any
+    _periodicSyncTimer?.cancel();
+
+    _periodicSyncTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
       if (!_isSyncing) {
         _performBackgroundSync();
       }
     });
+    print('⏰ Periodic sync started (every 5 minutes)');
   }
 
   /// Perform initial sync on startup
@@ -365,20 +388,27 @@ class AdvancedCacheSystem {
     _isSyncing = true;
 
     try {
-      // Upload pending messages
+      // Upload pending messages first
       await _uploadPendingMessages();
 
-      // Sync conversations
-      await _syncConversations();
+      // Only sync conversations if last fetch was more than 5 minutes ago
+      final lastFetch = _lastFetch['conversations'];
+      if (lastFetch == null ||
+          DateTime.now().difference(lastFetch).inMinutes > 5) {
+        await _syncConversations();
+      }
 
-      // Sync messages for recently active conversations
-      final recentConversations = _conversationMemoryCache.values
-          .where((c) => _isRecentlyActive(c))
-          .take(5)
+      // Only sync messages for very recent conversations (last 24 hours)
+      final veryRecentConversations = _conversationMemoryCache.values
+          .where((c) {
+            final lastActivity = c.lastMessageTime ?? c.updatedAt;
+            return DateTime.now().difference(lastActivity).inHours < 24;
+          })
+          .take(3) // Only top 3 most recent
           .toList();
 
-      for (final conversation in recentConversations) {
-        await _syncMessages(conversation.id, limit: 20);
+      for (final conversation in veryRecentConversations) {
+        await _syncMessages(conversation.id, limit: 20); // Limit messages
       }
     } catch (e) {
       print('⚠️ Background sync failed: $e');
@@ -697,6 +727,12 @@ class AdvancedCacheSystem {
   /// Clean up resources
   void dispose() {
     _periodicSyncTimer?.cancel();
+    _conversationStreamSubscription?.cancel();
+    _profileStreamSubscription?.cancel();
+    for (final subscription in _messageStreamSubscriptions.values) {
+      subscription.cancel();
+    }
+    _messageStreamSubscriptions.clear();
     _conversationStream.close();
     _performanceOptimizer.dispose();
 
@@ -705,6 +741,7 @@ class AdvancedCacheSystem {
     }
     _messageStreams.clear();
 
+    _isInitialized = false;
     print('🧹 Advanced Cache System disposed');
   }
 }

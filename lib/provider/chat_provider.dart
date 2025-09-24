@@ -628,7 +628,23 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
   }) async {
     if (_disposed) return;
 
-    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    // بررسی وجود پیام تکراری در حال ارسال
+    final messages = ref.read(conversationMessagesProvider(conversationId));
+    final existingTempMessages = messages.where((m) =>
+        m.id.startsWith('temp_') &&
+        m.content == content &&
+        m.attachmentUrl == attachmentUrl &&
+        m.attachmentType == attachmentType &&
+        m.senderId == supabase.auth.currentUser!.id);
+
+    // اگر پیام مشابه در حال ارسال وجود دارد، از ارسال دوباره جلوگیری کن
+    if (existingTempMessages.isNotEmpty) {
+      print('⚠️ پیام تکراری تشخیص داده شد - از ارسال دوباره جلوگیری شد');
+      return;
+    }
+
+    final tempId =
+        'temp_${DateTime.now().millisecondsSinceEpoch}_${content.hashCode}';
     final currentUser = supabase.auth.currentUser!;
 
     final tempMessage = MessageModel.temporary(
@@ -684,6 +700,18 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
 
   Future<void> retrySendMessage(MessageModel failedMessage) async {
     if (_disposed) return;
+
+    // بررسی اینکه آیا پیام هنوز در حال ارسال هست یا نه
+    final messages =
+        ref.read(conversationMessagesProvider(failedMessage.conversationId));
+    final existingTempMessages = messages
+        .where((m) => m.id == failedMessage.id && (m.isSent || m.isPending));
+
+    // اگر پیام در حال ارسال یا ارسال شده هست، از retry جلوگیری کن
+    if (existingTempMessages.isNotEmpty) {
+      print('⚠️ پیام در حال ارسال یا ارسال شده - از retry جلوگیری شد');
+      return;
+    }
 
     final notifier = ref.read(
         conversationMessagesProvider(failedMessage.conversationId).notifier);
@@ -1790,17 +1818,11 @@ final conversationMessagesProvider = StateNotifierProvider.family
 );
 
 final cachedConversationsStreamProvider =
-    StreamProvider.autoDispose<List<ConversationModel>>((ref) async* {
+    StreamProvider<List<ConversationModel>>((ref) async* {
   final conversationCache = ConversationCacheService();
 
-  // Ensure the service is initialized before using it
-  try {
-    await conversationCache.unifiedService.initialize();
-  } catch (e) {
-    print('Error initializing conversation cache service in provider: $e');
-    yield [];
-    return;
-  }
+  // Service is already initialized in main.dart
+  // No need to initialize again
 
   // Use the advanced cache system for better performance
   yield* conversationCache
@@ -1848,7 +1870,7 @@ final conversationsWithProfilesProvider =
 
 // Provider استریم برای دریافت مکالمات با اطلاعات پروفایل تکمیل شده
 final enrichedConversationsStreamProvider =
-    StreamProvider.autoDispose<List<ConversationModel>>((ref) async* {
+    StreamProvider<List<ConversationModel>>((ref) async* {
   final currentUserId = supabase.auth.currentUser?.id;
   if (currentUserId == null) {
     yield [];
@@ -1857,14 +1879,8 @@ final enrichedConversationsStreamProvider =
 
   final conversationCache = ConversationCacheService();
 
-  // Ensure the service is initialized before using it
-  try {
-    await conversationCache.unifiedService.initialize();
-  } catch (e) {
-    print('Error initializing conversation cache service in provider: $e');
-    yield [];
-    return;
-  }
+  // Service is already initialized in main.dart
+  // No need to initialize again
 
   // ابتدا اطلاعات اولیه را دریافت کنیم
   final conversationsAsync = ref.read(conversationsWithProfilesProvider);
@@ -1917,15 +1933,8 @@ final conversationProvider = StreamProvider.family
     .autoDispose<ConversationModel?, String>((ref, conversationId) async* {
   final cache = ConversationCacheService();
 
-  // Ensure the service is initialized before using it
-  try {
-    await cache.unifiedService.initialize();
-  } catch (e) {
-    print(
-        'Error initializing conversation cache service in conversation provider: $e');
-    yield null;
-    return;
-  }
+  // Service is already initialized in main.dart
+  // No need to initialize again
 
   // همچنین، یکبار اطلاعات را از سرور برای اطمینان از به‌روز بودن کش، درخواست می‌دهیم.
   // نیازی به await کردن نیست؛ استریم به محض آپدیت شدن کش، UI را به‌روز می‌کند.

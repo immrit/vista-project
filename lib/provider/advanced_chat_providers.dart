@@ -26,27 +26,21 @@ final advancedCacheProvider = Provider<AdvancedCacheSystem>((ref) {
     }
   });
 
-  ref.onDispose(() {
-    cache.dispose();
-  });
+  // Don't dispose on provider dispose - keep it alive as singleton
+  // ref.onDispose(() {
+  //   cache.dispose();
+  // });
 
   return cache;
 });
 
 /// Provider for conversations using advanced cache with user enrichment
 final advancedConversationsProvider =
-    StreamProvider.autoDispose<List<ConversationModel>>((ref) {
+    StreamProvider<List<ConversationModel>>((ref) {
   final cache = ref.watch(advancedCacheProvider);
-  final userProfileService = UserProfileService();
 
-  // Ensure initialization
-  Future.microtask(() async {
-    try {
-      await cache.initialize();
-    } catch (e) {
-      print('Error initializing advanced cache in conversations provider: $e');
-    }
-  });
+  // Cache is already initialized by the main provider
+  // No need to initialize again
 
   // Return conversations directly without enrichment to avoid database relationship issues
   // User profile enrichment will be handled separately in the UI layer
@@ -58,14 +52,8 @@ final advancedMessagesProvider = StreamProvider.family
     .autoDispose<List<MessageModel>, String>((ref, conversationId) {
   final cache = ref.watch(advancedCacheProvider);
 
-  // Ensure initialization
-  Future.microtask(() async {
-    try {
-      await cache.initialize();
-    } catch (e) {
-      print('Error initializing advanced cache in messages provider: $e');
-    }
-  });
+  // Cache is already initialized by the main provider
+  // No need to initialize again
 
   return cache.watchMessages(conversationId);
 });
@@ -91,7 +79,7 @@ final unreadMessagesCountProvider = Provider.autoDispose<int>((ref) {
     data: (conversations) {
       int totalUnread = 0;
       for (final conversation in conversations) {
-        totalUnread += conversation.unreadCount ?? 0;
+        totalUnread += conversation.unreadCount;
       }
       return totalUnread;
     },
@@ -257,8 +245,6 @@ final enrichedConversationsProvider =
 /// Provider for performance statistics
 final performanceStatsProvider =
     Provider.autoDispose<Map<String, dynamic>>((ref) {
-  final cache = ref.watch(advancedCacheProvider);
-
   // This would typically be called periodically or on demand
   return {
     'cache_system': 'Advanced Cache System',

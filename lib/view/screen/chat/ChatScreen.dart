@@ -37,6 +37,7 @@ import '../../../services/cache_manager.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../../widgets/audio_player_widget.dart';
+import '../../widgets/SharedPostWidget.dart';
 import '../../widgets/web files/image_downloader.dart';
 import '/main.dart';
 import 'ChatDetailsScreen.dart';
@@ -259,6 +260,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       return name;
     }
     return message.senderName ?? widget.otherUserName;
+  }
+
+  bool _isSharedPost(String content) {
+    // تشخیص پست اشتراکی بر اساس الگوهای موجود در محتوا
+    return content.contains('📝 پست از') &&
+        content.contains('🔗 مشاهده در Vista:');
   }
 
   /// پیش‌بارگذاری هوشمند والپیپر با سرویس اختصاصی
@@ -1993,8 +2000,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     final Color myTextColor = Colors.white;
     final Color otherTextColor = isLightMode ? Colors.black87 : Colors.white;
 
-    final Color myTimeColor = Colors.white70;
-    final Color otherTimeColor = isLightMode ? Colors.black54 : Colors.white70;
+    final Color myTimeColor = Colors.white;
+    final Color otherTimeColor = isLightMode ? Colors.black87 : Colors.white70;
 
     Widget attachmentWidget = const SizedBox.shrink();
     final bool isImageAttachment = message.attachmentUrl != null &&
@@ -2454,13 +2461,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                               bottom: 0,
                             ),
                             decoration: BoxDecoration(
-                              color: (isImageOnly
+                              color: (_isSharedPost(message.content)
                                   ? Colors.transparent
-                                  : tempColor ??
-                                      (isMe
-                                          ? outgoingBubbleColor
-                                          : incomingBubbleColor)),
-                              border: !isMe
+                                  : (isImageOnly
+                                      ? Colors.transparent
+                                      : tempColor ??
+                                          (isMe
+                                              ? outgoingBubbleColor
+                                              : incomingBubbleColor))),
+                              border: (!isMe && !_isSharedPost(message.content))
                                   ? Border.all(
                                       color: isLightMode
                                           ? (Colors.grey[200]!)
@@ -2468,8 +2477,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                                       width: 1,
                                     )
                                   : null,
-                              borderRadius:
-                                  _getTelegramXBorderRadius(isMe, fontSize),
+                              borderRadius: _isSharedPost(message.content)
+                                  ? BorderRadius.zero
+                                  : _getTelegramXBorderRadius(isMe, fontSize),
                             ),
                             child: Column(
                               crossAxisAlignment: isMe
@@ -2546,7 +2556,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                                 if (message.attachmentUrl != null &&
                                     message.attachmentUrl!.isNotEmpty &&
                                     (message.attachmentType == 'image' ||
-                                        message.attachmentType == 'audio'))
+                                        message.attachmentType == 'audio') &&
+                                    !_isSharedPost(message.content))
                                   Padding(
                                     padding: EdgeInsets.only(
                                         top: message.replyToMessageId != null
@@ -2591,22 +2602,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                                                   ? 8
                                                   : 0,
                                             ),
-                                            child: Directionality(
-                                              textDirection: getTextDirection(
-                                                  message.content),
-                                              child: Text(
-                                                message.content,
-                                                style: TextStyle(
-                                                  color: isMe
-                                                      ? myTextColor
-                                                      : otherTextColor,
-                                                  fontSize: fontSize,
-                                                  height: 1.3,
-                                                ),
-                                              ),
-                                            ),
+                                            child: _isSharedPost(
+                                                    message.content)
+                                                ? SharedPostWidget(
+                                                    messageContent:
+                                                        message.content,
+                                                    attachmentUrl:
+                                                        message.attachmentUrl,
+                                                    attachmentType:
+                                                        message.attachmentType,
+                                                  )
+                                                : Directionality(
+                                                    textDirection:
+                                                        getTextDirection(
+                                                            message.content),
+                                                    child: Text(
+                                                      message.content,
+                                                      style: TextStyle(
+                                                        color: isMe
+                                                            ? myTextColor
+                                                            : otherTextColor,
+                                                        fontSize: fontSize,
+                                                        height: 1.3,
+                                                      ),
+                                                    ),
+                                                  ),
                                           ),
-                                        if (!isImageOnly)
+                                        if (!isImageOnly ||
+                                            _isSharedPost(message.content))
                                           Padding(
                                             padding: EdgeInsets.only(
                                                 top: math.max(

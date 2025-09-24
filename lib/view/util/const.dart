@@ -22,9 +22,6 @@ class SupabaseHttpClient extends http.BaseClient {
 
     while (attempt < _maxRetries) {
       try {
-        print(
-            '🔄 HTTP Request attempt ${attempt + 1}/$_maxRetries: ${request.method} ${request.url}');
-
         // ایجاد request جدید برای هر تلاش (برای جلوگیری از خطای finalize)
         final newRequest = _createNewRequest(request);
 
@@ -36,16 +33,13 @@ class SupabaseHttpClient extends http.BaseClient {
 
         // اگر response موفق بود، آن را برگردان
         if (response.statusCode < 500) {
-          print('✅ HTTP Request successful: ${response.statusCode}');
           return response;
         }
 
         // برای خطاهای سرور، retry کن
-        print('⚠️ Server error ${response.statusCode}, retrying...');
         attempt++;
 
         if (attempt >= _maxRetries) {
-          print('💀 Max retries reached for HTTP request');
           return response;
         }
 
@@ -54,10 +48,8 @@ class SupabaseHttpClient extends http.BaseClient {
         delay *= 2;
       } catch (e) {
         attempt++;
-        print('❌ HTTP Request error (attempt $attempt): $e');
 
         if (attempt >= _maxRetries) {
-          print('💀 Max retries reached, rethrowing error');
           rethrow;
         }
 
@@ -128,16 +120,13 @@ extension PostgrestFilterBuilderExtensions on PostgrestFilterBuilder {
 
         // اگر response موفق بود، آن را برگردان
         if (response.error == null) {
-          print('✅ Postgrest query successful');
           return response;
         }
 
         // برای خطاهای سرور، retry کن
-        print('⚠️ Postgrest error: ${response.error?.message}, retrying...');
         attempt++;
 
         if (attempt >= maxRetries) {
-          print('💀 Max retries reached for Postgrest query');
           return response;
         }
 
@@ -146,10 +135,8 @@ extension PostgrestFilterBuilderExtensions on PostgrestFilterBuilder {
         delay *= 2;
       } catch (e) {
         attempt++;
-        print('❌ Postgrest query error (attempt $attempt): $e');
 
         if (attempt >= maxRetries) {
-          print('💀 Max retries reached, rethrowing error');
           rethrow;
         }
 
@@ -176,15 +163,13 @@ Future<void> initializeSupabaseWithFailover() async {
       httpClient: httpClient,
     );
 
-    print('Supabase initialized with CDN URL. Pinging...');
     await Supabase.instance.client.from('profiles').select().limit(1).timeout(
           const Duration(seconds: 15),
           onTimeout: () => throw TimeoutException('Ping timeout'),
         );
-    print('Successfully connected to Supabase via CDN (cloudflare).');
     return; // اتصال موفق، خروج از تابع
   } catch (e) {
-    print('Supabase CDN attempt failed: $e');
+    // CDN attempt failed, will try direct URL
 
     // بررسی اینکه آیا Supabase در تلاش اول مقداردهی اولیه شده بود یا خیر.
     // اگر مقداردهی اولیه شده بود (حتی اگر پینگ ناموفق بود)، باید dispose شود.
@@ -197,28 +182,18 @@ Future<void> initializeSupabaseWithFailover() async {
     } catch (assertionError) {
       // اگر خطای assertion رخ دهد، یعنی Supabase.instance قابل دسترسی نیست
       // و _initialized false است. پس نیازی به dispose نیست.
-      print(
-          'Supabase was not fully initialized by the first attempt, no disposal needed.');
       needsDisposal = false;
     }
 
     if (needsDisposal) {
-      print('Disposing previous Supabase instance before trying fallback...');
       try {
         await Supabase.instance.dispose(); // ریست کردن وضعیت Supabase
-        print('Previous Supabase instance disposed.');
       } catch (disposeError) {
-        print(
-            'Error disposing Supabase instance: $disposeError. Proceeding with fallback anyway.');
-        // اگر dispose هم خطا بدهد، احتمالاً مقداردهی اولیه بعدی هم ناموفق خواهد بود
-        // مگر اینکه خطای dispose مربوط به بخشی باشد که _initialized را false نکرده.
-        // متد dispose در انتها _initialized را false می‌کند.
+        // Error disposing, proceeding with fallback anyway
       }
     }
 
     // تلاش دوم: استفاده از Direct URL با HTTP client جدید
-    print(
-        'Attempting Supabase initialization with Direct URL: $supabaseDirectUrl');
     try {
       // ایجاد Supabase client جدید با HTTP client جدید
       final httpClient2 = SupabaseHttpClient();
@@ -226,15 +201,12 @@ Future<void> initializeSupabaseWithFailover() async {
           url: supabaseDirectUrl,
           anonKey: supabaseAnonKey,
           httpClient: httpClient2);
-      print('Supabase initialized with Direct URL. Pinging...');
       await Supabase.instance.client.from('profiles').select().limit(1).timeout(
             const Duration(seconds: 15),
             onTimeout: () => throw TimeoutException('Ping timeout'),
           );
-      print('Successfully connected to Supabase via Direct URL (Cloudflare).');
     } catch (err) {
-      print('Supabase Direct URL attempt also failed: $err');
-      print('Both API endpoints failed. Supabase could not be initialized.');
+      print('❌ اتصال به سرور قطع است - لطفاً اتصال اینترنت خود را بررسی کنید');
       // TODO: در اینجا بهتر است به کاربر اطلاع داده شود یا برنامه به صفحه خطا هدایت شود.
     }
   }
