@@ -32,6 +32,9 @@ import 'view/screen/ouathUser/resetPassword.dart';
 import 'view/screen/ouathUser/signupUser.dart';
 import 'view/screen/ouathUser/welcome.dart';
 import 'view/screen/ouathUser/editeProfile.dart';
+import 'view/screen/auth/modern_auth_screen.dart';
+import 'view/screen/auth/biometric_login_screen.dart';
+import 'services/advanced_security_service.dart';
 import 'services/wallpaper_cache_service.dart';
 import 'services/profile_service.dart';
 import 'view/screen/PublicPosts/publicPosts.dart';
@@ -101,6 +104,9 @@ void main() async {
 
     // راه‌اندازی Supabase
     await initializeSupabaseWithFailover();
+
+    // راه‌اندازی سرویس امنیتی پیشرفته
+    await AdvancedSecurityService.initialize();
 
     // 🚀 سیستم پیام‌رسانی بهینه‌شده (جایگزین 14 cache system!)
     await _initializeOptimizedMessaging();
@@ -515,6 +521,15 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                 '/signup': (context) => const SignUpScreen(),
                 '/home': (context) => const HomeScreen(),
                 '/login': (context) => const Loginuser(),
+                '/modern-auth': (context) => const ModernAuthScreen(),
+                '/biometric-login': (context) => BiometricLoginScreen(
+                      onSuccess: () {
+                        Navigator.pushReplacementNamed(context, '/home');
+                      },
+                      onFallback: () {
+                        Navigator.pushReplacementNamed(context, '/login');
+                      },
+                    ),
                 '/editeProfile': (context) => const EditProfile(),
                 '/welcome': (context) => const WelcomePage(),
                 '/settings': (context) => const Settings(),

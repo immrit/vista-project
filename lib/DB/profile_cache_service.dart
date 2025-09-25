@@ -139,6 +139,19 @@ class ProfileCacheService {
   /// کش کردن پروفایل و پست‌ها
   Future<void> cacheProfileAndPosts(String userId) async {
     try {
+      // بررسی وجود کاربر در Auth
+      final currentUser = supabase.auth.currentUser;
+      if (currentUser == null || currentUser.id != userId) {
+        print('⚠️ User not authenticated or ID mismatch');
+        return;
+      }
+
+      // بررسی تأیید ایمیل
+      if (currentUser.emailConfirmedAt == null) {
+        print('⚠️ Email not confirmed yet, skipping cache');
+        return;
+      }
+
       // دریافت پروفایل از سرور
       final profileResponse = await supabase.from('profiles').select('''
             id,
@@ -397,6 +410,29 @@ class ProfileCacheService {
       print('🔄 Background cache refresh completed for user: $userId');
     } catch (e) {
       print('⚠️ Background cache refresh failed for user $userId: $e');
+    }
+  }
+
+  /// کش کردن پروفایل بعد از تأیید ایمیل
+  Future<void> cacheProfileAfterEmailConfirmation(String userId) async {
+    try {
+      // بررسی وجود کاربر در Auth
+      final currentUser = supabase.auth.currentUser;
+      if (currentUser == null || currentUser.id != userId) {
+        print('⚠️ User not authenticated or ID mismatch');
+        return;
+      }
+
+      // بررسی تأیید ایمیل
+      if (currentUser.emailConfirmedAt == null) {
+        print('⚠️ Email not confirmed yet');
+        return;
+      }
+
+      print('✅ Email confirmed, caching profile for user: $userId');
+      await cacheProfileAndPosts(userId);
+    } catch (e) {
+      print('❌ Failed to cache profile after email confirmation: $e');
     }
   }
 }
