@@ -306,6 +306,9 @@ class _ModernAuthScreenState extends ConsumerState<ModernAuthScreen>
                       initialEmail: _emailOrUsername.contains('@')
                           ? _emailOrUsername
                           : '',
+                      initialUsername: _emailOrUsername.contains('@')
+                          ? ''
+                          : _emailOrUsername,
                     ),
                   ),
                 );

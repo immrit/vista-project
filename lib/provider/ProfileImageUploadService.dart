@@ -76,8 +76,13 @@ class ProfileImageUploadService {
         }
       }
 
+      final currentUser = supabase.auth.currentUser;
+      if (currentUser == null) {
+        throw Exception('کاربر وارد نشده است');
+      }
+
       final fileName =
-          'avatars/${supabase.auth.currentUser!.id}_${DateTime.now().millisecondsSinceEpoch}_${path.basename(compressedFile.path)}';
+          'avatars/${currentUser.id}_${DateTime.now().millisecondsSinceEpoch}_${path.basename(compressedFile.path)}';
 
       final Uint8List fileBytes = await compressedFile.readAsBytes();
 
@@ -124,9 +129,13 @@ class ProfileImageUploadService {
       // همیشه با نوع 'image/jpeg' کار می‌کنیم
       const contentType = 'image/jpeg';
 
-      final userId = supabase.auth.currentUser!.id;
+      final currentUser = supabase.auth.currentUser;
+      if (currentUser == null) {
+        throw Exception('کاربر وارد نشده است');
+      }
+
       final s3FileName =
-          'avatars/${userId}_${DateTime.now().millisecondsSinceEpoch}_$fileName';
+          'avatars/${currentUser.id}_${DateTime.now().millisecondsSinceEpoch}_$fileName';
 
       print('Content-Type: $contentType');
       print('File size: ${fileBytes.length} bytes');
@@ -204,6 +213,70 @@ class ProfileImageUploadService {
     } catch (e) {
       print('خطا در فشرده‌سازی تصویر: $e');
       return null;
+    }
+  }
+
+  /// آپلود عکس پروفایل در زمان ثبت نام (بدون نیاز به احراز هویت)
+  static Future<String?> uploadImageForRegistration(
+      File file, String tempUserId) async {
+    File? compressedFile;
+    try {
+      if (!await file.exists()) {
+        throw Exception('فایل مورد نظر وجود ندارد');
+      }
+
+      final extension = path.extension(file.path).toLowerCase();
+      print('نوع فایل ورودی (ثبت نام): $extension');
+
+      if (extension == '.png') {
+        print('تبدیل فایل PNG به JPEG');
+        compressedFile = await convertPngToJpeg(file);
+        if (compressedFile == null) {
+          throw Exception('تبدیل به JPEG شکست خورد');
+        }
+      } else {
+        compressedFile = await compressImage(file);
+        if (compressedFile == null) {
+          print('فشرده‌سازی ناموفق بود، استفاده از فایل اصلی');
+          compressedFile = file;
+        }
+      }
+
+      final fileName =
+          'avatars/temp_${tempUserId}_${DateTime.now().millisecondsSinceEpoch}_${path.basename(compressedFile.path)}';
+
+      final Uint8List fileBytes = await compressedFile.readAsBytes();
+
+      // همیشه با نوع 'image/jpeg' پس از تبدیل کار می‌کنید
+      const contentType = 'image/jpeg';
+      print('Content-Type: $contentType');
+      print('File size: ${fileBytes.length} bytes');
+
+      await s3.putObject(
+        bucket: bucketName,
+        key: fileName,
+        body: fileBytes,
+        contentType: contentType,
+        acl: ObjectCannedACL.publicRead,
+      );
+
+      final uploadedUrl =
+          'https://storage.389346.ir.cdn.ir/$bucketName/$fileName';
+      print('تصویر با موفقیت آپلود شد (ثبت نام): $uploadedUrl');
+      return uploadedUrl;
+    } catch (e) {
+      UserFriendlyErrorHandler.logError(e,
+          context: 'profile_image_upload_registration');
+      throw Exception(UserFriendlyErrorHandler.getFriendlyMessage(e,
+          context: 'profile_image_upload_registration'));
+    } finally {
+      if (compressedFile != null && compressedFile.path != file.path) {
+        try {
+          await compressedFile.delete();
+        } catch (e) {
+          print('خطا در حذف فایل موقت: $e');
+        }
+      }
     }
   }
 }

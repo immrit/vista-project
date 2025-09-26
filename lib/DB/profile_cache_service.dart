@@ -146,11 +146,11 @@ class ProfileCacheService {
         return;
       }
 
-      // بررسی تأیید ایمیل
-      if (currentUser.emailConfirmedAt == null) {
-        print('⚠️ Email not confirmed yet, skipping cache');
-        return;
-      }
+      // بررسی تأیید ایمیل (اختیاری - برای ثبت نام بدون تأیید ایمیل)
+      // if (currentUser.emailConfirmedAt == null) {
+      //   print('⚠️ Email not confirmed yet, skipping cache');
+      //   return;
+      // }
 
       // دریافت پروفایل از سرور
       final profileResponse = await supabase.from('profiles').select('''
@@ -202,6 +202,14 @@ class ProfileCacheService {
           .eq('user_id', userId)
           .order('created_at', ascending: false)
           .limit(maxCachedPostsPerUser);
+
+      // بررسی وجود فیلدهای مورد نیاز
+      if (profileResponse['id'] == null ||
+          profileResponse['username'] == null) {
+        print(
+            '❌ Profile data missing required fields: id=${profileResponse['id']}, username=${profileResponse['username']}');
+        throw Exception('Profile data is incomplete');
+      }
 
       // ساخت مدل پروفایل
       final profile = ProfileModel.fromMap({
@@ -413,8 +421,8 @@ class ProfileCacheService {
     }
   }
 
-  /// کش کردن پروفایل بعد از تأیید ایمیل
-  Future<void> cacheProfileAfterEmailConfirmation(String userId) async {
+  /// کش کردن پروفایل بعد از ثبت نام موفق
+  Future<void> cacheProfileAfterRegistration(String userId) async {
     try {
       // بررسی وجود کاربر در Auth
       final currentUser = supabase.auth.currentUser;
@@ -423,16 +431,14 @@ class ProfileCacheService {
         return;
       }
 
-      // بررسی تأیید ایمیل
-      if (currentUser.emailConfirmedAt == null) {
-        print('⚠️ Email not confirmed yet');
-        return;
-      }
+      // صبر کردن کمی تا پروفایل در دیتابیس ایجاد شود
+      await Future.delayed(const Duration(seconds: 2));
 
-      print('✅ Email confirmed, caching profile for user: $userId');
+      print('✅ Registration successful, caching profile for user: $userId');
       await cacheProfileAndPosts(userId);
     } catch (e) {
-      print('❌ Failed to cache profile after email confirmation: $e');
+      print('❌ Failed to cache profile after registration: $e');
+      // اگر کش ناموفق بود، خطا نده چون ثبت نام موفق بوده
     }
   }
 }

@@ -2,14 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:persian_datetime_picker/persian_datetime_picker.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
+import 'dart:io';
+import 'dart:typed_data';
 import '../../../main.dart';
+import '../../../DB/profile_cache_service.dart';
+import '../../../provider/ProfileImageUploadService.dart';
 
 class RegistrationScreen extends StatefulWidget {
   final String initialEmail;
+  final String initialUsername;
 
   const RegistrationScreen({
     super.key,
     this.initialEmail = '',
+    this.initialUsername = '',
   });
 
   @override
@@ -43,8 +53,10 @@ class _RegistrationScreenState extends State<RegistrationScreen>
   // Form data
   String _selectedBirthDate = '';
   String? _selectedAvatarUrl;
+  File? _selectedImageFile;
   bool _isLoading = false;
   bool _isPasswordVisible = false;
+  bool _isUploadingImage = false;
   bool _isConfirmPasswordVisible = false;
 
   @override
@@ -52,6 +64,14 @@ class _RegistrationScreenState extends State<RegistrationScreen>
     super.initState();
     _initializeAnimations();
     _emailController.text = widget.initialEmail;
+    _usernameController.text = widget.initialUsername;
+
+    // اگر نام کاربری از قبل تنظیم شده، اعتبارسنجی کن
+    if (widget.initialUsername.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _validateUsername(widget.initialUsername);
+      });
+    }
   }
 
   void _initializeAnimations() {
@@ -200,21 +220,57 @@ class _RegistrationScreenState extends State<RegistrationScreen>
             .maybeSingle();
 
         if (existingProfile == null) {
+          // آپلود عکس پروفایل اگر انتخاب شده
+          String? uploadedAvatarUrl;
+          if (_selectedImageFile != null) {
+            try {
+              print('آپلود عکس پروفایل به سرور...');
+              uploadedAvatarUrl =
+                  await ProfileImageUploadService.uploadImageForRegistration(
+                _selectedImageFile!,
+                authResponse.user!.id,
+              );
+              print('عکس پروفایل با موفقیت آپلود شد: $uploadedAvatarUrl');
+            } catch (e) {
+              print('خطا در آپلود عکس پروفایل: $e');
+              // ادامه ثبت نام بدون عکس
+            }
+          }
+
           // ایجاد پروفایل کاربر در جدول profiles
           final profileData = {
             'id': authResponse.user!.id,
             'email': _emailController.text.trim(),
             'username': _usernameController.text.trim(),
             'full_name': _fullNameController.text.trim(),
-            'bio': _bioController.text.trim(),
+            'bio': _bioController.text.trim().isNotEmpty
+                ? _bioController.text.trim()
+                : null,
             'birth_date':
                 _selectedBirthDate.isNotEmpty ? _selectedBirthDate : null,
-            'avatar_url': _selectedAvatarUrl,
+            'avatar_url': uploadedAvatarUrl,
+            'followers_count': 0,
+            'following_count': 0,
+            'posts_count': 0,
+            'is_verified': false,
+            'verification_type': 'none',
+            'is_followed': false,
+            'account_status': 'active',
+            'is_private': false,
+            'role': 'normal',
+            'last_seen_status': 'public',
+            'is_online': false,
+            'security_score': 50,
+            'suspicious_activity_detected': false,
+            'two_factor_enabled': false,
             'created_at': DateTime.now().toIso8601String(),
             'updated_at': DateTime.now().toIso8601String(),
+            'last_active': DateTime.now().toIso8601String(),
           };
 
+          print('🔍 Inserting profile data: $profileData');
           await supabase.from('profiles').insert(profileData);
+          print('✅ Profile inserted successfully');
         } else {
           print('Profile already exists, skipping insert');
         }
@@ -231,12 +287,24 @@ class _RegistrationScreenState extends State<RegistrationScreen>
           ),
         );
 
-        _showSuccessSnackBar(
-            'ثبت نام موفقیت‌آمیز! لطفاً ایمیل خود را تأیید کنید.');
+        _showSuccessSnackBar('ثبت نام موفقیت‌آمیز!');
 
-        // نمایش صفحه تأیید ایمیل
+        // کش کردن پروفایل بعد از ثبت نام موفق (غیرفعال برای جلوگیری از خطا)
+        // try {
+        //   await ProfileCacheService()
+        //       .cacheProfileAfterRegistration(authResponse.user!.id);
+        // } catch (e) {
+        //   print('Cache error after registration: $e');
+        // }
+
+        // انتقال خودکار به صفحه اصلی
         if (mounted) {
-          _showEmailConfirmationDialog();
+          // بستن تمام صفحات قبلی و رفتن به صفحه اصلی
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            '/home',
+            (route) => false,
+          );
         }
       }
     } catch (e) {
@@ -288,6 +356,17 @@ class _RegistrationScreenState extends State<RegistrationScreen>
     _bioController.clear();
     _selectedBirthDate = '';
     _selectedAvatarUrl = null;
+
+    // حذف فایل کش شده
+    if (_selectedImageFile != null) {
+      try {
+        _selectedImageFile!.delete();
+      } catch (e) {
+        print('خطا در حذف فایل کش شده: $e');
+      }
+    }
+    _selectedImageFile = null;
+
     setState(() {
       _currentStep = 0;
       _isCheckingUsername = false;
@@ -298,6 +377,215 @@ class _RegistrationScreenState extends State<RegistrationScreen>
       0,
       duration: const Duration(milliseconds: 500),
       curve: Curves.easeInOutCubic,
+    );
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+
+      if (image != null) {
+        setState(() {
+          _selectedImageFile = File(image.path);
+          _isUploadingImage = true;
+        });
+
+        // فشرده‌سازی و ذخیره محلی عکس
+        try {
+          final compressedFile =
+              await _compressAndCacheImage(_selectedImageFile!);
+          if (compressedFile != null) {
+            setState(() {
+              _selectedImageFile = compressedFile;
+              _isUploadingImage = false;
+            });
+            _showSuccessSnackBar(
+                'عکس پروفایل انتخاب شد (بعد از ثبت نام آپلود می‌شود)');
+          } else {
+            setState(() {
+              _isUploadingImage = false;
+            });
+            _showErrorSnackBar('خطا در پردازش عکس');
+          }
+        } catch (e) {
+          setState(() {
+            _isUploadingImage = false;
+          });
+          _showErrorSnackBar('خطا در پردازش عکس: $e');
+        }
+      }
+    } catch (e) {
+      setState(() {
+        _isUploadingImage = false;
+      });
+      _showErrorSnackBar('خطا در انتخاب عکس: $e');
+    }
+  }
+
+  void _removeImage() {
+    // حذف فایل کش شده
+    if (_selectedImageFile != null) {
+      try {
+        _selectedImageFile!.delete();
+      } catch (e) {
+        print('خطا در حذف فایل کش شده: $e');
+      }
+    }
+
+    setState(() {
+      _selectedImageFile = null;
+      _selectedAvatarUrl = null;
+    });
+  }
+
+  Future<File?> _compressAndCacheImage(File file) async {
+    try {
+      final extension = path.extension(file.path).toLowerCase();
+      print('فشرده‌سازی عکس محلی: $extension');
+
+      Uint8List? compressedBytes;
+
+      if (extension == '.png') {
+        // تبدیل PNG به JPEG
+        compressedBytes = await FlutterImageCompress.compressWithFile(
+          file.absolute.path,
+          format: CompressFormat.jpeg,
+          quality: 85,
+        );
+      } else {
+        // فشرده‌سازی JPEG
+        compressedBytes = await FlutterImageCompress.compressWithFile(
+          file.absolute.path,
+          minWidth: 1024,
+          minHeight: 1024,
+          quality: 85,
+          format: CompressFormat.jpeg,
+        );
+      }
+
+      if (compressedBytes == null) {
+        print('فشرده‌سازی ناموفق بود');
+        return null;
+      }
+
+      // ذخیره در cache directory
+      final cacheDir = await getTemporaryDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final cachedFile = File('${cacheDir.path}/profile_image_$timestamp.jpg');
+      await cachedFile.writeAsBytes(compressedBytes);
+
+      print('عکس در cache ذخیره شد: ${cachedFile.path}');
+      return cachedFile;
+    } catch (e) {
+      print('خطا در فشرده‌سازی و cache کردن عکس: $e');
+      return null;
+    }
+  }
+
+  Widget _buildProfileImageUpload() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Column(
+      children: [
+        // Profile Image Display
+        GestureDetector(
+          onTap: _pickImage,
+          child: Container(
+            width: 120.w,
+            height: 120.w,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: const Color(0xFF4A80F0),
+                width: 3,
+              ),
+              color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+            ),
+            child: _isUploadingImage
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      valueColor:
+                          AlwaysStoppedAnimation<Color>(Color(0xFF4A80F0)),
+                    ),
+                  )
+                : _selectedImageFile != null
+                    ? ClipOval(
+                        child: Image.file(
+                          _selectedImageFile!,
+                          width: 120.w,
+                          height: 120.w,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Icon(
+                              Icons.person,
+                              size: 60.sp,
+                              color: const Color(0xFF4A80F0),
+                            );
+                          },
+                        ),
+                      )
+                    : Icon(
+                        Icons.add_a_photo,
+                        size: 40.sp,
+                        color: const Color(0xFF4A80F0),
+                      ),
+          ),
+        ),
+
+        SizedBox(height: 16.h),
+
+        // Upload Button
+        if (_selectedImageFile == null && !_isUploadingImage)
+          ElevatedButton.icon(
+            onPressed: _pickImage,
+            icon: Icon(Icons.upload, size: 20.sp),
+            label: Text(
+              'انتخاب عکس پروفایل',
+              style: TextStyle(fontSize: 16.sp),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF4A80F0),
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12.r),
+              ),
+              elevation: 0,
+            ),
+          ),
+
+        // Remove Button
+        if (_selectedImageFile != null && !_isUploadingImage)
+          TextButton.icon(
+            onPressed: _removeImage,
+            icon: Icon(Icons.delete_outline, size: 20.sp),
+            label: Text(
+              'حذف عکس',
+              style: TextStyle(fontSize: 16.sp),
+            ),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+              padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
+            ),
+          ),
+
+        SizedBox(height: 8.h),
+
+        // Helper Text
+        Text(
+          'عکس پروفایل (اختیاری)',
+          style: TextStyle(
+            fontSize: 14.sp,
+            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+          ),
+        ),
+      ],
     );
   }
 
@@ -374,145 +662,6 @@ class _RegistrationScreenState extends State<RegistrationScreen>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
       ),
-    );
-  }
-
-  void _showEmailConfirmationDialog() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20.r),
-          ),
-          contentPadding: EdgeInsets.all(24.w),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // آیکون تأیید ایمیل
-              Container(
-                width: 80.w,
-                height: 80.w,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF4A80F0), Color(0xFF6B9EFF)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: Icon(
-                  Icons.email_outlined,
-                  color: Colors.white,
-                  size: 40.sp,
-                ),
-              ),
-
-              SizedBox(height: 24.h),
-
-              // عنوان
-              Text(
-                'تأیید ایمیل',
-                style: TextStyle(
-                  fontSize: 24.sp,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
-                textAlign: TextAlign.center,
-              ),
-
-              SizedBox(height: 16.h),
-
-              // پیام
-              Text(
-                'لینک تأیید به ایمیل ${_emailController.text.trim()} ارسال شد.',
-                style: TextStyle(
-                  fontSize: 16.sp,
-                  color: isDark ? Colors.grey.shade300 : Colors.grey.shade700,
-                ),
-                textAlign: TextAlign.center,
-              ),
-
-              SizedBox(height: 8.h),
-
-              Text(
-                'لطفاً ایمیل خود را بررسی کنید و روی لینک تأیید کلیک کنید.',
-                style: TextStyle(
-                  fontSize: 14.sp,
-                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                ),
-                textAlign: TextAlign.center,
-              ),
-
-              SizedBox(height: 24.h),
-
-              // دکمه‌ها
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).pop(); // بازگشت به صفحه لاگین
-                      },
-                      style: TextButton.styleFrom(
-                        padding: EdgeInsets.symmetric(vertical: 12.h),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12.r),
-                          side: BorderSide(
-                            color: isDark
-                                ? Colors.grey.shade700
-                                : Colors.grey.shade300,
-                          ),
-                        ),
-                      ),
-                      child: Text(
-                        'بعداً',
-                        style: TextStyle(
-                          color: isDark
-                              ? Colors.grey.shade300
-                              : Colors.grey.shade700,
-                          fontSize: 16.sp,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 12.w),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).pop(); // بازگشت به صفحه لاگین
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF4A80F0),
-                        padding: EdgeInsets.symmetric(vertical: 12.h),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12.r),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: Text(
-                        'متوجه شدم',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16.sp,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 
@@ -735,6 +884,11 @@ class _RegistrationScreenState extends State<RegistrationScreen>
           ),
 
           SizedBox(height: 40.h),
+
+          // Profile Image Upload
+          _buildProfileImageUpload(),
+
+          SizedBox(height: 24.h),
 
           // Full Name Input
           _buildInputField(
