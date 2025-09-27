@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import '../../../services/animation_controller_service.dart';
 
 /// مجموعه بهبودهای performance برای ChatScreen
 class ChatPerformanceImprovements {
@@ -192,7 +193,10 @@ class _OptimizedAnimatedContainerState extends State<OptimizedAnimatedContainer>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(duration: widget.duration, vsync: this);
+    final animationService = AnimationControllerService();
+    final effectiveDuration =
+        animationService.shouldAnimate() ? widget.duration : Duration.zero;
+    _controller = AnimationController(duration: effectiveDuration, vsync: this);
   }
 
   @override

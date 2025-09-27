@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -7,9 +8,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:sembast/sembast_io.dart';
 import 'package:path_provider/path_provider.dart';
-import '../DB/unified_conversation_cache_service.dart';
-import '../DB/unified_message_cache_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../DB/profile_cache_service.dart';
+import '../services/animation_controller_service.dart';
+import '../services/video_autoplay_service.dart';
+import '../services/image_quality_service.dart';
+import '../services/smart_cache_service.dart';
 import '../model/SearchResut.dart';
 import '../services/PostImageUploadService.dart';
 import '../view/widgets/VideoPlayerConfig.dart';
@@ -2506,17 +2510,26 @@ final autoPlayProvider = StateNotifierProvider<AutoPlayNotifier, bool>((ref) {
 });
 
 class AutoPlayNotifier extends StateNotifier<bool> {
+  final VideoAutoplayService _videoAutoplayService = VideoAutoplayService();
+
   AutoPlayNotifier() : super(true) {
     _load();
   }
+
   void _load() async {
-    final value = await VideoPlayerConfig().getAutoPlay();
-    state = value;
+    await _videoAutoplayService.loadSettings();
+    state = _videoAutoplayService.shouldAutoPlay();
   }
 
   void set(bool value) async {
-    state = value;
-    await VideoPlayerConfig().setAutoPlay(value);
+    await _videoAutoplayService.setAutoPlay(value);
+    state = _videoAutoplayService.shouldAutoPlay();
+  }
+
+  // متد برای به‌روزرسانی وضعیت پس از تغییر حالت کم‌مصرف
+  void refresh() async {
+    await _videoAutoplayService.loadSettings();
+    state = _videoAutoplayService.shouldAutoPlay();
   }
 }
 
@@ -2657,11 +2670,60 @@ class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
   Future<void> updatePhotoSetting(String setting) async {
     state = state.copyWith(photos: setting);
     await _saveSettings();
+
+    // اعمال تنظیمات جدید
+    await _applyAutoDownloadSettings();
   }
 
   Future<void> updateVideoSetting(String setting) async {
     state = state.copyWith(videos: setting);
     await _saveSettings();
+
+    // اعمال تنظیمات جدید
+    await _applyAutoDownloadSettings();
+  }
+
+  Future<void> _applyAutoDownloadSettings() async {
+    try {
+      // پاکسازی کش قدیمی در صورت تغییر تنظیمات
+      if (state.photos == 'never') {
+        await _clearPhotoCache();
+      }
+      if (state.videos == 'never') {
+        await _clearVideoCache();
+      }
+
+      print(
+          '✅ Auto download settings applied: Photos=${state.photos}, Videos=${state.videos}');
+    } catch (e) {
+      debugPrint('خطا در اعمال تنظیمات دانلود خودکار: $e');
+    }
+  }
+
+  Future<void> _clearPhotoCache() async {
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final chatImagesDir = Directory('${appDir.path}/chat_images');
+      if (await chatImagesDir.exists()) {
+        await chatImagesDir.delete(recursive: true);
+        print('🧹 Photo cache cleared');
+      }
+    } catch (e) {
+      debugPrint('خطا در پاکسازی کش عکس‌ها: $e');
+    }
+  }
+
+  Future<void> _clearVideoCache() async {
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final chatVideosDir = Directory('${appDir.path}/chat_videos');
+      if (await chatVideosDir.exists()) {
+        await chatVideosDir.delete(recursive: true);
+        print('🧹 Video cache cleared');
+      }
+    } catch (e) {
+      debugPrint('خطا در پاکسازی کش ویدیوها: $e');
+    }
   }
 
   Future<void> _saveSettings() async {
@@ -2780,6 +2842,21 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
     } else {
       await _disableBatterySaverMode();
     }
+
+    // به‌روزرسانی سرویس انیمیشن
+    final animationService = AnimationControllerService();
+    await animationService.setBatterySaverMode(enabled);
+
+    // به‌روزرسانی سرویس پخش خودکار ویدیو
+    final videoAutoplayService = VideoAutoplayService();
+    await videoAutoplayService.setBatterySaverMode(enabled);
+
+    // به‌روزرسانی سرویس کیفیت تصاویر
+    final imageQualityService = ImageQualityService();
+    await imageQualityService.setBatterySaverMode(enabled);
+
+    // به‌روزرسانی autoPlayProvider (از طریق ProviderContainer)
+    // این کار در StorageAndMemorySettingsPage انجام می‌شود
   }
 
   Future<void> updateSmartCache(bool enabled) async {
@@ -2787,11 +2864,8 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
     await _saveSettings();
 
     // اعمال تنظیمات کش هوشمند
-    if (enabled) {
-      await _enableSmartCache();
-    } else {
-      await _disableSmartCache();
-    }
+    final smartCacheService = SmartCacheService();
+    await smartCacheService.setSmartCache(enabled);
   }
 
   Future<void> updateMessagePreloading(bool enabled) async {
@@ -2811,9 +2885,38 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
   Future<void> _applyBatterySaverMode() async {
     if (_database == null) return;
     try {
-      await _store.record('image_quality').put(_database!, 'low');
+      // غیرفعال کردن انیمیشن‌ها
+      await _store.record('animations_enabled').put(_database!, false);
+
+      // غیرفعال کردن پخش خودکار ویدیوهای پست‌ها
+      await _store.record('video_auto_play').put(_database!, false);
+
+      // غیرفعال کردن همگام‌سازی خودکار
       await _store.record('auto_sync').put(_database!, false);
+
+      // غیرفعال کردن به‌روزرسانی پس‌زمینه
       await _store.record('background_refresh').put(_database!, false);
+
+      // کاهش کیفیت تصاویر
+      await _store.record('image_quality').put(_database!, 'low');
+
+      // کاهش کیفیت ویدیوها
+      await _store.record('video_quality').put(_database!, 'low');
+
+      // غیرفعال کردن پیش‌بارگذاری پیام‌ها
+      await _store.record('message_preloading').put(_database!, false);
+
+      // کاهش اندازه کش
+      await _store.record('cache_size_limit').put(_database!, 50);
+
+      // غیرفعال کردن اعلان‌های غیرضروری
+      await _store.record('non_essential_notifications').put(_database!, false);
+
+      // کاهش فرکانس به‌روزرسانی
+      await _store.record('update_frequency').put(_database!, 'low');
+
+      print(
+          '🔋 Battery saver mode enabled - All animations, auto-play videos, and non-essential activities disabled');
     } catch (e) {
       debugPrint('خطا در اعمال حالت کم‌مصرف: $e');
     }
@@ -2822,30 +2925,41 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
   Future<void> _disableBatterySaverMode() async {
     if (_database == null) return;
     try {
-      await _store.record('image_quality').put(_database!, 'high');
+      // فعال کردن انیمیشن‌ها
+      await _store.record('animations_enabled').put(_database!, true);
+
+      // بازگردانی تنظیمات پخش خودکار ویدیو (بر اساس تنظیمات کاربر)
+      final prefs = await SharedPreferences.getInstance();
+      final autoPlaySetting = prefs.getBool('video_auto_play') ?? false;
+      await _store.record('video_auto_play').put(_database!, autoPlaySetting);
+
+      // فعال کردن همگام‌سازی خودکار
       await _store.record('auto_sync').put(_database!, true);
+
+      // فعال کردن به‌روزرسانی پس‌زمینه
       await _store.record('background_refresh').put(_database!, true);
+
+      // بازگردانی کیفیت تصاویر به بالا
+      await _store.record('image_quality').put(_database!, 'high');
+
+      // بازگردانی کیفیت ویدیوها
+      await _store.record('video_quality').put(_database!, 'high');
+
+      // فعال کردن پیش‌بارگذاری پیام‌ها
+      await _store.record('message_preloading').put(_database!, true);
+
+      // بازگردانی اندازه کش
+      await _store.record('cache_size_limit').put(_database!, 200);
+
+      // فعال کردن اعلان‌های غیرضروری
+      await _store.record('non_essential_notifications').put(_database!, true);
+
+      // بازگردانی فرکانس به‌روزرسانی
+      await _store.record('update_frequency').put(_database!, 'high');
+
+      print('⚡ Battery saver mode disabled - All features restored');
     } catch (e) {
       debugPrint('خطا در غیرفعال کردن حالت کم‌مصرف: $e');
-    }
-  }
-
-  Future<void> _enableSmartCache() async {
-    // پاکسازی خودکار کش قدیمی
-    final messageCacheService = UnifiedMessageCacheService();
-    final conversationCacheService = UnifiedConversationCacheService();
-
-    // حذف پیام‌های قدیمی‌تر از 30 روز
-    final cutoffDate = DateTime.now().subtract(const Duration(days: 30));
-    await messageCacheService.deleteMessagesOlderThan(cutoffDate);
-  }
-
-  Future<void> _disableSmartCache() async {
-    if (_database == null) return;
-    try {
-      await _store.record('auto_cache_cleanup').put(_database!, false);
-    } catch (e) {
-      debugPrint('خطا در غیرفعال کردن کش هوشمند: $e');
     }
   }
 
@@ -2857,14 +2971,14 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
 
   String getSmartCacheDescription() {
     return state.smartCache
-        ? 'فعال - بهینه‌سازی خودکار حافظه'
-        : 'غیرفعال - نگهداری همه داده‌ها';
+        ? 'فعال - پاکسازی خودکار کش قدیمی'
+        : 'غیرفعال - کش کامل';
   }
 
   String getPreloadingDescription() {
     return state.messagePreloading
-        ? 'فعال - بارگذاری سریع‌تر'
-        : 'غیرفعال - بارگذاری عادی';
+        ? 'فعال - بارگذاری سریع‌تر پیام‌ها'
+        : 'غیرفعال - صرفه‌جویی در مصرف داده';
   }
 }
 

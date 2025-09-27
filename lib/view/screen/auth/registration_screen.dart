@@ -9,7 +9,6 @@ import 'package:path/path.dart' as path;
 import 'dart:io';
 import 'dart:typed_data';
 import '../../../main.dart';
-import '../../../DB/profile_cache_service.dart';
 import '../../../provider/ProfileImageUploadService.dart';
 
 class RegistrationScreen extends StatefulWidget {

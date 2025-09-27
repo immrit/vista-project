@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:math' as math;
 
-import '../../chat/ChatSettingsScreen.dart';
 import '../../chat/ArchivedConversationsScreen.dart';
 import '../../../../provider/provider.dart';
 import '../widgets/SettingsListItem.dart';
@@ -104,55 +103,6 @@ class ChatSettingsGroupPage extends ConsumerWidget {
                         _showAutoDownloadDialog(context, ref);
                       },
                     );
-                  },
-                ),
-                _buildDivider(),
-                SettingsListItem(
-                  icon: Icons.cleaning_services,
-                  iconColor: Colors.pink,
-                  title: 'مدیریت ذخیره‌سازی',
-                  subtitle: 'پاکسازی حافظه پنهان و مدیریت فضای ذخیره‌سازی',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const ChatSettingsScreen(),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          // بخش تنظیمات پیشرفته
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16.0),
-            decoration: BoxDecoration(
-              color: isDark ? colorScheme.surface : Colors.white,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              children: [
-                SettingsListItem(
-                  icon: Icons.backup,
-                  iconColor: Colors.deepPurple,
-                  title: 'پشتیبان‌گیری چت‌ها',
-                  subtitle: 'ایجاد پشتیبان از تمام مکالمات',
-                  onTap: () {
-                    _showBackupDialog(context);
-                  },
-                ),
-                _buildDivider(),
-                SettingsListItem(
-                  icon: Icons.speed,
-                  iconColor: Colors.orange,
-                  title: 'تنظیمات کارایی',
-                  subtitle: 'بهینه‌سازی مصرف باتری و رم',
-                  onTap: () {
-                    _showPerformanceDialog(context);
                   },
                 ),
               ],
@@ -396,125 +346,6 @@ class ChatSettingsGroupPage extends ConsumerWidget {
           );
         }
       },
-    );
-  }
-
-  void _showBackupDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.backup, color: Colors.deepPurple),
-            SizedBox(width: 8),
-            Text('پشتیبان‌گیری چت‌ها'),
-          ],
-        ),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-                'این قابلیت به شما امکان ایجاد پشتیبان از تمام مکالمات را می‌دهد.'),
-            SizedBox(height: 12),
-            Text(
-              '• پشتیبان‌گیری شامل متن پیام‌ها می‌شود\n'
-              '• فایل‌های رسانه‌ای جداگانه ذخیره می‌شوند\n'
-              '• امکان بازیابی در آینده وجود دارد',
-              style: TextStyle(fontSize: 13),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('انصراف'),
-          ),
-          ElevatedButton.icon(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                    content:
-                        Text('قابلیت پشتیبان‌گیری به زودی اضافه خواهد شد')),
-              );
-            },
-            icon: const Icon(Icons.backup),
-            label: const Text('شروع پشتیبان‌گیری'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showPerformanceDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => Consumer(
-        builder: (context, ref, child) {
-          final settings = ref.watch(performanceProvider);
-
-          return AlertDialog(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
-              children: [
-                Icon(Icons.speed, color: Colors.orange),
-                SizedBox(width: 8),
-                Text('تنظیمات کارایی'),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SwitchListTile(
-                  title: const Text('حالت کم‌مصرف'),
-                  subtitle: Text(ref
-                      .read(performanceProvider.notifier)
-                      .getBatterySaverDescription()),
-                  value: settings.batterySaverMode,
-                  onChanged: (value) {
-                    ref
-                        .read(performanceProvider.notifier)
-                        .updateBatterySaver(value);
-                  },
-                ),
-                SwitchListTile(
-                  title: const Text('کش هوشمند'),
-                  subtitle: Text(ref
-                      .read(performanceProvider.notifier)
-                      .getSmartCacheDescription()),
-                  value: settings.smartCache,
-                  onChanged: (value) {
-                    ref
-                        .read(performanceProvider.notifier)
-                        .updateSmartCache(value);
-                  },
-                ),
-                SwitchListTile(
-                  title: const Text('پیش‌بارگذاری پیام‌ها'),
-                  subtitle: Text(ref
-                      .read(performanceProvider.notifier)
-                      .getPreloadingDescription()),
-                  value: settings.messagePreloading,
-                  onChanged: (value) {
-                    ref
-                        .read(performanceProvider.notifier)
-                        .updateMessagePreloading(value);
-                  },
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('تأیید'),
-              ),
-            ],
-          );
-        },
-      ),
     );
   }
 }

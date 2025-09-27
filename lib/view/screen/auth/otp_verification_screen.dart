@@ -430,9 +430,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
               ),
             ),
             child: Text(
-              _canResend
-                  ? 'ارسال مجدد کد'
-                  : 'ارسال مجدد در ${_countdown} ثانیه',
+              _canResend ? 'ارسال مجدد کد' : 'ارسال مجدد در $_countdown ثانیه',
               style: TextStyle(
                 fontSize: 16.sp,
                 fontWeight: FontWeight.w600,

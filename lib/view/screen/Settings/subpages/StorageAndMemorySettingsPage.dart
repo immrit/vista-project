@@ -9,6 +9,8 @@ import '../../../../DB/advanced_cache_system.dart';
 import '../../../../DB/profile_cache_service.dart';
 import '../../../../DB/database_file_utils.dart';
 import '../../../../main.dart';
+import '../../../../provider/provider.dart';
+import '../../../../services/video_autoplay_service.dart';
 
 // Storage category model like Telegram
 class StorageCategory {
@@ -542,6 +544,10 @@ class _StorageAndMemorySettingsPageState
   Future<void> _loadAutoRemoveSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final videoAutoplayService = VideoAutoplayService();
+
+      // بارگذاری تنظیمات سرویس پخش خودکار ویدیو
+      await videoAutoplayService.loadSettings();
 
       setState(() {
         _autoRemovePrivateChats =
@@ -550,10 +556,10 @@ class _StorageAndMemorySettingsPageState
             prefs.getString('auto_remove_profiles') ?? '۲ روز';
         _maxCacheSize = prefs.getDouble('max_cache_size') ?? 32.0;
 
-        // Video settings
-        _dataSaverEnabled = prefs.getBool('video_data_saver') ?? false;
+        // Video settings from service
+        _dataSaverEnabled = videoAutoplayService.dataSaverEnabled;
         _autoQualityEnabled = prefs.getBool('video_auto_quality') ?? true;
-        _autoPlayEnabled = prefs.getBool('video_auto_play') ?? false;
+        _autoPlayEnabled = videoAutoplayService.autoPlayEnabled;
       });
     } catch (e) {
       print('❌ خطا در بارگذاری تنظیمات حذف خودکار: $e');
@@ -676,14 +682,32 @@ class _StorageAndMemorySettingsPageState
   /// ذخیره تنظیمات ویدیو در SharedPreferences
   Future<void> _saveVideoSetting(String key, dynamic value) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final videoAutoplayService = VideoAutoplayService();
 
-      if (value is bool) {
-        await prefs.setBool('video_$key', value);
-      } else if (value is String) {
-        await prefs.setString('video_$key', value);
-      } else if (value is int) {
-        await prefs.setInt('video_$key', value);
+      if (key == 'auto_play') {
+        await videoAutoplayService.setAutoPlay(value as bool);
+        setState(() {
+          _autoPlayEnabled = videoAutoplayService.autoPlayEnabled;
+        });
+        // به‌روزرسانی autoPlayProvider
+        ref.read(autoPlayProvider.notifier).refresh();
+      } else if (key == 'data_saver') {
+        await videoAutoplayService.setDataSaver(value as bool);
+        setState(() {
+          _dataSaverEnabled = value;
+        });
+        // به‌روزرسانی autoPlayProvider
+        ref.read(autoPlayProvider.notifier).refresh();
+      } else {
+        // ذخیره سایر تنظیمات در SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        if (value is bool) {
+          await prefs.setBool('video_$key', value);
+        } else if (value is String) {
+          await prefs.setString('video_$key', value);
+        } else if (value is int) {
+          await prefs.setInt('video_$key', value);
+        }
       }
 
       print('✅ تنظیمات ویدیو ذخیره شد: $key = $value');
@@ -842,6 +866,11 @@ class _StorageAndMemorySettingsPageState
 
         // Video settings section (preserved from original)
         _buildVideoSettingsSection(context, isDark),
+
+        const SizedBox(height: 24),
+
+        // Performance settings section
+        _buildPerformanceSettingsSection(context, isDark),
       ],
     );
   }
@@ -1005,7 +1034,7 @@ class _StorageAndMemorySettingsPageState
         ),
         const SizedBox(height: 8),
         Text(
-          'تنظیمات پخش و کیفیت ویدیوهای پیام‌رسان',
+          'تنظیمات پخش و کیفیت ویدیوهای پست‌ها',
           style: TextStyle(
             fontSize: 14,
             color: Colors.grey[600],
@@ -1051,26 +1080,144 @@ class _StorageAndMemorySettingsPageState
         ),
 
         // Auto Play Setting
-        Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          child: ListTile(
-            leading:
-                const Icon(Icons.play_circle_rounded, color: Colors.purple),
-            title: const Text('پخش خودکار'),
-            subtitle: const Text('پخش خودکار ویدیوها در چت'),
-            trailing: Switch(
-              value: _autoPlayEnabled,
-              onChanged: (value) {
-                setState(() => _autoPlayEnabled = value);
-                _saveVideoSetting('auto_play', value);
-              },
-              activeThumbColor: Colors.purple,
-            ),
-          ),
+        Consumer(
+          builder: (context, ref, child) {
+            final performanceSettings = ref.watch(performanceProvider);
+            final isDisabled = performanceSettings.batterySaverMode;
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: Icon(Icons.play_circle_rounded,
+                    color: isDisabled ? Colors.grey : Colors.purple),
+                title: Text(
+                  'پخش خودکار',
+                  style: TextStyle(
+                    color: isDisabled ? Colors.grey : null,
+                  ),
+                ),
+                subtitle: Text(
+                  isDisabled
+                      ? 'غیرفعال به دلیل حالت کم‌مصرف'
+                      : 'پخش خودکار ویدیوهای پست‌ها',
+                  style: TextStyle(
+                    color: isDisabled ? Colors.grey : null,
+                  ),
+                ),
+                trailing: Switch(
+                  value: isDisabled ? false : _autoPlayEnabled,
+                  onChanged: isDisabled
+                      ? null
+                      : (value) {
+                          _saveVideoSetting('auto_play', value);
+                        },
+                  activeThumbColor: Colors.purple,
+                ),
+              ),
+            );
+          },
         ),
 
         const SizedBox(height: 16),
       ],
+    );
+  }
+
+  Widget _buildPerformanceSettingsSection(BuildContext context, bool isDark) {
+    return Consumer(
+      builder: (context, ref, child) {
+        final settings = ref.watch(performanceProvider);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'تنظیمات کارایی',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.orange,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'بهینه‌سازی مصرف باتری و رم',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Battery Saver Mode
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: const Icon(Icons.battery_saver, color: Colors.green),
+                title: const Text('حالت کم‌مصرف'),
+                subtitle: Text(ref
+                    .read(performanceProvider.notifier)
+                    .getBatterySaverDescription()),
+                trailing: Switch(
+                  value: settings.batterySaverMode,
+                  onChanged: (value) async {
+                    await ref
+                        .read(performanceProvider.notifier)
+                        .updateBatterySaver(value);
+                    // به‌روزرسانی autoPlayProvider پس از تغییر حالت کم‌مصرف
+                    ref.read(autoPlayProvider.notifier).refresh();
+                  },
+                  activeThumbColor: Colors.green,
+                ),
+              ),
+            ),
+
+            // Smart Cache
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: const Icon(Icons.memory, color: Colors.blue),
+                title: const Text('کش هوشمند'),
+                subtitle: Text(ref
+                    .read(performanceProvider.notifier)
+                    .getSmartCacheDescription()),
+                trailing: Switch(
+                  value: settings.smartCache,
+                  onChanged: (value) {
+                    ref
+                        .read(performanceProvider.notifier)
+                        .updateSmartCache(value);
+                  },
+                  activeThumbColor: Colors.blue,
+                ),
+              ),
+            ),
+
+            // Message Preloading
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: const Icon(Icons.speed, color: Colors.purple),
+                title: const Text('پیش‌بارگذاری پیام‌ها'),
+                subtitle: Text(ref
+                    .read(performanceProvider.notifier)
+                    .getPreloadingDescription()),
+                trailing: Switch(
+                  value: settings.messagePreloading,
+                  onChanged: (value) {
+                    ref
+                        .read(performanceProvider.notifier)
+                        .updateMessagePreloading(value);
+                  },
+                  activeThumbColor: Colors.purple,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+          ],
+        );
+      },
     );
   }
 

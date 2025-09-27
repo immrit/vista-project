@@ -73,12 +73,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               );
             }
 
+            // محاسبه تعداد تبلیغات و ایندکس‌های آن‌ها
+            final adInterval = 5; // هر 5 پست یک تبلیغ
+            final adCount = (allPosts.length / adInterval).floor();
+            final totalItemCount =
+                allPosts.length + adCount + 1; // +1 برای loading
+
             return ListView.builder(
               controller: _scrollController,
-              itemCount: allPosts.length + 1, // +1 برای نشان دادن loading
+              itemCount: totalItemCount,
               itemBuilder: (context, index) {
-                if (index == allPosts.length) {
-                  // نشان دادن loading در انتهای لیست
+                // بررسی ایندکس loading
+                if (index == totalItemCount - 1) {
                   return const Padding(
                     padding: EdgeInsets.all(16.0),
                     child: Center(
@@ -87,7 +93,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   );
                 }
 
-                final post = allPosts[index];
+                // محاسبه ایندکس واقعی پست
+                final postIndex = _getPostIndex(index, adInterval);
+                if (postIndex >= allPosts.length) {
+                  return const SizedBox.shrink();
+                }
+
+                final post = allPosts[postIndex];
                 return PostCard(post: post);
               },
             );
@@ -123,6 +135,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       ),
     );
+  }
+
+  /// بررسی اینکه آیا ایندکس مربوط به تبلیغ است یا نه
+  bool _isAdIndex(int index, int adInterval) {
+    // تبلیغات در ایندکس‌های 5, 11, 17, ... نمایش داده می‌شوند
+    return (index + 1) % (adInterval + 1) == 0;
+  }
+
+  /// محاسبه ایندکس واقعی پست با در نظر گیری تبلیغات
+  int _getPostIndex(int index, int adInterval) {
+    // تعداد تبلیغات قبل از این ایندکس
+    final adsBefore = (index + 1) ~/ (adInterval + 1);
+    return index - adsBefore;
   }
 }
 

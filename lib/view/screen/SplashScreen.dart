@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '/main.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import '../../services/advanced_security_service.dart';
+import '../../services/onboarding_service.dart';
 
 import 'ouathUser/welcome.dart';
 import 'auth/modern_auth_screen.dart';
@@ -51,10 +52,19 @@ class _SplashScreenState extends State<SplashScreen> {
         }
       }
 
-      // انتقال به صفحه احراز هویت مدرن
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const ModernAuthScreen()),
-      );
+      // بررسی وضعیت onboarding
+      final isOnboardingCompleted =
+          await OnboardingService.isOnboardingCompleted();
+
+      if (!isOnboardingCompleted) {
+        // نمایش onboarding برای کاربران جدید
+        Navigator.of(context).pushReplacementNamed('/onboarding');
+      } else {
+        // انتقال به صفحه احراز هویت مدرن
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const ModernAuthScreen()),
+        );
+      }
     } catch (e) {
       // در صورت خطا، به صفحه قدیمی منتقل شود
       Navigator.of(context).pushReplacement(

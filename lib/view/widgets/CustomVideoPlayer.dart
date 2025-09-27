@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../model/ProfileModel.dart';
+import '../../services/video_autoplay_service.dart';
 
-class CustomVideoPlayer extends StatefulWidget {
+class CustomVideoPlayer extends ConsumerStatefulWidget {
   final String videoUrl;
   final bool autoplay;
   final bool muted;
@@ -52,10 +54,10 @@ class CustomVideoPlayer extends StatefulWidget {
   });
 
   @override
-  State<CustomVideoPlayer> createState() => _CustomVideoPlayerState();
+  ConsumerState<CustomVideoPlayer> createState() => _CustomVideoPlayerState();
 }
 
-class _CustomVideoPlayerState extends State<CustomVideoPlayer>
+class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
     with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   VideoPlayerController? _controller; // تغییر به nullable
   final VideoPlayerConfig _config = VideoPlayerConfig();
@@ -99,10 +101,12 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
 
   Future<void> _loadConfigAndInitialize() async {
     try {
-      final dataSaver = await _config.getDataSaverMode();
+      final videoAutoplayService = VideoAutoplayService();
+      await videoAutoplayService.loadSettings();
+
       if (!mounted) return;
       setState(() {
-        _isDataSaverMode = dataSaver;
+        _isDataSaverMode = videoAutoplayService.dataSaverEnabled;
       });
       await _initializePlayer();
     } catch (_) {
@@ -126,14 +130,19 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
 
   Future<void> _initializePlayer() async {
     try {
+      final videoAutoplayService = VideoAutoplayService();
+      final videoQuality = videoAutoplayService.getVideoQuality();
+
       // اگر حالت ذخیره‌داده فعال باشد، کش را غیرفعال می‌کنیم و مستقیم از شبکه پخش می‌کنیم
       // در غیر این صورت از کش سفارشی استفاده می‌کنیم
-      if (_isDataSaverMode) {
+      if (_isDataSaverMode || videoQuality == 'low') {
         _controller = VideoPlayerController.network(widget.videoUrl);
+        print('🎥 Using network video (low quality/data saver mode)');
       } else {
         final file =
             await _config.videoCacheManager.getSingleFile(widget.videoUrl);
         _controller = VideoPlayerController.file(file);
+        print('🎥 Using cached video (high quality)');
       }
 
       await _controller?.initialize();
@@ -159,7 +168,12 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
 
         _controller?.addListener(_videoListener);
 
-        if (widget.autoplay && _isVisible) {
+        // بررسی تنظیمات پخش خودکار از VideoAutoplayService
+        final videoAutoplayService = VideoAutoplayService();
+        final shouldAutoPlay =
+            widget.autoplay && videoAutoplayService.shouldAutoPlay();
+
+        if (shouldAutoPlay && _isVisible) {
           _playVideo();
         }
       }
@@ -349,8 +363,13 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer>
             _isVisible = newIsVisible;
           });
 
+          // بررسی تنظیمات پخش خودکار از VideoAutoplayService
+          final videoAutoplayService = VideoAutoplayService();
+          final shouldAutoPlay =
+              widget.autoplay && videoAutoplayService.shouldAutoPlay();
+
           // اگر قابل مشاهده است و autoplay فعال است و آماده است، پخش کنید
-          if (newIsVisible && widget.autoplay && _isInitialized) {
+          if (newIsVisible && shouldAutoPlay && _isInitialized) {
             _playVideo();
           } else if (!newIsVisible && _isPlaying) {
             _pauseVideo();

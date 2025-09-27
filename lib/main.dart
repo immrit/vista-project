@@ -34,6 +34,7 @@ import 'view/screen/ouathUser/welcome.dart';
 import 'view/screen/ouathUser/editeProfile.dart';
 import 'view/screen/auth/modern_auth_screen.dart';
 import 'view/screen/auth/biometric_login_screen.dart';
+import 'view/screen/onboarding/TelegramStyleOnboarding.dart';
 import 'services/advanced_security_service.dart';
 import 'services/wallpaper_cache_service.dart';
 import 'services/profile_service.dart';
@@ -521,6 +522,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                 '/signup': (context) => const SignUpScreen(),
                 '/home': (context) => const HomeScreen(),
                 '/login': (context) => const Loginuser(),
+                '/onboarding': (context) => const TelegramStyleOnboarding(),
                 '/modern-auth': (context) => const ModernAuthScreen(),
                 '/biometric-login': (context) => BiometricLoginScreen(
                       onSuccess: () {

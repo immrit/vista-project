@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../provider/provider.dart';
 import 'BlockedUsersPage.dart';
@@ -172,17 +173,6 @@ class PrivacySettingsPage extends ConsumerWidget {
       child: Column(
         children: [
           TelegramSettingsItem(
-            icon: Icons.delete_forever,
-            iconColor: Colors.redAccent,
-            title: 'پاک کردن کش',
-            subtitle: 'آزاد کردن فضای ذخیره‌سازی',
-            onTap: () {
-              _showComingSoon(
-                  context, 'قابلیت پاک کردن کش به زودی اضافه خواهد شد!');
-            },
-          ),
-          _buildDivider(),
-          TelegramSettingsItem(
             icon: Icons.download,
             iconColor: Colors.indigo,
             title: 'دانلود اطلاعات من',
@@ -303,20 +293,36 @@ class PrivacySettingsPage extends ConsumerWidget {
           children: [
             Icon(Icons.warning, color: Colors.red),
             SizedBox(width: 8),
-            Text('هشدار'),
+            Text('حذف حساب کاربری'),
           ],
         ),
         content: const Text(
-          'حذف حساب کاربری غیرقابل بازگشت است.\n\nبرای حذف حساب، لطفاً با پشتیبانی تماس بگیرید.',
+          'برای حذف حساب کاربری خود، لطفاً به صفحه تنظیمات وب سایت مراجعه کنید.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('متوجه شدم'),
+            child: const Text('انصراف'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _launchWebSettings();
+            },
+            child: const Text('رفتن به تنظیمات وب'),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _launchWebSettings() async {
+    final Uri url = Uri.parse('https://cafevista.ir/settings');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } else {
+      print('Could not launch $url');
+    }
   }
 }
 

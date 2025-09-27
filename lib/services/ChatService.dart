@@ -1282,7 +1282,7 @@ class ChatService {
     //final userId = _supabase.auth.currentUser!.id;
     final userId = _supabase.auth.currentUser!.id;
 
-    final requestKey = 'getMessages_${conversationId}_${offset}_${limit}';
+    final requestKey = 'getMessages_${conversationId}_${offset}_$limit';
 
     // Throttle requests to prevent excessive server calls
     if (_shouldThrottleRequest(requestKey)) {

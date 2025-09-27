@@ -50,7 +50,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen>
   final TextEditingController _birthDateController = TextEditingController();
 
   File? _imageFile;
-  bool _isLoading = false;
+  final bool _isLoading = false;
   bool _isSaving = false;
   Jalali? _selectedDate;
   int _currentStep = 0;
