@@ -742,7 +742,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
                           title: 'درباره من',
                           icon: Icons.info_outline,
                           controller: bioController,
-                          maxLines: 3,
+                          maxLines: 5,
                         ),
                         const SizedBox(height: 40),
                         SizedBox(
