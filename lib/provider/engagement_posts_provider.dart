@@ -24,14 +24,32 @@ class EngagementPostService {
       final oneWeekAgo = DateTime.now().subtract(const Duration(days: 7));
       final userId = _supabase.auth.currentUser?.id;
 
-      // مرحله 1: دریافت پست‌های یک هفته اخیر بدون مرتب‌سازی اولیه
+      if (userId == null) {
+        print('❌ کاربر وارد نشده است');
+        return [];
+      }
+
+      // دریافت لیست کاربران دنبال شده توسط کاربر فعلی
+      final followingResponse = await _supabase
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', userId);
+
+      final followingIds = followingResponse
+          .map((follow) => follow['following_id'] as String)
+          .toList();
+
+      print('👥 کاربران دنبال شده: ${followingIds.length} نفر');
+
+      // مرحله 1: دریافت پست‌ها
       final postsResponse = await _supabase
           .from('posts')
           .select('''
             *,
             profiles!posts_user_id_fkey (
-              username, 
-              avatar_url, 
+              username,
+              full_name,
+              avatar_url,
               is_verified,
               verification_type
             ),
@@ -45,7 +63,6 @@ class EngagementPostService {
           .range(offset, offset + limit - 1);
 
       final posts = List<Map<String, dynamic>>.from(postsResponse);
-      final List<PublicPostModel> postsWithEngagement = [];
       final List<PublicPostModel> likedPosts = []; // پست‌های لایک شده جداگانه
       final List<PublicPostModel> nonLikedPosts = []; // پست‌های لایک نشده
 
@@ -53,11 +70,66 @@ class EngagementPostService {
       print('👤 کاربر فعلی ID: $userId');
       print('📅 محدوده تاریخ: از ${oneWeekAgo.toString()} تا الان');
 
-      // مرحله 2: محاسبه تعامل برای هر پست
+      // دریافت لیست کاربرانی که پست دارند
+      final userIds =
+          posts.map((post) => post['user_id'] as String).toSet().toList();
+
+      // دریافت تنظیمات حریم خصوصی برای این کاربران
+      final userSettingsResponse = await _supabase
+          .from('user_settings')
+          .select('user_id, is_private')
+          .inFilter('user_id', userIds);
+
+      final userSettingsMap = {
+        for (var setting in userSettingsResponse)
+          setting['user_id'] as String: setting['is_private'] as bool? ?? false
+      };
+
+      // مرحله 2: فیلتر کردن پست‌های خصوصی
+      final filteredPosts = <Map<String, dynamic>>[];
+
       for (final post in posts) {
+        final postUserId = post['user_id'] as String;
+        final profile = post['profiles'] as Map<String, dynamic>? ?? {};
+        final username =
+            profile['username'] ?? profile['full_name'] ?? 'Unknown';
+        final isPrivate = userSettingsMap[postUserId] ?? false;
+
+        // منطق فیلتر کردن پست‌های خصوصی
+        bool shouldShowPost;
+        if (postUserId == userId) {
+          // اگر پست متعلق به خود کاربر است، همیشه نمایش داده شود
+          shouldShowPost = true;
+        } else if (followingIds.contains(postUserId)) {
+          // اگر پست متعلق به کاربر دنبال شده است، همیشه نمایش داده شود
+          shouldShowPost = true;
+        } else {
+          // اگر پست متعلق به کاربر دنبال نشده است، فقط اگر عمومی باشد نمایش داده شود
+          shouldShowPost = !isPrivate;
+        }
+
+        print('🔍 بررسی پست: $username ($postUserId)');
+        print('   - isCurrentUser: ${postUserId == userId}');
+        print('   - isFollowing: ${followingIds.contains(postUserId)}');
+        print('   - isPrivate: $isPrivate');
+        print('   - shouldShowPost: $shouldShowPost');
+
+        if (shouldShowPost) {
+          filteredPosts.add(post);
+        } else {
+          print('🔒 پست فیلتر شد (کاربر دنبال نشده): $username ($postUserId)');
+        }
+      }
+
+      print('📊 تعداد پست‌های فیلتر شده: ${filteredPosts.length}');
+
+      // مرحله 3: محاسبه تعامل برای هر پست
+      for (final post in filteredPosts) {
         final profile = post['profiles'] as Map<String, dynamic>? ?? {};
         final avatarUrl = profile['avatar_url'] as String? ?? '';
-        final username = profile['username'] as String? ?? 'Unknown';
+        final username = profile['username'] as String? ??
+            profile['full_name'] as String? ??
+            'Unknown';
         final isVerified = profile['is_verified'] as bool? ?? false;
 
         // محاسبه تعداد لایک و کامنت از رابطه‌ها
@@ -75,35 +147,33 @@ class EngagementPostService {
 
         // بررسی لایک کاربر فعلی
         bool isLiked = false;
-        if (userId != null) {
-          // بررسی دقیق‌تر لایک کاربر
-          isLiked = likes.any((like) {
-            final likeUserId = like['user_id'] as String?;
-            final isUserLiked = likeUserId == userId;
-            if (isUserLiked) {
-              print('❤️ کاربر $userId پست ${post['id']} را لایک کرده است');
-            }
-            return isUserLiked;
-          });
+        // بررسی دقیق‌تر لایک کاربر
+        isLiked = likes.any((like) {
+          final likeUserId = like['user_id'] as String?;
+          final isUserLiked = likeUserId == userId;
+          if (isUserLiked) {
+            print('❤️ کاربر $userId پست ${post['id']} را لایک کرده است');
+          }
+          return isUserLiked;
+        });
 
-          // اگر از رابطه‌ها نتوانستیم تشخیص دهیم، کوئری جداگانه اجرا می‌کنیم
-          if (!isLiked && likes.isNotEmpty) {
-            try {
-              final userLikeResponse = await _supabase
-                  .from('likes')
-                  .select('id')
-                  .eq('post_id', post['id'])
-                  .eq('user_id', userId)
-                  .maybeSingle();
+        // اگر از رابطه‌ها نتوانستیم تشخیص دهیم، کوئری جداگانه اجرا می‌کنیم
+        if (!isLiked) {
+          try {
+            final userLikeResponse = await _supabase
+                .from('likes')
+                .select('id')
+                .eq('post_id', post['id'])
+                .eq('user_id', userId)
+                .maybeSingle();
 
-              if (userLikeResponse != null) {
-                isLiked = true;
-                print(
-                    '🔧 کاربر $userId پست ${post['id']} را لایک کرده است (از کوئری جداگانه)');
-              }
-            } catch (e) {
-              print('⚠️ خطا در بررسی لایک کاربر از کوئری جداگانه: $e');
+            if (userLikeResponse != null) {
+              isLiked = true;
+              print(
+                  '🔧 کاربر $userId پست ${post['id']} را لایک کرده است (از کوئری جداگانه)');
             }
+          } catch (e) {
+            print('⚠️ خطا در بررسی لایک کاربر از کوئری جداگانه: $e');
           }
         }
 
@@ -129,7 +199,7 @@ class EngagementPostService {
             '📝 پست ${post['id']}: لایک=$likeCount, کامنت=$commentCount, امتیاز=$engagementScore, کاربر لایک کرده: $isLiked');
       }
 
-      // مرحله 3: مرتب‌سازی جداگانه برای هر گروه
+      // مرحله 4: مرتب‌سازی جداگانه برای هر گروه
 
       // مرتب‌سازی پست‌های لایک نشده بر اساس تعامل (مثل اینستاگرام)
       nonLikedPosts.sort((a, b) {

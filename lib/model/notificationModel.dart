@@ -134,10 +134,22 @@ class NotificationModel extends Equatable {
     }
 
     String getUsername() {
-      if (map.containsKey('username')) return map['username'] ?? '';
+      if (map.containsKey('username')) {
+        final username = map['username'] as String?;
+        if (username != null && username.isNotEmpty) return username;
+        // Fallback to full_name if username is empty
+        final fullName = map['full_name'] as String?;
+        if (fullName != null && fullName.isNotEmpty) return fullName;
+        return '';
+      }
       if (map.containsKey('sender') && map['sender'] != null) {
         final senderMap = map['sender'] as Map<String, dynamic>;
-        return senderMap['username'] ?? '';
+        final username = senderMap['username'] as String?;
+        if (username != null && username.isNotEmpty) return username;
+        // Fallback to full_name if username is empty
+        final fullName = senderMap['full_name'] as String?;
+        if (fullName != null && fullName.isNotEmpty) return fullName;
+        return '';
       }
       return '';
     }

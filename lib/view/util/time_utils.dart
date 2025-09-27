@@ -13,10 +13,10 @@ class TimeUtils {
     return time.toUtc().add(tehranTimeZoneOffset);
   }
 
-  // قالب‌بندی زمان برای نمایش ساعت
+  // قالب‌بندی زمان برای نمایش ساعت - استفاده از زمان محلی گوشی
   static String formatTime(DateTime time) {
-    final tehranTime = toTehranTime(time);
-    return '${tehranTime.hour.toString().padLeft(2, '0')}:${tehranTime.minute.toString().padLeft(2, '0')}';
+    final localTime = time.toLocal();
+    return '${localTime.hour.toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')}';
   }
 
   // قالب‌بندی تاریخ برای نمایش
@@ -92,10 +92,10 @@ class TimeUtils {
     }
   }
 
-  // فرمت ساعت پیام (مثل تلگرام)
+  // فرمت ساعت پیام (مثل تلگرام) - استفاده از زمان محلی گوشی
   static String formatMessageTime(DateTime messageTime) {
-    final tehranTime = toTehranTime(messageTime);
-    return '${tehranTime.hour.toString().padLeft(2, '0')}:${tehranTime.minute.toString().padLeft(2, '0')}';
+    final localTime = messageTime.toLocal();
+    return '${localTime.hour.toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')}';
   }
 
   // فرمت تاریخ برای جداکننده (مثل تلگرام)
@@ -132,27 +132,27 @@ class TimeUtils {
     return '${jDate.day.toString().padLeft(2, '0')} ${_getPersianMonth(jDate.month)} ${jDate.year}';
   }
 
-  // فرمت زمان در لیست گفتگوها (مثل تلگرام)
+  // فرمت زمان در لیست گفتگوها (مثل تلگرام) - استفاده از زمان محلی گوشی
   static String formatConversationTime(DateTime messageTime) {
     final now = DateTime.now();
-    final tehranTime = toTehranTime(messageTime);
-    final tehranNow = toTehranTime(now);
+    final localTime = messageTime.toLocal();
+    final localNow = now.toLocal();
 
-    final jDate = Jalali.fromDateTime(tehranTime);
-    final jNow = Jalali.fromDateTime(tehranNow);
+    final jDate = Jalali.fromDateTime(localTime);
+    final jNow = Jalali.fromDateTime(localNow);
 
     // امروز - فقط ساعت
-    if (_isSameDay(tehranTime, tehranNow)) {
+    if (_isSameDay(localTime, localNow)) {
       return formatMessageTime(messageTime);
     }
 
     // دیروز
-    if (_isSameDay(tehranTime, tehranNow.subtract(const Duration(days: 1)))) {
+    if (_isSameDay(localTime, localNow.subtract(const Duration(days: 1)))) {
       return 'دیروز';
     }
 
     // هفته جاری
-    final daysDifference = tehranNow.difference(tehranTime).inDays;
+    final daysDifference = localNow.difference(localTime).inDays;
     if (daysDifference < 7 && daysDifference > 0) {
       return _getPersianWeekDay(jDate.weekDay);
     }
@@ -166,26 +166,26 @@ class TimeUtils {
     return '${jDate.day}/${jDate.month}/${jDate.year}';
   }
 
-  // تشخیص نیاز به نمایش جداکننده تاریخ
+  // تشخیص نیاز به نمایش جداکننده تاریخ - استفاده از زمان محلی گوشی
   static bool shouldShowDateDivider(
       DateTime currentMessage, DateTime? previousMessage) {
     if (previousMessage == null) return true;
 
-    final currentTehran = toTehranTime(currentMessage);
-    final previousTehran = toTehranTime(previousMessage);
+    final currentLocal = currentMessage.toLocal();
+    final previousLocal = previousMessage.toLocal();
 
-    return !_isSameDay(currentTehran, previousTehran);
+    return !_isSameDay(currentLocal, previousLocal);
   }
 
-  // محاسبه فاصله زمانی بین دو پیام (برای فاصله‌گذاری)
+  // محاسبه فاصله زمانی بین دو پیام (برای فاصله‌گذاری) - استفاده از زمان محلی گوشی
   static Duration getTimeDifference(
       DateTime currentMessage, DateTime? previousMessage) {
     if (previousMessage == null) return Duration.zero;
 
-    final currentTehran = toTehranTime(currentMessage);
-    final previousTehran = toTehranTime(previousMessage);
+    final currentLocal = currentMessage.toLocal();
+    final previousLocal = previousMessage.toLocal();
 
-    return currentTehran.difference(previousTehran).abs();
+    return currentLocal.difference(previousLocal).abs();
   }
 
   // تشخیص نیاز به فاصله بیشتر بین پیام‌ها (مثل تلگرام)
@@ -452,14 +452,14 @@ class TimeUtils {
     }
   }
 
-  // قالب‌بندی زمان برای نمایش در صفحه جستجو
+  // قالب‌بندی زمان برای نمایش در صفحه جستجو - استفاده از زمان محلی گوشی
   static String formatDateTimeForDisplay(DateTime dateTime) {
-    final tehranTime = toTehranTime(dateTime);
-    final now = DateTime.now();
+    final localTime = dateTime.toLocal();
+    final now = DateTime.now().toLocal();
     final today = DateTime(now.year, now.month, now.day);
     final yesterday = today.subtract(Duration(days: 1));
     final dateToCheck =
-        DateTime(tehranTime.year, tehranTime.month, tehranTime.day);
+        DateTime(localTime.year, localTime.month, localTime.day);
 
     if (dateToCheck == today) {
       return 'امروز ${formatTime(dateTime)}';
@@ -470,26 +470,24 @@ class TimeUtils {
     }
   }
 
-  // بررسی اینکه آیا زمان در محدوده امروز است
+  // بررسی اینکه آیا زمان در محدوده امروز است - استفاده از زمان محلی گوشی
   static bool isToday(DateTime time) {
-    final now = DateTime.now();
-    final tehranTime = toTehranTime(time);
-    final tehranNow = toTehranTime(now);
+    final now = DateTime.now().toLocal();
+    final localTime = time.toLocal();
 
-    return tehranTime.year == tehranNow.year &&
-        tehranTime.month == tehranNow.month &&
-        tehranTime.day == tehranNow.day;
+    return localTime.year == now.year &&
+        localTime.month == now.month &&
+        localTime.day == now.day;
   }
 
-  // بررسی اینکه آیا زمان در محدوده دیروز است
+  // بررسی اینکه آیا زمان در محدوده دیروز است - استفاده از زمان محلی گوشی
   static bool isYesterday(DateTime time) {
-    final now = DateTime.now();
+    final now = DateTime.now().toLocal();
     final yesterday = now.subtract(Duration(days: 1));
-    final tehranTime = toTehranTime(time);
-    final tehranYesterday = toTehranTime(yesterday);
+    final localTime = time.toLocal();
 
-    return tehranTime.year == tehranYesterday.year &&
-        tehranTime.month == tehranYesterday.month &&
-        tehranTime.day == tehranYesterday.day;
+    return localTime.year == yesterday.year &&
+        localTime.month == yesterday.month &&
+        localTime.day == yesterday.day;
   }
 }

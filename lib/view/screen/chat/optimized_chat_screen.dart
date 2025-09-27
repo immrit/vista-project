@@ -497,10 +497,12 @@ class _OptimizedChatScreenState extends ConsumerState<OptimizedChatScreen>
 
               // Date divider check
               bool showDateDivider = false;
-              if (index == filteredMessages.length - 1) {
+              if (index == 0) {
+                // با reverse: true، اولین پیام در index 0 است
                 showDateDivider = true;
               } else {
-                final prevMsg = filteredMessages[index + 1];
+                final prevMsg = filteredMessages[
+                    index - 1]; // با reverse: true، پیام قبلی در index - 1 است
                 if (!_isSameDay(message.createdAt, prevMsg.createdAt)) {
                   showDateDivider = true;
                 }

@@ -150,9 +150,9 @@ class _OptimizedMessageWidgetState extends State<OptimizedMessageWidget>
   }
 
   String _formatMessageHour(DateTime time) {
-    final tehranOffset = const Duration(hours: 3, minutes: 30);
-    final tehranTime = time.toUtc().add(tehranOffset);
-    return '${tehranTime.hour.toString().padLeft(2, '0')}:${tehranTime.minute.toString().padLeft(2, '0')}';
+    // استفاده از زمان محلی گوشی
+    final localTime = time.toLocal();
+    return '${localTime.hour.toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')}';
   }
 
   @override

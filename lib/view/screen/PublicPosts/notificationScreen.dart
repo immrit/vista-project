@@ -175,6 +175,10 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
         return Icons.comment;
       case 'follow':
         return Icons.person_add;
+      case 'follow_request':
+        return Icons.person_add_alt_1;
+      case 'follow_request_accepted':
+        return Icons.check_circle;
       case 'mention':
         return Icons.alternate_email;
       case 'comment_reply':
@@ -191,6 +195,10 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
       case 'new_comment':
         return Colors.blue;
       case 'follow':
+        return Colors.green;
+      case 'follow_request':
+        return Colors.orange;
+      case 'follow_request_accepted':
         return Colors.green;
       case 'mention':
         return Colors.purple;
@@ -263,7 +271,8 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                           builder: (context) =>
                               PostDetailsPage(postId: notification.PostId),
                         ));
-                  } else if (notification.type == 'follow') {
+                  } else if (notification.type == 'follow' ||
+                      notification.type == 'follow_request_accepted') {
                     Navigator.push(
                         context,
                         MaterialPageRoute(

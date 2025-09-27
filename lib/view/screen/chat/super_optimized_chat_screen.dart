@@ -179,8 +179,9 @@ class _SuperOptimizedChatScreenState
               itemCount: messages.length,
               itemBuilder: (context, index) {
                 final message = messages[index];
-                final previousMessage =
-                    index < messages.length - 1 ? messages[index + 1] : null;
+                final previousMessage = index > 0
+                    ? messages[index - 1]
+                    : null; // با reverse: true، پیام قبلی در index - 1 است
 
                 return _buildMessageItem(message, previousMessage);
               },

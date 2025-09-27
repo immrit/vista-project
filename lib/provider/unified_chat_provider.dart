@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../DB/message_cache_service_wrapper.dart';
 import '../main.dart';
+import '../model/conversation_model.dart';
 import '../model/message_model.dart';
 import '../services/ChatService.dart';
 
@@ -93,7 +94,8 @@ class UnifiedMessagesNotifier extends StateNotifier<UnifiedMessagesState> {
     }
 
     return uniqueMessages.values.toList()
-      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      ..sort((a, b) => a.createdAt.compareTo(
+          b.createdAt)); // قدیمی‌ترین پیام اول (برای reverse ListView)
   }
 
   /// مقداردهی اولیه پیام‌ها
@@ -310,3 +312,112 @@ final messagesLoadingProvider =
   final messagesState = ref.watch(unifiedMessagesProvider(conversationId));
   return messagesState.isLoading;
 });
+
+// ==================== Provider های بهینه‌سازی شده ====================
+
+/// Provider برای ChatService بهینه‌سازی شده
+final optimizedChatServiceProvider = Provider<ChatService>((ref) {
+  final chatService = ChatService();
+
+  ref.onDispose(() {
+    chatService.disposeOptimizedMessaging();
+  });
+
+  return chatService;
+});
+
+/// Provider برای دریافت پیام‌ها به صورت stream (بهینه‌سازی شده)
+final optimizedMessagesStreamProvider =
+    StreamProvider.family<List<MessageModel>, String>((ref, conversationId) {
+  final chatService = ref.watch(optimizedChatServiceProvider);
+  return chatService.getOptimizedMessagesStream(conversationId);
+});
+
+/// Provider برای دریافت مکالمات به صورت stream (بهینه‌سازی شده)
+final optimizedConversationsStreamProvider =
+    StreamProvider<List<ConversationModel>>((ref) {
+  final chatService = ref.watch(optimizedChatServiceProvider);
+  return chatService.getOptimizedConversationsStream();
+});
+
+/// Provider برای ارسال پیام بهینه‌سازی شده
+final sendOptimizedMessageProvider =
+    Provider.family<Future<MessageModel>, SendMessageParams>((ref, params) {
+  final chatService = ref.watch(optimizedChatServiceProvider);
+  return chatService.sendOptimizedMessage(
+    conversationId: params.conversationId,
+    content: params.content,
+    attachmentUrl: params.attachmentUrl,
+    attachmentType: params.attachmentType,
+    replyToMessageId: params.replyToMessageId,
+    replyToContent: params.replyToContent,
+    replyToSenderName: params.replyToSenderName,
+  );
+});
+
+/// Provider برای فعال‌سازی مکالمه
+final activateConversationProvider =
+    Provider.family<void, String>((ref, conversationId) {
+  final chatService = ref.watch(optimizedChatServiceProvider);
+  chatService.activateConversation(conversationId);
+});
+
+/// Provider برای غیرفعال‌سازی مکالمه
+final deactivateConversationProvider =
+    Provider.family<void, String>((ref, conversationId) {
+  final chatService = ref.watch(optimizedChatServiceProvider);
+  chatService.deactivateConversation(conversationId);
+});
+
+/// Provider برای مقداردهی اولیه سیستم بهینه‌سازی شده
+final initializeOptimizedMessagingProvider = Provider<Future<void>>((ref) {
+  final chatService = ref.watch(optimizedChatServiceProvider);
+  return chatService.initializeOptimizedMessaging();
+});
+
+/// Send message parameters
+class SendMessageParams {
+  final String conversationId;
+  final String content;
+  final String? attachmentUrl;
+  final String? attachmentType;
+  final String? replyToMessageId;
+  final String? replyToContent;
+  final String? replyToSenderName;
+
+  const SendMessageParams({
+    required this.conversationId,
+    required this.content,
+    this.attachmentUrl,
+    this.attachmentType,
+    this.replyToMessageId,
+    this.replyToContent,
+    this.replyToSenderName,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is SendMessageParams &&
+        other.conversationId == conversationId &&
+        other.content == content &&
+        other.attachmentUrl == attachmentUrl &&
+        other.attachmentType == attachmentType &&
+        other.replyToMessageId == replyToMessageId &&
+        other.replyToContent == replyToContent &&
+        other.replyToSenderName == replyToSenderName;
+  }
+
+  @override
+  int get hashCode {
+    return Object.hash(
+      conversationId,
+      content,
+      attachmentUrl,
+      attachmentType,
+      replyToMessageId,
+      replyToContent,
+      replyToSenderName,
+    );
+  }
+}

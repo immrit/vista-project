@@ -160,7 +160,9 @@ class PushNotificationService {
     } else if (type == 'like' ||
         type == 'new_comment' ||
         type == 'comment_reply' ||
-        type == 'follow') {
+        type == 'follow' ||
+        type == 'follow_request' ||
+        type == 'follow_request_accepted') {
       channelId = 'social_notify';
       channelName = 'اعلان اجتماعی';
       channelDescription = 'اعلان‌های اجتماعی (لایک، کامنت، دنبال‌کننده و ...)';

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:collection';
 
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
@@ -486,14 +487,21 @@ class ChatService {
       );
       // ذخیره در کش
       await _messageCache.cacheMessage(temporaryMessage, userId);
-      // بروزرسانی مکالمه در کش
+      // بروزرسانی مکالمه در کش با پیام temp
       final conversation = await _conversationCache.getConversation(
         conversationId,
         userId,
       );
       if (conversation != null) {
+        // Format last message content for temp messages
+        String lastMessageContent = content;
+        if (temporaryId.startsWith('temp_')) {
+          // Add clock icon for pending messages
+          lastMessageContent = '🕐 $content';
+        }
+
         final updatedConversation = conversation.copyWith(
-          lastMessage: content,
+          lastMessage: lastMessageContent,
           lastMessageTime: DateTime.now(),
           updatedAt: DateTime.now(),
         );
@@ -1332,7 +1340,8 @@ class ChatService {
             .from('messages')
             .select()
             .eq('conversation_id', conversationId)
-            .order('created_at', ascending: false)
+            .order('created_at',
+                ascending: true) // قدیمی‌ترین اول (برای reverse ListView)
             .range(offset, offset + limit - 1);
 
         // فیلتر کردن پیام‌های مخفی شده
@@ -1405,7 +1414,8 @@ class ChatService {
         .from('messages')
         .stream(primaryKey: ['id'])
         .eq('conversation_id', conversationId)
-        .order('created_at')
+        .order('created_at',
+            ascending: true) // قدیمی‌ترین اول (برای reverse ListView)
         .map((data) async {
           // استخراج sender_id های منحصر به فرد
           final senderIds =
@@ -2135,5 +2145,420 @@ class ChatService {
         userFriendlyMessage: 'تغییر وضعیت بایگانی با خطا مواجه شد.',
       );
     }
+  }
+
+  // ==================== سیستم بهینه‌سازی شده پیام‌رسانی ====================
+
+  // Real-time streams برای بهینه‌سازی
+  final Map<String, StreamController<List<MessageModel>>> _messageStreams = {};
+  final StreamController<List<ConversationModel>> _conversationStream =
+      StreamController<List<ConversationModel>>.broadcast();
+
+  // Offline message queue
+  final Queue<MessageModel> _offlineMessageQueue = Queue<MessageModel>();
+  final Map<String, MessageModel> _optimizedPendingMessages = {};
+
+  // Performance optimization
+  final Map<String, DateTime> _lastUpdate = {};
+  final Set<String> _activeConversations = {};
+
+  // Configuration
+  static const int maxCacheSize = 1000;
+  static const Duration syncInterval = Duration(seconds: 5);
+  static const Duration offlineRetryInterval = Duration(seconds: 10);
+
+  Timer? _syncTimer;
+  Timer? _offlineRetryTimer;
+  bool _isOnline = true;
+
+  /// Initialize the optimized messaging system
+  Future<void> initializeOptimizedMessaging() async {
+    _startBackgroundSync();
+    _startOfflineRetry();
+    _setupConnectivityListener();
+    print('🚀 Optimized Messaging initialized');
+  }
+
+  /// Setup connectivity monitoring
+  void _setupConnectivityListener() {
+    Timer.periodic(const Duration(seconds: 3), (timer) async {
+      final wasOnline = _isOnline;
+      _isOnline = await isDeviceOnline();
+
+      if (!wasOnline && _isOnline) {
+        // Just came online - sync pending messages
+        await _syncPendingMessages();
+      }
+    });
+  }
+
+  /// Start background synchronization
+  void _startBackgroundSync() {
+    _syncTimer = Timer.periodic(syncInterval, (timer) async {
+      if (_isOnline) {
+        await _performBackgroundSync();
+      }
+    });
+  }
+
+  /// Start offline message retry
+  void _startOfflineRetry() {
+    _offlineRetryTimer = Timer.periodic(offlineRetryInterval, (timer) async {
+      if (_isOnline && _offlineMessageQueue.isNotEmpty) {
+        await _syncPendingMessages();
+      }
+    });
+  }
+
+  /// Perform background synchronization
+  Future<void> _performBackgroundSync() async {
+    try {
+      for (final conversationId in _activeConversations) {
+        await _syncConversationMessages(conversationId);
+      }
+    } catch (e) {
+      print('⚠️ Background sync error: $e');
+    }
+  }
+
+  /// Sync messages for a specific conversation
+  Future<void> _syncConversationMessages(String conversationId) async {
+    try {
+      final lastUpdate = _lastUpdate[conversationId] ??
+          DateTime.now().subtract(const Duration(hours: 1));
+
+      final response = await _supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .gte('created_at', lastUpdate.toIso8601String())
+          .order('created_at', ascending: false)
+          .limit(50)
+          .timeout(const Duration(seconds: 10));
+
+      if (response.isNotEmpty) {
+        final userId = _supabase.auth.currentUser?.id;
+        if (userId != null) {
+          final newMessages = response
+              .map((json) => MessageModel.fromJson(json, currentUserId: userId))
+              .toList();
+
+          for (final message in newMessages) {
+            await _messageCache.cacheMessage(message, userId);
+          }
+          _broadcastMessageUpdates(conversationId, newMessages);
+          _lastUpdate[conversationId] = DateTime.now();
+        }
+      }
+    } catch (e) {
+      print('⚠️ Sync error for $conversationId: $e');
+    }
+  }
+
+  /// Send message with instant display (optimized version)
+  Future<MessageModel> sendOptimizedMessage({
+    required String conversationId,
+    required String content,
+    String? attachmentUrl,
+    String? attachmentType,
+    String? replyToMessageId,
+    String? replyToContent,
+    String? replyToSenderName,
+  }) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    // Create temporary message for instant display
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    final tempMessage = MessageModel(
+      id: tempId,
+      conversationId: conversationId,
+      senderId: userId,
+      content: content,
+      createdAt: DateTime.now(),
+      attachmentUrl: attachmentUrl,
+      attachmentType: attachmentType,
+      isRead: false,
+      isSent: false,
+      isPending: true,
+      senderName: 'من',
+      senderAvatar: null,
+      isMe: true,
+      replyToMessageId: replyToMessageId,
+      replyToContent: replyToContent,
+      replyToSenderName: replyToSenderName,
+      localId: tempId,
+    );
+
+    // Instantly display the message
+    await _messageCache.cacheMessage(tempMessage, userId);
+    _broadcastMessageUpdates(conversationId, [tempMessage]);
+    _optimizedPendingMessages[tempId] = tempMessage;
+
+    // Update conversation with temp message
+    final conversation =
+        await _conversationCache.getConversation(conversationId, userId);
+    if (conversation != null) {
+      final updatedConversation = conversation.copyWith(
+        lastMessage: '🕐 $content', // Add clock icon for pending messages
+        lastMessageTime: tempMessage.createdAt,
+        updatedAt: tempMessage.createdAt,
+      );
+      await _conversationCache.updateConversation(updatedConversation, userId);
+    }
+
+    // Try to send immediately if online
+    if (_isOnline) {
+      try {
+        final realMessage = await sendMessage(
+          conversationId: conversationId,
+          content: content,
+          attachmentUrl: attachmentUrl,
+          attachmentType: attachmentType,
+          replyToMessageId: replyToMessageId,
+          replyToContent: replyToContent,
+          replyToSenderName: replyToSenderName,
+        );
+        await _replaceTempMessage(tempId, realMessage, conversationId);
+        _optimizedPendingMessages.remove(tempId);
+        return realMessage;
+      } catch (e) {
+        print('⚠️ Send failed, queuing for retry: $e');
+        _offlineMessageQueue.add(tempMessage);
+      }
+    } else {
+      _offlineMessageQueue.add(tempMessage);
+    }
+
+    return tempMessage;
+  }
+
+  /// Replace temporary message with real message
+  Future<void> _replaceTempMessage(
+      String tempId, MessageModel realMessage, String conversationId) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId != null) {
+      await _messageCache.cacheMessage(realMessage, userId);
+
+      // Update conversation with real message (remove clock icon)
+      final conversation =
+          await _conversationCache.getConversation(conversationId, userId);
+      if (conversation != null) {
+        final updatedConversation = conversation.copyWith(
+          lastMessage:
+              realMessage.content, // Remove clock icon for sent messages
+          lastMessageTime: realMessage.createdAt,
+          updatedAt: realMessage.createdAt,
+        );
+        await _conversationCache.updateConversation(
+            updatedConversation, userId);
+      }
+    }
+    _broadcastMessageUpdates(conversationId, [realMessage]);
+  }
+
+  /// Sync pending offline messages
+  Future<void> _syncPendingMessages() async {
+    if (_offlineMessageQueue.isEmpty) return;
+
+    final messagesToSync = List<MessageModel>.from(_offlineMessageQueue);
+    _offlineMessageQueue.clear();
+
+    for (final message in messagesToSync) {
+      try {
+        final realMessage = await sendMessage(
+          conversationId: message.conversationId,
+          content: message.content,
+          attachmentUrl: message.attachmentUrl,
+          attachmentType: message.attachmentType,
+          replyToMessageId: message.replyToMessageId,
+          replyToContent: message.replyToContent,
+          replyToSenderName: message.replyToSenderName,
+        );
+        await _replaceTempMessage(
+            message.id, realMessage, message.conversationId);
+        _optimizedPendingMessages.remove(message.id);
+
+        print('✅ Successfully synced offline message: ${message.content}');
+      } catch (e) {
+        print('⚠️ Failed to sync message ${message.id}: $e');
+        // Re-queue for retry
+        _offlineMessageQueue.add(message);
+      }
+    }
+  }
+
+  /// Get messages stream for a conversation (optimized)
+  Stream<List<MessageModel>> getOptimizedMessagesStream(String conversationId) {
+    if (!_messageStreams.containsKey(conversationId)) {
+      _messageStreams[conversationId] =
+          StreamController<List<MessageModel>>.broadcast();
+      _activeConversations.add(conversationId);
+
+      // Load initial messages
+      _loadInitialMessages(conversationId);
+
+      // Setup real-time listener
+      _setupRealtimeListener(conversationId);
+    }
+
+    return _messageStreams[conversationId]!.stream;
+  }
+
+  /// Load initial messages from cache
+  Future<void> _loadInitialMessages(String conversationId) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId != null) {
+        final cachedMessages =
+            await _messageCache.getConversationMessages(conversationId, userId);
+        if (cachedMessages.isNotEmpty) {
+          _broadcastMessageUpdates(conversationId, cachedMessages);
+        }
+      }
+
+      // Load from server if online
+      if (_isOnline) {
+        await _syncConversationMessages(conversationId);
+      }
+    } catch (e) {
+      print('⚠️ Error loading initial messages: $e');
+    }
+  }
+
+  /// Setup real-time listener for a conversation
+  void _setupRealtimeListener(String conversationId) {
+    _supabase
+        .from('messages')
+        .stream(primaryKey: ['id'])
+        .eq('conversation_id', conversationId)
+        .order('created_at', ascending: false)
+        .listen((jsonList) {
+          final userId = _supabase.auth.currentUser?.id;
+          if (userId != null) {
+            final newMessages = jsonList
+                .map((json) =>
+                    MessageModel.fromJson(json, currentUserId: userId))
+                .where((msg) => !msg.id.startsWith('temp_'))
+                .toList();
+
+            if (newMessages.isNotEmpty) {
+              _handleIncomingMessages(conversationId, newMessages);
+            }
+          }
+        }, onError: (error) {
+          print('⚠️ Real-time listener error: $error');
+        });
+  }
+
+  /// Handle incoming messages
+  Future<void> _handleIncomingMessages(
+      String conversationId, List<MessageModel> newMessages) async {
+    try {
+      // Cache new messages
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId != null) {
+        for (final message in newMessages) {
+          await _messageCache.cacheMessage(message, userId);
+        }
+
+        // Update conversation with latest message
+        if (newMessages.isNotEmpty) {
+          final latestMessage = newMessages.last;
+          final conversation =
+              await _conversationCache.getConversation(conversationId, userId);
+          if (conversation != null) {
+            final updatedConversation = conversation.copyWith(
+              lastMessage: latestMessage.content,
+              lastMessageTime: latestMessage.createdAt,
+              updatedAt: latestMessage.createdAt,
+            );
+            await _conversationCache.updateConversation(
+                updatedConversation, userId);
+          }
+        }
+      }
+
+      // Broadcast updates
+      _broadcastMessageUpdates(conversationId, newMessages);
+    } catch (e) {
+      print('⚠️ Error handling incoming messages: $e');
+    }
+  }
+
+  /// Broadcast message updates
+  void _broadcastMessageUpdates(
+      String conversationId, List<MessageModel> messages) {
+    final stream = _messageStreams[conversationId];
+    if (stream != null && !stream.isClosed) {
+      // Get current messages and merge
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId != null) {
+        _messageCache
+            .getConversationMessages(conversationId, userId)
+            .then((cachedMessages) {
+          final mergedMessages = _mergeMessages(cachedMessages, messages);
+          stream.add(mergedMessages);
+        });
+      }
+    }
+  }
+
+  /// Merge message lists avoiding duplicates
+  List<MessageModel> _mergeMessages(
+      List<MessageModel> existing, List<MessageModel> newMessages) {
+    final messageMap = <String, MessageModel>{};
+
+    // Add existing messages
+    for (final message in existing) {
+      messageMap[message.id] = message;
+    }
+
+    // Add new messages (overwrites if newer)
+    for (final message in newMessages) {
+      final existingMessage = messageMap[message.id];
+      if (existingMessage == null ||
+          message.createdAt.isAfter(existingMessage.createdAt)) {
+        messageMap[message.id] = message;
+      }
+    }
+
+    // Convert back to list and sort
+    final merged = messageMap.values.toList();
+    merged.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+    return merged;
+  }
+
+  /// Get conversations stream (optimized)
+  Stream<List<ConversationModel>> getOptimizedConversationsStream() {
+    return _conversationStream.stream;
+  }
+
+  /// Mark conversation as active
+  void activateConversation(String conversationId) {
+    _activeConversations.add(conversationId);
+  }
+
+  /// Mark conversation as inactive
+  void deactivateConversation(String conversationId) {
+    _activeConversations.remove(conversationId);
+    _messageStreams[conversationId]?.close();
+    _messageStreams.remove(conversationId);
+  }
+
+  /// Dispose optimized messaging resources
+  void disposeOptimizedMessaging() {
+    _syncTimer?.cancel();
+    _offlineRetryTimer?.cancel();
+
+    for (final stream in _messageStreams.values) {
+      stream.close();
+    }
+    _messageStreams.clear();
+
+    _conversationStream.close();
+    _offlineMessageQueue.clear();
+    _optimizedPendingMessages.clear();
   }
 }

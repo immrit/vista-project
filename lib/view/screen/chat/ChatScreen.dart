@@ -19,10 +19,10 @@ import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
-import 'package:shamsi_date/shamsi_date.dart';
 import '../../../model/message_model.dart';
 import '../../../provider/chat_provider.dart';
 import '../../../provider/provider.dart';
+import '../../../provider/unified_chat_provider.dart';
 import '../../../services/audio_recording_service.dart';
 import '../../../services/uploadAudioChatService.dart';
 import '../../../services/uploadImageChatService.dart';
@@ -135,6 +135,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     }
   }
 
+  /// Initialize optimized messaging system
+  Future<void> _initializeOptimizedMessaging() async {
+    try {
+      final chatService = ref.read(optimizedChatServiceProvider);
+      await chatService.initializeOptimizedMessaging();
+      chatService.activateConversation(widget.conversationId);
+      print(
+          '✅ Optimized messaging initialized for conversation: ${widget.conversationId}');
+    } catch (e) {
+      print('⚠️ Error initializing optimized messaging: $e');
+    }
+  }
+
   // Animation state for deletion
   final Set<String> _deletingMessageIds = {};
 
@@ -207,6 +220,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       // قابلیت خواندن پیام حذف شد
       ref.read(userOnlineNotifierProvider).updateOnlineStatus();
       _checkOnlineStatus();
+      // Initialize optimized messaging
+      _initializeOptimizedMessaging();
     });
     _itemPositionsListener.itemPositions.addListener(_handleScrollToBottomBtn);
 
@@ -389,6 +404,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     if (ChatService.activeConversationId == widget.conversationId) {
       ChatService.activeConversationId = null;
     }
+
+    // Deactivate conversation to stop unnecessary updates
+    try {
+      final chatService = ref.read(optimizedChatServiceProvider);
+      chatService.deactivateConversation(widget.conversationId);
+    } catch (e) {
+      print('⚠️ Error deactivating conversation: $e');
+    }
+
     super.dispose();
   }
 
@@ -1346,41 +1370,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     );
   }
 
-  String _getPersianMonth(int month) {
-    switch (month) {
-      case 1:
-        return 'فروردین';
-      case 2:
-        return 'اردیبهشت';
-      case 3:
-        return 'خرداد';
-      case 4:
-        return 'تیر';
-      case 5:
-        return 'مرداد';
-      case 6:
-        return 'شهریور';
-      case 7:
-        return 'مهر';
-      case 8:
-        return 'آبان';
-      case 9:
-        return 'آذر';
-      case 10:
-        return 'دی';
-      case 11:
-        return 'بهمن';
-      case 12:
-        return 'اسفند';
-      default:
-        return '';
-    }
-  }
-
-  bool _isSameDay(DateTime a, DateTime b) {
-    return !TimeUtils.shouldShowDateDivider(b, a);
-  }
-
   // جایگزینی _buildMessageInput با استفاده از ChatInputBox
   Widget _buildMessageInput() {
     return ChatInputBox(
@@ -1677,301 +1666,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       builder: (context, ref, child) {
         final fontSize = ref.watch(messageFontSizeProvider);
         return _buildMessageItemContent(context, message, isMe, fontSize);
-      },
-    );
-  }
-
-  // حذف شد - استفاده نمی‌شود
-  Widget _buildHeaderShimmer() {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-
-    return TweenAnimationBuilder<double>(
-      duration: const Duration(milliseconds: 800),
-      tween: Tween(begin: 0.0, end: 1.0),
-      curve: Curves.easeOutCubic,
-      builder: (context, animation, child) {
-        return Transform.translate(
-          offset: Offset(0, (1 - animation) * -20),
-          child: Opacity(
-            opacity: animation,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).scaffoldBackgroundColor,
-                border: Border(
-                  bottom: BorderSide(
-                    color: isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
-                    width: 0.5,
-                  ),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.02),
-                    blurRadius: 2,
-                    offset: const Offset(0, 1),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  // Back button shimmer
-                  Shimmer.fromColors(
-                    baseColor:
-                        isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
-                    highlightColor:
-                        isDarkMode ? Colors.grey[600]! : Colors.grey[100]!,
-                    period: const Duration(milliseconds: 1000),
-                    child: Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        color: isDarkMode ? Colors.grey[700] : Colors.grey[300],
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Avatar shimmer
-                  Shimmer.fromColors(
-                    baseColor:
-                        isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
-                    highlightColor:
-                        isDarkMode ? Colors.grey[600]! : Colors.grey[100]!,
-                    period: const Duration(milliseconds: 1000),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: isDarkMode ? Colors.grey[700] : Colors.grey[300],
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Name and status shimmer
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Shimmer.fromColors(
-                          baseColor: isDarkMode
-                              ? Colors.grey[700]!
-                              : Colors.grey[300]!,
-                          highlightColor: isDarkMode
-                              ? Colors.grey[600]!
-                              : Colors.grey[100]!,
-                          period: const Duration(milliseconds: 1000),
-                          child: Container(
-                            height: 16,
-                            width: 120,
-                            decoration: BoxDecoration(
-                              color: isDarkMode
-                                  ? Colors.grey[700]
-                                  : Colors.grey[300],
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Shimmer.fromColors(
-                          baseColor: isDarkMode
-                              ? Colors.grey[700]!
-                              : Colors.grey[300]!,
-                          highlightColor: isDarkMode
-                              ? Colors.grey[600]!
-                              : Colors.grey[100]!,
-                          period: const Duration(milliseconds: 1000),
-                          child: Container(
-                            height: 12,
-                            width: 80,
-                            decoration: BoxDecoration(
-                              color: isDarkMode
-                                  ? Colors.grey[700]
-                                  : Colors.grey[300],
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // More button shimmer
-                  Shimmer.fromColors(
-                    baseColor:
-                        isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
-                    highlightColor:
-                        isDarkMode ? Colors.grey[600]! : Colors.grey[100]!,
-                    period: const Duration(milliseconds: 1000),
-                    child: Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        color: isDarkMode ? Colors.grey[700] : Colors.grey[300],
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // حذف شد - استفاده نمی‌شود
-  Widget _buildInputShimmer() {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-
-    return TweenAnimationBuilder<double>(
-      duration: const Duration(milliseconds: 1000),
-      tween: Tween(begin: 0.0, end: 1.0),
-      curve: Curves.easeOutCubic,
-      builder: (context, animation, child) {
-        return Transform.translate(
-          offset: Offset(0, (1 - animation) * 30),
-          child: Opacity(
-            opacity: animation,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).scaffoldBackgroundColor,
-                border: Border(
-                  top: BorderSide(
-                    color: isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
-                    width: 0.5,
-                  ),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.02),
-                    blurRadius: 4,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  // Attachment button shimmer
-                  TweenAnimationBuilder<double>(
-                    duration: const Duration(milliseconds: 1200),
-                    tween: Tween(begin: 0.0, end: 1.0),
-                    curve: Curves.easeOutCubic,
-                    builder: (context, animation, child) {
-                      return Transform.scale(
-                        scale: 0.8 + (animation * 0.2),
-                        child: Shimmer.fromColors(
-                          baseColor: isDarkMode
-                              ? Colors.grey[700]!
-                              : Colors.grey[300]!,
-                          highlightColor: isDarkMode
-                              ? Colors.grey[600]!
-                              : Colors.grey[100]!,
-                          period: const Duration(milliseconds: 1000),
-                          child: Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: isDarkMode
-                                  ? Colors.grey[700]
-                                  : Colors.grey[300],
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.05),
-                                  blurRadius: 2,
-                                  offset: const Offset(0, 1),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 12),
-                  // Text input shimmer
-                  Expanded(
-                    child: TweenAnimationBuilder<double>(
-                      duration: const Duration(milliseconds: 1400),
-                      tween: Tween(begin: 0.0, end: 1.0),
-                      curve: Curves.easeOutCubic,
-                      builder: (context, animation, child) {
-                        return Transform.scale(
-                          scale: 0.9 + (animation * 0.1),
-                          child: Shimmer.fromColors(
-                            baseColor: isDarkMode
-                                ? Colors.grey[700]!
-                                : Colors.grey[300]!,
-                            highlightColor: isDarkMode
-                                ? Colors.grey[600]!
-                                : Colors.grey[100]!,
-                            period: const Duration(milliseconds: 1000),
-                            child: Container(
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: isDarkMode
-                                    ? Colors.grey[700]
-                                    : Colors.grey[300],
-                                borderRadius: BorderRadius.circular(20),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.03),
-                                    blurRadius: 1,
-                                    offset: const Offset(0, 1),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Send button shimmer
-                  TweenAnimationBuilder<double>(
-                    duration: const Duration(milliseconds: 1600),
-                    tween: Tween(begin: 0.0, end: 1.0),
-                    curve: Curves.easeOutCubic,
-                    builder: (context, animation, child) {
-                      return Transform.scale(
-                        scale: 0.8 + (animation * 0.2),
-                        child: Shimmer.fromColors(
-                          baseColor: isDarkMode
-                              ? Colors.grey[700]!
-                              : Colors.grey[300]!,
-                          highlightColor: isDarkMode
-                              ? Colors.grey[600]!
-                              : Colors.grey[100]!,
-                          period: const Duration(milliseconds: 1000),
-                          child: Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: isDarkMode
-                                  ? Colors.grey[700]
-                                  : Colors.grey[300],
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.05),
-                                  blurRadius: 2,
-                                  offset: const Offset(0, 1),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
       },
     );
   }
@@ -3097,82 +2791,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     );
   }
 
-  // حذف شد - استفاده نمی‌شود
-  Widget _buildOldDateDivider(DateTime date) {
-    final now = DateTime.now();
-    final jNow = Jalali.fromDateTime(now);
-    final jDate = Jalali.fromDateTime(date);
-
-    String label;
-    if (_isSameDay(date, now)) {
-      label = 'امروز';
-    } else if (_isSameDay(date, now.subtract(const Duration(days: 1)))) {
-      label = 'دیروز';
-    } else if (jDate.year == jNow.year) {
-      label =
-          '${_getPersianWeekDay(jDate.weekDay)}  ${jDate.day.toString().padLeft(2, '0')} ${_getPersianMonth(jDate.month)}';
-    } else {
-      label =
-          '${_getPersianWeekDay(jDate.weekDay)}  ${jDate.day.toString().padLeft(2, '0')} ${_getPersianMonth(jDate.month)} ${jDate.year}';
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16.0),
-      child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
-          decoration: BoxDecoration(
-            color:
-                Theme.of(context).colorScheme.primary.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color:
-                  Theme.of(context).colorScheme.primary.withValues(alpha: 0.25),
-              width: 1.2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-              letterSpacing: 0.2,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _getPersianWeekDay(int weekDay) {
-    switch (weekDay) {
-      case 1:
-        return 'شنبه';
-      case 2:
-        return 'یکشنبه';
-      case 3:
-        return 'دوشنبه';
-      case 4:
-        return 'سه‌شنبه';
-      case 5:
-        return 'چهارشنبه';
-      case 6:
-        return 'پنجشنبه';
-      case 7:
-        return 'جمعه';
-      default:
-        return '';
-    }
-  }
-
   /// Returns the appropriate chat wallpaper URL based on current theme
   String _getChatWallpaperUrl(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
@@ -3185,28 +2803,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     return isDarkMode
         ? Colors.black.withValues(alpha: 0.3)
         : Colors.white.withValues(alpha: 0.4);
-  }
-
-  /// Returns a placeholder widget while wallpaper is loading
-  Widget _buildWallpaperPlaceholder(BuildContext context) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: isDarkMode
-              ? [
-                  Colors.grey[900]!,
-                  Colors.grey[800]!,
-                ]
-              : [
-                  Colors.grey[100]!,
-                  Colors.grey[200]!,
-                ],
-        ),
-      ),
-    );
   }
 
   @override
@@ -3592,7 +3188,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                           return false;
                         }
                         return true;
-                      }).toList();
+                      }).toList()
+                        ..sort((a, b) => a.createdAt
+                            .compareTo(b.createdAt)); // حفظ ترتیب صحیح
 
                       if (filteredMessages.isEmpty && !lazyState.isLoading) {
                         return const Center(

@@ -107,7 +107,8 @@ class ChatScreenPerformancePatches {
         return false;
       }
       return true;
-    }).toList();
+    }).toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt)); // حفظ ترتیب صحیح
   }
 
   /// Wallpaper widget بهینه‌شده

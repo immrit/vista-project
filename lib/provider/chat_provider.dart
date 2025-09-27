@@ -5,12 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../DB/conversation_cache_service_wrapper.dart';
 import '../DB/message_cache_service_wrapper.dart';
 import '../DB/database_file_utils.dart';
+import '../services/user_profile_service.dart';
 import '../main.dart';
 import '../model/conversation_model.dart';
 import '../model/message_model.dart';
 import '../services/ChatService.dart';
 import '../services/profile_service.dart';
-import '../services/user_profile_service.dart';
 
 // لیست مکالمات
 final conversationsProvider =
@@ -181,7 +181,9 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
       }
     }
 
-    return uniqueMessages.values.toList();
+    return uniqueMessages.values.toList()
+      ..sort((a, b) => a.createdAt.compareTo(
+          b.createdAt)); // قدیمی‌ترین پیام اول (برای reverse ListView)
   }
 
   Future<void> _loadInitialMessages() async {
@@ -247,7 +249,10 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
       final filteredNewMessages = newMessages
           .where((m) => !_locallyDeletedMessageIds.contains(m.id))
           .toList();
-      final updatedMessages = [...filteredNewMessages, ...state.messages];
+      final updatedMessages = [
+        ...state.messages,
+        ...filteredNewMessages
+      ]; // پیام‌های جدید به انتها
       final filteredMessages = _filterDuplicateMessages(updatedMessages);
 
       state = state.copyWith(
@@ -422,7 +427,8 @@ final messagesStreamProvider = StreamProvider.family
         .from('messages')
         .stream(primaryKey: ['id'])
         .eq('conversation_id', conversationId)
-        .order('created_at', ascending: false)
+        .order('created_at',
+            ascending: true) // قدیمی‌ترین اول (برای reverse ListView)
         .map((jsonList) {
           // پیام‌های واقعی (id واقعی) را نگه دار، پیام temp را حذف کن
           final messages = jsonList
@@ -1681,7 +1687,7 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
   set state(List<MessageModel> value) {
     // همیشه قبل از ست کردن state، پیام temp که پیام واقعی‌اش آمده حذف کن
     final filtered = _filterTempDuplicates(value);
-    // مرتب‌سازی
+    // مرتب‌سازی - قدیمی‌ترین پیام اول (برای reverse ListView)
     final sortedList = [...filtered]
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     super.state = sortedList;
@@ -1712,7 +1718,8 @@ final conversationMessagesProvider = StateNotifierProvider.family
           .from('messages')
           .stream(primaryKey: ['id'])
           .eq('conversation_id', conversationId)
-          .order('created_at', ascending: false)
+          .order('created_at',
+              ascending: true) // قدیمی‌ترین اول (برای reverse ListView)
           .listen((jsonDataList) async {
             // دریافت لیست پیام‌های مخفی شده برای کاربر فعلی در این گفتگو
             final hiddenIdsResp = await supabase
@@ -1829,6 +1836,163 @@ final cachedConversationsStreamProvider =
       .watchCachedConversations(supabase.auth.currentUser!.id);
 });
 
+// Provider برای نمایش فوری کش (بدون انتظار)
+final cachedConversationsProvider =
+    StateNotifierProvider<CachedConversationsNotifier, List<ConversationModel>>(
+        (ref) {
+  final currentUserId = supabase.auth.currentUser?.id;
+  return CachedConversationsNotifier(currentUserId);
+});
+
+class CachedConversationsNotifier
+    extends StateNotifier<List<ConversationModel>> {
+  final String? userId;
+
+  CachedConversationsNotifier(this.userId) : super([]) {
+    _loadCachedConversations();
+  }
+
+  Future<void> _loadCachedConversations() async {
+    if (userId == null) return;
+
+    try {
+      // دریافت کش مکالمات
+      final conversationCache = ConversationCacheService();
+      final cachedConversations =
+          await conversationCache.getCachedConversations(userId!);
+
+      if (cachedConversations.isNotEmpty) {
+        print(
+            '📱 Cached provider: Found ${cachedConversations.length} cached conversations');
+
+        // بررسی آیا پروفایل‌ها نیاز به لود دارند
+        final needsProfileLoading = _needsProfileLoading(cachedConversations);
+
+        if (needsProfileLoading) {
+          print('🔄 Cached provider: Loading profiles for conversations');
+
+          // جمع‌آوری userId ها
+          final userIdsToLoad = <String>[];
+          for (final conversation in cachedConversations) {
+            if (conversation.otherUserId != null &&
+                (conversation.otherUserName == null ||
+                    conversation.otherUserName!.isEmpty ||
+                    conversation.otherUserName == 'کاربر' ||
+                    conversation.otherUserName == 'کاربر ناشناس')) {
+              userIdsToLoad.add(conversation.otherUserId!);
+            }
+          }
+
+          if (userIdsToLoad.isNotEmpty) {
+            // لود پروفایل‌ها
+            final userProfileService = UserProfileService();
+            await userProfileService.preloadProfiles(userIdsToLoad);
+
+            // دوباره کش را دریافت کن و enrich کن
+            final cachedConversationsAfterLoad =
+                await conversationCache.getCachedConversations(userId!);
+
+            // Enrich conversations with loaded profiles
+            final enrichedConversations =
+                cachedConversationsAfterLoad.map((conversation) {
+              if ((conversation.otherUserName == null ||
+                      conversation.otherUserName!.isEmpty ||
+                      conversation.otherUserName == 'کاربر' ||
+                      conversation.otherUserName == 'کاربر ناشناس') &&
+                  conversation.otherUserId != null) {
+                final cachedProfile = userProfileService
+                    .getCachedProfile(conversation.otherUserId!);
+                if (cachedProfile != null) {
+                  return conversation.copyWith(
+                    otherUserName: cachedProfile['username'] ??
+                        cachedProfile['full_name'] ??
+                        'VISTA USER',
+                    otherUserAvatar: cachedProfile['avatar_url'],
+                  );
+                }
+              }
+              return conversation;
+            }).toList();
+
+            state = enrichedConversations;
+            print('✅ Cached provider: Profiles loaded, conversations enriched');
+          } else {
+            state = cachedConversations;
+          }
+        } else {
+          state = cachedConversations;
+        }
+      } else {
+        print(
+            '📱 Cached provider: No cached conversations found, fetching from server');
+        // اگر کش خالی است، از سرور دریافت کن
+        try {
+          final chatService = ChatService();
+          final conversations = await chatService.getConversations();
+
+          if (conversations.isNotEmpty) {
+            // Enrich conversations with profiles
+            final userProfileService = UserProfileService();
+            final enrichedConversations = <ConversationModel>[];
+
+            for (final conversation in conversations) {
+              try {
+                final enrichedConversation =
+                    await userProfileService.enrichConversationWithUserData(
+                  conversation,
+                  userId!,
+                );
+                enrichedConversations.add(enrichedConversation);
+              } catch (e) {
+                print('Error enriching conversation ${conversation.id}: $e');
+                enrichedConversations.add(conversation);
+              }
+            }
+
+            state = enrichedConversations;
+            print(
+                '✅ Cached provider: Fetched ${enrichedConversations.length} conversations from server');
+          } else {
+            state = [];
+          }
+        } catch (e) {
+          print('⚠️ Error fetching conversations from server: $e');
+          state = [];
+        }
+      }
+    } catch (e) {
+      print('⚠️ Error getting cached conversations: $e');
+      state = [];
+    }
+  }
+
+  bool _needsProfileLoading(List<ConversationModel> conversations) {
+    final userProfileService = UserProfileService();
+
+    for (final conversation in conversations) {
+      final username = conversation.otherUserName ?? '';
+      final otherUserId = conversation.otherUserId;
+
+      if ((username.isEmpty ||
+              username == 'کاربر' ||
+              username == 'کاربر ناشناس') &&
+          otherUserId != null &&
+          otherUserId.isNotEmpty) {
+        // چک کن آیا پروفایل در کش موجود است یا نه
+        final cachedProfile = userProfileService.getCachedProfile(otherUserId);
+        if (cachedProfile == null) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  void refresh() {
+    _loadCachedConversations();
+  }
+}
+
 // Provider ساده برای دریافت مکالمات با اطلاعات پروفایل کامل
 final conversationsWithProfilesProvider =
     FutureProvider.autoDispose<List<ConversationModel>>((ref) async {
@@ -1838,7 +2002,39 @@ final conversationsWithProfilesProvider =
   }
 
   try {
-    // دریافت مکالمات از ChatService
+    // ابتدا کش را بررسی کنیم
+    final conversationCache = ConversationCacheService();
+    final cachedConversations =
+        await conversationCache.getCachedConversations(currentUserId);
+
+    // اگر کش موجود است، ابتدا آن را برگردانیم
+    if (cachedConversations.isNotEmpty) {
+      print(
+          '📱 Using cached conversations: ${cachedConversations.length} items');
+
+      // تکمیل اطلاعات پروفایل برای مکالمات کش شده
+      final userProfileService = UserProfileService();
+      final enrichedConversations = <ConversationModel>[];
+
+      for (final conversation in cachedConversations) {
+        try {
+          final enrichedConversation =
+              await userProfileService.enrichConversationWithUserData(
+            conversation,
+            currentUserId,
+          );
+          enrichedConversations.add(enrichedConversation);
+        } catch (e) {
+          print('Error enriching cached conversation ${conversation.id}: $e');
+          enrichedConversations.add(conversation);
+        }
+      }
+
+      return enrichedConversations;
+    }
+
+    // اگر کش موجود نیست، از سرور دریافت کنیم
+    print('🌐 No cache found, fetching from server...');
     final chatService = ChatService();
     final conversations = await chatService.getConversations();
 
@@ -1879,17 +2075,44 @@ final enrichedConversationsStreamProvider =
 
   final conversationCache = ConversationCacheService();
 
-  // Service is already initialized in main.dart
-  // No need to initialize again
+  // ابتدا کش را بررسی کنیم و اگر موجود است، آن را نمایش دهیم
+  final cachedConversations =
+      await conversationCache.getCachedConversations(currentUserId);
+  if (cachedConversations.isNotEmpty) {
+    print(
+        '📱 Stream: Using cached conversations: ${cachedConversations.length} items');
 
-  // ابتدا اطلاعات اولیه را دریافت کنیم
-  final conversationsAsync = ref.read(conversationsWithProfilesProvider);
-  final conversations = conversationsAsync.when(
-    data: (data) => data,
-    loading: () => <ConversationModel>[],
-    error: (error, stack) => <ConversationModel>[],
-  );
-  yield conversations;
+    // تکمیل اطلاعات پروفایل برای مکالمات کش شده
+    final userProfileService = UserProfileService();
+    final enrichedConversations = <ConversationModel>[];
+
+    for (final conversation in cachedConversations) {
+      try {
+        final enrichedConversation =
+            await userProfileService.enrichConversationWithUserData(
+          conversation,
+          currentUserId,
+        );
+        enrichedConversations.add(enrichedConversation);
+      } catch (e) {
+        print(
+            'Error enriching cached conversation in stream ${conversation.id}: $e');
+        enrichedConversations.add(conversation);
+      }
+    }
+
+    yield enrichedConversations;
+  } else {
+    // اگر کش موجود نیست، از provider اصلی استفاده کنیم
+    print('🌐 Stream: No cache found, using provider...');
+    final conversationsAsync = ref.read(conversationsWithProfilesProvider);
+    final conversations = conversationsAsync.when(
+      data: (data) => data,
+      loading: () => <ConversationModel>[],
+      error: (error, stack) => <ConversationModel>[],
+    );
+    yield conversations;
+  }
 
   // سپس استریم real-time را شروع کنیم و اطلاعات پروفایل را تکمیل کنیم
   await for (final cachedConversations
@@ -1924,7 +2147,7 @@ final enrichedConversationsStreamProvider =
       yield enrichedConversations;
     } catch (e) {
       print('Error processing cached conversations: $e');
-      yield conversations; // در صورت خطا، از اطلاعات اولیه استفاده کن
+      yield []; // در صورت خطا، لیست خالی برگردان
     }
   }
 });

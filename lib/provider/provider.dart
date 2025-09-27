@@ -124,12 +124,27 @@ final isRedirectingProvider = StateProvider<bool>((ref) => false);
 final fetchPublicPosts = FutureProvider<List<PublicPostModel>>((ref) async {
   final userId = Supabase.instance.client.auth.currentUser?.id;
 
+  if (userId == null) {
+    return [];
+  }
+
   try {
+    // دریافت لیست کاربران دنبال شده توسط کاربر فعلی
+    final followingResponse = await supabase
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', userId);
+
+    final followingIds = followingResponse
+        .map((follow) => follow['following_id'] as String)
+        .toList();
+
     final response = await supabase.from('posts').select('''
           *,
           profiles!posts_user_id_fkey (
-            username, 
-            avatar_url, 
+            username,
+            full_name,
+            avatar_url,
             is_verified,
             verification_type
           ),
@@ -143,10 +158,46 @@ final fetchPublicPosts = FutureProvider<List<PublicPostModel>>((ref) async {
 
     final postsData = response as List<dynamic>;
 
-    return postsData.map((e) {
+    // دریافت لیست کاربرانی که پست دارند
+    final userIds =
+        postsData.map((post) => post['user_id'] as String).toSet().toList();
+
+    // دریافت تنظیمات حریم خصوصی برای این کاربران
+    final userSettingsResponse = await supabase
+        .from('user_settings')
+        .select('user_id, is_private')
+        .inFilter('user_id', userIds);
+
+    final userSettingsMap = {
+      for (var setting in userSettingsResponse)
+        setting['user_id'] as String: setting['is_private'] as bool? ?? false
+    };
+
+    // فیلتر کردن پست‌ها - فقط پست‌های عمومی یا پست‌های کاربران دنبال شده
+    final filteredPosts = postsData.where((post) {
+      final postUserId = post['user_id'] as String;
+      final isPrivate = userSettingsMap[postUserId] ?? false;
+
+      // اگر پست متعلق به خود کاربر است، همیشه نمایش داده شود
+      if (postUserId == userId) {
+        return true;
+      }
+
+      // اگر پست متعلق به کاربر دنبال شده است، همیشه نمایش داده شود
+      if (followingIds.contains(postUserId)) {
+        return true;
+      }
+
+      // اگر پست متعلق به کاربر دنبال نشده است، فقط اگر عمومی باشد نمایش داده شود
+      return !isPrivate;
+    }).toList();
+
+    return filteredPosts.map((e) {
       final profile = e['profiles'] as Map<String, dynamic>? ?? {};
       final avatarUrl = profile['avatar_url'] as String? ?? '';
-      final username = profile['username'] as String? ?? 'Unknown';
+      final username = profile['username'] as String? ??
+          profile['full_name'] as String? ??
+          'Unknown';
       final isVerified = profile['is_verified'] as bool? ?? false;
 
       // تغییر از likes به likes
@@ -210,12 +261,30 @@ class PublicPostsNotifier
         await Future.delayed(const Duration(milliseconds: 300));
       }
 
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) {
+        _hasMore = false;
+        _isLoading = false;
+        return;
+      }
+
+      // دریافت لیست کاربران دنبال شده توسط کاربر فعلی
+      final followingResponse = await supabase
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', userId);
+
+      final followingIds = followingResponse
+          .map((follow) => follow['following_id'] as String)
+          .toList();
+
       final response = await supabase
           .from('posts')
           .select('''
             *,
             profiles!posts_user_id_fkey (
               username,
+              full_name,
               avatar_url,
               is_verified,
               verification_type
@@ -236,10 +305,46 @@ class PublicPostsNotifier
         return;
       }
 
-      _offset += response.length;
-      _hasMore = response.length >= _limit;
+      // فیلتر کردن پست‌ها - فقط پست‌های عمومی یا پست‌های کاربران دنبال شده
+      final postsList = response as List<dynamic>;
 
-      final posts = (response as List<dynamic>).map((post) {
+      // دریافت لیست کاربرانی که پست دارند
+      final userIds =
+          postsList.map((post) => post['user_id'] as String).toSet().toList();
+
+      // دریافت تنظیمات حریم خصوصی برای این کاربران
+      final userSettingsResponse = await supabase
+          .from('user_settings')
+          .select('user_id, is_private')
+          .inFilter('user_id', userIds);
+
+      final userSettingsMap = {
+        for (var setting in userSettingsResponse)
+          setting['user_id'] as String: setting['is_private'] as bool? ?? false
+      };
+
+      final filteredResponse = postsList.where((post) {
+        final postUserId = post['user_id'] as String;
+        final isPrivate = userSettingsMap[postUserId] ?? false;
+
+        // اگر پست متعلق به خود کاربر است، همیشه نمایش داده شود
+        if (postUserId == userId) {
+          return true;
+        }
+
+        // اگر پست متعلق به کاربر دنبال شده است، همیشه نمایش داده شود
+        if (followingIds.contains(postUserId)) {
+          return true;
+        }
+
+        // اگر پست متعلق به کاربر دنبال نشده است، فقط اگر عمومی باشد نمایش داده شود
+        return !isPrivate;
+      }).toList();
+
+      _offset += filteredResponse.length;
+      _hasMore = filteredResponse.length >= _limit;
+
+      final posts = filteredResponse.map((post) {
         final postLikes = post['likes'] as List? ?? [];
         final comments = post['comments'] as List<dynamic>? ?? [];
 
@@ -248,7 +353,9 @@ class PublicPostsNotifier
           'like_count': postLikes.length,
           'is_liked': postLikes
               .any((like) => like['user_id'] == supabase.auth.currentUser?.id),
-          'username': post['profiles']['username'] ?? 'Unknown',
+          'username': post['profiles']['username'] ??
+              post['profiles']['full_name'] ??
+              'Unknown',
           'avatar_url': post['profiles']['avatar_url'] ?? '',
           'is_verified': post['profiles']['is_verified'] ?? false,
           'comment_count': comments.length,
@@ -1404,7 +1511,8 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
             is_verified,
             verification_type,
             account_type,
-            role
+            role,
+            is_private
           ''').eq('id', userId).single();
 
       // محاسبه تعداد دنبال‌کنندگان
@@ -1421,7 +1529,8 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
 
       final followingCount = followingResponse.length;
 
-      // دریافت آخرین 10 پست
+      // دریافت آخرین 10 پست - برای همه کاربران (نه فقط کاربر فعلی)
+      print('🔍 Fetching posts for userId: $userId');
       final postsResponse = await supabase
           .from('posts')
           .select('''
@@ -1439,9 +1548,12 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
               id
             )
           ''')
-          .eq('user_id', userId)
+          .eq('user_id',
+              userId) // این userId مربوط به پروفایلی است که می‌خواهیم ببینیم
           .order('created_at', ascending: false)
           .limit(10);
+
+      print('🔍 Posts fetched: ${postsResponse.length} posts');
 
       // ساخت مدل پروفایل با اطلاعات به‌روز شده
       final profile = ProfileModel.fromMap({
@@ -1464,7 +1576,9 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
           ...post,
           'like_count': postLikes.length,
           'is_liked': postLikes.any((like) => like['user_id'] == currentUserId),
-          'username': post['profiles']['username'] ?? 'Unknown',
+          'username': post['profiles']['username'] ??
+              post['profiles']['full_name'] ??
+              'Unknown',
           'avatar_url': post['profiles']['avatar_url'] ?? '',
           'is_verified': post['profiles']['is_verified'] ?? false,
           'comment_count': comments.length,
@@ -1577,17 +1691,21 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
           followersCount: state!.followersCount - 1,
         );
       } else {
-        // بررسی خصوصی بودن حساب هدف
-        final settings = await supabase
-            .from('user_settings')
-            .select('is_private')
-            .eq('user_id', userId)
+        // برای همه پیج‌ها (خصوصی و عمومی) درخواست فالو ارسال کن (مثل اینستاگرام)
+        // بررسی وجود درخواست قبلی
+        final existingRequest = await supabase
+            .from('follow_requests')
+            .select('id, status')
+            .eq('requester_id', currentUserId)
+            .eq('recipient_id', userId)
             .maybeSingle();
-        final isPrivate = (settings?['is_private'] as bool?) ?? false;
 
-        if (isPrivate) {
-          // اگر خصوصی است، درخواست دنبال کردن ارسال شود
-          await supabase.from('follow_requests').upsert({
+        print('🔍 بررسی درخواست موجود: $existingRequest');
+
+        if (existingRequest == null) {
+          // اگر درخواست قبلی وجود ندارد، درخواست جدید ایجاد کن
+          print('🆕 ایجاد درخواست جدید برای کاربر: $userId');
+          await supabase.from('follow_requests').insert({
             'requester_id': currentUserId,
             'recipient_id': userId,
             'status': 'pending',
@@ -1602,21 +1720,74 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
             'created_at': DateTime.now().toIso8601String(),
             'is_read': false,
           });
-        } else {
-          // اضافه کردن فالو مستقیم
-          await supabase.from('follows').insert({
-            'follower_id': currentUserId,
-            'following_id': userId,
+
+          print('✅ درخواست جدید ایجاد شد');
+
+          // به‌روزرسانی state برای نشان دادن وضعیت pending
+          state = state!.copyWith(
+            isFollowed: false, // هنوز دنبال نشده
+            followersCount: state!.followersCount, // تعداد تغییر نمی‌کند
+          );
+        } else if (existingRequest['status'] == 'rejected') {
+          // اگر درخواست قبلی رد شده، وضعیت را به pending تغییر ده
+          print('🔄 تغییر وضعیت درخواست رد شده به pending برای کاربر: $userId');
+          await supabase
+              .from('follow_requests')
+              .update({
+                'status': 'pending',
+                'created_at': DateTime.now().toIso8601String(),
+              })
+              .eq('requester_id', currentUserId)
+              .eq('recipient_id', userId);
+          // اعلان جدید برای کاربر هدف
+          await supabase.from('notifications').insert({
+            'recipient_id': userId,
+            'sender_id': currentUserId,
+            'type': 'follow_request',
+            'content': 'درخواست دنبال کردن جدید',
+            'created_at': DateTime.now().toIso8601String(),
+            'is_read': false,
           });
 
+          print('✅ درخواست رد شده به pending تغییر کرد');
+
+          // به‌روزرسانی state برای نشان دادن وضعیت pending
           state = state!.copyWith(
-            isFollowed: true,
-            followersCount: state!.followersCount + 1,
+            isFollowed: false, // هنوز دنبال نشده
+            followersCount: state!.followersCount, // تعداد تغییر نمی‌کند
           );
+        } else if (existingRequest['status'] == 'pending') {
+          // اگر درخواست قبلی pending است، آن را لغو کن
+          print('🔄 لغو درخواست pending برای کاربر: $userId');
+
+          await supabase
+              .from('follow_requests')
+              .delete()
+              .eq('requester_id', currentUserId)
+              .eq('recipient_id', userId);
+
+          // حذف اعلان مربوطه
+          await supabase.from('notifications').delete().match({
+            'recipient_id': userId,
+            'sender_id': currentUserId,
+            'type': 'follow_request',
+          });
+
+          print('✅ درخواست pending لغو شد');
+
+          // به‌روزرسانی state
+          state = state!.copyWith(
+            isFollowed: false,
+            followersCount: state!.followersCount,
+          );
+        } else {
+          print('⚠️ وضعیت درخواست ناشناخته: ${existingRequest['status']}');
         }
+        // اگر درخواست قبلی accepted است، کاری نکن
       }
     } catch (e) {
-      print('خطا در تغییر وضعیت فالو: $e');
+      print('❌ خطا در تغییر وضعیت فالو: $e');
+      rethrow; // دوباره خطا را پرتاب کن تا در UI نمایش داده شود
     }
   }
 
@@ -1698,7 +1869,9 @@ final postProvider =
     ...response,
     'like_count': likeCount,
     'is_liked': isLiked,
-    'username': response['profiles']?['username'] ?? 'Unknown',
+    'username': response['profiles']?['username'] ??
+        response['profiles']?['full_name'] ??
+        'Unknown',
     'avatar_url': response['profiles']?['avatar_url'] ?? '',
     'is_verified': response['profiles']?['is_verified'] ?? false,
     'image_url': response['image_url'], // اضافه کردن image_url

@@ -709,6 +709,9 @@ class AdvancedCacheSystem {
     // Add new message at the end (chronological order)
     messages.add(message);
 
+    // Sort messages by creation time (oldest first)
+    messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
     // Limit cache size
     if (messages.length > maxMessagesPerConversation) {
       messages.removeRange(maxMessagesPerConversation, messages.length);
@@ -719,13 +722,23 @@ class AdvancedCacheSystem {
       _pendingUploads.add(message.id);
     }
 
-    // Update conversation
+    // Update conversation with the latest message (including temp messages)
     final conversation = _conversationMemoryCache[conversationId];
     if (conversation != null) {
+      // Get the latest message (including temp messages)
+      final latestMessage = messages.isNotEmpty ? messages.last : message;
+
+      // Format last message content for temp messages
+      String lastMessageContent = latestMessage.content;
+      if (latestMessage.id.startsWith('temp_') && !latestMessage.isSent) {
+        // Add clock icon for pending messages
+        lastMessageContent = '🕐 $lastMessageContent';
+      }
+
       final updatedConversation = conversation.copyWith(
-        lastMessage: message.content,
-        lastMessageTime: message.createdAt,
-        updatedAt: message.createdAt,
+        lastMessage: lastMessageContent,
+        lastMessageTime: latestMessage.createdAt,
+        updatedAt: latestMessage.createdAt,
       );
       _conversationMemoryCache[conversationId] = updatedConversation;
       _broadcastConversationUpdates();

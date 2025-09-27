@@ -70,7 +70,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
       final response = await supabase
           .from('notifications')
           .select(
-              '*, sender:profiles!notifications_sender_id_fkey(username, avatar_url, is_verified, verification_type)')
+              '*, sender:profiles!notifications_sender_id_fkey(username, full_name, avatar_url, is_verified, verification_type)')
           .eq('recipient_id', userId)
           .order('created_at', ascending: false)
           .range(from, to);
@@ -217,6 +217,14 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
       case 'follow':
         title = 'دنبال‌کننده جدید';
         body = '$senderUsername شما را دنبال کرد';
+        break;
+      case 'follow_request':
+        title = 'درخواست دنبال کردن';
+        body = '$senderUsername درخواست دنبال کردن داد';
+        break;
+      case 'follow_request_accepted':
+        title = 'درخواست پذیرفته شد';
+        body = '$senderUsername درخواست دنبال کردن شما را پذیرفت';
         break;
       default:
         title = 'اعلان';

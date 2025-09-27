@@ -112,6 +112,9 @@ void main() async {
     // 🚀 سیستم پیام‌رسانی بهینه‌شده (جایگزین 14 cache system!)
     await _initializeOptimizedMessaging();
 
+    // 🚀 مقداردهی اولیه سیستم پیام‌رسانی بهینه‌سازی شده
+    await _initializeOptimizedChatSystem();
+
     // 🧹 غیرفعالسازی cache systems اضافی
     await _disableRedundantCacheSystems();
 
@@ -641,5 +644,21 @@ void _initializeMemoryLeakDetection() {
     print('📊 Monitoring: Objects, Subscriptions, Timers');
   } catch (e) {
     print('⚠️ Warning: Could not start memory leak detection: $e');
+  }
+}
+
+/// Initialize optimized chat system
+Future<void> _initializeOptimizedChatSystem() async {
+  print('🚀 Initializing Optimized Chat System...');
+
+  try {
+    final chatService = ChatService();
+    await chatService.initializeOptimizedMessaging();
+
+    print('✅ Optimized Chat System initialized successfully');
+    print(
+        '📊 Features: Real-time updates, Offline support, Instant message display');
+  } catch (e) {
+    print('⚠️ Warning: Could not initialize optimized chat system: $e');
   }
 }

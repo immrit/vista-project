@@ -3,18 +3,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:shimmer/shimmer.dart';
 import 'dart:async';
 
 import '../../../model/channel_model.dart';
 import '../../../model/conversation_model.dart';
 import '../../../provider/channel_provider.dart';
 import '../../../provider/chat_provider.dart';
+import '../../../provider/unified_chat_provider.dart';
 import '../../util/const.dart';
 import 'ArchivedConversationsScreen.dart';
 // import 'ChatSettingsScreen.dart'; // اضافه کردن ایمپورت صفحه جدید
 import '../../../services/ChatService.dart';
 import 'ChatScreen.dart';
 import '../../../DB/database_file_utils.dart';
+import '../../../DB/conversation_cache_service_wrapper.dart';
+import '../../../services/user_profile_service.dart';
+import '/main.dart'; // برای دسترسی به supabase
 
 // مدل یکپارچه برای نمایش چت‌ها و کانال‌ها در یک لیست
 @immutable
@@ -50,9 +55,12 @@ class UnifiedChatItem {
   });
 
   factory UnifiedChatItem.fromConversation(ConversationModel conversation) {
+    // Keep original username - let the UI decide what to show
+    String displayName = conversation.otherUserName ?? '';
+
     return UnifiedChatItem(
       id: conversation.id,
-      title: conversation.otherUserName ?? 'کاربر ناشناس',
+      title: displayName,
       subtitle: conversation.lastMessage,
       avatarUrl: conversation.otherUserAvatar,
       lastActivity: conversation.lastMessageTime,
@@ -104,7 +112,6 @@ class _ChatConversationsScreenState
     with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
   late final AnimationController _searchAnimController;
-  late final Animation<double> _searchAnimation;
   String _searchQuery = '';
   bool _isSearchVisible = false;
 
@@ -115,11 +122,93 @@ class _ChatConversationsScreenState
       vsync: this,
       duration: const Duration(milliseconds: 300),
     );
-    _searchAnimation = CurvedAnimation(
-      parent: _searchAnimController,
-      curve: Curves.easeInOut,
-    );
     timeago.setLocaleMessages('fa', timeago.FaMessages());
+    _initializeOptimizedMessaging();
+    _preloadUserProfiles();
+  }
+
+  /// Preload user profiles to ensure usernames are available
+  Future<void> _preloadUserProfiles() async {
+    try {
+      // ابتدا کش را بررسی کنیم
+      final conversationCache = ConversationCacheService();
+      final cachedConversations =
+          await conversationCache.getCachedConversations(
+        supabase.auth.currentUser?.id ?? '',
+      );
+
+      if (cachedConversations.isNotEmpty) {
+        print(
+            '🔄 Preloading profiles for ${cachedConversations.length} cached conversations');
+
+        // جمع‌آوری تمام otherUserId ها که نیاز به لود دارند
+        final userIdsToLoad = <String>[];
+        for (final conversation in cachedConversations) {
+          if (conversation.otherUserId != null &&
+              (conversation.otherUserName == null ||
+                  conversation.otherUserName!.isEmpty ||
+                  conversation.otherUserName == 'کاربر' ||
+                  conversation.otherUserName == 'کاربر ناشناس')) {
+            userIdsToLoad.add(conversation.otherUserId!);
+          }
+        }
+
+        if (userIdsToLoad.isNotEmpty) {
+          print(
+              '📱 Loading profiles for ${userIdsToLoad.length} users: $userIdsToLoad');
+
+          // استفاده از UserProfileService برای preload کردن
+          final userProfileService = UserProfileService();
+          await userProfileService.preloadProfiles(userIdsToLoad);
+
+          print('✅ Preloaded profiles for ${userIdsToLoad.length} users');
+
+          // بروزرسانی UI
+          if (mounted) {
+            ref.read(cachedConversationsProvider.notifier).refresh();
+            ref.invalidate(conversationsWithProfilesProvider);
+            ref.invalidate(enrichedConversationsStreamProvider);
+          }
+        } else {
+          print('✅ All conversations already have usernames');
+        }
+      } else {
+        // اگر کش موجود نیست، از provider استفاده کنیم
+        final conversations = await ref.read(conversationsProvider.future);
+
+        for (final conversation in conversations) {
+          if (conversation.otherUserId != null &&
+              (conversation.otherUserName == null ||
+                  conversation.otherUserName!.isEmpty ||
+                  conversation.otherUserName == 'کاربر' ||
+                  conversation.otherUserName == 'کاربر ناشناس')) {
+            // Load profile for this user
+            try {
+              final profileService = ref.read(profileServiceProvider);
+              final profile =
+                  await profileService.getProfile(conversation.otherUserId!);
+              print(
+                  '✅ Preloaded profile for ${conversation.otherUserId}: ${profile?.displayName ?? 'null'}');
+
+              // اگر پروفایل لود شد، UI رو refresh کن
+              if (profile != null && mounted) {
+                // بروزرسانی cached conversations provider
+                ref.read(cachedConversationsProvider.notifier).refresh();
+
+                // بروزرسانی providerهای دیگر
+                ref.invalidate(conversationsWithProfilesProvider);
+                ref.invalidate(enrichedConversationsStreamProvider);
+              }
+            } catch (e) {
+              print(
+                  '⚠️ Error preloading profile for ${conversation.otherUserId}: $e');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('⚠️ Error preloading user profiles: $e');
+    }
   }
 
   @override
@@ -127,6 +216,17 @@ class _ChatConversationsScreenState
     _searchController.dispose();
     _searchAnimController.dispose();
     super.dispose();
+  }
+
+  /// Initialize optimized messaging system
+  Future<void> _initializeOptimizedMessaging() async {
+    try {
+      final chatService = ref.read(optimizedChatServiceProvider);
+      await chatService.initializeOptimizedMessaging();
+      print('✅ Optimized messaging initialized for conversations screen');
+    } catch (e) {
+      print('⚠️ Error initializing optimized messaging: $e');
+    }
   }
 
   @override
@@ -302,10 +402,118 @@ class _ChatConversationsScreenState
     );
   }
 
+  // چک کردن آیا مکالمات نیاز به لود پروفایل دارند
+  bool _needsProfileLoading(List<ConversationModel> conversations) {
+    final userProfileService = UserProfileService();
+
+    for (final conversation in conversations) {
+      final username = conversation.otherUserName ?? '';
+      final otherUserId = conversation.otherUserId;
+
+      // اگر نام کاربری خالی است و otherUserId موجود است
+      if ((username.isEmpty ||
+              username == 'کاربر' ||
+              username == 'کاربر ناشناس') &&
+          otherUserId != null &&
+          otherUserId.isNotEmpty) {
+        // چک کن آیا پروفایل در کش موجود است یا نه
+        final cachedProfile = userProfileService.getCachedProfile(otherUserId);
+        if (cachedProfile == null) {
+          // اگر پروفایل در کش نیست، نیاز به لود دارد
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // نمایش shimmer برای کل لیست مکالمات
+  Widget _buildConversationsShimmer(ThemeData theme) {
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: 10, // تعداد آیتم‌های shimmer
+      separatorBuilder: (context, index) => _buildDivider(theme),
+      itemBuilder: (context, index) => _buildShimmerItem(theme),
+    );
+  }
+
+  // نمایش لیست مکالمات کش شده
+  Widget _buildConversationsList(
+      ThemeData theme, List<ConversationModel> conversations) {
+    // Enrich conversations with user profiles if needed
+    final enrichedConversations = conversations.map((conversation) {
+      // اگر نام کاربری خالی است، از کش پروفایل استفاده کن
+      if ((conversation.otherUserName == null ||
+              conversation.otherUserName!.isEmpty ||
+              conversation.otherUserName == 'کاربر' ||
+              conversation.otherUserName == 'کاربر ناشناس') &&
+          conversation.otherUserId != null) {
+        // سعی کن از کش پروفایل استفاده کن
+        final userProfileService = UserProfileService();
+        final cachedProfile =
+            userProfileService.getCachedProfile(conversation.otherUserId!);
+
+        if (cachedProfile != null) {
+          return conversation.copyWith(
+            otherUserName: cachedProfile['username'] ??
+                cachedProfile['full_name'] ??
+                'VISTA USER',
+            otherUserAvatar: cachedProfile['avatar_url'],
+          );
+        }
+      }
+      return conversation;
+    }).toList();
+
+    final unifiedItems = enrichedConversations
+        .map((conversation) => UnifiedChatItem.fromConversation(conversation))
+        .toList();
+
+    if (unifiedItems.isEmpty) {
+      return _buildEmptyState(
+        theme,
+        'هیچ گفتگویی وجود ندارد',
+        Icons.chat_bubble_outline_rounded,
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: unifiedItems.length,
+      separatorBuilder: (context, index) => _buildDivider(theme),
+      itemBuilder: (context, index) {
+        final item = unifiedItems[index];
+        return _buildUnifiedItem(theme, item);
+      },
+    );
+  }
+
   // لیست یکپارچه چت‌ها و کانال‌ها
   Widget _buildUnifiedList(ThemeData theme) {
-    // ترکیب داده‌ها از هر دو provider
-    // ** تغییر: استفاده از enrichedConversationsStreamProvider برای دریافت اطلاعات پروفایل تکمیل شده و real-time **
+    // ابتدا کش را بررسی کنیم
+    final cachedConversations = ref.watch(cachedConversationsProvider);
+
+    // اگر کش موجود است، آن را بررسی کنیم
+    if (cachedConversations.isNotEmpty) {
+      print(
+          '📱 UI: Displaying cached conversations: ${cachedConversations.length} items');
+
+      // چک کنیم آیا نام کاربری‌ها نیاز به لود شدن دارند یا نه
+      final needsProfileLoading = _needsProfileLoading(cachedConversations);
+
+      if (needsProfileLoading) {
+        print(
+            '🔄 UI: Profiles need loading, showing shimmer for cached conversations');
+        // اگر پروفایل‌ها نیاز به لود شدن دارند، shimmer نمایش بده
+        return _buildConversationsShimmer(theme);
+      } else {
+        // اگر پروفایل‌ها آماده هستند، لیست رو نمایش بده
+        return _buildConversationsList(theme, cachedConversations);
+      }
+    }
+
+    // اگر کش خالی است، از stream provider استفاده کنیم
+    print('🌐 No cached conversations, using stream provider');
     final conversationsAsync = ref.watch(enrichedConversationsStreamProvider);
     final channelsAsync = ref.watch(channelsProvider);
 
@@ -317,84 +525,14 @@ class _ChatConversationsScreenState
           loading: () => _buildLoadingState(theme),
           error: (error, stack) => _buildErrorState(theme, error.toString()),
           data: (channels) {
-            final unifiedItems = _combineAndFilterItems(enrichedConversations,
-                channels); // استفاده از enrichedConversations
-
-            if (unifiedItems.isEmpty) {
-              return _buildEmptyState(
-                theme,
-                _searchQuery.isEmpty
-                    ? 'هیچ گفتگو یا کانالی وجود ندارد'
-                    : 'نتیجه‌ای یافت نشد',
-                _searchQuery.isEmpty
-                    ? Icons.chat_bubble_outline_rounded
-                    : Icons.search_off_rounded,
-              );
-            }
-
-            return RefreshIndicator(
-              onRefresh: () => _refreshData(),
-              color: theme.primaryColor,
-              child: ListView.separated(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: unifiedItems.length,
-                separatorBuilder: (context, index) => _buildDivider(theme),
-                itemBuilder: (context, index) => _buildUnifiedItem(
-                  theme,
-                  unifiedItems[index],
-                ),
-              ),
-            );
+            return _buildConversationsList(theme, enrichedConversations);
           },
         );
       },
     );
   }
 
-  // ترکیب و فیلتر کردن آیتم‌ها
-  List<UnifiedChatItem> _combineAndFilterItems(
-      List<ConversationModel> conversations, List<ChannelModel> channels,
-      {bool showArchived = false} // پارامتر جدید
-      ) {
-    final List<UnifiedChatItem> allItems = [];
-
-    // اضافه کردن conversations
-    final filteredConversations = conversations.where((conv) {
-      return showArchived ? conv.isArchived : !conv.isArchived;
-    }).toList();
-
-    allItems
-        .addAll(filteredConversations.map(UnifiedChatItem.fromConversation));
-
-    // اضافه کردن channels
-    allItems.addAll(
-      channels.map(UnifiedChatItem.fromChannel),
-    );
-
-    // فیلتر کردن بر اساس جستجو
-    final filteredItems = _searchQuery.isEmpty
-        ? allItems
-        : allItems.where(_matchesSearchQuery).toList();
-
-    // مرتب‌سازی: pinned ها اول، سپس بر اساس آخرین فعالیت
-    filteredItems.sort((a, b) {
-      // اول pinned ها
-      if (a.isPinned && !b.isPinned) return -1;
-      if (!a.isPinned && b.isPinned) return 1;
-
-      // سپس بر اساس آخرین فعالیت
-      final aTime = a.lastActivity ?? DateTime(1970);
-      final bTime = b.lastActivity ?? DateTime(1970);
-      return bTime.compareTo(aTime);
-    });
-
-    return filteredItems;
-  }
-
   Future<void> _deleteItem(ConversationModel item) async {
-    final chatService =
-        ref.read(chatServiceProvider); // Changed from context.read
     final messageNotifier = ref.read(messageNotifierProvider.notifier);
     try {
       // به جای فراخوانی مستقیم سرویس، از MessageNotifier استفاده می‌کنیم
@@ -476,11 +614,30 @@ class _ChatConversationsScreenState
       return CachedNetworkImage(
         imageUrl: item.avatarUrl!,
         fit: BoxFit.cover,
-        placeholder: (context, url) => _buildDefaultAvatar(theme, item),
+        placeholder: (context, url) => _buildAvatarShimmer(theme),
         errorWidget: (context, url, error) => _buildDefaultAvatar(theme, item),
       );
     }
     return _buildDefaultAvatar(theme, item);
+  }
+
+  /// Build shimmer for loading avatar
+  Widget _buildAvatarShimmer(ThemeData theme) {
+    final isDarkMode = theme.brightness == Brightness.dark;
+
+    return Shimmer.fromColors(
+      baseColor: isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
+      highlightColor: isDarkMode ? Colors.grey[600]! : Colors.grey[100]!,
+      period: const Duration(milliseconds: 1000),
+      child: Container(
+        width: 54,
+        height: 54,
+        decoration: BoxDecoration(
+          color: isDarkMode ? Colors.grey[700] : Colors.grey[300],
+          shape: BoxShape.circle,
+        ),
+      ),
+    );
   }
 
   Widget _buildDefaultAvatar(ThemeData theme, UnifiedChatItem item) {
@@ -584,6 +741,13 @@ class _ChatConversationsScreenState
   }
 
   Widget _buildTitle(ThemeData theme, UnifiedChatItem item) {
+    // اگر نام کاربری خالی یا پیش‌فرضه، VISTA USER نمایش بده
+    final displayName = (item.title.isEmpty ||
+            item.title == 'کاربر' ||
+            item.title == 'کاربر ناشناس')
+        ? 'VISTA USER'
+        : item.title;
+
     return Row(
       children: [
         if (item.isMuted) ...[
@@ -596,7 +760,7 @@ class _ChatConversationsScreenState
         ],
         Expanded(
           child: Text(
-            item.title,
+            displayName,
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w500,
@@ -720,52 +884,63 @@ class _ChatConversationsScreenState
   }
 
   Widget _buildShimmerItem(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              color: theme.hintColor.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
+    final isDarkMode = theme.brightness == Brightness.dark;
+
+    return Shimmer.fromColors(
+      baseColor: isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
+      highlightColor: isDarkMode ? Colors.grey[600]! : Colors.grey[100]!,
+      period: const Duration(milliseconds: 1200),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            // Avatar shimmer
+            Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                color: isDarkMode ? Colors.grey[700] : Colors.grey[300],
+                shape: BoxShape.circle,
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: double.infinity,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    color: theme.hintColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(4),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Username shimmer
+                  Container(
+                    width: 120,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: isDarkMode ? Colors.grey[700] : Colors.grey[300],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  width: 200,
-                  height: 14,
-                  decoration: BoxDecoration(
-                    color: theme.hintColor.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(4),
+                  const SizedBox(height: 8),
+                  // Last message shimmer
+                  Container(
+                    width: 200,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: isDarkMode ? Colors.grey[700] : Colors.grey[300],
+                      borderRadius: BorderRadius.circular(6),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          Container(
-            width: 40,
-            height: 12,
-            decoration: BoxDecoration(
-              color: theme.hintColor.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(4),
+            // Time shimmer
+            Container(
+              width: 40,
+              height: 12,
+              decoration: BoxDecoration(
+                color: isDarkMode ? Colors.grey[700] : Colors.grey[300],
+                borderRadius: BorderRadius.circular(6),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -873,8 +1048,12 @@ class _ChatConversationsScreenState
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
-              onPressed:
-                  isDbMigrationError ? _resetCacheAndRefresh : _refreshData,
+              onPressed: isDbMigrationError
+                  ? _resetCacheAndRefresh
+                  : () {
+                      // Real-time system handles updates automatically
+                      Navigator.pop(context);
+                    },
               icon: const Icon(Icons.refresh_rounded),
               label: const Text('تلاش مجدد'),
               style: ElevatedButton.styleFrom(
@@ -894,13 +1073,6 @@ class _ChatConversationsScreenState
   }
 
   // Helper Methods
-  bool _matchesSearchQuery(UnifiedChatItem item) {
-    final query = _searchQuery.toLowerCase();
-    final title = item.title.toLowerCase();
-    final subtitle = item.subtitle?.toLowerCase() ?? '';
-
-    return title.contains(query) || subtitle.contains(query);
-  }
 
   String _formatTime(DateTime time) {
     final now = DateTime.now();
@@ -947,22 +1119,6 @@ class _ChatConversationsScreenState
   void _clearSearch() {
     _searchController.clear();
     setState(() => _searchQuery = '');
-  }
-
-  Future<void> _refreshData() async {
-    // رفرش کردن providerهای اصلی
-    // این کار باعث می‌شود ChatService.getConversations فراخوانی شود و کش به‌روز شود
-    ref.invalidate(conversationsProvider);
-    ref.invalidate(conversationsWithProfilesProvider);
-    ref.invalidate(enrichedConversationsStreamProvider);
-    ref.invalidate(channelsProvider);
-
-    // منتظر بمانیم تا اطلاعات جدید دریافت شود
-    try {
-      await ref.read(conversationsWithProfilesProvider.future);
-    } catch (e) {
-      print('Error refreshing conversations: $e');
-    }
   }
 
   Future<void> _resetCacheAndRefresh() async {
@@ -1029,15 +1185,6 @@ class _ChatConversationsScreenState
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => _buildItemOptionsSheet(item),
-    );
-  }
-
-  void _showNewChatOptions() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => _buildNewChatOptionsSheet(),
     );
   }
 
@@ -1146,56 +1293,6 @@ class _ChatConversationsScreenState
                 },
               ),
             ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNewChatOptionsSheet() {
-    final theme = Theme.of(context);
-
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.scaffoldBackgroundColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildSheetHandle(theme),
-            const SizedBox(height: 20),
-            Text(
-              'شروع جدید',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: theme.textTheme.titleLarge?.color,
-              ),
-            ),
-            const SizedBox(height: 20),
-            _buildOptionTile(
-              theme,
-              icon: Icons.person_add_rounded,
-              title: 'چت خصوصی',
-              subtitle: 'شروع گفتگو با کاربر',
-              onTap: () {
-                Navigator.pop(context);
-                _startNewPrivateChat();
-              },
-            ),
-            _buildOptionTile(
-              theme,
-              icon: Icons.group_add_rounded,
-              title: 'گروه جدید',
-              subtitle: 'ایجاد گروه چند نفره',
-              onTap: () {
-                Navigator.pop(context);
-                _createNewGroup();
-              },
-            ),
           ],
         ),
       ),
@@ -1320,19 +1417,7 @@ class _ChatConversationsScreenState
     // TODO: Implement leave channel logic with confirmation
   }
 
-  void _startNewPrivateChat() {
-    // TODO: Implement new private chat logic
-  }
-
-  void _createNewGroup() {
-    // TODO: Implement new group creation logic
-  }
-
   void _createNewChannel() {
     // TODO: Implement new channel creation logic
-  }
-
-  void _openChatSettings() {
-    // TODO: Implement chat settings screen
   }
 }

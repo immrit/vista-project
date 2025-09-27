@@ -26,6 +26,7 @@ class ProfileModel extends Equatable {
   final bool isVerified;
   final VerificationType verificationType;
   final bool isFollowed;
+  final bool isPrivate;
   final List<PublicPostModel> posts;
   final List<Story> stories; // اضافه کردن لیست استوری‌ها
   final String? role; // فیلد نقش کاربر
@@ -43,6 +44,7 @@ class ProfileModel extends Equatable {
     this.isVerified = false,
     this.verificationType = VerificationType.none,
     this.isFollowed = false,
+    this.isPrivate = false,
     this.posts = const [],
     this.stories = const [], // مقدار پیش‌فرض برای استوری‌ها
     this.role, // پارامتر نقش کاربر
@@ -71,6 +73,7 @@ class ProfileModel extends Equatable {
         orElse: () => VerificationType.none,
       ),
       isFollowed: map['is_followed'] ?? false,
+      isPrivate: map['is_private'] ?? false,
       posts: (map['posts'] as List<dynamic>? ?? [])
           .map((post) => PublicPostModel.fromMap(post))
           .toList(),
@@ -95,6 +98,7 @@ class ProfileModel extends Equatable {
       'is_verified': isVerified,
       'verification_type': verificationType.name,
       'is_followed': isFollowed,
+      'is_private': isPrivate,
       'posts': posts.map((post) => post.toMap()).toList(),
       'stories':
           stories.map((story) => story.toMap()).toList(), // ذخیره استوری‌ها
@@ -117,6 +121,7 @@ class ProfileModel extends Equatable {
     bool? isVerified,
     VerificationType? verificationType,
     bool? isFollowed,
+    bool? isPrivate,
     List<PublicPostModel>? posts,
     List<Story>? stories, // اضافه کردن استوری‌ها به copyWith
     String? role, // اضافه کردن نقش کاربر به copyWith
@@ -134,6 +139,7 @@ class ProfileModel extends Equatable {
       isVerified: isVerified ?? this.isVerified,
       verificationType: verificationType ?? this.verificationType,
       isFollowed: isFollowed ?? this.isFollowed,
+      isPrivate: isPrivate ?? this.isPrivate,
       posts: posts ?? this.posts,
       stories: stories ?? this.stories, // اضافه کردن استوری‌ها
       role: role ?? this.role, // اضافه کردن نقش کاربر
@@ -154,6 +160,7 @@ class ProfileModel extends Equatable {
         isVerified,
         verificationType,
         isFollowed,
+        isPrivate,
         posts,
         stories, // اضافه کردن استوری‌ها به props
         role, // اضافه کردن نقش کاربر به props

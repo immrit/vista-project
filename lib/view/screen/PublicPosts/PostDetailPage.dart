@@ -12,7 +12,7 @@ import '../../util/widgets.dart';
 import '../searchPage.dart';
 import '/main.dart';
 import '/view/screen/PublicPosts/profileScreen.dart';
-import '/view/screen/PublicPosts/publicPosts.dart';
+import '/view/screen/PublicPosts/publicPosts.dart' as public_posts;
 import '../../../model/CommentModel.dart';
 import '../../../model/UserModel.dart';
 import '../../../provider/provider.dart';
@@ -52,7 +52,7 @@ final postDetailProvider =
       'like_count': likeCount,
       'is_liked': isLiked,
       'comment_count': commentCount,
-      'username': profile['username'] ?? 'Unknown',
+      'username': profile['username'] ?? profile['full_name'] ?? 'Unknown',
       'avatar_url': profile['avatar_url'] ?? '',
       'is_verified': profile['is_verified'] ?? false,
       'verification_type': profile['verification_type'],
@@ -709,7 +709,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                   case 'edit':
                     if (isBlueTick) {
                       // Use the same edit dialog from publicPosts.dart
-                      showEditPostDialog(context, ref, post);
+                      public_posts.showEditPostDialog(context, ref, post);
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
