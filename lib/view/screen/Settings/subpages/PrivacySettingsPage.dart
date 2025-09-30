@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../provider/provider.dart';
+import '../../../../model/messagePrivacyModel.dart';
 import 'BlockedUsersPage.dart';
 
 class PrivacySettingsPage extends ConsumerWidget {
@@ -83,6 +84,14 @@ class PrivacySettingsPage extends ConsumerWidget {
               },
             );
           }),
+          _buildDivider(),
+          TelegramSettingsItem(
+            icon: Icons.message,
+            iconColor: Colors.orange,
+            title: 'حریم خصوصی پیام‌ها',
+            subtitle: 'کنترل اینکه چه کسانی می‌توانند به شما پیام ارسال کنند',
+            onTap: () => _showMessagePrivacyDialog(context, ref),
+          ),
           _buildDivider(),
           TelegramSettingsItem(
             icon: Icons.visibility,
@@ -244,6 +253,116 @@ class PrivacySettingsPage extends ConsumerWidget {
         );
       }
     }
+  }
+
+  void _showMessagePrivacyDialog(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF2D2D2D) : Colors.white,
+        title: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: Colors.orange,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.message,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'حریم خصوصی پیام‌ها',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: MessagePrivacyLevel.allLevels.map((level) {
+            return Consumer(
+              builder: (context, ref, _) {
+                final settingsAsync = ref.watch(currentUserSettingsProvider);
+                final currentLevel =
+                    settingsAsync.value?['message_privacy'] as String? ??
+                        'everyone';
+                final isSelected = currentLevel == level.value;
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? (isDark
+                            ? Colors.orange.withOpacity(0.2)
+                            : Colors.orange.withOpacity(0.1))
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isSelected
+                          ? Colors.orange
+                          : (isDark ? Colors.grey[700]! : Colors.grey[300]!),
+                      width: isSelected ? 2 : 1,
+                    ),
+                  ),
+                  child: ListTile(
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    leading: Icon(
+                      isSelected
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_unchecked,
+                      color: isSelected
+                          ? Colors.orange
+                          : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                    ),
+                    title: Text(
+                      level.title,
+                      style: TextStyle(
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.w400,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                    subtitle: Text(
+                      level.description,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      ),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context, level.value);
+                    },
+                  ),
+                );
+              },
+            );
+          }).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'انصراف',
+              style: TextStyle(
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+              ),
+            ),
+          ),
+        ],
+      ),
+    ).then((value) {
+      if (value != null && context.mounted) {
+        _upsertUserSetting(context, ref, 'message_privacy', value);
+      }
+    });
   }
 
   void _showLastSeenDialog(BuildContext context, WidgetRef ref) {

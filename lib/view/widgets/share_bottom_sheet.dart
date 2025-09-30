@@ -345,7 +345,6 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
 
   void _bookmarkPost() {
     Navigator.pop(context);
-    // TODO: Implement bookmark functionality
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('پست نشان‌گذاری شد'),

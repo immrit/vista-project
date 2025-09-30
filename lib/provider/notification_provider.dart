@@ -52,6 +52,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
 
     final userId = _userId ?? supabase.auth.currentUser?.id;
     if (userId == null) {
+      print('⚠️ کاربر لاگین نشده، اعلان‌ها بارگیری نمی‌شوند');
       state = [];
       _isFetching = false;
       _hasMore = false;
@@ -62,11 +63,15 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
       _page = 0;
       _hasMore = true;
       state = [];
+      print('🔄 شروع رفرش اعلان‌ها...');
     }
 
     try {
       final from = _page * _kPageSize;
       final to = from + _kPageSize - 1;
+
+      print('📡 درخواست اعلان‌ها از $from تا $to');
+
       final response = await supabase
           .from('notifications')
           .select(
@@ -79,29 +84,38 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
           .map((item) => NotificationModel.fromMap(item))
           .toList();
 
+      print('📥 ${notifications.length} اعلان دریافت شد');
+
       if (refresh) {
         state = notifications;
+        print('✅ اعلان‌ها رفرش شدند');
       } else {
         // تکراری اضافه نشود
         final existingIds = state.map((n) => n.id).toSet();
-        state = [
-          ...state,
-          ...notifications.where((n) => !existingIds.contains(n.id))
-        ];
+        final newNotifications =
+            notifications.where((n) => !existingIds.contains(n.id)).toList();
+        state = [...state, ...newNotifications];
+        print('➕ ${newNotifications.length} اعلان جدید اضافه شد');
       }
 
       if (notifications.length < _kPageSize) {
         _hasMore = false;
+        print('📄 آخرین صفحه اعلان‌ها بارگیری شد');
       } else {
         _hasMore = true;
         _page++;
+        print('📄 صفحه بعدی آماده: $_page');
       }
     } catch (e) {
-      print("خطا در واکشی اعلان‌ها: $e");
-      if (refresh) state = [];
+      print("❌ خطا در واکشی اعلان‌ها: $e");
+      if (refresh) {
+        state = [];
+        print('🔄 لیست اعلان‌ها پاک شد به دلیل خطا');
+      }
       _hasMore = false;
+    } finally {
+      _isFetching = false;
     }
-    _isFetching = false;
   }
 
   /// بارگیری صفحه بعد (برای لیزی لودینگ)
@@ -127,32 +141,42 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
             value: userId,
           ),
           callback: (payload) async {
-            final newData = payload.newRecord;
-            var notif = NotificationModel.fromMap(newData);
             try {
+              final newData = payload.newRecord;
+              print('🔔 اعلان جدید دریافت شد: ${newData['type']}');
+
+              // دریافت اطلاعات کامل فرستنده
               final senderData = await supabase
                   .from('profiles')
                   .select(
-                      'username, avatar_url, is_verified, verification_type')
+                      'username, full_name, avatar_url, is_verified, verification_type')
                   .eq('id', newData['sender_id'])
                   .single();
 
               // ترکیب اطلاعات اعلان با پروفایل
               final completeData = {...newData, 'sender': senderData};
+              final notif = NotificationModel.fromMap(completeData);
 
-              var notif = NotificationModel.fromMap(completeData);
+              // بررسی تکراری نبودن اعلان
               if (!state.any((n) => n.id == notif.id)) {
                 state = [notif, ...state];
                 await _showLocalNotification(notif);
+                print('✅ اعلان جدید به لیست اضافه شد: ${notif.type}');
+              } else {
+                print('⚠️ اعلان تکراری نادیده گرفته شد: ${notif.id}');
               }
             } catch (e) {
-              print('خطا در دریافت اطلاعات فرستنده: $e');
-            }
-
-            if (!state.any((n) => n.id == notif.id)) {
-              // برای اطمینان، پروفایل کامل را دوباره بگیر
-              state = [notif, ...state];
-              await _showLocalNotification(notif);
+              print('❌ خطا در پردازش اعلان ریل تایم: $e');
+              // در صورت خطا، اعلان ساده را اضافه کن
+              try {
+                final notif = NotificationModel.fromMap(payload.newRecord);
+                if (!state.any((n) => n.id == notif.id)) {
+                  state = [notif, ...state];
+                  await _showLocalNotification(notif);
+                }
+              } catch (fallbackError) {
+                print('❌ خطا در fallback اعلان: $fallbackError');
+              }
             }
           },
         )..subscribe();
@@ -200,7 +224,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
   // نمایش نوتیفیکیشن لوکال
   Future<void> _showLocalNotification(NotificationModel notif) async {
     String? title, body;
-    final senderUsername = notif.username ?? 'کاربر';
+    final senderUsername = notif.username.isNotEmpty ? notif.username : 'کاربر';
     switch (notif.type) {
       case 'like':
         title = 'لایک جدید';
@@ -208,11 +232,11 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
         break;
       case 'comment':
         title = 'نظر جدید';
-        body = '$senderUsername: ${_filterLinksFromText(notif.content ?? "")}';
+        body = '$senderUsername: ${_filterLinksFromText(notif.content)}';
         break;
       case 'reply_comment':
         title = 'پاسخ به نظر شما';
-        body = '$senderUsername: ${_filterLinksFromText(notif.content ?? "")}';
+        body = '$senderUsername: ${_filterLinksFromText(notif.content)}';
         break;
       case 'follow':
         title = 'دنبال‌کننده جدید';
@@ -228,7 +252,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
         break;
       default:
         title = 'اعلان';
-        body = notif.content ?? '';
+        body = notif.content;
     }
     await flutterLocalNotificationsPlugin.show(
       DateTime.now().millisecondsSinceEpoch % 100000,
@@ -319,17 +343,68 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
     await fetchNotifications(refresh: true);
   }
 
+  /// حذف یک اعلان به صورت تکی (از دیتابیس و استیت)
+  Future<void> removeNotification(String notificationId) async {
+    try {
+      await supabase.from('notifications').delete().eq('id', notificationId);
+      state = state.where((n) => n.id != notificationId).toList();
+    } catch (e) {
+      print('خطا در حذف اعلان: $e');
+    }
+  }
+
+  /// حذف اعلان follow_request با شناسه
+  Future<void> removeFollowRequestById(String notificationId) async {
+    try {
+      final notif = state.firstWhere(
+        (n) => n.id == notificationId && n.type == 'follow_request',
+        orElse: () => NotificationModel.empty(),
+      );
+      if (notif.id.isEmpty) return;
+      await supabase.from('notifications').delete().eq('id', notificationId);
+      state = state.where((n) => n.id != notificationId).toList();
+    } catch (e) {
+      print('خطا در حذف اعلان درخواست دنبال کردن: $e');
+    }
+  }
+
   /// اضافه کردن اعلان جدید از FCM Push Notification
   void addNotificationFromPush(RemoteMessage message) {
     try {
       final notification = NotificationModel.fromFCM(message);
 
-      // اضافه کردن به ابتدای لیست (جدیدترین اول)
-      state = [notification, ...state];
-
-      print('✅ اعلان جدید از FCM اضافه شد: ${notification.type}');
+      // بررسی تکراری نبودن اعلان
+      if (!state.any((n) => n.id == notification.id)) {
+        // اضافه کردن به ابتدای لیست (جدیدترین اول)
+        state = [notification, ...state];
+        print('✅ اعلان جدید از FCM اضافه شد: ${notification.type}');
+      } else {
+        print('⚠️ اعلان FCM تکراری نادیده گرفته شد: ${notification.id}');
+      }
     } catch (e) {
       print('❌ خطا در اضافه کردن اعلان از FCM: $e');
+    }
+  }
+
+  /// بررسی وضعیت اتصال و تلاش مجدد در صورت نیاز
+  Future<void> checkConnectionAndRetry() async {
+    try {
+      final userId = _userId ?? supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      // تست اتصال با یک درخواست ساده
+      await supabase
+          .from('notifications')
+          .select('id')
+          .eq('recipient_id', userId)
+          .limit(1);
+
+      // اگر اتصال برقرار است و لیست خالی است، اعلان‌ها را بارگیری کن
+      if (state.isEmpty) {
+        await fetchNotifications(refresh: true);
+      }
+    } catch (e) {
+      print('❌ خطا در بررسی اتصال: $e');
     }
   }
 }

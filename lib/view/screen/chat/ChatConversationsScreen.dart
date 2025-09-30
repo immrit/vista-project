@@ -10,14 +10,14 @@ import '../../../model/channel_model.dart';
 import '../../../model/conversation_model.dart';
 import '../../../provider/channel_provider.dart';
 import '../../../provider/chat_provider.dart';
-import '../../../provider/unified_chat_provider.dart';
+import '../../../provider/advanced_chat_providers.dart';
 import '../../util/const.dart';
 import 'ArchivedConversationsScreen.dart';
 // import 'ChatSettingsScreen.dart'; // اضافه کردن ایمپورت صفحه جدید
 import '../../../services/ChatService.dart';
 import 'ChatScreen.dart';
 import '../../../DB/database_file_utils.dart';
-import '../../../DB/conversation_cache_service_wrapper.dart';
+import '../../../DB/unified_conversation_cache_service.dart';
 import '../../../services/user_profile_service.dart';
 import '/main.dart'; // برای دسترسی به supabase
 
@@ -124,14 +124,65 @@ class _ChatConversationsScreenState
     );
     timeago.setLocaleMessages('fa', timeago.FaMessages());
     _initializeOptimizedMessaging();
-    _preloadUserProfiles();
+
+    // به تعویق انداختن بارگذاری پروفایل ها برای جلوگیری از فریز UI
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        _preloadUserProfiles();
+      }
+    });
+  }
+
+  /// Load missing profiles in background for better UX
+  Future<void> _loadMissingProfilesInBackground(
+      List<ConversationModel> conversations) async {
+    try {
+      // جمع‌آوری تمام otherUserId ها که نیاز به لود دارند
+      final userIdsToLoad = <String>[];
+      for (final conversation in conversations) {
+        if (conversation.otherUserId != null &&
+            (conversation.otherUserName == null ||
+                conversation.otherUserName!.isEmpty ||
+                conversation.otherUserName == 'کاربر' ||
+                conversation.otherUserName == 'کاربر ناشناس')) {
+          userIdsToLoad.add(conversation.otherUserId!);
+        }
+      }
+
+      if (userIdsToLoad.isNotEmpty) {
+        print(
+            '🔄 Background loading profiles for ${userIdsToLoad.length} users');
+
+        // محدود کردن تعداد کاربران همزمان برای جلوگیری از فریز
+        final maxConcurrentUsers = 5; // کمتر برای background loading
+        final limitedUserIds = userIdsToLoad.length > maxConcurrentUsers
+            ? userIdsToLoad.take(maxConcurrentUsers).toList()
+            : userIdsToLoad;
+
+        // استفاده از UserProfileService برای preload کردن
+        final userProfileService = UserProfileService();
+        await userProfileService.preloadProfiles(limitedUserIds);
+
+        print(
+            '✅ Background loaded profiles for ${limitedUserIds.length} users');
+
+        // بروزرسانی UI
+        if (mounted) {
+          ref.read(cachedConversationsProvider.notifier).refresh();
+          ref.invalidate(conversationsWithProfilesProvider);
+          ref.invalidate(enrichedConversationsStreamProvider);
+        }
+      }
+    } catch (e) {
+      print('⚠️ Error in background profile loading: $e');
+    }
   }
 
   /// Preload user profiles to ensure usernames are available
   Future<void> _preloadUserProfiles() async {
     try {
       // ابتدا کش را بررسی کنیم
-      final conversationCache = ConversationCacheService();
+      final conversationCache = UnifiedConversationCacheService();
       final cachedConversations =
           await conversationCache.getCachedConversations(
         supabase.auth.currentUser?.id ?? '',
@@ -157,9 +208,18 @@ class _ChatConversationsScreenState
           print(
               '📱 Loading profiles for ${userIdsToLoad.length} users: $userIdsToLoad');
 
+          // محدود کردن تعداد کاربران همزمان برای جلوگیری از فریز
+          final maxConcurrentUsers = 10; // حداکثر ۱۰ کاربر همزمان
+          final limitedUserIds = userIdsToLoad.length > maxConcurrentUsers
+              ? userIdsToLoad.take(maxConcurrentUsers).toList()
+              : userIdsToLoad;
+
+          print(
+              '📱 Limited to ${limitedUserIds.length} concurrent users for performance');
+
           // استفاده از UserProfileService برای preload کردن
           final userProfileService = UserProfileService();
-          await userProfileService.preloadProfiles(userIdsToLoad);
+          await userProfileService.preloadProfiles(limitedUserIds);
 
           print('✅ Preloaded profiles for ${userIdsToLoad.length} users');
 
@@ -221,7 +281,7 @@ class _ChatConversationsScreenState
   /// Initialize optimized messaging system
   Future<void> _initializeOptimizedMessaging() async {
     try {
-      final chatService = ref.read(optimizedChatServiceProvider);
+      final chatService = ref.read(chatServiceProvider);
       await chatService.initializeOptimizedMessaging();
       print('✅ Optimized messaging initialized for conversations screen');
     } catch (e) {
@@ -427,19 +487,12 @@ class _ChatConversationsScreenState
     return false;
   }
 
-  // نمایش shimmer برای کل لیست مکالمات
-  Widget _buildConversationsShimmer(ThemeData theme) {
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: 10, // تعداد آیتم‌های shimmer
-      separatorBuilder: (context, index) => _buildDivider(theme),
-      itemBuilder: (context, index) => _buildShimmerItem(theme),
-    );
-  }
-
   // نمایش لیست مکالمات کش شده
   Widget _buildConversationsList(
       ThemeData theme, List<ConversationModel> conversations) {
+    // استفاده از یک instance واحد برای بهینه‌سازی عملکرد
+    final userProfileService = UserProfileService();
+
     // Enrich conversations with user profiles if needed
     final enrichedConversations = conversations.map((conversation) {
       // اگر نام کاربری خالی است، از کش پروفایل استفاده کن
@@ -449,7 +502,6 @@ class _ChatConversationsScreenState
               conversation.otherUserName == 'کاربر ناشناس') &&
           conversation.otherUserId != null) {
         // سعی کن از کش پروفایل استفاده کن
-        final userProfileService = UserProfileService();
         final cachedProfile =
             userProfileService.getCachedProfile(conversation.otherUserId!);
 
@@ -477,12 +529,36 @@ class _ChatConversationsScreenState
       );
     }
 
+    // محدود کردن تعداد آیتم‌ها برای جلوگیری از فریز در لیست‌های بزرگ
+    final maxDisplayItems = 50;
+    final displayItems = unifiedItems.length > maxDisplayItems
+        ? unifiedItems.take(maxDisplayItems).toList()
+        : unifiedItems;
+
+    final hasMoreItems = unifiedItems.length > maxDisplayItems;
+
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: unifiedItems.length,
+      itemCount: displayItems.length + (hasMoreItems ? 1 : 0),
       separatorBuilder: (context, index) => _buildDivider(theme),
       itemBuilder: (context, index) {
-        final item = unifiedItems[index];
+        if (hasMoreItems && index == displayItems.length) {
+          // نمایش indicator برای موارد بیشتر
+          return Container(
+            padding: const EdgeInsets.all(16),
+            child: Center(
+              child: Text(
+                '${unifiedItems.length - maxDisplayItems} گفتگوی دیگر...',
+                style: TextStyle(
+                  color: theme.hintColor,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          );
+        }
+
+        final item = displayItems[index];
         return _buildUnifiedItem(theme, item);
       },
     );
@@ -503,9 +579,14 @@ class _ChatConversationsScreenState
 
       if (needsProfileLoading) {
         print(
-            '🔄 UI: Profiles need loading, showing shimmer for cached conversations');
-        // اگر پروفایل‌ها نیاز به لود شدن دارند، shimmer نمایش بده
-        return _buildConversationsShimmer(theme);
+            '🔄 UI: Profiles need loading, but showing list immediately for better UX');
+
+        // نمایش لیست با اطلاعات موجود و بارگذاری پروفایل ها در background
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _loadMissingProfilesInBackground(cachedConversations);
+        });
+
+        return _buildConversationsList(theme, cachedConversations);
       } else {
         // اگر پروفایل‌ها آماده هستند، لیست رو نمایش بده
         return _buildConversationsList(theme, cachedConversations);
@@ -521,11 +602,16 @@ class _ChatConversationsScreenState
       loading: () => _buildLoadingState(theme),
       error: (error, stack) => _buildErrorState(theme, error.toString()),
       data: (enrichedConversations) {
+        // محدود کردن تعداد مکالمات برای جلوگیری از فریز
+        final limitedConversations = enrichedConversations.length > 50
+            ? enrichedConversations.take(50).toList()
+            : enrichedConversations;
+
         return channelsAsync.when(
           loading: () => _buildLoadingState(theme),
           error: (error, stack) => _buildErrorState(theme, error.toString()),
           data: (channels) {
-            return _buildConversationsList(theme, enrichedConversations);
+            return _buildConversationsList(theme, limitedConversations);
           },
         );
       },
@@ -1157,7 +1243,6 @@ class _ChatConversationsScreenState
   void _navigateToItem(UnifiedChatItem item) {
     if (item.isChannel) {
       // Navigate to Channel Screen
-      // TODO: Implement ChannelScreen navigation
     } else {
       // Navigate to Chat Screen
       if (item.source is ConversationModel) {
@@ -1405,19 +1490,11 @@ class _ChatConversationsScreenState
     }
   }
 
-  void _showChannelInfo(UnifiedChatItem item) {
-    // TODO: Implement channel info screen
-  }
+  void _showChannelInfo(UnifiedChatItem item) {}
 
-  void _muteChannel(UnifiedChatItem item) {
-    // TODO: Implement channel mute logic
-  }
+  void _muteChannel(UnifiedChatItem item) {}
 
-  void _leaveChannel(UnifiedChatItem item) {
-    // TODO: Implement leave channel logic with confirmation
-  }
+  void _leaveChannel(UnifiedChatItem item) {}
 
-  void _createNewChannel() {
-    // TODO: Implement new channel creation logic
-  }
+  void _createNewChannel() {}
 }

@@ -27,10 +27,24 @@ class UnifiedMessageCacheService {
     }
   }
 
+  /// Cache multiple messages with limit support
+  Future<void> cacheMessagesWithLimit(
+      List<MessageModel> messages, String userId,
+      {int? limit}) async {
+    final messagesToCache =
+        limit != null && limit > 0 ? messages.take(limit).toList() : messages;
+    await cacheMessages(messagesToCache, userId);
+  }
+
   /// Get conversation messages
   Future<List<MessageModel>> getConversationMessages(
-      String conversationId, String userId) async {
-    return _advancedCache.getCachedMessages(conversationId);
+      String conversationId, String userId,
+      {int? limit}) async {
+    final messages = _advancedCache.getCachedMessages(conversationId);
+    if (limit != null && limit > 0) {
+      return messages.take(limit).toList();
+    }
+    return messages;
   }
 
   /// Get cached messages for a conversation
@@ -63,12 +77,6 @@ class UnifiedMessageCacheService {
     // Advanced cache handles message deletion
   }
 
-  /// Mark message as failed
-  Future<void> markMessageAsFailed(
-      String conversationId, String messageId) async {
-    // Simple implementation
-  }
-
   /// Get unread message count
   Future<int> countUnreadMessages(String conversationId) async {
     return 0; // Placeholder
@@ -87,5 +95,21 @@ class UnifiedMessageCacheService {
   /// Perform transaction
   Future<void> performTransaction(Future<void> Function() action) async {
     await action();
+  }
+
+  /// Replace temporary message with actual message
+  Future<void> replaceTempMessage(
+      MessageModel tempMessage, MessageModel actualMessage) async {
+    // Delete temp message
+    await clearMessage(
+        tempMessage.conversationId, tempMessage.id, actualMessage.senderId);
+    // Cache actual message
+    await cacheMessage(actualMessage, actualMessage.senderId);
+  }
+
+  /// Mark message as failed
+  Future<void> markMessageAsFailed(
+      String conversationId, String messageId) async {
+    print('[UnifiedMessageCache] Marking message as failed: $messageId');
   }
 }

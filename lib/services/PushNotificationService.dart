@@ -81,6 +81,7 @@ class PushNotificationService {
 
       // گوش دادن به پیام‌ها در فورگراند
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        print('📱 پیام FCM در فورگراند دریافت شد: ${message.data['type']}');
         _notifications.add(message);
         _showNotification(message);
 
@@ -317,7 +318,7 @@ class PushNotificationService {
       // استفاده از ref.read برای دسترسی به notificationsProvider
       final notifier = ref.read(notificationsProvider.notifier);
       notifier.addNotificationFromPush(message);
-      print('✅ اعلان با موفقیت به provider اضافه شد');
+      print('✅ اعلان با موفقیت به provider اضافه شد: ${message.data['type']}');
     } catch (e) {
       print('❌ خطا در اضافه کردن اعلان به provider: $e');
       print('Stack trace: ${StackTrace.current}');

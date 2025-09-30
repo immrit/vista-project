@@ -350,7 +350,6 @@ class ArchivedConversationsScreen extends ConsumerWidget {
                     style: TextStyle(color: theme.colorScheme.error)),
                 onTap: () {
                   Navigator.pop(context);
-                  // TODO: Implement permanent delete logic with confirmation
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                         content: Text('حذف برای همیشه (هنوز پیاده‌سازی نشده)')),

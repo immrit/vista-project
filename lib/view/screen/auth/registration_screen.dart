@@ -669,98 +669,216 @@ class _RegistrationScreenState extends State<RegistrationScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF0A0A0A) : const Color(0xFFFAFAFA),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: isDark ? Colors.white : Colors.black87,
-          ),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'ثبت نام',
-          style: TextStyle(
-            color: isDark ? Colors.white : Colors.black87,
-            fontSize: 20.sp,
-            fontWeight: FontWeight.bold,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDark
+                ? [const Color(0xFF0D1117), const Color(0xFF161B22)]
+                : [const Color(0xFFF8FAFC), const Color(0xFFE2E8F0)],
           ),
         ),
-        centerTitle: true,
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildProgressIndicator(),
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                physics: const NeverScrollableScrollPhysics(),
-                children: [
-                  _buildBasicInfoStep(),
-                  _buildProfileInfoStep(),
-                  _buildAdditionalInfoStep(),
-                  _buildReviewStep(),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: _currentStep < 3
-          ? Container(
-              padding: EdgeInsets.all(24.w),
-              decoration: BoxDecoration(
-                color:
-                    isDark ? const Color(0xFF0A0A0A) : const Color(0xFFFAFAFA),
-                border: Border(
-                  top: BorderSide(
-                    color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
-                    width: 1,
-                  ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Header with progress
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
+                child: Column(
+                  children: [
+                    // Back button and title
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            Icons.arrow_back_ios_new_rounded,
+                            color: isDark ? Colors.white : Colors.black87,
+                            size: 20.sp,
+                          ),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                        const Spacer(),
+                        Text(
+                          'ثبت نام',
+                          style: TextStyle(
+                            color: isDark ? Colors.white : Colors.black87,
+                            fontSize: 20.sp,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const Spacer(),
+                        SizedBox(width: 48.w), // Balance the back button
+                      ],
+                    ),
+                    SizedBox(height: 16.h),
+                    // Progress indicator
+                    Container(
+                      height: 4.h,
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? Colors.white.withOpacity(0.1)
+                            : Colors.black.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(2.r),
+                      ),
+                      child: Row(
+                        children: List.generate(4, (index) {
+                          final isActive = index <= _currentStep;
+                          final isCompleted = index < _currentStep;
+
+                          return Expanded(
+                            child: Container(
+                              margin:
+                                  EdgeInsets.only(right: index < 3 ? 2.w : 0),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(2.r),
+                                color: isActive || isCompleted
+                                    ? const Color(0xFF4A80F0)
+                                    : Colors.transparent,
+                              ),
+                            ),
+                          );
+                        }),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              child: SafeArea(
-                child: _buildContinueButton(),
-              ),
-            )
-          : null,
-    );
-  }
 
-  Widget _buildProgressIndicator() {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
-      child: Row(
-        children: List.generate(4, (index) {
-          final isActive = index <= _currentStep;
-          final isCompleted = index < _currentStep;
-
-          return Expanded(
-            child: Container(
-              margin: EdgeInsets.only(right: index < 3 ? 8.w : 0),
-              height: 4.h,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(2.r),
-                color:
-                    isActive ? const Color(0xFF4A80F0) : Colors.grey.shade300,
+              // Main content
+              Expanded(
+                child: PageView(
+                  controller: _pageController,
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: [
+                    _buildBasicInfoStep(),
+                    _buildProfileInfoStep(),
+                    _buildAdditionalInfoStep(),
+                    _buildReviewStep(),
+                  ],
+                ),
               ),
-              child: isCompleted
-                  ? Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(2.r),
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF4A80F0), Color(0xFF6B9EFF)],
+
+              // Bottom Navigation Bar - Continue/Register Button
+              Container(
+                padding: EdgeInsets.all(24.w),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? Colors.black.withOpacity(0.8)
+                      : Colors.white.withOpacity(0.9),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(24.r),
+                    topRight: Radius.circular(24.r),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 20,
+                      offset: const Offset(0, -5),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    // Back button for steps > 0
+                    if (_currentStep > 0)
+                      Expanded(
+                        child: Container(
+                          height: 56.h,
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? Colors.white.withOpacity(0.1)
+                                : Colors.white.withOpacity(0.8),
+                            borderRadius: BorderRadius.circular(16.r),
+                            border: Border.all(
+                              color: isDark
+                                  ? Colors.white.withOpacity(0.2)
+                                  : Colors.black.withOpacity(0.1),
+                            ),
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: _previousStep,
+                              borderRadius: BorderRadius.circular(16.r),
+                              child: Center(
+                                child: Text(
+                                  'قبلی',
+                                  style: TextStyle(
+                                    color: const Color(0xFF4A80F0),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16.sp,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
-                    )
-                  : null,
-            ),
-          );
-        }),
+
+                    if (_currentStep > 0) SizedBox(width: 16.w),
+
+                    // Continue/Register button
+                    Expanded(
+                      flex: _currentStep == 0 ? 1 : 1,
+                      child: Container(
+                        height: 56.h,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF4A80F0), Color(0xFF00A8E8)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(16.r),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF4A80F0).withOpacity(0.4),
+                              blurRadius: 20,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: _isLoading
+                                ? null
+                                : (_currentStep < 3
+                                    ? _nextStep
+                                    : _handleRegistration),
+                            borderRadius: BorderRadius.circular(16.r),
+                            child: Center(
+                              child: _isLoading
+                                  ? SizedBox(
+                                      width: 20.w,
+                                      height: 20.h,
+                                      child: const CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                          Colors.white,
+                                        ),
+                                      ),
+                                    )
+                                  : Text(
+                                      _currentStep < 3 ? 'ادامه' : 'ثبت نام',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16.sp,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

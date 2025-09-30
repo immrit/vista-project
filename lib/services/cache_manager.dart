@@ -2,8 +2,8 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'dart:convert';
-import '../DB/message_cache_service_wrapper.dart';
-import '../DB/conversation_cache_service_wrapper.dart';
+import '../DB/unified_message_cache_service.dart';
+import '../DB/unified_conversation_cache_service.dart';
 
 /// سیستم مدیریت کش مرکزی و هوشمند
 class UnifiedCacheManager {
@@ -21,9 +21,9 @@ class UnifiedCacheManager {
   late final CacheManager wallpaperInstance;
 
   // سرویس‌های کش دیتابیس
-  final MessageCacheService _messageCache = MessageCacheService();
-  final ConversationCacheService _conversationCache =
-      ConversationCacheService();
+  final UnifiedMessageCacheService _messageCache = UnifiedMessageCacheService();
+  final UnifiedConversationCacheService _conversationCache =
+      UnifiedConversationCacheService();
 
   // تنظیمات هوشمند کش
   bool _smartCacheEnabled = true;

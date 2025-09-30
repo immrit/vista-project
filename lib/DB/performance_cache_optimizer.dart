@@ -34,8 +34,8 @@ class PerformanceCacheOptimizer {
 
     print('🚀 Initializing Performance Cache Optimizer...');
 
-    // Start periodic cleanup
-    _cleanupTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
+    // Start periodic cleanup with longer interval to reduce overhead
+    _cleanupTimer = Timer.periodic(const Duration(minutes: 10), (timer) {
       _performCleanup();
     });
 
@@ -96,8 +96,8 @@ class PerformanceCacheOptimizer {
 
     _preloadQueue.add(currentConversationId);
 
-    // Preload in next frame to avoid blocking UI
-    Future.microtask(() {
+    // Preload with delay to avoid blocking UI during initialization
+    Future.delayed(const Duration(milliseconds: 500), () {
       _performPreload(currentConversationId);
     });
   }

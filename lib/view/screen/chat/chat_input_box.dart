@@ -45,6 +45,7 @@ class ChatInputBox extends StatefulWidget {
   final VoidCallback sendMessage;
   final ValueChanged<String> onEmojiSelected;
   final VoidCallback? onReplyCancel;
+  final String? conversationId;
 
   // رفتارهای صوتی
   final Function(File?, Uint8List?, String?)? onAudioRecorded;
@@ -91,6 +92,7 @@ class ChatInputBox extends StatefulWidget {
     this.onAudioCancel,
     this.selectedAudioBytes,
     this.onImageCancel,
+    this.conversationId,
   });
 
   @override
@@ -143,6 +145,9 @@ class _ChatInputBoxState extends State<ChatInputBox>
   void initState() {
     super.initState();
     _initializeAnimations();
+
+    // اضافه کردن listener برای نشانگر تایپ کردن
+    widget.messageController.addListener(_onTextChanged);
     _setupListeners();
     _updateInitialStates();
     _startTypingIndicator();
@@ -450,7 +455,9 @@ class _ChatInputBoxState extends State<ChatInputBox>
 
   @override
   void dispose() {
+    // حذف listener برای نشانگر تایپ کردن
     widget.messageController.removeListener(_onTextChanged);
+
     _audioLevelTimer?.cancel();
     _replyController.dispose();
     _sendButtonController.dispose();

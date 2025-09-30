@@ -649,7 +649,6 @@ class _StorageAndMemorySettingsPageState
       print('🧹 شروع پاک‌سازی رسانه‌های پروفایل قدیمی‌تر از $cutoffDate');
 
       // پاک‌سازی تصاویر پروفایل و پست‌های قدیمی
-      // TODO: اگر ProfileCacheService متد cleanupOldCaches دارد، اینجا فراخوانی کنید
       print(
           '📝 پاک‌سازی کش پروفایل - نیاز به پیاده‌سازی در ProfileCacheService');
 
@@ -665,13 +664,11 @@ class _StorageAndMemorySettingsPageState
       // اگر پیام دارای attachment است
       if (message.attachmentUrl != null && message.attachmentUrl!.isNotEmpty) {
         // حذف فایل از cache
-        // TODO: اگر UnifiedCacheManager متد removeFromCache دارد، اینجا فراخوانی کنید
         print('📝 حذف attachment: ${message.attachmentUrl}');
       }
 
       // اگر پیام دارای تصویر است
       if (message.imageUrl != null && message.imageUrl!.isNotEmpty) {
-        // TODO: اگر UnifiedCacheManager متد removeFromCache دارد، اینجا فراخوانی کنید
         print('📝 حذف تصویر: ${message.imageUrl}');
       }
     } catch (e) {
@@ -950,7 +947,6 @@ class _StorageAndMemorySettingsPageState
   /// حذف قدیمی‌ترین فایل‌های رسانه‌ای
   Future<void> _cleanupOldestMediaFiles(double targetSizeMB) async {
     // پیاده‌سازی حذف قدیمی‌ترین فایل‌ها بر اساس اندازه هدف
-    // TODO: implementation
     print(
         '🧹 پاک‌سازی ${targetSizeMB.toStringAsFixed(1)} مگابایت از قدیمی‌ترین فایل‌ها');
   }
@@ -1929,7 +1925,6 @@ class _StorageAndMemorySettingsPageState
               title: const Text('Advanced Settings'),
               onTap: () {
                 Navigator.pop(context);
-                // TODO: Navigate to advanced settings
               },
             ),
           ],

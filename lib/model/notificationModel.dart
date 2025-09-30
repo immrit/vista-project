@@ -41,6 +41,23 @@ class NotificationModel extends Equatable {
     this.followerId,
   });
 
+  factory NotificationModel.empty() {
+    return NotificationModel(
+      id: '',
+      senderId: '',
+      recipientId: '',
+      content: '',
+      createdAt: DateTime.now(),
+      type: '',
+      username: '',
+      userIsVerified: false,
+      avatarUrl: '',
+      PostId: '',
+      isRead: false,
+      verificationType: VerificationType.none,
+    );
+  }
+
   bool get hasBlueBadge => verificationType == VerificationType.blueTick;
   bool get hasGoldBadge => verificationType == VerificationType.goldTick;
   bool get hasBlackBadge => verificationType == VerificationType.blackTick;

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/message_model.dart';
-import '../DB/message_cache_service_wrapper.dart';
+import '../DB/unified_message_cache_service.dart';
 import '../provider/provider.dart';
 import '../main.dart';
 import 'realtime_connection_optimizer.dart';
@@ -15,7 +15,7 @@ class OptimizedMessagingSystem {
   OptimizedMessagingSystem._internal();
 
   // تنها یک cache service
-  final MessageCacheService _cache = MessageCacheService();
+  final UnifiedMessageCacheService _cache = UnifiedMessageCacheService();
   // ChatService مستقیماً استفاده نمی‌شود - از Supabase مستقیم استفاده می‌کنیم
   final RealtimeConnectionOptimizer _connectionOptimizer =
       RealtimeConnectionOptimizer();

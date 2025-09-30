@@ -1,8 +1,12 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../model/message_model.dart';
 import '../model/conversation_model.dart';
 import '../DB/advanced_cache_system.dart';
+import '../DB/unified_message_cache_service.dart';
 import '../services/user_profile_service.dart';
+import '../services/ChatService.dart';
 import '../main.dart';
 
 /// Advanced chat providers using the new cache system
@@ -93,6 +97,269 @@ final conversationUnreadProvider =
     Provider.family.autoDispose<bool, String>((ref, conversationId) {
   final conversation = ref.watch(advancedConversationProvider(conversationId));
   return (conversation?.unreadCount ?? 0) > 0;
+});
+
+/// State for unified messages management
+class UnifiedMessagesState {
+  final List<MessageModel> messages;
+  final bool isLoading;
+  final bool hasMore;
+  final String? error;
+  final bool isInitialized;
+
+  const UnifiedMessagesState({
+    this.messages = const [],
+    this.isLoading = false,
+    this.hasMore = true,
+    this.error,
+    this.isInitialized = false,
+  });
+
+  UnifiedMessagesState copyWith({
+    List<MessageModel>? messages,
+    bool? isLoading,
+    bool? hasMore,
+    String? error,
+    bool? isInitialized,
+  }) {
+    return UnifiedMessagesState(
+      messages: messages ?? this.messages,
+      isLoading: isLoading ?? this.isLoading,
+      hasMore: hasMore ?? this.hasMore,
+      error: error ?? this.error,
+      isInitialized: isInitialized ?? this.isInitialized,
+    );
+  }
+}
+
+/// Unified Notifier for managing messages
+class UnifiedMessagesNotifier extends StateNotifier<UnifiedMessagesState> {
+  final String conversationId;
+  final ChatService _chatService = ChatService();
+  final UnifiedMessageCacheService _messageCache = UnifiedMessageCacheService();
+  static const int _pageSize = 20;
+  int _currentPage = 0;
+  RealtimeChannel? _realtimeSubscription;
+  final Set<String> _locallyDeletedMessageIds = <String>{};
+
+  UnifiedMessagesNotifier(this.conversationId)
+      : super(const UnifiedMessagesState()) {
+    _initializeMessages();
+    _setupRealTimeListener();
+  }
+
+  @override
+  void dispose() {
+    _realtimeSubscription?.unsubscribe();
+    super.dispose();
+  }
+
+  /// Initialize messages from cache
+  Future<void> _initializeMessages() async {
+    if (state.isInitialized) return;
+
+    state = state.copyWith(isLoading: true);
+
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) {
+        state = state.copyWith(
+          isLoading: false,
+          error: 'User not authenticated',
+          isInitialized: true,
+        );
+        return;
+      }
+
+      final cachedMessages = await _messageCache.getCachedMessages(
+        conversationId,
+        userId,
+      );
+
+      final filteredMessages = _filterDuplicateMessages(cachedMessages);
+
+      state = state.copyWith(
+        messages: filteredMessages,
+        isLoading: false,
+        isInitialized: true,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: e.toString(),
+        isInitialized: true,
+      );
+    }
+  }
+
+  /// Setup real-time listener
+  void _setupRealTimeListener() {
+    final channel = supabase
+        .channel('messages:$conversationId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'messages',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'conversation_id',
+            value: conversationId,
+          ),
+          callback: (payload) {
+            // Handle real-time message updates
+            print('Real-time message update: $payload');
+          },
+        )
+        .subscribe((status, [error]) {
+      if (status == RealtimeSubscribeStatus.subscribed) {
+        print('Real-time messages subscription active for $conversationId');
+      }
+    });
+
+    // Store the channel for cleanup
+    _realtimeSubscription = channel;
+  }
+
+  /// Filter duplicate messages with O(n) algorithm
+  List<MessageModel> _filterDuplicateMessages(List<MessageModel> messages) {
+    if (messages.isEmpty) return messages;
+
+    final Map<String, MessageModel> uniqueMessages = {};
+    final Set<String> realLocalIds = {};
+
+    // Identify real messages
+    for (final message in messages) {
+      if (!message.id.startsWith('temp_') && message.localId != null) {
+        realLocalIds.add(message.localId!);
+      }
+    }
+
+    // Select unique messages
+    for (final message in messages) {
+      if (message.id.startsWith('temp_') && realLocalIds.contains(message.id)) {
+        continue; // Remove temp message that has real message
+      }
+
+      final key = message.localId ?? message.id;
+
+      if (!uniqueMessages.containsKey(key) ||
+          (!uniqueMessages[key]!.id.startsWith('temp_') &&
+              message.id.startsWith('temp_'))) {
+        uniqueMessages[key] = message;
+      }
+    }
+
+    return uniqueMessages.values.toList()
+      ..sort((a, b) => a.createdAt.compareTo(
+          b.createdAt)); // Oldest message first (for reverse ListView)
+  }
+
+  /// Load more messages
+  Future<void> loadMoreMessages() async {
+    if (state.isLoading || !state.hasMore) return;
+
+    state = state.copyWith(isLoading: true);
+
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      _currentPage++;
+      final offset = _currentPage * _pageSize;
+
+      final newMessages = await _chatService.getMessages(
+        conversationId,
+        limit: _pageSize,
+        offset: offset,
+      );
+
+      if (newMessages.isNotEmpty) {
+        final allMessages = [...state.messages, ...newMessages];
+        final filteredMessages = _filterDuplicateMessages(allMessages);
+
+        state = state.copyWith(
+          messages: filteredMessages,
+          isLoading: false,
+          hasMore: newMessages.length >= _pageSize,
+        );
+      } else {
+        state = state.copyWith(
+          isLoading: false,
+          hasMore: false,
+        );
+      }
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: e.toString(),
+      );
+    }
+  }
+
+  /// Add new message
+  void addMessage(MessageModel message) {
+    if (_locallyDeletedMessageIds.contains(message.id)) return;
+
+    final updatedMessages = [...state.messages, message];
+    final filteredMessages = _filterDuplicateMessages(updatedMessages);
+
+    state = state.copyWith(messages: filteredMessages);
+  }
+
+  /// Update message
+  void updateMessage(MessageModel message) {
+    final updatedMessages = state.messages.map((m) {
+      return m.id == message.id ? message : m;
+    }).toList();
+
+    final filteredMessages = _filterDuplicateMessages(updatedMessages);
+    state = state.copyWith(messages: filteredMessages);
+  }
+
+  /// Remove message
+  void removeMessage(String messageId) {
+    _locallyDeletedMessageIds.add(messageId);
+    final updatedMessages =
+        state.messages.where((m) => m.id != messageId).toList();
+    state = state.copyWith(messages: updatedMessages);
+  }
+
+  /// Clear all messages
+  Future<void> clearAllMessages() async {
+    state = state.copyWith(messages: []);
+
+    final userId = supabase.auth.currentUser!.id;
+    await _messageCache.clearConversationMessages(conversationId, userId);
+  }
+}
+
+/// Unified provider for managing messages
+final unifiedMessagesProvider = StateNotifierProvider.family
+    .autoDispose<UnifiedMessagesNotifier, UnifiedMessagesState, String>(
+  (ref, conversationId) {
+    final link = ref.keepAlive();
+    final notifier = UnifiedMessagesNotifier(conversationId);
+
+    ref.onDispose(() {
+      link.close();
+    });
+
+    return notifier;
+  },
+);
+
+/// Helper provider for easy access to messages
+final messagesListProvider =
+    Provider.family<List<MessageModel>, String>((ref, conversationId) {
+  final messagesState = ref.watch(unifiedMessagesProvider(conversationId));
+  return messagesState.messages;
+});
+
+/// Helper provider for loading state
+final messagesLoadingProvider =
+    Provider.family<bool, String>((ref, conversationId) {
+  final messagesState = ref.watch(unifiedMessagesProvider(conversationId));
+  return messagesState.isLoading;
 });
 
 /// Provider for getting the last message of a conversation

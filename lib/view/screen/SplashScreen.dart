@@ -4,7 +4,6 @@ import 'package:loading_animation_widget/loading_animation_widget.dart';
 import '../../services/advanced_security_service.dart';
 import '../../services/onboarding_service.dart';
 
-import 'ouathUser/welcome.dart';
 import 'auth/modern_auth_screen.dart';
 import 'auth/biometric_login_screen.dart';
 
@@ -66,9 +65,9 @@ class _SplashScreenState extends State<SplashScreen> {
         );
       }
     } catch (e) {
-      // در صورت خطا، به صفحه قدیمی منتقل شود
+      // در صورت خطا، به صفحه ورود جدید منتقل شود
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const WelcomePage()),
+        MaterialPageRoute(builder: (context) => const ModernAuthScreen()),
       );
     }
   }
@@ -98,7 +97,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 Navigator.pushReplacementNamed(context, '/home');
               },
               onFallback: () {
-                Navigator.pushReplacementNamed(context, '/login');
+                Navigator.pushReplacementNamed(context, '/modern-auth');
               },
             ),
           ),

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
-import '../DB/message_cache_service_wrapper.dart';
+import '../DB/unified_message_cache_service.dart';
 import 'cache_manager.dart';
 
 /// سرویس پاکسازی خودکار داده‌های قدیمی
@@ -15,7 +15,7 @@ class AutoCleanupService {
   Timer? _oldDataTimer;
   bool _isRunning = false;
 
-  final MessageCacheService _messageCache = MessageCacheService();
+  final UnifiedMessageCacheService _messageCache = UnifiedMessageCacheService();
   late final UnifiedCacheManager _cacheManager;
 
   Future<void> initialize() async {

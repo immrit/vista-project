@@ -22,7 +22,7 @@ import 'dart:io';
 import '../../../model/message_model.dart';
 import '../../../provider/chat_provider.dart';
 import '../../../provider/provider.dart';
-import '../../../provider/unified_chat_provider.dart';
+import '../../../provider/advanced_chat_providers.dart';
 import '../../../services/audio_recording_service.dart';
 import '../../../services/uploadAudioChatService.dart';
 import '../../../services/uploadImageChatService.dart';
@@ -31,7 +31,7 @@ import '../../Exeption/app_exceptions.dart';
 import '../../util/time_utils.dart';
 import '../../util/widgets.dart';
 import 'package:flutter/foundation.dart' as foundation;
-import '../../../DB/message_cache_service_wrapper.dart';
+import '../../../DB/unified_message_cache_service.dart';
 import '../../../services/ChatService.dart';
 import '../../../services/cache_manager.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -138,7 +138,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   /// Initialize optimized messaging system
   Future<void> _initializeOptimizedMessaging() async {
     try {
-      final chatService = ref.read(optimizedChatServiceProvider);
+      final chatService = ref.read(chatServiceProvider);
       await chatService.initializeOptimizedMessaging();
       chatService.activateConversation(widget.conversationId);
       print(
@@ -151,7 +151,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   // Animation state for deletion
   final Set<String> _deletingMessageIds = {};
 
-  // (deprecated) placeholder gradient generator – no longer used
   // List<Color> _placeholderColorsFromSeed(String seed) { ... }
 
   String _buildThumbnailUrl(String url) {
@@ -176,6 +175,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   Timer? _highlightTimer;
   bool _isOtherUserBlocked = false;
   bool _showScrollToBottom = false;
+  double _previousScrollPosition = 0.0;
+  Timer? _scrollToBottomTimer;
   double _uploadProgress = 0.0; // درصد پیشرفت آپلود عکس
   File? _selectedAudio;
   Uint8List? _selectedAudioBytes; // برای وب
@@ -211,36 +212,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     WidgetsBinding.instance.addObserver(this);
 
     _checkBlockStatus();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.invalidate(userBlockStatusProvider(widget.otherUserId));
-    });
     timeago.setLocaleMessages('fa', timeago.FaMessages());
 
-    Future.microtask(() {
-      // قابلیت خواندن پیام حذف شد
-      ref.read(userOnlineNotifierProvider).updateOnlineStatus();
-      _checkOnlineStatus();
-      // Initialize optimized messaging
-      _initializeOptimizedMessaging();
-    });
-    _itemPositionsListener.itemPositions.addListener(_handleScrollToBottomBtn);
-
-    // و حذف نوتیفیکیشن‌های مربوط به این مکالمه
+    // به تعویق انداختن عملیات سنگین برای جلوگیری از فریز UI
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (widget.conversationId.isNotEmpty) {
-        final int notificationId = widget.conversationId.hashCode;
-        flutterLocalNotificationsPlugin.cancel(notificationId);
-      }
+      _initializeHeavyOperations();
     });
 
-    // Load user profile if needed
-    _loadUserProfile();
-
-    // هنگام ورود به صفحه چت، conversationId فعال را تنظیم کن
-    // فقط اگر مکالمه موجود باشد
-    if (widget.conversationId.isNotEmpty) {
-      ChatService.activeConversationId = widget.conversationId;
-    }
+    _itemPositionsListener.itemPositions.addListener(_handleScrollToBottomBtn);
 
     // اضافه کردن لیسنر برای مدیریت بهتر کیبورد
     WidgetsBinding.instance.addObserver(
@@ -255,18 +234,56 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       ),
     );
 
-    // پیش‌لود کش برای عملکرد سریع‌تر
+    // هنگام ورود به صفحه چت، conversationId فعال را تنظیم کن
     if (widget.conversationId.isNotEmpty) {
-      _preloadCache();
+      ChatService.activeConversationId = widget.conversationId;
     }
+  }
 
-    // فعال‌سازی مکانیزم ارسال پیام‌های آفلاین به محض آنلاین شدن
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+  /// Initialize heavy operations after UI is ready
+  Future<void> _initializeHeavyOperations() async {
+    try {
+      // Load user profile if needed
+      _loadUserProfile();
+
+      // و حذف نوتیفیکیشن‌های مربوط به این مکالمه
+      if (widget.conversationId.isNotEmpty) {
+        final int notificationId = widget.conversationId.hashCode;
+        flutterLocalNotificationsPlugin.cancel(notificationId);
+      }
+
+      // پیش‌لود کش برای عملکرد سریع‌تر
+      if (widget.conversationId.isNotEmpty) {
+        _preloadCache();
+      }
+
+      // فعال‌سازی مکانیزم ارسال پیام‌های آفلاین به محض آنلاین شدن
       ref.read(pendingMessagesSyncProvider);
-    });
 
-    // پیش‌بارگذاری والپیپر برای عملکرد بهتر
-    _preloadWallpaper();
+      // علامت‌گذاری پیام‌های خوانده نشده به عنوان خوانده شده
+      _markMessagesAsRead();
+
+      // پیش‌بارگذاری والپیپر برای عملکرد بهتر
+      _preloadWallpaper();
+
+      // Initialize optimized messaging with delay
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          ref.read(userOnlineNotifierProvider).updateOnlineStatus();
+          _checkOnlineStatus();
+          _initializeOptimizedMessaging();
+        }
+      });
+
+      // Invalidate user block status with delay
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (mounted) {
+          ref.invalidate(userBlockStatusProvider(widget.otherUserId));
+        }
+      });
+    } catch (e) {
+      print('⚠️ Error in heavy operations initialization: $e');
+    }
   }
 
   String _getReplySenderName(MessageModel message) {
@@ -285,15 +302,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
   /// پیش‌بارگذاری هوشمند والپیپر با سرویس اختصاصی
   Future<void> _preloadWallpaper() async {
-    // استفاده از سرویس مدیریت کش والپیپر
-    await WallpaperCacheService.preloadWallpapers();
+    try {
+      // استفاده از Future.microtask برای جلوگیری از blocking UI
+      Future.microtask(() async {
+        await WallpaperCacheService.preloadWallpapers();
+      });
+    } catch (e) {
+      print('⚠️ Error preloading wallpaper: $e');
+    }
   }
 
   Future<void> _preloadCache() async {
-    final userId = supabase.auth.currentUser?.id;
-    if (userId != null && widget.conversationId.isNotEmpty) {
-      await MessageCacheService()
-          .getConversationMessages(widget.conversationId, userId);
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId != null && widget.conversationId.isNotEmpty) {
+        // استفاده از Future.microtask برای جلوگیری از blocking UI
+        Future.microtask(() async {
+          await UnifiedMessageCacheService()
+              .getConversationMessages(widget.conversationId, userId);
+        });
+      }
+    } catch (e) {
+      print('⚠️ Error preloading cache: $e');
     }
   }
 
@@ -301,7 +331,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   Future<void> _preloadCacheForNewConversation(String conversationId) async {
     final userId = supabase.auth.currentUser?.id;
     if (userId != null) {
-      await MessageCacheService()
+      await UnifiedMessageCacheService()
           .getConversationMessages(conversationId, userId);
     }
   }
@@ -351,22 +381,58 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   void _handleScrollToBottomBtn() {
     if (_itemPositionsListener.itemPositions.value.isEmpty) return;
 
-    // بررسی اینکه آیا اولین آیتم (جدیدترین پیام) در صفحه دیده می‌شود یا خیر
-    final firstItemVisible = _itemPositionsListener.itemPositions.value
-        .any((pos) => pos.index == 0 && pos.itemLeadingEdge >= 0);
+    // بررسی اینکه آیا آخرین آیتم (قدیمی‌ترین پیام) در صفحه دیده می‌شود یا خیر
+    final messages =
+        ref.read(conversationMessagesProvider(widget.conversationId));
+    final lastIndex = messages.length - 1;
+    final lastItemVisible = _itemPositionsListener.itemPositions.value
+        .any((pos) => pos.index == lastIndex && pos.itemLeadingEdge >= 0);
 
-    final shouldShow = !firstItemVisible;
+    // اگر آخرین پیام دیده می‌شه، دکمه رو پنهان کن
+    if (lastItemVisible) {
+      _scrollToBottomTimer?.cancel();
+      if (_showScrollToBottom) {
+        setState(() {
+          _showScrollToBottom = false;
+        });
+      }
+      return;
+    }
 
-    if (_showScrollToBottom != shouldShow) {
-      setState(() {
-        _showScrollToBottom = shouldShow;
+    // چک کردن جهت اسکرول - اگر کاربر به سمت پایین اسکرول می‌کنه
+    final currentScrollPosition = _itemPositionsListener
+            .itemPositions.value.firstOrNull?.itemLeadingEdge ??
+        0.0;
+    final isScrollingDown = currentScrollPosition > _previousScrollPosition;
+    _previousScrollPosition = currentScrollPosition;
+
+    if (isScrollingDown) {
+      // کاربر داره به سمت پایین اسکرول می‌کنه، دکمه رو نشون بده
+      _scrollToBottomTimer?.cancel();
+      if (!_showScrollToBottom) {
+        setState(() {
+          _showScrollToBottom = true;
+        });
+      }
+
+      // timer رو برای پنهان کردن دکمه بعد از ۳ ثانیه شروع کن
+      _scrollToBottomTimer = Timer(const Duration(seconds: 3), () {
+        if (_showScrollToBottom) {
+          setState(() {
+            _showScrollToBottom = false;
+          });
+        }
       });
     }
   }
 
   void _scrollToBottom() {
+    final messages =
+        ref.read(conversationMessagesProvider(widget.conversationId));
+    final lastIndex = messages.length - 1;
+
     _itemScrollController.scrollTo(
-      index: 0,
+      index: lastIndex >= 0 ? lastIndex : 0,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOut,
     );
@@ -390,6 +456,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     _itemPositionsListener.itemPositions
         .removeListener(_handleScrollToBottomBtn);
     _highlightTimer?.cancel();
+    _scrollToBottomTimer?.cancel();
     _messageFocusNode.dispose();
 
     // پاک کردن انیمیشن کنترلرها
@@ -407,7 +474,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
     // Deactivate conversation to stop unnecessary updates
     try {
-      final chatService = ref.read(optimizedChatServiceProvider);
+      final chatService = ref.read(chatServiceProvider);
       chatService.deactivateConversation(widget.conversationId);
     } catch (e) {
       print('⚠️ Error deactivating conversation: $e');
@@ -675,6 +742,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
       if (mounted) {
         setState(() => _isSending = false);
+        // اسکرول اتوماتیک به پایین بعد از ارسال پیام
+        Future.delayed(const Duration(milliseconds: 100), () {
+          _scrollToBottom();
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -1694,8 +1765,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     final Color myTextColor = Colors.white;
     final Color otherTextColor = isLightMode ? Colors.black87 : Colors.white;
 
-    final Color myTimeColor = Colors.white;
-    final Color otherTimeColor = isLightMode ? Colors.black87 : Colors.white70;
+    final Color myTimeColor = Colors.white70;
+    final Color otherTimeColor = isLightMode ? Colors.black54 : Colors.white70;
 
     Widget attachmentWidget = const SizedBox.shrink();
     final bool isImageAttachment = message.attachmentUrl != null &&
@@ -2001,10 +2072,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                             else if (!message.isSent)
                               const Icon(Icons.refresh_rounded,
                                   size: 12, color: Colors.white70)
-                            else
+                            else if (!message.isDelivered)
                               const Icon(Icons.done_rounded,
-                                  size: 12, color: Colors.white70),
+                                  size: 12, color: Colors.white70)
+                            else if (!message.isSeen)
+                              const Row(
+                                children: [
+                                  Icon(Icons.done_all_rounded,
+                                      size: 12, color: Colors.white70),
+                                  SizedBox(width: 2),
+                                  Icon(Icons.done_rounded,
+                                      size: 8, color: Colors.white54),
+                                ],
+                              )
+                            else
+                              const Icon(Icons.done_all_rounded,
+                                  size: 12, color: Colors.white),
                           ],
+                          // نمایش ری‌اکشن‌ها اگر وجود داشته باشد
+                          if (message.reactions != null &&
+                              message.reactions!.isNotEmpty)
+                            _buildMessageReactions(message),
                         ],
                       ),
                     ),
@@ -2660,7 +2748,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     );
   }
 
-  // Deprecated: use viewer action with ChatService instead
   // Future<void> _downloadImage(String imageUrl, WidgetRef ref) async {}
 
   void _showFullScreenImage(BuildContext context, String imageUrl) {
@@ -2754,6 +2841,91 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         },
       ),
     );
+  }
+
+  /// ساخت نشانگر تایپ کردن
+  Widget _buildTypingIndicator() {
+    return const SizedBox.shrink(); // موقتاً غیرفعال
+  }
+
+  /// ساخت ویجت ری‌اکشن‌های پیام
+  Widget _buildMessageReactions(MessageModel message) {
+    if (message.reactions == null || message.reactions!.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        children: message.reactions!.map((reaction) {
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: message.isMe
+                  ? Colors.white.withOpacity(0.2)
+                  : Colors.grey.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  reaction['emoji'] ?? '',
+                  style: const TextStyle(fontSize: 12),
+                ),
+                const SizedBox(width: 2),
+                Text(
+                  reaction['count']?.toString() ?? '1',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withOpacity(0.7),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  /// علامت‌گذاری پیام‌های خوانده نشده به عنوان خوانده شده
+  Future<void> _markMessagesAsRead() async {
+    try {
+      final currentUserId = supabase.auth.currentUser?.id;
+      if (currentUserId == null || widget.conversationId.isEmpty) return;
+
+      // دریافت پیام‌های خوانده نشده از این کاربر در این مکالمه
+      final unreadMessages = ref
+          .read(conversationMessagesProvider(widget.conversationId))
+          .where((msg) => !msg.isRead && msg.senderId != currentUserId);
+
+      if (unreadMessages.isNotEmpty) {
+        // علامت‌گذاری پیام‌ها به عنوان خوانده شده در سرور
+        for (final message in unreadMessages) {
+          await supabase.from('messages').update({
+            'is_read': true,
+            'is_seen': true,
+            'read_at': DateTime.now().toIso8601String(),
+            'seen_at': DateTime.now().toIso8601String(),
+          }).eq('id', message.id);
+        }
+
+        // بروزرسانی پیام‌ها در state محلی
+        final notifier = ref
+            .read(conversationMessagesProvider(widget.conversationId).notifier);
+        for (final message in unreadMessages) {
+          notifier.updateMessage(message.copyWith(isRead: true, isSeen: true));
+        }
+      }
+    } catch (e) {
+      print('⚠️ خطا در علامت‌گذاری پیام‌ها به عنوان خوانده شده: $e');
+    }
   }
 
   String _formatMessageHour(DateTime time) {
@@ -3200,9 +3372,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
                       return NotificationListener<ScrollNotification>(
                         onNotification: (ScrollNotification scrollInfo) {
-                          // With reverse: true, older messages are at the top.
-                          // Load more when approaching the top (min extent).
-                          if (scrollInfo.metrics.pixels <= 200) {
+                          // With reverse: false, older messages are at the bottom.
+                          // Load more when approaching the bottom (max extent).
+                          if (scrollInfo.metrics.pixels >=
+                              scrollInfo.metrics.maxScrollExtent - 200) {
                             if (lazyState.hasMore && !lazyState.isLoading) {
                               ref
                                   .read(lazyMessagesProvider(
@@ -3213,70 +3386,83 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                           }
                           return false;
                         },
-                        child: ScrollablePositionedList.builder(
-                          itemScrollController: _itemScrollController,
-                          itemPositionsListener: _itemPositionsListener,
-                          reverse: true,
-                          itemCount: filteredMessages.length +
-                              (lazyState.isLoading ? 1 : 0),
-                          itemBuilder: (context, index) {
-                            // Show loading indicator at the end
-                            if (index == filteredMessages.length) {
-                              return Padding(
-                                padding: const EdgeInsets.all(16.0),
-                                child: Center(
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Theme.of(context).colorScheme.primary,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }
+                        child: Column(
+                          children: [
+                            // نشانگر تایپ کردن
+                            _buildTypingIndicator(),
+                            Expanded(
+                              child: ScrollablePositionedList.builder(
+                                itemScrollController: _itemScrollController,
+                                itemPositionsListener: _itemPositionsListener,
+                                reverse: false,
+                                itemCount: filteredMessages.length +
+                                    (lazyState.isLoading ? 1 : 0),
+                                itemBuilder: (context, index) {
+                                  // Show loading indicator at the end
+                                  if (index == filteredMessages.length) {
+                                    return Padding(
+                                      padding: const EdgeInsets.all(16.0),
+                                      child: Center(
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                            Theme.of(context)
+                                                .colorScheme
+                                                .primary,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }
 
-                            final message = filteredMessages[index];
-                            final isMe = message.senderId ==
-                                supabase.auth.currentUser?.id;
+                                  final message = filteredMessages[index];
+                                  final isMe = message.senderId ==
+                                      supabase.auth.currentUser?.id;
 
-                            // پیام قبلی برای فاصله‌گذاری
-                            // در ListView عادی، index 0 قدیمی‌ترین پیام است
-                            // پس پیام قبلی (قدیمی‌تر) در index - 1 قرار دارد
-                            final previousMessage =
-                                index > 0 ? filteredMessages[index - 1] : null;
+                                  // پیام قبلی برای فاصله‌گذاری
+                                  // در ListView عادی، index 0 قدیمی‌ترین پیام است
+                                  // پس پیام قبلی (قدیمی‌تر) در index - 1 قرار دارد
+                                  final previousMessage = index > 0
+                                      ? filteredMessages[index - 1]
+                                      : null;
 
-                            // تشخیص نیاز به جداکننده تاریخ
-                            final showDateDivider =
-                                TimeUtils.shouldShowDateDivider(
-                              message.createdAt,
-                              previousMessage?.createdAt,
-                            );
+                                  // تشخیص نیاز به جداکننده تاریخ
+                                  final showDateDivider =
+                                      TimeUtils.shouldShowDateDivider(
+                                    message.createdAt,
+                                    previousMessage?.createdAt,
+                                  );
 
-                            final messageWidget =
-                                _buildMessageItem(context, message, isMe)
-                                    .withDeletionAnimation(
-                              message: message,
-                              deletingMessageIds: _deletingMessageIds,
-                            );
+                                  final messageWidget =
+                                      _buildMessageItem(context, message, isMe)
+                                          .withDeletionAnimation(
+                                    message: message,
+                                    deletingMessageIds: _deletingMessageIds,
+                                  );
 
-                            return Column(
-                              children: [
-                                if (showDateDivider)
-                                  _buildDateDivider(message.createdAt),
-                                Padding(
-                                  padding: EdgeInsets.only(
-                                    top: TimeUtils.calculateMessageSpacing(
-                                      message.createdAt,
-                                      previousMessage?.createdAt,
-                                      message.senderId,
-                                      previousMessage?.senderId,
-                                    ),
-                                  ),
-                                  child: messageWidget,
-                                ),
-                              ],
-                            );
-                          },
+                                  return Column(
+                                    children: [
+                                      if (showDateDivider)
+                                        _buildDateDivider(message.createdAt),
+                                      Padding(
+                                        padding: EdgeInsets.only(
+                                          top:
+                                              TimeUtils.calculateMessageSpacing(
+                                            message.createdAt,
+                                            previousMessage?.createdAt,
+                                            message.senderId,
+                                            previousMessage?.senderId,
+                                          ),
+                                        ),
+                                        child: messageWidget,
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
+                            )
+                          ],
                         ),
                       );
                     },
@@ -3568,7 +3754,7 @@ class MessageSender {
 
   Future<void> send() async {
     final chatService = ref.read(chatServiceProvider);
-    final messageCache = MessageCacheService();
+    final messageCache = UnifiedMessageCacheService();
 
     String? attachmentUrl;
     String? attachmentType;

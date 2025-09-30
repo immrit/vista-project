@@ -45,9 +45,16 @@ class WallpaperCacheService {
         downloadTasks.add(_downloadWallpaper(_darkWallpaperUrl, 'dark'));
       }
 
-      // دانلود همزمان والپیپرهای مورد نیاز
+      // دانلود همزمان والپیپرهای مورد نیاز با timeout
       if (downloadTasks.isNotEmpty) {
-        await Future.wait(downloadTasks);
+        await Future.wait(downloadTasks).timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            print(
+                '⚠️ والپیپر preload timeout - continuing with cached/local assets');
+            return <void>[];
+          },
+        );
         print('✅ پیش‌بارگذاری والپیپرها تکمیل شد');
       } else {
         print('ℹ️  والپیپرها از قبل در کش موجود هستند');
@@ -61,7 +68,13 @@ class WallpaperCacheService {
   static Future<void> _downloadWallpaper(String url, String type) async {
     try {
       print('🔄 در حال دانلود والپیپر $type...');
-      await CustomCacheManager.wallpaperInstance.downloadFile(url);
+      try {
+        await CustomCacheManager.wallpaperInstance.downloadFile(url).timeout(
+              const Duration(seconds: 8),
+            );
+      } catch (e) {
+        print('⚠️ والپیپر $type دانلود timeout - using local asset');
+      }
       print('✅ والپیپر $type با موفقیت دانلود و کش شد');
     } catch (e) {
       print('❌ خطا در دانلود والپیپر $type: $e');

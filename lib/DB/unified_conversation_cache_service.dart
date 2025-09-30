@@ -101,4 +101,7 @@ class UnifiedConversationCacheService {
   Future<void> removeConversation(String conversationId, String userId) async {
     await deleteConversation(conversationId, userId);
   }
+
+  /// Get unified service instance for initialization
+  UnifiedConversationCacheService get unifiedService => this;
 }

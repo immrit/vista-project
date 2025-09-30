@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:Vista/DB/conversation_cache_service_wrapper.dart';
+import 'package:Vista/DB/unified_conversation_cache_service.dart';
 import 'package:Vista/view/screen/Settings/vistaStore/store.dart';
 import 'package:Vista/view/screen/SplashScreen.dart';
 import 'package:Vista/view/util/const.dart';
@@ -14,6 +14,7 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'DB/profile_cache_service.dart';
 import 'DB/settings_cache_service.dart';
+import 'DB/database_manager.dart';
 import 'firebase_options.dart';
 import 'provider/theme_provider.dart';
 import 'services/optimized_messaging_system.dart';
@@ -27,13 +28,11 @@ import 'services/PushNotificationService.dart';
 import 'view/screen/chat/ChatScreen.dart';
 import 'view/screen/Settings/Settings.dart';
 import 'view/screen/homeScreen.dart';
-import 'view/screen/ouathUser/loginUser.dart';
-import 'view/screen/ouathUser/resetPassword.dart';
-import 'view/screen/ouathUser/signupUser.dart';
-import 'view/screen/ouathUser/welcome.dart';
 import 'view/screen/ouathUser/editeProfile.dart';
 import 'view/screen/auth/modern_auth_screen.dart';
 import 'view/screen/auth/biometric_login_screen.dart';
+import 'view/screen/auth/modern_reset_password_screen.dart';
+import 'view/screen/auth/modern_password_reset_code_screen.dart';
 import 'view/screen/onboarding/TelegramStyleOnboarding.dart';
 import 'services/advanced_security_service.dart';
 import 'services/wallpaper_cache_service.dart';
@@ -122,6 +121,9 @@ void main() async {
     if (!UnifiedCacheManager().isInitialized) {
       await UnifiedCacheManager().initialize();
     }
+
+    // 🗄️ مقداردهی اولیه مدیریتگر دیتابیس (قبل از سایر سرویس‌ها)
+    await DatabaseManager().initializeAllDatabases();
 
     // 🚀 مقداردهی اولیه سرویس‌های کش جدید
     await ProfileCacheService().initialize();
@@ -273,15 +275,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
       // پردازش توکن‌های در انتظار بعد از ایجاد context
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        // فقط در اولین اجرا، وضعیت قفل را مقداردهی اولیه می‌کنیم
         if (mounted) {
-          // final appLockManager = ref.read(appLockManagerProvider); // Removed app lock manager
-          // debugPrint('شروع مقداردهی اولیه وضعیت قفل');
-          // appLockManager.initialize().then((_) { // Removed app lock initialization
-          //   debugPrint('وضعیت قفل مقداردهی اولیه شد');
-          //   // بررسی قفل برنامه در شروع (مثل تلگرام)
-          //   _checkAppLockStatus();
-          // });
+          // App initialization completed
         }
       });
     }
@@ -289,98 +284,16 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) async {
-    // AppLockLogger.lifecycle('تغییر وضعیت lifecycle: $state'); // Removed app lock logger
-
     if (state == AppLifecycleState.detached) {
-      // AppLockLogger.lifecycle('برنامه detached شد');
       // Cache cleanup is now handled by Sembast automatically
     } else if (state == AppLifecycleState.resumed) {
       Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted) {
-          // _checkAppLockStatus(); // Removed app lock check
+          // App resumed
         }
       });
-    } else if (state == AppLifecycleState.paused) {
-      // علامت‌گذاری برنامه به عنوان قفل شده وقتی به پس‌زمینه می‌رود (مثل تلگرام)
-      // AppLockLogger.lifecycle('برنامه paused شد - قفل کردن برنامه');
-      // final appLockService = ref.read(appLockServiceProvider); // Removed app lock service
-      // if (await appLockService.isAppLockEnabled()) { // Removed app lock check
-      //   AppLockLogger.lifecycle('قفل کردن برنامه هنگام رفتن به پس‌زمینه');
-      //   debugPrint('قفل کردن برنامه هنگام رفتن به پس‌زمینه');
-      //   await appLockService.markAsLocked();
-      //   ref.read(appLockStateProvider.notifier).markAppAsLocked();
-      // }
-    } else if (state == AppLifecycleState.inactive) {
-      // وقتی اپ غیرفعال می‌شود (مثل تغییر اپ یا رفتن به تنظیمات) - قفل کن (مثل تلگرام)
-      // AppLockLogger.lifecycle('برنامه inactive شد - قفل کردن برنامه');
-      // final appLockService = ref.read(appLockServiceProvider); // Removed app lock service
-      // if (await appLockService.isAppLockEnabled()) { // Removed app lock check
-      //   AppLockLogger.lifecycle('قفل کردن برنامه هنگام غیرفعال شدن');
-      //   debugPrint('قفل کردن برنامه هنگام غیرفعال شدن');
-      //   await appLockService.markAsLocked();
-      //   ref.read(appLockStateProvider.notifier).markAppAsLocked();
-      // }
     }
   }
-
-  /// بررسی وضعیت قفل برنامه
-  // Future<void> _checkAppLockStatus() async { // Removed app lock status check
-  //   try {
-  //     AppLockLogger.main('شروع بررسی وضعیت قفل برنامه');
-  //     final appLockManager = ref.read(appLockManagerProvider); // Removed app lock manager
-  //     final appLockState = ref.read(appLockStateProvider); // Removed app lock state
-
-  //     // جلوگیری از بررسی همزمان
-  //     if (appLockState.isShowingLock || AppLockOverlay.isShowing) { // Removed app lock check
-  //       AppLockLogger.main('قفل قبلاً نمایش داده شده - جلوگیری از بررسی مجدد');
-  //       debugPrint('قفل قبلاً نمایش داده شده - جلوگیری از بررسی مجدد');
-  //       return;
-  //     }
-
-  //     // بررسی نیاز به قفل در شروع برنامه (مثل تلگرام)
-  //     final shouldShowLock = await appLockManager.shouldShowLock(); // Removed app lock check
-
-  //     AppLockLogger.main(
-  //         'بررسی وضعیت قفل برنامه: shouldShowLock=$shouldShowLock');
-  //     debugPrint('بررسی وضعیت قفل برنامه: shouldShowLock=$shouldShowLock');
-
-  //     if (shouldShowLock && mounted) {
-  //       AppLockLogger.main('نمایش صفحه قفل برنامه');
-  //       debugPrint('نمایش صفحه قفل برنامه');
-
-  //       // نمایش صفحه قفل به عنوان overlay
-  //       WidgetsBinding.instance.addPostFrameCallback((_) {
-  //         if (mounted) {
-  //           AppLockLogger.main(
-  //               'PostFrameCallback اجرا شد - تلاش برای نمایش overlay');
-  //           debugPrint('PostFrameCallback اجرا شد - تلاش برای نمایش overlay');
-  //           // اضافه کردن تاخیر برای اطمینان از آماده بودن context
-  //           Future.delayed(const Duration(milliseconds: 500), () {
-  //             if (mounted) {
-  //               AppLockLogger.main(
-  //                   'تاخیر 500ms تمام شد - فراخوانی _showLockOverlay');
-  //               debugPrint('تاخیر 500ms تمام شد - فراخوانی _showLockOverlay');
-  //               _showLockOverlay();
-  //             } else {
-  //               AppLockLogger.main(
-  //                   'PostFrameCallback بعد از تاخیر: mounted = false');
-  //               debugPrint('PostFrameCallback بعد از تاخیر: mounted = false');
-  //             }
-  //           });
-  //         } else {
-  //           AppLockLogger.main('PostFrameCallback: mounted = false');
-  //           debugPrint('PostFrameCallback: mounted = false');
-  //         }
-  //       });
-  //     } else {
-  //       AppLockLogger.main('نیازی به نمایش قفل برنامه نیست');
-  //       debugPrint('نیازی به نمایش قفل برنامه نیست');
-  //     }
-  //   } catch (e) {
-  //     AppLockLogger.error('خطا در بررسی وضعیت قفل برنامه', e);
-  //     debugPrint('خطا در بررسی وضعیت قفل برنامه: $e');
-  //   }
-  // }
 
   /// راه‌اندازی مدیریت دیپ لینک
   void _setupDeepLinkHandling() {
@@ -522,28 +435,23 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
               initialRoute: '/',
               scaffoldMessengerKey: GlobalKey<ScaffoldMessengerState>(),
               routes: {
-                '/signup': (context) => const SignUpScreen(),
                 '/home': (context) => const HomeScreen(),
-                '/login': (context) => const Loginuser(),
                 '/onboarding': (context) => const TelegramStyleOnboarding(),
                 '/modern-auth': (context) => const ModernAuthScreen(),
+                '/reset-password': (context) =>
+                    const ModernResetPasswordScreen(),
+                '/reset-password-code': (context) =>
+                    const ModernPasswordResetCodeScreen(),
                 '/biometric-login': (context) => BiometricLoginScreen(
                       onSuccess: () {
                         Navigator.pushReplacementNamed(context, '/home');
                       },
                       onFallback: () {
-                        Navigator.pushReplacementNamed(context, '/login');
+                        Navigator.pushReplacementNamed(context, '/modern-auth');
                       },
                     ),
                 '/editeProfile': (context) => const EditProfile(),
-                '/welcome': (context) => const WelcomePage(),
                 '/settings': (context) => const Settings(),
-                '/reset-password': (context) {
-                  final args =
-                      ModalRoute.of(context)?.settings.arguments as String? ??
-                          '';
-                  return ResetPasswordPage(token: args);
-                },
                 '/post-detail': (context) {
                   final args = ModalRoute.of(context)?.settings.arguments
                       as Map<String, dynamic>?;
@@ -569,7 +477,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                   final conversationId =
                       ModalRoute.of(context)?.settings.arguments as String?;
                   if (conversationId != null) {
-                    final conversation = ConversationCacheService()
+                    final conversation = UnifiedConversationCacheService()
                         .getConversationSync(conversationId);
                     final otherUserName =
                         conversation?.otherUserName ?? 'در حال بارگذاری...';
@@ -587,9 +495,6 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                 '/verification-store': (context) {
                   return VerificationBadgeStore();
                 },
-
-                // '/app-lock': (context) => const AppLockScreen(), // Removed app lock screen
-                // '/app-lock-test-simple': (context) => const AppLockTestSimple(), // Removed app lock test simple
               },
             );
           },

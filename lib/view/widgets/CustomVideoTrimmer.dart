@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:video_compress/video_compress.dart';
+import 'package:video_trimmer/video_trimmer.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../model/UserModel.dart';
+import '../screen/Settings/vistaStore/store.dart';
 
 class CustomVideoTrimmer extends ConsumerStatefulWidget {
   // تغییر به ConsumerStatefulWidget
@@ -535,5 +538,189 @@ class _CustomTrackShape extends RoundedRectSliderTrackShape {
     final trackTop = offset.dy + (parentBox.size.height - trackHeight) / 2;
     final trackWidth = parentBox.size.width;
     return Rect.fromLTWH(trackLeft, trackTop, trackWidth, trackHeight);
+  }
+}
+
+/// Alternative video trimmer page using video_trimmer package
+class YourVideoTrimmerPage extends StatefulWidget {
+  final File videoFile;
+  final Duration maxDuration;
+
+  const YourVideoTrimmerPage({
+    super.key,
+    required this.videoFile,
+    required this.maxDuration,
+  });
+
+  @override
+  _YourVideoTrimmerPageState createState() => _YourVideoTrimmerPageState();
+}
+
+class _YourVideoTrimmerPageState extends State<YourVideoTrimmerPage> {
+  final Trimmer _trimmer = Trimmer();
+
+  double _startValue = 0.0;
+  double _endValue = 0.0;
+
+  bool _isPlaying = false;
+  bool _progressVisibility = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVideo();
+  }
+
+  void _loadVideo() {
+    _trimmer.loadVideo(videoFile: widget.videoFile);
+  }
+
+  Future<void> _saveVideo() async {
+    setState(() {
+      _progressVisibility = true;
+    });
+
+    final selectedDurationMs = _endValue - _startValue;
+    final maxDurationMs = widget.maxDuration.inMilliseconds;
+
+    if (selectedDurationMs <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('لطفاً بخشی از ویدیو را انتخاب کنید'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      setState(() {
+        _progressVisibility = false;
+      });
+      return;
+    }
+
+    if (selectedDurationMs > maxDurationMs) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'مدت زمان انتخاب شده بیشتر از ${widget.maxDuration.inSeconds} ثانیه است'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      setState(() {
+        _progressVisibility = false;
+      });
+      return;
+    }
+
+    try {
+      final outputFile = await _trimmer.saveTrimmedVideo(
+        startValue: _startValue,
+        endValue: _endValue,
+        onSave: (String? outputPath) {
+          if (outputPath != null && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('ویدیو با موفقیت ذخیره شد'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            Navigator.pop(context, File(outputPath));
+          }
+        },
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در ذخیره ویدیو: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _progressVisibility = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('ویرایش ویدیو'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+      ),
+      backgroundColor: Colors.black,
+      body: Column(
+        children: [
+          Expanded(
+            child: VideoViewer(trimmer: _trimmer),
+          ),
+          Expanded(
+            child: TrimViewer(
+              trimmer: _trimmer,
+              viewerHeight: 50,
+              viewerWidth: MediaQuery.of(context).size.width,
+              maxVideoLength: widget.maxDuration,
+              onChangeStart: (value) => _startValue = value,
+              onChangeEnd: (value) => _endValue = value,
+              onChangePlaybackState: (value) {
+                setState(() {
+                  _isPlaying = value;
+                });
+              },
+            ),
+          ),
+          if (_progressVisibility)
+            const LinearProgressIndicator(
+              backgroundColor: Colors.grey,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+            ),
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _isPlaying
+                      ? () => _trimmer.videoPlaybackControl(
+                            startValue: _startValue,
+                            endValue: _endValue,
+                          )
+                      : null,
+                  icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
+                  label: Text(_isPlaying ? 'توقف' : 'پخش'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _progressVisibility ? null : _saveVideo,
+                  icon: const Icon(Icons.save),
+                  label: const Text('ذخیره'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _trimmer.dispose();
+    super.dispose();
   }
 }

@@ -4,8 +4,8 @@ import 'package:flutter/foundation.dart';
 import '../main.dart';
 import '../model/message_model.dart';
 import '../model/conversation_model.dart';
-import '../DB/message_cache_service_wrapper.dart';
-import '../DB/conversation_cache_service_wrapper.dart';
+import '../DB/unified_message_cache_service.dart';
+import '../DB/unified_conversation_cache_service.dart';
 import 'ChatService.dart';
 
 /// سیستم همگام‌سازی کش - روان و هوشمند
@@ -14,9 +14,9 @@ class CacheSyncService {
   factory CacheSyncService() => _instance;
   CacheSyncService._internal();
 
-  final MessageCacheService _messageCache = MessageCacheService();
-  final ConversationCacheService _conversationCache =
-      ConversationCacheService();
+  final UnifiedMessageCacheService _messageCache = UnifiedMessageCacheService();
+  final UnifiedConversationCacheService _conversationCache =
+      UnifiedConversationCacheService();
   final ChatService _chatService = ChatService();
 
   // Network monitoring

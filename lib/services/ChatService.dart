@@ -7,8 +7,8 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import '../DB/conversation_cache_service_wrapper.dart';
-import '../DB/message_cache_service_wrapper.dart';
+import '../DB/unified_conversation_cache_service.dart';
+import '../DB/unified_message_cache_service.dart';
 import '../model/conversation_model.dart';
 import '../model/message_model.dart';
 import '../view/Exeption/app_exceptions.dart';
@@ -20,9 +20,9 @@ import 'profile_service.dart';
 
 class ChatService {
   final SupabaseClient _supabase = supabase;
-  final ConversationCacheService _conversationCache =
-      ConversationCacheService();
-  final MessageCacheService _messageCache = MessageCacheService();
+  final UnifiedConversationCacheService _conversationCache =
+      UnifiedConversationCacheService();
+  final UnifiedMessageCacheService _messageCache = UnifiedMessageCacheService();
   final ProfileService _profileService = ProfileService();
 
   // حذف فایل پیوست چت از استوریج (بر اساس نوع)
@@ -477,7 +477,9 @@ class ChatService {
         attachmentUrl: attachmentUrl,
         attachmentType: attachmentType,
         isRead: false,
-        isSent: false, // هنوز ارسال نشده است
+        isSent: false,
+        isDelivered: false,
+        isSeen: false,
         senderName: 'من', // می‌توانید از اطلاعات کاربر فعلی استفاده کنید
         senderAvatar: null,
         isMe: true,
@@ -1472,7 +1474,6 @@ class ChatService {
       await _messageCache.cacheMessages(messagesToCache, userId);
     }
 
-    // TODO: Handle updates for existing messages (e.g., is_read status) if needed.
     // Currently, markConversationAsRead handles is_read updates.
     // Other updates (like edits, deletes) are handled via stream or separate calls.
   }
@@ -2032,14 +2033,12 @@ class ChatService {
 
   // شمارش پیام‌های خوانده‌نشده برای یک مکالمه
   Future<int> countUnreadMessages(String conversationId) async {
-    final messageCache = MessageCacheService();
-    return await messageCache.countUnreadMessages(conversationId);
+    return await _messageCache.countUnreadMessages(conversationId);
   }
 
   // حذف پیام‌های قدیمی‌تر از یک تاریخ خاص
   Future<void> deleteOldMessages(DateTime date) async {
-    final messageCache = MessageCacheService();
-    await messageCache.deleteMessagesOlderThan(date);
+    await _messageCache.deleteMessagesOlderThan(date);
   }
 
   // متد برای تغییر وضعیت سنجاق مکالمه (فقط در کش محلی)

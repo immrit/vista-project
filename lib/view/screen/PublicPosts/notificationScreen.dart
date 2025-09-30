@@ -224,14 +224,21 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.notifications_off_outlined,
-                size: 64, color: Colors.grey),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              child: const Icon(Icons.notifications_off_outlined,
+                  size: 64, color: Colors.grey),
+            ),
             const SizedBox(height: 16),
             const Text('اعلانی وجود ندارد',
                 style: TextStyle(fontSize: 16, color: Colors.grey)),
             const SizedBox(height: 8),
             TextButton(
-              onPressed: _markNotificationsAsRead,
+              onPressed: () async {
+                await ref
+                    .read(notificationsProvider.notifier)
+                    .checkConnectionAndRetry();
+              },
               child: const Text('بررسی مجدد'),
             )
           ],
@@ -287,6 +294,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                       senderId: notification.senderId,
                       username: notification.username,
                       avatarUrl: notification.avatarUrl,
+                      notificationId: notification.id,
                     );
                   }
                 },
@@ -438,6 +446,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                                       await _respondFollowRequest(
                                         requesterId: notification.senderId,
                                         accept: false,
+                                        notificationId: notification.id,
                                       );
                                     },
                                     child: const Text('رد'),
@@ -448,6 +457,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                                       await _respondFollowRequest(
                                         requesterId: notification.senderId,
                                         accept: true,
+                                        notificationId: notification.id,
                                       );
                                     },
                                     child: const Text('پذیرفتن'),
@@ -482,6 +492,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
   Future<void> _respondFollowRequest({
     required String requesterId,
     required bool accept,
+    String? notificationId,
   }) async {
     try {
       final userId = supabase.auth.currentUser?.id;
@@ -516,8 +527,12 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
             .eq('recipient_id', userId);
       }
 
-      // رفرش لیست اعلان‌ها
-      await ref.read(notificationsProvider.notifier).refresh();
+      // حذف نرم اعلان فعلی بدون رفرش کل صفحه
+      if (notificationId != null && notificationId.isNotEmpty) {
+        await ref
+            .read(notificationsProvider.notifier)
+            .removeNotification(notificationId);
+      }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -532,6 +547,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     required String senderId,
     required String username,
     required String avatarUrl,
+    String? notificationId,
   }) {
     showDialog(
       context: context,
@@ -556,14 +572,20 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              await _respondFollowRequest(requesterId: senderId, accept: false);
+              await _respondFollowRequest(
+                  requesterId: senderId,
+                  accept: false,
+                  notificationId: notificationId);
             },
             child: const Text('رد'),
           ),
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
-              await _respondFollowRequest(requesterId: senderId, accept: true);
+              await _respondFollowRequest(
+                  requesterId: senderId,
+                  accept: true,
+                  notificationId: notificationId);
             },
             child: const Text('پذیرفتن'),
           ),
@@ -576,8 +598,8 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final notifications = ref.watch(notificationsProvider);
-    // اگر نیاز به لودینگ دارید، از یک StateProvider یا متد دیگر استفاده کنید
-    // final isLoading = ref.watch(notificationsLoadingProvider);
+    final notifier = ref.watch(notificationsProvider.notifier);
+    final isLoading = notifier.isFetching;
 
     // تعریف تب‌ها
     final tabs = [
@@ -593,7 +615,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
       },
       {
         'title': 'کامنت‌ها',
-        'type': 'new_comment',
+        'type': 'comment',
         'icon': Icons.comment,
       },
       {
@@ -608,7 +630,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
       },
       {
         'title': 'پاسخ‌ها',
-        'type': 'comment_reply',
+        'type': 'reply_comment',
         'icon': Icons.reply,
       },
     ];
@@ -626,7 +648,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
           ),
         ],
       ),
-      body: notifications.isEmpty
+      body: notifications.isEmpty && !isLoading
           ? Column(
               children: [
                 _buildTabsShimmer(),
@@ -727,10 +749,16 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                                         tab['type'] as String));
                                 return RefreshIndicator(
                                   onRefresh: () async {
-                                    await ref
-                                        .read(notificationsProvider.notifier)
-                                        .fetchNotifications();
+                                    // فقط در صورت نیاز رفرش کن
+                                    final notifier = ref
+                                        .read(notificationsProvider.notifier);
+                                    if (filtered.isEmpty ||
+                                        notifier.isFetching) {
+                                      await notifier.refresh();
+                                    }
                                   },
+                                  color: Theme.of(context).primaryColor,
+                                  backgroundColor: Theme.of(context).cardColor,
                                   child: _buildNotificationsList(
                                       context, filtered),
                                 );

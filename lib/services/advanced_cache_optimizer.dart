@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 import '../main.dart';
-import '../DB/message_cache_service_wrapper.dart';
+import '../DB/unified_message_cache_service.dart';
 
 /// سرویس بهینه‌سازی پیشرفته cache برای همگام‌سازی روان
 class AdvancedCacheOptimizer {
@@ -10,7 +10,7 @@ class AdvancedCacheOptimizer {
   factory AdvancedCacheOptimizer() => _instance;
   AdvancedCacheOptimizer._internal();
 
-  final MessageCacheService _cache = MessageCacheService();
+  final UnifiedMessageCacheService _cache = UnifiedMessageCacheService();
 
   // Cache metrics
   final Map<String, int> _cacheHits = {};

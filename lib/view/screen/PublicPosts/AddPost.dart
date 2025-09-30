@@ -13,7 +13,7 @@ import '../../../model/UserModel.dart';
 import '../../../services/PostImageUploadService.dart';
 import '../../../services/user_friendly_error_handler.dart';
 import '../../../provider/provider.dart';
-import '../../widgets/YourVideoTrimmerPage .dart';
+import '../../widgets/CustomVideoTrimmer.dart';
 
 class AddPublicPostScreen extends ConsumerStatefulWidget {
   const AddPublicPostScreen({super.key});

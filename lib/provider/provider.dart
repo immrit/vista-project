@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:sembast/sembast_io.dart';
 import 'package:path_provider/path_provider.dart';
+import '../DB/database_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../DB/profile_cache_service.dart';
 import '../services/animation_controller_service.dart';
@@ -1691,99 +1692,192 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
           followersCount: state!.followersCount - 1,
         );
       } else {
-        // برای همه پیج‌ها (خصوصی و عمومی) درخواست فالو ارسال کن (مثل اینستاگرام)
-        // بررسی وجود درخواست قبلی
-        final existingRequest = await supabase
-            .from('follow_requests')
-            .select('id, status')
-            .eq('requester_id', currentUserId)
-            .eq('recipient_id', userId)
+        // بررسی اینکه آیا پیج خصوصی است یا نه
+        final userSettings = await supabase
+            .from('user_settings')
+            .select('is_private')
+            .eq('user_id', userId)
             .maybeSingle();
 
-        print('🔍 بررسی درخواست موجود: $existingRequest');
+        final isPrivate = (userSettings?['is_private'] as bool?) ?? false;
+        print('🔍 بررسی تنظیمات کاربر $userId: isPrivate = $isPrivate');
 
-        if (existingRequest == null) {
-          // اگر درخواست قبلی وجود ندارد، درخواست جدید ایجاد کن
-          print('🆕 ایجاد درخواست جدید برای کاربر: $userId');
-          await supabase.from('follow_requests').insert({
-            'requester_id': currentUserId,
-            'recipient_id': userId,
-            'status': 'pending',
+        if (isPrivate) {
+          print('🔒 پیج خصوصی - بررسی درخواست‌های موجود');
+          // برای پیج‌های خصوصی: ایجاد درخواست فالو
+          final existingRequest = await supabase
+              .from('follow_requests')
+              .select('id, status')
+              .eq('requester_id', currentUserId)
+              .eq('recipient_id', userId)
+              .maybeSingle();
+
+          print('🔍 بررسی درخواست موجود: $existingRequest');
+          print('🔍 وضعیت درخواست: ${existingRequest?['status']}');
+
+          if (existingRequest == null) {
+            // اگر درخواست قبلی وجود ندارد، درخواست جدید ایجاد کن
+            print('🆕 ایجاد درخواست جدید برای کاربر: $userId');
+            await supabase.from('follow_requests').insert({
+              'requester_id': currentUserId,
+              'recipient_id': userId,
+              'status': 'pending',
+              'created_at': DateTime.now().toIso8601String(),
+            });
+            // اعلان برای کاربر هدف
+            await supabase.from('notifications').insert({
+              'recipient_id': userId,
+              'sender_id': currentUserId,
+              'type': 'follow_request',
+              'content': 'درخواست دنبال کردن جدید',
+              'created_at': DateTime.now().toIso8601String(),
+              'is_read': false,
+            });
+
+            print('✅ درخواست جدید ایجاد شد');
+
+            // به‌روزرسانی state برای نشان دادن وضعیت pending
+            state = state!.copyWith(
+              isFollowed: false, // هنوز دنبال نشده
+              followersCount: state!.followersCount, // تعداد تغییر نمی‌کند
+            );
+
+            print('🔄 State به‌روزرسانی شد: isFollowed=${state!.isFollowed}');
+          } else if (existingRequest['status'] == 'pending') {
+            // اگر درخواست pending وجود دارد، آن را لغو کن
+            print('🔄 لغو درخواست pending برای کاربر: $userId');
+
+            await supabase
+                .from('follow_requests')
+                .delete()
+                .eq('requester_id', currentUserId)
+                .eq('recipient_id', userId);
+
+            // حذف اعلان مربوطه
+            await supabase.from('notifications').delete().match({
+              'recipient_id': userId,
+              'sender_id': currentUserId,
+              'type': 'follow_request',
+            });
+
+            print('✅ درخواست pending لغو شد');
+
+            // به‌روزرسانی state
+            state = state!.copyWith(
+              isFollowed: false,
+              followersCount: state!.followersCount,
+            );
+          } else if (existingRequest['status'] == 'rejected') {
+            // اگر درخواست قبلی رد شده، وضعیت را به pending تغییر ده
+            print(
+                '🔄 تغییر وضعیت درخواست رد شده به pending برای کاربر: $userId');
+            await supabase
+                .from('follow_requests')
+                .update({
+                  'status': 'pending',
+                  'created_at': DateTime.now().toIso8601String(),
+                })
+                .eq('requester_id', currentUserId)
+                .eq('recipient_id', userId);
+            // اعلان جدید برای کاربر هدف
+            await supabase.from('notifications').insert({
+              'recipient_id': userId,
+              'sender_id': currentUserId,
+              'type': 'follow_request',
+              'content': 'درخواست دنبال کردن جدید',
+              'created_at': DateTime.now().toIso8601String(),
+              'is_read': false,
+            });
+
+            print('✅ درخواست رد شده به pending تغییر کرد');
+
+            // به‌روزرسانی state برای نشان دادن وضعیت pending
+            state = state!.copyWith(
+              isFollowed: false, // هنوز دنبال نشده
+              followersCount: state!.followersCount, // تعداد تغییر نمی‌کند
+            );
+          } else if (existingRequest['status'] == 'pending') {
+            // اگر درخواست قبلی pending است، آن را لغو کن
+            print('🔄 لغو درخواست pending برای کاربر: $userId');
+
+            await supabase
+                .from('follow_requests')
+                .delete()
+                .eq('requester_id', currentUserId)
+                .eq('recipient_id', userId);
+
+            // حذف اعلان مربوطه
+            await supabase.from('notifications').delete().match({
+              'recipient_id': userId,
+              'sender_id': currentUserId,
+              'type': 'follow_request',
+            });
+
+            print('✅ درخواست pending لغو شد');
+
+            // به‌روزرسانی state
+            state = state!.copyWith(
+              isFollowed: false,
+              followersCount: state!.followersCount,
+            );
+          } else if (existingRequest['status'] == 'accepted') {
+            // اگر قبلاً درخواست پذیرفته شده، بررسی کنیم آیا رابطه فالو وجود دارد
+            print(
+                '✅ درخواست قبلاً پذیرفته شده است. بررسی رابطه فالو برای کاربر: $userId');
+
+            final existingFollow = await supabase
+                .from('follows')
+                .select('id')
+                .eq('follower_id', currentUserId)
+                .eq('following_id', userId)
+                .maybeSingle();
+
+            if (existingFollow != null) {
+              print('✅ رابطه فالو وجود دارد - کاربر می‌تواند محتوا را ببیند');
+              state = state!.copyWith(
+                isFollowed: true,
+                followersCount: state!.followersCount,
+              );
+            } else {
+              print(
+                  '⚠️ درخواست accepted اما رابطه فالو وجود ندارد - این حالت نادرست است');
+              // در این حالت، کاربر باید منتظر بماند تا صاحب پیج درخواست را دوباره تایید کند
+              state = state!.copyWith(
+                isFollowed: false,
+                followersCount: state!.followersCount,
+              );
+            }
+          } else {
+            print('⚠️ وضعیت درخواست ناشناخته: ${existingRequest['status']}');
+          }
+        } else {
+          // برای پیج‌های عمومی: مستقیماً فالو کن
+          print('🆕 فالو مستقیم برای پیج عمومی: $userId');
+          print('❌ خطا: پیج عمومی نباید به این قسمت برسد!');
+          await supabase.from('follows').insert({
+            'follower_id': currentUserId,
+            'following_id': userId,
             'created_at': DateTime.now().toIso8601String(),
           });
+
           // اعلان برای کاربر هدف
           await supabase.from('notifications').insert({
             'recipient_id': userId,
             'sender_id': currentUserId,
-            'type': 'follow_request',
-            'content': 'درخواست دنبال کردن جدید',
+            'type': 'follow',
+            'content': 'شما را دنبال کرد',
             'created_at': DateTime.now().toIso8601String(),
             'is_read': false,
           });
 
-          print('✅ درخواست جدید ایجاد شد');
-
-          // به‌روزرسانی state برای نشان دادن وضعیت pending
-          state = state!.copyWith(
-            isFollowed: false, // هنوز دنبال نشده
-            followersCount: state!.followersCount, // تعداد تغییر نمی‌کند
-          );
-        } else if (existingRequest['status'] == 'rejected') {
-          // اگر درخواست قبلی رد شده، وضعیت را به pending تغییر ده
-          print('🔄 تغییر وضعیت درخواست رد شده به pending برای کاربر: $userId');
-          await supabase
-              .from('follow_requests')
-              .update({
-                'status': 'pending',
-                'created_at': DateTime.now().toIso8601String(),
-              })
-              .eq('requester_id', currentUserId)
-              .eq('recipient_id', userId);
-          // اعلان جدید برای کاربر هدف
-          await supabase.from('notifications').insert({
-            'recipient_id': userId,
-            'sender_id': currentUserId,
-            'type': 'follow_request',
-            'content': 'درخواست دنبال کردن جدید',
-            'created_at': DateTime.now().toIso8601String(),
-            'is_read': false,
-          });
-
-          print('✅ درخواست رد شده به pending تغییر کرد');
-
-          // به‌روزرسانی state برای نشان دادن وضعیت pending
-          state = state!.copyWith(
-            isFollowed: false, // هنوز دنبال نشده
-            followersCount: state!.followersCount, // تعداد تغییر نمی‌کند
-          );
-        } else if (existingRequest['status'] == 'pending') {
-          // اگر درخواست قبلی pending است، آن را لغو کن
-          print('🔄 لغو درخواست pending برای کاربر: $userId');
-
-          await supabase
-              .from('follow_requests')
-              .delete()
-              .eq('requester_id', currentUserId)
-              .eq('recipient_id', userId);
-
-          // حذف اعلان مربوطه
-          await supabase.from('notifications').delete().match({
-            'recipient_id': userId,
-            'sender_id': currentUserId,
-            'type': 'follow_request',
-          });
-
-          print('✅ درخواست pending لغو شد');
+          print('✅ فالو مستقیم انجام شد');
 
           // به‌روزرسانی state
           state = state!.copyWith(
-            isFollowed: false,
-            followersCount: state!.followersCount,
+            isFollowed: true,
+            followersCount: state!.followersCount + 1,
           );
-        } else {
-          print('⚠️ وضعیت درخواست ناشناخته: ${existingRequest['status']}');
         }
-        // اگر درخواست قبلی accepted است، کاری نکن
       }
     } catch (e) {
       print('❌ خطا در تغییر وضعیت فالو: $e');
@@ -1823,14 +1917,19 @@ final followRequestPendingProvider =
     final supabase = Supabase.instance.client;
     final currentUserId = supabase.auth.currentUser?.id;
     if (currentUserId == null) return false;
+    print(
+        '🔍 بررسی درخواست pending برای کاربر $targetUserId توسط $currentUserId');
     final res = await supabase
         .from('follow_requests')
-        .select('id')
+        .select('id, status')
         .eq('requester_id', currentUserId)
         .eq('recipient_id', targetUserId)
         .eq('status', 'pending')
         .maybeSingle();
-    return res != null;
+    print('🔍 نتیجه بررسی درخواست pending: $res');
+    final isPending = res != null;
+    print('🔍 isPending: $isPending');
+    return isPending;
   } catch (e) {
     print('خطا در بررسی وضعیت درخواست دنبال کردن: $e');
     return false;
@@ -2459,12 +2558,15 @@ final currentUserProvider = FutureProvider<Map<String, dynamic>>((ref) async {
 final userSettingsByIdProvider =
     FutureProvider.family<Map<String, dynamic>?, String>((ref, userId) async {
   try {
+    print('🔧 دریافت تنظیمات کاربر: $userId');
     final client = Supabase.instance.client;
     final response = await client
         .from('user_settings')
         .select()
         .eq('user_id', userId)
         .maybeSingle();
+    print('🔧 تنظیمات دریافت شده: $response');
+    print('🔧 is_private: ${response?['is_private']}');
     return response;
   } catch (e) {
     debugPrint('Error fetching user_settings for $userId: $e');
@@ -2814,12 +2916,7 @@ class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
 
   Future<void> _initDatabase() async {
     try {
-      String dbPath = 'settings.db';
-      if (!kIsWeb) {
-        final appDir = await getApplicationDocumentsDirectory();
-        dbPath = '${appDir.path}/settings.db';
-      }
-      _database = await databaseFactoryIo.openDatabase(dbPath);
+      _database = await DatabaseManager().getSettingsDatabase();
       _loadSettings();
     } catch (e) {
       debugPrint('خطا در باز کردن دیتابیس تنظیمات: $e');
@@ -2980,12 +3077,7 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
 
   Future<void> _initDatabase() async {
     try {
-      String dbPath = 'settings.db';
-      if (!kIsWeb) {
-        final appDir = await getApplicationDocumentsDirectory();
-        dbPath = '${appDir.path}/settings.db';
-      }
-      _database = await databaseFactoryIo.openDatabase(dbPath);
+      _database = await DatabaseManager().getSettingsDatabase();
       _loadSettings();
     } catch (e) {
       debugPrint('خطا در باز کردن دیتابیس تنظیمات: $e');

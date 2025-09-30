@@ -4,8 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:sembast/sembast_io.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import '../../DB/database_manager.dart';
 import '../../model/ProfileModel.dart';
 import '../../model/SearchResut.dart';
 import '../../model/publicPostModel.dart';
@@ -117,13 +116,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
 
   Future<void> _initSembast() async {
     try {
-      String dbPath = 'recent_searches.db';
-      if (!kIsWeb) {
-        final appDir = await getApplicationDocumentsDirectory();
-        dbPath = '${appDir.path}/recent_searches.db';
-      }
-
-      _database = await databaseFactoryIo.openDatabase(dbPath);
+      _database = await DatabaseManager().getRecentSearchesDatabase();
     } catch (e) {
       debugPrint('خطا در باز کردن دیتابیس Sembast: $e');
     }
@@ -623,7 +616,6 @@ class PostCard extends StatelessWidget {
       child: InkWell(
         onTap: () {
           // باز کردن صفحه جزئیات پست
-          // TODO: اضافه کردن مسیریابی به صفحه جزئیات پست
         },
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

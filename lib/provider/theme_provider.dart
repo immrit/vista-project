@@ -4,6 +4,7 @@ import 'package:sembast/sembast_io.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../view/util/themes.dart';
+import '../DB/database_manager.dart';
 
 // Provider برای مدیریت رنگ انتخاب شده
 final selectedColorProvider =
@@ -35,12 +36,7 @@ class SelectedColorNotifier extends StateNotifier<ThemeColor> {
 
   Future<void> _initDatabase() async {
     try {
-      String dbPath = 'settings.db';
-      if (!kIsWeb) {
-        final appDir = await getApplicationDocumentsDirectory();
-        dbPath = '${appDir.path}/settings.db';
-      }
-      _database = await databaseFactoryIo.openDatabase(dbPath);
+      _database = await DatabaseManager().getSettingsDatabase();
       _loadFromSembast();
     } catch (e) {
       debugPrint('خطا در باز کردن دیتابیس تنظیمات: $e');

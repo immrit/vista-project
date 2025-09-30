@@ -467,51 +467,151 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        // دکمه ارسال پیام
-        Container(
-          width: 140,
-          height: 40,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Colors.blue.shade500,
-                Colors.blue.shade600,
-              ],
-            ),
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.blue.withOpacity(0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.transparent,
-              foregroundColor: Colors.white,
-              shadowColor: Colors.transparent,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-            ),
-            onPressed: _isStartingConversation
-                ? null
-                : () => _startConversation(profile.id, profile.username),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.message, size: 16),
-                const SizedBox(width: 6),
-                Text(
-                  _isStartingConversation ? 'در حال بررسی...' : 'ارسال پیام',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+        // دکمه ارسال پیام (با کنترل حریم خصوصی)
+        Consumer(
+          builder: (context, ref, _) {
+            final settingsAsync =
+                ref.watch(userSettingsByIdProvider(profile.id));
+            return settingsAsync.when(
+              data: (settings) {
+                final messagePrivacy =
+                    settings?['message_privacy'] as String? ?? 'everyone';
+                final canSendMessage = _canSendMessage(profile, messagePrivacy);
+
+                if (canSendMessage) {
+                  return Container(
+                    width: 140,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: isDarkTheme
+                            ? [
+                                Colors.blue.shade600,
+                                Colors.blue.shade700,
+                              ]
+                            : [
+                                Colors.blue.shade500,
+                                Colors.blue.shade600,
+                              ],
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: (isDarkTheme
+                                  ? Colors.blue.shade700
+                                  : Colors.blue.shade500)
+                              .withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        foregroundColor: Colors.white,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                      ),
+                      onPressed: _isStartingConversation
+                          ? null
+                          : () =>
+                              _startConversation(profile.id, profile.username),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.message, size: 16),
+                          const SizedBox(width: 6),
+                          Text(
+                            _isStartingConversation
+                                ? 'در حال بررسی...'
+                                : 'ارسال پیام',
+                            style: TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                } else {
+                  // نمایش پیام عدم دسترسی
+                  return Container(
+                    width: 140,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: isDarkTheme ? Colors.grey[800] : Colors.grey[300],
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color:
+                            isDarkTheme ? Colors.grey[600]! : Colors.grey[400]!,
+                        width: 1,
+                      ),
+                    ),
+                    child: Center(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.block,
+                            size: 16,
+                            color: isDarkTheme
+                                ? Colors.grey[400]
+                                : Colors.grey[600],
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _getMessagePrivacyText(messagePrivacy),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: isDarkTheme
+                                  ? Colors.grey[400]
+                                  : Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+              },
+              loading: () => Container(
+                width: 140,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: isDarkTheme ? Colors.grey[800] : Colors.grey[300],
+                  borderRadius: BorderRadius.circular(20),
                 ),
-              ],
-            ),
-          ),
+                child: const Center(
+                  child: SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              ),
+              error: (_, __) => Container(
+                width: 140,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: isDarkTheme ? Colors.grey[800] : Colors.grey[300],
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Center(
+                  child: Text(
+                    'خطا در بارگذاری',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDarkTheme ? Colors.grey[400] : Colors.grey[600],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
         ),
         const SizedBox(height: 12),
         // دکمه دنبال کردن
@@ -729,6 +829,39 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         }),
       ],
     );
+  }
+
+  // بررسی اینکه آیا کاربر فعلی می‌تواند پیام ارسال کند
+  bool _canSendMessage(ProfileModel profile, String messagePrivacy) {
+    final currentUserId = supabase.auth.currentUser?.id;
+    if (currentUserId == null || currentUserId == profile.id) {
+      return false; // نمی‌تواند به خودش پیام بفرستد
+    }
+
+    switch (messagePrivacy) {
+      case 'nobody':
+        return false;
+      case 'followers':
+        return profile.isFollowed; // فقط اگر دنبال کرده باشد
+      case 'everyone':
+        return true;
+      default:
+        return true;
+    }
+  }
+
+  // دریافت متن مناسب برای نمایش وضعیت حریم خصوصی پیام
+  String _getMessagePrivacyText(String messagePrivacy) {
+    switch (messagePrivacy) {
+      case 'nobody':
+        return 'پیام غیرفعال';
+      case 'followers':
+        return 'فقط دنبال‌کنندگان';
+      case 'everyone':
+        return 'همه';
+      default:
+        return 'همه';
+    }
   }
 
   // متد برای شروع گفتگو با کاربر دیگر

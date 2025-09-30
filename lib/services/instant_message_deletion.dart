@@ -4,7 +4,7 @@ import '../model/message_model.dart';
 import '../services/ChatService.dart';
 import '../services/improved_error_handler.dart';
 import '../provider/chat_provider.dart';
-import '../provider/unified_chat_provider.dart';
+import '../provider/advanced_chat_providers.dart';
 import '../services/improved_chat_provider.dart';
 
 /// سیستم حذف فوری پیام‌ها و گفتگوها - بدون تأخیر

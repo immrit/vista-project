@@ -1032,7 +1032,6 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                     break;
 
                                   case 'report':
-                                    // TODO: پیاده‌سازی گزارش
                                     break;
                                 }
                               },

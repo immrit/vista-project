@@ -8,6 +8,8 @@ class MessageModel {
   final String? attachmentType;
   final bool isRead;
   final bool isSent;
+  final bool isDelivered; // نشان‌دهنده اینکه پیام به دستگاه گیرنده رسیده
+  final bool isSeen; // نشان‌دهنده اینکه پیام توسط گیرنده دیده شده
   final String? senderName;
   final String? senderAvatar;
   final bool isMe;
@@ -17,6 +19,12 @@ class MessageModel {
   final bool isPending;
   final String? localId;
   final int retryCount; // اضافه کنید
+
+  // Typing indicators برای نشان دادن کاربران در حال تایپ
+  final Map<String, DateTime>? typingUsers;
+
+  // ری‌اکشن‌های پیام
+  final List<dynamic>? reactions;
 
   MessageModel({
     required this.id,
@@ -28,6 +36,8 @@ class MessageModel {
     this.attachmentType,
     this.isRead = false,
     this.isSent = true,
+    this.isDelivered = false,
+    this.isSeen = false,
     this.senderName,
     this.senderAvatar,
     required this.isMe,
@@ -37,6 +47,8 @@ class MessageModel {
     this.isPending = false,
     this.localId,
     this.retryCount = 0, // مقدار پیش‌فرض
+    this.typingUsers,
+    this.reactions,
   });
 
   factory MessageModel.empty() {
@@ -64,6 +76,8 @@ class MessageModel {
       createdAt: DateTime.parse(json['created_at'] as String),
       isRead: json['is_read'] as bool? ?? false,
       isSent: json['is_sent'] ?? true,
+      isDelivered: json['is_delivered'] as bool? ?? false,
+      isSeen: json['is_seen'] as bool? ?? false,
       attachmentUrl: json['attachment_url'],
       attachmentType: json['attachment_type'],
       senderName: json['sender_name'],
@@ -75,6 +89,10 @@ class MessageModel {
       localId: json['local_id'] as String?,
       retryCount: json['retry_count'] as int? ?? 0,
       isPending: json['is_pending'] as bool? ?? false,
+      typingUsers: json['typing_users'] != null
+          ? Map<String, DateTime>.from(json['typing_users'])
+          : null,
+      reactions: json['reactions'],
     );
   }
 
@@ -127,6 +145,8 @@ class MessageModel {
     String? attachmentType,
     bool? isRead,
     bool? isSent,
+    bool? isDelivered,
+    bool? isSeen,
     String? senderName,
     String? senderAvatar,
     bool? isMe,
@@ -136,6 +156,8 @@ class MessageModel {
     bool? isPending,
     String? localId,
     int? retryCount, // اضافه کنید
+    Map<String, DateTime>? typingUsers,
+    List<dynamic>? reactions,
   }) {
     return MessageModel(
       id: id ?? this.id,
@@ -147,6 +169,8 @@ class MessageModel {
       attachmentType: attachmentType ?? this.attachmentType,
       isRead: isRead ?? this.isRead,
       isSent: isSent ?? this.isSent,
+      isDelivered: isDelivered ?? this.isDelivered,
+      isSeen: isSeen ?? this.isSeen,
       senderName: senderName ?? this.senderName,
       senderAvatar: senderAvatar ?? this.senderAvatar,
       isMe: isMe ?? this.isMe,
@@ -156,6 +180,8 @@ class MessageModel {
       isPending: isPending ?? this.isPending,
       localId: localId ?? this.localId,
       retryCount: retryCount ?? this.retryCount,
+      typingUsers: typingUsers ?? this.typingUsers,
+      reactions: reactions ?? this.reactions,
     );
   }
 
@@ -170,6 +196,8 @@ class MessageModel {
       'attachment_type': attachmentType,
       'is_read': isRead,
       'is_sent': isSent,
+      'is_delivered': isDelivered,
+      'is_seen': isSeen,
       'sender_name': senderName,
       'sender_avatar': senderAvatar,
       'reply_to_message_id': replyToMessageId,
@@ -178,6 +206,8 @@ class MessageModel {
       'is_pending': isPending,
       'local_id': localId,
       'retry_count': retryCount,
+      'typing_users': typingUsers,
+      'reactions': reactions,
     };
   }
 }

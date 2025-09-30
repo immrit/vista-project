@@ -16,8 +16,8 @@ import '../../model/publicPostModel.dart';
 import '../../provider/provider.dart';
 import '../../provider/theme_provider.dart';
 import '../screen/PublicPosts/profileScreen.dart';
-import '../../DB/message_cache_service_wrapper.dart';
-import '../../DB/conversation_cache_service_wrapper.dart';
+import '../../DB/unified_message_cache_service.dart';
+import '../../DB/unified_conversation_cache_service.dart';
 
 class topText extends StatelessWidget {
   const topText({
@@ -416,8 +416,8 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
             try {
               // پاک کردن کش پیام‌ها و مکالمات
               try {
-                await MessageCacheService().clearAllCache();
-                await ConversationCacheService()
+                await UnifiedMessageCacheService().clearAllCache();
+                await UnifiedConversationCacheService()
                     .clearCache(supabase.auth.currentUser!.id);
               } catch (e) {
                 developer.log('Error clearing message/conversation cache: $e');
@@ -426,17 +426,17 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
 
               // خروج از حساب
               await supabase.auth.signOut();
-              Navigator.pushReplacementNamed(context, '/welcome');
+              Navigator.pushReplacementNamed(context, '/modern-auth');
             } catch (e) {
               developer.log('Error during logout: $e');
               // در صورت خطا، باز هم سعی کن از حساب خارج شو
               try {
                 await supabase.auth.signOut();
-                Navigator.pushReplacementNamed(context, '/welcome');
+                Navigator.pushReplacementNamed(context, '/modern-auth');
               } catch (finalError) {
                 developer.log('Final logout error: $finalError');
-                // آخرین تلاش: بازگشت به صفحه welcome
-                Navigator.pushReplacementNamed(context, '/welcome');
+                // آخرین تلاش: بازگشت به صفحه modern-auth
+                Navigator.pushReplacementNamed(context, '/modern-auth');
               }
             }
           },

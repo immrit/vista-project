@@ -28,65 +28,92 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
   late Animation<double> _textFadeAnimation;
 
   int _currentPage = 0;
-  final int _totalPages = 4;
+  final int _totalPages = 6;
 
   final List<OnboardingSlide> _slides = [
     OnboardingSlide(
       title: 'ویستا',
-      subtitle: 'پیام‌رسان امن و قدرتمند',
-      description: 'با ویستا، ارتباطات خود را به سطح جدیدی ببرید',
+      subtitle: 'شبکه اجتماعی پیشرفته',
+      description: 'پلتفرم جامع برای ارتباط، اشتراک‌گذاری و تعامل اجتماعی',
       primaryColor: const Color(0xFF0088CC),
       secondaryColor: const Color(0xFF00A8E8),
       features: [
-        'چت و پیام‌رسانی',
-        'اشتراک‌گذاری محتوا',
+        'پست‌های عمومی و خصوصی',
         'سیستم استوری',
-        'پخش‌کننده موزیک',
+        'چت و پیام‌رسانی',
+        'پروفایل شخصی',
       ],
-      illustration: OnboardingIllustration.secure,
+      illustration: OnboardingIllustration.social,
     ),
     OnboardingSlide(
-      title: 'سرعت فوق‌العاده',
-      subtitle: 'ارسال پیام در کسری از ثانیه',
+      title: 'اشتراک‌گذاری محتوا',
+      subtitle: 'هر آنچه می‌خواهید به اشتراک بگذارید',
       description:
-          'با زیرساخت قدرتمند ابری، پیام‌های شما با سرعت نور ارسال می‌شوند',
+          'تصاویر، ویدیوها، موزیک و متن را با دوستان خود به اشتراک بگذارید',
       primaryColor: const Color(0xFF4CAF50),
       secondaryColor: const Color(0xFF8BC34A),
       features: [
-        'ارسال فوری پیام',
-        'همگام‌سازی لحظه‌ای',
-        'کش هوشمند',
-        'بهینه‌سازی شبکه',
+        'آپلود تصاویر و ویدیو',
+        'اشتراک‌گذاری موزیک',
+        'کامنت و لایک',
+        'اشتراک‌گذاری هوشمند',
       ],
-      illustration: OnboardingIllustration.speed,
+      illustration: OnboardingIllustration.content,
     ),
     OnboardingSlide(
-      title: 'امنیت در اولویت',
-      subtitle: 'حفاظت کامل از حریم خصوصی',
-      description:
-          'اطلاعات شما با پیشرفته‌ترین الگوریتم‌های رمزگذاری محافظت می‌شود',
+      title: 'استوری و موزیک',
+      subtitle: 'محتوای زنده و موزیک',
+      description: 'استوری‌های 24 ساعته و پخش‌کننده موزیک پیشرفته',
       primaryColor: const Color(0xFF9C27B0),
       secondaryColor: const Color(0xFFE91E63),
       features: [
+        'استوری‌های تعاملی',
+        'پخش‌کننده موزیک',
+        'دانلود آهنگ',
+        'اشتراک‌گذاری موزیک',
+      ],
+      illustration: OnboardingIllustration.story,
+    ),
+    OnboardingSlide(
+      title: 'امنیت و حریم خصوصی',
+      subtitle: 'حفاظت کامل از اطلاعات شما',
+      description: 'حساب‌های خصوصی، رمزگذاری پیشرفته و کنترل حریم خصوصی',
+      primaryColor: const Color(0xFFFF5722),
+      secondaryColor: const Color(0xFFFF9800),
+      features: [
+        'حساب‌های خصوصی',
         'رمزگذاری End-to-End',
-        'حذف خودکار پیام‌ها',
         'مسدودسازی کاربران',
         'قفل اپلیکیشن',
       ],
       illustration: OnboardingIllustration.security,
     ),
     OnboardingSlide(
+      title: 'عملکرد فوق‌العاده',
+      subtitle: 'سرعت و کیفیت در اولویت',
+      description: 'کش هوشمند، همگام‌سازی لحظه‌ای و عملکرد بهینه',
+      primaryColor: const Color(0xFF3F51B5),
+      secondaryColor: const Color(0xFF2196F3),
+      features: [
+        'کش آفلاین',
+        'همگام‌سازی هوشمند',
+        'عملکرد بهینه',
+        'پشتیبانی چندپلتفرمه',
+      ],
+      illustration: OnboardingIllustration.performance,
+    ),
+    OnboardingSlide(
       title: 'آماده شروع',
-      subtitle: 'به خانواده ویستا بپیوندید',
+      subtitle: 'به جامعه ویستا بپیوندید',
       description:
-          'همین حالا ثبت نام کنید و از تمام قابلیت‌های ویستا لذت ببرید',
+          'همین حالا ثبت نام کنید و از تمام قابلیت‌های شبکه اجتماعی ویستا لذت ببرید',
       primaryColor: const Color(0xFFFF9800),
       secondaryColor: const Color(0xFFFFC107),
       features: [
         'ثبت نام رایگان',
         'دسترسی فوری',
-        'کش آفلاین',
-        'همگام‌سازی هوشمند',
+        'جامعه فعال',
+        'پشتیبانی 24/7',
       ],
       illustration: OnboardingIllustration.ready,
     ),
@@ -420,18 +447,22 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
 
   Widget _buildMainIllustration(OnboardingSlide slide) {
     switch (slide.illustration) {
-      case OnboardingIllustration.secure:
-        return _buildSecureIllustration(slide);
-      case OnboardingIllustration.speed:
-        return _buildSpeedIllustration(slide);
+      case OnboardingIllustration.social:
+        return _buildSocialIllustration(slide);
+      case OnboardingIllustration.content:
+        return _buildContentIllustration(slide);
+      case OnboardingIllustration.story:
+        return _buildStoryIllustration(slide);
       case OnboardingIllustration.security:
         return _buildSecurityIllustration(slide);
+      case OnboardingIllustration.performance:
+        return _buildPerformanceIllustration(slide);
       case OnboardingIllustration.ready:
         return _buildReadyIllustration(slide);
     }
   }
 
-  Widget _buildSecureIllustration(OnboardingSlide slide) {
+  Widget _buildSocialIllustration(OnboardingSlide slide) {
     return Container(
       width: 200.w,
       height: 200.w,
@@ -453,14 +484,14 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Shield Icon
+          // Network/People Icon
           Icon(
-            Icons.security,
+            Icons.people,
             size: 80.sp,
             color: Colors.white,
           ),
 
-          // Lock Icon
+          // Chat Bubble
           Positioned(
             bottom: 30.h,
             right: 30.w,
@@ -478,7 +509,7 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
                 ],
               ),
               child: Icon(
-                Icons.lock,
+                Icons.chat_bubble,
                 size: 20.sp,
                 color: slide.primaryColor,
               ),
@@ -489,7 +520,7 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
     );
   }
 
-  Widget _buildSpeedIllustration(OnboardingSlide slide) {
+  Widget _buildContentIllustration(OnboardingSlide slide) {
     return Container(
       width: 200.w,
       height: 200.w,
@@ -511,28 +542,129 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Lightning Icon
+          // Share Icon
           Icon(
-            Icons.flash_on,
+            Icons.share,
             size: 80.sp,
             color: Colors.white,
           ),
 
-          // Speed Lines
-          ...List.generate(3, (index) {
+          // Content Icons around the share
+          ...List.generate(4, (index) {
+            final angle = (index * math.pi * 2 / 4);
+            final icons = [
+              Icons.image,
+              Icons.videocam,
+              Icons.music_note,
+              Icons.text_fields
+            ];
             return Positioned(
-              top: 40.h + (index * 20.h),
-              right: 20.w,
+              top: 50.h + math.sin(angle) * 60.h,
+              left: 50.w + math.cos(angle) * 60.w,
               child: Container(
-                width: 60.w,
-                height: 2.h,
+                padding: EdgeInsets.all(6.w),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.7),
-                  borderRadius: BorderRadius.circular(1.r),
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  icons[index],
+                  size: 16.sp,
+                  color: slide.primaryColor,
                 ),
               ),
             );
           }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStoryIllustration(OnboardingSlide slide) {
+    return Container(
+      width: 200.w,
+      height: 200.w,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [slide.primaryColor, slide.secondaryColor],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: slide.primaryColor.withOpacity(0.4),
+            blurRadius: 40,
+            offset: const Offset(0, 20),
+          ),
+        ],
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Story/Circle Icon
+          Icon(
+            Icons.auto_stories,
+            size: 80.sp,
+            color: Colors.white,
+          ),
+
+          // Music Note
+          Positioned(
+            bottom: 30.h,
+            right: 30.w,
+            child: Container(
+              padding: EdgeInsets.all(8.w),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Icon(
+                Icons.music_note,
+                size: 20.sp,
+                color: slide.primaryColor,
+              ),
+            ),
+          ),
+
+          // Play Button
+          Positioned(
+            top: 30.h,
+            left: 30.w,
+            child: Container(
+              padding: EdgeInsets.all(6.w),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Icon(
+                Icons.play_arrow,
+                size: 16.sp,
+                color: slide.primaryColor,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -586,6 +718,89 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
               ),
               child: Icon(
                 Icons.vpn_key,
+                size: 16.sp,
+                color: slide.primaryColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPerformanceIllustration(OnboardingSlide slide) {
+    return Container(
+      width: 200.w,
+      height: 200.w,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [slide.primaryColor, slide.secondaryColor],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: slide.primaryColor.withOpacity(0.4),
+            blurRadius: 40,
+            offset: const Offset(0, 20),
+          ),
+        ],
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Speed/Performance Icon
+          Icon(
+            Icons.speed,
+            size: 80.sp,
+            color: Colors.white,
+          ),
+
+          // Cloud Icon
+          Positioned(
+            bottom: 30.h,
+            right: 30.w,
+            child: Container(
+              padding: EdgeInsets.all(8.w),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Icon(
+                Icons.cloud_done,
+                size: 20.sp,
+                color: slide.primaryColor,
+              ),
+            ),
+          ),
+
+          // Cache Icon
+          Positioned(
+            top: 30.h,
+            left: 30.w,
+            child: Container(
+              padding: EdgeInsets.all(6.w),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Icon(
+                Icons.storage,
                 size: 16.sp,
                 color: slide.primaryColor,
               ),
@@ -926,8 +1141,10 @@ class OnboardingSlide {
 }
 
 enum OnboardingIllustration {
-  secure,
-  speed,
+  social,
+  content,
+  story,
   security,
+  performance,
   ready,
 }
