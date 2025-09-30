@@ -30,52 +30,101 @@ class UnifiedCacheManager {
   bool _batterySaverMode = false;
   int _maxCacheSizeMB = 200; // حداکثر حجم کش 200MB (قابل تنظیم)
   bool _isInitialized = false;
+  bool _disabled = false; // Flag to disable cache manager
 
   Future<void> initialize() async {
     if (_isInitialized) return;
 
-    // مقداردهی اولیه کش‌های تصویر
-    storyInstance = CacheManager(
-      Config(
-        storyKey,
-        stalePeriod: const Duration(days: 1),
-        maxNrOfCacheObjects: 100,
-      ),
-    );
-
-    postInstance = CacheManager(
-      Config(
-        postKey,
-        stalePeriod: const Duration(days: 7),
-        maxNrOfCacheObjects: 200,
-      ),
-    );
-
-    chatInstance = CacheManager(
-      Config(
-        'chat_image_cache',
-        stalePeriod: const Duration(days: 7),
-        maxNrOfCacheObjects: 200,
-      ),
-    );
-
-    wallpaperInstance = CacheManager(
-      Config(
-        'chat_wallpaper_cache',
-        stalePeriod: const Duration(days: 30),
-        maxNrOfCacheObjects: 50,
-        fileService: HttpFileService(),
-      ),
-    );
-
+    // Disable cache manager to prevent SQLite conflicts
+    _disabled = true;
     _isInitialized = true;
+    print('⚠️ UnifiedCacheManager disabled to prevent SQLite conflicts');
+    return;
 
-    // شروع پاکسازی هوشمند
-    _startSmartCleanup();
+    try {
+      print('🚀 Initializing UnifiedCacheManager...');
+
+      // مقداردهی اولیه کش‌های تصویر به صورت متوالی برای جلوگیری از تداخل SQLite
+      print('📸 Initializing story cache...');
+      storyInstance = CacheManager(
+        Config(
+          storyKey,
+          stalePeriod: const Duration(days: 1),
+          maxNrOfCacheObjects: 100,
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 200)); // تاخیر بیشتر
+
+      print('📷 Initializing post cache...');
+      postInstance = CacheManager(
+        Config(
+          postKey,
+          stalePeriod: const Duration(days: 7),
+          maxNrOfCacheObjects: 200,
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      print('💬 Initializing chat cache...');
+      chatInstance = CacheManager(
+        Config(
+          'chat_image_cache',
+          stalePeriod: const Duration(days: 7),
+          maxNrOfCacheObjects: 200,
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      print('🖼️ Initializing wallpaper cache...');
+      wallpaperInstance = CacheManager(
+        Config(
+          'chat_wallpaper_cache',
+          stalePeriod: const Duration(days: 30),
+          maxNrOfCacheObjects: 50,
+          fileService: HttpFileService(),
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      _isInitialized = true;
+      print('✅ UnifiedCacheManager initialized successfully');
+
+      // شروع پاکسازی هوشمند
+      _startSmartCleanup();
+    } catch (e) {
+      print('❌ Failed to initialize UnifiedCacheManager: $e');
+      // در صورت خطا، حداقل یک instance ساده ایجاد کن
+      try {
+        storyInstance = CacheManager(Config(storyKey));
+        postInstance = CacheManager(Config(postKey));
+        chatInstance = CacheManager(Config('chat_image_cache'));
+        wallpaperInstance = CacheManager(Config('chat_wallpaper_cache'));
+        _isInitialized = true;
+        print('⚠️ Fallback cache managers created');
+      } catch (fallbackError) {
+        print('❌ Failed to create fallback cache managers: $fallbackError');
+        // در صورت خطای کامل، بدون کش ادامه بده
+        _isInitialized = true;
+        print('⚠️ Continuing without cache managers');
+      }
+    }
   }
 
   /// دریافت آمار کامل کش
   Future<Map<String, dynamic>> getCacheStats() async {
+    if (_disabled) {
+      return {
+        'disabled': true,
+        'message': 'Cache manager disabled to prevent SQLite conflicts',
+        'total_size_mb': 0,
+        'image_cache': {},
+        'smart_cache_enabled': false,
+        'battery_saver_mode': false,
+        'max_cache_size_mb': 0,
+        'last_cleanup': null,
+      };
+    }
+
     try {
       final imageCacheStats = await _getImageCacheStats();
       final totalSize = await _calculateTotalCacheSize();
@@ -98,6 +147,15 @@ class UnifiedCacheManager {
     bool forceCleanup = false,
     double targetSizeMB = 200,
   }) async {
+    if (_disabled) {
+      return {
+        'disabled': true,
+        'message': 'Cache manager disabled',
+        'items_removed': 0,
+        'space_freed_mb': 0.0,
+      };
+    }
+
     int itemsRemoved = 0;
     double spaceFreed = 0.0;
 

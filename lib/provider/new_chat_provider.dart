@@ -10,7 +10,8 @@ class ChatProviderParams {
   final String conversationId;
   final String otherUserId;
 
-  const ChatProviderParams({required this.conversationId, required this.otherUserId});
+  const ChatProviderParams(
+      {required this.conversationId, required this.otherUserId});
 
   @override
   bool operator ==(Object other) =>
@@ -23,7 +24,6 @@ class ChatProviderParams {
   @override
   int get hashCode => conversationId.hashCode ^ otherUserId.hashCode;
 }
-
 
 // A single, unified state for the chat screen
 class NewChatState {
@@ -68,20 +68,66 @@ class NewChatNotifier extends StateNotifier<NewChatState> {
   }
 
   Future<void> _initialize() async {
-    state = state.copyWith(isLoading: true);
-    final userId = supabase.auth.currentUser!.id;
+    print(
+        '🚀 Starting ChatProvider initialization for conversation: ${params.conversationId}');
 
-    // 1. Load from cache first for instant UI
-    final cachedMessages = await _cacheService.getConversationMessages(params.conversationId, userId);
-    if (mounted) {
-      state = state.copyWith(messages: cachedMessages, isLoading: false);
+    state = state.copyWith(isLoading: true);
+
+    // بررسی وجود کاربر
+    final currentUser = supabase.auth.currentUser;
+    if (currentUser == null) {
+      print('❌ User not authenticated');
+      if (mounted) {
+        state = state.copyWith(
+          isLoading: false,
+          error: 'کاربر وارد نشده است',
+        );
+      }
+      return;
     }
 
-    // 2. Fetch from server to get latest messages
-    await fetchLatestMessages();
+    final userId = currentUser.id;
 
-    // 3. Listen for real-time updates
-    _listenForRealtimeUpdates();
+    // بررسی conversationId
+    if (params.conversationId.isEmpty) {
+      print('❌ ConversationId is empty');
+      if (mounted) {
+        state = state.copyWith(
+          isLoading: false,
+          error: 'شناسه مکالمه نامعتبر است',
+        );
+      }
+      return;
+    }
+
+    print('✅ User authenticated and conversationId valid');
+
+    try {
+      // 1. Load from cache first for instant UI
+      print('📦 Loading from cache...');
+      final cachedMessages = await _cacheService.getConversationMessages(
+          params.conversationId, userId);
+      print('✅ Loaded ${cachedMessages.length} messages from cache');
+      if (mounted) {
+        state = state.copyWith(messages: cachedMessages, isLoading: false);
+      }
+
+      // 2. Fetch from server to get latest messages
+      print('🌐 Fetching from server...');
+      await fetchLatestMessages();
+
+      // 3. Listen for real-time updates
+      print('📡 Starting real-time updates...');
+      _listenForRealtimeUpdates();
+    } catch (e) {
+      print('❌ Error during initialization: $e');
+      if (mounted) {
+        state = state.copyWith(
+          isLoading: false,
+          error: 'خطا در بارگذاری پیام‌ها: $e',
+        );
+      }
+    }
   }
 
   Future<void> fetchLatestMessages() async {
@@ -89,11 +135,16 @@ class NewChatNotifier extends StateNotifier<NewChatState> {
     _isFetching = true;
 
     try {
-      final serverMessages = await _chatService.getMessages(params.conversationId, limit: _pageSize);
+      print(
+          '🔄 Fetching latest messages for conversation: ${params.conversationId}');
+      final serverMessages = await _chatService
+          .getMessages(params.conversationId, limit: _pageSize);
+      print('✅ Received ${serverMessages.length} messages from server');
       if (mounted) {
         _updateMessages(serverMessages);
       }
     } catch (e) {
+      print('❌ Error fetching latest messages: $e');
       if (mounted) {
         state = state.copyWith(error: e.toString());
       }
@@ -109,11 +160,13 @@ class NewChatNotifier extends StateNotifier<NewChatState> {
     _isFetching = true;
 
     try {
-      final oldestMessageTimestamp = state.messages.isNotEmpty ? state.messages.first.createdAt : DateTime.now();
+      final oldestMessageTimestamp = state.messages.isNotEmpty
+          ? state.messages.first.createdAt
+          : DateTime.now();
       final moreMessages = await _chatService.getMessages(
         params.conversationId,
         limit: _pageSize,
-        before: oldestMessageTimestamp,
+        offset: state.messages.length,
       );
 
       if (mounted) {
@@ -121,7 +174,7 @@ class NewChatNotifier extends StateNotifier<NewChatState> {
           state = state.copyWith(hasMore: false, isLoading: false);
         } else {
           final updatedList = [...moreMessages, ...state.messages];
-          _updateMessages(updatedList, newMessages: moreMessages, fromPagination: true);
+          _updateMessages(updatedList, fromPagination: true);
           state = state.copyWith(isLoading: false);
         }
       }
@@ -135,18 +188,72 @@ class NewChatNotifier extends StateNotifier<NewChatState> {
   }
 
   void _listenForRealtimeUpdates() {
-    _realtimeSubscription?.cancel();
-    _realtimeSubscription = _chatService.subscribeToMessages(params.conversationId, (newMessage) {
+    if (_realtimeSubscription != null) {
+      print('⚠️ Real-time subscription already exists, skipping');
+      return;
+    }
+
+    print(
+        '📡 Setting up real-time subscription for conversation: ${params.conversationId}');
+
+    try {
+      _realtimeSubscription?.cancel();
+      _realtimeSubscription =
+          _chatService.subscribeToMessages(params.conversationId).listen(
+        (messages) {
+          print('📨 Received ${messages.length} real-time messages');
+          if (mounted) {
+            _updateMessages(messages);
+          }
+        },
+        onError: (error) {
+          print('❌ Real-time subscription error: $error');
+          if (mounted) {
+            state = state.copyWith(error: 'خطا در دریافت پیام‌های جدید');
+          }
+          // تلاش مجدد بعد از 5 ثانیه
+          Future.delayed(const Duration(seconds: 5), () {
+            if (mounted) {
+              _listenForRealtimeUpdates();
+            }
+          });
+        },
+        onDone: () {
+          print('⚠️ Real-time subscription closed, reconnecting...');
+          _realtimeSubscription = null;
+          // تلاش مجدد بعد از 3 ثانیه
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted) {
+              _listenForRealtimeUpdates();
+            }
+          });
+        },
+      );
+    } catch (e) {
+      print('❌ Error setting up real-time subscription: $e');
       if (mounted) {
-        _updateMessages([newMessage]);
+        state = state.copyWith(error: 'خطا در راه‌اندازی دریافت پیام‌های جدید');
       }
-    });
+      // تلاش مجدد بعد از 10 ثانیه
+      Future.delayed(const Duration(seconds: 10), () {
+        if (mounted) {
+          _listenForRealtimeUpdates();
+        }
+      });
+    }
   }
 
-  void _updateMessages(List<MessageModel> newMessages, {bool fromPagination = false}) {
-    if (newMessages.isEmpty && !fromPagination) return;
+  void _updateMessages(List<MessageModel> newMessages,
+      {bool fromPagination = false}) {
+    if (newMessages.isEmpty && !fromPagination) {
+      print('⚠️ No new messages to update');
+      return;
+    }
 
-    final currentMessages = Map.fromEntries(state.messages.map((m) => MapEntry(m.id, m)));
+    print('🔄 Updating messages: ${newMessages.length} new messages');
+
+    final currentMessages =
+        Map.fromEntries(state.messages.map((m) => MapEntry(m.id, m)));
 
     for (var msg in newMessages) {
       currentMessages[msg.id] = msg;
@@ -155,15 +262,27 @@ class NewChatNotifier extends StateNotifier<NewChatState> {
     final sortedMessages = currentMessages.values.toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
+    print('✅ Updated message list: ${sortedMessages.length} total messages');
+
     if (mounted) {
-        state = state.copyWith(messages: sortedMessages);
+      state = state.copyWith(messages: sortedMessages);
     }
 
     // Update cache in the background
-    _cacheService.cacheMessages(newMessages, supabase.auth.currentUser!.id);
+    try {
+      final currentUser = supabase.auth.currentUser;
+      if (currentUser != null) {
+        _cacheService.cacheMessages(newMessages, currentUser.id);
+      }
+    } catch (e) {
+      print('⚠️ Error caching messages: $e');
+    }
   }
 
-  Future<void> sendMessage(String content, {String? attachmentUrl, String? attachmentType, MessageModel? replyToMessage}) async {
+  Future<void> sendMessage(String content,
+      {String? attachmentUrl,
+      String? attachmentType,
+      MessageModel? replyToMessage}) async {
     final currentUser = supabase.auth.currentUser;
     if (currentUser == null) return;
 
@@ -197,16 +316,23 @@ class NewChatNotifier extends StateNotifier<NewChatState> {
 
       // Replace temp message with real one
       if (mounted) {
-        final newMessages = state.messages.map((m) => m.id == tempId ? sentMessage : m).toList();
+        final newMessages = state.messages
+            .map((m) => m.id == tempId ? sentMessage : m)
+            .toList();
         state = state.copyWith(messages: newMessages);
         _cacheService.cacheMessage(sentMessage, currentUser.id);
-        _cacheService.clearMessage(params.conversationId, tempId, currentUser.id);
+        _cacheService.clearMessage(
+            params.conversationId, tempId, currentUser.id);
       }
     } catch (e) {
       if (mounted) {
-        final failedMessage = tempMessage.copyWith(isSent: false, isPending: false);
-        final newMessages = state.messages.map((m) => m.id == tempId ? failedMessage : m).toList();
-        state = state.copyWith(messages: newMessages, error: "Failed to send message");
+        final failedMessage =
+            tempMessage.copyWith(isSent: false, isPending: false);
+        final newMessages = state.messages
+            .map((m) => m.id == tempId ? failedMessage : m)
+            .toList();
+        state = state.copyWith(
+            messages: newMessages, error: "Failed to send message");
       }
     }
   }

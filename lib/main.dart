@@ -117,10 +117,10 @@ void main() async {
     // 🧹 غیرفعالسازی cache systems اضافی
     await _disableRedundantCacheSystems();
 
-    // 📦 مقداردهی اولیه سیستم کش (once only)
-    if (!UnifiedCacheManager().isInitialized) {
-      await UnifiedCacheManager().initialize();
-    }
+    // 📦 مقداردهی اولیه سیستم کش (once only) - غیرفعال شده
+    // UnifiedCacheManager باعث تداخل SQLite می‌شود
+    print(
+        '⚠️ Skipping UnifiedCacheManager initialization to prevent SQLite conflicts');
 
     // 🗄️ مقداردهی اولیه مدیریتگر دیتابیس (قبل از سایر سرویس‌ها)
     await DatabaseManager().initializeAllDatabases();
@@ -200,6 +200,18 @@ void main() async {
       ),
     );
   }, (error, stack) {
+    // Handle specific errors that shouldn't crash the app
+    if (error.toString().contains('DatabaseException') &&
+        error.toString().contains('no such table: cacheObject')) {
+      print('⚠️ Cache database error caught and handled: $error');
+      return; // Don't print full stack trace for known cache issues
+    }
+
+    if (error.toString().contains('RealtimeSubscribeException')) {
+      print('⚠️ Real-time subscription error caught and handled: $error');
+      return; // Don't print full stack trace for known real-time issues
+    }
+
     print('⚠️ Unhandled error (caught globally): $error');
     print('Stack trace: $stack');
     // Don't rethrow to prevent app crash

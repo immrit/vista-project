@@ -16,6 +16,9 @@ class CacheCleanupService {
     print('🧹 Starting cache cleanup process...');
 
     try {
+      // غیرفعالسازی UnifiedCacheManager (مهم‌ترین)
+      await _disableUnifiedCacheManager();
+
       // غیرفعالسازی سیستم‌های کش قدیمی پاک شده‌اند
       await _disableAdvancedCacheManager();
 
@@ -39,6 +42,16 @@ class CacheCleanupService {
       _showOptimizationStats();
     } catch (e) {
       print('❌ Error during cache cleanup: $e');
+    }
+  }
+
+  Future<void> _disableUnifiedCacheManager() async {
+    try {
+      // غیرفعالسازی UnifiedCacheManager
+      _disabledSystems.add('UnifiedCacheManager');
+      print('🚫 UnifiedCacheManager disabled to prevent SQLite conflicts');
+    } catch (e) {
+      print('⚠️ Could not disable UnifiedCacheManager: $e');
     }
   }
 

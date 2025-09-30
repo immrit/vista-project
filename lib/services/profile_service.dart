@@ -450,19 +450,53 @@ class ProfileService {
     if (_profilesSubscription != null) return; // Already subscribed
 
     try {
-      _profilesSubscription =
-          supabase.from('profiles').stream(primaryKey: ['id']).listen((data) {
-        for (final row in data) {
-          final userId = row['id'] as String;
-          updateProfileFromRealtime(userId, row);
-        }
-      }, onError: (error) {
-        logger.e('خطا در دریافت real-time updates پروفایل: $error');
-      });
+      _profilesSubscription = supabase
+          .from('profiles')
+          .stream(primaryKey: ['id'])
+          .timeout(const Duration(seconds: 30))
+          .listen(
+            (data) {
+              for (final row in data) {
+                final userId = row['id'] as String;
+                updateProfileFromRealtime(userId, row);
+              }
+            },
+            onError: (error) {
+              // مدیریت خطاهای real-time بدون کرش
+              if (error.toString().contains('RealtimeSubscribeException')) {
+                logger.w('⚠️ Real-time subscription error (handled): $error');
+                // تلاش مجدد بعد از 5 ثانیه
+                Future.delayed(const Duration(seconds: 5), () {
+                  if (_profilesSubscription == null) {
+                    startRealtimeUpdates();
+                  }
+                });
+              } else {
+                logger.e('خطا در دریافت real-time updates پروفایل: $error');
+              }
+            },
+            onDone: () {
+              logger.w(
+                  'Real-time subscription closed, attempting to reconnect...');
+              _profilesSubscription = null;
+              // تلاش مجدد بعد از 3 ثانیه
+              Future.delayed(const Duration(seconds: 3), () {
+                if (_profilesSubscription == null) {
+                  startRealtimeUpdates();
+                }
+              });
+            },
+          );
 
       logger.d('Real-time subscription برای پروفایل‌ها شروع شد');
     } catch (e) {
       logger.e('خطا در شروع real-time subscription: $e');
+      // تلاش مجدد بعد از 10 ثانیه
+      Future.delayed(const Duration(seconds: 10), () {
+        if (_profilesSubscription == null) {
+          startRealtimeUpdates();
+        }
+      });
     }
   }
 

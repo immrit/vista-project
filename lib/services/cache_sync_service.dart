@@ -241,9 +241,32 @@ class CacheSyncService {
         .stream(primaryKey: ['id'])
         .eq('conversation_id', conversationId)
         .order('created_at', ascending: false)
-        .listen((data) async {
-          await _handleRealtimeUpdate(conversationId, data, userId);
-        });
+        .timeout(const Duration(seconds: 30))
+        .listen(
+          (data) async {
+            await _handleRealtimeUpdate(conversationId, data, userId);
+          },
+          onError: (error) {
+            // مدیریت خطاهای real-time بدون کرش
+            if (error.toString().contains('RealtimeSubscribeException')) {
+              debugPrint('⚠️ Realtime conversation stream error: $error');
+              // تلاش مجدد بعد از 5 ثانیه
+              Future.delayed(const Duration(seconds: 5), () {
+                subscribeToConversation(conversationId);
+              });
+            } else {
+              debugPrint('⚠️ Real-time subscription error: $error');
+            }
+          },
+          onDone: () {
+            debugPrint(
+                '⚠️ Real-time conversation stream closed, attempting to reconnect...');
+            // تلاش مجدد بعد از 3 ثانیه
+            Future.delayed(const Duration(seconds: 3), () {
+              subscribeToConversation(conversationId);
+            });
+          },
+        );
 
     _realtimeSubscriptions[conversationId] = subscription;
     debugPrint(

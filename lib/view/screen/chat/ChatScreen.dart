@@ -12,9 +12,9 @@ import '../../../main.dart';
 import '../../../model/message_model.dart';
 import '../../../provider/new_chat_provider.dart';
 import '../../../provider/chat_provider.dart' as chat_provider;
-import '../../../services/ChatImageUploadService.dart';
 import '../../../services/audio_recording_service.dart';
 import '../../../services/uploadAudioChatService.dart';
+import '../../../services/uploadImageChatService.dart';
 import '../../widgets/SharedPostWidget.dart';
 import 'chat_input_box.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -22,14 +22,13 @@ import '../../widgets/message_bubble.dart';
 import '../../widgets/date_divider.dart';
 import '../PublicPosts/profileScreen.dart';
 
-
-class NewChatScreen extends ConsumerStatefulWidget {
+class ChatScreen extends ConsumerStatefulWidget {
   final String conversationId;
   final String otherUserName;
   final String? otherUserAvatar;
   final String otherUserId;
 
-  const NewChatScreen({
+  const ChatScreen({
     super.key,
     required this.conversationId,
     required this.otherUserName,
@@ -38,14 +37,15 @@ class NewChatScreen extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<NewChatScreen> createState() => _NewChatScreenState();
+  ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _NewChatScreenState extends ConsumerState<NewChatScreen> {
+class _ChatScreenState extends ConsumerState<ChatScreen> {
   // Controllers
   final TextEditingController _messageController = TextEditingController();
   final ItemScrollController _itemScrollController = ItemScrollController();
-  final ItemPositionsListener _itemPositionsListener = ItemPositionsListener.create();
+  final ItemPositionsListener _itemPositionsListener =
+      ItemPositionsListener.create();
   final FocusNode _messageFocusNode = FocusNode();
 
   // State
@@ -67,6 +67,9 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
   bool _isUploading = false;
   bool _isSending = false;
   bool _isRecordingAudio = false;
+  bool _isScrolling = false; // جلوگیری از فراخوانی مکرر scroll listener
+  bool _isUpdatingFloatingDate =
+      false; // جلوگیری از فراخوانی مکرر floating date update
   double _uploadProgress = 0.0;
   bool _isOtherUserBlocked = false;
   bool _isCurrentUserBlocked = false;
@@ -75,6 +78,15 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
   @override
   void initState() {
     super.initState();
+
+    // بررسی اولیه conversationId
+    if (widget.conversationId.isEmpty) {
+      print('❌ ConversationId is empty in ChatScreen initState');
+      return;
+    }
+
+    print('🚀 ChatScreen initState - conversationId: ${widget.conversationId}');
+
     _providerParams = ChatProviderParams(
       conversationId: widget.conversationId,
       otherUserId: widget.otherUserId,
@@ -87,7 +99,8 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
     try {
       final chatService = ref.read(chat_provider.chatServiceProvider);
       final isBlocked = await chatService.isUserBlocked(widget.otherUserId);
-      final isCurrentUserBlocked = await chatService.isCurrentUserBlockedBy(widget.otherUserId);
+      final isCurrentUserBlocked =
+          await chatService.isCurrentUserBlockedBy(widget.otherUserId);
       if (mounted) {
         setState(() {
           _isOtherUserBlocked = isBlocked;
@@ -100,40 +113,60 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
   }
 
   void _scrollListener() {
-    final positions = _itemPositionsListener.itemPositions.value;
-    if (positions.isEmpty) return;
+    // جلوگیری از فراخوانی مکرر
+    if (_isScrolling) return;
+    _isScrolling = true;
 
-    final firstPosition = positions.first;
-    if (firstPosition.index <= 5) {
-      ref.read(newChatProvider(_providerParams).notifier).fetchMoreMessages();
+    try {
+      final positions = _itemPositionsListener.itemPositions.value;
+      if (positions.isEmpty) return;
+
+      final firstPosition = positions.first;
+      if (firstPosition.index <= 5) {
+        ref.read(newChatProvider(_providerParams).notifier).fetchMoreMessages();
+      }
+
+      _updateFloatingDate(positions);
+    } finally {
+      _isScrolling = false;
     }
-
-    _updateFloatingDate(positions);
   }
 
   void _updateFloatingDate(Iterable<ItemPosition> positions) {
-    final firstVisibleItemIndex = positions
-        .where((position) => position.itemLeadingEdge < 1)
-        .last.index;
+    if (!mounted || _isUpdatingFloatingDate) return;
 
-    final messages = ref.read(newChatProvider(_providerParams)).messages;
-    if (firstVisibleItemIndex >= 0 && firstVisibleItemIndex < messages.length) {
-      final messageDate = messages[firstVisibleItemIndex].createdAt;
-      if (_floatingDate == null || !_isSameDay(_floatingDate!, messageDate)) {
-        setState(() {
-          _floatingDate = messageDate;
-        });
+    _isUpdatingFloatingDate = true;
+
+    try {
+      final firstVisibleItemIndex = positions
+          .where((position) => position.itemLeadingEdge < 1)
+          .last
+          .index;
+
+      final messages = ref.read(newChatProvider(_providerParams)).messages;
+      if (firstVisibleItemIndex >= 0 &&
+          firstVisibleItemIndex < messages.length) {
+        final messageDate = messages[firstVisibleItemIndex].createdAt;
+        if (_floatingDate == null || !_isSameDay(_floatingDate!, messageDate)) {
+          if (mounted) {
+            setState(() {
+              _floatingDate = messageDate;
+            });
+          }
+        }
       }
+
+      _floatingDateTimer?.cancel();
+      _floatingDateTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() {
+            _floatingDate = null;
+          });
+        }
+      });
+    } finally {
+      _isUpdatingFloatingDate = false;
     }
-
-    _floatingDateTimer?.cancel();
-    _floatingDateTimer = Timer(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() {
-          _floatingDate = null;
-        });
-      }
-    });
   }
 
   bool _isSameDay(DateTime d1, DateTime d2) {
@@ -147,6 +180,8 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
 
   @override
   void dispose() {
+    print(
+        '🗑️ Disposing ChatScreen for conversation: ${widget.conversationId}');
     _messageController.dispose();
     _floatingDateTimer?.cancel();
     _messageFocusNode.dispose();
@@ -156,7 +191,11 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
   // --- Message Sending Logic ---
   Future<void> _sendMessage() async {
     final message = _messageController.text.trim();
-    if (message.isEmpty && _selectedImage == null && _selectedImageBytes == null && _selectedAudio == null && _selectedAudioBytes == null) {
+    if (message.isEmpty &&
+        _selectedImage == null &&
+        _selectedImageBytes == null &&
+        _selectedAudio == null &&
+        _selectedAudioBytes == null) {
       return;
     }
 
@@ -168,11 +207,12 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
     try {
       if (_selectedAudio != null || _selectedAudioBytes != null) {
         attachmentType = 'audio';
-        attachmentUrl = await _uploadAudio(_selectedAudio ?? _selectedAudioBytes!);
-      }
-      else if (_selectedImage != null || _selectedImageBytes != null) {
+        attachmentUrl =
+            await _uploadAudio(_selectedAudio ?? _selectedAudioBytes!);
+      } else if (_selectedImage != null || _selectedImageBytes != null) {
         attachmentType = 'image';
-        attachmentUrl = await _uploadImage(_selectedImage ?? _selectedImageBytes!);
+        attachmentUrl =
+            await _uploadImage(_selectedImage ?? _selectedImageBytes!);
       }
 
       if (attachmentUrl == null && message.isEmpty) {
@@ -181,16 +221,15 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
       }
 
       await ref.read(newChatProvider(_providerParams).notifier).sendMessage(
-        message,
-        attachmentUrl: attachmentUrl,
-        attachmentType: attachmentType,
-        replyToMessage: _replyToMessage,
-      );
+            message,
+            attachmentUrl: attachmentUrl,
+            attachmentType: attachmentType,
+            replyToMessage: _replyToMessage,
+          );
 
       _messageController.clear();
       _clearAttachments();
       _scrollToBottom();
-
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('خطا در ارسال پیام: $e')),
@@ -290,10 +329,10 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
       String? audioUrl;
       if (kIsWeb && fileOrBytes is Uint8List && _selectedAudioName != null) {
         audioUrl = await ChatAudioUploadService.uploadChatAudioWeb(
-          fileOrBytes, _selectedAudioName!, widget.conversationId);
+            fileOrBytes, _selectedAudioName!, widget.conversationId);
       } else if (fileOrBytes is File) {
         audioUrl = await ChatAudioUploadService.uploadChatAudio(
-          fileOrBytes, widget.conversationId, onProgress: (progress) {
+            fileOrBytes, widget.conversationId, onProgress: (progress) {
           if (mounted) setState(() => _uploadProgress = progress);
         });
       }
@@ -358,7 +397,8 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
     }
   }
 
-  void _onAudioRecorded(File? audioFile, Uint8List? audioBytes, String? fileName) {
+  void _onAudioRecorded(
+      File? audioFile, Uint8List? audioBytes, String? fileName) {
     if (audioFile != null || audioBytes != null) {
       setState(() {
         _selectedAudio = audioFile;
@@ -479,21 +519,24 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
   Future<void> _deleteMessage(String messageId, bool forEveryone) async {
     try {
       setState(() => _deletingMessageIds.add(messageId));
-      await ref.read(chat_provider.messageNotifierProvider.notifier)
+      await ref
+          .read(chat_provider.messageNotifierProvider.notifier)
           .deleteMessage(messageId, forEveryone: forEveryone);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(forEveryone ? 'پیام برای همه حذف شد' : 'پیام برای شما حذف شد'),
+          content: Text(
+              forEveryone ? 'پیام برای همه حذف شد' : 'پیام برای شما حذف شد'),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطا در حذف پیام: $e'), backgroundColor: Colors.red),
+        SnackBar(
+            content: Text('خطا در حذف پیام: $e'), backgroundColor: Colors.red),
       );
     } finally {
-      if(mounted) {
+      if (mounted) {
         setState(() => _deletingMessageIds.remove(messageId));
       }
     }
@@ -526,7 +569,8 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
             onPressed: () async {
               Navigator.pop(context);
               try {
-                final notifier = ref.read(chat_provider.userBlockNotifierProvider.notifier);
+                final notifier =
+                    ref.read(chat_provider.userBlockNotifierProvider.notifier);
 
                 if (isBlocked) {
                   await notifier.unblockUser(widget.otherUserId);
@@ -543,12 +587,12 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
                           : '${widget.otherUserName} با موفقیت مسدود شد')),
                 );
               } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                        content: Text(isBlocked
-                            ? 'خطا در رفع مسدودیت کاربر'
-                            : 'خطا در مسدود کردن کاربر')),
-                  );
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                      content: Text(isBlocked
+                          ? 'خطا در رفع مسدودیت کاربر'
+                          : 'خطا در مسدود کردن کاربر')),
+                );
               }
             },
             child: Text(
@@ -599,12 +643,14 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
               const SizedBox(height: 8),
               Container(
                 decoration: BoxDecoration(
-                  color: isLightMode ? Colors.grey[100] : const Color(0xFF2A2A2A),
+                  color:
+                      isLightMode ? Colors.grey[100] : const Color(0xFF2A2A2A),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: DropdownButtonFormField<String>(
                   value: selectedReason,
-                  dropdownColor: isLightMode ? Colors.white : const Color(0xFF2A2A2A),
+                  dropdownColor:
+                      isLightMode ? Colors.white : const Color(0xFF2A2A2A),
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -645,7 +691,8 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
                 decoration: InputDecoration(
                   hintText: 'توضیحات اختیاری...',
                   filled: true,
-                  fillColor: isLightMode ? Colors.grey[100] : const Color(0xFF2A2A2A),
+                  fillColor:
+                      isLightMode ? Colors.grey[100] : const Color(0xFF2A2A2A),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -683,7 +730,8 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
                     )
                     .then((_) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('گزارش شما با موفقیت ارسال شد')),
+                    const SnackBar(
+                        content: Text('گزارش شما با موفقیت ارسال شد')),
                   );
                 }).catchError((error) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -704,6 +752,14 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // بررسی اولیه conversationId
+    if (widget.conversationId.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('خطا')),
+        body: const Center(child: Text('شناسه مکالمه نامعتبر است')),
+      );
+    }
+
     final chatState = ref.watch(newChatProvider(_providerParams));
     final messages = chatState.messages;
 
@@ -737,8 +793,8 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
                   ),
                   Consumer(
                     builder: (context, ref, child) {
-                      final isOnlineAsync = ref.watch(
-                          chat_provider.userOnlineStatusStreamProvider(widget.otherUserId));
+                      final isOnlineAsync = ref.watch(chat_provider
+                          .userOnlineStatusStreamProvider(widget.otherUserId));
 
                       return isOnlineAsync.when(
                         data: (isOnline) {
@@ -791,8 +847,7 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
                 child: Row(
                   children: [
                     Icon(Icons.person_outline,
-                        color: Theme.of(context).brightness ==
-                                Brightness.dark
+                        color: Theme.of(context).brightness == Brightness.dark
                             ? Colors.white70
                             : Colors.black87),
                     const SizedBox(width: 12),
@@ -804,18 +859,12 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
                 value: 'block',
                 child: Row(
                   children: [
-                    Icon(
-                        _isOtherUserBlocked
-                            ? Icons.lock_open
-                            : Icons.block,
-                        color: Theme.of(context).brightness ==
-                                Brightness.dark
+                    Icon(_isOtherUserBlocked ? Icons.lock_open : Icons.block,
+                        color: Theme.of(context).brightness == Brightness.dark
                             ? Colors.white70
                             : Colors.black87),
                     const SizedBox(width: 12),
-                    Text(_isOtherUserBlocked
-                        ? 'رفع مسدودیت'
-                        : 'مسدود کردن'),
+                    Text(_isOtherUserBlocked ? 'رفع مسدودیت' : 'مسدود کردن'),
                   ],
                 ),
               ),
@@ -824,8 +873,7 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
                 child: Row(
                   children: [
                     Icon(Icons.report_problem_outlined,
-                        color: Theme.of(context).brightness ==
-                                Brightness.dark
+                        color: Theme.of(context).brightness == Brightness.dark
                             ? Colors.white70
                             : Colors.black87),
                     const SizedBox(width: 12),
@@ -845,52 +893,61 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
               children: [
                 chatState.isLoading && messages.isEmpty
                     ? const Center(child: CircularProgressIndicator())
-                    : AnimationLimiter(
-                        child: ScrollablePositionedList.builder(
-                          itemScrollController: _itemScrollController,
-                          itemPositionsListener: _itemPositionsListener,
-                          reverse: true,
-                          itemCount: messages.length,
-                          itemBuilder: (context, index) {
-                            final message = messages[index];
-                            bool showDateDivider = false;
-                            if (index < messages.length - 1) {
-                              final prevMessage = messages[index + 1];
-                              if (!_isSameDay(message.createdAt, prevMessage.createdAt)) {
-                                showDateDivider = true;
-                              }
-                            } else {
-                              showDateDivider = true;
-                            }
+                    : messages.isEmpty && !chatState.isLoading
+                        ? const Center(child: Text('پیامی یافت نشد'))
+                        : AnimationLimiter(
+                            child: ScrollablePositionedList.builder(
+                              itemScrollController: _itemScrollController,
+                              itemPositionsListener: _itemPositionsListener,
+                              reverse: true,
+                              itemCount: messages.length,
+                              itemBuilder: (context, index) {
+                                final message = messages[index];
+                                bool showDateDivider = false;
+                                if (index < messages.length - 1) {
+                                  final prevMessage = messages[index + 1];
+                                  if (!_isSameDay(message.createdAt,
+                                      prevMessage.createdAt)) {
+                                    showDateDivider = true;
+                                  }
+                                } else {
+                                  showDateDivider = true;
+                                }
 
-                            return AnimationConfiguration.staggeredList(
-                              position: index,
-                              duration: const Duration(milliseconds: 375),
-                              child: SlideAnimation(
-                                verticalOffset: 50.0,
-                                child: FadeInAnimation(
-                                  child: Column(
-                                    children: [
-                                      if (showDateDivider)
-                                        DateDivider(date: message.createdAt),
-                                      _isSharedPost(message.content)
-                                          ? SharedPostWidget(
-                                              messageContent: message.content,
-                                              attachmentUrl: message.attachmentUrl,
-                                              attachmentType: message.attachmentType,
-                                            )
-                                          : MessageBubble(
-                                              message: message,
-                                              onLongPress: (msg) => _showMessageOptions(context, msg),
-                                            ),
-                                    ],
+                                return AnimationConfiguration.staggeredList(
+                                  position: index,
+                                  duration: const Duration(milliseconds: 375),
+                                  child: SlideAnimation(
+                                    verticalOffset: 50.0,
+                                    child: FadeInAnimation(
+                                      child: Column(
+                                        children: [
+                                          if (showDateDivider)
+                                            DateDivider(
+                                                date: message.createdAt),
+                                          _isSharedPost(message.content)
+                                              ? SharedPostWidget(
+                                                  messageContent:
+                                                      message.content,
+                                                  attachmentUrl:
+                                                      message.attachmentUrl,
+                                                  attachmentType:
+                                                      message.attachmentType,
+                                                )
+                                              : MessageBubble(
+                                                  message: message,
+                                                  onLongPress: (msg) =>
+                                                      _showMessageOptions(
+                                                          context, msg),
+                                                ),
+                                        ],
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
+                                );
+                              },
+                            ),
+                          ),
                 _buildFloatingDateChip(),
               ],
             ),
@@ -964,22 +1021,24 @@ class _NewChatScreenState extends ConsumerState<NewChatScreen> {
               user: _replyToMessage!.senderName ?? 'کاربر',
             )
           : null,
-      selectedImage: (_selectedImage != null || (kIsWeb && _selectedImageBytes != null))
-          ? SelectedFile(
-              file: _selectedImage,
-              bytes: kIsWeb ? _selectedImageBytes : null,
-              name: kIsWeb ? _selectedImageName : null,
-              type: 'image',
-            )
-          : null,
-      selectedAudio: (_selectedAudio != null || (kIsWeb && _selectedAudioBytes != null))
-          ? SelectedFile(
-              file: _selectedAudio,
-              bytes: kIsWeb ? _selectedAudioBytes : null,
-              name: _selectedAudioName,
-              type: 'audio',
-            )
-          : null,
+      selectedImage:
+          (_selectedImage != null || (kIsWeb && _selectedImageBytes != null))
+              ? SelectedFile(
+                  file: _selectedImage,
+                  bytes: kIsWeb ? _selectedImageBytes : null,
+                  name: kIsWeb ? _selectedImageName : null,
+                  type: 'image',
+                )
+              : null,
+      selectedAudio:
+          (_selectedAudio != null || (kIsWeb && _selectedAudioBytes != null))
+              ? SelectedFile(
+                  file: _selectedAudio,
+                  bytes: kIsWeb ? _selectedAudioBytes : null,
+                  name: _selectedAudioName,
+                  type: 'audio',
+                )
+              : null,
     );
   }
 }

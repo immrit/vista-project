@@ -2432,22 +2432,44 @@ class ChatService {
         .stream(primaryKey: ['id'])
         .eq('conversation_id', conversationId)
         .order('created_at', ascending: false)
-        .listen((jsonList) {
-          final userId = _supabase.auth.currentUser?.id;
-          if (userId != null) {
-            final newMessages = jsonList
-                .map((json) =>
-                    MessageModel.fromJson(json, currentUserId: userId))
-                .where((msg) => !msg.id.startsWith('temp_'))
-                .toList();
+        .timeout(const Duration(seconds: 30))
+        .listen(
+          (jsonList) {
+            final userId = _supabase.auth.currentUser?.id;
+            if (userId != null) {
+              final newMessages = jsonList
+                  .map((json) =>
+                      MessageModel.fromJson(json, currentUserId: userId))
+                  .where((msg) => !msg.id.startsWith('temp_'))
+                  .toList();
 
-            if (newMessages.isNotEmpty) {
-              _handleIncomingMessages(conversationId, newMessages);
+              if (newMessages.isNotEmpty) {
+                _handleIncomingMessages(conversationId, newMessages);
+              }
             }
-          }
-        }, onError: (error) {
-          print('⚠️ Real-time listener error: $error');
-        });
+          },
+          onError: (error) {
+            // مدیریت خطاهای real-time بدون کرش
+            if (error.toString().contains('RealtimeSubscribeException')) {
+              print(
+                  '⚠️ Realtime message stream error for $conversationId: $error');
+              // تلاش مجدد بعد از 5 ثانیه
+              Future.delayed(const Duration(seconds: 5), () {
+                _setupRealtimeListener(conversationId);
+              });
+            } else {
+              print('⚠️ Real-time listener error: $error');
+            }
+          },
+          onDone: () {
+            print(
+                '⚠️ Real-time listener closed for $conversationId, attempting to reconnect...');
+            // تلاش مجدد بعد از 3 ثانیه
+            Future.delayed(const Duration(seconds: 3), () {
+              _setupRealtimeListener(conversationId);
+            });
+          },
+        );
   }
 
   /// Handle incoming messages

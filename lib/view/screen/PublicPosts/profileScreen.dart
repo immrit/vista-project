@@ -969,16 +969,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
       // انتقال به صفحه چت
       if (context.mounted) {
+        // بررسی وجود conversationId معتبر
+        if (existingConversationId == null || existingConversationId.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('خطا در ایجاد مکالمه جدید'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => ChatScreen(
-              conversationId:
-                  existingConversationId ?? '', // اگر وجود داشت، آن را ارسال کن
+              conversationId: existingConversationId!,
               otherUserId: otherUserId,
               otherUserName: otherUsername,
-              otherUserAvatar: avatarUrl, // اضافه شد: ارسال عکس پروفایل
-              isNewConversation:
-                  isNewConversation, // بر اساس وجود یا عدم وجود مکالمه
+              otherUserAvatar: avatarUrl,
             ),
           ),
         );
