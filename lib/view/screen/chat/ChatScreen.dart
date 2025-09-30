@@ -1,559 +1,225 @@
-import 'package:Vista/view/screen/PublicPosts/profileScreen.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
+import 'dart:async';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:ui' show ImageFilter;
-// import 'dart:ui' show ImageFilter;
-import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
-// import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
-// import 'package:permission_handler/permission_handler.dart';
-import 'package:photo_view/photo_view.dart';
-import 'package:share_plus/share_plus.dart';
-import 'dart:async';
-import 'dart:math' as math;
-import 'package:shimmer/shimmer.dart';
-import 'package:timeago/timeago.dart' as timeago;
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
+
+import '../../../main.dart';
 import '../../../model/message_model.dart';
-import '../../../provider/chat_provider.dart';
-import '../../../provider/provider.dart';
-import '../../../provider/advanced_chat_providers.dart';
+import '../../../provider/new_chat_provider.dart';
+import '../../../provider/chat_provider.dart' as chat_provider;
+import '../../../services/ChatImageUploadService.dart';
 import '../../../services/audio_recording_service.dart';
 import '../../../services/uploadAudioChatService.dart';
-import '../../../services/uploadImageChatService.dart';
-import '../../../services/wallpaper_cache_service.dart';
-import '../../Exeption/app_exceptions.dart';
-import '../../util/time_utils.dart';
-import '../../util/widgets.dart';
-import 'package:flutter/foundation.dart' as foundation;
-import '../../../DB/unified_message_cache_service.dart';
-import '../../../services/ChatService.dart';
-import '../../../services/cache_manager.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-
-import '../../widgets/audio_player_widget.dart';
 import '../../widgets/SharedPostWidget.dart';
-import '../../widgets/web files/image_downloader.dart';
-import '/main.dart';
-import 'ChatDetailsScreen.dart';
 import 'chat_input_box.dart';
-import '../../../services/instant_message_deletion.dart';
-import '../../../widgets/simple_animated_deletion.dart';
-import '../../../services/optimized_messaging_system.dart';
-import '../../../services/memory_leak_detector.dart';
-import '../../../services/user_profile_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../../widgets/message_bubble.dart';
+import '../../widgets/date_divider.dart';
+import '../PublicPosts/profileScreen.dart';
 
-class ChatScreen extends ConsumerStatefulWidget {
+
+class NewChatScreen extends ConsumerStatefulWidget {
   final String conversationId;
   final String otherUserName;
   final String? otherUserAvatar;
   final String otherUserId;
-  final bool isNewConversation; // اضافه شد: برای تشخیص مکالمه جدید
 
-  const ChatScreen({
+  const NewChatScreen({
     super.key,
     required this.conversationId,
     required this.otherUserName,
     this.otherUserAvatar,
     required this.otherUserId,
-    this.isNewConversation = false, // مقدار پیش‌فرض false
   });
 
   @override
-  ConsumerState<ChatScreen> createState() => _ChatScreenState();
+  ConsumerState<NewChatScreen> createState() => _NewChatScreenState();
 }
 
-class _ChatScreenState extends ConsumerState<ChatScreen>
-    with TickerProviderStateMixin, WidgetsBindingObserver {
+class _NewChatScreenState extends ConsumerState<NewChatScreen> {
+  // Controllers
   final TextEditingController _messageController = TextEditingController();
-  // Tracks which message images are allowed to load inline after user action
-  final Set<String> _inlineImageGrants = <String>{};
-  final Set<String> _inlineImageLoaded = <String>{};
-  final Map<String, double> _inlineImageProgress = <String, double>{};
-  // final Map<String, String> _inlineImageLocalPath = <String, String>{};
-  // کنترلرهای جدید برای لیست قابل اسکرول
   final ItemScrollController _itemScrollController = ItemScrollController();
-  final ItemPositionsListener _itemPositionsListener =
-      ItemPositionsListener.create();
-
-  // Performance optimization
-  late final OptimizedMessagingSystem _optimizedMessaging;
-  late final MemoryLeakDetector _memoryDetector;
-  Timer? _performanceTimer;
-
-  final imagePicker = ImagePicker();
-  File? _selectedImage;
-  Uint8List? _selectedImageBytes; // برای وب
-  String? _selectedImageName; // برای وب
-  bool _isUploading = false;
-  // Removed unused _isDisposed flag
+  final ItemPositionsListener _itemPositionsListener = ItemPositionsListener.create();
   final FocusNode _messageFocusNode = FocusNode();
+
+  // State
+  DateTime? _floatingDate;
+  Timer? _floatingDateTimer;
+  late final ChatProviderParams _providerParams;
   bool _showEmojiPicker = false;
-
-  // اضافه شد: برای ذخیره conversationId پس از ایجاد مکالمه جدید
-  String? _localConversationId;
-
-  // برای به‌روزرسانی نام کاربر
-  String _currentOtherUserName = '';
-  String? _currentOtherUserAvatar;
-
-  /// Load user profile if name is not available
-  Future<void> _loadUserProfile() async {
-    if (_currentOtherUserName.isEmpty ||
-        _currentOtherUserName == 'در حال بارگذاری...' ||
-        _currentOtherUserName == 'کاربر ناشناس') {
-      try {
-        final userProfileService = UserProfileService();
-        final profile =
-            await userProfileService.getUserProfile(widget.otherUserId);
-
-        if (profile != null && mounted) {
-          setState(() {
-            // Prefer username, then full_name; avoid forcing 'کاربر ناشناس'
-            _currentOtherUserName =
-                (profile['username']?.toString().trim().isNotEmpty == true)
-                    ? profile['username'] as String
-                    : (profile['full_name']?.toString().trim().isNotEmpty ==
-                            true)
-                        ? profile['full_name'] as String
-                        : (_currentOtherUserName.isNotEmpty &&
-                                _currentOtherUserName != 'در حال بارگذاری...' &&
-                                _currentOtherUserName != 'کاربر ناشناس')
-                            ? _currentOtherUserName
-                            : '...';
-            _currentOtherUserAvatar = profile['avatar_url'];
-          });
-        }
-      } catch (e) {
-        print('⚠️ Error loading user profile in ChatScreen: $e');
-      }
-    }
-  }
-
-  /// Initialize optimized messaging system
-  Future<void> _initializeOptimizedMessaging() async {
-    try {
-      final chatService = ref.read(chatServiceProvider);
-      await chatService.initializeOptimizedMessaging();
-      chatService.activateConversation(widget.conversationId);
-      print(
-          '✅ Optimized messaging initialized for conversation: ${widget.conversationId}');
-    } catch (e) {
-      print('⚠️ Error initializing optimized messaging: $e');
-    }
-  }
-
-  // Animation state for deletion
-  final Set<String> _deletingMessageIds = {};
-
-  // List<Color> _placeholderColorsFromSeed(String seed) { ... }
-
-  String _buildThumbnailUrl(String url) {
-    // Supabase Transform API (fast, low-cost) if path matches
-    if (url.contains('/storage/v1/object/public/')) {
-      return '${url.replaceFirst('/object/public/', '/render/image/public/')}${url.contains('?') ? '&' : '?'}width=64&quality=20';
-    }
-    // Generic CDNs that accept width/quality query params
-    if (url.contains('coffevista') ||
-        url.contains('arvan') ||
-        url.contains('cdn')) {
-      return '$url${url.contains('?') ? '&' : '?'}w=64&q=20';
-    }
-    // Fallback: return original (data usage will be higher). Consider adding a proxy later.
-    return url;
-  }
-
   MessageModel? _replyToMessage;
 
-  bool _isCurrentUserBlocked = false;
-  String? _highlightedMessageId;
-  Timer? _highlightTimer;
-  bool _isOtherUserBlocked = false;
-  bool _showScrollToBottom = false;
-  double _previousScrollPosition = 0.0;
-  Timer? _scrollToBottomTimer;
-  double _uploadProgress = 0.0; // درصد پیشرفت آپلود عکس
+  // File handling state
+  File? _selectedImage;
+  Uint8List? _selectedImageBytes;
+  String? _selectedImageName;
   File? _selectedAudio;
-  Uint8List? _selectedAudioBytes; // برای وب
-  String? _selectedAudioName; // برای وب
-  bool _isRecordingAudio = false;
+  Uint8List? _selectedAudioBytes;
+  String? _selectedAudioName;
 
+  // UI state
+  bool _isUploading = false;
   bool _isSending = false;
-
-  // کش محلی برای رمزگشایی پیام‌ها جهت بهبود عملکرد
-  // cache service instance (lazy read via service when needed)
-  // final MessageCacheService _messageCache = MessageCacheService();
-
-  // متغیرهای جدید برای انیمیشن پاسخ به پیام
-  final Map<String, AnimationController> _messageAnimationControllers = {};
-  // Map<String, Animation<double>> _messageSlideAnimations = {};
-  final Map<String, bool> _messageReplyStates = {};
-  // String? _currentlyReplyingToMessageId; // current reply target id
+  bool _isRecordingAudio = false;
+  double _uploadProgress = 0.0;
+  bool _isOtherUserBlocked = false;
+  bool _isCurrentUserBlocked = false;
+  final Set<String> _deletingMessageIds = {};
 
   @override
   void initState() {
     super.initState();
-
-    // Initialize user info
-    _currentOtherUserName = widget.otherUserName;
-    _currentOtherUserAvatar = widget.otherUserAvatar;
-
-    // Performance optimization initialization
-    _optimizedMessaging = OptimizedMessagingSystem();
-    _memoryDetector = MemoryLeakDetector();
-    _memoryDetector.trackObjectCreation('ChatScreen', widget.conversationId);
-
-    // Observer lifecycle events
-    WidgetsBinding.instance.addObserver(this);
-
-    _checkBlockStatus();
-    timeago.setLocaleMessages('fa', timeago.FaMessages());
-
-    // به تعویق انداختن عملیات سنگین برای جلوگیری از فریز UI
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initializeHeavyOperations();
-    });
-
-    _itemPositionsListener.itemPositions.addListener(_handleScrollToBottomBtn);
-
-    // اضافه کردن لیسنر برای مدیریت بهتر کیبورد
-    WidgetsBinding.instance.addObserver(
-      _KeyboardVisibilityObserver(
-        onShow: () {
-          if (_showEmojiPicker) setState(() => _showEmojiPicker = false);
-        },
-        onHide: () {
-          // اگر کیبورد بسته شد و ایموجی پیکر نمایش داده نشده، فوکس را از دست بدهیم
-          if (!_showEmojiPicker) _messageFocusNode.unfocus();
-        },
-      ),
+    _providerParams = ChatProviderParams(
+      conversationId: widget.conversationId,
+      otherUserId: widget.otherUserId,
     );
-
-    // هنگام ورود به صفحه چت، conversationId فعال را تنظیم کن
-    if (widget.conversationId.isNotEmpty) {
-      ChatService.activeConversationId = widget.conversationId;
-    }
-  }
-
-  /// Initialize heavy operations after UI is ready
-  Future<void> _initializeHeavyOperations() async {
-    try {
-      // Load user profile if needed
-      _loadUserProfile();
-
-      // و حذف نوتیفیکیشن‌های مربوط به این مکالمه
-      if (widget.conversationId.isNotEmpty) {
-        final int notificationId = widget.conversationId.hashCode;
-        flutterLocalNotificationsPlugin.cancel(notificationId);
-      }
-
-      // پیش‌لود کش برای عملکرد سریع‌تر
-      if (widget.conversationId.isNotEmpty) {
-        _preloadCache();
-      }
-
-      // فعال‌سازی مکانیزم ارسال پیام‌های آفلاین به محض آنلاین شدن
-      ref.read(pendingMessagesSyncProvider);
-
-      // علامت‌گذاری پیام‌های خوانده نشده به عنوان خوانده شده
-      _markMessagesAsRead();
-
-      // پیش‌بارگذاری والپیپر برای عملکرد بهتر
-      _preloadWallpaper();
-
-      // Initialize optimized messaging with delay
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (mounted) {
-          ref.read(userOnlineNotifierProvider).updateOnlineStatus();
-          _checkOnlineStatus();
-          _initializeOptimizedMessaging();
-        }
-      });
-
-      // Invalidate user block status with delay
-      Future.delayed(const Duration(milliseconds: 200), () {
-        if (mounted) {
-          ref.invalidate(userBlockStatusProvider(widget.otherUserId));
-        }
-      });
-    } catch (e) {
-      print('⚠️ Error in heavy operations initialization: $e');
-    }
-  }
-
-  String _getReplySenderName(MessageModel message) {
-    final name = message.replyToSenderName;
-    if (name != null && name.trim().isNotEmpty && name != 'کاربر') {
-      return name;
-    }
-    return message.senderName ?? widget.otherUserName;
-  }
-
-  bool _isSharedPost(String content) {
-    // تشخیص پست اشتراکی بر اساس الگوهای موجود در محتوا
-    return content.contains('📝 پست از') &&
-        content.contains('🔗 مشاهده در Vista:');
-  }
-
-  /// پیش‌بارگذاری هوشمند والپیپر با سرویس اختصاصی
-  Future<void> _preloadWallpaper() async {
-    try {
-      // استفاده از Future.microtask برای جلوگیری از blocking UI
-      Future.microtask(() async {
-        await WallpaperCacheService.preloadWallpapers();
-      });
-    } catch (e) {
-      print('⚠️ Error preloading wallpaper: $e');
-    }
-  }
-
-  Future<void> _preloadCache() async {
-    try {
-      final userId = supabase.auth.currentUser?.id;
-      if (userId != null && widget.conversationId.isNotEmpty) {
-        // استفاده از Future.microtask برای جلوگیری از blocking UI
-        Future.microtask(() async {
-          await UnifiedMessageCacheService()
-              .getConversationMessages(widget.conversationId, userId);
-        });
-      }
-    } catch (e) {
-      print('⚠️ Error preloading cache: $e');
-    }
-  }
-
-  // اضافه شد: پیش‌بارگذاری کش برای مکالمه جدید پس از ایجاد
-  Future<void> _preloadCacheForNewConversation(String conversationId) async {
-    final userId = supabase.auth.currentUser?.id;
-    if (userId != null) {
-      await UnifiedMessageCacheService()
-          .getConversationMessages(conversationId, userId);
-    }
+    _itemPositionsListener.itemPositions.addListener(_scrollListener);
+    _checkBlockStatus();
   }
 
   Future<void> _checkBlockStatus() async {
     try {
-      final chatService = ref.read(chatServiceProvider);
-
-      _isOtherUserBlocked = await chatService.isUserBlocked(widget.otherUserId);
-      _isCurrentUserBlocked =
-          await chatService.isCurrentUserBlockedBy(widget.otherUserId);
-
+      final chatService = ref.read(chat_provider.chatServiceProvider);
+      final isBlocked = await chatService.isUserBlocked(widget.otherUserId);
+      final isCurrentUserBlocked = await chatService.isCurrentUserBlockedBy(widget.otherUserId);
       if (mounted) {
-        setState(() {});
+        setState(() {
+          _isOtherUserBlocked = isBlocked;
+          _isCurrentUserBlocked = isCurrentUserBlocked;
+        });
       }
     } catch (e) {
       print('خطا در بررسی وضعیت مسدودیت: $e');
     }
   }
 
-  Widget _buildBlockedBanner() {
-    if (_isCurrentUserBlocked) {
-      return BlockedUserBanner(
-        message:
-            ' ارسال پیام مجاز نیست \n مسدود شده اید ${widget.otherUserName} شما توسط',
-      );
-    } else if (_isOtherUserBlocked) {
-      return BlockedUserBanner(
-        message: '  را مسدود کرده‌اید  ${widget.otherUserName} شما',
-      );
+  void _scrollListener() {
+    final positions = _itemPositionsListener.itemPositions.value;
+    if (positions.isEmpty) return;
+
+    final firstPosition = positions.first;
+    if (firstPosition.index <= 5) {
+      ref.read(newChatProvider(_providerParams).notifier).fetchMoreMessages();
     }
-    return const SizedBox.shrink();
+
+    _updateFloatingDate(positions);
   }
 
-  Future<void> _checkOnlineStatus() async {
-    final chatService = ref.read(chatServiceProvider);
-    final isOnline = await chatService.isUserOnline(widget.otherUserId);
-    final lastOnline = await chatService.getUserLastOnline(widget.otherUserId);
+  void _updateFloatingDate(Iterable<ItemPosition> positions) {
+    final firstVisibleItemIndex = positions
+        .where((position) => position.itemLeadingEdge < 1)
+        .last.index;
 
-    print('====== تست وضعیت آنلاین ======');
-    print('کاربر: ${widget.otherUserName}');
-    print('آنلاین است: $isOnline');
-    print('آخرین فعالیت: $lastOnline');
-    print('==============================');
-  }
-
-  void _handleScrollToBottomBtn() {
-    if (_itemPositionsListener.itemPositions.value.isEmpty) return;
-
-    // بررسی اینکه آیا آخرین آیتم (قدیمی‌ترین پیام) در صفحه دیده می‌شود یا خیر
-    final messages =
-        ref.read(conversationMessagesProvider(widget.conversationId));
-    final lastIndex = messages.length - 1;
-    final lastItemVisible = _itemPositionsListener.itemPositions.value
-        .any((pos) => pos.index == lastIndex && pos.itemLeadingEdge >= 0);
-
-    // اگر آخرین پیام دیده می‌شه، دکمه رو پنهان کن
-    if (lastItemVisible) {
-      _scrollToBottomTimer?.cancel();
-      if (_showScrollToBottom) {
+    final messages = ref.read(newChatProvider(_providerParams)).messages;
+    if (firstVisibleItemIndex >= 0 && firstVisibleItemIndex < messages.length) {
+      final messageDate = messages[firstVisibleItemIndex].createdAt;
+      if (_floatingDate == null || !_isSameDay(_floatingDate!, messageDate)) {
         setState(() {
-          _showScrollToBottom = false;
+          _floatingDate = messageDate;
         });
       }
-      return;
     }
 
-    // چک کردن جهت اسکرول - اگر کاربر به سمت پایین اسکرول می‌کنه
-    final currentScrollPosition = _itemPositionsListener
-            .itemPositions.value.firstOrNull?.itemLeadingEdge ??
-        0.0;
-    final isScrollingDown = currentScrollPosition > _previousScrollPosition;
-    _previousScrollPosition = currentScrollPosition;
-
-    if (isScrollingDown) {
-      // کاربر داره به سمت پایین اسکرول می‌کنه، دکمه رو نشون بده
-      _scrollToBottomTimer?.cancel();
-      if (!_showScrollToBottom) {
-        setState(() {
-          _showScrollToBottom = true;
-        });
-      }
-
-      // timer رو برای پنهان کردن دکمه بعد از ۳ ثانیه شروع کن
-      _scrollToBottomTimer = Timer(const Duration(seconds: 3), () {
-        if (_showScrollToBottom) {
-          setState(() {
-            _showScrollToBottom = false;
-          });
-        }
-      });
-    }
-  }
-
-  void _scrollToBottom() {
-    final messages =
-        ref.read(conversationMessagesProvider(widget.conversationId));
-    final lastIndex = messages.length - 1;
-
-    _itemScrollController.scrollTo(
-      index: lastIndex >= 0 ? lastIndex : 0,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
-    );
-  }
-
-  @override
-  void dispose() {
-    // Memory leak tracking
-    _memoryDetector.trackObjectDisposal('ChatScreen', widget.conversationId);
-
-    // Cancel performance timer
-    _performanceTimer?.cancel();
-
-    // Remove observer
-    WidgetsBinding.instance.removeObserver(this);
-
-    // Remove optimized messaging listener
-    _optimizedMessaging.removeRealtimeListener(widget.conversationId);
-
-    _messageController.dispose();
-    _itemPositionsListener.itemPositions
-        .removeListener(_handleScrollToBottomBtn);
-    _highlightTimer?.cancel();
-    _scrollToBottomTimer?.cancel();
-    _messageFocusNode.dispose();
-
-    // پاک کردن انیمیشن کنترلرها
-    for (var controller in _messageAnimationControllers.values) {
-      controller.dispose();
-    }
-    _messageAnimationControllers.clear();
-
-    // پاک کردن کش رمزگشایی
-
-    // هنگام خروج از صفحه چت، conversationId فعال را پاک کن
-    if (ChatService.activeConversationId == widget.conversationId) {
-      ChatService.activeConversationId = null;
-    }
-
-    // Deactivate conversation to stop unnecessary updates
-    try {
-      final chatService = ref.read(chatServiceProvider);
-      chatService.deactivateConversation(widget.conversationId);
-    } catch (e) {
-      print('⚠️ Error deactivating conversation: $e');
-    }
-
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-
-    // Performance optimization based on app state
-    switch (state) {
-      case AppLifecycleState.paused:
-        // Pause non-essential operations
-        _performanceTimer?.cancel();
-        break;
-      case AppLifecycleState.resumed:
-        // Resume performance monitoring
-        _startPerformanceMonitoring();
-        break;
-      case AppLifecycleState.detached:
-        // Clean up resources
-        _optimizedMessaging.removeRealtimeListener(widget.conversationId);
-        break;
-      default:
-        break;
-    }
-  }
-
-  void _startPerformanceMonitoring() {
-    _performanceTimer?.cancel();
-    _performanceTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      final stats = _optimizedMessaging.getPerformanceStats();
+    _floatingDateTimer?.cancel();
+    _floatingDateTimer = Timer(const Duration(seconds: 2), () {
       if (mounted) {
-        print(
-            '📊 ChatScreen Performance: ${stats['memory_usage_kb']}KB memory, ${stats['active_subscriptions']} connections');
+        setState(() {
+          _floatingDate = null;
+        });
       }
     });
   }
 
-  // متد جدید برای پرش به پیام
-  void _jumpToMessage(String messageId) {
-    final messages =
-        ref.read(conversationMessagesProvider(widget.conversationId));
-    final index = messages.indexWhere((m) => m.id == messageId);
+  bool _isSameDay(DateTime d1, DateTime d2) {
+    return d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
+  }
 
-    if (index != -1 && _itemScrollController.isAttached) {
-      setState(() {
-        _highlightedMessageId = messageId;
-      });
+  bool _isSharedPost(String content) {
+    return content.contains('📝 پست از') &&
+        content.contains('🔗 مشاهده در Vista:');
+  }
 
-      _itemScrollController.scrollTo(
-        index: index,
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-        alignment: 0.5, // اسکرول به وسط صفحه برای دید بهتر
+  @override
+  void dispose() {
+    _messageController.dispose();
+    _floatingDateTimer?.cancel();
+    _messageFocusNode.dispose();
+    super.dispose();
+  }
+
+  // --- Message Sending Logic ---
+  Future<void> _sendMessage() async {
+    final message = _messageController.text.trim();
+    if (message.isEmpty && _selectedImage == null && _selectedImageBytes == null && _selectedAudio == null && _selectedAudioBytes == null) {
+      return;
+    }
+
+    setState(() => _isSending = true);
+
+    String? attachmentUrl;
+    String? attachmentType;
+
+    try {
+      if (_selectedAudio != null || _selectedAudioBytes != null) {
+        attachmentType = 'audio';
+        attachmentUrl = await _uploadAudio(_selectedAudio ?? _selectedAudioBytes!);
+      }
+      else if (_selectedImage != null || _selectedImageBytes != null) {
+        attachmentType = 'image';
+        attachmentUrl = await _uploadImage(_selectedImage ?? _selectedImageBytes!);
+      }
+
+      if (attachmentUrl == null && message.isEmpty) {
+        setState(() => _isSending = false);
+        return;
+      }
+
+      await ref.read(newChatProvider(_providerParams).notifier).sendMessage(
+        message,
+        attachmentUrl: attachmentUrl,
+        attachmentType: attachmentType,
+        replyToMessage: _replyToMessage,
       );
 
-      // حذف هایلایت بعد از چند ثانیه
-      _highlightTimer?.cancel();
-      _highlightTimer = Timer(const Duration(seconds: 3), () {
-        if (mounted) {
-          setState(() {
-            _highlightedMessageId = null;
-          });
-        }
-      });
-    } else {
+      _messageController.clear();
+      _clearAttachments();
+      _scrollToBottom();
+
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('پیام مورد نظر در لیست فعلی یافت نشد.')),
+        SnackBar(content: Text('خطا در ارسال پیام: $e')),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
     }
   }
 
+  void _clearAttachments() {
+    setState(() {
+      _selectedImage = null;
+      _selectedImageBytes = null;
+      _selectedImageName = null;
+      _selectedAudio = null;
+      _selectedAudioBytes = null;
+      _selectedAudioName = null;
+      _replyToMessage = null;
+      _isUploading = false;
+      _uploadProgress = 0.0;
+    });
+  }
+
+  // --- File Handling ---
   Future<void> _pickImage() async {
     try {
-      final pickedFile = await imagePicker.pickImage(
+      final pickedFile = await ImagePicker().pickImage(
         source: ImageSource.gallery,
         imageQuality: 70,
       );
@@ -566,7 +232,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             _selectedImageName = pickedFile.name;
             _selectedImage = null;
           });
-          print('Web Image selected: $_selectedImageName'); // Debug log
         } else {
           setState(() {
             _selectedImage = File(pickedFile.path);
@@ -576,8 +241,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         }
       }
     } catch (e) {
-      print('Error picking image: $e');
-      _showErrorDialog('خطا در انتخاب تصویر');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در انتخاب تصویر: $e')),
+      );
     }
   }
 
@@ -600,246 +266,242 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
           fileOrBytes,
           widget.conversationId,
           onProgress: (progress) {
-            setState(() {
-              _uploadProgress = progress;
-            });
+            if (mounted) setState(() => _uploadProgress = progress);
           },
         );
       }
       return imageUrl;
     } catch (e) {
-      await _showErrorDialog('خطا در آپلود تصویر: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در آپلود تصویر: $e')),
+      );
       return null;
     } finally {
-      if (mounted) {
-        setState(() {
-          _isUploading = false;
-          _uploadProgress = 0.0;
+      if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
+  Future<String?> _uploadAudio(dynamic fileOrBytes) async {
+    setState(() {
+      _isUploading = true;
+      _uploadProgress = 0.0;
+    });
+    try {
+      String? audioUrl;
+      if (kIsWeb && fileOrBytes is Uint8List && _selectedAudioName != null) {
+        audioUrl = await ChatAudioUploadService.uploadChatAudioWeb(
+          fileOrBytes, _selectedAudioName!, widget.conversationId);
+      } else if (fileOrBytes is File) {
+        audioUrl = await ChatAudioUploadService.uploadChatAudio(
+          fileOrBytes, widget.conversationId, onProgress: (progress) {
+          if (mounted) setState(() => _uploadProgress = progress);
         });
+      }
+      return audioUrl;
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در آپلود صدا: $e')),
+      );
+      return null;
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
+  // --- UI Methods ---
+  void _scrollToBottom() {
+    if (_itemScrollController.isAttached) {
+      _itemScrollController.scrollTo(
+        index: 0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  void _toggleEmojiKeyboard() {
+    if (_showEmojiPicker) {
+      setState(() => _showEmojiPicker = false);
+      FocusScope.of(context).requestFocus(_messageFocusNode);
+    } else {
+      if (_messageFocusNode.hasFocus) {
+        _messageFocusNode.unfocus();
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) setState(() => _showEmojiPicker = true);
+        });
+      } else {
+        setState(() => _showEmojiPicker = true);
       }
     }
   }
 
-  // نمایش دیالوگ خطا
-  Future<void> _showErrorDialog(String message) async {
-    if (!mounted) return;
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('خطا', style: TextStyle(color: Colors.red)),
-        content: Text(message),
-        actions: [
-          TextButton(
-            child: const Text('باشه'),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ],
-      ),
-    );
+  void _onEmojiSelected(String emoji) {
+    _messageController.text += emoji;
   }
 
   void _setReplyMessage(MessageModel message) {
-    setState(() {
-      _replyToMessage = message;
-      _messageFocusNode.requestFocus();
-    });
+    setState(() => _replyToMessage = message);
+    _messageFocusNode.requestFocus();
   }
 
-  // void _cancelReply() {
-  //   setState(() {
-  //     _replyToMessage = null;
-  //   });
-  // }
+  // --- Recording Logic ---
+  void _startRecording() async {
+    setState(() => _isRecordingAudio = true);
+    await AudioRecordingService.startRecording();
+  }
 
-  void _sendMessage() async {
-    if (_isCurrentUserBlocked) return;
-
-    final message = _messageController.text.trim();
-    if (message.isEmpty &&
-        _selectedImage == null &&
-        _selectedImageBytes == null &&
-        _selectedAudio == null && // اضافه
-        _selectedAudioBytes == null) {
-      return; // اضافه
+  void _stopRecording() async {
+    setState(() => _isRecordingAudio = false);
+    final file = await AudioRecordingService.stopRecording();
+    if (file != null) {
+      _onAudioRecorded(file, null, file.path.split('/').last);
     }
+  }
 
-    // ذخیره مقادیر موقت
-    final tempMessage = message;
-    final tempImage = _selectedImage;
-    final tempImageBytes = _selectedImageBytes;
-    // final tempImageName = _selectedImageName; // unused
-    final tempAudio = _selectedAudio; // اضافه
-    final tempAudioBytes = _selectedAudioBytes; // اضافه
-    // final tempAudioName = _selectedAudioName; // unused
-    final tempReplyMessage = _replyToMessage;
+  void _onAudioRecorded(File? audioFile, Uint8List? audioBytes, String? fileName) {
+    if (audioFile != null || audioBytes != null) {
+      setState(() {
+        _selectedAudio = audioFile;
+        _selectedAudioBytes = audioBytes;
+        _selectedAudioName = fileName;
+      });
+    }
+  }
 
-    setState(() {
-      _isSending = true;
-      _messageController.clear();
-      _selectedImage = null;
-      _selectedImageBytes = null;
-      _selectedImageName = null;
-      _selectedAudio = null; // اضافه
-      _selectedAudioBytes = null; // اضافه
-      _selectedAudioName = null; // اضافه
-      _replyToMessage = null;
-    });
-
-    try {
-      String conversationId = _localConversationId ?? widget.conversationId;
-
-      // اگر مکالمه جدید است، ابتدا آن را ایجاد کن
-      if (widget.isNewConversation && conversationId.isEmpty) {
-        try {
-          final chatService = ref.read(chatServiceProvider);
-          conversationId =
-              await chatService.createOrGetConversation(widget.otherUserId);
-
-          // بروزرسانی conversationId محلی برای پیام‌های بعدی
-          _localConversationId = conversationId;
-
-          // بروزرسانی ChatService.activeConversationId
-          ChatService.activeConversationId = conversationId;
-
-          // پیش‌بارگذاری کش برای مکالمه جدید
-          await _preloadCacheForNewConversation(conversationId);
-        } catch (e) {
-          print('خطا در ایجاد مکالمه: $e');
-          if (mounted) {
-            setState(() => _isSending = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('خطا در ایجاد مکالمه: $e')),
-            );
-          }
-          return;
-        }
-      }
-
-      String? attachmentUrl;
-      String? attachmentType;
-
-      // بررسی فایل صوتی (جدید)
-      if (tempAudio != null || tempAudioBytes != null) {
-        attachmentUrl = await _uploadAudio(tempAudio ?? tempAudioBytes);
-        attachmentType = 'audio';
-      }
-      // بررسی تصویر (موجود)
-      else if (tempImage != null || tempImageBytes != null) {
-        attachmentUrl = await _uploadImage(tempImage ?? tempImageBytes);
-        attachmentType = 'image';
-      }
-
-      // ارسال پیام
-      await ref.read(messageNotifierProvider.notifier).sendMessage(
-            conversationId: conversationId,
-            content: tempMessage,
-            attachmentUrl: attachmentUrl,
-            attachmentType: attachmentType,
-            replyToMessageId: tempReplyMessage?.id,
-            replyToContent: tempReplyMessage?.content,
-            replyToSenderName: tempReplyMessage?.senderName,
-          );
-
-      if (mounted) {
-        setState(() => _isSending = false);
-        // اسکرول اتوماتیک به پایین بعد از ارسال پیام
-        Future.delayed(const Duration(milliseconds: 100), () {
-          _scrollToBottom();
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isSending = false; // اضافه کنید
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا در ارسال پیام: $e')),
+  // --- Dialogs & Menus ---
+  void _showMessageOptions(BuildContext context, MessageModel message) {
+    final isMe = message.senderId == supabase.auth.currentUser?.id;
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading:
+                    Icon(Icons.reply, color: Theme.of(context).primaryColor),
+                title: const Text('پاسخ'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _setReplyMessage(message);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.copy, color: Colors.blue),
+                title: const Text('کپی پیام'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await Clipboard.setData(ClipboardData(text: message.content));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('پیام کپی شد')),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('حذف پیام'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showDeleteMessageDialog(message);
+                },
+              ),
+              if (!isMe)
+                ListTile(
+                  leading: const Icon(Icons.report, color: Colors.orange),
+                  title: const Text('گزارش پیام'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showReportMessageDialog(context, message);
+                  },
+                ),
+            ],
+          ),
         );
-      }
-    }
+      },
+    );
   }
 
-  void _showSearchDialog(BuildContext context) {
-    final isLightMode = Theme.of(context).brightness == Brightness.light;
-    final searchController = TextEditingController();
-    String searchQuery = '';
+  Future<void> _showDeleteMessageDialog(MessageModel message) async {
+    final isSender = message.senderId == supabase.auth.currentUser?.id;
 
-    showDialog(
+    await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: isLightMode ? Colors.white : Color(0xFF1A1A1A),
-        title: Text(
-          'جستجو در گفتگو',
-          style: TextStyle(
-            color: isLightMode ? Colors.black87 : Colors.white,
-          ),
-        ),
+        title: const Text('حذف پیام'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(
-              controller: searchController,
-              onChanged: (value) {
-                searchQuery = value;
-              },
-              decoration: InputDecoration(
-                hintText: 'متن مورد نظر را وارد کنید...',
-                prefixIcon: Icon(Icons.search),
-                filled: true,
-                fillColor: isLightMode ? Colors.grey[100] : Color(0xFF2A2A2A),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+            const Text('پیام را چگونه می‌خواهید حذف کنید؟'),
+            if (isSender) ...[
+              const SizedBox(height: 8),
+              Text(
+                'توجه: حذف برای همه قابل بازگشت نیست.',
+                style: TextStyle(
+                  color: Colors.red[700],
+                  fontSize: 12,
                 ),
               ),
-              style: TextStyle(
-                color: isLightMode ? Colors.black87 : Colors.white,
-              ),
-              textInputAction: TextInputAction.search,
-              onSubmitted: (_) {
-                if (searchQuery.isNotEmpty) {
-                  Navigator.pop(context);
-                  _searchInMessages(searchQuery);
-                }
-              },
-            ),
+            ],
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(
-              'انصراف',
-              style: TextStyle(
-                color: isLightMode ? Colors.grey[800] : Colors.grey[300],
-              ),
-            ),
+            child: const Text('انصراف'),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              if (searchQuery.isNotEmpty) {
-                _searchInMessages(searchQuery);
-              }
+              _deleteMessage(message.id, false);
             },
-            child: Text(
-              'جستجو',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
+            child: const Text('حذف برای من'),
           ),
+          if (isSender)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _deleteMessage(message.id, true);
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red[700],
+              ),
+              child: const Text('حذف برای همه'),
+            ),
         ],
       ),
     );
   }
 
-  void _searchInMessages(String query) {
+  Future<void> _deleteMessage(String messageId, bool forEveryone) async {
+    try {
+      setState(() => _deletingMessageIds.add(messageId));
+      await ref.read(chat_provider.messageNotifierProvider.notifier)
+          .deleteMessage(messageId, forEveryone: forEveryone);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(forEveryone ? 'پیام برای همه حذف شد' : 'پیام برای شما حذف شد'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در حذف پیام: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      if(mounted) {
+        setState(() => _deletingMessageIds.remove(messageId));
+      }
+    }
+  }
+
+  void _showReportMessageDialog(BuildContext context, MessageModel message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('در حال جستجوی "$query"...'),
-        duration: Duration(seconds: 1),
-      ),
+      const SnackBar(content: Text('قابلیت گزارش پیام به زودی اضافه می‌شود')),
     );
   }
 
@@ -858,38 +520,35 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('انصراف'),
+            child: const Text('انصراف'),
           ),
           TextButton(
             onPressed: () async {
+              Navigator.pop(context);
               try {
-                final chatService = ref.read(chatServiceProvider);
+                final notifier = ref.read(chat_provider.userBlockNotifierProvider.notifier);
 
                 if (isBlocked) {
-                  await chatService.unblockUser(widget.otherUserId);
+                  await notifier.unblockUser(widget.otherUserId);
                 } else {
-                  await chatService.blockUser(widget.otherUserId);
+                  await notifier.blockUser(widget.otherUserId);
                 }
 
-                if (mounted) {
-                  Navigator.pop(context);
-                  await _checkBlockStatus();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                        content: Text(isBlocked
-                            ? '${widget.otherUserName} با موفقیت رفع مسدودیت شد'
-                            : '${widget.otherUserName} با موفقیت مسدود شد')),
-                  );
-                }
+                await _checkBlockStatus();
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                      content: Text(isBlocked
+                          ? '${widget.otherUserName} با موفقیت رفع مسدودیت شد'
+                          : '${widget.otherUserName} با موفقیت مسدود شد')),
+                );
               } catch (e) {
-                if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                         content: Text(isBlocked
                             ? 'خطا در رفع مسدودیت کاربر'
                             : 'خطا در مسدود کردن کاربر')),
                   );
-                }
               }
             },
             child: Text(
@@ -919,7 +578,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          backgroundColor: isLightMode ? Colors.white : Color(0xFF1A1A1A),
+          backgroundColor: isLightMode ? Colors.white : const Color(0xFF1A1A1A),
           title: Text(
             'گزارش کاربر',
             style: TextStyle(
@@ -937,22 +596,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
               Container(
                 decoration: BoxDecoration(
-                  color: isLightMode ? Colors.grey[100] : Color(0xFF2A2A2A),
+                  color: isLightMode ? Colors.grey[100] : const Color(0xFF2A2A2A),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: DropdownButtonFormField<String>(
-                  initialValue: selectedReason,
-                  dropdownColor: isLightMode ? Colors.white : Color(0xFF2A2A2A),
+                  value: selectedReason,
+                  dropdownColor: isLightMode ? Colors.white : const Color(0xFF2A2A2A),
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
                     ),
                     contentPadding:
-                        EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   ),
                   style: TextStyle(
                     color: isLightMode ? Colors.black87 : Colors.white,
@@ -972,7 +631,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                   },
                 ),
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               Text(
                 'توضیحات بیشتر:',
                 style: TextStyle(
@@ -980,13 +639,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
               TextField(
                 controller: reportReasonController,
                 decoration: InputDecoration(
                   hintText: 'توضیحات اختیاری...',
                   filled: true,
-                  fillColor: isLightMode ? Colors.grey[100] : Color(0xFF2A2A2A),
+                  fillColor: isLightMode ? Colors.grey[100] : const Color(0xFF2A2A2A),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -1015,7 +674,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                 Navigator.pop(context);
 
                 ref
-                    .read(userReportNotifierProvider.notifier)
+                    .read(chat_provider.userReportNotifierProvider.notifier)
                     .reportUser(
                       userId: widget.otherUserId,
                       reason: selectedReason,
@@ -1024,7 +683,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                     )
                     .then((_) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('گزارش شما با موفقیت ارسال شد')),
+                    const SnackBar(content: Text('گزارش شما با موفقیت ارسال شد')),
                   );
                 }).catchError((error) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -1043,2466 +702,284 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     );
   }
 
-  // String _formatLastSeen(DateTime lastSeen) {
-  //   final tehranOffset = const Duration(hours: 3, minutes: 30);
-  //   final tehranTime = lastSeen.toUtc().add(tehranOffset);
-  //   final now = DateTime.now();
-  //   final difference = now.difference(tehranTime);
-  //
-  //   if (difference.inDays == 0) {
-  //     return 'امروز ${DateFormat('HH:mm').format(tehranTime)}';
-  //   } else if (difference.inDays == 1) {
-  //     return 'دیروز ${DateFormat('HH:mm').format(tehranTime)}';
-  //   } else if (difference.inDays < 7) {
-  //     final weekday = _getDayOfWeekInPersian(tehranTime.weekday);
-  //     return '$weekday ${DateFormat('HH:mm').format(tehranTime)}';
-  //   } else {
-  //     return DateFormat('yyyy/MM/dd - HH:mm').format(tehranTime);
-  //   }
-  // }
+  @override
+  Widget build(BuildContext context) {
+    final chatState = ref.watch(newChatProvider(_providerParams));
+    final messages = chatState.messages;
 
-  // String _getDayOfWeekInPersian(int weekday) {
-  //   switch (weekday) {
-  //     case 1:
-  //       return 'دوشنبه';
-  //     case 2:
-  //       return 'سه‌شنبه';
-  //     case 3:
-  //       return 'چهارشنبه';
-  //     case 4:
-  //       return 'پنج‌شنبه';
-  //     case 5:
-  //       return 'جمعه';
-  //     case 6:
-  //       return 'شنبه';
-  //     case 7:
-  //       return 'یکشنبه';
-  //     default:
-  //       return '';
-  //   }
-  // }
-
-  Future<void> _showDeleteMessageDialog(MessageModel message) async {
-    if (!mounted) return;
-
-    final isSender = message.senderId == supabase.auth.currentUser?.id;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('حذف پیام'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Scaffold(
+      appBar: AppBar(
+        elevation: 1,
+        titleSpacing: 0,
+        title: Row(
           children: [
-            Text('پیام را چگونه می‌خواهید حذف کنید؟'),
-            if (isSender) const SizedBox(height: 8),
-            if (isSender)
-              Text(
-                'توجه: حذف برای همه قابل بازگشت نیست.',
-                style: TextStyle(
-                  color: Colors.red[700],
-                  fontSize: 12,
-                ),
+            CircleAvatar(
+              backgroundImage: widget.otherUserAvatar != null
+                  ? CachedNetworkImageProvider(widget.otherUserAvatar!)
+                  : null,
+              child: widget.otherUserAvatar == null
+                  ? const Icon(Icons.person)
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.otherUserName,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Consumer(
+                    builder: (context, ref, child) {
+                      final isOnlineAsync = ref.watch(
+                          chat_provider.userOnlineStatusStreamProvider(widget.otherUserId));
+
+                      return isOnlineAsync.when(
+                        data: (isOnline) {
+                          return Text(
+                            isOnline ? 'آنلاین' : 'آفلاین',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isOnline ? Colors.green : Colors.grey,
+                            ),
+                          );
+                        },
+                        loading: () => const Text('در حال بارگذاری...',
+                            style: TextStyle(fontSize: 12)),
+                        error: (_, __) => const Text('آفلاین',
+                            style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      );
+                    },
+                  ),
+                ],
               ),
+            ),
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('انصراف'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _deleteMessage(message.id, false);
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            tooltip: 'گزینه‌های بیشتر',
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            onSelected: (value) {
+              switch (value) {
+                case 'block':
+                  _showBlockUserDialog(context);
+                  break;
+                case 'report':
+                  _showReportUserDialog(context);
+                  break;
+                case 'profile':
+                  Navigator.of(context).push(MaterialPageRoute(
+                      builder: (context) => ProfileScreen(
+                          userId: widget.otherUserId,
+                          username: widget.otherUserName)));
+                  break;
+              }
             },
-            child: Text('حذف برای من'),
-          ),
-          if (isSender)
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _deleteMessage(message.id, true);
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.red[700],
-              ),
-              child: Text('حذف برای همه'),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _deleteMessage(String messageId, bool forEveryone) async {
-    try {
-      // 🎬 شروع انیمیشن حذف
-      setState(() {
-        _deletingMessageIds.add(messageId);
-      });
-
-      // 🎬 استفاده از انیمیشن پودر شدن
-      await ref.deleteMessageInstantly(
-        messageId,
-        widget.conversationId,
-        forEveryone: forEveryone,
-        enableAnimation: true, // فعال کردن انیمیشن
-        onSuccess: () {
-          if (mounted) {
-            setState(() {
-              _deletingMessageIds.remove(messageId);
-            });
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(forEveryone
-                    ? '✅ پیام برای همه حذف شد'
-                    : '✅ پیام برای شما حذف شد'),
-                backgroundColor: Colors.green,
-                duration: const Duration(seconds: 2),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          }
-        },
-        onError: () {
-          if (mounted) {
-            setState(() {
-              _deletingMessageIds.remove(messageId);
-            });
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('❌ خطا در حذف پیام'),
-                backgroundColor: Colors.red,
-                duration: Duration(seconds: 3),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          }
-        },
-      );
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _deletingMessageIds.remove(messageId);
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ خطا در حذف پیام: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    }
-  }
-
-  void _showClearConversationDialog(BuildContext context) {
-    final isLightMode = Theme.of(context).brightness == Brightness.light;
-    bool bothSides = false;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            backgroundColor: isLightMode ? Colors.white : Color(0xFF1A1A1A),
-            title: Text(
-              'پاکسازی تاریخچه گفتگو',
-              style: TextStyle(
-                color: isLightMode ? Colors.black87 : Colors.white,
-              ),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'آیا مطمئن هستید که می‌خواهید تاریخچه گفتگو با ${widget.otherUserName} را پاک کنید؟ این عمل قابل بازگشت نیست.',
-                  style: TextStyle(
-                    color: isLightMode ? Colors.black87 : Colors.white70,
-                  ),
-                ),
-                SizedBox(height: 16),
-                Row(
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'profile',
+                child: Row(
                   children: [
-                    Checkbox(
-                      value: bothSides,
-                      activeColor: Theme.of(context).colorScheme.primary,
-                      onChanged: (value) {
-                        setState(() {
-                          bothSides = value ?? false;
-                        });
-                      },
-                    ),
-                    Expanded(
-                      child: Text(
-                        'پاکسازی دوطرفه (برای هر دو کاربر)',
-                        style: TextStyle(
-                          color: isLightMode ? Colors.black87 : Colors.white70,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
+                    Icon(Icons.person_outline,
+                        color: Theme.of(context).brightness ==
+                                Brightness.dark
+                            ? Colors.white70
+                            : Colors.black87),
+                    const SizedBox(width: 12),
+                    const Text('مشاهده پروفایل'),
                   ],
                 ),
-                if (bothSides)
-                  Container(
-                    padding: EdgeInsets.all(8),
-                    margin: EdgeInsets.only(top: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.warning, color: Colors.red, size: 16),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'در این حالت، پیام‌ها برای هر دو طرف حذف می‌شوند!',
-                            style: TextStyle(
-                              color: Colors.red,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(
-                  'انصراف',
-                  style: TextStyle(
-                    color: isLightMode ? Colors.grey[800] : Colors.grey[300],
-                  ),
+              ),
+              PopupMenuItem(
+                value: 'block',
+                child: Row(
+                  children: [
+                    Icon(
+                        _isOtherUserBlocked
+                            ? Icons.lock_open
+                            : Icons.block,
+                        color: Theme.of(context).brightness ==
+                                Brightness.dark
+                            ? Colors.white70
+                            : Colors.black87),
+                    const SizedBox(width: 12),
+                    Text(_isOtherUserBlocked
+                        ? 'رفع مسدودیت'
+                        : 'مسدود کردن'),
+                  ],
                 ),
               ),
-              TextButton(
-                onPressed: () {
-                  final navigator = Navigator.of(context);
-                  final messenger = ScaffoldMessenger.of(context);
-                  final notifier = ref.read(messageNotifierProvider.notifier);
-
-                  navigator.pop();
-
-                  messenger.showSnackBar(
-                    const SnackBar(
-                      content: Row(children: [
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        ),
-                        SizedBox(width: 12),
-                        Text('در حال پاکسازی گفتگو...'),
-                      ]),
-                      duration: Duration(seconds: 4),
-                    ),
-                  );
-
-                  notifier
-                      .deleteAllMessages(widget.conversationId,
-                          forEveryone: bothSides)
-                      .then((_) {
-                    if (!mounted) return;
-                    messenger.removeCurrentSnackBar();
-                    messenger.showSnackBar(
-                      const SnackBar(
-                        content: Text('تاریخچه گفتگو با موفقیت پاک شد'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
-                    // After clearing, if the conversation is fully removed (e.g., last participant leaves), pop the screen.
-                    // The provider will be updated, and we can check its state.
-                    Future.delayed(const Duration(milliseconds: 200), () {
-                      if (mounted) {
-                        final conversationExists = ref
-                                .read(
-                                    conversationProvider(widget.conversationId))
-                                .hasValue &&
-                            ref
-                                    .read(conversationProvider(
-                                        widget.conversationId))
-                                    .value !=
-                                null;
-                        if (!conversationExists) {
-                          navigator.pop();
-                        }
-                      }
-                    });
-                  }).catchError((error) {
-                    if (!mounted) return;
-                    messenger.removeCurrentSnackBar();
-                    String errorMessage = 'خطا در پاکسازی گفتگو';
-                    if (error is AppException) {
-                      errorMessage = error.userFriendlyMessage;
-                    }
-                    messenger.showSnackBar(
-                      SnackBar(
-                          content: Text(errorMessage),
-                          backgroundColor: Colors.red),
-                    );
-                  });
-                },
-                child: const Text(
-                  'پاکسازی',
-                  style: TextStyle(color: Colors.red),
+              PopupMenuItem(
+                value: 'report',
+                child: Row(
+                  children: [
+                    Icon(Icons.report_problem_outlined,
+                        color: Theme.of(context).brightness ==
+                                Brightness.dark
+                            ? Colors.white70
+                            : Colors.black87),
+                    const SizedBox(width: 12),
+                    const Text('گزارش کاربر'),
+                  ],
                 ),
               ),
             ],
-          );
-        },
+          ),
+        ],
       ),
-    );
-  }
+      body: Column(
+        children: [
+          Expanded(
+            child: Stack(
+              alignment: Alignment.topCenter,
+              children: [
+                chatState.isLoading && messages.isEmpty
+                    ? const Center(child: CircularProgressIndicator())
+                    : AnimationLimiter(
+                        child: ScrollablePositionedList.builder(
+                          itemScrollController: _itemScrollController,
+                          itemPositionsListener: _itemPositionsListener,
+                          reverse: true,
+                          itemCount: messages.length,
+                          itemBuilder: (context, index) {
+                            final message = messages[index];
+                            bool showDateDivider = false;
+                            if (index < messages.length - 1) {
+                              final prevMessage = messages[index + 1];
+                              if (!_isSameDay(message.createdAt, prevMessage.createdAt)) {
+                                showDateDivider = true;
+                              }
+                            } else {
+                              showDateDivider = true;
+                            }
 
-  void _showUnblockUserDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('رفع مسدودیت ${widget.otherUserName}'),
-        content: Text(
-            'آیا می‌خواهید ${widget.otherUserName} را از حالت مسدود خارج کنید؟'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('انصراف'),
+                            return AnimationConfiguration.staggeredList(
+                              position: index,
+                              duration: const Duration(milliseconds: 375),
+                              child: SlideAnimation(
+                                verticalOffset: 50.0,
+                                child: FadeInAnimation(
+                                  child: Column(
+                                    children: [
+                                      if (showDateDivider)
+                                        DateDivider(date: message.createdAt),
+                                      _isSharedPost(message.content)
+                                          ? SharedPostWidget(
+                                              messageContent: message.content,
+                                              attachmentUrl: message.attachmentUrl,
+                                              attachmentType: message.attachmentType,
+                                            )
+                                          : MessageBubble(
+                                              message: message,
+                                              onLongPress: (msg) => _showMessageOptions(context, msg),
+                                            ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                _buildFloatingDateChip(),
+              ],
+            ),
           ),
-          TextButton(
-            onPressed: () async {
-              try {
-                await ref
-                    .read(userBlockNotifierProvider.notifier)
-                    .unblockUser(widget.otherUserId);
-                if (mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                        content: Text('${widget.otherUserName} رفع مسدود شد')),
-                  );
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('خطا در رفع مسدودیت')),
-                  );
-                }
-              }
-            },
-            child: Text('رفع مسدودیت', style: TextStyle(color: Colors.green)),
-          ),
+          _buildBlockedBanner(),
+          if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
+            _buildMessageInput(),
         ],
       ),
     );
   }
 
-  void _toggleEmojiKeyboard() {
-    if (_showEmojiPicker) {
-      // اگر ایموجی پیکر باز است، آن را ببند و فوکوس را به TextField بده
-      setState(() => _showEmojiPicker = false);
-      FocusScope.of(context).requestFocus(_messageFocusNode);
-    } else {
-      // اگر کیبورد باز است، آن را ببند و بعد ایموجی پیکر را باز کن
-      if (_messageFocusNode.hasFocus) {
-        _messageFocusNode.unfocus();
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (mounted) setState(() => _showEmojiPicker = true);
-        });
-      } else {
-        setState(() => _showEmojiPicker = true);
-      }
+  Widget _buildFloatingDateChip() {
+    return AnimatedOpacity(
+      opacity: _floatingDate != null ? 1.0 : 0.0,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeIn,
+      child: Container(
+        margin: const EdgeInsets.only(top: 16.0),
+        child: FloatingDateChip(
+          date: _floatingDate ?? DateTime.now(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBlockedBanner() {
+    if (_isCurrentUserBlocked) {
+      return BlockedUserBanner(
+        message:
+            ' ارسال پیام مجاز نیست. شما توسط ${widget.otherUserName} مسدود شده اید.',
+      );
+    } else if (_isOtherUserBlocked) {
+      return BlockedUserBanner(
+        message: 'شما ${widget.otherUserName} را مسدود کرده‌اید.',
+      );
     }
+    return const SizedBox.shrink();
   }
 
-  void _onEmojiSelected(String emoji) {
-    final text = _messageController.text;
-    final selection = _messageController.selection;
-    final cursorPosition = selection.isValid ? selection.start : text.length;
-
-    final newText = text.replaceRange(
-      cursorPosition,
-      selection.isValid ? selection.end : cursorPosition,
-      emoji,
-    );
-
-    _messageController.text = newText;
-    final newPosition = cursorPosition + emoji.length;
-    _messageController.selection = TextSelection.fromPosition(
-      TextPosition(offset: newPosition),
-    );
-  }
-
-  // جایگزینی _buildMessageInput با استفاده از ChatInputBox
   Widget _buildMessageInput() {
     return ChatInputBox(
-      // کنترلرها و فوکوس
       messageController: _messageController,
       messageFocusNode: _messageFocusNode,
-
-      // رفتارها
       toggleEmojiPicker: _toggleEmojiKeyboard,
       pickImage: _pickImage,
       sendMessage: _sendMessage,
       onEmojiSelected: _onEmojiSelected,
-      onReplyCancel: () {
-        setState(() {
-          _replyToMessage = null;
-        });
-      },
-
-      // رفتارهای صوتی
+      onReplyCancel: () => setState(() => _replyToMessage = null),
       onAudioRecorded: _onAudioRecorded,
       onStartRecording: _startRecording,
       onStopRecording: _stopRecording,
-      onImageCancel: _onImageCancel,
-      onAudioCancel: _cancelAudioPreview,
-
-      // وضعیت‌ها
+      onImageCancel: () => setState(() {
+        _selectedImage = null;
+        _selectedImageBytes = null;
+        _selectedImageName = null;
+      }),
+      onAudioCancel: () => setState(() {
+        _selectedAudio = null;
+        _selectedAudioBytes = null;
+        _selectedAudioName = null;
+      }),
       showEmojiPicker: _showEmojiPicker,
       isUploading: _isUploading,
       isSending: _isSending,
       isRecordingAudio: _isRecordingAudio,
       uploadProgress: _uploadProgress,
-
-      // داده‌ها با فرمت جدید
       replyData: _replyToMessage != null
           ? ReplyData(
               message: _replyToMessage!.content,
               user: _replyToMessage!.senderName ?? 'کاربر',
             )
           : null,
-
-      selectedImage:
-          (_selectedImage != null || (kIsWeb && _selectedImageBytes != null))
-              ? SelectedFile(
-                  file: _selectedImage,
-                  bytes: kIsWeb ? _selectedImageBytes : null,
-                  name: kIsWeb ? _selectedImageName : null,
-                  type: 'image',
-                )
-              : null,
-
-      selectedAudio:
-          (_selectedAudio != null || (kIsWeb && _selectedAudioBytes != null))
-              ? SelectedFile(
-                  file: _selectedAudio,
-                  bytes: kIsWeb ? _selectedAudioBytes : null,
-                  name: _selectedAudioName,
-                  type: 'audio',
-                )
-              : null,
-
-      customImagePreview:
-          (_selectedImage != null || (kIsWeb && _selectedImageBytes != null))
-              ? _buildImagePreview()
-              : null,
-    );
-  }
-
-  // تابعی برای شروع ضبط صدا
-  void _startRecording() async {
-    setState(() {
-      _isRecordingAudio = true;
-      _selectedAudio = null;
-      _selectedAudioBytes = null;
-      _selectedAudioName = null;
-    });
-    print('DEBUG: Recording started.');
-    await AudioRecordingService.startRecording();
-  }
-
-  // تابعی برای توقف ضبط صدا
-  void _stopRecording() async {
-    setState(() {
-      _isRecordingAudio = false;
-    });
-    print('DEBUG: Recording stopped. Attempting to get audio file...');
-    try {
-      final file = await AudioRecordingService.stopRecording();
-      if (file != null) {
-        print(
-            'DEBUG: AudioRecordingService.stopRecording() returned file: ${file.path}');
-        _onAudioRecorded(file, null, file.path.split('/').last);
-      } else {
-        print('ERROR: AudioRecordingService.stopRecording() returned null.');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content:
-                    Text('خطا در ذخیره فایل صوتی. لطفا دوباره تلاش کنید.')),
-          );
-        }
-      }
-    } catch (e) {
-      print('ERROR: Exception during stopping recording: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا در توقف ضبط: ${e.toString()}')),
-        );
-      }
-    }
-  }
-
-  // تابع مدیریت ضبط صوت
-  void _onAudioRecorded(
-      File? audioFile, Uint8List? audioBytes, String? fileName) {
-    if (audioFile != null || audioBytes != null) {
-      print('DEBUG: _onAudioRecorded called with file: $fileName');
-      setState(() {
-        _selectedAudio = audioFile;
-        _selectedAudioBytes = audioBytes;
-        _selectedAudioName = fileName;
-      });
-    } else {
-      print(
-          'DEBUG: _onAudioRecorded called with null file, clearing selected audio.');
-      setState(() {
-        _selectedAudio = null;
-        _selectedAudioBytes = null;
-        _selectedAudioName = null;
-        _isRecordingAudio = false;
-      });
-    }
-  }
-
-  // تابع حذف پیش‌نمایش صوتی
-  void _cancelAudioPreview() {
-    setState(() {
-      _selectedAudio = null;
-      _selectedAudioBytes = null;
-      _selectedAudioName = null;
-    });
-    print('DEBUG: Audio preview cancelled.');
-  }
-
-  // تابع حذف پیش‌نمایش تصویر
-  void _onImageCancel() {
-    setState(() {
-      _selectedImage = null;
-      _selectedImageBytes = null;
-      _selectedImageName = null;
-    });
-  }
-
-  /// Bubble radius similar to popular messengers: bottom inner corner tighter,
-  /// bottom outer corner larger to "stick out" slightly.
-  BorderRadius _getTelegramXBorderRadius(bool isMe, double fontSize) {
-    final double baseRadius = math.max(18.0, fontSize * 1.3);
-    final double tailSmallRadius =
-        math.max(3.0, fontSize * 0.22); // inner corner
-    final double tailLargeRadius =
-        math.max(22.0, fontSize * 1.6); // outer corner
-
-    return BorderRadius.only(
-      topLeft: Radius.circular(baseRadius),
-      topRight: Radius.circular(baseRadius),
-      bottomLeft: Radius.circular(isMe ? tailLargeRadius : tailSmallRadius),
-      bottomRight: Radius.circular(isMe ? tailSmallRadius : tailLargeRadius),
-    );
-  }
-
-  Widget _buildImagePreview() {
-    return Stack(
-      children: [
-        Container(
-          margin: const EdgeInsets.all(8),
-          height: 120,
-          width: 120,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: Theme.of(context).colorScheme.primary,
-              width: 1.2,
-            ),
-            image: DecorationImage(
-              image: kIsWeb && _selectedImageBytes != null
-                  ? MemoryImage(_selectedImageBytes!)
-                  : FileImage(_selectedImage!) as ImageProvider,
-              fit: BoxFit.cover,
-            ),
-          ),
-          child: _isUploading ? _buildUploadProgress() : null,
-        ),
-        Positioned(
-          top: 0,
-          right: 0,
-          child: _buildCloseButton(),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildUploadProgress() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(
-              value: _uploadProgress > 0 ? _uploadProgress : null,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                Theme.of(context).colorScheme.primary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '${(_uploadProgress * 100).toStringAsFixed(0)}%',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCloseButton() {
-    return Material(
-      color: Colors.black.withValues(alpha: 0.5),
-      shape: const CircleBorder(),
-      child: IconButton(
-        icon: const Icon(Icons.close, color: Colors.white, size: 22),
-        onPressed: _isUploading
-            ? null
-            : () => setState(() {
-                  _selectedImage = null;
-                  _selectedImageBytes = null;
-                  _selectedImageName = null;
-                }),
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(
-          minWidth: 32,
-          minHeight: 32,
-        ),
-      ),
-    );
-  }
-
-  // تابع آپلود صوت
-  Future<String?> _uploadAudio(dynamic fileOrBytes) async {
-    setState(() {
-      _isUploading = true;
-      _uploadProgress = 0.0;
-    });
-
-    try {
-      String? audioUrl;
-      if (kIsWeb && fileOrBytes is Uint8List && _selectedAudioName != null) {
-        audioUrl = await ChatAudioUploadService.uploadChatAudioWeb(
-          fileOrBytes,
-          _selectedAudioName!,
-          widget.conversationId,
-        );
-      } else if (fileOrBytes is File) {
-        audioUrl = await ChatAudioUploadService.uploadChatAudio(
-          fileOrBytes,
-          widget.conversationId,
-          onProgress: (progress) {
-            setState(() => _uploadProgress = progress);
-          },
-        );
-      }
-      return audioUrl;
-    } catch (e) {
-      _showErrorDialog('خطا در آپلود فایل صوتی: $e');
-      return null;
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isUploading = false;
-          _uploadProgress = 0.0;
-        });
-      }
-    }
-  }
-
-  Widget _buildMessageItem(
-      BuildContext context, MessageModel message, bool isMe) {
-    return Consumer(
-      builder: (context, ref, child) {
-        final fontSize = ref.watch(messageFontSizeProvider);
-        return _buildMessageItemContent(context, message, isMe, fontSize);
-      },
-    );
-  }
-
-  Widget _buildMessageItemContent(
-      BuildContext context, MessageModel message, bool isMe, double fontSize) {
-    final theme = Theme.of(context);
-    final brightness = theme.brightness;
-    final isLightMode = brightness == Brightness.light;
-    final colorScheme = theme.colorScheme;
-
-    // Detect pure white light theme: surface is pure white in our white theme
-    final isWhiteTheme = isLightMode && colorScheme.surface == Colors.white;
-
-    // gradients not used in current flat design
-    // final LinearGradient? myMessageGradient = null;
-
-    // final LinearGradient? otherMessageGradient = null;
-
-    // Bubble colors per request: outgoing black tone (solid), incoming whiter
-    final Color outgoingBubbleColor =
-        isLightMode ? const Color(0xFF323232) : const Color(0xFF2A2A2A);
-    final Color incomingBubbleColor =
-        isLightMode ? Colors.white : Colors.grey.shade800;
-
-    final Color myTextColor = Colors.white;
-    final Color otherTextColor = isLightMode ? Colors.black87 : Colors.white;
-
-    final Color myTimeColor = Colors.white70;
-    final Color otherTimeColor = isLightMode ? Colors.black54 : Colors.white70;
-
-    Widget attachmentWidget = const SizedBox.shrink();
-    final bool isImageAttachment = message.attachmentUrl != null &&
-        message.attachmentUrl!.isNotEmpty &&
-        message.attachmentType == 'image';
-    final bool isAudioAttachment = message.attachmentUrl != null &&
-        message.attachmentUrl!.isNotEmpty &&
-        message.attachmentType == 'audio';
-    final bool isImageOnly = isImageAttachment && message.content.isEmpty;
-    // void _showImageViewer(String url) {
-    //   _showFullScreenImage(context, url);
-    // }
-
-    if (isAudioAttachment) {
-      attachmentWidget = Padding(
-        padding: const EdgeInsets.only(top: 0.0), // پدینگ صفر شد
-        child: AudioPlayerWidget(
-          audioUrl: message.attachmentUrl!,
-          isMe: isMe,
-        ),
-      );
-    }
-// بررسی پیام تصویری (کد موجود)
-    else if (isImageAttachment) {
-      final url = message.attachmentUrl!;
-
-      Widget imageWidget;
-      if (url.startsWith('/') && File(url).existsSync()) {
-        // تصویر لوکال
-        imageWidget = GestureDetector(
-          onTap: () => _showFullScreenImage(context, url),
-          child: LayoutBuilder(builder: (context, constraints) {
-            return ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.file(
-                File(url),
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  constraints: const BoxConstraints(
-                    maxWidth: 260,
-                    maxHeight: 320,
-                  ),
-                  color: Colors.grey[300],
-                  child: const Icon(Icons.broken_image,
-                      size: 40, color: Colors.grey),
-                ),
-              ),
-            );
-          }),
-        );
-      } else if (url.startsWith('http')) {
-        // تصویر نتورک با احترام به تنظیم دانلود خودکار
-        final settings = ref.watch(autoDownloadProvider);
-        final bool shouldInlineLoad = settings.photos != 'never' ||
-            _inlineImageGrants.contains(message.id);
-
-        imageWidget = LayoutBuilder(builder: (context, constraints) {
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: 260,
-                maxHeight: 320,
-              ),
-              child: shouldInlineLoad
-                  ? CachedNetworkImage(
-                      imageUrl: url,
-                      fit: BoxFit.contain,
-                      progressIndicatorBuilder: (context, url, progress) {
-                        final p = progress.progress ?? 0.0;
-                        _inlineImageProgress[message.id] = p;
-                        return Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Container(color: Colors.grey[300]),
-                            SizedBox(
-                              width: 36,
-                              height: 36,
-                              child: CircularProgressIndicator(value: p),
-                            ),
-                          ],
-                        );
-                      },
-                      imageBuilder: (context, provider) {
-                        // علامت‌گذاری به عنوان لودشده (بدون رندر مجدد)
-                        _inlineImageLoaded.add(message.id);
-                        _inlineImageProgress.remove(message.id);
-                        return GestureDetector(
-                          onTap: () {
-                            if (_inlineImageLoaded.contains(message.id)) {
-                              _showFullScreenImage(context, url);
-                            }
-                          },
-                          child: Image(
-                            image: provider,
-                            fit: BoxFit.contain,
-                          ),
-                        );
-                      },
-                      errorWidget: (context, url, error) => Container(
-                        color: Colors.grey[300],
-                        child: const Icon(Icons.broken_image,
-                            size: 40, color: Colors.grey),
-                      ),
-                    )
-                  : GestureDetector(
-                      onTap: () async {
-                        if (_inlineImageGrants.contains(message.id)) return;
-                        setState(() {
-                          _inlineImageGrants.add(message.id);
-                          _inlineImageProgress[message.id] = 0.0;
-                        });
-                        try {
-                          final chatService = ref.read(chatServiceProvider);
-                          await chatService.prefetchImageCancelable(
-                            message.id,
-                            url,
-                            (p) {
-                              if (mounted) {
-                                setState(() {
-                                  _inlineImageProgress[message.id] = p;
-                                });
-                              }
-                            },
-                          );
-                          // پس از اتمام دانلود، CachedNetworkImage تصویر را از دیسک لود می‌کند
-                          if (mounted) {
-                            setState(() {});
-                          }
-                        } catch (_) {
-                          if (mounted) {
-                            setState(() {
-                              _inlineImageGrants.remove(message.id);
-                              _inlineImageProgress.remove(message.id);
-                            });
-                          }
-                        }
-                      },
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          // Real blurred thumbnail (low-res) to preview actual image composition
-                          CachedNetworkImage(
-                            imageUrl: _buildThumbnailUrl(url),
-                            fit: BoxFit.cover,
-                            imageBuilder: (context, provider) => ImageFiltered(
-                              imageFilter:
-                                  ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  image: DecorationImage(
-                                    image: provider,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            placeholder: (context, _) =>
-                                Container(color: Colors.grey[300]),
-                            errorWidget: (context, _, __) =>
-                                Container(color: Colors.grey[300]),
-                          ),
-                          Container(color: Colors.black26),
-                          Center(
-                            child: StatefulBuilder(
-                              builder: (context, _) {
-                                final granted =
-                                    _inlineImageGrants.contains(message.id);
-                                final progress =
-                                    _inlineImageProgress[message.id];
-                                final isDownloading = granted &&
-                                    (progress != null && progress < 1.0);
-                                return Stack(
-                                  alignment: Alignment.center,
-                                  children: [
-                                    if (isDownloading)
-                                      SizedBox(
-                                        width: 44,
-                                        height: 44,
-                                        child: CircularProgressIndicator(
-                                          value: progress,
-                                          strokeWidth: 3,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    GestureDetector(
-                                      onTap: () {
-                                        if (isDownloading) {
-                                          ref
-                                              .read(chatServiceProvider)
-                                              .cancelImagePrefetch(message.id);
-                                          setState(() {
-                                            _inlineImageProgress
-                                                .remove(message.id);
-                                            _inlineImageGrants
-                                                .remove(message.id);
-                                          });
-                                        } else {
-                                          // شروع دانلود با تپ روی آیکون دانلود
-                                          if (!_inlineImageGrants
-                                              .contains(message.id)) {
-                                            setState(() {
-                                              _inlineImageGrants
-                                                  .add(message.id);
-                                              _inlineImageProgress[message.id] =
-                                                  0.0;
-                                            });
-                                            ref
-                                                .read(chatServiceProvider)
-                                                .prefetchImageCancelable(
-                                              message.id,
-                                              url,
-                                              (p) {
-                                                if (mounted) {
-                                                  setState(() {
-                                                    _inlineImageProgress[
-                                                        message.id] = p;
-                                                  });
-                                                }
-                                              },
-                                            ).catchError((_) {
-                                              if (mounted) {
-                                                setState(() {
-                                                  _inlineImageGrants
-                                                      .remove(message.id);
-                                                  _inlineImageProgress
-                                                      .remove(message.id);
-                                                });
-                                              }
-                                              return '';
-                                            });
-                                          }
-                                        }
-                                      },
-                                      child: Container(
-                                        decoration: const BoxDecoration(
-                                          color: Colors.black54,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        padding: const EdgeInsets.all(8),
-                                        child: Icon(
-                                          isDownloading
-                                              ? Icons.close_rounded
-                                              : Icons.download_rounded,
-                                          size: 20,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-            ),
-          );
-        });
-      } else {
-        imageWidget = const SizedBox.shrink();
-      }
-
-      attachmentWidget = Padding(
-        padding: EdgeInsets.only(
-          top: isImageOnly ? 0 : 8.0,
-          left: isImageOnly ? 0 : 0 + 12,
-          right: isImageOnly ? 0 : 0 + 12,
-          bottom: isImageOnly ? 0 : 0,
-        ),
-        child: isImageOnly
-            ? Stack(
-                children: [
-                  imageWidget,
-                  Positioned(
-                    right: 8,
-                    bottom: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.35),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _formatMessageHour(message.createdAt),
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Colors.white70,
-                              fontWeight: FontWeight.w500,
-                              letterSpacing: 0.1,
-                            ),
-                          ),
-                          SizedBox(width: 4),
-                          if (isMe) ...[
-                            if (message.isPending)
-                              const Icon(Icons.schedule_rounded,
-                                  size: 12, color: Colors.white70)
-                            else if (!message.isSent)
-                              const Icon(Icons.refresh_rounded,
-                                  size: 12, color: Colors.white70)
-                            else if (!message.isDelivered)
-                              const Icon(Icons.done_rounded,
-                                  size: 12, color: Colors.white70)
-                            else if (!message.isSeen)
-                              const Row(
-                                children: [
-                                  Icon(Icons.done_all_rounded,
-                                      size: 12, color: Colors.white70),
-                                  SizedBox(width: 2),
-                                  Icon(Icons.done_rounded,
-                                      size: 8, color: Colors.white54),
-                                ],
-                              )
-                            else
-                              const Icon(Icons.done_all_rounded,
-                                  size: 12, color: Colors.white),
-                          ],
-                          // نمایش ری‌اکشن‌ها اگر وجود داشته باشد
-                          if (message.reactions != null &&
-                              message.reactions!.isNotEmpty)
-                            _buildMessageReactions(message),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              )
-            : imageWidget,
-      );
-    }
-    // پیام موقت: رنگ متفاوت یا شفافیت
-    final bool isTemp = !message.isSent && message.id.startsWith('temp_');
-    final double opacity = isTemp ? 0.6 : 1.0;
-    final Color? tempColor = isTemp
-        ? (isMe
-            ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.5)
-            : Colors.grey[400]?.withValues(alpha: 0.5))
-        : null;
-
-    return TweenAnimationBuilder<double>(
-      duration:
-          Duration(milliseconds: message.id.startsWith('temp_') ? 150 : 300),
-      curve: Curves.easeOutCubic,
-      tween: Tween(begin: 0.0, end: 1.0),
-      builder: (context, animation, child) {
-        return Transform.translate(
-          offset: Offset(
-            isMe ? (1 - animation) * 50 : (1 - animation) * -50,
-            (1 - animation) * 10,
-          ),
-          child: Transform.scale(
-            scale: 0.9 + (animation * 0.1),
-            child: Opacity(
-              opacity: animation,
-              child: child,
-            ),
-          ),
-        );
-      },
-      child: GestureDetector(
-        onHorizontalDragUpdate: (details) {
-          // کشیدن به سمت مخالف برای فعال‌سازی پاسخ
-          // پیام‌های من: کشیدن به سمت چپ (dx < 0)
-          // پیام‌های دیگران: کشیدن به سمت راست (dx > 0)
-          final dragDirection = isMe ? -details.delta.dx : details.delta.dx;
-          if (dragDirection > 0) {
-            // محاسبه فاصله کشیدن
-            final dragDistance = details.globalPosition.dx;
-            final screenWidth = MediaQuery.of(context).size.width;
-            final maxDragDistance = screenWidth * 0.3; // حداکثر 30% عرض صفحه
-            final currentDragDistance = isMe
-                ? (screenWidth - dragDistance).clamp(0.0, maxDragDistance)
-                : dragDistance.clamp(0.0, maxDragDistance);
-
-            final dragRatio = currentDragDistance / maxDragDistance;
-
-            setState(() {
-              _messageReplyStates[message.id] = true;
-            });
-
-            // اگر کشیدن به اندازه کافی بود، پاسخ را فعال کن
-            if (dragRatio > 0.7) {
-              // آستانه 70% - کاهش حساسیت
-              // اضافه کردن هپتیک فیدبک
-              HapticFeedback.lightImpact();
-              _setReplyMessage(message);
-            }
-          }
-        },
-        onHorizontalDragEnd: (details) {
-          // بازگشت نرم به حالت عادی با تاخیر
-          Future.delayed(const Duration(milliseconds: 100), () {
-            if (mounted) {
-              setState(() {
-                _messageReplyStates[message.id] = false;
-              });
-            }
-          });
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.elasticOut,
-          transform: Matrix4.translationValues(
-            _messageReplyStates[message.id] == true ? (isMe ? -40 : 40) : 0,
-            0,
-            0,
-          ),
-          child: Stack(
-            children: [
-              // نشانگر کشیدن
-              if (_messageReplyStates[message.id] == true)
-                Positioned(
-                  top: 0,
-                  bottom: 0,
-                  left: isMe ? null : 0,
-                  right: isMe ? 0 : null,
-                  child: Container(
-                    width: 4,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary,
-                      borderRadius: BorderRadius.circular(2),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withValues(alpha: 0.3),
-                          blurRadius: 4,
-                          spreadRadius: 1,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 800),
-                curve: Curves.easeInOut,
-                padding: const EdgeInsets.symmetric(vertical: 1, horizontal: 4),
-                decoration: BoxDecoration(
-                  color: _highlightedMessageId == message.id
-                      ? Theme.of(context)
-                          .colorScheme
-                          .primary
-                          .withValues(alpha: 0.2)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Transform.scale(
-                  scale: _messageReplyStates[message.id] == true ? 1.02 : 1.0,
-                  child: GestureDetector(
-                    onLongPress: () =>
-                        _showMessageOptions(context, message, isMe),
-                    child: Align(
-                      alignment:
-                          isMe ? Alignment.centerRight : Alignment.centerLeft,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxWidth: MediaQuery.of(context).size.width * 0.8,
-                        ),
-                        child: Opacity(
-                          opacity: opacity,
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            curve: Curves.easeOutQuart,
-                            margin: EdgeInsets.only(
-                              left: isMe ? 64.0 : 12.0,
-                              right: isMe ? 12.0 : 64.0,
-                              top: 0, // فاصله‌گذاری توسط TimeUtils انجام می‌شه
-                              bottom: 0,
-                            ),
-                            decoration: BoxDecoration(
-                              color: (_isSharedPost(message.content)
-                                  ? Colors.transparent
-                                  : (isImageOnly
-                                      ? Colors.transparent
-                                      : tempColor ??
-                                          (isMe
-                                              ? outgoingBubbleColor
-                                              : incomingBubbleColor))),
-                              border: (!isMe && !_isSharedPost(message.content))
-                                  ? Border.all(
-                                      color: isLightMode
-                                          ? (Colors.grey[200]!)
-                                          : Colors.transparent,
-                                      width: 1,
-                                    )
-                                  : null,
-                              borderRadius: _isSharedPost(message.content)
-                                  ? BorderRadius.zero
-                                  : _getTelegramXBorderRadius(isMe, fontSize),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: isMe
-                                  ? CrossAxisAlignment.end
-                                  : CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (message.replyToMessageId != null)
-                                  GestureDetector(
-                                    onTap: () {
-                                      _jumpToMessage(message.replyToMessageId!);
-                                    },
-                                    child: Container(
-                                      padding: EdgeInsets.all(
-                                          math.max(8, fontSize * 0.5)),
-                                      margin: EdgeInsets.only(
-                                        bottom: math.max(6, fontSize * 0.35),
-                                        left: math.max(8, fontSize * 0.5),
-                                        right: math.max(8, fontSize * 0.5),
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: isMe
-                                            ? outgoingBubbleColor.withValues(
-                                                alpha: 0.8)
-                                            : Colors.grey[100],
-                                        borderRadius: BorderRadius.circular(
-                                            math.max(12, fontSize * 0.7)),
-                                        border: Border.all(
-                                          color: isMe
-                                              ? Colors.white
-                                                  .withValues(alpha: 0.2)
-                                              : Colors.grey[300]!,
-                                          width: 1,
-                                        ),
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Icon(Icons.reply,
-                                                  size: 14,
-                                                  color: isMe
-                                                      ? Colors.white70
-                                                      : Colors.black45),
-                                              SizedBox(width: 6),
-                                              Expanded(
-                                                child: Text(
-                                                  _getReplySenderName(message),
-                                                  style: TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    color: isMe
-                                                        ? Colors.white
-                                                        : Colors.black87,
-                                                    fontSize: 12,
-                                                  ),
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          SizedBox(height: 4),
-                                          Text(
-                                            _filterLinksFromText(
-                                                message.replyToContent ?? ''),
-                                            style: TextStyle(
-                                              color: isMe
-                                                  ? Colors.white70
-                                                  : Colors.black87,
-                                              fontSize: 12,
-                                            ),
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                if (message.attachmentUrl != null &&
-                                    message.attachmentUrl!.isNotEmpty &&
-                                    (message.attachmentType == 'image' ||
-                                        message.attachmentType == 'audio') &&
-                                    !_isSharedPost(message.content))
-                                  Padding(
-                                    padding: EdgeInsets.only(
-                                        top: message.replyToMessageId != null
-                                            ? 4
-                                            : 12,
-                                        left: 12,
-                                        right: 12,
-                                        bottom: message.content.isNotEmpty
-                                            ? 4
-                                            : 12),
-                                    child: Container(
-                                      decoration: isImageOnly
-                                          ? BoxDecoration(
-                                              borderRadius:
-                                                  BorderRadius.circular(math
-                                                      .max(12, fontSize * 0.8)),
-                                            )
-                                          : null,
-                                      child: attachmentWidget,
-                                    ),
-                                  ),
-                                if (message.content.isNotEmpty)
-                                  Padding(
-                                    padding: EdgeInsets.only(
-                                      top: (message.attachmentUrl != null &&
-                                              message.attachmentUrl!.isNotEmpty)
-                                          ? math.max(4, fontSize * 0.25)
-                                          : math.max(12, fontSize * 0.75),
-                                      left: math.max(12, fontSize * 0.75),
-                                      right: math.max(12, fontSize * 0.75),
-                                      bottom: math.max(12, fontSize * 0.75),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment: isMe
-                                          ? CrossAxisAlignment.end
-                                          : CrossAxisAlignment.start,
-                                      children: [
-                                        if (message.content.isNotEmpty)
-                                          Padding(
-                                            padding: EdgeInsets.only(
-                                              top: message.attachmentUrl != null
-                                                  ? 8
-                                                  : 0,
-                                            ),
-                                            child: _isSharedPost(
-                                                    message.content)
-                                                ? SharedPostWidget(
-                                                    messageContent:
-                                                        message.content,
-                                                    attachmentUrl:
-                                                        message.attachmentUrl,
-                                                    attachmentType:
-                                                        message.attachmentType,
-                                                  )
-                                                : Directionality(
-                                                    textDirection:
-                                                        getTextDirection(
-                                                            message.content),
-                                                    child: Text(
-                                                      message.content,
-                                                      style: TextStyle(
-                                                        color: isMe
-                                                            ? myTextColor
-                                                            : otherTextColor,
-                                                        fontSize: fontSize,
-                                                        height: 1.3,
-                                                      ),
-                                                    ),
-                                                  ),
-                                          ),
-                                        if (!isImageOnly ||
-                                            _isSharedPost(message.content))
-                                          Padding(
-                                            padding: EdgeInsets.only(
-                                                top: math.max(
-                                                    6, fontSize * 0.3)),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.end,
-                                              children: [
-                                                Container(
-                                                  padding: EdgeInsets.symmetric(
-                                                    horizontal: math.max(
-                                                        8, fontSize * 0.5),
-                                                    vertical: math.max(
-                                                        3, fontSize * 0.2),
-                                                  ),
-                                                  decoration: BoxDecoration(
-                                                    color: isMe
-                                                        ? (isWhiteTheme &&
-                                                                !isLightMode
-                                                            ? Colors.black
-                                                                .withValues(
-                                                                    alpha: 0.2)
-                                                            : Colors.black
-                                                                .withValues(
-                                                                    alpha:
-                                                                        0.15))
-                                                        : colorScheme
-                                                            .surfaceContainerHighest
-                                                            .withValues(
-                                                                alpha: 0.7),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            math.max(
-                                                                12,
-                                                                fontSize *
-                                                                    0.8)),
-                                                    boxShadow: [
-                                                      BoxShadow(
-                                                        color: Colors.black
-                                                            .withValues(
-                                                                alpha: 0.05),
-                                                        blurRadius: 2,
-                                                        offset:
-                                                            const Offset(0, 1),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  child: Text(
-                                                    _formatMessageHour(
-                                                        message.createdAt),
-                                                    style: TextStyle(
-                                                      fontSize: math.max(
-                                                          10, fontSize * 0.75),
-                                                      color: isMe
-                                                          ? myTimeColor
-                                                          : otherTimeColor,
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                      letterSpacing: 0.1,
-                                                    ),
-                                                  ),
-                                                ),
-                                                SizedBox(
-                                                    width: math.max(
-                                                        6, fontSize * 0.3)),
-                                                if (isMe) ...[
-                                                  if (message.isPending)
-                                                    Container(
-                                                      padding:
-                                                          const EdgeInsets.all(
-                                                              2),
-                                                      decoration: BoxDecoration(
-                                                        color: myTimeColor
-                                                            .withValues(
-                                                                alpha: 0.2),
-                                                        shape: BoxShape.circle,
-                                                      ),
-                                                      child: Icon(
-                                                        Icons.schedule_rounded,
-                                                        size: math.max(
-                                                            12, fontSize * 0.8),
-                                                        color: myTimeColor,
-                                                      ),
-                                                    )
-                                                  else if (!message.isSent)
-                                                    GestureDetector(
-                                                      onTap: () {
-                                                        ref
-                                                            .read(
-                                                                messageNotifierProvider
-                                                                    .notifier)
-                                                            .retrySendMessage(
-                                                                message);
-                                                        ScaffoldMessenger.of(
-                                                                context)
-                                                            .showSnackBar(
-                                                          SnackBar(
-                                                              content: Text(
-                                                                  'درحال تلاش مجدد برای ارسال...')),
-                                                        );
-                                                      },
-                                                      child: Container(
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .all(2),
-                                                        decoration:
-                                                            BoxDecoration(
-                                                          color: Colors.red
-                                                              .withValues(
-                                                                  alpha: 0.15),
-                                                          shape:
-                                                              BoxShape.circle,
-                                                        ),
-                                                        child: Icon(
-                                                          Icons.refresh_rounded,
-                                                          size: math.max(12,
-                                                              fontSize * 0.8),
-                                                          color: Colors.red,
-                                                        ),
-                                                      ),
-                                                    )
-                                                  else
-                                                    Container(
-                                                      padding:
-                                                          const EdgeInsets.all(
-                                                              2),
-                                                      decoration: BoxDecoration(
-                                                        color: myTimeColor
-                                                            .withValues(
-                                                                alpha: 0.2),
-                                                        shape: BoxShape.circle,
-                                                      ),
-                                                      child: Icon(
-                                                        Icons.done_rounded,
-                                                        size: math.max(
-                                                            12, fontSize * 0.8),
-                                                        color: myTimeColor,
-                                                      ),
-                                                    ),
-                                                ],
-                                              ],
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showMessageOptions(
-      BuildContext context, MessageModel message, bool isMe) {
-    showModalBottomSheet(
-      context: context,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Wrap(
-            children: [
-              ListTile(
-                leading:
-                    Icon(Icons.reply, color: Theme.of(context).primaryColor),
-                title: Text('پاسخ'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _setReplyMessage(message);
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.delete, color: Colors.red),
-                title: Text('حذف پیام'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showDeleteMessageDialog(message);
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.copy, color: Colors.blue),
-                title: Text('کپی پیام'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  // کپی محتوا
-                  Clipboard.setData(ClipboardData(text: message.content));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('پیام کپی شد')),
-                  );
-                },
-              ),
-              if (!isMe)
-                ListTile(
-                  leading: Icon(Icons.report, color: Colors.orange),
-                  title: Text('گزارش پیام'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showReportMessageDialog(context, message);
-                  },
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // فیلتر کردن لینک‌ها از متن
-  String _filterLinksFromText(String text) {
-    if (text.isEmpty) return text;
-
-    // فیلتر کردن لینک‌های Vista و پست‌های اشتراکی
-    String filteredText = text;
-
-    // حذف لینک‌های Vista
-    filteredText =
-        filteredText.replaceAll(RegExp(r'https?://[^\s]*vista[^\s]*'), '');
-    filteredText =
-        filteredText.replaceAll(RegExp(r'https?://[^\s]*post/[^\s]*'), '');
-    filteredText =
-        filteredText.replaceAll(RegExp(r'https?://[^\s]*coffevista[^\s]*'), '');
-    filteredText =
-        filteredText.replaceAll(RegExp(r'https?://[^\s]*arvan[^\s]*'), '');
-
-    // حذف لینک‌های عمومی
-    filteredText = filteredText.replaceAll(RegExp(r'https?://[^\s]*'), '');
-
-    // حذف metadata های پست‌های اشتراکی
-    filteredText = filteredText.replaceAll(RegExp(r'🖼️ آواتار:.*'), '');
-    filteredText = filteredText.replaceAll(RegExp(r'🎥 ویدیو:.*'), '');
-    filteredText = filteredText.replaceAll(RegExp(r'🏷️ تگ‌ها:.*'), '');
-    filteredText = filteredText.replaceAll(RegExp(r'🔗.*'), '');
-    filteredText = filteredText.replaceAll(RegExp(r'📝 پست از.*'), '');
-
-    return filteredText.trim();
-  }
-
-  void _showReportMessageDialog(BuildContext context, MessageModel message) {
-    final reportReasonController = TextEditingController();
-    String selectedReason = 'محتوای نامناسب';
-
-    final reportReasons = [
-      'محتوای نامناسب',
-      'آزار و اذیت',
-      'اسپم',
-      'جعل هویت',
-      'سایر موارد'
-    ];
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('گزارش پیام'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              initialValue: selectedReason,
-              items: reportReasons.map((reason) {
-                return DropdownMenuItem(
-                  value: reason,
-                  child: Text(reason),
-                );
-              }).toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  selectedReason = value;
-                }
-              },
-              decoration: InputDecoration(
-                labelText: 'دلیل گزارش',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            SizedBox(height: 16),
-            TextField(
-              controller: reportReasonController,
-              decoration: InputDecoration(
-                labelText: 'توضیحات بیشتر (اختیاری)',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('انصراف'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ref
-                  .read(userReportNotifierProvider.notifier)
-                  .reportUser(
-                    userId: message.senderId,
-                    reason: selectedReason,
-                    additionalInfo: reportReasonController.text.trim(),
-                  )
-                  .then((_) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('گزارش پیام ارسال شد')),
-                );
-              }).catchError((error) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('خطا در ارسال گزارش')),
-                );
-              });
-            },
-            child: Text('ارسال گزارش'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Future<void> _downloadImage(String imageUrl, WidgetRef ref) async {}
-
-  void _showFullScreenImage(BuildContext context, String imageUrl) {
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        opaque: false,
-        barrierColor: Colors.black87,
-        pageBuilder: (BuildContext context, _, __) {
-          return Scaffold(
-            backgroundColor: Colors.transparent,
-            appBar: AppBar(
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              leading: IconButton(
-                icon: Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
-              ),
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.download_rounded),
-                  color: Colors.white,
-                  onPressed: () async {
-                    if (!imageUrl.startsWith('http')) return;
-                    if (kIsWeb) {
-                      downloadImageOnWeb(imageUrl);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('دانلود آغاز شد')),
-                        );
-                      }
-                      return;
-                    }
-                    try {
-                      final chatService = ref.read(chatServiceProvider);
-                      await chatService.downloadChatImage(imageUrl, (_) {});
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('تصویر دانلود شد')),
-                        );
-                      }
-                    } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('خطا در دانلود تصویر: $e')),
-                        );
-                      }
-                    }
-                  },
-                ),
-              ],
-            ),
-            body: Center(
-              child: GestureDetector(
-                onVerticalDragEnd: (details) {
-                  if (details.velocity.pixelsPerSecond.dy.abs() > 200) {
-                    Navigator.pop(context);
-                  }
-                },
-                child: PhotoView(
-                  imageProvider: imageUrl.startsWith('http')
-                      ? CachedNetworkImageProvider(imageUrl) as ImageProvider
-                      : FileImage(File(imageUrl)),
-                  minScale: PhotoViewComputedScale.contained,
-                  maxScale: PhotoViewComputedScale.covered * 3,
-                  backgroundDecoration: BoxDecoration(
-                    color: Colors.transparent,
-                  ),
-                  loadingBuilder: (context, event) => Center(
-                    child: SizedBox(
-                      width: 30,
-                      height: 30,
-                      child: CircularProgressIndicator(
-                        value: event == null
-                            ? 0
-                            : event.cumulativeBytesLoaded /
-                                (event.expectedTotalBytes ?? 1),
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(
-            opacity: animation,
-            child: child,
-          );
-        },
-      ),
-    );
-  }
-
-  /// ساخت نشانگر تایپ کردن
-  Widget _buildTypingIndicator() {
-    return const SizedBox.shrink(); // موقتاً غیرفعال
-  }
-
-  /// ساخت ویجت ری‌اکشن‌های پیام
-  Widget _buildMessageReactions(MessageModel message) {
-    if (message.reactions == null || message.reactions!.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(top: 4),
-      child: Wrap(
-        spacing: 4,
-        runSpacing: 4,
-        children: message.reactions!.map((reaction) {
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: message.isMe
-                  ? Colors.white.withOpacity(0.2)
-                  : Colors.grey.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  reaction['emoji'] ?? '',
-                  style: const TextStyle(fontSize: 12),
-                ),
-                const SizedBox(width: 2),
-                Text(
-                  reaction['count']?.toString() ?? '1',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withOpacity(0.7),
-                  ),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  /// علامت‌گذاری پیام‌های خوانده نشده به عنوان خوانده شده
-  Future<void> _markMessagesAsRead() async {
-    try {
-      final currentUserId = supabase.auth.currentUser?.id;
-      if (currentUserId == null || widget.conversationId.isEmpty) return;
-
-      // دریافت پیام‌های خوانده نشده از این کاربر در این مکالمه
-      final unreadMessages = ref
-          .read(conversationMessagesProvider(widget.conversationId))
-          .where((msg) => !msg.isRead && msg.senderId != currentUserId);
-
-      if (unreadMessages.isNotEmpty) {
-        // علامت‌گذاری پیام‌ها به عنوان خوانده شده در سرور
-        for (final message in unreadMessages) {
-          await supabase.from('messages').update({
-            'is_read': true,
-            'is_seen': true,
-            'read_at': DateTime.now().toIso8601String(),
-            'seen_at': DateTime.now().toIso8601String(),
-          }).eq('id', message.id);
-        }
-
-        // بروزرسانی پیام‌ها در state محلی
-        final notifier = ref
-            .read(conversationMessagesProvider(widget.conversationId).notifier);
-        for (final message in unreadMessages) {
-          notifier.updateMessage(message.copyWith(isRead: true, isSeen: true));
-        }
-      }
-    } catch (e) {
-      print('⚠️ خطا در علامت‌گذاری پیام‌ها به عنوان خوانده شده: $e');
-    }
-  }
-
-  String _formatMessageHour(DateTime time) {
-    return TimeUtils.formatMessageTime(time);
-  }
-
-  // متدهای باقی‌مانده
-  Widget _buildDateDivider(DateTime date) {
-    return Container(
-      alignment: Alignment.center,
-      padding: const EdgeInsets.symmetric(vertical: 16.0),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(16.0),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Text(
-          TimeUtils.formatDateDivider(date),
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: Colors.black87,
-            letterSpacing: 0.2,
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Returns the appropriate chat wallpaper URL based on current theme
-  String _getChatWallpaperUrl(BuildContext context) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    return WallpaperCacheService.getWallpaperUrl(isDarkMode);
-  }
-
-  /// Returns the appropriate overlay color for better text readability
-  Color _getWallpaperOverlayColor(BuildContext context) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    return isDarkMode
-        ? Colors.black.withValues(alpha: 0.3)
-        : Colors.white.withValues(alpha: 0.4);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    final isKeyboardVisible = bottomInset > 0;
-
-    if (isKeyboardVisible && _showEmojiPicker) {
-      _showEmojiPicker = false;
-    }
-
-    // --- اضافه شد: گوش دادن به تغییرات استریم پیام‌ها و بروزرسانی UI ---
-    ref.watch(messagesStreamProvider(widget.conversationId));
-
-    // ابتدا پیام‌های کش شده را نمایش بده، سپس استریم پیام‌ها را گوش بده
-    return SafeArea(
-      top: false,
-      child: Stack(
-        children: [
-          // Chat Wallpaper Background - Fixed position, not affected by keyboard
-          Positioned.fill(
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // Local asset as immediate fallback
-                Image.asset(
-                  WallpaperCacheService.getLocalWallpaperAsset(
-                      Theme.of(context).brightness == Brightness.dark),
-                  fit: BoxFit.cover,
-                  gaplessPlayback: true,
-                ),
-                // Remote image with cache - overlays when loaded
-                CachedNetworkImage(
-                  imageUrl: _getChatWallpaperUrl(context),
-                  fit: BoxFit.cover,
-                  cacheManager: CustomCacheManager.wallpaperInstance,
-                  placeholder: (context, url) =>
-                      Container(), // Transparent - local asset shows
-                  errorWidget: (context, url, error) =>
-                      Container(), // Transparent - local asset shows
-                  fadeInDuration: const Duration(milliseconds: 300),
-                  fadeOutDuration: const Duration(milliseconds: 300),
-                  memCacheWidth: 1080,
-                  memCacheHeight: 1920,
-                ),
-              ],
-            ),
-          ),
-          // Subtle overlay for better text readability - Adapts to theme
-          Positioned.fill(
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              decoration: BoxDecoration(
-                color: _getWallpaperOverlayColor(context),
-              ),
-            ),
-          ),
-          // Main chat interface
-          Scaffold(
-            backgroundColor: Colors.transparent,
-            appBar: AppBar(
-                elevation: 1,
-                titleSpacing: 0,
-                backgroundColor: Theme.of(context).brightness == Brightness.dark
-                    ? Color(0xFF1A1A1A)
-                    : Colors.white,
-                iconTheme: IconThemeData(
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? Colors.white
-                      : Colors.black87,
-                ),
-                title: InkWell(
-                  onTap: () async {
-                    final messageIdToJump = await Navigator.push<String?>(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => ChatDetailsScreen(
-                          conversationId: widget.conversationId,
-                          otherUserName: widget.otherUserName,
-                          otherUserAvatar: widget.otherUserAvatar,
-                          otherUserId: widget.otherUserId,
-                        ),
-                      ),
-                    );
-
-                    if (messageIdToJump != null && mounted) {
-                      _jumpToMessage(messageIdToJump);
-                    }
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8.0),
-                    child: Row(
-                      children: [
-                        Hero(
-                          tag: 'avatar_${widget.otherUserId}',
-                          child: Material(
-                            type: MaterialType.transparency,
-                            child: ClipOval(
-                              child: (_currentOtherUserAvatar != null &&
-                                      _currentOtherUserAvatar!.isNotEmpty &&
-                                      _currentOtherUserAvatar!
-                                          .startsWith('http'))
-                                  ? CachedNetworkImage(
-                                      imageUrl: _currentOtherUserAvatar!,
-                                      width: 40,
-                                      height: 40,
-                                      fit: BoxFit.cover,
-                                      placeholder: (context, url) => Container(
-                                        width: 40,
-                                        height: 40,
-                                        color: Colors.grey[300],
-                                        child: const Icon(
-                                          Icons.person,
-                                          color: Colors.grey,
-                                          size: 20,
-                                        ),
-                                      ),
-                                      errorWidget: (context, url, error) {
-                                        print(
-                                            'خطا در بارگذاری عکس پروفایل: $error');
-                                        return Image.asset(
-                                          'lib/view/util/images/default-avatar.jpg',
-                                          width: 40,
-                                          height: 40,
-                                          fit: BoxFit.cover,
-                                        );
-                                      },
-                                    )
-                                  : Image.asset(
-                                      'lib/view/util/images/default-avatar.jpg',
-                                      width: 40,
-                                      height: 40,
-                                      fit: BoxFit.cover,
-                                    ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                _currentOtherUserName,
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Theme.of(context).brightness ==
-                                          Brightness.dark
-                                      ? Colors.white
-                                      : Colors.black87,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Consumer(
-                                builder: (context, ref, child) {
-                                  final isOnlineAsync = ref.watch(
-                                      userOnlineStatusStreamProvider(
-                                          widget.otherUserId));
-
-                                  return isOnlineAsync.when(
-                                    data: (isOnline) {
-                                      if (isOnline) {
-                                        return Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Container(
-                                              width: 8,
-                                              height: 8,
-                                              decoration: const BoxDecoration(
-                                                color: Colors.green,
-                                                shape: BoxShape.circle,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 4),
-                                            const Text(
-                                              'آنلاین',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: Colors.green,
-                                              ),
-                                            ),
-                                          ],
-                                        );
-                                      } else {
-                                        final canShowAsync = ref.watch(
-                                            canShowLastSeenProvider(
-                                                widget.otherUserId));
-                                        return canShowAsync.when(
-                                          data: (canShow) {
-                                            if (!canShow) {
-                                              return Text(
-                                                'آفلاین',
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  color: Theme.of(context)
-                                                              .brightness ==
-                                                          Brightness.dark
-                                                      ? Colors.grey[400]
-                                                      : Colors.grey[600],
-                                                ),
-                                              );
-                                            }
-                                            final lastOnlineAsync = ref.watch(
-                                                userLastOnlineProvider(
-                                                    widget.otherUserId));
-                                            return lastOnlineAsync.when(
-                                              data: (lastOnline) {
-                                                return Text(
-                                                  lastOnline != null
-                                                      ? TimeUtils
-                                                          .formatLastSeen(
-                                                              lastOnline)
-                                                      : 'آفلاین',
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Theme.of(context)
-                                                                .brightness ==
-                                                            Brightness.dark
-                                                        ? Colors.grey[400]
-                                                        : Colors.grey[600],
-                                                  ),
-                                                );
-                                              },
-                                              loading: () => const Text(
-                                                  'در حال بارگذاری...',
-                                                  style:
-                                                      TextStyle(fontSize: 12)),
-                                              error: (_, __) => const Text(
-                                                  'آفلاین',
-                                                  style: TextStyle(
-                                                      fontSize: 12,
-                                                      color: Colors.grey)),
-                                            );
-                                          },
-                                          loading: () => const Text(
-                                              'در حال بارگذاری...',
-                                              style: TextStyle(fontSize: 12)),
-                                          error: (_, __) => const Text('آفلاین',
-                                              style: TextStyle(
-                                                  fontSize: 12,
-                                                  color: Colors.grey)),
-                                        );
-                                      }
-                                    },
-                                    loading: () => const Text(
-                                        'در حال بارگذاری...',
-                                        style: TextStyle(fontSize: 12)),
-                                    error: (error, _) {
-                                      print(
-                                          'خطا در دریافت وضعیت آنلاین: $error');
-                                      return const Text('آفلاین',
-                                          style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey));
-                                    },
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                actions: [
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    tooltip: 'پاکسازی تاریخچه گفتگو',
-                    onPressed: () => _showClearConversationDialog(context),
-                  ),
-                  PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert),
-                    tooltip: 'گزینه‌های بیشتر',
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    onSelected: (value) {
-                      switch (value) {
-                        case 'search':
-                          _showSearchDialog(context);
-                          break;
-                        case 'block':
-                          _isOtherUserBlocked
-                              ? _showUnblockUserDialog(context)
-                              : _showBlockUserDialog(context);
-                          break;
-                        case 'report':
-                          _showReportUserDialog(context);
-                          break;
-                        case 'profile':
-                          Navigator.of(context).push(MaterialPageRoute(
-                              builder: (context) => ProfileScreen(
-                                  userId: widget.otherUserId,
-                                  username: widget.otherUserName)));
-                          break;
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      PopupMenuItem(
-                        value: 'profile',
-                        child: Row(
-                          children: [
-                            Icon(Icons.person_outline,
-                                color: Theme.of(context).brightness ==
-                                        Brightness.dark
-                                    ? Colors.white70
-                                    : Colors.black87),
-                            const SizedBox(width: 12),
-                            const Text('مشاهده پروفایل'),
-                          ],
-                        ),
-                      ),
-                      PopupMenuItem(
-                        value: 'block',
-                        child: Row(
-                          children: [
-                            Icon(
-                                _isOtherUserBlocked
-                                    ? Icons.lock_open
-                                    : Icons.block,
-                                color: Theme.of(context).brightness ==
-                                        Brightness.dark
-                                    ? Colors.white70
-                                    : Colors.black87),
-                            const SizedBox(width: 12),
-                            Text(_isOtherUserBlocked
-                                ? 'رفع مسدودیت'
-                                : 'مسدود کردن'),
-                          ],
-                        ),
-                      ),
-                      PopupMenuItem(
-                        value: 'report',
-                        child: Row(
-                          children: [
-                            Icon(Icons.report_problem_outlined,
-                                color: Theme.of(context).brightness ==
-                                        Brightness.dark
-                                    ? Colors.white70
-                                    : Colors.black87),
-                            const SizedBox(width: 12),
-                            const Text('گزارش کاربر'),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ]),
-            body: Column(
-              children: [
-                Expanded(
-                  child: Consumer(
-                    builder: (context, ref, child) {
-                      final lazyState = ref
-                          .watch(lazyMessagesProvider(widget.conversationId));
-
-                      // Show empty state if no messages
-                      if (lazyState.messages.isEmpty && !lazyState.isLoading) {
-                        return const Center(
-                          child: Text(
-                            'پیامی وجود ندارد. اولین پیام را ارسال کنید!',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        );
-                      }
-
-                      // Filter out temporary messages replaced by real ones
-                      final realLocalIds = lazyState.messages
-                          .where((m) =>
-                              !m.id.startsWith('temp_') && m.localId != null)
-                          .map((m) => m.localId)
-                          .toSet();
-                      final filteredMessages = lazyState.messages.where((m) {
-                        if (m.id.startsWith('temp_') &&
-                            realLocalIds.contains(m.id)) {
-                          return false;
-                        }
-                        return true;
-                      }).toList()
-                        ..sort((a, b) => a.createdAt
-                            .compareTo(b.createdAt)); // حفظ ترتیب صحیح
-
-                      if (filteredMessages.isEmpty && !lazyState.isLoading) {
-                        return const Center(
-                            child: Text(
-                                'پیامی وجود ندارد. اولین پیام را ارسال کنید!'));
-                      }
-
-                      return NotificationListener<ScrollNotification>(
-                        onNotification: (ScrollNotification scrollInfo) {
-                          // With reverse: false, older messages are at the bottom.
-                          // Load more when approaching the bottom (max extent).
-                          if (scrollInfo.metrics.pixels >=
-                              scrollInfo.metrics.maxScrollExtent - 200) {
-                            if (lazyState.hasMore && !lazyState.isLoading) {
-                              ref
-                                  .read(lazyMessagesProvider(
-                                          widget.conversationId)
-                                      .notifier)
-                                  .loadMoreMessages();
-                            }
-                          }
-                          return false;
-                        },
-                        child: Column(
-                          children: [
-                            // نشانگر تایپ کردن
-                            _buildTypingIndicator(),
-                            Expanded(
-                              child: ScrollablePositionedList.builder(
-                                itemScrollController: _itemScrollController,
-                                itemPositionsListener: _itemPositionsListener,
-                                reverse: false,
-                                itemCount: filteredMessages.length +
-                                    (lazyState.isLoading ? 1 : 0),
-                                itemBuilder: (context, index) {
-                                  // Show loading indicator at the end
-                                  if (index == filteredMessages.length) {
-                                    return Padding(
-                                      padding: const EdgeInsets.all(16.0),
-                                      child: Center(
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor:
-                                              AlwaysStoppedAnimation<Color>(
-                                            Theme.of(context)
-                                                .colorScheme
-                                                .primary,
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }
-
-                                  final message = filteredMessages[index];
-                                  final isMe = message.senderId ==
-                                      supabase.auth.currentUser?.id;
-
-                                  // پیام قبلی برای فاصله‌گذاری
-                                  // در ListView عادی، index 0 قدیمی‌ترین پیام است
-                                  // پس پیام قبلی (قدیمی‌تر) در index - 1 قرار دارد
-                                  final previousMessage = index > 0
-                                      ? filteredMessages[index - 1]
-                                      : null;
-
-                                  // تشخیص نیاز به جداکننده تاریخ
-                                  final showDateDivider =
-                                      TimeUtils.shouldShowDateDivider(
-                                    message.createdAt,
-                                    previousMessage?.createdAt,
-                                  );
-
-                                  final messageWidget =
-                                      _buildMessageItem(context, message, isMe)
-                                          .withDeletionAnimation(
-                                    message: message,
-                                    deletingMessageIds: _deletingMessageIds,
-                                  );
-
-                                  return Column(
-                                    children: [
-                                      if (showDateDivider)
-                                        _buildDateDivider(message.createdAt),
-                                      Padding(
-                                        padding: EdgeInsets.only(
-                                          top:
-                                              TimeUtils.calculateMessageSpacing(
-                                            message.createdAt,
-                                            previousMessage?.createdAt,
-                                            message.senderId,
-                                            previousMessage?.senderId,
-                                          ),
-                                        ),
-                                        child: messageWidget,
-                                      ),
-                                    ],
-                                  );
-                                },
-                              ),
-                            )
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                if (_isCurrentUserBlocked || _isOtherUserBlocked)
-                  _buildBlockedBanner(),
-                if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
-                  _buildMessageInput(),
-                if (_showEmojiPicker && !isKeyboardVisible)
-                  SizedBox(
-                    height: 250,
-                    child: EmojiPickerWidget(
-                      onEmojiSelected: _onEmojiSelected,
-                      onBackspacePressed: () {
-                        final text = _messageController.text;
-                        if (text.isNotEmpty) {
-                          _messageController.text =
-                              text.substring(0, text.length - 1);
-                        }
-                      },
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          // دکمه رفتن به پایین - خارج از body برای عدم تأثیر کیبورد
-          if (_showScrollToBottom)
-            Positioned(
-              bottom: 80,
-              right: 16,
-              child: FloatingActionButton(
-                mini: true, // دکمه کوچکتر
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                onPressed: _scrollToBottom,
-                child: const Icon(Icons.arrow_downward, color: Colors.white),
-              ),
-            ),
-        ],
-      ),
+      selectedImage: (_selectedImage != null || (kIsWeb && _selectedImageBytes != null))
+          ? SelectedFile(
+              file: _selectedImage,
+              bytes: kIsWeb ? _selectedImageBytes : null,
+              name: kIsWeb ? _selectedImageName : null,
+              type: 'image',
+            )
+          : null,
+      selectedAudio: (_selectedAudio != null || (kIsWeb && _selectedAudioBytes != null))
+          ? SelectedFile(
+              file: _selectedAudio,
+              bytes: kIsWeb ? _selectedAudioBytes : null,
+              name: _selectedAudioName,
+              type: 'audio',
+            )
+          : null,
     );
   }
 }
@@ -3515,334 +992,23 @@ class BlockedUserBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        border: Border(top: BorderSide(color: Colors.red.shade100)),
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      color: Colors.red.withOpacity(0.8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.block, color: Colors.red[700], size: 20),
+          const Icon(Icons.block, color: Colors.white, size: 20),
           const SizedBox(width: 8),
           Text(
             message,
-            style: TextStyle(
-              color: Colors.red[900],
+            style: const TextStyle(
+              color: Colors.white,
               fontWeight: FontWeight.w500,
             ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
-    );
-  }
-}
-
-class ChatMessagesShimmer extends StatelessWidget {
-  const ChatMessagesShimmer({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Shimmer.fromColors(
-      baseColor: Colors.grey[300]!,
-      highlightColor: Colors.grey[100]!,
-      child: ListView.builder(
-        reverse: false,
-        itemCount: 12,
-        itemBuilder: (_, index) => Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Row(
-            mainAxisAlignment: index % 2 == 0
-                ? MainAxisAlignment.start
-                : MainAxisAlignment.end,
-            children: [
-              Container(
-                width: 200,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class EmojiPickerWidget extends StatelessWidget {
-  final ValueChanged<String> onEmojiSelected;
-  final VoidCallback onBackspacePressed;
-
-  const EmojiPickerWidget({
-    super.key,
-    required this.onEmojiSelected,
-    required this.onBackspacePressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return SizedBox(
-      height: 250,
-      child: EmojiPicker(
-        onEmojiSelected: (category, emoji) => onEmojiSelected(emoji.emoji),
-        onBackspacePressed: onBackspacePressed,
-        config: Config(
-          height: 256,
-          checkPlatformCompatibility: true,
-          emojiViewConfig: EmojiViewConfig(
-            emojiSizeMax: 28 *
-                (foundation.defaultTargetPlatform == TargetPlatform.iOS
-                    ? 1.2
-                    : 1.0),
-            backgroundColor: Colors.grey,
-          ),
-          skinToneConfig: const SkinToneConfig(),
-          categoryViewConfig: CategoryViewConfig(
-            backgroundColor: Colors.indigo,
-            iconColorSelected: Theme.of(context).colorScheme.primary,
-            indicatorColor: Theme.of(context).colorScheme.primary,
-            tabIndicatorAnimDuration: const Duration(milliseconds: 300),
-          ),
-          bottomActionBarConfig: BottomActionBarConfig(
-            backgroundColor: isDark ? Colors.grey[900] : Colors.grey[50],
-            buttonColor: Theme.of(context).colorScheme.primary,
-          ),
-          searchViewConfig: SearchViewConfig(
-            backgroundColor: Colors.indigo,
-            buttonIconColor: Colors.indigo,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class ImageFullscreenViewer extends StatelessWidget {
-  final String imageUrl;
-  final String heroTag;
-  const ImageFullscreenViewer(
-      {super.key, required this.imageUrl, required this.heroTag});
-
-  Future<void> _shareImage(BuildContext context) async {
-    try {
-      if (kIsWeb) {
-        // وب: فقط url رو share کن (دانلود مستقیم ممکن نیست)
-        Share.share(imageUrl);
-      } else {
-        // محدودسازی دانلود به دامنه‌های مجاز
-        final uri = Uri.parse(imageUrl);
-        const allowedHosts = {
-          'storage.389346.ir.cdn.ir',
-          'coffevista.s3.ir-thr-at1.arvanstorage.ir',
-        };
-        if (!allowedHosts.contains(uri.host)) {
-          throw Exception('دانلود از دامنه نامجاز');
-        }
-        final response = await http.get(uri);
-        final bytes = response.bodyBytes;
-        final tmp = await getTemporaryDirectory();
-        final tempPath = '${tmp.path}/shared_image.jpg';
-        final file = File(tempPath);
-        await file.writeAsBytes(bytes);
-        await Share.shareXFiles([XFile(tempPath)]);
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطا در اشتراک‌گذاری: e')),
-      );
-    }
-  }
-
-  Future<void> _downloadImage(BuildContext context, String imageUrl) async {
-    if (kIsWeb) {
-      downloadImageOnWeb(imageUrl);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('دانلود آغاز شد')),
-      );
-      return;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.download_rounded),
-            color: Colors.white,
-            onPressed: () => _downloadImage(context, imageUrl),
-            tooltip: 'دانلود تصویر',
-          ),
-          IconButton(
-            icon: const Icon(Icons.share),
-            color: Colors.white,
-            onPressed: () => _shareImage(context),
-            tooltip: 'اشتراک‌گذاری',
-          ),
-        ],
-      ),
-      body: Center(
-        child: Hero(
-          tag: heroTag,
-          child: PhotoView(
-            imageProvider: NetworkImage(imageUrl),
-            backgroundDecoration: const BoxDecoration(color: Colors.black),
-            minScale: PhotoViewComputedScale.contained,
-            maxScale: PhotoViewComputedScale.covered * 2,
-            heroAttributes: PhotoViewHeroAttributes(tag: heroTag),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// کلاس کمکی برای مدیریت Keyboard Visibility
-class _KeyboardVisibilityObserver extends WidgetsBindingObserver {
-  final VoidCallback onShow;
-  final VoidCallback onHide;
-  bool _isKeyboardVisible = false;
-
-  _KeyboardVisibilityObserver({required this.onShow, required this.onHide});
-
-  @override
-  void didChangeMetrics() {
-    final bottomInset = WidgetsBinding
-        .instance.platformDispatcher.views.first.viewInsets.bottom;
-    final isKeyboardVisible = bottomInset > 0;
-
-    if (_isKeyboardVisible != isKeyboardVisible) {
-      _isKeyboardVisible = isKeyboardVisible;
-      if (isKeyboardVisible) {
-        onShow();
-      } else {
-        onHide();
-      }
-    }
-  }
-}
-
-// کلاس کمکی برای ارسال پیام
-class MessageSender {
-  final WidgetRef ref;
-  final String conversationId;
-  final String message;
-  final File? selectedImage;
-  final Uint8List? selectedImageBytes;
-  final String? selectedImageName;
-  final MessageModel? replyToMessage;
-  final Function(double)? onProgress;
-
-  MessageSender({
-    required this.ref,
-    required this.conversationId,
-    required this.message,
-    this.selectedImage,
-    this.selectedImageBytes,
-    this.selectedImageName,
-    this.replyToMessage,
-    this.onProgress,
-  });
-
-  Future<void> send() async {
-    final chatService = ref.read(chatServiceProvider);
-    final messageCache = UnifiedMessageCacheService();
-
-    String? attachmentUrl;
-    String? attachmentType;
-
-    // آپلود تصویر با مدیریت پیشرفت
-    if (selectedImage != null ||
-        (selectedImageBytes != null && selectedImageName != null)) {
-      attachmentUrl = await _uploadImage();
-      attachmentType = 'image';
-    }
-
-    // ایجاد پیام موقت
-    final tempMessage = await _createTempMessage(attachmentUrl, attachmentType);
-    final userId = supabase.auth.currentUser!.id;
-    await messageCache.cacheMessage(tempMessage, userId);
-
-    // ارسال پیام به سرور
-    try {
-      final isOnline = await chatService.isDeviceOnline();
-      final sentMessage = isOnline
-          ? await chatService.sendMessage(
-              conversationId: conversationId,
-              content: message,
-              attachmentUrl: attachmentUrl,
-              attachmentType: attachmentType,
-              replyToMessageId: replyToMessage?.id,
-              replyToContent: replyToMessage?.content,
-              replyToSenderName: replyToMessage?.senderName,
-            )
-          : await chatService.sendOfflineMessage(
-              conversationId: conversationId,
-              content: message,
-              attachmentUrl: attachmentUrl,
-              attachmentType: attachmentType,
-              replyToMessageId: replyToMessage?.id,
-              replyToContent: replyToMessage?.content,
-              replyToSenderName: replyToMessage?.senderName,
-            );
-
-      // جایگزینی پیام موقت با پیام واقعی
-      await messageCache.replaceTempMessage(
-        tempMessage,
-        sentMessage,
-      );
-    } catch (e) {
-      await messageCache.markMessageAsFailed(conversationId, tempMessage.id);
-      rethrow;
-    }
-  }
-
-  Future<String?> _uploadImage() async {
-    if (kIsWeb && selectedImageBytes != null && selectedImageName != null) {
-      return await ChatImageUploadService.uploadChatImageWeb(
-        selectedImageBytes!,
-        selectedImageName!,
-        conversationId,
-      );
-    } else if (selectedImage != null) {
-      return await ChatImageUploadService.uploadChatImage(
-        selectedImage!,
-        conversationId,
-        onProgress: onProgress,
-      );
-    }
-    return null;
-  }
-
-  Future<MessageModel> _createTempMessage(
-      String? attachmentUrl, String? attachmentType) async {
-    final currentUser = supabase.auth.currentUser!;
-    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
-
-    return MessageModel(
-      id: tempId,
-      conversationId: conversationId,
-      senderId: currentUser.id,
-      content: message,
-      createdAt: DateTime.now(),
-      attachmentUrl: attachmentUrl,
-      attachmentType: attachmentType,
-      isRead: false,
-      isSent: false,
-      senderName: currentUser.userMetadata?['username'] ?? 'من',
-      senderAvatar: currentUser.userMetadata?['avatar_url'],
-      isMe: true,
-      replyToMessageId: replyToMessage?.id,
-      replyToContent: replyToMessage?.content,
-      replyToSenderName: replyToMessage?.senderName,
     );
   }
 }
