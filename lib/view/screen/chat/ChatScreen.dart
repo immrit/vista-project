@@ -8,7 +8,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
-import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 
 import '../../../main.dart';
 import '../../../model/message_model.dart';
@@ -18,7 +17,7 @@ import '../../../services/uploadAudioChatService.dart';
 import '../../../services/uploadImageChatService.dart';
 import '../../../services/PostImageUploadService.dart';
 import '../../../services/wallpaper_cache_service.dart';
-import 'improved_chat_input.dart' as improved_input;
+import 'new_chat_input.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../widgets/message_bubble.dart';
 import '../../widgets/date_divider.dart';
@@ -47,28 +46,20 @@ class ChatScreen extends ConsumerStatefulWidget {
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   // Controllers
-  final TextEditingController _messageController = TextEditingController();
   final ItemScrollController _itemScrollController = ItemScrollController();
   final ItemPositionsListener _itemPositionsListener =
       ItemPositionsListener.create();
-  final FocusNode _messageFocusNode = FocusNode();
 
   // State
   DateTime? _floatingDate;
   Timer? _floatingDateTimer;
   late final ChatProviderParams _providerParams;
-  bool _showEmojiPicker = false;
   MessageModel? _replyToMessage;
-  late StreamSubscription<bool> _keyboardSubscription;
 
   // File handling state
   File? _selectedImage;
   Uint8List? _selectedImageBytes;
   String? _selectedImageName;
-  File? _selectedAudio;
-  Uint8List? _selectedAudioBytes;
-  String? _selectedAudioName;
-  List<double>? _selectedAudioWaveform;
 
   // UI state
   bool _isUploading = false;
@@ -99,17 +90,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
     _itemPositionsListener.itemPositions.addListener(_scrollListener);
     _checkBlockStatus();
-
-    // Listen to keyboard visibility changes
-    _keyboardSubscription =
-        KeyboardVisibilityController().onChange.listen((bool isVisible) {
-      if (isVisible && _showEmojiPicker) {
-        // اگر کیبورد باز شد و ایموجی پیکر باز است، ایموجی پیکر را ببند
-        setState(() {
-          _showEmojiPicker = false;
-        });
-      }
-    });
   }
 
   Future<void> _checkBlockStatus() async {
@@ -193,7 +173,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void _setReplyMessage(MessageModel message) {
     setState(() {
       _replyToMessage = message;
-      _messageFocusNode.requestFocus();
+      // Focus logic is now handled inside NewChatInput
     });
   }
 
@@ -270,21 +250,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void dispose() {
     print(
         '🗑️ Disposing ChatScreen for conversation: ${widget.conversationId}');
-    _messageController.dispose();
     _floatingDateTimer?.cancel();
-    _messageFocusNode.dispose();
-    _keyboardSubscription.cancel();
     super.dispose();
   }
 
   // --- Message Sending Logic ---
-  Future<void> _sendMessage() async {
-    final message = _messageController.text.trim();
-    if (message.isEmpty &&
-        _selectedImage == null &&
-        _selectedImageBytes == null &&
-        _selectedAudio == null &&
-        _selectedAudioBytes == null) {
+  Future<void> _sendMessage(String message) async {
+    if (message.isEmpty && _selectedImage == null && _selectedImageBytes == null) {
       return;
     }
 
@@ -294,14 +266,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     String? attachmentType;
 
     try {
-      if (_selectedAudio != null || _selectedAudioBytes != null) {
-        attachmentType = 'audio';
-        attachmentUrl =
-            await _uploadAudio(_selectedAudio ?? _selectedAudioBytes!);
-      } else if (_selectedImage != null || _selectedImageBytes != null) {
+      if (_selectedImage != null || _selectedImageBytes != null) {
         attachmentType = 'image';
-        attachmentUrl =
-            await _uploadImage(_selectedImage ?? _selectedImageBytes!);
+        attachmentUrl = await _uploadImage(_selectedImage ?? _selectedImageBytes!);
       }
 
       if (attachmentUrl == null && message.isEmpty) {
@@ -316,7 +283,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             replyToMessage: _replyToMessage,
           );
 
-      _messageController.clear();
       _clearAttachments();
       _scrollToBottom();
     } catch (e) {
@@ -330,15 +296,36 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  Future<void> _sendVoiceMessage(File audioFile) async {
+    setState(() => _isSending = true);
+    try {
+      final audioUrl = await _uploadAudio(audioFile);
+      if (audioUrl != null) {
+        await ref.read(newChatProvider(_providerParams).notifier).sendMessage(
+              '', // Voice messages have no text content
+              attachmentUrl: audioUrl,
+              attachmentType: 'audio',
+              replyToMessage: _replyToMessage,
+            );
+        _clearAttachments();
+        _scrollToBottom();
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در ارسال پیام صوتی: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
+    }
+  }
+
   void _clearAttachments() {
     setState(() {
       _selectedImage = null;
       _selectedImageBytes = null;
       _selectedImageName = null;
-      _selectedAudio = null;
-      _selectedAudioBytes = null;
-      _selectedAudioName = null;
-      _selectedAudioWaveform = null;
       _replyToMessage = null;
       _isUploading = false;
       _uploadProgress = 0.0;
@@ -466,9 +453,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
     try {
       String? audioUrl;
-      if (kIsWeb && fileOrBytes is Uint8List && _selectedAudioName != null) {
+      if (kIsWeb && fileOrBytes is Uint8List && _selectedImageName != null) {
         audioUrl = await ChatAudioUploadService.uploadChatAudioWeb(
-            fileOrBytes, _selectedAudioName!, widget.conversationId);
+            fileOrBytes, _selectedImageName!, widget.conversationId);
       } else if (fileOrBytes is File) {
         audioUrl = await ChatAudioUploadService.uploadChatAudio(
             fileOrBytes, widget.conversationId, onProgress: (progress) {
@@ -494,59 +481,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
-    }
-  }
-
-  void _toggleEmojiKeyboard() {
-    if (_showEmojiPicker) {
-      // بستن ایموجی پیکر و بازگشت به کیبورد
-      setState(() => _showEmojiPicker = false);
-      // کمی تاخیر برای انیمیشن
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (mounted) {
-          FocusScope.of(context).requestFocus(_messageFocusNode);
-        }
-      });
-    } else {
-      // نمایش ایموجی پیکر
-      setState(() => _showEmojiPicker = true);
-      // اگر کیبورد باز است، آن را ببند
-      if (_messageFocusNode.hasFocus) {
-        _messageFocusNode.unfocus();
-      }
-    }
-  }
-
-  void _onEmojiSelected(String emoji) {
-    _messageController.text += emoji;
-  }
-
-  void _onAudioRecorded(File? audioFile, Uint8List? audioBytes,
-      String? fileName, List<double>? waveformData) {
-    if (audioFile != null || audioBytes != null) {
-      setState(() {
-        _selectedAudio = audioFile;
-        _selectedAudioBytes = audioBytes;
-        _selectedAudioName = fileName;
-        _selectedAudioWaveform = waveformData;
-      });
-
-      // Auto-send the voice message after recording
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (mounted &&
-            (_selectedAudio != null || _selectedAudioBytes != null)) {
-          _sendMessage();
-
-          // Show success feedback
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('پیام صوتی ارسال شد'),
-              duration: Duration(seconds: 2),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      });
     }
   }
 
@@ -1203,55 +1137,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _buildMessageInput() {
-    return improved_input.ImprovedChatInput(
-      messageController: _messageController,
-      messageFocusNode: _messageFocusNode,
-      toggleEmojiPicker: _toggleEmojiKeyboard,
-      pickImage: _pickImage,
-      pickFile: _pickFile,
-      sendMessage: _sendMessage,
-      onEmojiSelected: _onEmojiSelected,
-      onReplyCancel: () => setState(() => _replyToMessage = null),
-      onAudioRecorded: _onAudioRecorded,
-      onImageCancel: () => setState(() {
-        _selectedImage = null;
-        _selectedImageBytes = null;
-        _selectedImageName = null;
-      }),
-      conversationId: widget.conversationId,
-      onAudioCancel: () => setState(() {
-        _selectedAudio = null;
-        _selectedAudioBytes = null;
-        _selectedAudioName = null;
-      }),
-      showEmojiPicker: _showEmojiPicker,
-      isUploading: _isUploading,
-      isSending: _isSending,
-      uploadProgress: _uploadProgress,
-      replyData: _replyToMessage != null
-          ? improved_input.ReplyData(
-              message: _replyToMessage!.content,
-              user: _replyToMessage!.senderName ?? 'کاربر',
-            )
-          : null,
-      selectedImage:
-          (_selectedImage != null || (kIsWeb && _selectedImageBytes != null))
-              ? improved_input.SelectedFile(
-                  file: _selectedImage,
-                  bytes: kIsWeb ? _selectedImageBytes : null,
-                  name: kIsWeb ? _selectedImageName : null,
-                  type: 'image',
-                )
-              : null,
-      selectedAudio:
-          (_selectedAudio != null || (kIsWeb && _selectedAudioBytes != null))
-              ? improved_input.SelectedFile(
-                  file: _selectedAudio,
-                  bytes: kIsWeb ? _selectedAudioBytes : null,
-                  name: _selectedAudioName,
-                  type: 'audio',
-                )
-              : null,
+    return NewChatInput(
+      onSendMessage: _sendMessage,
+      onSendVoiceMessage: _sendVoiceMessage,
+      onPickImage: _pickImage,
+      onPickFile: _pickFile,
     );
   }
 }

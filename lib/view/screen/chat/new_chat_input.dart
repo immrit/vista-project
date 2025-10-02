@@ -1,0 +1,368 @@
+import 'dart:async';
+import 'dart:io';
+import 'package:audio_waveforms/audio_waveforms.dart';
+import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
+import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
+
+// Callbacks for the parent widget (ChatScreen)
+class NewChatInput extends StatefulWidget {
+  final Function(String) onSendMessage;
+  final Function(File) onSendVoiceMessage;
+  final VoidCallback onPickImage;
+  final VoidCallback onPickFile;
+
+  const NewChatInput({
+    super.key,
+    required this.onSendMessage,
+    required this.onSendVoiceMessage,
+    required this.onPickImage,
+    required this.onPickFile,
+  });
+
+  @override
+  State<NewChatInput> createState() => _NewChatInputState();
+}
+
+class _NewChatInputState extends State<NewChatInput> with TickerProviderStateMixin {
+  // --- Controllers ---
+  final TextEditingController _textController = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+  late final RecorderController _recorderController;
+  late final AnimationController _micIconAnimationController;
+  late final AnimationController _slideCancelAnimationController;
+
+  // --- State ---
+  bool _hasText = false;
+  bool _isRecording = false;
+  bool _isLocked = false;
+  bool _showEmojiPicker = false;
+  int _recordingDuration = 0;
+  Offset? _longPressStartPosition;
+  Timer? _recordingTimer;
+  late StreamSubscription<bool> _keyboardSubscription;
+
+  // --- Animations ---
+  late Animation<double> _micIconScaleAnimation;
+  late Animation<Offset> _slideCancelAnimation;
+
+  // --- Constants ---
+  static const double _lockThreshold = 80.0;
+  static const double _cancelThreshold = 100.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _recorderController = RecorderController();
+    _textController.addListener(_onTextChanged);
+
+    _micIconAnimationController = AnimationController(vsync: this, duration: const Duration(milliseconds: 200));
+    _micIconScaleAnimation = Tween<double>(begin: 1.0, end: 1.4).animate(CurvedAnimation(parent: _micIconAnimationController, curve: Curves.easeOut));
+
+    _slideCancelAnimationController = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
+    _slideCancelAnimation = Tween<Offset>(begin: const Offset(0.5, 0), end: Offset.zero).animate(CurvedAnimation(parent: _slideCancelAnimationController, curve: Curves.easeInOut));
+
+    _keyboardSubscription = KeyboardVisibilityController().onChange.listen((bool isVisible) {
+      if (isVisible && _showEmojiPicker) {
+        setState(() => _showEmojiPicker = false);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    _focusNode.dispose();
+    _recorderController.dispose();
+    _micIconAnimationController.dispose();
+    _slideCancelAnimationController.dispose();
+    _recordingTimer?.cancel();
+    _keyboardSubscription.cancel();
+    super.dispose();
+  }
+
+  void _onTextChanged() {
+    if (!mounted) return;
+    final newHasText = _textController.text.trim().isNotEmpty;
+    if (newHasText != _hasText) {
+      setState(() => _hasText = newHasText);
+    }
+  }
+
+  void _toggleEmojiPicker() {
+    if (_showEmojiPicker) {
+      _focusNode.requestFocus();
+    } else {
+      _focusNode.unfocus();
+    }
+    setState(() => _showEmojiPicker = !_showEmojiPicker);
+  }
+
+  void _onEmojiSelected(String emoji) {
+    _textController.text += emoji;
+  }
+
+  Future<void> _startRecording(Offset position) async {
+    final hasPermission = await _recorderController.checkPermission();
+    if (!hasPermission) return;
+
+    final tempDir = await getTemporaryDirectory();
+    final path = '${tempDir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    await _recorderController.record(path: path);
+
+    _micIconAnimationController.forward();
+    _slideCancelAnimationController.forward();
+
+    setState(() {
+      _isRecording = true;
+      _isLocked = false;
+      _longPressStartPosition = position;
+      _recordingDuration = 0;
+    });
+
+    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _recordingDuration++);
+    });
+  }
+
+  Future<void> _stopRecordingAndSend() async {
+    final path = await _recorderController.stop();
+    _resetRecordingState();
+    if (path != null) {
+      widget.onSendVoiceMessage(File(path));
+    }
+  }
+
+  Future<void> _cancelRecording() async {
+    await _recorderController.stop();
+    _resetRecordingState();
+  }
+
+  void _resetRecordingState(){
+    _micIconAnimationController.reverse();
+    _slideCancelAnimationController.reverse();
+    _recordingTimer?.cancel();
+    if (mounted) {
+      setState(() {
+        _isRecording = false;
+        _isLocked = false;
+        _longPressStartPosition = null;
+        _recordingDuration = 0;
+      });
+    }
+  }
+
+  void _lockRecording() {
+    _micIconAnimationController.reverse();
+    setState(() => _isLocked = true);
+  }
+
+  void _handleSendMessage() {
+    if (_textController.text.trim().isNotEmpty) {
+      widget.onSendMessage(_textController.text.trim());
+      _textController.clear();
+    }
+  }
+
+  String _formatDuration(int seconds) {
+    final minutes = (seconds ~/ 60).toString().padLeft(2, '0');
+    final remainingSeconds = (seconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$remainingSeconds';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      elevation: 5,
+      color: Theme.of(context).cardColor,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: _isRecording ? _buildRecordingUI() : _buildStandardInput(),
+            ),
+          ),
+          if (_showEmojiPicker) _buildEmojiPicker(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStandardInput() {
+    return Row(
+      key: const ValueKey('standard_input'),
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        IconButton(
+          icon: Icon(_showEmojiPicker ? Icons.keyboard_rounded : Icons.emoji_emotions_outlined, color: Theme.of(context).iconTheme.color?.withOpacity(0.7)),
+          onPressed: _toggleEmojiPicker,
+        ),
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[800] : Colors.grey[200],
+              borderRadius: BorderRadius.circular(24.0),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _textController,
+                    focusNode: _focusNode,
+                    minLines: 1,
+                    maxLines: 5,
+                    keyboardType: TextInputType.multiline,
+                    textInputAction: TextInputAction.newline,
+                    decoration: const InputDecoration(
+                      hintText: 'Message',
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      isCollapsed: true,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4.0),
+                  child: IconButton(
+                    icon: Icon(Icons.attach_file_rounded, color: Theme.of(context).iconTheme.color?.withOpacity(0.7)),
+                    onPressed: widget.onPickFile,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          transitionBuilder: (child, animation) => ScaleTransition(scale: animation, child: child),
+          child: _hasText ? _buildSendButton() : _buildMicButton(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRecordingUI() {
+    return Row(
+      key: ValueKey(_isLocked ? 'locked_view' : 'recording_view'),
+      children: [
+        if (_isLocked)
+          IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red, size: 28), onPressed: _cancelRecording)
+        else
+          const Icon(Icons.mic, color: Colors.red, size: 28),
+        const SizedBox(width: 8),
+        Text(_formatDuration(_recordingDuration), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+        const SizedBox(width: 16),
+        Expanded(
+          child: _isLocked
+              ? AudioWaveforms(
+                  size: Size(MediaQuery.of(context).size.width, 40),
+                  recorderController: _recorderController,
+                  waveStyle: WaveStyle(waveColor: Theme.of(context).colorScheme.onSurface, showDurationLabel: false),
+                )
+              : FadeTransition(
+                  opacity: _slideCancelAnimationController,
+                  child: SlideTransition(
+                    position: _slideCancelAnimation,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        Icon(Icons.arrow_back_ios, size: 16, color: Colors.grey),
+                        Text("Slide to cancel", style: TextStyle(color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                ),
+        ),
+        if (_isLocked) ...[
+          const SizedBox(width: 8),
+          InkWell(
+            onTap: _stopRecordingAndSend,
+            borderRadius: BorderRadius.circular(24),
+            child: CircleAvatar(
+              radius: 24,
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              child: const Icon(Icons.send, color: Colors.white),
+            ),
+          ),
+        ]
+      ],
+    );
+  }
+
+  Widget _buildSendButton() {
+    return InkWell(
+      key: const ValueKey('send_button'),
+      onTap: _handleSendMessage,
+      borderRadius: BorderRadius.circular(24),
+      child: CircleAvatar(
+        radius: 24,
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        child: const Icon(Icons.send, color: Colors.white),
+      ),
+    );
+  }
+
+  Widget _buildMicButton() {
+    return GestureDetector(
+      onLongPressStart: (details) => _startRecording(details.globalPosition),
+      onLongPressEnd: (details) {
+        if (_isLocked) return;
+        final dragOffsetX = details.globalPosition.dx - (_longPressStartPosition?.dx ?? 0);
+        if (dragOffsetX < -_cancelThreshold) {
+          _cancelRecording();
+        } else {
+          _stopRecordingAndSend();
+        }
+      },
+      onLongPressMoveUpdate: (details) {
+        if (_isLocked) return;
+        final dragOffsetY = details.globalPosition.dy - (_longPressStartPosition?.dy ?? 0);
+        if (dragOffsetY < -_lockThreshold) {
+          _lockRecording();
+        }
+      },
+      child: ScaleTransition(
+        scale: _micIconScaleAnimation,
+        child: CircleAvatar(
+          key: const ValueKey('mic_button'),
+          radius: 24,
+          backgroundColor: Theme.of(context).colorScheme.primary,
+          child: const Icon(Icons.mic, color: Colors.white),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmojiPicker() {
+    return SizedBox(
+      height: 250,
+      child: EmojiPicker(
+        onEmojiSelected: (category, emoji) => _onEmojiSelected(emoji.emoji),
+        config: Config(
+          height: 256,
+          checkPlatformCompatibility: true,
+          emojiViewConfig: EmojiViewConfig(
+            columns: 8,
+            emojiSizeMax: 28,
+            backgroundColor: Theme.of(context).cardColor,
+          ),
+          categoryViewConfig: CategoryViewConfig(
+            backgroundColor: Theme.of(context).cardColor,
+            indicatorColor: Theme.of(context).colorScheme.primary,
+            iconColor: Colors.grey,
+            iconColorSelected: Theme.of(context).colorScheme.primary,
+          ),
+          bottomActionBarConfig: BottomActionBarConfig(
+            enabled: false,
+          ),
+        ),
+      ),
+    );
+  }
+}
