@@ -6,8 +6,6 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:video_compress/video_compress.dart';
 import 'package:video_trimmer/video_trimmer.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../model/UserModel.dart';
-import '../screen/Settings/vistaStore/store.dart';
 
 class CustomVideoTrimmer extends ConsumerStatefulWidget {
   // تغییر به ConsumerStatefulWidget

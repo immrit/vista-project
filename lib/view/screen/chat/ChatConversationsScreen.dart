@@ -10,7 +10,6 @@ import '../../../model/channel_model.dart';
 import '../../../model/conversation_model.dart';
 import '../../../provider/channel_provider.dart';
 import '../../../provider/chat_provider.dart';
-import '../../../provider/advanced_chat_providers.dart';
 import '../../util/const.dart';
 import 'ArchivedConversationsScreen.dart';
 // import 'ChatSettingsScreen.dart'; // اضافه کردن ایمپورت صفحه جدید

@@ -99,9 +99,13 @@ class TypingService {
 
   /// پاکسازی تایمرها و streamها
   void dispose() {
-    _typingTimers.values.forEach((timer) => timer.cancel());
+    for (var timer in _typingTimers.values) {
+      timer.cancel();
+    }
     _typingTimers.clear();
-    _typingStreams.values.forEach((controller) => controller.close());
+    for (var controller in _typingStreams.values) {
+      controller.close();
+    }
     _typingStreams.clear();
     _typingUsers.clear();
   }
@@ -139,4 +143,3 @@ class TypingIndicator {
     };
   }
 }
-

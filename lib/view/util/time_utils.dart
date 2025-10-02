@@ -108,12 +108,12 @@ class TimeUtils {
     final jNow = Jalali.fromDateTime(tehranNow);
 
     // امروز
-    if (_isSameDay(tehranTime, tehranNow)) {
+    if (isSameDay(tehranTime, tehranNow)) {
       return 'امروز';
     }
 
     // دیروز
-    if (_isSameDay(tehranTime, tehranNow.subtract(const Duration(days: 1)))) {
+    if (isSameDay(tehranTime, tehranNow.subtract(const Duration(days: 1)))) {
       return 'دیروز';
     }
 
@@ -142,12 +142,12 @@ class TimeUtils {
     final jNow = Jalali.fromDateTime(localNow);
 
     // امروز - فقط ساعت
-    if (_isSameDay(localTime, localNow)) {
+    if (isSameDay(localTime, localNow)) {
       return formatMessageTime(messageTime);
     }
 
     // دیروز
-    if (_isSameDay(localTime, localNow.subtract(const Duration(days: 1)))) {
+    if (isSameDay(localTime, localNow.subtract(const Duration(days: 1)))) {
       return 'دیروز';
     }
 
@@ -157,13 +157,13 @@ class TimeUtils {
       return _getPersianWeekDay(jDate.weekDay);
     }
 
-    // سال جاری
+    // سال جاری - فقط روز و ماه
     if (jDate.year == jNow.year) {
-      return '${jDate.day}/${jDate.month}';
+      return '${jDate.day} ${_getPersianMonth(jDate.month)}';
     }
 
-    // سال‌های دیگر
-    return '${jDate.day}/${jDate.month}/${jDate.year}';
+    // سال‌های دیگر - روز، ماه و سال
+    return '${jDate.day} ${_getPersianMonth(jDate.month)} ${jDate.year}';
   }
 
   // تشخیص نیاز به نمایش جداکننده تاریخ - استفاده از زمان محلی گوشی
@@ -174,7 +174,7 @@ class TimeUtils {
     final currentLocal = currentMessage.toLocal();
     final previousLocal = previousMessage.toLocal();
 
-    return !_isSameDay(currentLocal, previousLocal);
+    return !isSameDay(currentLocal, previousLocal);
   }
 
   // محاسبه فاصله زمانی بین دو پیام (برای فاصله‌گذاری) - استفاده از زمان محلی گوشی
@@ -216,7 +216,7 @@ class TimeUtils {
   }
 
   // بررسی هم‌روز بودن
-  static bool _isSameDay(DateTime a, DateTime b) {
+  static bool isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 

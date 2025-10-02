@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../model/publicPostModel.dart';
+import '../../model/ProfileModel.dart';
 import '../../provider/chat_provider.dart';
 import '../../services/user_friendly_error_handler.dart';
 
@@ -623,6 +624,25 @@ class _UserSelectionBottomSheetState
     // آواتار کاربر
     if (post.avatarUrl.isNotEmpty) {
       buffer.writeln('🖼️ آواتار: ${post.avatarUrl}');
+    }
+
+    // اطلاعات تایید کاربر
+    if (post.verificationType != VerificationType.none) {
+      String verificationText = '';
+      switch (post.verificationType) {
+        case VerificationType.blueTick:
+          verificationText = 'blueTick';
+          break;
+        case VerificationType.goldTick:
+          verificationText = 'goldTick';
+          break;
+        case VerificationType.blackTick:
+          verificationText = 'blackTick';
+          break;
+        default:
+          verificationText = 'none';
+      }
+      buffer.writeln('✅ تایید: $verificationText');
     }
 
     buffer.writeln();

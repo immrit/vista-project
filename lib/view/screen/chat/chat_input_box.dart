@@ -597,14 +597,9 @@ class _ChatInputBoxState extends State<ChatInputBox>
                       ),
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      widget.replyData!.message,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurface.withValues(alpha: 0.7),
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    // بررسی اینکه آیا پیام اصلی یک پست اشتراکی بوده یا نه
+                    _buildReplyContentPreview(
+                        widget.replyData!.message, theme, colorScheme),
                   ],
                 ),
               ),
@@ -621,6 +616,257 @@ class _ChatInputBoxState extends State<ChatInputBox>
         ),
       ),
     );
+  }
+
+  Widget _buildReplyContentPreview(
+      String message, ThemeData theme, ColorScheme colorScheme) {
+    // بررسی اینکه آیا پیام اصلی یک پست اشتراکی بوده یا نه
+    final isReplyToSharedPost = message.contains('📝 پست از') &&
+        message.contains('🔗 مشاهده در Vista:');
+
+    if (isReplyToSharedPost) {
+      // برای پست‌های اشتراکی، نمایش کارت کوچک
+      return _buildSharedPostReplyPreview(message, theme, colorScheme);
+    } else {
+      // برای پیام‌های عادی
+      return Text(
+        message,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: colorScheme.onSurface.withValues(alpha: 0.7),
+        ),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+  }
+
+  Widget _buildSharedPostReplyPreview(
+      String message, ThemeData theme, ColorScheme colorScheme) {
+    // استخراج اطلاعات پست اشتراکی
+    final username = _extractUsernameFromContent(message);
+    final postContent = _extractPostContentFromReply(message);
+    final avatarUrl = _extractAvatarUrlFromContent(message);
+    final verificationType = _extractVerificationTypeFromContent(message);
+    final hasImage = message.contains('🖼️ تصویر ضمیمه شده');
+    final hasVideo = message.contains('🎥 ویدیو ضمیمه شده');
+
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: colorScheme.surface.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: colorScheme.outline.withValues(alpha: 0.2),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // هدر پست (نام کاربری و نشان تایید)
+          Row(
+            children: [
+              // آواتار کوچک
+              Container(
+                width: 16,
+                height: 16,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: colorScheme.outline.withValues(alpha: 0.2),
+                    width: 1,
+                  ),
+                ),
+                child: CircleAvatar(
+                  backgroundColor: Colors.grey[300],
+                  backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty
+                      ? NetworkImage(avatarUrl)
+                      : null,
+                  child: avatarUrl == null || avatarUrl.isEmpty
+                      ? Text(
+                          username.isNotEmpty ? username[0].toUpperCase() : 'U',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 8,
+                            color: Colors.white,
+                          ),
+                        )
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 4),
+              // نام کاربری
+              Expanded(
+                child: Row(
+                  children: [
+                    Text(
+                      username,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                    // نشان تایید
+                    if (verificationType != 'none')
+                      _buildVerificationBadge(verificationType, 8),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          // محتوای پست
+          if (postContent.isNotEmpty)
+            Text(
+              postContent,
+              style: TextStyle(
+                fontSize: 11,
+                color: colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          const SizedBox(height: 2),
+          // نوع رسانه
+          if (hasImage || hasVideo)
+            Row(
+              children: [
+                Icon(
+                  hasVideo ? Icons.play_circle_outline : Icons.image,
+                  size: 10,
+                  color: colorScheme.onSurface.withValues(alpha: 0.5),
+                ),
+                const SizedBox(width: 2),
+                Text(
+                  hasVideo ? 'ویدیو' : 'تصویر',
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: colorScheme.onSurface.withValues(alpha: 0.5),
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _extractUsernameFromContent(String content) {
+    final lines = content.split('\n');
+    for (final line in lines) {
+      if (line.contains('📝 پست از')) {
+        final match = RegExp(r'📝 پست از (.+)').firstMatch(line);
+        if (match != null) {
+          return match.group(1) ?? 'کاربر';
+        }
+      }
+    }
+    return 'کاربر';
+  }
+
+  String _extractPostContentFromReply(String content) {
+    final lines = content.split('\n');
+    final contentLines = <String>[];
+
+    // پیدا کردن خط آواتار
+    int avatarLineIndex = -1;
+    for (int i = 0; i < lines.length; i++) {
+      if (lines[i].contains('🖼️ آواتار:')) {
+        avatarLineIndex = i;
+        break;
+      }
+    }
+
+    // پیدا کردن محتوای پست بعد از آواتار
+    for (int i = avatarLineIndex + 1; i < lines.length; i++) {
+      final line = lines[i];
+
+      // فیلتر کردن تمام لینک‌ها و metadata
+      if (line.startsWith('🖼️') ||
+          line.startsWith('🎥') ||
+          line.startsWith('🏷️') ||
+          line.startsWith('🔗') ||
+          _containsUrl(line) ||
+          _containsVistaLink(line)) {
+        break;
+      }
+
+      // اگر خط خالی نیست و metadata نیست، احتمالاً محتوای پست است
+      if (line.trim().isNotEmpty) {
+        contentLines.add(line);
+      }
+    }
+
+    return contentLines.join('\n').trim();
+  }
+
+  String? _extractAvatarUrlFromContent(String content) {
+    final lines = content.split('\n');
+    for (final line in lines) {
+      if (line.contains('🖼️ آواتار:')) {
+        final match = RegExp(r'🖼️ آواتار: (.+)').firstMatch(line);
+        if (match != null) {
+          return match.group(1);
+        }
+      }
+    }
+    return null;
+  }
+
+  String _extractVerificationTypeFromContent(String content) {
+    final lines = content.split('\n');
+    for (final line in lines) {
+      if (line.contains('✅ تایید:')) {
+        final match = RegExp(r'✅ تایید: (.+)').firstMatch(line);
+        if (match != null) {
+          return match.group(1) ?? 'none';
+        }
+      }
+    }
+    return 'none';
+  }
+
+  Widget _buildVerificationBadge(String verificationType, double size) {
+    IconData icon = Icons.verified;
+    Color color = Colors.blue;
+
+    switch (verificationType) {
+      case 'blueTick':
+        color = Colors.blue;
+        break;
+      case 'goldTick':
+        color = Colors.amber;
+        break;
+      case 'blackTick':
+        return Container(
+          padding: const EdgeInsets.all(0.5),
+          decoration: BoxDecoration(
+            color: Colors.white60,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.verified, color: Colors.black, size: size),
+        );
+      default:
+        color = Colors.blue;
+    }
+
+    return Icon(icon, color: color, size: size);
+  }
+
+  bool _containsUrl(String text) {
+    final urlRegex = RegExp(
+      r'(?:(?:https?:\/\/)?(?:www\.)?)?[a-zA-Z0-9][-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&\/=]*)',
+      caseSensitive: false,
+    );
+    return urlRegex.hasMatch(text);
+  }
+
+  bool _containsVistaLink(String text) {
+    return text.contains('vista') ||
+        text.contains('post/') ||
+        text.contains('مشاهده در Vista');
   }
 
   Widget _buildFilePreview(bool isDark, ColorScheme colorScheme) {

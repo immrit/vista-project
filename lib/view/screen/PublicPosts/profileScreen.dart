@@ -1125,8 +1125,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final Color headerTextColor = isDark ? Colors.white : Colors.black;
 
-    if (profile.bio == null || profile.bio!.trim().isEmpty)
+    if (profile.bio == null || profile.bio!.trim().isEmpty) {
       return const SizedBox.shrink();
+    }
 
     // حداکثر ۵ خط با حداکثر ۱۰۰ کاراکتر در هر خط (تقریباً)
     const int maxCharsPerLine = 100;

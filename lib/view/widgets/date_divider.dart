@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shamsi_date/shamsi_date.dart';
 
 class DateDivider extends StatelessWidget {
   final DateTime date;
@@ -35,6 +36,7 @@ class FloatingDateChip extends StatelessWidget {
       ),
       child: Text(
         _formatDate(date),
+        textAlign: TextAlign.center,
         style: TextStyle(
           color: Theme.of(context).textTheme.bodyLarge?.color,
           fontWeight: FontWeight.w600,
@@ -45,14 +47,48 @@ class FloatingDateChip extends StatelessWidget {
 
   String _formatDate(DateTime date) {
     final now = DateTime.now();
-    if (now.year == date.year && now.month == date.month && now.day == date.day) {
-      return "Today";
+    final jalaliDate = Jalali.fromDateTime(date);
+    final jalaliNow = Jalali.fromDateTime(now);
+
+    // بررسی امروز
+    if (jalaliNow.year == jalaliDate.year &&
+        jalaliNow.month == jalaliDate.month &&
+        jalaliNow.day == jalaliDate.day) {
+      return "امروز";
     }
+
+    // بررسی دیروز
     final yesterday = now.subtract(const Duration(days: 1));
-    if (yesterday.year == date.year && yesterday.month == date.month && yesterday.day == date.day) {
-      return "Yesterday";
+    final jalaliYesterday = Jalali.fromDateTime(yesterday);
+    if (jalaliYesterday.year == jalaliDate.year &&
+        jalaliYesterday.month == jalaliDate.month &&
+        jalaliYesterday.day == jalaliDate.day) {
+      return "دیروز";
     }
-    const monthNames = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    return "${date.day} ${monthNames[date.month]} ${date.year}";
+
+    // نام ماه‌های شمسی
+    const monthNames = [
+      "",
+      "فروردین",
+      "اردیبهشت",
+      "خرداد",
+      "تیر",
+      "مرداد",
+      "شهریور",
+      "مهر",
+      "آبان",
+      "آذر",
+      "دی",
+      "بهمن",
+      "اسفند"
+    ];
+
+    // اگر سال متفاوت است، سال را نمایش بده
+    if (jalaliNow.year != jalaliDate.year) {
+      return "${jalaliDate.day} ${monthNames[jalaliDate.month]} ${jalaliDate.year}";
+    }
+
+    // اگر سال یکسان است، فقط روز و ماه را نمایش بده
+    return "${jalaliDate.day} ${monthNames[jalaliDate.month]}";
   }
 }

@@ -22,7 +22,6 @@ import 'services/cache_cleanup_service.dart';
 import 'services/memory_leak_detector.dart';
 
 import 'services/ChatService.dart';
-import 'services/cache_manager.dart';
 import 'services/deep_link_service.dart' as new_deep_link;
 import 'services/PushNotificationService.dart';
 import 'view/screen/chat/ChatScreen.dart';

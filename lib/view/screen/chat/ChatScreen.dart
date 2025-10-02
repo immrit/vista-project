@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
+import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 
 import '../../../main.dart';
 import '../../../model/message_model.dart';
@@ -15,12 +17,16 @@ import '../../../provider/chat_provider.dart' as chat_provider;
 import '../../../services/audio_recording_service.dart';
 import '../../../services/uploadAudioChatService.dart';
 import '../../../services/uploadImageChatService.dart';
-import '../../widgets/SharedPostWidget.dart';
-import 'chat_input_box.dart';
+import '../../../services/PostImageUploadService.dart';
+import '../../../services/wallpaper_cache_service.dart';
+import 'improved_chat_input.dart' as improved_input;
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../widgets/message_bubble.dart';
 import '../../widgets/date_divider.dart';
+import '../../widgets/connection_status_widget.dart';
 import '../PublicPosts/profileScreen.dart';
+import 'ChatDetailsScreen.dart';
+import '../../../view/util/time_utils.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String conversationId;
@@ -54,6 +60,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   late final ChatProviderParams _providerParams;
   bool _showEmojiPicker = false;
   MessageModel? _replyToMessage;
+  late StreamSubscription<bool> _keyboardSubscription;
 
   // File handling state
   File? _selectedImage;
@@ -93,6 +100,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
     _itemPositionsListener.itemPositions.addListener(_scrollListener);
     _checkBlockStatus();
+
+    // Listen to keyboard visibility changes
+    _keyboardSubscription =
+        KeyboardVisibilityController().onChange.listen((bool isVisible) {
+      if (isVisible && _showEmojiPicker) {
+        // اگر کیبورد باز شد و ایموجی پیکر باز است، ایموجی پیکر را ببند
+        setState(() {
+          _showEmojiPicker = false;
+        });
+      }
+    });
   }
 
   Future<void> _checkBlockStatus() async {
@@ -170,12 +188,83 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   bool _isSameDay(DateTime d1, DateTime d2) {
-    return d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
+    return TimeUtils.isSameDay(d1, d2);
   }
 
-  bool _isSharedPost(String content) {
-    return content.contains('📝 پست از') &&
-        content.contains('🔗 مشاهده در Vista:');
+  void _setReplyMessage(MessageModel message) {
+    setState(() {
+      _replyToMessage = message;
+      _messageFocusNode.requestFocus();
+    });
+  }
+
+  void _retryFailedMessage(MessageModel message) {
+    // Haptic feedback
+    HapticFeedback.lightImpact();
+
+    // فراخوانی retry از provider
+    ref
+        .read(chat_provider.messageNotifierProvider.notifier)
+        .retrySendMessage(message);
+
+    // نمایش پیام موفقیت
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('در حال تلاش مجدد برای ارسال پیام...'),
+        duration: const Duration(seconds: 2),
+        backgroundColor: Colors.blue.shade600,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
+    );
+  }
+
+  void _retryAllFailedMessages() {
+    // Haptic feedback
+    HapticFeedback.mediumImpact();
+
+    // دریافت تمام پیام‌های ناموفق
+    final messages = ref.read(
+        chat_provider.conversationMessagesProvider(widget.conversationId));
+    final failedMessages =
+        messages.where((msg) => !msg.isSent && msg.isMe).toList();
+
+    if (failedMessages.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('پیام ناموفقی برای ارسال مجدد وجود ندارد'),
+          backgroundColor: Colors.green.shade600,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+      return;
+    }
+
+    // تلاش مجدد برای تمام پیام‌های ناموفق
+    for (final message in failedMessages) {
+      ref
+          .read(chat_provider.messageNotifierProvider.notifier)
+          .retrySendMessage(message);
+    }
+
+    // نمایش پیام موفقیت
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+            'در حال تلاش مجدد برای ${failedMessages.length} پیام ناموفق...'),
+        duration: const Duration(seconds: 3),
+        backgroundColor: Colors.blue.shade600,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
+    );
   }
 
   @override
@@ -185,6 +274,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _messageController.dispose();
     _floatingDateTimer?.cancel();
     _messageFocusNode.dispose();
+    _keyboardSubscription.cancel();
     super.dispose();
   }
 
@@ -286,6 +376,147 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  Future<void> _pickFile() async {
+    try {
+      // استفاده از file_picker برای انتخاب فایل‌های عمومی
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        allowMultiple: false,
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final file = File(result.files.single.path!);
+        final fileSize = await file.length();
+
+        // بررسی محدودیت 10 مگابایت
+        if (fileSize > 10 * 1024 * 1024) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('حجم فایل باید کمتر از ۱۰ مگابایت باشد')),
+          );
+          return;
+        }
+
+        // آپلود فایل به آروان
+        setState(() => _isUploading = true);
+        try {
+          final fileUrl = await PostImageUploadService.uploadMusicFile(file);
+          // ارسال پیام با فایل
+          await ref.read(newChatProvider(_providerParams).notifier).sendMessage(
+                '📎 فایل: ${result.files.single.name}',
+                attachmentUrl: fileUrl,
+                attachmentType: 'document',
+              );
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('خطا در آپلود فایل: $e')),
+          );
+        } finally {
+          if (mounted) setState(() => _isUploading = false);
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در انتخاب فایل: $e')),
+      );
+    }
+  }
+
+  Future<void> _pickVideo() async {
+    try {
+      final pickedFile = await ImagePicker().pickVideo(
+        source: ImageSource.gallery,
+      );
+
+      if (pickedFile != null) {
+        final file = File(pickedFile.path);
+        final fileSize = await file.length();
+
+        // بررسی محدودیت 10 مگابایت
+        if (fileSize > 10 * 1024 * 1024) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('حجم فایل باید کمتر از ۱۰ مگابایت باشد')),
+          );
+          return;
+        }
+
+        // آپلود ویدیو به آروان
+        setState(() => _isUploading = true);
+        try {
+          final videoUrl = await PostImageUploadService.uploadVideoFile(file);
+          if (videoUrl != null) {
+            // ارسال پیام با ویدیو
+            await ref
+                .read(newChatProvider(_providerParams).notifier)
+                .sendMessage(
+                  '🎥 ویدیو',
+                  attachmentUrl: videoUrl,
+                  attachmentType: 'video',
+                );
+          }
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('خطا در آپلود ویدیو: $e')),
+          );
+        } finally {
+          if (mounted) setState(() => _isUploading = false);
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در انتخاب ویدیو: $e')),
+      );
+    }
+  }
+
+  Future<void> _pickDocument() async {
+    try {
+      // برای انتخاب فایل‌های عمومی از image_picker استفاده می‌کنیم
+      // اما باید نوع فایل را مشخص کنیم
+      final pickedFile = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 70,
+      );
+
+      if (pickedFile != null) {
+        final file = File(pickedFile.path);
+        final fileSize = await file.length();
+
+        // بررسی محدودیت 10 مگابایت
+        if (fileSize > 10 * 1024 * 1024) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('حجم فایل باید کمتر از ۱۰ مگابایت باشد')),
+          );
+          return;
+        }
+
+        // آپلود فایل به آروان
+        setState(() => _isUploading = true);
+        try {
+          final fileUrl = await PostImageUploadService.uploadMusicFile(file);
+          // ارسال پیام با فایل
+          await ref.read(newChatProvider(_providerParams).notifier).sendMessage(
+                '📎 فایل: ${file.path.split('/').last}',
+                attachmentUrl: fileUrl,
+                attachmentType: 'document',
+              );
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('خطا در آپلود فایل: $e')),
+          );
+        } finally {
+          if (mounted) setState(() => _isUploading = false);
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در انتخاب فایل: $e')),
+      );
+    }
+  }
+
   Future<String?> _uploadImage(dynamic fileOrBytes) async {
     setState(() {
       _isUploading = true;
@@ -360,16 +591,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   void _toggleEmojiKeyboard() {
     if (_showEmojiPicker) {
+      // بستن ایموجی پیکر و بازگشت به کیبورد
       setState(() => _showEmojiPicker = false);
-      FocusScope.of(context).requestFocus(_messageFocusNode);
+      // کمی تاخیر برای انیمیشن
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          FocusScope.of(context).requestFocus(_messageFocusNode);
+        }
+      });
     } else {
+      // نمایش ایموجی پیکر
+      setState(() => _showEmojiPicker = true);
+      // اگر کیبورد باز است، آن را ببند
       if (_messageFocusNode.hasFocus) {
         _messageFocusNode.unfocus();
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (mounted) setState(() => _showEmojiPicker = true);
-        });
-      } else {
-        setState(() => _showEmojiPicker = true);
       }
     }
   }
@@ -378,20 +613,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _messageController.text += emoji;
   }
 
-  void _setReplyMessage(MessageModel message) {
-    setState(() => _replyToMessage = message);
-    _messageFocusNode.requestFocus();
-  }
-
   // --- Recording Logic ---
   void _startRecording() async {
     setState(() => _isRecordingAudio = true);
-    await AudioRecordingService.startRecording();
+    await TelegramVoiceService.startRecording();
   }
 
   void _stopRecording() async {
     setState(() => _isRecordingAudio = false);
-    final file = await AudioRecordingService.stopRecording();
+    final file = await TelegramVoiceService.stopRecording();
     if (file != null) {
       _onAudioRecorded(file, null, file.path.split('/').last);
     }
@@ -648,7 +878,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: DropdownButtonFormField<String>(
-                  value: selectedReason,
+                  initialValue: selectedReason,
                   dropdownColor:
                       isLightMode ? Colors.white : const Color(0xFF2A2A2A),
                   decoration: InputDecoration(
@@ -763,200 +993,272 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final chatState = ref.watch(newChatProvider(_providerParams));
     final messages = chatState.messages;
 
-    return Scaffold(
-      appBar: AppBar(
-        elevation: 1,
-        titleSpacing: 0,
-        title: Row(
-          children: [
-            CircleAvatar(
-              backgroundImage: widget.otherUserAvatar != null
-                  ? CachedNetworkImageProvider(widget.otherUserAvatar!)
-                  : null,
-              child: widget.otherUserAvatar == null
-                  ? const Icon(Icons.person)
-                  : null,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    widget.otherUserName,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+    return Stack(
+      children: [
+        // Chat Wallpaper Background
+        Positioned.fill(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Local asset as immediate fallback
+              Image.asset(
+                WallpaperCacheService.getLocalWallpaperAsset(
+                    Theme.of(context).brightness == Brightness.dark),
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+              ),
+              // Network wallpaper with fallback
+              FutureBuilder<String>(
+                future: Future.value(WallpaperCacheService.getWallpaperUrl(
+                    Theme.of(context).brightness == Brightness.dark)),
+                builder: (context, snapshot) {
+                  if (snapshot.hasData) {
+                    return CachedNetworkImage(
+                      imageUrl: snapshot.data!,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => const SizedBox.shrink(),
+                      errorWidget: (context, url, error) =>
+                          const SizedBox.shrink(),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+            ],
+          ),
+        ),
+        // Main chat interface
+        Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: AppBar(
+            elevation: 1,
+            backgroundColor: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF1A1A1A).withValues(alpha: 0.9)
+                : Colors.white.withValues(alpha: 0.9),
+            titleSpacing: 0,
+            title: InkWell(
+              onTap: () async {
+                final messageIdToJump = await Navigator.push<String?>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ChatDetailsScreen(
+                      conversationId: widget.conversationId,
+                      otherUserName: widget.otherUserName,
+                      otherUserAvatar: widget.otherUserAvatar,
+                      otherUserId: widget.otherUserId,
                     ),
-                    overflow: TextOverflow.ellipsis,
                   ),
-                  Consumer(
-                    builder: (context, ref, child) {
-                      final isOnlineAsync = ref.watch(chat_provider
-                          .userOnlineStatusStreamProvider(widget.otherUserId));
+                );
 
-                      return isOnlineAsync.when(
-                        data: (isOnline) {
-                          return Text(
-                            isOnline ? 'آنلاین' : 'آفلاین',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: isOnline ? Colors.green : Colors.grey,
-                            ),
-                          );
-                        },
-                        loading: () => const Text('در حال بارگذاری...',
-                            style: TextStyle(fontSize: 12)),
-                        error: (_, __) => const Text('آفلاین',
-                            style: TextStyle(fontSize: 12, color: Colors.grey)),
-                      );
-                    },
+                if (messageIdToJump != null && mounted) {
+                  // TODO: Implement jump to message functionality
+                  print('Jump to message: $messageIdToJump');
+                }
+              },
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    backgroundImage: widget.otherUserAvatar != null
+                        ? CachedNetworkImageProvider(widget.otherUserAvatar!)
+                        : null,
+                    child: widget.otherUserAvatar == null
+                        ? const Icon(Icons.person)
+                        : null,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          widget.otherUserName,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Consumer(
+                          builder: (context, ref, child) {
+                            final isOnlineAsync = ref.watch(
+                                chat_provider.userOnlineStatusStreamProvider(
+                                    widget.otherUserId));
+
+                            return isOnlineAsync.when(
+                              data: (isOnline) {
+                                return Text(
+                                  isOnline ? 'آنلاین' : 'آفلاین',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color:
+                                        isOnline ? Colors.green : Colors.grey,
+                                  ),
+                                );
+                              },
+                              loading: () => const Text('در حال بارگذاری...',
+                                  style: TextStyle(fontSize: 12)),
+                              error: (_, __) => const Text('آفلاین',
+                                  style: TextStyle(
+                                      fontSize: 12, color: Colors.grey)),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-          ],
-        ),
-        actions: [
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            tooltip: 'گزینه‌های بیشتر',
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            onSelected: (value) {
-              switch (value) {
-                case 'block':
-                  _showBlockUserDialog(context);
-                  break;
-                case 'report':
-                  _showReportUserDialog(context);
-                  break;
-                case 'profile':
-                  Navigator.of(context).push(MaterialPageRoute(
-                      builder: (context) => ProfileScreen(
-                          userId: widget.otherUserId,
-                          username: widget.otherUserName)));
-                  break;
-              }
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'profile',
-                child: Row(
-                  children: [
-                    Icon(Icons.person_outline,
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white70
-                            : Colors.black87),
-                    const SizedBox(width: 12),
-                    const Text('مشاهده پروفایل'),
-                  ],
+            actions: [
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert),
+                tooltip: 'گزینه‌های بیشتر',
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
                 ),
-              ),
-              PopupMenuItem(
-                value: 'block',
-                child: Row(
-                  children: [
-                    Icon(_isOtherUserBlocked ? Icons.lock_open : Icons.block,
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white70
-                            : Colors.black87),
-                    const SizedBox(width: 12),
-                    Text(_isOtherUserBlocked ? 'رفع مسدودیت' : 'مسدود کردن'),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'report',
-                child: Row(
-                  children: [
-                    Icon(Icons.report_problem_outlined,
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white70
-                            : Colors.black87),
-                    const SizedBox(width: 12),
-                    const Text('گزارش کاربر'),
-                  ],
-                ),
+                onSelected: (value) {
+                  switch (value) {
+                    case 'block':
+                      _showBlockUserDialog(context);
+                      break;
+                    case 'report':
+                      _showReportUserDialog(context);
+                      break;
+                    case 'profile':
+                      Navigator.of(context).push(MaterialPageRoute(
+                          builder: (context) => ProfileScreen(
+                              userId: widget.otherUserId,
+                              username: widget.otherUserName)));
+                      break;
+                  }
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'profile',
+                    child: Row(
+                      children: [
+                        Icon(Icons.person_outline,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white70
+                                    : Colors.black87),
+                        const SizedBox(width: 12),
+                        const Text('مشاهده پروفایل'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'block',
+                    child: Row(
+                      children: [
+                        Icon(
+                            _isOtherUserBlocked ? Icons.lock_open : Icons.block,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white70
+                                    : Colors.black87),
+                        const SizedBox(width: 12),
+                        Text(
+                            _isOtherUserBlocked ? 'رفع مسدودیت' : 'مسدود کردن'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'report',
+                    child: Row(
+                      children: [
+                        Icon(Icons.report_problem_outlined,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white70
+                                    : Colors.black87),
+                        const SizedBox(width: 12),
+                        const Text('گزارش کاربر'),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: Stack(
-              alignment: Alignment.topCenter,
-              children: [
-                chatState.isLoading && messages.isEmpty
-                    ? const Center(child: CircularProgressIndicator())
-                    : messages.isEmpty && !chatState.isLoading
-                        ? const Center(child: Text('پیامی یافت نشد'))
-                        : AnimationLimiter(
-                            child: ScrollablePositionedList.builder(
-                              itemScrollController: _itemScrollController,
-                              itemPositionsListener: _itemPositionsListener,
-                              reverse: true,
-                              itemCount: messages.length,
-                              itemBuilder: (context, index) {
-                                final message = messages[index];
-                                bool showDateDivider = false;
-                                if (index < messages.length - 1) {
-                                  final prevMessage = messages[index + 1];
-                                  if (!_isSameDay(message.createdAt,
-                                      prevMessage.createdAt)) {
-                                    showDateDivider = true;
-                                  }
-                                } else {
-                                  showDateDivider = true;
-                                }
+          body: Column(
+            children: [
+              Expanded(
+                child: Stack(
+                  alignment: Alignment.topCenter,
+                  children: [
+                    chatState.isLoading && messages.isEmpty
+                        ? const Center(child: CircularProgressIndicator())
+                        : messages.isEmpty && !chatState.isLoading
+                            ? const Center(child: Text('پیامی یافت نشد'))
+                            : AnimationLimiter(
+                                child: ScrollablePositionedList.builder(
+                                  itemScrollController: _itemScrollController,
+                                  itemPositionsListener: _itemPositionsListener,
+                                  reverse: true,
+                                  itemCount: messages.length,
+                                  itemBuilder: (context, index) {
+                                    final message = messages[index];
+                                    bool showDateDivider = false;
+                                    if (index < messages.length - 1) {
+                                      final prevMessage = messages[index + 1];
+                                      if (TimeUtils.shouldShowDateDivider(
+                                          message.createdAt,
+                                          prevMessage.createdAt)) {
+                                        showDateDivider = true;
+                                      }
+                                    } else {
+                                      showDateDivider = true;
+                                    }
 
-                                return AnimationConfiguration.staggeredList(
-                                  position: index,
-                                  duration: const Duration(milliseconds: 375),
-                                  child: SlideAnimation(
-                                    verticalOffset: 50.0,
-                                    child: FadeInAnimation(
-                                      child: Column(
-                                        children: [
-                                          if (showDateDivider)
-                                            DateDivider(
-                                                date: message.createdAt),
-                                          _isSharedPost(message.content)
-                                              ? SharedPostWidget(
-                                                  messageContent:
-                                                      message.content,
-                                                  attachmentUrl:
-                                                      message.attachmentUrl,
-                                                  attachmentType:
-                                                      message.attachmentType,
-                                                )
-                                              : MessageBubble(
-                                                  message: message,
-                                                  onLongPress: (msg) =>
-                                                      _showMessageOptions(
-                                                          context, msg),
-                                                ),
-                                        ],
+                                    return AnimationConfiguration.staggeredList(
+                                      position: index,
+                                      duration:
+                                          const Duration(milliseconds: 375),
+                                      child: SlideAnimation(
+                                        verticalOffset: 50.0,
+                                        child: FadeInAnimation(
+                                          child: Column(
+                                            children: [
+                                              if (showDateDivider)
+                                                DateDivider(
+                                                    date: message.createdAt),
+                                              MessageBubble(
+                                                message: message,
+                                                onLongPress: (msg) =>
+                                                    _showMessageOptions(
+                                                        context, msg),
+                                                onReply: (msg) =>
+                                                    _setReplyMessage(msg),
+                                                onRetry: (msg) =>
+                                                    _retryFailedMessage(msg),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                _buildFloatingDateChip(),
-              ],
-            ),
+                                    );
+                                  },
+                                ),
+                              ),
+                    _buildFloatingDateChip(),
+                  ],
+                ),
+              ),
+              _buildBlockedBanner(),
+              ConnectionStatusWidget(
+                onRetry: () {
+                  // تلاش مجدد برای ارسال پیام‌های ناموفق
+                  _retryAllFailedMessages();
+                },
+              ),
+              if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
+                _buildMessageInput(),
+            ],
           ),
-          _buildBlockedBanner(),
-          if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
-            _buildMessageInput(),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -989,11 +1291,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _buildMessageInput() {
-    return ChatInputBox(
+    return improved_input.ImprovedChatInput(
       messageController: _messageController,
       messageFocusNode: _messageFocusNode,
       toggleEmojiPicker: _toggleEmojiKeyboard,
       pickImage: _pickImage,
+      pickFile: _pickFile,
+      onVideoSelected: (url) => _pickVideo(),
+      onDocumentSelected: (url) => _pickDocument(),
       sendMessage: _sendMessage,
       onEmojiSelected: _onEmojiSelected,
       onReplyCancel: () => setState(() => _replyToMessage = null),
@@ -1005,6 +1310,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _selectedImageBytes = null;
         _selectedImageName = null;
       }),
+      conversationId: widget.conversationId,
       onAudioCancel: () => setState(() {
         _selectedAudio = null;
         _selectedAudioBytes = null;
@@ -1016,14 +1322,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       isRecordingAudio: _isRecordingAudio,
       uploadProgress: _uploadProgress,
       replyData: _replyToMessage != null
-          ? ReplyData(
+          ? improved_input.ReplyData(
               message: _replyToMessage!.content,
               user: _replyToMessage!.senderName ?? 'کاربر',
             )
           : null,
       selectedImage:
           (_selectedImage != null || (kIsWeb && _selectedImageBytes != null))
-              ? SelectedFile(
+              ? improved_input.SelectedFile(
                   file: _selectedImage,
                   bytes: kIsWeb ? _selectedImageBytes : null,
                   name: kIsWeb ? _selectedImageName : null,
@@ -1032,7 +1338,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               : null,
       selectedAudio:
           (_selectedAudio != null || (kIsWeb && _selectedAudioBytes != null))
-              ? SelectedFile(
+              ? improved_input.SelectedFile(
                   file: _selectedAudio,
                   bytes: kIsWeb ? _selectedAudioBytes : null,
                   name: _selectedAudioName,
@@ -1052,7 +1358,7 @@ class BlockedUserBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-      color: Colors.red.withOpacity(0.8),
+      color: Colors.red.withValues(alpha: 0.8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
