@@ -217,7 +217,7 @@ class _MessageBubbleState extends State<MessageBubble>
       return AudioPlayerWidget(
         audioUrl: url,
         isMe: widget.message.isMe,
-        waveformData: widget.message.waveformData,
+        waveformData: null, // Waveform data is not stored in messages anymore
       );
     }
     return const SizedBox.shrink();

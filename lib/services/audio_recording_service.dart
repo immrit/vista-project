@@ -1,16 +1,16 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
-import 'package:record/record.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:flutter/services.dart';
+import 'package:audio_waveforms/audio_waveforms.dart';
 
 /// سرویس ضبط صدا حرفه‌ای مثل تلگرام
 class TelegramVoiceService {
   // Recorder instance
-  static final AudioRecorder _audioRecorder = AudioRecorder();
+  static final RecorderController _recorderController = RecorderController();
 
   // Recording state
   static bool _isRecording = false;
@@ -81,15 +81,7 @@ class TelegramVoiceService {
       _currentRecordingPath = path.join(tempDir.path, 'voice_$timestamp.m4a');
 
       // تنظیمات ضبط ساده و سازگار
-      await _audioRecorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.aacLc,
-          bitRate: 128000,
-          sampleRate: 44100,
-          numChannels: 1,
-        ),
-        path: _currentRecordingPath!,
-      );
+      await _recorderController.record(path: _currentRecordingPath!);
 
       // شروع تایمر مدت زمان
       _recordingDuration = 0;
@@ -134,7 +126,7 @@ class TelegramVoiceService {
     try {
       if (!_isRecording) return null;
 
-      final recordedPath = await _audioRecorder.stop();
+      final recordedPath = await _recorderController.stop();
       final wasValid = _recordingDuration >= MIN_SEND_DURATION;
 
       _cleanup();
@@ -168,7 +160,7 @@ class TelegramVoiceService {
     try {
       if (!_isRecording) return;
 
-      await _audioRecorder.stop();
+      await _recorderController.stop();
       _isCanceling = true;
       _onCancelingStateChanged?.call(true);
 

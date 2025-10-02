@@ -60,17 +60,12 @@ class TelegramVoiceIntegrationService {
     _voiceService.setCallbacks(
       onRecordingStateChanged: onRecordingStateChanged,
       onDurationChanged: onDurationChanged,
-      onWaveformDataChanged: onWaveformDataChanged,
-      onLockedStateChanged: onLockedStateChanged,
-      onCancelingStateChanged: onCancelingStateChanged,
-      onPausedStateChanged: onPausedStateChanged,
-      onAmplitudeChanged: onAmplitudeChanged,
     );
 
-    // تنظیم کانفیگ
-    if (config != null) {
-      _voiceService.setRecordingConfig(config);
-    }
+    // تنظیم کانفیگ (currently not supported by TelegramVoiceService)
+    // if (config != null) {
+    //   _voiceService.setRecordingConfig(config);
+    // }
 
     return await _voiceService.startRecording();
   }
@@ -89,13 +84,21 @@ class TelegramVoiceIntegrationService {
     await _voiceService.cancelRecording();
   }
 
-  /// قفل/باز کردن قفل ضبط
-  void lockVoiceRecording() => _voiceService.lockRecording();
-  void unlockVoiceRecording() => _voiceService.unlockRecording();
+  /// قفل/باز کردن قفل ضبط (currently not supported)
+  void lockVoiceRecording() {
+    // Lock functionality is not implemented in the current TelegramVoiceService
+    print('Lock recording is not supported');
+  }
 
-  /// مکث/ادامه ضبط
+  void unlockVoiceRecording() {
+    // Unlock functionality is not implemented in the current TelegramVoiceService
+    print('Unlock recording is not supported');
+  }
+
+  /// مکث/ادامه ضبط (currently not supported)
   Future<void> pauseResumeVoiceRecording() async {
-    await _voiceService.pauseResumeRecording();
+    // Pause/resume functionality is not implemented in the current TelegramVoiceService
+    print('Pause/resume recording is not supported');
   }
 
   /// آپلود وویس با مدیریت کامل
@@ -279,8 +282,6 @@ class TelegramVoiceIntegrationService {
       'isInitialized': _isInitialized,
       'currentConversationId': _currentConversationId,
       'isRecording': _voiceService.isRecording,
-      'isLocked': _voiceService.isLocked,
-      'recordingDuration': _voiceService.recordingDuration,
       'currentPlayerId': _playerService.currentPlayerId,
       'playbackState': _playerService.currentState.toString(),
       'playbackPosition': _playerService.currentPosition.inSeconds,

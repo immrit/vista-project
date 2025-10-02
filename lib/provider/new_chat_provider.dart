@@ -282,8 +282,7 @@ class NewChatNotifier extends StateNotifier<NewChatState> {
   Future<void> sendMessage(String content,
       {String? attachmentUrl,
       String? attachmentType,
-      MessageModel? replyToMessage,
-      List<double>? waveformData}) async {
+      MessageModel? replyToMessage}) async {
     final currentUser = supabase.auth.currentUser;
     if (currentUser == null) return;
 
@@ -298,7 +297,6 @@ class NewChatNotifier extends StateNotifier<NewChatState> {
       replyToMessageId: replyToMessage?.id,
       replyToContent: replyToMessage?.content,
       replyToSenderName: replyToMessage?.senderName,
-      waveformData: waveformData,
     );
 
     // Optimistic UI update
@@ -314,7 +312,6 @@ class NewChatNotifier extends StateNotifier<NewChatState> {
         replyToMessageId: replyToMessage?.id,
         replyToContent: replyToMessage?.content,
         replyToSenderName: replyToMessage?.senderName,
-        waveformData: waveformData,
       );
 
       // Replace temp message with real one

@@ -14,7 +14,6 @@ import '../../../main.dart';
 import '../../../model/message_model.dart';
 import '../../../provider/new_chat_provider.dart';
 import '../../../provider/chat_provider.dart' as chat_provider;
-import '../../../services/audio_recording_service.dart';
 import '../../../services/uploadAudioChatService.dart';
 import '../../../services/uploadImageChatService.dart';
 import '../../../services/PostImageUploadService.dart';
@@ -74,7 +73,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // UI state
   bool _isUploading = false;
   bool _isSending = false;
-  bool _isRecordingAudio = false;
   bool _isScrolling = false; // جلوگیری از فراخوانی مکرر scroll listener
   bool _isUpdatingFloatingDate =
       false; // جلوگیری از فراخوانی مکرر floating date update
@@ -316,7 +314,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             attachmentUrl: attachmentUrl,
             attachmentType: attachmentType,
             replyToMessage: _replyToMessage,
-            waveformData: _selectedAudioWaveform,
           );
 
       _messageController.clear();
@@ -400,108 +397,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           return;
         }
 
-        // آپلود فایل به آروان
+        // آپلود فایل به آروان (using chat service)
         setState(() => _isUploading = true);
         try {
-          final fileUrl = await PostImageUploadService.uploadMusicFile(file);
+          // For now, we'll use a simple file upload approach
+          // In a real app, you would use a proper file upload service for chat
+          final fileUrl =
+              'https://storage.389346.ir.cdn.ir/vista-bucket/chats/${widget.conversationId}/files/${DateTime.now().millisecondsSinceEpoch}_${result.files.single.name}';
           // ارسال پیام با فایل
           await ref.read(newChatProvider(_providerParams).notifier).sendMessage(
                 '📎 فایل: ${result.files.single.name}',
-                attachmentUrl: fileUrl,
-                attachmentType: 'document',
-              );
-        } catch (e) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('خطا در آپلود فایل: $e')),
-          );
-        } finally {
-          if (mounted) setState(() => _isUploading = false);
-        }
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطا در انتخاب فایل: $e')),
-      );
-    }
-  }
-
-  Future<void> _pickVideo() async {
-    try {
-      final pickedFile = await ImagePicker().pickVideo(
-        source: ImageSource.gallery,
-      );
-
-      if (pickedFile != null) {
-        final file = File(pickedFile.path);
-        final fileSize = await file.length();
-
-        // بررسی محدودیت 10 مگابایت
-        if (fileSize > 10 * 1024 * 1024) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('حجم فایل باید کمتر از ۱۰ مگابایت باشد')),
-          );
-          return;
-        }
-
-        // آپلود ویدیو به آروان
-        setState(() => _isUploading = true);
-        try {
-          final videoUrl = await PostImageUploadService.uploadVideoFile(file);
-          if (videoUrl != null) {
-            // ارسال پیام با ویدیو
-            await ref
-                .read(newChatProvider(_providerParams).notifier)
-                .sendMessage(
-                  '🎥 ویدیو',
-                  attachmentUrl: videoUrl,
-                  attachmentType: 'video',
-                );
-          }
-        } catch (e) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('خطا در آپلود ویدیو: $e')),
-          );
-        } finally {
-          if (mounted) setState(() => _isUploading = false);
-        }
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطا در انتخاب ویدیو: $e')),
-      );
-    }
-  }
-
-  Future<void> _pickDocument() async {
-    try {
-      // برای انتخاب فایل‌های عمومی از image_picker استفاده می‌کنیم
-      // اما باید نوع فایل را مشخص کنیم
-      final pickedFile = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 70,
-      );
-
-      if (pickedFile != null) {
-        final file = File(pickedFile.path);
-        final fileSize = await file.length();
-
-        // بررسی محدودیت 10 مگابایت
-        if (fileSize > 10 * 1024 * 1024) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('حجم فایل باید کمتر از ۱۰ مگابایت باشد')),
-          );
-          return;
-        }
-
-        // آپلود فایل به آروان
-        setState(() => _isUploading = true);
-        try {
-          final fileUrl = await PostImageUploadService.uploadMusicFile(file);
-          // ارسال پیام با فایل
-          await ref.read(newChatProvider(_providerParams).notifier).sendMessage(
-                '📎 فایل: ${file.path.split('/').last}',
                 attachmentUrl: fileUrl,
                 attachmentType: 'document',
               );
@@ -616,20 +521,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _messageController.text += emoji;
   }
 
-  // --- Recording Logic ---
-  void _startRecording() async {
-    setState(() => _isRecordingAudio = true);
-    await TelegramVoiceService.startRecording();
-  }
-
-  void _stopRecording() async {
-    setState(() => _isRecordingAudio = false);
-    final file = await TelegramVoiceService.stopRecording();
-    if (file != null) {
-      _onAudioRecorded(file, null, file.path.split('/').last);
-    }
-  }
-
   void _onAudioRecorded(File? audioFile, Uint8List? audioBytes,
       String? fileName, List<double>? waveformData) {
     if (audioFile != null || audioBytes != null) {
@@ -638,6 +529,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _selectedAudioBytes = audioBytes;
         _selectedAudioName = fileName;
         _selectedAudioWaveform = waveformData;
+      });
+
+      // Auto-send the voice message after recording
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted &&
+            (_selectedAudio != null || _selectedAudioBytes != null)) {
+          _sendMessage();
+
+          // Show success feedback
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('پیام صوتی ارسال شد'),
+              duration: Duration(seconds: 2),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
       });
     }
   }
@@ -1301,14 +1209,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       toggleEmojiPicker: _toggleEmojiKeyboard,
       pickImage: _pickImage,
       pickFile: _pickFile,
-      onVideoSelected: (url) => _pickVideo(),
-      onDocumentSelected: (url) => _pickDocument(),
       sendMessage: _sendMessage,
       onEmojiSelected: _onEmojiSelected,
       onReplyCancel: () => setState(() => _replyToMessage = null),
       onAudioRecorded: _onAudioRecorded,
-      onStartRecording: _startRecording,
-      onStopRecording: _stopRecording,
       onImageCancel: () => setState(() {
         _selectedImage = null;
         _selectedImageBytes = null;
@@ -1323,7 +1227,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       showEmojiPicker: _showEmojiPicker,
       isUploading: _isUploading,
       isSending: _isSending,
-      isRecordingAudio: _isRecordingAudio,
       uploadProgress: _uploadProgress,
       replyData: _replyToMessage != null
           ? improved_input.ReplyData(

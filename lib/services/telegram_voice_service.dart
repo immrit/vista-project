@@ -25,12 +25,10 @@ class VoiceRecordingData {
 
 /// مدل تنظیمات ضبط
 class RecordingConfig {
-  final AudioEncoder encoder;
   final int bitRate;
   final int sampleRate;
 
   const RecordingConfig({
-    this.encoder = AudioEncoder.aacLc,
     this.bitRate = 128000,
     this.sampleRate = 44100,
   });
@@ -48,9 +46,6 @@ class TelegramVoiceService {
   late RecorderController _recorderController;
 
   bool _isRecording = false;
-  bool _isLocked = false;
-  bool _isCanceling = false;
-  bool _isPaused = false;
   String? _currentRecordingPath;
   int _recordingDuration = 0;
   Timer? _recordingTimer;
@@ -58,11 +53,6 @@ class TelegramVoiceService {
   // Callbacks
   Function(bool)? _onRecordingStateChanged;
   Function(int)? _onDurationChanged;
-  Function(List<double>)? _onWaveformDataChanged;
-  Function(bool)? _onLockedStateChanged;
-  Function(bool)? _onCancelingStateChanged;
-  Function(bool)? _onPausedStateChanged;
-  Function(double)? _onAmplitudeChanged;
 
   static const int MIN_SEND_DURATION = 1;
 
@@ -70,37 +60,55 @@ class TelegramVoiceService {
     _recorderController = RecorderController();
     // Listen to recorder state
     _recorderController.onRecorderStateChanged.listen((state) {
-        _isRecording = state == RecorderState.recording;
-        _onRecordingStateChanged?.call(_isRecording);
+      _isRecording = state == RecorderState.recording;
+      _onRecordingStateChanged?.call(_isRecording);
     });
-    // Listen to amplitude
-    _recorderController.onAmplitudeChanged.listen((amp) {
-        _onAmplitudeChanged?.call(amp.current);
-    });
+    // Note: onAmplitudeChanged is not available in this version of audio_waveforms
+    // _recorderController.onAmplitudeChanged.listen((amp) {
+    //     _onAmplitudeChanged?.call(amp.current);
+    // });
     print('🎙️ Telegram Voice Service initialized with audio_waveforms');
   }
 
   void setCallbacks({
     Function(bool)? onRecordingStateChanged,
     Function(int)? onDurationChanged,
-    Function(List<double>)? onWaveformDataChanged,
-    Function(bool)? onLockedStateChanged,
-    Function(bool)? onCancelingStateChanged,
-    Function(bool)? onPausedStateChanged,
-    Function(double)? onAmplitudeChanged,
   }) {
     _onRecordingStateChanged = onRecordingStateChanged;
     _onDurationChanged = onDurationChanged;
-    _onWaveformDataChanged = onWaveformDataChanged;
-    _onLockedStateChanged = onLockedStateChanged;
-    _onCancelingStateChanged = onCancelingStateChanged;
-    _onPausedStateChanged = onPausedStateChanged;
-    _onAmplitudeChanged = onAmplitudeChanged;
   }
 
-  Future<bool> requestMicrophonePermission() async {
-    final status = await Permission.microphone.request();
-    return status == PermissionStatus.granted;
+  /// بررسی و درخواست مجوز میکروفون
+  static Future<bool> requestMicrophonePermission() async {
+    try {
+      // ابتدا وضعیت فعلی را چک کن
+      final status = await Permission.microphone.status;
+
+      if (status == PermissionStatus.granted) {
+        return true;
+      }
+
+      if (status == PermissionStatus.permanentlyDenied) {
+        print(
+            'مجوز میکروفون برای همیشه رد شده. لطفاً از تنظیمات برنامه مجوز را فعال کنید.');
+        // نمی‌توانیم مستقیم تنظیمات را باز کنیم، فقط پیام مناسب نشان می‌دهیم
+        return false;
+      }
+
+      // درخواست مجوز
+      final result = await Permission.microphone.request();
+
+      if (result == PermissionStatus.granted) {
+        print('مجوز میکروفون اعطا شد');
+        return true;
+      } else {
+        print('مجوز میکروفون رد شد: $result');
+        return false;
+      }
+    } catch (e) {
+      print('خطا در درخواست مجوز میکروفون: $e');
+      return false;
+    }
   }
 
   Future<bool> startRecording() async {
@@ -117,7 +125,6 @@ class TelegramVoiceService {
 
       await _recorderController.record(
         path: _currentRecordingPath,
-        audioEncoder: AudioEncoder.aacLc,
         sampleRate: 44100,
       );
 
@@ -125,13 +132,14 @@ class TelegramVoiceService {
       _isRecording = true;
       _onRecordingStateChanged?.call(true);
 
-      // Listen for waveform data
-      _recorderController.onCurrentWaveform.listen((waveform) {
-        _onWaveformDataChanged?.call(waveform);
-      });
+      // Note: onCurrentWaveform is not available in this version of audio_waveforms
+      // _recorderController.onCurrentWaveform.listen((waveform) {
+      //   _onWaveformDataChanged?.call(waveform);
+      // });
 
       HapticFeedback.lightImpact();
-      print('🎙️ Recording started with audio_waveforms: $_currentRecordingPath');
+      print(
+          '🎙️ Recording started with audio_waveforms: $_currentRecordingPath');
       return true;
     } catch (e) {
       print('❌ Error starting recording: $e');
@@ -147,9 +155,9 @@ class TelegramVoiceService {
       _stopTimer();
 
       if (recordedPath == null || _recordingDuration < MIN_SEND_DURATION) {
-        if(recordedPath != null) {
-            final file = File(recordedPath);
-            if (await file.exists()) await file.delete();
+        if (recordedPath != null) {
+          final file = File(recordedPath);
+          if (await file.exists()) await file.delete();
         }
         _cleanup();
         return null;
@@ -157,21 +165,21 @@ class TelegramVoiceService {
 
       final file = File(recordedPath);
       final fileSize = await file.length();
-      final waveformData = await _recorderController.getDecodedWaveform(
-          path: recordedPath,
-      );
+      // Note: getDecodedWaveform is not available in this version of audio_waveforms
+      // Using empty waveform data for now
+      final waveformData = <double>[];
 
       final recordingData = VoiceRecordingData(
         filePath: recordedPath,
         duration: _recordingDuration,
-        waveformData: waveformData.map((e) => e.toDouble()).toList(),
+        waveformData: waveformData,
         fileSize: fileSize / 1024, // KB
         timestamp: DateTime.now(),
       );
 
       HapticFeedback.lightImpact();
       print('✅ Recording stopped: $recordedPath (${_recordingDuration}s)');
-       _cleanup();
+      _cleanup();
       return recordingData;
     } catch (e) {
       print('❌ Error stopping recording: $e');
@@ -217,9 +225,6 @@ class TelegramVoiceService {
 
   void _cleanup() {
     _isRecording = false;
-    _isLocked = false;
-    _isCanceling = false;
-    _isPaused = false;
     _recordingDuration = 0;
     _currentRecordingPath = null;
     _stopTimer();

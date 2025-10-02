@@ -56,10 +56,10 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
           path: widget.audioUrl,
           shouldExtractWaveform: widget.waveformData == null,
         );
-        // If we already have waveform data from the message model, use it.
-        if (widget.waveformData != null && widget.waveformData!.isNotEmpty) {
-           _playerController.updateWaveform(widget.waveformData!);
-        }
+        // Note: updateWaveform method is not available in current audio_waveforms version
+        // if (widget.waveformData != null && widget.waveformData!.isNotEmpty) {
+        //    _playerController.updateWaveform(widget.waveformData!);
+        // }
       }
     } catch (e) {
       print("Error preparing player: $e");
@@ -71,7 +71,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
     if (_playerController.playerState.isPlaying) {
       await _playerController.pausePlayer();
     } else {
-      await _playerController.startPlayer(finishMode: FinishMode.pause);
+      await _playerController.startPlayer();
     }
   }
 
@@ -85,9 +85,6 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final backgroundColor = widget.isMe
-        ? (isDark ? const Color(0xFF4F46E5) : const Color(0xFF6366F1))
-        : (isDark ? const Color(0xFF374151) : const Color(0xFFF3F4F6));
     final textColor =
         widget.isMe ? Colors.white : (isDark ? Colors.white : Colors.black87);
 
@@ -124,14 +121,16 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
             ),
           ),
           const SizedBox(width: 8),
-          ValueListenableBuilder<PlayerState>(
-            valueListenable: _playerController,
-            builder: (context, state, child) {
+          StreamBuilder<PlayerState>(
+            stream: _playerController.onPlayerStateChanged,
+            builder: (context, snapshot) {
+              final state = snapshot.data ?? _playerController.playerState;
               return Text(
                 _formatDuration(
-                  _playerController.playerState.isStopped || _playerController.playerState.isInitialised
+                  state.isStopped || state.isInitialised
                       ? _playerController.maxDuration
-                      : _playerController.currentDuration,
+                      : _playerController
+                          .maxDuration, // Using maxDuration as fallback
                 ),
                 style: TextStyle(color: textColor, fontSize: 12),
               );

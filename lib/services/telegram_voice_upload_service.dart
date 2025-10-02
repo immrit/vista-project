@@ -122,17 +122,17 @@ class TelegramVoiceUploadService {
       onStatusChanged?.call('فشرده‌سازی فایل...');
       onProgress?.call(0.1);
 
-      // فشرده‌سازی فایل (اختیاری)
+      // فشرده‌سازی فایل (اختیاری) - currently not implemented
       File? processedFile = file;
-      if (_config.enableCompression) {
-        final compressedFile = await TelegramVoiceService.compressAudioFile(
-          file,
-          quality: _config.compressionQuality,
-        );
-        if (compressedFile != null) {
-          processedFile = compressedFile;
-        }
-      }
+      // if (_config.enableCompression) {
+      //   final compressedFile = await TelegramVoiceService.compressAudioFile(
+      //     file,
+      //     quality: _config.compressionQuality,
+      //   );
+      //   if (compressedFile != null) {
+      //     processedFile = compressedFile;
+      //   }
+      // }
 
       onStatusChanged?.call('آماده‌سازی برای آپلود...');
       onProgress?.call(0.2);

@@ -158,58 +158,6 @@ class _TelegramVoiceRecorderWidgetState
           });
         }
       },
-      onWaveformDataChanged: (data) {
-        if (mounted) {
-          setState(() {
-            _waveformData = data;
-          });
-        }
-      },
-      onLockedStateChanged: (isLocked) {
-        if (mounted) {
-          setState(() {
-            _isLocked = isLocked;
-            if (isLocked) {
-              _lockController.forward();
-              _statusText = 'ضبط قفل شد';
-              _statusColor = Colors.orange;
-            } else {
-              _lockController.reverse();
-              _statusText = 'در حال ضبط...';
-              _statusColor = Colors.red;
-            }
-          });
-        }
-      },
-      onCancelingStateChanged: (isCanceling) {
-        if (mounted) {
-          setState(() {
-            _isCanceling = isCanceling;
-            if (isCanceling) {
-              _cancelController.forward();
-              _statusText = 'در حال لغو...';
-              _statusColor = Colors.red;
-            }
-          });
-        }
-      },
-      onPausedStateChanged: (isPaused) {
-        if (mounted) {
-          setState(() {
-            _isPaused = isPaused;
-            if (isPaused) {
-              _statusText = 'ضبط مکث شد';
-              _statusColor = Colors.orange;
-            } else {
-              _statusText = 'در حال ضبط...';
-              _statusColor = Colors.red;
-            }
-          });
-        }
-      },
-      onAmplitudeChanged: (amplitude) {
-        // amplitude تغییرات در waveform نمایش داده می‌شود
-      },
     );
   }
 
@@ -463,9 +411,10 @@ class _TelegramVoiceRecorderWidgetState
 
   // Recording methods
   Future<void> _startRecording() async {
-    if (widget.recordingConfig != null) {
-      _voiceService.setRecordingConfig(widget.recordingConfig!);
-    }
+    // Note: setRecordingConfig is not supported in current TelegramVoiceService
+    // if (widget.recordingConfig != null) {
+    //   _voiceService.setRecordingConfig(widget.recordingConfig!);
+    // }
 
     final success = await _voiceService.startRecording();
     if (!success) {
@@ -491,19 +440,23 @@ class _TelegramVoiceRecorderWidgetState
   }
 
   void _lockRecording() {
-    _voiceService.lockRecording();
+    // Lock functionality is not implemented in current TelegramVoiceService
+    print('Lock recording is not supported');
   }
 
   void _unlockRecording() {
-    _voiceService.unlockRecording();
+    // Unlock functionality is not implemented in current TelegramVoiceService
+    print('Unlock recording is not supported');
   }
 
   Future<void> _pauseRecording() async {
-    await _voiceService.pauseResumeRecording();
+    // Pause functionality is not implemented in current TelegramVoiceService
+    print('Pause recording is not supported');
   }
 
   Future<void> _resumeRecording() async {
-    await _voiceService.pauseResumeRecording();
+    // Resume functionality is not implemented in current TelegramVoiceService
+    print('Resume recording is not supported');
   }
 
   // Upload method

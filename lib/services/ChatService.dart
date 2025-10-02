@@ -351,7 +351,6 @@ class ChatService {
     String? replyToContent,
     String? replyToSenderName,
     String? localId,
-    List<double>? waveformData,
   }) async {
     if (_supabase.auth.currentUser == null) {
       throw AppException(
@@ -377,8 +376,6 @@ class ChatService {
         'is_sent': true, // فرض بر اینکه سرور با موفقیت دریافت می‌کند
         'is_pending': false, // دیگر در حالت انتظار نیست
         'created_at': DateTime.now().toUtc().toIso8601String(),
-        'waveform_data':
-            waveformData != null ? jsonEncode(waveformData) : null,
       };
 
       print('📝 ارسال پیام به سرور (insert مستقیم): $messageData');
