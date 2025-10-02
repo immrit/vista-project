@@ -1,12 +1,12 @@
-import 'package:flutter/material.dart';
-import 'package:audioplayers/audioplayers.dart';
 import 'dart:async';
-import 'dart:math';
 import 'dart:typed_data';
+import 'package:flutter/material.dart';
+import 'package:audio_waveforms/audio_waveforms.dart';
 
 class AudioPlayerWidget extends StatefulWidget {
   final String audioUrl;
   final Uint8List? audioBytes;
+  final List<double>? waveformData;
   final bool isMe;
   final bool isPreview;
   final VoidCallback? onDelete;
@@ -16,6 +16,7 @@ class AudioPlayerWidget extends StatefulWidget {
     super.key,
     required this.audioUrl,
     this.audioBytes,
+    this.waveformData,
     required this.isMe,
     this.isPreview = false,
     this.onDelete,
@@ -26,358 +27,127 @@ class AudioPlayerWidget extends StatefulWidget {
   State<AudioPlayerWidget> createState() => _AudioPlayerWidgetState();
 }
 
-class _AudioPlayerWidgetState extends State<AudioPlayerWidget>
-    with SingleTickerProviderStateMixin {
-  late AudioPlayer _audioPlayer;
-  bool _isPlaying = false;
-  bool _isLoading = false;
-  bool _hasError = false;
-  Duration _duration = Duration.zero;
-  Duration _position = Duration.zero;
-  double _playbackSpeed = 1.0;
-
-  StreamSubscription? _durationSubscription;
-  StreamSubscription? _positionSubscription;
-  StreamSubscription? _playerStateSubscription;
+class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
+  late final PlayerController _playerController;
+  late final StreamSubscription<PlayerState> _playerStateSubscription;
 
   @override
   void initState() {
     super.initState();
-    _audioPlayer = AudioPlayer();
-    _setupAudioPlayer();
+    _playerController = PlayerController();
+    _preparePlayer();
+    _playerStateSubscription =
+        _playerController.onPlayerStateChanged.listen((_) {
+      setState(() {});
+    });
   }
 
-  void _setupAudioPlayer() {
-    _durationSubscription = _audioPlayer.onDurationChanged.listen((duration) {
-      if (mounted) {
-        setState(() {
-          _duration = duration;
-          _isLoading = false;
-        });
-      }
-    });
-
-    _positionSubscription = _audioPlayer.onPositionChanged.listen((position) {
-      if (mounted) {
-        setState(() => _position = position);
-      }
-    });
-
-    _playerStateSubscription =
-        _audioPlayer.onPlayerStateChanged.listen((state) {
-      if (mounted) {
-        setState(() {
-          _isPlaying = state == PlayerState.playing;
-          _hasError = false;
-        });
-
-        // اگر پخش تمام شد، موقعیت را به ابتدا برگردان
-        if (state == PlayerState.completed) {
-          setState(() {
-            _position = Duration.zero;
-            _isPlaying = false;
-          });
+  Future<void> _preparePlayer() async {
+    try {
+      if (widget.audioBytes != null) {
+        // For local previews before upload
+        await _playerController.preparePlayer(
+          path: widget.audioUrl, // Assuming path is available for previews
+          shouldExtractWaveform: widget.waveformData == null,
+        );
+      } else {
+        // For network audio files
+        await _playerController.preparePlayer(
+          path: widget.audioUrl,
+          shouldExtractWaveform: widget.waveformData == null,
+        );
+        // If we already have waveform data from the message model, use it.
+        if (widget.waveformData != null && widget.waveformData!.isNotEmpty) {
+           _playerController.updateWaveform(widget.waveformData!);
         }
       }
-    });
+    } catch (e) {
+      print("Error preparing player: $e");
+      // Optionally handle error state in UI
+    }
   }
 
   Future<void> _playPause() async {
-    try {
-      if (_isPlaying) {
-        await _audioPlayer.pause();
-      } else {
-        setState(() => _isLoading = true);
-        if (widget.audioBytes != null) {
-          await _audioPlayer.play(BytesSource(widget.audioBytes!));
-        } else {
-          await _audioPlayer.play(UrlSource(widget.audioUrl));
-        }
-        await _audioPlayer.setPlaybackRate(_playbackSpeed);
-      }
-    } catch (e) {
-      print('خطا در پخش صوت: $e');
-      setState(() {
-        _hasError = true;
-        _isLoading = false;
-        _isPlaying = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('خطا در پخش فایل صوتی'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
+    if (_playerController.playerState.isPlaying) {
+      await _playerController.pausePlayer();
+    } else {
+      await _playerController.startPlayer(finishMode: FinishMode.pause);
     }
-  }
-
-  Future<void> _seek(double value) async {
-    final position = Duration(seconds: (value * _duration.inSeconds).round());
-    await _audioPlayer.seek(position);
-  }
-
-  void _changePlaybackSpeed() {
-    final speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
-    final currentIndex = speeds.indexOf(_playbackSpeed);
-    final nextIndex = (currentIndex + 1) % speeds.length;
-
-    setState(() {
-      _playbackSpeed = speeds[nextIndex];
-    });
-
-    if (_isPlaying) {
-      _audioPlayer.setPlaybackRate(_playbackSpeed);
-    }
-  }
-
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final minutes = twoDigits(duration.inMinutes);
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return '$minutes:$seconds';
   }
 
   @override
   void dispose() {
-    _durationSubscription?.cancel();
-    _positionSubscription?.cancel();
-    _playerStateSubscription?.cancel();
-    _audioPlayer.dispose();
+    _playerStateSubscription.cancel();
+    _playerController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    // رنگ‌های متفاوت برای پیام‌های من و دیگران
     final backgroundColor = widget.isMe
         ? (isDark ? const Color(0xFF4F46E5) : const Color(0xFF6366F1))
         : (isDark ? const Color(0xFF374151) : const Color(0xFFF3F4F6));
-
     final textColor =
         widget.isMe ? Colors.white : (isDark ? Colors.white : Colors.black87);
 
-    // Conditional decoration based on whether it's a preview or part of a chat bubble
-    final BoxDecoration? decoration = widget.isPreview
-        ? BoxDecoration(
-            color: backgroundColor,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.1),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          )
-        : null; // No decoration when inside a chat bubble
-
     return Container(
-      // This container will now only apply padding and constraints, and optional decoration
-      margin:
-          EdgeInsets.zero, // Remove external margin, message bubble handles it
-      padding: const EdgeInsets.all(12),
-      constraints:
-          const BoxConstraints(minWidth: 200, maxWidth: 280, minHeight: 60),
-      decoration: decoration,
-      child: Column(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.of(context).size.width * 0.65,
+      ),
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ردیف اصلی: دکمه پلی، نوار پیشرفت/موج، دکمه سرعت
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // دکمه پلی/پاز
-              GestureDetector(
-                onTap: _hasError ? null : _playPause,
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: _hasError
-                        ? Colors.red.withValues(alpha: 0.2)
-                        : Colors.white.withValues(alpha: 0.2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: _isLoading
-                      ? SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(textColor),
-                          ),
-                        )
-                      : Icon(
-                          _hasError
-                              ? Icons.error_outline
-                              : (_isPlaying ? Icons.pause : Icons.play_arrow),
-                          color: textColor,
-                          size: 24,
-                        ),
-                ),
-              ),
-
-              const SizedBox(width: 12),
-
-              // ویجت جدید: ترکیب موج و نوار پیشرفت
-              Expanded(
-                child: _buildSeekbarWithWaveform(textColor),
-              ),
-
-              const SizedBox(width: 4),
-
-              // دکمه سرعت پخش
-              _buildPlaybackSpeedButton(textColor),
-            ],
+          IconButton(
+            onPressed: _playPause,
+            icon: Icon(
+              _playerController.playerState.isPlaying
+                  ? Icons.pause_rounded
+                  : Icons.play_arrow_rounded,
+            ),
+            color: textColor,
+            splashColor: textColor.withOpacity(0.2),
           ),
-
-          const SizedBox(height: 4),
-
-          // ردیف دوم: مدت زمان و دکمه‌های عملیات
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              // مدت زمان
-              Padding(
-                padding: const EdgeInsets.only(left: 8.0),
-                child: Text(
-                  _duration.inSeconds > 0
-                      ? '${_formatDuration(_position)} / ${_formatDuration(_duration)}'
-                      : '--:--',
-                  style: TextStyle(
-                    color: textColor.withValues(alpha: 0.8),
-                    fontSize: 11,
-                    fontFamily: 'monospace',
-                  ),
-                ),
+          Expanded(
+            child: AudioFileWaveforms(
+              size: Size(MediaQuery.of(context).size.width, 40.0),
+              playerController: _playerController,
+              enableSeekGesture: true,
+              waveformType: WaveformType.long,
+              playerWaveStyle: PlayerWaveStyle(
+                fixedWaveColor: textColor.withOpacity(0.3),
+                liveWaveColor: textColor,
+                spacing: 6.0,
+                showSeekLine: false,
               ),
-
-              // دکمه‌های عملیات
-              if (widget.isMe && !widget.isPreview)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (widget.onReply != null)
-                      IconButton(
-                        onPressed: widget.onReply,
-                        icon: Icon(
-                          Icons.reply_rounded,
-                          color: textColor.withValues(alpha: 0.8),
-                          size: 16,
-                        ),
-                        constraints:
-                            const BoxConstraints(minWidth: 32, minHeight: 32),
-                        padding: EdgeInsets.zero,
-                      ),
-                    if (widget.onDelete != null)
-                      IconButton(
-                        onPressed: widget.onDelete,
-                        icon: Icon(
-                          Icons.delete_outline_rounded,
-                          color: textColor.withValues(alpha: 0.8),
-                          size: 16,
-                        ),
-                        constraints:
-                            const BoxConstraints(minWidth: 32, minHeight: 32),
-                        padding: EdgeInsets.zero,
-                      ),
-                  ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          ValueListenableBuilder<PlayerState>(
+            valueListenable: _playerController,
+            builder: (context, state, child) {
+              return Text(
+                _formatDuration(
+                  _playerController.playerState.isStopped || _playerController.playerState.isInitialised
+                      ? _playerController.maxDuration
+                      : _playerController.currentDuration,
                 ),
-            ],
+                style: TextStyle(color: textColor, fontSize: 12),
+              );
+            },
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSeekbarWithWaveform(Color textColor) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        // لایه زیرین: موج صوتی
-        _buildWaveform(textColor),
-
-        // لایه رویی: نوار پیشرفت قابل کلیک
-        if (_duration.inSeconds > 0)
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              trackHeight: 30, // ارتفاع کلیک‌پذیر
-              trackShape: const RectangularSliderTrackShape(),
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-              activeTrackColor: textColor.withValues(alpha: 0.4),
-              inactiveTrackColor: Colors.transparent,
-              thumbColor: textColor,
-              overlayColor: textColor.withValues(alpha: 0.2),
-            ),
-            child: Slider(
-              value: _duration.inSeconds > 0
-                  ? (_position.inSeconds / _duration.inSeconds).clamp(0.0, 1.0)
-                  : 0.0,
-              onChanged: _hasError ? null : _seek,
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildWaveform(Color textColor) {
-    return SizedBox(
-      height: 30,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: List.generate(widget.isPreview ? 12 : 20, (index) {
-          // استفاده از سینوس برای ایجاد یک الگوی موج مانند
-          final sinValue = sin(index * 0.5);
-          final height = 10 + (sinValue * 8).abs();
-          // انیمیشن شفافیت بر اساس موقعیت پخش
-          final double opacity = _isPlaying
-              ? (0.5 +
-                      (sin(index * 0.9 + _position.inMilliseconds / 200) * 0.5)
-                          .abs())
-                  .clamp(0.3, 1.0)
-              : 0.4;
-
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 100),
-            width: 2.5,
-            height: height.clamp(4.0, 22.0),
-            decoration: BoxDecoration(
-              color: textColor.withValues(alpha: opacity),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          );
-        }),
-      ),
-    );
-  }
-
-  Widget _buildPlaybackSpeedButton(Color textColor) {
-    return GestureDetector(
-      onTap: _changePlaybackSpeed,
-      child: Container(
-        width: 40,
-        height: 40,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          '${_playbackSpeed.toStringAsFixed(1)}x',
-          style: TextStyle(
-            color: textColor.withValues(alpha: 0.9),
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-    );
+  String _formatDuration(int? millis) {
+    if (millis == null) return "00:00";
+    final duration = Duration(milliseconds: millis);
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return "$minutes:$seconds";
   }
 }

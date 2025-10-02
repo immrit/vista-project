@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:collection';
+import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
@@ -349,7 +350,8 @@ class ChatService {
     String? replyToMessageId,
     String? replyToContent,
     String? replyToSenderName,
-    String? localId, // اضافه کردن پارامتر localId
+    String? localId,
+    List<double>? waveformData,
   }) async {
     if (_supabase.auth.currentUser == null) {
       throw AppException(
@@ -375,6 +377,8 @@ class ChatService {
         'is_sent': true, // فرض بر اینکه سرور با موفقیت دریافت می‌کند
         'is_pending': false, // دیگر در حالت انتظار نیست
         'created_at': DateTime.now().toUtc().toIso8601String(),
+        'waveform_data':
+            waveformData != null ? jsonEncode(waveformData) : null,
       };
 
       print('📝 ارسال پیام به سرور (insert مستقیم): $messageData');

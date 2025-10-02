@@ -69,6 +69,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   File? _selectedAudio;
   Uint8List? _selectedAudioBytes;
   String? _selectedAudioName;
+  List<double>? _selectedAudioWaveform;
 
   // UI state
   bool _isUploading = false;
@@ -315,6 +316,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             attachmentUrl: attachmentUrl,
             attachmentType: attachmentType,
             replyToMessage: _replyToMessage,
+            waveformData: _selectedAudioWaveform,
           );
 
       _messageController.clear();
@@ -339,6 +341,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _selectedAudio = null;
       _selectedAudioBytes = null;
       _selectedAudioName = null;
+      _selectedAudioWaveform = null;
       _replyToMessage = null;
       _isUploading = false;
       _uploadProgress = 0.0;
@@ -627,13 +630,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
-  void _onAudioRecorded(
-      File? audioFile, Uint8List? audioBytes, String? fileName) {
+  void _onAudioRecorded(File? audioFile, Uint8List? audioBytes,
+      String? fileName, List<double>? waveformData) {
     if (audioFile != null || audioBytes != null) {
       setState(() {
         _selectedAudio = audioFile;
         _selectedAudioBytes = audioBytes;
         _selectedAudioName = fileName;
+        _selectedAudioWaveform = waveformData;
       });
     }
   }

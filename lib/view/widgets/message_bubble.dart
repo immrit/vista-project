@@ -214,7 +214,11 @@ class _MessageBubbleState extends State<MessageBubble>
       );
     }
     if (type == 'audio') {
-      return AudioPlayerWidget(audioUrl: url, isMe: widget.message.isMe);
+      return AudioPlayerWidget(
+        audioUrl: url,
+        isMe: widget.message.isMe,
+        waveformData: widget.message.waveformData,
+      );
     }
     return const SizedBox.shrink();
   }

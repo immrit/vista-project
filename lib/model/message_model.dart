@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class MessageModel {
   final String id;
   final String conversationId;
@@ -19,6 +21,7 @@ class MessageModel {
   final bool isPending;
   final String? localId;
   final int retryCount; // اضافه کنید
+  final List<double>? waveformData; // داده‌های موج صدا
 
   // Typing indicators برای نشان دادن کاربران در حال تایپ
   final Map<String, DateTime>? typingUsers;
@@ -47,6 +50,7 @@ class MessageModel {
     this.isPending = false,
     this.localId,
     this.retryCount = 0, // مقدار پیش‌فرض
+    this.waveformData,
     this.typingUsers,
     this.reactions,
   });
@@ -67,6 +71,20 @@ class MessageModel {
     String conversationId = json['conversation_id'] ??
         json['conversations_id'] ??
         ''; // Check this too!
+
+    final rawWaveform = json['waveform_data'];
+    List<double>? waveformData;
+    if (rawWaveform is String && rawWaveform.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawWaveform) as List<dynamic>;
+        waveformData = decoded.map((e) => (e as num).toDouble()).toList();
+      } catch (e) {
+        print('Error decoding waveform data: $e');
+        waveformData = null;
+      }
+    } else if (rawWaveform is List) {
+      waveformData = rawWaveform.map((e) => (e as num).toDouble()).toList();
+    }
 
     return MessageModel(
       id: json['id'],
@@ -89,6 +107,7 @@ class MessageModel {
       localId: json['local_id'] as String?,
       retryCount: json['retry_count'] as int? ?? 0,
       isPending: json['is_pending'] as bool? ?? false,
+      waveformData: waveformData,
       typingUsers: json['typing_users'] != null
           ? Map<String, DateTime>.from(json['typing_users'])
           : null,
@@ -111,7 +130,8 @@ class MessageModel {
     DateTime? createdAt,
     isRead = false,
     isSent = true,
-    int retryCount = 0, // اضافه کنید
+    int retryCount = 0,
+    List<double>? waveformData,
   }) {
     return MessageModel(
       id: tempId,
@@ -132,6 +152,7 @@ class MessageModel {
       replyToContent: replyToContent,
       replyToSenderName: replyToSenderName,
       retryCount: retryCount,
+      waveformData: waveformData,
     );
   }
 
@@ -156,6 +177,7 @@ class MessageModel {
     bool? isPending,
     String? localId,
     int? retryCount, // اضافه کنید
+    List<double>? waveformData,
     Map<String, DateTime>? typingUsers,
     List<dynamic>? reactions,
   }) {
@@ -180,6 +202,7 @@ class MessageModel {
       isPending: isPending ?? this.isPending,
       localId: localId ?? this.localId,
       retryCount: retryCount ?? this.retryCount,
+      waveformData: waveformData ?? this.waveformData,
       typingUsers: typingUsers ?? this.typingUsers,
       reactions: reactions ?? this.reactions,
     );
@@ -206,6 +229,7 @@ class MessageModel {
       'is_pending': isPending,
       'local_id': localId,
       'retry_count': retryCount,
+      'waveform_data': waveformData != null ? jsonEncode(waveformData) : null,
       'typing_users': typingUsers,
       'reactions': reactions,
     };
