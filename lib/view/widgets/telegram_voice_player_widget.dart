@@ -66,7 +66,7 @@ class _TelegramVoicePlayerWidgetState extends State<TelegramVoicePlayerWidget>
 
   // UI state
   bool _showSpeedMenu = false;
-  bool _showVolumeSlider = false;
+  final bool _showVolumeSlider = false;
 
   @override
   void initState() {

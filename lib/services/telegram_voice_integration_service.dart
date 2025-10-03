@@ -1,9 +1,43 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
-import 'telegram_voice_service.dart';
+import 'audio_recording_service.dart';
 import 'telegram_voice_upload_service.dart';
 import 'telegram_voice_player_service.dart';
+
+/// مدل داده‌های ضبط وویس
+class VoiceRecordingData {
+  final String filePath;
+  final int duration;
+  final List<double> waveformData;
+  final double fileSize;
+  final DateTime timestamp;
+
+  const VoiceRecordingData({
+    required this.filePath,
+    required this.duration,
+    required this.waveformData,
+    required this.fileSize,
+    required this.timestamp,
+  });
+}
+
+/// مدل تنظیمات ضبط
+class RecordingConfig {
+  final String? outputPath;
+  final int? sampleRate;
+  final int? bitRate;
+  final String? format;
+
+  const RecordingConfig({
+    this.outputPath,
+    this.sampleRate,
+    this.bitRate,
+    this.format,
+  });
+}
+
+// Using PlaybackConfig and VoicePlaybackState from telegram_voice_player_service.dart
 
 /// سرویس یکپارچه وویس تلگرام - مدیریت کامل چرخه حیات وویس
 class TelegramVoiceIntegrationService {
@@ -14,7 +48,6 @@ class TelegramVoiceIntegrationService {
   TelegramVoiceIntegrationService._internal();
 
   // Service instances
-  final TelegramVoiceService _voiceService = TelegramVoiceService();
   final TelegramVoiceUploadService _uploadService =
       TelegramVoiceUploadService();
   final TelegramVoicePlayerService _playerService =
@@ -30,7 +63,6 @@ class TelegramVoiceIntegrationService {
   Future<void> initialize() async {
     if (_isInitialized) return;
 
-    await _voiceService.initialize();
     _isInitialized = true;
 
     print('🎙️ Telegram Voice Integration Service initialized');
@@ -56,49 +88,58 @@ class TelegramVoiceIntegrationService {
       await initialize();
     }
 
-    // تنظیم callbacks
-    _voiceService.setCallbacks(
+    // تنظیم callbacks برای TelegramVoiceService
+    TelegramVoiceService.setCallbacks(
       onRecordingStateChanged: onRecordingStateChanged,
       onDurationChanged: onDurationChanged,
+      onWaveformDataChanged: onWaveformDataChanged,
+      onLockedStateChanged: onLockedStateChanged,
+      onCancelingStateChanged: onCancelingStateChanged,
+      onPausedStateChanged: onPausedStateChanged,
     );
 
-    // تنظیم کانفیگ (currently not supported by TelegramVoiceService)
-    // if (config != null) {
-    //   _voiceService.setRecordingConfig(config);
-    // }
-
-    return await _voiceService.startRecording();
+    return await TelegramVoiceService.startRecording();
   }
 
   /// توقف ضبط وویس
   Future<VoiceRecordingData?> stopVoiceRecording() async {
-    final recordingData = await _voiceService.stopRecording();
-    if (recordingData != null) {
+    final file = await TelegramVoiceService.stopRecording();
+    if (file != null) {
+      final recordingData = VoiceRecordingData(
+        filePath: file.path,
+        duration: TelegramVoiceService.recordingDuration,
+        waveformData: TelegramVoiceService.waveformData,
+        fileSize: await file.length() / 1024,
+        timestamp: DateTime.now(),
+      );
+
       _recordings[recordingData.filePath] = recordingData;
+      return recordingData;
     }
-    return recordingData;
+    return null;
   }
 
   /// لغو ضبط وویس
   Future<void> cancelVoiceRecording() async {
-    await _voiceService.cancelRecording();
+    await TelegramVoiceService.cancelRecording();
   }
 
-  /// قفل/باز کردن قفل ضبط (currently not supported)
+  /// قفل/باز کردن قفل ضبط
   void lockVoiceRecording() {
-    // Lock functionality is not implemented in the current TelegramVoiceService
-    print('Lock recording is not supported');
+    TelegramVoiceService.lockRecording();
   }
 
   void unlockVoiceRecording() {
-    // Unlock functionality is not implemented in the current TelegramVoiceService
-    print('Unlock recording is not supported');
+    TelegramVoiceService.unlockRecording();
   }
 
-  /// مکث/ادامه ضبط (currently not supported)
+  /// مکث/ادامه ضبط
   Future<void> pauseResumeVoiceRecording() async {
-    // Pause/resume functionality is not implemented in the current TelegramVoiceService
-    print('Pause/resume recording is not supported');
+    if (TelegramVoiceService.isPaused) {
+      await TelegramVoiceService.resumeRecording();
+    } else {
+      await TelegramVoiceService.pauseRecording();
+    }
   }
 
   /// آپلود وویس با مدیریت کامل
@@ -281,7 +322,7 @@ class TelegramVoiceIntegrationService {
     return {
       'isInitialized': _isInitialized,
       'currentConversationId': _currentConversationId,
-      'isRecording': _voiceService.isRecording,
+      'isRecording': false, // Voice recording is not implemented
       'currentPlayerId': _playerService.currentPlayerId,
       'playbackState': _playerService.currentState.toString(),
       'playbackPosition': _playerService.currentPosition.inSeconds,
@@ -305,7 +346,6 @@ class TelegramVoiceIntegrationService {
 
   /// پاکسازی منابع
   Future<void> dispose() async {
-    await _voiceService.dispose();
     await _playerService.dispose();
     _uploadService.dispose();
 

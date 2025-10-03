@@ -4,8 +4,9 @@ import 'dart:async';
 import 'package:path/path.dart' as path;
 import 'package:aws_s3_api/s3-2006-03-01.dart';
 import 'secure_config.dart';
+import 'telegram_voice_integration_service.dart';
 import 'user_friendly_error_handler.dart';
-import 'telegram_voice_service.dart';
+import 'audio_enhancement_service.dart';
 import '/main.dart';
 
 /// مدل نتیجه آپلود
@@ -122,17 +123,36 @@ class TelegramVoiceUploadService {
       onStatusChanged?.call('فشرده‌سازی فایل...');
       onProgress?.call(0.1);
 
-      // فشرده‌سازی فایل (اختیاری) - currently not implemented
+      // بهبود و فشرده‌سازی فایل
       File? processedFile = file;
-      // if (_config.enableCompression) {
-      //   final compressedFile = await TelegramVoiceService.compressAudioFile(
-      //     file,
-      //     quality: _config.compressionQuality,
-      //   );
-      //   if (compressedFile != null) {
-      //     processedFile = compressedFile;
-      //   }
-      // }
+
+      // بهبود کیفیت صدا
+      final enhancementService = AudioEnhancementService();
+      final enhancedFile = await enhancementService.enhanceAudioFile(
+        file,
+        onProgress: (progress) {
+          onProgress?.call(0.1 + (progress * 0.1)); // 0.1 تا 0.2
+        },
+      );
+
+      if (enhancedFile != null) {
+        processedFile = enhancedFile;
+        print(
+            '✅ فایل بهبود یافت: ${file.length()} -> ${enhancedFile.length()} bytes');
+      }
+
+      // فشرده‌سازی فایل برای کاهش حجم
+      if (_config.enableCompression) {
+        final compressedFile = await _compressAudioFile(
+          processedFile,
+          quality: _config.compressionQuality,
+        );
+        if (compressedFile != null) {
+          processedFile = compressedFile;
+          print(
+              '✅ فایل فشرده شد: ${processedFile.length()} -> ${compressedFile.length()} bytes');
+        }
+      }
 
       onStatusChanged?.call('آماده‌سازی برای آپلود...');
       onProgress?.call(0.2);
@@ -262,7 +282,7 @@ class TelegramVoiceUploadService {
         },
       );
 
-      final uploadId_s3 = createResponse.uploadId!;
+      final uploadidS3 = createResponse.uploadId!;
       final parts = <CompletedPart>[];
       final totalChunks = (fileBytes.length / _config.chunkSize).ceil();
 
@@ -273,7 +293,7 @@ class TelegramVoiceUploadService {
           await _s3.abortMultipartUpload(
             bucket: _bucketName,
             key: s3Key,
-            uploadId: uploadId_s3,
+            uploadId: uploadidS3,
           );
           throw Exception('آپلود لغو شد');
         }
@@ -286,7 +306,7 @@ class TelegramVoiceUploadService {
           bucket: _bucketName,
           key: s3Key,
           partNumber: i + 1,
-          uploadId: uploadId_s3,
+          uploadId: uploadidS3,
           body: chunk,
         );
 
@@ -304,7 +324,7 @@ class TelegramVoiceUploadService {
       await _s3.completeMultipartUpload(
         bucket: _bucketName,
         key: s3Key,
-        uploadId: uploadId_s3,
+        uploadId: uploadidS3,
         multipartUpload: CompletedMultipartUpload(parts: parts),
       );
 
@@ -430,6 +450,22 @@ class TelegramVoiceUploadService {
     final timestamp = recordingData.timestamp.millisecondsSinceEpoch;
     final duration = recordingData.duration;
     return '${userId}_${timestamp}_${duration}s.m4a';
+  }
+
+  /// فشرده‌سازی فایل صوتی
+  Future<File?> _compressAudioFile(File inputFile,
+      {required double quality}) async {
+    try {
+      // استفاده از FFmpeg برای فشرده‌سازی (نیاز به نصب ffmpeg_kit_flutter)
+      // فعلاً فایل اصلی را برمی‌گردانیم
+      // TODO: پیاده‌سازی فشرده‌سازی واقعی با FFmpeg
+
+      print('⚠️ فشرده‌سازی صدا هنوز پیاده‌سازی نشده است');
+      return inputFile;
+    } catch (e) {
+      print('❌ خطا در فشرده‌سازی: $e');
+      return inputFile; // در صورت خطا، فایل اصلی را برمی‌گردانیم
+    }
   }
 
   /// تعیین Content-Type برای فایل‌های صوتی

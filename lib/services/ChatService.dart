@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:collection';
-import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
@@ -347,6 +346,7 @@ class ChatService {
     required String content,
     String? attachmentUrl,
     String? attachmentType,
+    int? duration,
     String? replyToMessageId,
     String? replyToContent,
     String? replyToSenderName,
@@ -372,6 +372,7 @@ class ChatService {
         'reply_to_message_id': replyToMessageId,
         'reply_to_content': replyToContent,
         'reply_to_sender_name': replyToSenderName,
+        // 'duration': duration, // موقتاً غیرفعال تا مشکل دیتابیس حل شود
         'local_id': localId, // شناسه محلی برای تطبیق در کلاینت
         'is_sent': true, // فرض بر اینکه سرور با موفقیت دریافت می‌کند
         'is_pending': false, // دیگر در حالت انتظار نیست

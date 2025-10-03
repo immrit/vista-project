@@ -137,6 +137,9 @@ class ProfileService {
   // Real-time subscription
   StreamSubscription? _profilesSubscription;
 
+  // کنترل غیرفعال کردن real-time updates
+  bool _disableRealtimeUpdates = false;
+
   /// دسترسی سریع به پروفایل کش‌شده
   ProfileData? getCachedProfile(String userId) {
     // پاکسازی کش منقضی‌شده
@@ -446,10 +449,38 @@ class ProfileService {
   }
 
   /// شروع شنود تغییرات real-time پروفایل‌ها
-  void startRealtimeUpdates() {
+  Future<void> startRealtimeUpdates() async {
     if (_profilesSubscription != null) return; // Already subscribed
+    if (_disableRealtimeUpdates) {
+      logger.w('⚠️ Real-time updates غیرفعال شده است');
+      return;
+    }
 
     try {
+      // چک کردن اینکه آیا Supabase initialize شده یا نه
+      try {
+        Supabase
+            .instance; // این خط اگر Supabase initialize نشده باشد، exception می‌دهد
+      } catch (e) {
+        logger.w('⚠️ Supabase initialize نشده، real-time updates شروع نمی‌شود');
+        return;
+      }
+
+      // چک کردن اتصال به دیتابیس قبل از شروع stream
+      try {
+        await supabase.from('profiles').select().limit(1).timeout(
+              const Duration(seconds: 2),
+              onTimeout: () =>
+                  throw TimeoutException('Database connection timeout'),
+            );
+      } catch (e) {
+        logger.w(
+            '⚠️ اتصال به دیتابیس در دسترس نیست، real-time updates غیرفعال می‌شود: $e');
+        // غیرفعال کردن real-time updates برای جلوگیری از تلاش‌های مکرر
+        _disableRealtimeUpdates = true;
+        return;
+      }
+
       _profilesSubscription = supabase
           .from('profiles')
           .stream(primaryKey: ['id'])
@@ -463,12 +494,16 @@ class ProfileService {
             },
             onError: (error) {
               // مدیریت خطاهای real-time بدون کرش
-              if (error.toString().contains('RealtimeSubscribeException')) {
+              if (error.toString().contains('RealtimeSubscribeException') ||
+                  error.toString().contains('PostgrestException') ||
+                  error.toString().contains('could not translate host name') ||
+                  error.toString().contains('Database connection error')) {
                 logger.w('⚠️ Real-time subscription error (handled): $error');
-                // تلاش مجدد بعد از 5 ثانیه
-                Future.delayed(const Duration(seconds: 5), () {
-                  if (_profilesSubscription == null) {
-                    startRealtimeUpdates();
+                // تلاش مجدد بعد از 10 ثانیه (کمتر تلاش کنیم)
+                Future.delayed(const Duration(seconds: 10), () async {
+                  if (_profilesSubscription == null &&
+                      !_disableRealtimeUpdates) {
+                    await startRealtimeUpdates();
                   }
                 });
               } else {
@@ -479,10 +514,10 @@ class ProfileService {
               logger.w(
                   'Real-time subscription closed, attempting to reconnect...');
               _profilesSubscription = null;
-              // تلاش مجدد بعد از 3 ثانیه
-              Future.delayed(const Duration(seconds: 3), () {
-                if (_profilesSubscription == null) {
-                  startRealtimeUpdates();
+              // تلاش مجدد بعد از 15 ثانیه (کمتر تلاش کنیم)
+              Future.delayed(const Duration(seconds: 15), () async {
+                if (_profilesSubscription == null && !_disableRealtimeUpdates) {
+                  await startRealtimeUpdates();
                 }
               });
             },
@@ -491,10 +526,10 @@ class ProfileService {
       logger.d('Real-time subscription برای پروفایل‌ها شروع شد');
     } catch (e) {
       logger.e('خطا در شروع real-time subscription: $e');
-      // تلاش مجدد بعد از 10 ثانیه
-      Future.delayed(const Duration(seconds: 10), () {
-        if (_profilesSubscription == null) {
-          startRealtimeUpdates();
+      // تلاش مجدد بعد از 30 ثانیه در صورت خطای کلی
+      Future.delayed(const Duration(seconds: 30), () async {
+        if (_profilesSubscription == null && !_disableRealtimeUpdates) {
+          await startRealtimeUpdates();
         }
       });
     }
@@ -505,6 +540,19 @@ class ProfileService {
     _profilesSubscription?.cancel();
     _profilesSubscription = null;
     logger.d('Real-time subscription برای پروفایل‌ها متوقف شد');
+  }
+
+  /// فعال کردن مجدد real-time updates
+  void enableRealtimeUpdates() {
+    _disableRealtimeUpdates = false;
+    logger.i('✅ Real-time updates فعال شد');
+  }
+
+  /// غیرفعال کردن real-time updates
+  void disableRealtimeUpdates() {
+    _disableRealtimeUpdates = true;
+    stopRealtimeUpdates();
+    logger.w('⚠️ Real-time updates غیرفعال شد');
   }
 
   /// پاکسازی منابع

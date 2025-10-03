@@ -160,9 +160,6 @@ class NewChatNotifier extends StateNotifier<NewChatState> {
     _isFetching = true;
 
     try {
-      final oldestMessageTimestamp = state.messages.isNotEmpty
-          ? state.messages.first.createdAt
-          : DateTime.now();
       final moreMessages = await _chatService.getMessages(
         params.conversationId,
         limit: _pageSize,
@@ -282,6 +279,7 @@ class NewChatNotifier extends StateNotifier<NewChatState> {
   Future<void> sendMessage(String content,
       {String? attachmentUrl,
       String? attachmentType,
+      int? duration,
       MessageModel? replyToMessage}) async {
     final currentUser = supabase.auth.currentUser;
     if (currentUser == null) return;
@@ -294,6 +292,7 @@ class NewChatNotifier extends StateNotifier<NewChatState> {
       content: content,
       attachmentUrl: attachmentUrl,
       attachmentType: attachmentType,
+      duration: duration,
       replyToMessageId: replyToMessage?.id,
       replyToContent: replyToMessage?.content,
       replyToSenderName: replyToMessage?.senderName,
@@ -308,6 +307,7 @@ class NewChatNotifier extends StateNotifier<NewChatState> {
         content: content,
         attachmentUrl: attachmentUrl,
         attachmentType: attachmentType,
+        // duration: duration, // موقتاً غیرفعال تا مشکل دیتابیس حل شود
         localId: tempId,
         replyToMessageId: replyToMessage?.id,
         replyToContent: replyToMessage?.content,

@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
-import '../../services/telegram_voice_service.dart';
+import 'dart:io';
+import 'dart:math' as math;
+import '../../services/audio_recording_service.dart';
+import '../../services/telegram_voice_integration_service.dart';
 import '../../services/telegram_voice_upload_service.dart';
+import '../../services/audio_enhancement_service.dart';
+import 'enhanced_voice_visualizer.dart';
+import 'voice_recording_settings.dart';
 
 /// ویجت ضبط وویس پیشرفته مثل تلگرام
 class TelegramVoiceRecorderWidget extends StatefulWidget {
@@ -41,15 +47,20 @@ class _TelegramVoiceRecorderWidgetState
   late AnimationController _waveformController;
   late AnimationController _lockController;
   late AnimationController _cancelController;
+  late AnimationController _startRecordingController;
+  late AnimationController _sendSuccessController;
+  late AnimationController _recordingStartEffectController;
 
   // Animations
   late Animation<double> _pulseAnimation;
   late Animation<double> _waveformAnimation;
   late Animation<double> _lockAnimation;
   late Animation<double> _cancelAnimation;
+  late Animation<double> _startRecordingAnimation;
+  late Animation<double> _sendSuccessAnimation;
+  late Animation<double> _recordingStartEffectAnimation;
 
   // Voice service
-  final TelegramVoiceService _voiceService = TelegramVoiceService();
   final TelegramVoiceUploadService _uploadService =
       TelegramVoiceUploadService();
 
@@ -59,7 +70,7 @@ class _TelegramVoiceRecorderWidgetState
   bool _isCanceling = false;
   bool _isPaused = false;
   int _recordingDuration = 0;
-  List<double> _waveformData = [];
+  final List<double> _waveformData = [];
 
   // Gesture tracking
   Offset _dragOffset = Offset.zero;
@@ -68,6 +79,10 @@ class _TelegramVoiceRecorderWidgetState
   // UI state
   String _statusText = 'برای ضبط نگه دارید';
   Color _statusColor = Colors.grey;
+
+  // Enhancement settings
+  AudioEnhancementConfig _enhancementConfig =
+      AudioEnhancementService.defaultConfig;
 
   @override
   void initState() {
@@ -128,22 +143,72 @@ class _TelegramVoiceRecorderWidgetState
       parent: _cancelController,
       curve: Curves.easeInOut,
     ));
+
+    // Start recording animation (مثل تلگرام)
+    _startRecordingController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    _startRecordingAnimation = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.0, end: 1.2)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 40,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.2, end: 1.0)
+            .chain(CurveTween(curve: Curves.elasticOut)),
+        weight: 60,
+      ),
+    ]).animate(_startRecordingController);
+
+    // Send success animation
+    _sendSuccessController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    _sendSuccessAnimation = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.0, end: 1.3)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 50,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.3, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeIn)),
+        weight: 50,
+      ),
+    ]).animate(_sendSuccessController);
+
+    // Recording start effect animation (مثل موج انفجاری)
+    _recordingStartEffectController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    _recordingStartEffectAnimation = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.0, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 30,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.0, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeIn)),
+        weight: 70,
+      ),
+    ]).animate(_recordingStartEffectController);
   }
 
   void _initializeVoiceService() {
-    _voiceService.setCallbacks(
+    TelegramVoiceService.setCallbacks(
       onRecordingStateChanged: (isRecording) {
         if (mounted) {
           setState(() {
             _isRecording = isRecording;
             if (isRecording) {
-              _pulseController.repeat(reverse: true);
-              _waveformController.forward();
               _statusText = 'در حال ضبط...';
               _statusColor = Colors.red;
             } else {
-              _pulseController.stop();
-              _waveformController.reverse();
               _statusText = 'برای ضبط نگه دارید';
               _statusColor = Colors.grey;
             }
@@ -167,7 +232,9 @@ class _TelegramVoiceRecorderWidgetState
     _waveformController.dispose();
     _lockController.dispose();
     _cancelController.dispose();
-    _voiceService.dispose();
+    _startRecordingController.dispose();
+    _sendSuccessController.dispose();
+    _recordingStartEffectController.dispose();
     super.dispose();
   }
 
@@ -190,22 +257,55 @@ class _TelegramVoiceRecorderWidgetState
           ),
         ],
       ),
-      child: Row(
+      child: Stack(
         children: [
-          // Recording button
-          _buildRecordingButton(isDark, colorScheme),
+          Row(
+            children: [
+              // Recording button
+              _buildRecordingButton(isDark, colorScheme),
 
-          const SizedBox(width: 16),
+              const SizedBox(width: 16),
 
-          // Waveform and controls
-          Expanded(
-            child: _buildWaveformAndControls(isDark, colorScheme),
+              // Waveform and controls
+              Expanded(
+                child: _buildWaveformAndControls(isDark, colorScheme),
+              ),
+
+              const SizedBox(width: 16),
+
+              // Action buttons
+              _buildActionButtons(isDark, colorScheme),
+            ],
           ),
 
-          const SizedBox(width: 16),
-
-          // Action buttons
-          _buildActionButtons(isDark, colorScheme),
+          // Recording start effect overlay
+          if (_recordingStartEffectAnimation.value > 0)
+            AnimatedBuilder(
+              animation: _recordingStartEffectAnimation,
+              builder: (context, child) {
+                return Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        center: Alignment.centerLeft,
+                        radius:
+                            2.0 + (3.0 * _recordingStartEffectAnimation.value),
+                        colors: [
+                          Colors.red.withValues(
+                              alpha: 0.3 *
+                                  (1.0 - _recordingStartEffectAnimation.value)),
+                          Colors.red.withValues(
+                              alpha: 0.1 *
+                                  (1.0 - _recordingStartEffectAnimation.value)),
+                          Colors.transparent,
+                        ],
+                        stops: const [0.0, 0.5, 1.0],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
         ],
       ),
     );
@@ -217,11 +317,10 @@ class _TelegramVoiceRecorderWidgetState
       onTapUp: _isRecording && !_isLocked ? (_) => _stopRecording() : null,
       onTapCancel: _isRecording && !_isLocked ? () => _cancelRecording() : null,
       onPanStart: _isRecording
-          ? null
-          : (details) {
-              _startRecording();
+          ? (details) {
               _dragOffset = details.localPosition;
-            },
+            }
+          : null,
       onPanUpdate: _isRecording
           ? (details) {
               if (!_isLocked) {
@@ -252,24 +351,31 @@ class _TelegramVoiceRecorderWidgetState
             }
           : null,
       child: AnimatedBuilder(
-        animation: _pulseAnimation,
+        animation:
+            Listenable.merge([_pulseAnimation, _startRecordingAnimation]),
         builder: (context, child) {
           return Transform.scale(
-            scale: _isRecording ? _pulseAnimation.value : 1.0,
+            scale: _isRecording
+                ? (_startRecordingAnimation.value * _pulseAnimation.value)
+                : _startRecordingAnimation.value,
             child: Container(
               width: 60,
               height: 60,
               decoration: BoxDecoration(
                 color: _isRecording
                     ? (_isLocked ? Colors.orange : Colors.red)
-                    : colorScheme.primary,
+                    : (isDark
+                        ? const Color(0xFFE0E0E0) // خاکستری روشن در تم تاریک
+                        : const Color(0xFF2196F3)), // آبی ثابت برای تم روشن
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
                     color: (_isRecording
                             ? (_isLocked ? Colors.orange : Colors.red)
-                            : colorScheme.primary)
-                        .withValues(alpha: 0.3),
+                            : (isDark
+                                ? const Color(0xFFE0E0E0)
+                                : const Color(0xFF2196F3)))
+                        .withValues(alpha: isDark ? 0.6 : 0.3),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -279,7 +385,11 @@ class _TelegramVoiceRecorderWidgetState
                 _isRecording
                     ? (_isPaused ? Icons.play_arrow : Icons.stop)
                     : Icons.mic,
-                color: Colors.white,
+                color: _isRecording
+                    ? Colors.white
+                    : (isDark
+                        ? const Color(0xFF424242)
+                        : Colors.white), // خاکستری تیره برای تم تاریک
                 size: 28,
               ),
             ),
@@ -293,29 +403,60 @@ class _TelegramVoiceRecorderWidgetState
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // Status text
-        Text(
-          _statusText,
-          style: TextStyle(
-            color: _statusColor,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
+        // Status text with animation
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: Text(
+            _statusText,
+            key: ValueKey(_statusText),
+            style: TextStyle(
+              color: _statusColor,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
 
         const SizedBox(height: 8),
 
-        // Waveform
+        // Waveform with better animation
         if (_isRecording) _buildWaveform(isDark, colorScheme),
 
-        // Duration
+        // Duration and info with professional styling
         if (_isRecording)
-          Text(
-            _formatDuration(_recordingDuration),
-            style: TextStyle(
-              color: isDark ? Colors.white70 : Colors.black54,
-              fontSize: 12,
-              fontFamily: 'monospace',
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: colorScheme.surface.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: _isLocked
+                    ? Colors.orange.withValues(alpha: 0.3)
+                    : colorScheme.outline.withValues(alpha: 0.2),
+              ),
+            ),
+            child: VoiceInfoDisplay(
+              duration: _recordingDuration,
+              fileSize: 0, // محاسبه خواهد شد
+              isRecording: _isRecording,
+              isPlaying: false,
+              status: _isPaused ? 'مکث' : (_isLocked ? 'قفل شده' : null),
+            ),
+          ),
+
+        // Recording hint
+        if (!_isRecording && !_isLocked)
+          AnimatedOpacity(
+            opacity: 0.7,
+            duration: const Duration(milliseconds: 500),
+            child: Text(
+              'برای شروع ضبط، دکمه را نگه دارید',
+              style: TextStyle(
+                fontSize: 12,
+                color: colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
             ),
           ),
       ],
@@ -328,27 +469,18 @@ class _TelegramVoiceRecorderWidgetState
       builder: (context, child) {
         return Opacity(
           opacity: _waveformAnimation.value,
-          child: Container(
+          child: SizedBox(
             height: 30,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: List.generate(20, (index) {
-                final height = _waveformData.isNotEmpty
-                    ? (_waveformData.length > index
-                        ? _waveformData[index] / 100 * 20
-                        : 4.0)
-                    : 4.0;
-
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 100),
-                  width: 2,
-                  height: height.clamp(4.0, 20.0),
-                  decoration: BoxDecoration(
-                    color: _isLocked ? Colors.orange : Colors.red,
-                    borderRadius: BorderRadius.circular(1),
-                  ),
-                );
-              }),
+            child: EnhancedVoiceVisualizer(
+              waveformData: _waveformData,
+              isRecording: _isRecording,
+              isPlaying: false,
+              progress: _recordingDuration / 60.0, // پیشرفت بر اساس مدت زمان
+              primaryColor: _isLocked ? Colors.orange : Colors.red,
+              secondaryColor: colorScheme.secondary,
+              height: 30,
+              showProgress: true,
+              animated: true,
             ),
           ),
         );
@@ -357,16 +489,65 @@ class _TelegramVoiceRecorderWidgetState
   }
 
   Widget _buildActionButtons(bool isDark, ColorScheme colorScheme) {
+    // اگر انیمیشن موفقیت در حال اجرا است، فقط آیکون موفقیت نشان بده
+    if (_sendSuccessAnimation.value > 0) {
+      return AnimatedBuilder(
+        animation: _sendSuccessAnimation,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: 0.8 + (0.4 * _sendSuccessAnimation.value),
+            child: Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.green.withValues(
+                    alpha: 0.2 + (0.8 * _sendSuccessAnimation.value)),
+                border: Border.all(
+                  color: Colors.green
+                      .withValues(alpha: _sendSuccessAnimation.value),
+                  width: 2,
+                ),
+              ),
+              child: Icon(
+                Icons.check,
+                color: Colors.green,
+                size: 28 * _sendSuccessAnimation.value,
+              ),
+            ),
+          );
+        },
+      );
+    }
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         // Pause/Resume button
         if (widget.enablePause && _isRecording && !_isLocked)
-          IconButton(
-            onPressed: _isPaused ? _resumeRecording : _pauseRecording,
-            icon: Icon(
-              _isPaused ? Icons.play_arrow : Icons.pause,
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
               color: _isPaused ? Colors.green : Colors.orange,
+              boxShadow: [
+                BoxShadow(
+                  color: (_isPaused ? Colors.green : Colors.orange)
+                      .withValues(alpha: 0.3),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: IconButton(
+              onPressed: _isPaused ? _resumeRecording : _pauseRecording,
+              icon: Icon(
+                _isPaused ? Icons.play_arrow : Icons.pause,
+                color: Colors.white,
+                size: 20,
+              ),
+              padding: EdgeInsets.zero,
             ),
           ),
 
@@ -388,44 +569,171 @@ class _TelegramVoiceRecorderWidgetState
             },
           ),
 
+        // Stop button
+        if (_isRecording && !_isLocked)
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.green,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.green.withValues(alpha: 0.3),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: IconButton(
+              onPressed: _stopRecording,
+              icon: const Icon(
+                Icons.stop,
+                color: Colors.white,
+                size: 20,
+              ),
+              padding: EdgeInsets.zero,
+            ),
+          ),
+
         // Cancel button
         if (_isRecording)
           AnimatedBuilder(
-            animation: _cancelAnimation,
+            animation:
+                Listenable.merge([_cancelAnimation, _startRecordingAnimation]),
             builder: (context, child) {
               return Transform.scale(
-                scale: _isCanceling ? _cancelAnimation.value : 1.0,
-                child: IconButton(
-                  onPressed: _cancelRecording,
-                  icon: Icon(
-                    Icons.close,
-                    color: Colors.red,
+                scale: _isCanceling
+                    ? (1.0 + 0.3 * _cancelAnimation.value)
+                    : (_startRecordingAnimation.value > 0.5
+                        ? 1.0
+                        : _startRecordingAnimation.value),
+                child: Transform.translate(
+                  offset: _isCanceling
+                      ? Offset(
+                          math.sin(_cancelAnimation.value * math.pi * 4) * 5,
+                          math.cos(_cancelAnimation.value * math.pi * 3) * 3,
+                        )
+                      : Offset.zero,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.red.withValues(
+                          alpha: _isCanceling
+                              ? 0.3 + (0.7 * _cancelAnimation.value)
+                              : 0.1),
+                    ),
+                    child: IconButton(
+                      onPressed: _cancelRecording,
+                      icon: Icon(
+                        Icons.close,
+                        color: Colors.red,
+                        size: _isCanceling
+                            ? 24 + (4 * _cancelAnimation.value)
+                            : 24,
+                      ),
+                    ),
                   ),
                 ),
               );
             },
           ),
+
+        // Settings button
+        IconButton(
+          onPressed: _showSettings,
+          icon: Icon(
+            Icons.settings,
+            color: isDark ? Colors.white70 : Colors.black54,
+          ),
+        ),
       ],
     );
   }
 
   // Recording methods
   Future<void> _startRecording() async {
-    // Note: setRecordingConfig is not supported in current TelegramVoiceService
-    // if (widget.recordingConfig != null) {
-    //   _voiceService.setRecordingConfig(widget.recordingConfig!);
-    // }
-
-    final success = await _voiceService.startRecording();
-    if (!success) {
+    final success = await TelegramVoiceService.startRecording();
+    if (success) {
+      setState(() {
+        _isRecording = true;
+        _isLocked = false;
+        _isCanceling = false;
+        _isPaused = false;
+        _recordingDuration = 0;
+        _dragDistance = 0.0;
+        _dragOffset = Offset.zero;
+      });
+      _playStartRecordingSound();
+      _startRecordingController.forward(from: 0.0);
+      _recordingStartEffectController.forward(from: 0.0);
+      _pulseController.repeat(reverse: true);
+      _waveformController.forward();
+    } else {
       _showError('خطا در شروع ضبط صدا');
     }
   }
 
   Future<void> _stopRecording() async {
-    final recordingData = await _voiceService.stopRecording();
-    if (recordingData != null) {
-      widget.onRecordingComplete?.call(recordingData);
+    final file = await TelegramVoiceService.stopRecording();
+    if (file != null) {
+      // Convert File to VoiceRecordingData
+      final recordingData = VoiceRecordingData(
+        filePath: file.path,
+        duration: _recordingDuration,
+        waveformData: TelegramVoiceService.waveformData,
+        fileSize: await file.length() / 1024,
+        timestamp: DateTime.now(),
+      );
+
+      setState(() {
+        _isRecording = false;
+        _isLocked = false;
+        _isCanceling = false;
+        _isPaused = false;
+        _recordingDuration = 0;
+        _dragDistance = 0.0;
+        _dragOffset = Offset.zero;
+      });
+
+      _pulseController.stop();
+      _waveformController.reverse();
+
+      // بهبود کیفیت صدا اگر فعال باشد
+      VoiceRecordingData enhancedRecordingData = recordingData;
+      if (_enhancementConfig.enableNoiseReduction ||
+          _enhancementConfig.enableEchoCancellation ||
+          _enhancementConfig.enableAutoGain) {
+        try {
+          widget.onUploadStatus?.call('در حال بهبود کیفیت...');
+          final enhancedFile = await AudioEnhancementService().enhanceAudioFile(
+            File(recordingData.filePath),
+            config: _enhancementConfig,
+            onProgress: (progress) {
+              // گزارش پیشرفت بهبود
+            },
+          );
+
+          if (enhancedFile != null) {
+            enhancedRecordingData = VoiceRecordingData(
+              filePath: enhancedFile.path,
+              duration: recordingData.duration,
+              waveformData: recordingData.waveformData,
+              fileSize: await enhancedFile.length() / 1024,
+              timestamp: recordingData.timestamp,
+            );
+            print('✅ کیفیت صدا بهبود یافت');
+          }
+        } catch (e) {
+          print('❌ خطا در بهبود کیفیت صدا: $e');
+          // ادامه بدون بهبود
+        }
+      }
+
+      // انیمیشن موفقیت ارسال
+      _sendSuccessController.forward(from: 0.0);
+
+      widget.onRecordingComplete?.call(enhancedRecordingData);
 
       // آپلود خودکار
       if (widget.enableUpload && widget.conversationId != null) {
@@ -435,28 +743,78 @@ class _TelegramVoiceRecorderWidgetState
   }
 
   Future<void> _cancelRecording() async {
-    await _voiceService.cancelRecording();
+    // شروع انیمیشن لغو
+    setState(() {
+      _isCanceling = true;
+    });
+
+    // افکت صوتی لغو
+    await _playCancelSound();
+
+    await TelegramVoiceService.cancelRecording();
+
+    // انیمیشن‌های لغو
+    _pulseController.stop();
+    _waveformController.reverse();
+    _cancelController.forward();
+    _startRecordingController.reverse();
+
+    // منتظر تمام شدن انیمیشن‌ها
+    await Future.delayed(const Duration(milliseconds: 400));
+
+    setState(() {
+      _isRecording = false;
+      _isLocked = false;
+      _isCanceling = false;
+      _isPaused = false;
+      _recordingDuration = 0;
+      _dragDistance = 0.0;
+      _dragOffset = Offset.zero;
+      _statusText = 'ضبط لغو شد';
+      _statusColor = Colors.red;
+    });
+
+    // نمایش پیام لغو برای کاربر
     widget.onRecordingCancel?.call('ضبط لغو شد');
+
+    // بازنشانی وضعیت پس از چند ثانیه
+    await Future.delayed(const Duration(seconds: 2));
+    if (mounted) {
+      setState(() {
+        _statusText = 'برای ضبط نگه دارید';
+        _statusColor = Colors.grey;
+      });
+    }
   }
 
   void _lockRecording() {
-    // Lock functionality is not implemented in current TelegramVoiceService
-    print('Lock recording is not supported');
+    setState(() {
+      _isLocked = true;
+    });
+    _lockController.forward();
+    print('Recording locked');
   }
 
   void _unlockRecording() {
-    // Unlock functionality is not implemented in current TelegramVoiceService
-    print('Unlock recording is not supported');
+    setState(() {
+      _isLocked = false;
+    });
+    _lockController.reverse();
+    print('Recording unlocked');
   }
 
   Future<void> _pauseRecording() async {
-    // Pause functionality is not implemented in current TelegramVoiceService
-    print('Pause recording is not supported');
+    await TelegramVoiceService.pauseRecording();
+    setState(() {
+      _isPaused = true;
+    });
   }
 
   Future<void> _resumeRecording() async {
-    // Resume functionality is not implemented in current TelegramVoiceService
-    print('Resume recording is not supported');
+    await TelegramVoiceService.resumeRecording();
+    setState(() {
+      _isPaused = false;
+    });
   }
 
   // Upload method
@@ -492,6 +850,25 @@ class _TelegramVoiceRecorderWidgetState
     return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
   }
 
+  // افکت صوتی شروع ضبط
+  Future<void> _playStartRecordingSound() async {
+    try {
+      // استفاده از HapticFeedback برای بازخورد لمسی
+      await HapticFeedback.mediumImpact();
+    } catch (e) {
+      print('خطا در پخش افکت صوتی: $e');
+    }
+  }
+
+  // افکت صوتی لغو ضبط
+  Future<void> _playCancelSound() async {
+    try {
+      await HapticFeedback.lightImpact();
+    } catch (e) {
+      print('خطا در پخش افکت لغو: $e');
+    }
+  }
+
   void _showError(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -501,5 +878,19 @@ class _TelegramVoiceRecorderWidgetState
         ),
       );
     }
+  }
+
+  void _showSettings() {
+    showDialog(
+      context: context,
+      builder: (context) => VoiceRecordingSettingsDialog(
+        initialConfig: _enhancementConfig,
+        onConfigChanged: (config) {
+          setState(() {
+            _enhancementConfig = config;
+          });
+        },
+      ),
+    );
   }
 }

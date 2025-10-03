@@ -84,11 +84,6 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                       onTap: _copyLink,
                     ),
                     _buildActionButton(
-                      icon: Icons.bookmark_border,
-                      label: 'نشان‌گذاری',
-                      onTap: _bookmarkPost,
-                    ),
-                    _buildActionButton(
                       icon: Icons.share,
                       label: 'اشتراک‌گذاری...',
                       onTap: _shareVia,
@@ -340,16 +335,6 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
     Clipboard.setData(ClipboardData(text: webUrl));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('لینک پست کپی شد'), backgroundColor: Colors.green),
-    );
-  }
-
-  void _bookmarkPost() {
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('پست نشان‌گذاری شد'),
-        backgroundColor: Colors.blue,
-      ),
     );
   }
 

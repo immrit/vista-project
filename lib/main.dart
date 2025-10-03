@@ -5,6 +5,7 @@ import 'package:Vista/view/screen/SplashScreen.dart';
 import 'package:Vista/view/util/const.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -101,8 +102,23 @@ void main() async {
     // راه‌اندازی Firebase با بررسی وضعیت قبلی
     await _initializeFirebase();
 
-    // راه‌اندازی Supabase
-    await initializeSupabaseWithFailover();
+    // راه‌اندازی Supabase با مدیریت خطا
+    try {
+      await initializeSupabaseWithFailover();
+      print('✅ Supabase initialized successfully');
+    } catch (e) {
+      print('❌ Supabase initialization failed: $e');
+
+      // اگر Supabase نتوانست initialize شود، برنامه نمی‌تواند کار کند
+      // اما لااقل باید این را لاگ کنیم و به کاربر اطلاع دهیم
+      if (kDebugMode) {
+        print(
+            '🔧 در حالت توسعه، Supabase initialize نشد اما برنامه ادامه می‌دهد');
+        print('⚠️ برخی ویژگی‌ها ممکن است کار نکنند');
+      } else {
+        rethrow; // در حالت production، اجازه نده برنامه اجرا شود
+      }
+    }
 
     // راه‌اندازی سرویس امنیتی پیشرفته
     await AdvancedSecurityService.initialize();
@@ -251,24 +267,55 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     _setupDeepLinkHandling();
 
     supabase.auth.onAuthStateChange.listen((data) async {
-      if (data.event == AuthChangeEvent.signedIn) {
-        debugPrint('کاربر وارد شد - بررسی تایید دو مرحله‌ای');
+      try {
+        if (data.event == AuthChangeEvent.signedIn) {
+          debugPrint('کاربر وارد شد - بررسی تایید دو مرحله‌ای');
 
-        // به‌روزرسانی وضعیت آنلاین کاربر
-        final chatService = ChatService();
-        chatService.updateUserOnlineStatus();
+          // به‌روزرسانی وضعیت آنلاین کاربر
+          final chatService = ChatService();
+          chatService.updateUserOnlineStatus();
 
-        // پس از ورود، پروفایل و 10 پست آخر کاربر را کش کن تا در آفلاین نمایش داده شود
-        try {
-          final uid = Supabase.instance.client.auth.currentUser?.id;
-          if (uid != null) {
-            unawaited(ProfileCacheService().cacheProfileAndPosts(uid));
+          // پس از ورود، پروفایل و 10 پست آخر کاربر را کش کن تا در آفلاین نمایش داده شود
+          try {
+            final uid = Supabase.instance.client.auth.currentUser?.id;
+            if (uid != null) {
+              unawaited(ProfileCacheService().cacheProfileAndPosts(uid));
+            }
+          } catch (e) {
+            print('⚠️ Prefetch profile/posts on sign-in failed: $e');
           }
-        } catch (e) {
-          print('⚠️ Prefetch profile/posts on sign-in failed: $e');
+        } else if (data.event == AuthChangeEvent.signedOut) {
+          debugPrint('کاربر خارج شد - پاک کردن نشست‌ها');
         }
-      } else if (data.event == AuthChangeEvent.signedOut) {
-        debugPrint('کاربر خارج شد - پاک کردن نشست‌ها');
+      } catch (e) {
+        print('⚠️ خطا در مدیریت تغییر وضعیت احراز هویت: $e');
+
+        // اگر خطا مربوط به اتصال به دیتابیس است، کاربر را به صفحه ورود هدایت کن
+        if (e.toString().contains('AuthRetryableFetchException') ||
+            e.toString().contains('hostname resolving error') ||
+            e.toString().contains('failed to connect')) {
+          print('🔄 خطای اتصال به سرور - نیاز به ورود مجدد');
+
+          // پاک کردن نشست فعلی
+          try {
+            await supabase.auth.signOut();
+          } catch (signOutError) {
+            print('⚠️ خطا در خروج کاربر: $signOutError');
+          }
+
+          // نمایش پیام خطا به کاربر
+          if (mounted && navigatorKey.currentContext != null) {
+            ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'اتصال به سرور قطع شده است. لطفاً دوباره وارد شوید.',
+                ),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 5),
+              ),
+            );
+          }
+        }
       }
     });
   }

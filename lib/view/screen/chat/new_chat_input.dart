@@ -25,7 +25,8 @@ class NewChatInput extends StatefulWidget {
   State<NewChatInput> createState() => _NewChatInputState();
 }
 
-class _NewChatInputState extends State<NewChatInput> with TickerProviderStateMixin {
+class _NewChatInputState extends State<NewChatInput>
+    with TickerProviderStateMixin {
   // --- Controllers ---
   final TextEditingController _textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
@@ -37,6 +38,7 @@ class _NewChatInputState extends State<NewChatInput> with TickerProviderStateMix
   bool _hasText = false;
   bool _isRecording = false;
   bool _isLocked = false;
+  bool _isPaused = false;
   bool _showEmojiPicker = false;
   int _recordingDuration = 0;
   Offset? _longPressStartPosition;
@@ -57,13 +59,22 @@ class _NewChatInputState extends State<NewChatInput> with TickerProviderStateMix
     _recorderController = RecorderController();
     _textController.addListener(_onTextChanged);
 
-    _micIconAnimationController = AnimationController(vsync: this, duration: const Duration(milliseconds: 200));
-    _micIconScaleAnimation = Tween<double>(begin: 1.0, end: 1.4).animate(CurvedAnimation(parent: _micIconAnimationController, curve: Curves.easeOut));
+    _micIconAnimationController = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 200));
+    _micIconScaleAnimation = Tween<double>(begin: 1.0, end: 1.4).animate(
+        CurvedAnimation(
+            parent: _micIconAnimationController, curve: Curves.easeOut));
 
-    _slideCancelAnimationController = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
-    _slideCancelAnimation = Tween<Offset>(begin: const Offset(0.5, 0), end: Offset.zero).animate(CurvedAnimation(parent: _slideCancelAnimationController, curve: Curves.easeInOut));
+    _slideCancelAnimationController = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 300));
+    _slideCancelAnimation =
+        Tween<Offset>(begin: const Offset(0.5, 0), end: Offset.zero).animate(
+            CurvedAnimation(
+                parent: _slideCancelAnimationController,
+                curve: Curves.easeInOut));
 
-    _keyboardSubscription = KeyboardVisibilityController().onChange.listen((bool isVisible) {
+    _keyboardSubscription =
+        KeyboardVisibilityController().onChange.listen((bool isVisible) {
       if (isVisible && _showEmojiPicker) {
         setState(() => _showEmojiPicker = false);
       }
@@ -108,7 +119,8 @@ class _NewChatInputState extends State<NewChatInput> with TickerProviderStateMix
     if (!hasPermission) return;
 
     final tempDir = await getTemporaryDirectory();
-    final path = '${tempDir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    final path =
+        '${tempDir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
     await _recorderController.record(path: path);
 
     _micIconAnimationController.forward();
@@ -139,7 +151,7 @@ class _NewChatInputState extends State<NewChatInput> with TickerProviderStateMix
     _resetRecordingState();
   }
 
-  void _resetRecordingState(){
+  void _resetRecordingState() {
     _micIconAnimationController.reverse();
     _slideCancelAnimationController.reverse();
     _recordingTimer?.cancel();
@@ -147,6 +159,7 @@ class _NewChatInputState extends State<NewChatInput> with TickerProviderStateMix
       setState(() {
         _isRecording = false;
         _isLocked = false;
+        _isPaused = false;
         _longPressStartPosition = null;
         _recordingDuration = 0;
       });
@@ -156,6 +169,26 @@ class _NewChatInputState extends State<NewChatInput> with TickerProviderStateMix
   void _lockRecording() {
     _micIconAnimationController.reverse();
     setState(() => _isLocked = true);
+  }
+
+  Future<void> _pauseRecording() async {
+    await _recorderController.pause();
+    _recordingTimer?.cancel();
+    setState(() => _isPaused = true);
+  }
+
+  Future<void> _resumeRecording() async {
+    // RecorderController در audio_waveforms از resume پشتیبانی نمی‌کند
+    // بنابراین ضبط جدید شروع می‌کنیم
+    final tempDir = await getTemporaryDirectory();
+    final path =
+        '${tempDir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    await _recorderController.record(path: path);
+
+    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _recordingDuration++);
+    });
+    setState(() => _isPaused = false);
   }
 
   void _handleSendMessage() {
@@ -198,13 +231,19 @@ class _NewChatInputState extends State<NewChatInput> with TickerProviderStateMix
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         IconButton(
-          icon: Icon(_showEmojiPicker ? Icons.keyboard_rounded : Icons.emoji_emotions_outlined, color: Theme.of(context).iconTheme.color?.withOpacity(0.7)),
+          icon: Icon(
+              _showEmojiPicker
+                  ? Icons.keyboard_rounded
+                  : Icons.emoji_emotions_outlined,
+              color: Theme.of(context).iconTheme.color?.withOpacity(0.7)),
           onPressed: _toggleEmojiPicker,
         ),
         Expanded(
           child: Container(
             decoration: BoxDecoration(
-              color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[800] : Colors.grey[200],
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.grey[800]
+                  : Colors.grey[200],
               borderRadius: BorderRadius.circular(24.0),
             ),
             child: Row(
@@ -219,9 +258,10 @@ class _NewChatInputState extends State<NewChatInput> with TickerProviderStateMix
                     keyboardType: TextInputType.multiline,
                     textInputAction: TextInputAction.newline,
                     decoration: const InputDecoration(
-                      hintText: 'Message',
+                      hintText: '...پیام',
                       border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       isCollapsed: true,
                     ),
                   ),
@@ -229,7 +269,11 @@ class _NewChatInputState extends State<NewChatInput> with TickerProviderStateMix
                 Padding(
                   padding: const EdgeInsets.only(bottom: 4.0),
                   child: IconButton(
-                    icon: Icon(Icons.attach_file_rounded, color: Theme.of(context).iconTheme.color?.withOpacity(0.7)),
+                    icon: Icon(Icons.attach_file_rounded,
+                        color: Theme.of(context)
+                            .iconTheme
+                            .color
+                            ?.withOpacity(0.7)),
                     onPressed: widget.onPickFile,
                   ),
                 ),
@@ -240,7 +284,8 @@ class _NewChatInputState extends State<NewChatInput> with TickerProviderStateMix
         const SizedBox(width: 8),
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 200),
-          transitionBuilder: (child, animation) => ScaleTransition(scale: animation, child: child),
+          transitionBuilder: (child, animation) =>
+              ScaleTransition(scale: animation, child: child),
           child: _hasText ? _buildSendButton() : _buildMicButton(),
         ),
       ],
@@ -251,43 +296,201 @@ class _NewChatInputState extends State<NewChatInput> with TickerProviderStateMix
     return Row(
       key: ValueKey(_isLocked ? 'locked_view' : 'recording_view'),
       children: [
+        // آیکون میکروفون یا حذف
         if (_isLocked)
-          IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red, size: 28), onPressed: _cancelRecording)
+          IconButton(
+              icon:
+                  const Icon(Icons.delete_outline, color: Colors.red, size: 28),
+              onPressed: _cancelRecording)
         else
           const Icon(Icons.mic, color: Colors.red, size: 28),
+
         const SizedBox(width: 8),
-        Text(_formatDuration(_recordingDuration), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+
+        // نمایش مدت زمان و وضعیت
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_formatDuration(_recordingDuration),
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+            if (_isPaused)
+              Text(
+                'مکث',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.orange,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+          ],
+        ),
+
         const SizedBox(width: 16),
+
+        // ناحیه اصلی - waveform یا slide to cancel
         Expanded(
           child: _isLocked
               ? AudioWaveforms(
                   size: Size(MediaQuery.of(context).size.width, 40),
                   recorderController: _recorderController,
-                  waveStyle: WaveStyle(waveColor: Theme.of(context).colorScheme.onSurface, showDurationLabel: false),
+                  waveStyle: WaveStyle(
+                      waveColor: Theme.of(context).colorScheme.onSurface,
+                      showDurationLabel: false),
                 )
-              : FadeTransition(
-                  opacity: _slideCancelAnimationController,
-                  child: SlideTransition(
-                    position: _slideCancelAnimation,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Icon(Icons.arrow_back_ios, size: 16, color: Colors.grey),
-                        Text("Slide to cancel", style: TextStyle(color: Colors.grey)),
-                      ],
+              : GestureDetector(
+                  onPanUpdate: (details) {
+                    // تشخیص حرکت به چپ برای لغو
+                    final deltaX = details.delta.dx;
+                    if (deltaX < -20) {
+                      // حرکت به چپ - لغو ضبط
+                      _cancelRecording();
+                    }
+                  },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.red.withValues(alpha: 0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: FadeTransition(
+                      opacity: _slideCancelAnimationController,
+                      child: SlideTransition(
+                        position: _slideCancelAnimation,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: const [
+                            Icon(Icons.arrow_back_ios,
+                                size: 16, color: Colors.red),
+                            SizedBox(width: 4),
+                            Text("Slide to cancel",
+                                style: TextStyle(
+                                  color: Colors.red,
+                                  fontWeight: FontWeight.w500,
+                                )),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
         ),
+
+        // دکمه‌های عملیات
         if (_isLocked) ...[
           const SizedBox(width: 8),
+          // دکمه ارسال
           InkWell(
             onTap: _stopRecordingAndSend,
             borderRadius: BorderRadius.circular(24),
-            child: CircleAvatar(
-              radius: 24,
-              backgroundColor: Theme.of(context).colorScheme.primary,
-              child: const Icon(Icons.send, color: Colors.white),
+            child: Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [
+                    Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF4CAF50) // سبز در تم تاریک
+                        : const Color(0xFF2196F3), // آبی در تم روشن
+                    (Theme.of(context).brightness == Brightness.dark
+                            ? const Color(0xFF4CAF50)
+                            : const Color(0xFF2196F3))
+                        .withValues(alpha: 0.8),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: (Theme.of(context).brightness == Brightness.dark
+                            ? const Color(0xFF4CAF50)
+                            : const Color(0xFF2196F3))
+                        .withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.send_rounded,
+                color: Colors.white,
+                size: 24,
+              ),
+            ),
+          ),
+        ] else ...[
+          const SizedBox(width: 8),
+          // دکمه مکث/ادامه
+          InkWell(
+            onTap: _isPaused ? _resumeRecording : _pauseRecording,
+            borderRadius: BorderRadius.circular(24),
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [
+                    _isPaused ? Colors.green : Colors.orange,
+                    (_isPaused ? Colors.green : Colors.orange)
+                        .withValues(alpha: 0.8),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: (_isPaused ? Colors.green : Colors.orange)
+                        .withValues(alpha: 0.3),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Icon(
+                _isPaused ? Icons.play_arrow : Icons.pause,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // دکمه توقف (همیشه نمایش داده می‌شود)
+          InkWell(
+            onTap: _stopRecordingAndSend,
+            borderRadius: BorderRadius.circular(24),
+            child: Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.green,
+                    Colors.green.withValues(alpha: 0.8),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.green.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.stop_rounded,
+                color: Colors.white,
+                size: 24,
+              ),
             ),
           ),
         ]
@@ -300,10 +503,40 @@ class _NewChatInputState extends State<NewChatInput> with TickerProviderStateMix
       key: const ValueKey('send_button'),
       onTap: _handleSendMessage,
       borderRadius: BorderRadius.circular(24),
-      child: CircleAvatar(
-        radius: 24,
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        child: const Icon(Icons.send, color: Colors.white),
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: [
+              Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF4CAF50) // سبز در تم تاریک
+                  : const Color(0xFF2196F3), // آبی در تم روشن
+              (Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF4CAF50)
+                      : const Color(0xFF2196F3))
+                  .withValues(alpha: 0.8),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: (Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF4CAF50)
+                      : const Color(0xFF2196F3))
+                  .withValues(alpha: 0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.send_rounded,
+          color: Colors.white,
+          size: 24,
+        ),
       ),
     );
   }
@@ -313,7 +546,8 @@ class _NewChatInputState extends State<NewChatInput> with TickerProviderStateMix
       onLongPressStart: (details) => _startRecording(details.globalPosition),
       onLongPressEnd: (details) {
         if (_isLocked) return;
-        final dragOffsetX = details.globalPosition.dx - (_longPressStartPosition?.dx ?? 0);
+        final dragOffsetX =
+            details.globalPosition.dx - (_longPressStartPosition?.dx ?? 0);
         if (dragOffsetX < -_cancelThreshold) {
           _cancelRecording();
         } else {
@@ -322,18 +556,50 @@ class _NewChatInputState extends State<NewChatInput> with TickerProviderStateMix
       },
       onLongPressMoveUpdate: (details) {
         if (_isLocked) return;
-        final dragOffsetY = details.globalPosition.dy - (_longPressStartPosition?.dy ?? 0);
+        final dragOffsetY =
+            details.globalPosition.dy - (_longPressStartPosition?.dy ?? 0);
         if (dragOffsetY < -_lockThreshold) {
           _lockRecording();
         }
       },
+      // اضافه کردن gesture برای تشخیص slide to cancel
+      onPanUpdate: (details) {
+        if (!_isRecording || _isLocked) return;
+        final dragOffsetX =
+            details.globalPosition.dx - (_longPressStartPosition?.dx ?? 0);
+        if (dragOffsetX < -_cancelThreshold) {
+          _cancelRecording();
+        }
+      },
       child: ScaleTransition(
         scale: _micIconScaleAnimation,
-        child: CircleAvatar(
+        child: Container(
           key: const ValueKey('mic_button'),
-          radius: 24,
-          backgroundColor: Theme.of(context).colorScheme.primary,
-          child: const Icon(Icons.mic, color: Colors.white),
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.grey[800]
+                : Colors.grey[200],
+            boxShadow: [
+              BoxShadow(
+                color: (Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey[800]
+                        : Colors.grey[200])!
+                    .withValues(alpha: 0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(
+            Icons.mic_rounded,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.grey[300] // خاکستری روشن برای تم تاریک
+                : Colors.grey[700], // خاکستری تیره برای تم روشن
+            size: 24,
+          ),
         ),
       ),
     );

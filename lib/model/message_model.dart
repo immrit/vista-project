@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 class MessageModel {
   final String id;
   final String conversationId;
@@ -8,6 +6,7 @@ class MessageModel {
   final DateTime createdAt;
   final String? attachmentUrl;
   final String? attachmentType;
+  final int? duration; // مدت زمان فایل صوتی (ثانیه)
   final bool isRead;
   final bool isSent;
   final bool isDelivered; // نشان‌دهنده اینکه پیام به دستگاه گیرنده رسیده
@@ -36,6 +35,7 @@ class MessageModel {
     required this.createdAt, // Add this parameter
     this.attachmentUrl,
     this.attachmentType,
+    this.duration,
     this.isRead = false,
     this.isSent = true,
     this.isDelivered = false,
@@ -107,6 +107,7 @@ class MessageModel {
     required String content,
     String? attachmentUrl,
     String? attachmentType,
+    int? duration,
     String? replyToMessageId,
     String? replyToContent,
     String? replyToSenderName,
@@ -125,6 +126,7 @@ class MessageModel {
       createdAt: DateTime.now(),
       attachmentUrl: attachmentUrl,
       attachmentType: attachmentType,
+      duration: duration,
       isRead: false,
       isSent: false,
       isPending: true,

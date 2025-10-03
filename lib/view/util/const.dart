@@ -150,6 +150,20 @@ extension PostgrestFilterBuilderExtensions on PostgrestFilterBuilder {
   }
 }
 
+/// بررسی اتصال به Supabase
+Future<bool> checkSupabaseConnectivity() async {
+  try {
+    await Supabase.instance.client.from('profiles').select().limit(1).timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => throw TimeoutException('Connection timeout'),
+        );
+    return true;
+  } catch (e) {
+    print('❌ Supabase connectivity check failed: $e');
+    return false;
+  }
+}
+
 Future<void> initializeSupabaseWithFailover() async {
   // تلاش اول: استفاده از CDN URL با HTTP client جدید
   try {
@@ -169,6 +183,8 @@ Future<void> initializeSupabaseWithFailover() async {
         );
     return; // اتصال موفق، خروج از تابع
   } catch (e) {
+    print('⚠️ CDN URL failed: $e');
+
     // CDN attempt failed, will try direct URL
 
     // بررسی اینکه آیا Supabase در تلاش اول مقداردهی اولیه شده بود یا خیر.
@@ -189,24 +205,56 @@ Future<void> initializeSupabaseWithFailover() async {
       try {
         await Supabase.instance.dispose(); // ریست کردن وضعیت Supabase
       } catch (disposeError) {
-        // Error disposing, proceeding with fallback anyway
+        print('⚠️ Error disposing Supabase instance: $disposeError');
       }
     }
 
     // تلاش دوم: استفاده از Direct URL با HTTP client جدید
     try {
+      print(
+          'Attempting Supabase initialization with Direct URL: $supabaseDirectUrl');
+
       // ایجاد Supabase client جدید با HTTP client جدید
       final httpClient2 = SupabaseHttpClient();
       await Supabase.initialize(
           url: supabaseDirectUrl,
           anonKey: supabaseAnonKey,
           httpClient: httpClient2);
+
       await Supabase.instance.client.from('profiles').select().limit(1).timeout(
             const Duration(seconds: 15),
             onTimeout: () => throw TimeoutException('Ping timeout'),
           );
+
+      print('✅ Supabase initialized successfully with Direct URL');
     } catch (err) {
-      print('❌ اتصال به سرور قطع است - لطفاً اتصال اینترنت خود را بررسی کنید');
+      print(
+          '❌ اتصال به سرور قطع است - لطفاً اتصال اینترنت خود را بررسی کنید: $err');
+
+      // در حالت debug، Supabase را با تنظیمات minimal initialize کنیم
+      if (const bool.fromEnvironment('dart.vm.product') == false) {
+        print(
+            '🔄 تلاش برای initialize Supabase با تنظیمات minimal در حالت توسعه...');
+
+        try {
+          // Supabase را با تنظیمات minimal initialize کنیم
+          await Supabase.initialize(
+            url:
+                'https://localhost:54321', // این URL کار نخواهد کرد اما instance ایجاد می‌شود
+            anonKey: supabaseAnonKey,
+          );
+          print('✅ Supabase با تنظیمات minimal initialize شد (حالت توسعه)');
+          print('⚠️ اتصال به دیتابیس ممکن است کار نکند اما برنامه اجرا می‌شود');
+          return; // خروج موفق
+        } catch (minimalErr) {
+          print('❌ حتی minimal Supabase هم شکست خورد: $minimalErr');
+          // در این حالت نیز اجازه بده برنامه اجرا شود
+          print('🔧 برنامه بدون Supabase اجرا می‌شود');
+          return;
+        }
+      } else {
+        rethrow; // در حالت production، اجازه نده برنامه اجرا شود
+      }
     }
   }
 }

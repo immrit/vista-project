@@ -3,7 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:photo_view/photo_view.dart';
 import '../../../model/message_model.dart';
-import 'audio_player_widget.dart';
+import 'voice_message_widget.dart';
+import 'advanced_voice_player_widget.dart';
 import '../../../view/util/time_utils.dart';
 import 'shared_post_card_widget.dart';
 
@@ -214,10 +215,15 @@ class _MessageBubbleState extends State<MessageBubble>
       );
     }
     if (type == 'audio') {
-      return AudioPlayerWidget(
+      return AdvancedVoicePlayerWidget(
         audioUrl: url,
+        voiceId: 'voice_${widget.message.id}',
         isMe: widget.message.isMe,
+        duration: widget.message.duration,
         waveformData: null, // Waveform data is not stored in messages anymore
+        onDelete: null,
+        onReply: null,
+        onForward: null,
       );
     }
     return const SizedBox.shrink();

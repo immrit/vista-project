@@ -14,8 +14,8 @@ import '../../../model/message_model.dart';
 import '../../../provider/new_chat_provider.dart';
 import '../../../provider/chat_provider.dart' as chat_provider;
 import '../../../services/uploadAudioChatService.dart';
+import 'package:audio_waveforms/audio_waveforms.dart';
 import '../../../services/uploadImageChatService.dart';
-import '../../../services/PostImageUploadService.dart';
 import '../../../services/wallpaper_cache_service.dart';
 import 'new_chat_input.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -62,12 +62,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String? _selectedImageName;
 
   // UI state
-  bool _isUploading = false;
-  bool _isSending = false;
   bool _isScrolling = false; // جلوگیری از فراخوانی مکرر scroll listener
   bool _isUpdatingFloatingDate =
       false; // جلوگیری از فراخوانی مکرر floating date update
-  double _uploadProgress = 0.0;
   bool _isOtherUserBlocked = false;
   bool _isCurrentUserBlocked = false;
   final Set<String> _deletingMessageIds = {};
@@ -96,8 +93,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       final chatService = ref.read(chat_provider.chatServiceProvider);
       final isBlocked = await chatService.isUserBlocked(widget.otherUserId);
-      final isCurrentUserBlocked =
-          await chatService.isCurrentUserBlockedBy(widget.otherUserId);
+      final isCurrentUserBlocked = await chatService.isCurrentUserBlockedBy(
+        widget.otherUserId,
+      );
       if (mounted) {
         setState(() {
           _isOtherUserBlocked = isBlocked;
@@ -193,9 +191,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         duration: const Duration(seconds: 2),
         backgroundColor: Colors.blue.shade600,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
@@ -206,7 +202,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     // دریافت تمام پیام‌های ناموفق
     final messages = ref.read(
-        chat_provider.conversationMessagesProvider(widget.conversationId));
+      chat_provider.conversationMessagesProvider(widget.conversationId),
+    );
     final failedMessages =
         messages.where((msg) => !msg.isSent && msg.isMe).toList();
 
@@ -216,9 +213,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           content: const Text('پیام ناموفقی برای ارسال مجدد وجود ندارد'),
           backgroundColor: Colors.green.shade600,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       );
       return;
@@ -235,13 +230,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-            'در حال تلاش مجدد برای ${failedMessages.length} پیام ناموفق...'),
+          'در حال تلاش مجدد برای ${failedMessages.length} پیام ناموفق...',
+        ),
         duration: const Duration(seconds: 3),
         backgroundColor: Colors.blue.shade600,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
@@ -249,18 +243,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void dispose() {
     print(
-        '🗑️ Disposing ChatScreen for conversation: ${widget.conversationId}');
+      '🗑️ Disposing ChatScreen for conversation: ${widget.conversationId}',
+    );
     _floatingDateTimer?.cancel();
     super.dispose();
   }
 
   // --- Message Sending Logic ---
   Future<void> _sendMessage(String message) async {
-    if (message.isEmpty && _selectedImage == null && _selectedImageBytes == null) {
+    if (message.isEmpty &&
+        _selectedImage == null &&
+        _selectedImageBytes == null) {
       return;
     }
 
-    setState(() => _isSending = true);
+    setState(() {});
 
     String? attachmentUrl;
     String? attachmentType;
@@ -268,11 +265,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       if (_selectedImage != null || _selectedImageBytes != null) {
         attachmentType = 'image';
-        attachmentUrl = await _uploadImage(_selectedImage ?? _selectedImageBytes!);
+        attachmentUrl = await _uploadImage(
+          _selectedImage ?? _selectedImageBytes!,
+        );
       }
 
       if (attachmentUrl == null && message.isEmpty) {
-        setState(() => _isSending = false);
+        setState(() {});
         return;
       }
 
@@ -286,38 +285,104 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _clearAttachments();
       _scrollToBottom();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطا در ارسال پیام: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('خطا در ارسال پیام: $e')));
     } finally {
       if (mounted) {
-        setState(() => _isSending = false);
+        setState(() {});
       }
     }
   }
 
   Future<void> _sendVoiceMessage(File audioFile) async {
-    setState(() => _isSending = true);
+    setState(() {});
     try {
+      print("🎙️ شروع ارسال پیام صوتی: ${audioFile.path}");
+
+      // نمایش پیام در حال ارسال
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('در حال ارسال پیام صوتی...'),
+          backgroundColor: Colors.blue,
+          duration: Duration(seconds: 2),
+        ),
+      );
+
       final audioUrl = await _uploadAudio(audioFile);
       if (audioUrl != null) {
+        print("✅ فایل صوتی آپلود شد: $audioUrl");
+
+        // محاسبه مدت زمان فایل صوتی
+        final duration = await _getAudioDuration(audioFile);
+        print("🎵 مدت زمان فایل: ${duration} ثانیه");
+
         await ref.read(newChatProvider(_providerParams).notifier).sendMessage(
               '', // Voice messages have no text content
               attachmentUrl: audioUrl,
               attachmentType: 'audio',
+              // duration: duration, // موقتاً غیرفعال تا مشکل دیتابیس حل شود
               replyToMessage: _replyToMessage,
             );
+
+        print("✅ پیام صوتی ارسال شد");
         _clearAttachments();
         _scrollToBottom();
+
+        // نمایش پیام موفقیت
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('پیام صوتی با موفقیت ارسال شد'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      } else {
+        throw Exception('آپلود فایل صوتی ناموفق بود');
       }
     } catch (e) {
+      print('❌ خطا در ارسال پیام صوتی: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطا در ارسال پیام صوتی: $e')),
+        SnackBar(
+          content: Text('خطا در ارسال پیام صوتی: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
       );
     } finally {
       if (mounted) {
-        setState(() => _isSending = false);
+        setState(() {});
       }
+    }
+  }
+
+  /// محاسبه مدت زمان فایل صوتی
+  Future<int?> _getAudioDuration(File audioFile) async {
+    try {
+      // استفاده از audio_waveforms برای محاسبه مدت زمان
+      final playerController = PlayerController();
+      await playerController.preparePlayer(path: audioFile.path);
+
+      // انتظار برای بارگذاری کامل فایل
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // استفاده از onCurrentDurationChanged stream
+      int? durationMs;
+      final subscription = playerController.onCurrentDurationChanged.listen((
+        duration,
+      ) {
+        durationMs = duration;
+      });
+
+      // انتظار برای دریافت duration
+      await Future.delayed(const Duration(milliseconds: 100));
+      await subscription.cancel();
+      playerController.dispose();
+
+      return durationMs != null ? durationMs! ~/ 1000 : null;
+    } catch (e) {
+      print('خطا در محاسبه مدت زمان: $e');
+      return null;
     }
   }
 
@@ -327,8 +392,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _selectedImageBytes = null;
       _selectedImageName = null;
       _replyToMessage = null;
-      _isUploading = false;
-      _uploadProgress = 0.0;
     });
   }
 
@@ -357,9 +420,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطا در انتخاب تصویر: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('خطا در انتخاب تصویر: $e')));
     }
   }
 
@@ -379,13 +442,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         if (fileSize > 10 * 1024 * 1024) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-                content: Text('حجم فایل باید کمتر از ۱۰ مگابایت باشد')),
+              content: Text('حجم فایل باید کمتر از ۱۰ مگابایت باشد'),
+            ),
           );
           return;
         }
 
         // آپلود فایل به آروان (using chat service)
-        setState(() => _isUploading = true);
+        setState(() {});
         try {
           // For now, we'll use a simple file upload approach
           // In a real app, you would use a proper file upload service for chat
@@ -398,25 +462,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 attachmentType: 'document',
               );
         } catch (e) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('خطا در آپلود فایل: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('خطا در آپلود فایل: $e')));
         } finally {
-          if (mounted) setState(() => _isUploading = false);
+          if (mounted) {
+            setState(() {});
+          }
         }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطا در انتخاب فایل: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('خطا در انتخاب فایل: $e')));
     }
   }
 
   Future<String?> _uploadImage(dynamic fileOrBytes) async {
-    setState(() {
-      _isUploading = true;
-      _uploadProgress = 0.0;
-    });
+    setState(() {});
 
     try {
       String? imageUrl;
@@ -431,45 +494,56 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           fileOrBytes,
           widget.conversationId,
           onProgress: (progress) {
-            if (mounted) setState(() => _uploadProgress = progress);
+            if (mounted) {
+              setState(() {});
+            }
           },
         );
       }
       return imageUrl;
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطا در آپلود تصویر: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('خطا در آپلود تصویر: $e')));
       return null;
     } finally {
-      if (mounted) setState(() => _isUploading = false);
+      if (mounted) {
+        setState(() {});
+      }
     }
   }
 
   Future<String?> _uploadAudio(dynamic fileOrBytes) async {
-    setState(() {
-      _isUploading = true;
-      _uploadProgress = 0.0;
-    });
+    setState(() {});
     try {
       String? audioUrl;
       if (kIsWeb && fileOrBytes is Uint8List && _selectedImageName != null) {
         audioUrl = await ChatAudioUploadService.uploadChatAudioWeb(
-            fileOrBytes, _selectedImageName!, widget.conversationId);
+          fileOrBytes,
+          _selectedImageName!,
+          widget.conversationId,
+        );
       } else if (fileOrBytes is File) {
         audioUrl = await ChatAudioUploadService.uploadChatAudio(
-            fileOrBytes, widget.conversationId, onProgress: (progress) {
-          if (mounted) setState(() => _uploadProgress = progress);
-        });
+          fileOrBytes,
+          widget.conversationId,
+          onProgress: (progress) {
+            if (mounted) {
+              setState(() {});
+            }
+          },
+        );
       }
       return audioUrl;
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطا در آپلود صدا: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('خطا در آپلود صدا: $e')));
       return null;
     } finally {
-      if (mounted) setState(() => _isUploading = false);
+      if (mounted) {
+        setState(() {});
+      }
     }
   }
 
@@ -497,8 +571,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           child: Wrap(
             children: [
               ListTile(
-                leading:
-                    Icon(Icons.reply, color: Theme.of(context).primaryColor),
+                leading: Icon(
+                  Icons.reply,
+                  color: Theme.of(context).primaryColor,
+                ),
                 title: const Text('پاسخ'),
                 onTap: () {
                   Navigator.pop(context);
@@ -511,9 +587,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 onTap: () async {
                   Navigator.pop(context);
                   await Clipboard.setData(ClipboardData(text: message.content));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('پیام کپی شد')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('پیام کپی شد')));
                 },
               ),
               ListTile(
@@ -556,10 +632,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               const SizedBox(height: 8),
               Text(
                 'توجه: حذف برای همه قابل بازگشت نیست.',
-                style: TextStyle(
-                  color: Colors.red[700],
-                  fontSize: 12,
-                ),
+                style: TextStyle(color: Colors.red[700], fontSize: 12),
               ),
             ],
           ],
@@ -582,9 +655,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 Navigator.pop(context);
                 _deleteMessage(message.id, true);
               },
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.red[700],
-              ),
+              style: TextButton.styleFrom(foregroundColor: Colors.red[700]),
               child: const Text('حذف برای همه'),
             ),
         ],
@@ -602,14 +673,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-              forEveryone ? 'پیام برای همه حذف شد' : 'پیام برای شما حذف شد'),
+            forEveryone ? 'پیام برای همه حذف شد' : 'پیام برای شما حذف شد',
+          ),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text('خطا در حذف پیام: $e'), backgroundColor: Colors.red),
+          content: Text('خطا در حذف پیام: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     } finally {
       if (mounted) {
@@ -630,12 +704,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(isBlocked
-            ? 'رفع مسدودیت ${widget.otherUserName}'
-            : 'مسدود کردن ${widget.otherUserName}'),
-        content: Text(isBlocked
-            ? 'آیا از رفع مسدودیت ${widget.otherUserName} اطمینان دارید؟'
-            : 'آیا از مسدود کردن ${widget.otherUserName} اطمینان دارید؟'),
+        title: Text(
+          isBlocked
+              ? 'رفع مسدودیت ${widget.otherUserName}'
+              : 'مسدود کردن ${widget.otherUserName}',
+        ),
+        content: Text(
+          isBlocked
+              ? 'آیا از رفع مسدودیت ${widget.otherUserName} اطمینان دارید؟'
+              : 'آیا از مسدود کردن ${widget.otherUserName} اطمینان دارید؟',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -645,8 +723,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             onPressed: () async {
               Navigator.pop(context);
               try {
-                final notifier =
-                    ref.read(chat_provider.userBlockNotifierProvider.notifier);
+                final notifier = ref.read(
+                  chat_provider.userBlockNotifierProvider.notifier,
+                );
 
                 if (isBlocked) {
                   await notifier.unblockUser(widget.otherUserId);
@@ -658,16 +737,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                      content: Text(isBlocked
+                    content: Text(
+                      isBlocked
                           ? '${widget.otherUserName} با موفقیت رفع مسدودیت شد'
-                          : '${widget.otherUserName} با موفقیت مسدود شد')),
+                          : '${widget.otherUserName} با موفقیت مسدود شد',
+                    ),
+                  ),
                 );
               } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                      content: Text(isBlocked
+                    content: Text(
+                      isBlocked
                           ? 'خطا در رفع مسدودیت کاربر'
-                          : 'خطا در مسدود کردن کاربر')),
+                          : 'خطا در مسدود کردن کاربر',
+                    ),
+                  ),
                 );
               }
             },
@@ -691,7 +776,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       'آزار و اذیت',
       'اسپم',
       'جعل هویت',
-      'سایر موارد'
+      'سایر موارد',
     ];
 
     showDialog(
@@ -732,17 +817,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
                     ),
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                   ),
                   style: TextStyle(
                     color: isLightMode ? Colors.black87 : Colors.white,
                   ),
                   items: reportReasons.map((reason) {
-                    return DropdownMenuItem(
-                      value: reason,
-                      child: Text(reason),
-                    );
+                    return DropdownMenuItem(value: reason, child: Text(reason));
                   }).toList(),
                   onChanged: (value) {
                     if (value != null) {
@@ -778,7 +862,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   color: isLightMode ? Colors.black87 : Colors.white,
                 ),
                 maxLines: 3,
-              )
+              ),
             ],
           ),
           actions: [
@@ -807,7 +891,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     .then((_) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                        content: Text('گزارش شما با موفقیت ارسال شد')),
+                      content: Text('گزارش شما با موفقیت ارسال شد'),
+                    ),
                   );
                 }).catchError((error) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -849,14 +934,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               // Local asset as immediate fallback
               Image.asset(
                 WallpaperCacheService.getLocalWallpaperAsset(
-                    Theme.of(context).brightness == Brightness.dark),
+                  Theme.of(context).brightness == Brightness.dark,
+                ),
                 fit: BoxFit.cover,
                 gaplessPlayback: true,
               ),
               // Network wallpaper with fallback
               FutureBuilder<String>(
-                future: Future.value(WallpaperCacheService.getWallpaperUrl(
-                    Theme.of(context).brightness == Brightness.dark)),
+                future: Future.value(
+                  WallpaperCacheService.getWallpaperUrl(
+                    Theme.of(context).brightness == Brightness.dark,
+                  ),
+                ),
                 builder: (context, snapshot) {
                   if (snapshot.hasData) {
                     return CachedNetworkImage(
@@ -928,8 +1017,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         Consumer(
                           builder: (context, ref, child) {
                             final isOnlineAsync = ref.watch(
-                                chat_provider.userOnlineStatusStreamProvider(
-                                    widget.otherUserId));
+                              chat_provider.userOnlineStatusStreamProvider(
+                                widget.otherUserId,
+                              ),
+                            );
 
                             return isOnlineAsync.when(
                               data: (isOnline) {
@@ -942,11 +1033,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                   ),
                                 );
                               },
-                              loading: () => const Text('در حال بارگذاری...',
-                                  style: TextStyle(fontSize: 12)),
-                              error: (_, __) => const Text('آفلاین',
-                                  style: TextStyle(
-                                      fontSize: 12, color: Colors.grey)),
+                              loading: () => const Text(
+                                'در حال بارگذاری...',
+                                style: TextStyle(fontSize: 12),
+                              ),
+                              error: (_, __) => const Text(
+                                'آفلاین',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
                             );
                           },
                         ),
@@ -972,10 +1069,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       _showReportUserDialog(context);
                       break;
                     case 'profile':
-                      Navigator.of(context).push(MaterialPageRoute(
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
                           builder: (context) => ProfileScreen(
-                              userId: widget.otherUserId,
-                              username: widget.otherUserName)));
+                            userId: widget.otherUserId,
+                            username: widget.otherUserName,
+                          ),
+                        ),
+                      );
                       break;
                   }
                 },
@@ -984,11 +1085,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     value: 'profile',
                     child: Row(
                       children: [
-                        Icon(Icons.person_outline,
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.white70
-                                    : Colors.black87),
+                        Icon(
+                          Icons.person_outline,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white70
+                              : Colors.black87,
+                        ),
                         const SizedBox(width: 12),
                         const Text('مشاهده پروفایل'),
                       ],
@@ -999,14 +1101,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     child: Row(
                       children: [
                         Icon(
-                            _isOtherUserBlocked ? Icons.lock_open : Icons.block,
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.white70
-                                    : Colors.black87),
+                          _isOtherUserBlocked ? Icons.lock_open : Icons.block,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white70
+                              : Colors.black87,
+                        ),
                         const SizedBox(width: 12),
                         Text(
-                            _isOtherUserBlocked ? 'رفع مسدودیت' : 'مسدود کردن'),
+                          _isOtherUserBlocked ? 'رفع مسدودیت' : 'مسدود کردن',
+                        ),
                       ],
                     ),
                   ),
@@ -1014,11 +1117,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     value: 'report',
                     child: Row(
                       children: [
-                        Icon(Icons.report_problem_outlined,
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.white70
-                                    : Colors.black87),
+                        Icon(
+                          Icons.report_problem_outlined,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white70
+                              : Colors.black87,
+                        ),
                         const SizedBox(width: 12),
                         const Text('گزارش کاربر'),
                       ],
@@ -1050,8 +1154,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                     if (index < messages.length - 1) {
                                       final prevMessage = messages[index + 1];
                                       if (TimeUtils.shouldShowDateDivider(
-                                          message.createdAt,
-                                          prevMessage.createdAt)) {
+                                        message.createdAt,
+                                        prevMessage.createdAt,
+                                      )) {
                                         showDateDivider = true;
                                       }
                                     } else {
@@ -1069,12 +1174,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                             children: [
                                               if (showDateDivider)
                                                 DateDivider(
-                                                    date: message.createdAt),
+                                                  date: message.createdAt,
+                                                ),
                                               MessageBubble(
                                                 message: message,
                                                 onLongPress: (msg) =>
                                                     _showMessageOptions(
-                                                        context, msg),
+                                                  context,
+                                                  msg,
+                                                ),
                                                 onReply: (msg) =>
                                                     _setReplyMessage(msg),
                                                 onRetry: (msg) =>
@@ -1115,9 +1223,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       curve: Curves.easeIn,
       child: Container(
         margin: const EdgeInsets.only(top: 16.0),
-        child: FloatingDateChip(
-          date: _floatingDate ?? DateTime.now(),
-        ),
+        child: FloatingDateChip(date: _floatingDate ?? DateTime.now()),
       ),
     );
   }
