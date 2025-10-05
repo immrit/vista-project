@@ -53,7 +53,7 @@ class Settings extends ConsumerWidget {
                   ),
                   child: Column(
                     children: [
-                      TelegramSettingsItem(
+                      SettingsItem(
                         icon: Icons.person,
                         iconColor: Colors.blue,
                         title: 'حساب کاربری',
@@ -68,7 +68,7 @@ class Settings extends ConsumerWidget {
                         },
                       ),
                       _buildDivider(),
-                      TelegramSettingsItem(
+                      SettingsItem(
                         icon: Icons.chat,
                         iconColor: Colors.green,
                         title: 'چت و مکالمات',
@@ -84,7 +84,7 @@ class Settings extends ConsumerWidget {
                         },
                       ),
                       _buildDivider(),
-                      TelegramSettingsItem(
+                      SettingsItem(
                         icon: Icons.lock,
                         iconColor: Colors.red,
                         title: 'حریم خصوصی و امنیت',
@@ -99,7 +99,7 @@ class Settings extends ConsumerWidget {
                         },
                       ),
                       _buildDivider(),
-                      TelegramSettingsItem(
+                      SettingsItem(
                         icon: Icons.storage_rounded,
                         iconColor: Colors.purple,
                         title: 'حافظه و ذخیره‌سازی',
@@ -115,7 +115,7 @@ class Settings extends ConsumerWidget {
                         },
                       ),
                       _buildDivider(),
-                      TelegramSettingsItem(
+                      SettingsItem(
                         icon: Icons.palette,
                         iconColor: Colors.teal,
                         title: 'ظاهر و شخصی‌سازی',
@@ -145,7 +145,7 @@ class Settings extends ConsumerWidget {
                   ),
                   child: Column(
                     children: [
-                      TelegramSettingsItem(
+                      SettingsItem(
                         icon: Icons.store,
                         iconColor: Colors.amber,
                         title: 'ویستا وب',
@@ -178,7 +178,7 @@ class Settings extends ConsumerWidget {
                         },
                       ),
                       _buildDivider(),
-                      TelegramSettingsItem(
+                      SettingsItem(
                         icon: Icons.bug_report,
                         iconColor: Colors.orange,
                         title: 'گزارش مشکل',
@@ -189,7 +189,7 @@ class Settings extends ConsumerWidget {
                       ),
                       _buildDivider(),
                       // آیتم تست عملکرد آفلاین حذف شد
-                      TelegramSettingsItem(
+                      SettingsItem(
                         icon: Icons.info,
                         iconColor: Colors.grey,
                         title: 'درباره ویستا',
@@ -864,15 +864,15 @@ class Settings extends ConsumerWidget {
   }
 }
 
-// ویجت دقیقاً مثل تلگرام
-class TelegramSettingsItem extends StatelessWidget {
+// ویجت آیتم تنظیمات
+class SettingsItem extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
 
-  const TelegramSettingsItem({
+  const SettingsItem({
     super.key,
     required this.icon,
     required this.iconColor,

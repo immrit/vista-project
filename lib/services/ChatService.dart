@@ -390,9 +390,6 @@ class ChatService {
 
       print('✅ پیام با موفقیت ارسال شد');
 
-      // *** اضافه شد: رفرش کردن اطلاعات مکالمه در کش پس از ارسال پیام ***
-      await refreshConversation(conversationId);
-
       // دریافت اطلاعات پروفایل کاربر
       final profileResponse =
           await _supabase.from('profiles').select().eq('id', userId).single();
@@ -1002,8 +999,6 @@ class ChatService {
           'last_message_time': lastMessage['created_at'],
         }).eq('id', conversationId);
       }
-      // بروزرسانی کش مکالمه
-      await refreshConversation(conversationId);
       // بروزرسانی فوری لیست مکالمات (برای UI)
       await _conversationCache.clearCache(userId);
       await getConversations();
@@ -1345,7 +1340,7 @@ class ChatService {
             .select()
             .eq('conversation_id', conversationId)
             .order('created_at',
-                ascending: true) // قدیمی‌ترین اول (برای reverse ListView)
+                ascending: false) // جدیدترین اول (برای reverse ListView)
             .range(offset, offset + limit - 1);
 
         // فیلتر کردن پیام‌های مخفی شده
@@ -1419,7 +1414,7 @@ class ChatService {
         .stream(primaryKey: ['id'])
         .eq('conversation_id', conversationId)
         .order('created_at',
-            ascending: true) // قدیمی‌ترین اول (برای reverse ListView)
+            ascending: false) // جدیدترین اول (برای reverse ListView)
         .map((data) async {
           // استخراج sender_id های منحصر به فرد
           final senderIds =

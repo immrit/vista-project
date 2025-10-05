@@ -122,11 +122,6 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                       onTap: _shareToWhatsApp,
                     ),
                     _buildAppIcon(
-                      icon: _buildTelegramIcon(),
-                      label: 'تلگرام',
-                      onTap: _shareToTelegram,
-                    ),
-                    _buildAppIcon(
                       icon: _buildGmailIcon(),
                       label: 'جیمیل',
                       onTap: _shareToGmail,
@@ -258,27 +253,6 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
           padding: const EdgeInsets.all(8.0),
           child: Image.asset(
             'lib/view/util/images/share_icons/whatsapp.png',
-            fit: BoxFit.contain,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTelegramIcon() {
-    return Container(
-      width: 60,
-      height: 60,
-      decoration: BoxDecoration(
-        color: Color(0xFF0088CC), // رنگ آبی تلگرام
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Image.asset(
-            'lib/view/util/images/share_icons/telegram.png',
             fit: BoxFit.contain,
           ),
         ),
@@ -488,11 +462,6 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
   }
 
   void _shareToWhatsApp() {
-    Navigator.pop(context);
-    SmartShareService().sharePost(widget.post, context: context);
-  }
-
-  void _shareToTelegram() {
     Navigator.pop(context);
     SmartShareService().sharePost(widget.post, context: context);
   }

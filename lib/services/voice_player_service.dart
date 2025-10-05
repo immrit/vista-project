@@ -19,11 +19,11 @@ class VoicePlayerService {
 
   // Callbacks برای هر voiceId
   final Map<String, Function(String voiceId, bool isPlaying)?>
-      _playStateCallbacks = {};
+  _playStateCallbacks = {};
   final Map<String, Function(String voiceId, Duration position)?>
-      _positionCallbacks = {};
+  _positionCallbacks = {};
   final Map<String, Function(String voiceId, Duration duration)?>
-      _durationCallbacks = {};
+  _durationCallbacks = {};
 
   /// تنظیم callbacks برای یک voiceId خاص
   void setCallbacksForVoice(
@@ -108,8 +108,9 @@ class VoicePlayerService {
       // اگر duration صفر است، دوباره تلاش می‌کنیم
       if (duration.inMilliseconds == 0) {
         await Future.delayed(const Duration(milliseconds: 1000));
-        final retryDuration =
-            Duration(milliseconds: playerController.maxDuration);
+        final retryDuration = Duration(
+          milliseconds: playerController.maxDuration,
+        );
         if (retryDuration.inMilliseconds > 0) {
           final callback = _durationCallbacks[voiceId];
           if (callback != null) {
@@ -120,7 +121,8 @@ class VoicePlayerService {
             }
           }
           print(
-              "✅ پلیر آماده شد: $voiceId (${retryDuration.inSeconds}s) - retry");
+            "✅ پلیر آماده شد: $voiceId (${retryDuration.inSeconds}s) - retry",
+          );
         } else {
           print("⚠️ مدت زمان فایل در دسترس نیست: $voiceId");
         }
@@ -157,8 +159,9 @@ class VoicePlayerService {
 
             // دریافت مدت زمان
             await Future.delayed(const Duration(milliseconds: 500));
-            final duration =
-                Duration(milliseconds: retryController.maxDuration);
+            final duration = Duration(
+              milliseconds: retryController.maxDuration,
+            );
             if (duration.inMilliseconds > 0) {
               final callback = _durationCallbacks[voiceId];
               if (callback != null) {
@@ -166,11 +169,13 @@ class VoicePlayerService {
                   callback(voiceId, duration);
                 } catch (e) {
                   print(
-                      "⚠️ خطا در فراخوانی callback duration برای $voiceId: $e");
+                    "⚠️ خطا در فراخوانی callback duration برای $voiceId: $e",
+                  );
                 }
               }
               print(
-                  "✅ پلیر آنلاین آماده شد: $voiceId (${duration.inSeconds}s)");
+                "✅ پلیر آنلاین آماده شد: $voiceId (${duration.inSeconds}s)",
+              );
               return true;
             }
           }
@@ -186,10 +191,13 @@ class VoicePlayerService {
 
   /// تنظیم subscriptions برای پلیر
   void _setupPlayerSubscriptions(
-      String voiceId, PlayerController playerController) {
+    String voiceId,
+    PlayerController playerController,
+  ) {
     // State subscription
-    _stateSubscriptions[voiceId] =
-        playerController.onPlayerStateChanged.listen((state) {
+    _stateSubscriptions[voiceId] = playerController.onPlayerStateChanged.listen((
+      state,
+    ) {
       final isPlaying = state.isPlaying;
       final callback = _playStateCallbacks[voiceId];
       if (callback != null) {
@@ -225,23 +233,23 @@ class VoicePlayerService {
     });
 
     // Position subscription
-    _positionSubscriptions[voiceId] =
-        playerController.onCurrentDurationChanged.listen((position) {
-      final callback = _positionCallbacks[voiceId];
-      if (callback != null) {
-        try {
-          // Triple check that callback still exists and is not null (maximum race condition protection)
-          if (_positionCallbacks.containsKey(voiceId) &&
-              _positionCallbacks[voiceId] != null) {
-            callback(voiceId, Duration(milliseconds: position));
+    _positionSubscriptions[voiceId] = playerController.onCurrentDurationChanged
+        .listen((position) {
+          final callback = _positionCallbacks[voiceId];
+          if (callback != null) {
+            try {
+              // Triple check that callback still exists and is not null (maximum race condition protection)
+              if (_positionCallbacks.containsKey(voiceId) &&
+                  _positionCallbacks[voiceId] != null) {
+                callback(voiceId, Duration(milliseconds: position));
+              }
+            } catch (e) {
+              print("⚠️ خطا در فراخوانی callback position برای $voiceId: $e");
+              // Remove the problematic callback immediately
+              _positionCallbacks.remove(voiceId);
+            }
           }
-        } catch (e) {
-          print("⚠️ خطا در فراخوانی callback position برای $voiceId: $e");
-          // Remove the problematic callback immediately
-          _positionCallbacks.remove(voiceId);
-        }
-      }
-    });
+        });
   }
 
   /// پخش وویس

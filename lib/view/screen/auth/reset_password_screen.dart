@@ -2,15 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../main.dart';
 
-class ModernResetPasswordScreen extends StatefulWidget {
-  const ModernResetPasswordScreen({super.key});
+class ResetPasswordScreen extends StatefulWidget {
+  const ResetPasswordScreen({super.key});
 
   @override
-  State<ModernResetPasswordScreen> createState() =>
-      _ModernResetPasswordScreenState();
+  State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
 }
 
-class _ModernResetPasswordScreenState extends State<ModernResetPasswordScreen>
+class _ResetPasswordScreenState extends State<ResetPasswordScreen>
     with TickerProviderStateMixin {
   final TextEditingController _emailController = TextEditingController();
   bool _isLoading = false;
@@ -353,7 +352,7 @@ class _ModernResetPasswordScreenState extends State<ModernResetPasswordScreen>
                             TextButton(
                               onPressed: () {
                                 Navigator.pushReplacementNamed(
-                                    context, '/modern-auth');
+                                    context, '/auth');
                               },
                               child: Text(
                                 'بازگشت به صفحه ورود',

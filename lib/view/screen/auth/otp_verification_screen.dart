@@ -35,7 +35,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
 
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
-  late Animation<Offset> _shakeAnimation;
 
   Timer? _countdownTimer;
   int _countdown = 60;
@@ -79,14 +78,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
     ).animate(CurvedAnimation(
       parent: _animationController,
       curve: Curves.elasticOut,
-    ));
-
-    _shakeAnimation = Tween<Offset>(
-      begin: Offset.zero,
-      end: const Offset(0.1, 0.0),
-    ).animate(CurvedAnimation(
-      parent: _shakeController,
-      curve: Curves.elasticIn,
     ));
 
     _animationController.forward();

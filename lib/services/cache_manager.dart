@@ -39,8 +39,11 @@ class UnifiedCacheManager {
     _disabled = true;
     _isInitialized = true;
     print('⚠️ UnifiedCacheManager disabled to prevent SQLite conflicts');
-    return;
 
+    // Note: The following code is commented out to prevent SQLite conflicts
+    // but kept for future reference when the conflicts are resolved
+
+    /*
     try {
       print('🚀 Initializing UnifiedCacheManager...');
 
@@ -108,6 +111,7 @@ class UnifiedCacheManager {
         print('⚠️ Continuing without cache managers');
       }
     }
+    */
   }
 
   /// دریافت آمار کامل کش
@@ -539,10 +543,20 @@ class UnifiedCacheManager {
   Future<void> optimizeCacheForUsage() async {
     try {
       final stats = await getCacheStats();
-      final imageCache = stats['image_cache'] as Map<String, dynamic>? ?? {};
+      final imageCacheRaw = stats['image_cache'];
+      final imageCache = imageCacheRaw is Map<String, dynamic>
+          ? imageCacheRaw
+          : (imageCacheRaw is Map
+              ? Map<String, dynamic>.from(imageCacheRaw)
+              : {});
 
       // اگر کش چت خیلی بزرگ است، آن را کاهش دهیم
-      final chatCache = imageCache['chat_cache'] as Map<String, dynamic>? ?? {};
+      final chatCacheRaw = imageCache['chat_cache'];
+      final chatCache = chatCacheRaw is Map<String, dynamic>
+          ? chatCacheRaw
+          : (chatCacheRaw is Map
+              ? Map<String, dynamic>.from(chatCacheRaw)
+              : {});
       final chatSize = chatCache['size_mb'] ?? 0.0;
 
       if (chatSize > 50.0) {
@@ -552,7 +566,12 @@ class UnifiedCacheManager {
       }
 
       // اگر کش پست خیلی بزرگ است، آن را کاهش دهیم
-      final postCache = imageCache['post_cache'] as Map<String, dynamic>? ?? {};
+      final postCacheRaw = imageCache['post_cache'];
+      final postCache = postCacheRaw is Map<String, dynamic>
+          ? postCacheRaw
+          : (postCacheRaw is Map
+              ? Map<String, dynamic>.from(postCacheRaw)
+              : {});
       final postSize = postCache['size_mb'] ?? 0.0;
 
       if (postSize > 100.0) {
@@ -573,10 +592,20 @@ class UnifiedCacheManager {
     try {
       // پاکسازی سریع کش‌های بزرگ
       final stats = await getCacheStats();
-      final imageCache = stats['image_cache'] as Map<String, dynamic>? ?? {};
+      final imageCacheRaw = stats['image_cache'];
+      final imageCache = imageCacheRaw is Map<String, dynamic>
+          ? imageCacheRaw
+          : (imageCacheRaw is Map
+              ? Map<String, dynamic>.from(imageCacheRaw)
+              : {});
 
       // پاکسازی 50% از کش چت
-      final chatCache = imageCache['chat_cache'] as Map<String, dynamic>? ?? {};
+      final chatCacheRaw = imageCache['chat_cache'];
+      final chatCache = chatCacheRaw is Map<String, dynamic>
+          ? chatCacheRaw
+          : (chatCacheRaw is Map
+              ? Map<String, dynamic>.from(chatCacheRaw)
+              : {});
       if ((chatCache['size_mb'] ?? 0.0) > 20.0) {
         await chatInstance.emptyCache();
         itemsRemoved += 50; // تخمین
@@ -648,17 +677,25 @@ class UnifiedCacheManager {
 
       print('مجموع کش: ${stats['total_size_mb']!.toStringAsFixed(2)} MB');
 
-      final imageCache = stats['image_cache'] as Map<String, dynamic>? ?? {};
+      final imageCacheRaw = stats['image_cache'];
+      final imageCache = imageCacheRaw is Map<String, dynamic>
+          ? imageCacheRaw
+          : (imageCacheRaw is Map
+              ? Map<String, dynamic>.from(imageCacheRaw)
+              : {});
       print(
-          'کش استوری: ${imageCache['story_cache']?['size_mb']?.toStringAsFixed(2) ?? '0.0'} MB');
+          'کش استوری: ${(imageCache['story_cache'] as Map?)?['size_mb']?.toStringAsFixed(2) ?? '0.0'} MB');
       print(
-          'کش پست: ${imageCache['post_cache']?['size_mb']?.toStringAsFixed(2) ?? '0.0'} MB');
+          'کش پست: ${(imageCache['post_cache'] as Map?)?['size_mb']?.toStringAsFixed(2) ?? '0.0'} MB');
       print(
-          'کش چت: ${imageCache['chat_cache']?['size_mb']?.toStringAsFixed(2) ?? '0.0'} MB');
+          'کش چت: ${(imageCache['chat_cache'] as Map?)?['size_mb']?.toStringAsFixed(2) ?? '0.0'} MB');
       print(
-          'کش والپیپر: ${imageCache['wallpaper_cache']?['size_mb']?.toStringAsFixed(2) ?? '0.0'} MB');
+          'کش والپیپر: ${(imageCache['wallpaper_cache'] as Map?)?['size_mb']?.toStringAsFixed(2) ?? '0.0'} MB');
 
-      final dbCache = stats['database_cache'] as Map<String, dynamic>? ?? {};
+      final dbCacheRaw = stats['database_cache'];
+      final dbCache = dbCacheRaw is Map<String, dynamic>
+          ? dbCacheRaw
+          : (dbCacheRaw is Map ? Map<String, dynamic>.from(dbCacheRaw) : {});
       print(
           'کش کانال‌ها: ${dbCache['channel_cache_size_mb']?.toStringAsFixed(2) ?? '0.0'} MB');
 

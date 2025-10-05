@@ -13,7 +13,7 @@ import '../main.dart';
 ///
 /// Features:
 /// - Real-time updates without lag
-/// - Telegram-like performance
+/// - High performance messaging
 /// - Intelligent preloading
 /// - Offline support
 
@@ -516,7 +516,7 @@ final performanceStatsProvider =
   return {
     'cache_system': 'Advanced Cache System',
     'status': 'Active',
-    'telegram_like_performance': true,
+    'high_performance': true,
     'features': [
       'Multi-layer caching',
       'Real-time synchronization',

@@ -90,15 +90,15 @@ class ChatSettingsGroupPage extends ConsumerWidget {
                     final photoLabel = ref
                         .read(autoDownloadProvider.notifier)
                         .getSettingLabel(settings.photos);
-                    final videoLabel = ref
+                    final voiceLabel = ref
                         .read(autoDownloadProvider.notifier)
-                        .getSettingLabel(settings.videos);
+                        .getSettingLabel(settings.voices);
 
                     return SettingsListItem(
                       icon: Icons.download,
                       iconColor: Colors.indigo,
                       title: 'دانلود خودکار رسانه',
-                      subtitle: 'عکس: $photoLabel • ویدیو: $videoLabel',
+                      subtitle: 'عکس: $photoLabel • وویس: $voiceLabel',
                       onTap: () {
                         _showAutoDownloadDialog(context, ref);
                       },
@@ -291,14 +291,14 @@ class ChatSettingsGroupPage extends ConsumerWidget {
                 _buildAutoDownloadOption(
                     context, ref, 'هرگز', 'never', true, settings.photos),
                 const SizedBox(height: 16),
-                const Text('ویدیوها:',
+                const Text('وویس‌ها:',
                     style: TextStyle(fontWeight: FontWeight.bold)),
                 _buildAutoDownloadOption(
-                    context, ref, 'همیشه', 'always', false, settings.videos),
+                    context, ref, 'همیشه', 'always', false, settings.voices),
                 _buildAutoDownloadOption(
-                    context, ref, 'فقط Wi-Fi', 'wifi', false, settings.videos),
+                    context, ref, 'فقط Wi-Fi', 'wifi', false, settings.voices),
                 _buildAutoDownloadOption(
-                    context, ref, 'هرگز', 'never', false, settings.videos),
+                    context, ref, 'هرگز', 'never', false, settings.voices),
               ],
             ),
             actions: [
@@ -336,13 +336,13 @@ class ChatSettingsGroupPage extends ConsumerWidget {
         } else {
           await ref
               .read(autoDownloadProvider.notifier)
-              .updateVideoSetting(value);
+              .updateVoiceSetting(value);
         }
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
                 content: Text(
-                    'تنظیم دانلود خودکار ${isPhoto ? 'عکس‌ها' : 'ویدیوها'}: $title')),
+                    'تنظیم دانلود خودکار ${isPhoto ? 'عکس‌ها' : 'وویس‌ها'}: $title')),
           );
         }
       },

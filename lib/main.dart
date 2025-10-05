@@ -16,6 +16,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'DB/profile_cache_service.dart';
 import 'DB/settings_cache_service.dart';
 import 'DB/database_manager.dart';
+import 'services/voice_cache_service.dart';
+import 'services/network_status_service.dart';
 import 'firebase_options.dart';
 import 'provider/theme_provider.dart';
 import 'services/optimized_messaging_system.dart';
@@ -29,11 +31,11 @@ import 'view/screen/chat/ChatScreen.dart';
 import 'view/screen/Settings/Settings.dart';
 import 'view/screen/homeScreen.dart';
 import 'view/screen/ouathUser/editeProfile.dart';
-import 'view/screen/auth/modern_auth_screen.dart';
+import 'view/screen/auth/auth_screen.dart';
 import 'view/screen/auth/biometric_login_screen.dart';
-import 'view/screen/auth/modern_reset_password_screen.dart';
-import 'view/screen/auth/modern_password_reset_code_screen.dart';
-import 'view/screen/onboarding/TelegramStyleOnboarding.dart';
+import 'view/screen/auth/reset_password_screen.dart';
+import 'view/screen/auth/password_reset_code_screen.dart';
+import 'view/screen/onboarding/Onboarding.dart';
 import 'services/advanced_security_service.dart';
 import 'services/wallpaper_cache_service.dart';
 import 'services/profile_service.dart';
@@ -62,7 +64,8 @@ Future<void> _initializeFirebase() async {
     final apps = Firebase.apps;
     if (apps.isNotEmpty) {
       print(
-          '⚠️ Firebase already initialized with ${apps.length} app(s), skipping...');
+        '⚠️ Firebase already initialized with ${apps.length} app(s), skipping...',
+      );
       return;
     }
 
@@ -75,7 +78,8 @@ Future<void> _initializeFirebase() async {
     if (e.toString().contains('already exists') ||
         e.toString().contains('DEFAULT already exists')) {
       print(
-          '⚠️ Firebase already initialized (caught exception), continuing...');
+        '⚠️ Firebase already initialized (caught exception), continuing...',
+      );
       // Firebase already initialized, continue normally
     } else {
       print('❌ Firebase initialization failed: $e');
@@ -86,151 +90,172 @@ Future<void> _initializeFirebase() async {
 
 void main() async {
   // Global error handling to prevent crashes
-  runZonedGuarded(() async {
-    // جلوگیری از initialize چندگانه در طول hot restart
-    if (_isAppInitialized) {
-      print('🔄 App already initialized, skipping initialization...');
+  runZonedGuarded(
+    () async {
+      // جلوگیری از initialize چندگانه در طول hot restart
+      if (_isAppInitialized) {
+        print('🔄 App already initialized, skipping initialization...');
+        runApp(ProviderScope(child: MyApp()));
+        return;
+      }
+
+      WidgetsFlutterBinding.ensureInitialized();
+
+      // Initialize date formatting for all locales
+      await initializeDateFormatting('fa', null);
+
+      // راه‌اندازی Firebase با بررسی وضعیت قبلی
+      await _initializeFirebase();
+
+      // راه‌اندازی Supabase با timeout کوتاه‌تر برای جلوگیری از black screen
+      try {
+        // استفاده از timeout کوتاه‌تر برای جلوگیری از انتظار طولانی
+        await initializeSupabaseWithFailover().timeout(
+          const Duration(seconds: 8), // کاهش timeout از 15+ ثانیه به 8 ثانیه
+          onTimeout: () {
+            print(
+              '⏰ Supabase initialization timeout - continuing with offline mode',
+            );
+            throw TimeoutException('Supabase initialization timeout');
+          },
+        );
+        print('✅ Supabase initialized successfully');
+      } catch (e) {
+        print('❌ Supabase initialization failed: $e');
+
+        // در هر دو حالت debug و production، برنامه را ادامه بده
+        // اما با حالت offline
+        print('🔧 برنامه در حالت آفلاین اجرا می‌شود');
+        print('⚠️ برخی ویژگی‌های آنلاین ممکن است کار نکنند');
+      }
+
+      // راه‌اندازی سرویس امنیتی پیشرفته
+      await AdvancedSecurityService.initialize();
+
+      // 🚀 سیستم پیام‌رسانی بهینه‌شده (جایگزین 14 cache system!)
+      await _initializeOptimizedMessaging();
+
+      // 🚀 مقداردهی اولیه سیستم پیام‌رسانی بهینه‌سازی شده
+      await _initializeOptimizedChatSystem();
+
+      // 🧹 غیرفعالسازی cache systems اضافی
+      await _disableRedundantCacheSystems();
+
+      // 📦 مقداردهی اولیه سیستم کش (once only) - غیرفعال شده
+      // UnifiedCacheManager باعث تداخل SQLite می‌شود
+      print(
+        '⚠️ Skipping UnifiedCacheManager initialization to prevent SQLite conflicts',
+      );
+
+      // 🗄️ مقداردهی اولیه مدیریتگر دیتابیس (قبل از سایر سرویس‌ها)
+      await DatabaseManager().initializeAllDatabases();
+
+      // 🚀 مقداردهی اولیه سرویس‌های کش جدید
+      await ProfileCacheService().initialize();
+      await SettingsCacheService().initialize();
+
+      // 🎵 مقداردهی اولیه VoiceCacheService
+      final voiceCacheService = VoiceCacheService();
+      await voiceCacheService.initialize();
+
+      // تنظیم ProviderContainer بعد از راه‌اندازی کامل اپ
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final context = navigatorKey.currentContext;
+        if (context != null) {
+          voiceCacheService.setProviderContainer(
+            ProviderScope.containerOf(context),
+          );
+        }
+      });
+
+      // اگر کاربر وارد است، پروفایل و 10 پست آخر او را برای حالت آفلاین پیش‌کش کن
+      try {
+        final currentUser = Supabase.instance.client.auth.currentUser;
+        if (currentUser != null) {
+          // پیش‌کش کردن بدون بلاک کردن راه‌اندازی اپ
+          unawaited(ProfileCacheService().cacheProfileAndPosts(currentUser.id));
+        }
+      } catch (e) {
+        print('⚠️ Prefetch profile/posts failed at startup: $e');
+      }
+
+      // 🚀 مقداردهی اولیه ProfileService جدید با real-time updates
+      ProfileService().startRealtimeUpdates();
+
+      // 🔍 راه‌اندازی memory leak detection
+      _initializeMemoryLeakDetection();
+
+      // 🌐 راه‌اندازی سرویس وضعیت شبکه
+      await NetworkStatusService().initialize();
+
+      // راه‌اندازی اعلان‌های محلی
+      await flutterLocalNotificationsPlugin.initialize(
+        InitializationSettings(
+          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          iOS: DarwinInitializationSettings(),
+        ),
+        onDidReceiveNotificationResponse: notificationResponseHandler,
+      );
+
+      // ایجاد کانال‌های اعلان
+      const chatChannel = AndroidNotificationChannel(
+        'chat_notifications',
+        'Chat Notifications',
+        description: 'Notifications for chat messages',
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+        showBadge: true,
+      );
+
+      const socialChannel = AndroidNotificationChannel(
+        'social_notifications',
+        'Social Notifications',
+        description: 'Notifications for social activities',
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+        showBadge: true,
+      );
+
+      await flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(chatChannel);
+      await flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(socialChannel);
+
+      // پیش‌بارگذاری والپیپرهای چت در background با تأخیر
+      Future.delayed(const Duration(seconds: 3), () {
+        unawaited(WallpaperCacheService.preloadWallpapers());
+      });
+
+      // علامت‌گذاری اپلیکیشن به عنوان initialize شده
+      _isAppInitialized = true;
+      print('🚀 Vista App initialization completed successfully!');
+
       runApp(ProviderScope(child: MyApp()));
-      return;
-    }
-
-    WidgetsFlutterBinding.ensureInitialized();
-
-    // Initialize date formatting for all locales
-    await initializeDateFormatting('fa', null);
-
-    // راه‌اندازی Firebase با بررسی وضعیت قبلی
-    await _initializeFirebase();
-
-    // راه‌اندازی Supabase با مدیریت خطا
-    try {
-      await initializeSupabaseWithFailover();
-      print('✅ Supabase initialized successfully');
-    } catch (e) {
-      print('❌ Supabase initialization failed: $e');
-
-      // اگر Supabase نتوانست initialize شود، برنامه نمی‌تواند کار کند
-      // اما لااقل باید این را لاگ کنیم و به کاربر اطلاع دهیم
-      if (kDebugMode) {
-        print(
-            '🔧 در حالت توسعه، Supabase initialize نشد اما برنامه ادامه می‌دهد');
-        print('⚠️ برخی ویژگی‌ها ممکن است کار نکنند');
-      } else {
-        rethrow; // در حالت production، اجازه نده برنامه اجرا شود
+    },
+    (error, stack) {
+      // Handle specific errors that shouldn't crash the app
+      if (error.toString().contains('DatabaseException') &&
+          error.toString().contains('no such table: cacheObject')) {
+        print('⚠️ Cache database error caught and handled: $error');
+        return; // Don't print full stack trace for known cache issues
       }
-    }
 
-    // راه‌اندازی سرویس امنیتی پیشرفته
-    await AdvancedSecurityService.initialize();
-
-    // 🚀 سیستم پیام‌رسانی بهینه‌شده (جایگزین 14 cache system!)
-    await _initializeOptimizedMessaging();
-
-    // 🚀 مقداردهی اولیه سیستم پیام‌رسانی بهینه‌سازی شده
-    await _initializeOptimizedChatSystem();
-
-    // 🧹 غیرفعالسازی cache systems اضافی
-    await _disableRedundantCacheSystems();
-
-    // 📦 مقداردهی اولیه سیستم کش (once only) - غیرفعال شده
-    // UnifiedCacheManager باعث تداخل SQLite می‌شود
-    print(
-        '⚠️ Skipping UnifiedCacheManager initialization to prevent SQLite conflicts');
-
-    // 🗄️ مقداردهی اولیه مدیریتگر دیتابیس (قبل از سایر سرویس‌ها)
-    await DatabaseManager().initializeAllDatabases();
-
-    // 🚀 مقداردهی اولیه سرویس‌های کش جدید
-    await ProfileCacheService().initialize();
-    await SettingsCacheService().initialize();
-
-    // اگر کاربر وارد است، پروفایل و 10 پست آخر او را برای حالت آفلاین پیش‌کش کن
-    try {
-      final currentUser = Supabase.instance.client.auth.currentUser;
-      if (currentUser != null) {
-        // پیش‌کش کردن بدون بلاک کردن راه‌اندازی اپ
-        unawaited(ProfileCacheService().cacheProfileAndPosts(currentUser.id));
+      if (error.toString().contains('RealtimeSubscribeException')) {
+        print('⚠️ Real-time subscription error caught and handled: $error');
+        return; // Don't print full stack trace for known real-time issues
       }
-    } catch (e) {
-      print('⚠️ Prefetch profile/posts failed at startup: $e');
-    }
 
-    // 🚀 مقداردهی اولیه ProfileService جدید با real-time updates
-    ProfileService().startRealtimeUpdates();
-
-    // 🔍 راه‌اندازی memory leak detection
-    _initializeMemoryLeakDetection();
-
-    // راه‌اندازی اعلان‌های محلی
-    await flutterLocalNotificationsPlugin.initialize(
-      InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-        iOS: DarwinInitializationSettings(),
-      ),
-      onDidReceiveNotificationResponse: notificationResponseHandler,
-    );
-
-    // ایجاد کانال‌های اعلان
-    const chatChannel = AndroidNotificationChannel(
-      'chat_notifications',
-      'Chat Notifications',
-      description: 'Notifications for chat messages',
-      importance: Importance.high,
-      playSound: true,
-      enableVibration: true,
-      showBadge: true,
-    );
-
-    const socialChannel = AndroidNotificationChannel(
-      'social_notifications',
-      'Social Notifications',
-      description: 'Notifications for social activities',
-      importance: Importance.high,
-      playSound: true,
-      enableVibration: true,
-      showBadge: true,
-    );
-
-    await flutterLocalNotificationsPlugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(chatChannel);
-    await flutterLocalNotificationsPlugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(socialChannel);
-
-    // پیش‌بارگذاری والپیپرهای چت در background با تأخیر
-    Future.delayed(const Duration(seconds: 3), () {
-      unawaited(WallpaperCacheService.preloadWallpapers());
-    });
-
-    // علامت‌گذاری اپلیکیشن به عنوان initialize شده
-    _isAppInitialized = true;
-    print('🚀 Vista App initialization completed successfully!');
-
-    runApp(
-      ProviderScope(
-        child: MyApp(),
-      ),
-    );
-  }, (error, stack) {
-    // Handle specific errors that shouldn't crash the app
-    if (error.toString().contains('DatabaseException') &&
-        error.toString().contains('no such table: cacheObject')) {
-      print('⚠️ Cache database error caught and handled: $error');
-      return; // Don't print full stack trace for known cache issues
-    }
-
-    if (error.toString().contains('RealtimeSubscribeException')) {
-      print('⚠️ Real-time subscription error caught and handled: $error');
-      return; // Don't print full stack trace for known real-time issues
-    }
-
-    print('⚠️ Unhandled error (caught globally): $error');
-    print('Stack trace: $stack');
-    // Don't rethrow to prevent app crash
-  });
+      print('⚠️ Unhandled error (caught globally): $error');
+      print('Stack trace: $stack');
+      // Don't rethrow to prevent app crash
+    },
+  );
 }
 
 final supabase = Supabase.instance.client;
@@ -359,15 +384,19 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     _processInitialLink();
 
     // گوش دادن به دیپ لینک‌های ورودی
-    _linkSubscription = _appLinks.uriLinkStream.listen((Uri? uri) {
-      if (uri != null) {
-        final safe = 'scheme=${uri.scheme}, host=${uri.host}, path=${uri.path}';
-        print('Received deep link: $safe');
-        _processDeepLink(uri);
-      }
-    }, onError: (error) {
-      print('Deep link error');
-    });
+    _linkSubscription = _appLinks.uriLinkStream.listen(
+      (Uri? uri) {
+        if (uri != null) {
+          final safe =
+              'scheme=${uri.scheme}, host=${uri.host}, path=${uri.path}';
+          print('Received deep link: $safe');
+          _processDeepLink(uri);
+        }
+      },
+      onError: (error) {
+        print('Deep link error');
+      },
+    );
   }
 
   /// پردازش لینک اولیه
@@ -433,8 +462,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
             // راه‌اندازی PushNotificationService بعد از لاگین
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) {
-                final pushNotificationService =
-                    ref.read(pushNotificationServiceProvider);
+                final pushNotificationService = ref.read(
+                  pushNotificationServiceProvider,
+                );
                 pushNotificationService.init(context);
               }
             });
@@ -494,18 +524,17 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
               scaffoldMessengerKey: GlobalKey<ScaffoldMessengerState>(),
               routes: {
                 '/home': (context) => const HomeScreen(),
-                '/onboarding': (context) => const TelegramStyleOnboarding(),
-                '/modern-auth': (context) => const ModernAuthScreen(),
-                '/reset-password': (context) =>
-                    const ModernResetPasswordScreen(),
+                '/onboarding': (context) => const Onboarding(),
+                '/auth': (context) => const AuthScreen(),
+                '/reset-password': (context) => const ResetPasswordScreen(),
                 '/reset-password-code': (context) =>
-                    const ModernPasswordResetCodeScreen(),
+                    const PasswordResetCodeScreen(),
                 '/biometric-login': (context) => BiometricLoginScreen(
                       onSuccess: () {
                         Navigator.pushReplacementNamed(context, '/home');
                       },
                       onFallback: () {
-                        Navigator.pushReplacementNamed(context, '/modern-auth');
+                        Navigator.pushReplacementNamed(context, '/auth');
                       },
                     ),
                 '/editeProfile': (context) => const EditProfile(),
@@ -518,7 +547,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                     return PostDetailsPage(postId: postId);
                   }
                   return const Scaffold(
-                      body: Center(child: Text('پست یافت نشد')));
+                    body: Center(child: Text('پست یافت نشد')),
+                  );
                 },
                 '/profile': (context) {
                   final args = ModalRoute.of(context)?.settings.arguments
@@ -528,7 +558,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                     return ProfileScreen(username: username, userId: '');
                   }
                   return const Scaffold(
-                      body: Center(child: Text('پروفایل یافت نشد')));
+                    body: Center(child: Text('پروفایل یافت نشد')),
+                  );
                 },
                 '/feed': (context) => const PublicPostsScreen(),
                 '/chat': (context) {
@@ -620,7 +651,8 @@ Future<void> _initializeOptimizedChatSystem() async {
 
     print('✅ Optimized Chat System initialized successfully');
     print(
-        '📊 Features: Real-time updates, Offline support, Instant message display');
+      '📊 Features: Real-time updates, Offline support, Instant message display',
+    );
   } catch (e) {
     print('⚠️ Warning: Could not initialize optimized chat system: $e');
   }

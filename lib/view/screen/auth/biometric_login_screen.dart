@@ -337,8 +337,6 @@ class _BiometricLoginScreenState extends ConsumerState<BiometricLoginScreen>
   }
 
   Widget _buildBiometricButton() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Container(
       width: double.infinity,
       height: 56.h,
@@ -389,8 +387,6 @@ class _BiometricLoginScreenState extends ConsumerState<BiometricLoginScreen>
   }
 
   Widget _buildFallbackButton() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Column(
       children: [
         Container(

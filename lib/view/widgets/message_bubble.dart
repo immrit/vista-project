@@ -4,7 +4,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:photo_view/photo_view.dart';
 import '../../../model/message_model.dart';
 import 'voice_message_widget.dart';
-import 'advanced_voice_player_widget.dart';
 import '../../../view/util/time_utils.dart';
 import 'shared_post_card_widget.dart';
 
@@ -13,6 +12,7 @@ class MessageBubble extends StatefulWidget {
   final Function(MessageModel) onLongPress;
   final Function(MessageModel)? onReply;
   final Function(MessageModel)? onRetry;
+  final bool isHighlighted;
 
   const MessageBubble({
     super.key,
@@ -20,6 +20,7 @@ class MessageBubble extends StatefulWidget {
     required this.onLongPress,
     this.onReply,
     this.onRetry,
+    this.isHighlighted = false,
   });
 
   @override
@@ -121,6 +122,12 @@ class _MessageBubbleState extends State<MessageBubble>
                 bottomLeft: Radius.circular(isMe ? 18 : 4),
                 bottomRight: Radius.circular(isMe ? 4 : 18),
               ),
+              border: widget.isHighlighted
+                  ? Border.all(
+                      color: Colors.amber,
+                      width: 2,
+                    )
+                  : null,
               boxShadow: (isImageOnly || _isSharedPost(widget.message.content))
                   ? null
                   : [
@@ -128,7 +135,13 @@ class _MessageBubbleState extends State<MessageBubble>
                         color: Colors.black.withOpacity(0.04),
                         blurRadius: 5,
                         offset: const Offset(0, 2),
-                      )
+                      ),
+                      if (widget.isHighlighted)
+                        BoxShadow(
+                          color: Colors.amber.withOpacity(0.3),
+                          blurRadius: 10,
+                          offset: const Offset(0, 0),
+                        ),
                     ],
             ),
             child: Column(
@@ -196,6 +209,9 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Widget _buildAttachment(BuildContext context, String? type, String url) {
+    final theme = Theme.of(context);
+    final isLightMode = theme.brightness == Brightness.light;
+
     if (type == 'image') {
       return ClipRRect(
         borderRadius: BorderRadius.circular(15),
@@ -215,15 +231,16 @@ class _MessageBubbleState extends State<MessageBubble>
       );
     }
     if (type == 'audio') {
-      return AdvancedVoicePlayerWidget(
+      final bubbleColor = widget.message.isMe
+          ? (isLightMode ? const Color(0xFFE9F5FF) : const Color(0xFF3A3A3A))
+          : (isLightMode ? Colors.white : const Color(0xFF2C2C2C));
+
+      return VoiceMessageWidget(
         audioUrl: url,
-        voiceId: 'voice_${widget.message.id}',
         isMe: widget.message.isMe,
         duration: widget.message.duration,
-        waveformData: null, // Waveform data is not stored in messages anymore
         onDelete: null,
         onReply: null,
-        onForward: null,
       );
     }
     return const SizedBox.shrink();
@@ -295,12 +312,10 @@ class _MessageBubbleState extends State<MessageBubble>
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: isDark
-            ? theme.cardColor.withValues(alpha: 0.3)
-            : Colors.grey.shade100,
+        color: isDark ? theme.cardColor.withOpacity(0.3) : Colors.grey.shade100,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: theme.dividerColor.withValues(alpha: 0.2),
+          color: theme.dividerColor.withOpacity(0.2),
           width: 1,
         ),
       ),
@@ -317,7 +332,7 @@ class _MessageBubbleState extends State<MessageBubble>
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: theme.dividerColor.withValues(alpha: 0.2),
+                    color: theme.dividerColor.withOpacity(0.2),
                     width: 1,
                   ),
                 ),
@@ -380,16 +395,14 @@ class _MessageBubbleState extends State<MessageBubble>
                 Icon(
                   hasVideo ? Icons.play_circle_outline : Icons.image,
                   size: 14,
-                  color:
-                      theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
+                  color: theme.textTheme.bodySmall?.color?.withOpacity(0.6),
                 ),
                 const SizedBox(width: 4),
                 Text(
                   hasVideo ? 'ویدیو' : 'تصویر',
                   style: TextStyle(
                     fontSize: 11,
-                    color: theme.textTheme.bodySmall?.color
-                        ?.withValues(alpha: 0.6),
+                    color: theme.textTheme.bodySmall?.color?.withOpacity(0.6),
                   ),
                 ),
               ],

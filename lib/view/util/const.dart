@@ -178,7 +178,7 @@ Future<void> initializeSupabaseWithFailover() async {
     );
 
     await Supabase.instance.client.from('profiles').select().limit(1).timeout(
-          const Duration(seconds: 15),
+          const Duration(seconds: 5), // کاهش timeout از 15 به 5 ثانیه
           onTimeout: () => throw TimeoutException('Ping timeout'),
         );
     return; // اتصال موفق، خروج از تابع
@@ -222,7 +222,7 @@ Future<void> initializeSupabaseWithFailover() async {
           httpClient: httpClient2);
 
       await Supabase.instance.client.from('profiles').select().limit(1).timeout(
-            const Duration(seconds: 15),
+            const Duration(seconds: 5), // کاهش timeout از 15 به 5 ثانیه
             onTimeout: () => throw TimeoutException('Ping timeout'),
           );
 

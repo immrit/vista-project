@@ -315,10 +315,6 @@ class _VerificationBadgeStoreState
           Row(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
-              _contactChip(context, Icons.telegram, 'پشتیبانی تلگرام', () {
-                _launchURL('https://t.me/vistasupp');
-              }),
-              const SizedBox(width: 12),
               _contactChip(context, Icons.email, 'ایمیل پشتیبانی', () {
                 _launchURL('mailto:ahmadesmaili.official@gmail.com');
               }),

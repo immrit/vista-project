@@ -26,26 +26,26 @@ class ChatProviderParams {
 }
 
 // A single, unified state for the chat screen
-class NewChatState {
+class ChatScreenState {
   final List<MessageModel> messages;
   final bool isLoading;
   final bool hasMore;
   final String? error;
 
-  const NewChatState({
+  const ChatScreenState({
     this.messages = const [],
     this.isLoading = false,
     this.hasMore = true,
     this.error,
   });
 
-  NewChatState copyWith({
+  ChatScreenState copyWith({
     List<MessageModel>? messages,
     bool? isLoading,
     bool? hasMore,
     String? error,
   }) {
-    return NewChatState(
+    return ChatScreenState(
       messages: messages ?? this.messages,
       isLoading: isLoading ?? this.isLoading,
       hasMore: hasMore ?? this.hasMore,
@@ -55,7 +55,7 @@ class NewChatState {
 }
 
 // The single, efficient StateNotifier for the chat screen
-class NewChatNotifier extends StateNotifier<NewChatState> {
+class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
   final ChatProviderParams params;
   final ChatService _chatService = ChatService();
   final UnifiedMessageCacheService _cacheService = UnifiedMessageCacheService();
@@ -63,7 +63,7 @@ class NewChatNotifier extends StateNotifier<NewChatState> {
   bool _isFetching = false;
   static const _pageSize = 30;
 
-  NewChatNotifier(this.params) : super(const NewChatState()) {
+  ChatScreenNotifier(this.params) : super(const ChatScreenState()) {
     _initialize();
   }
 
@@ -252,8 +252,16 @@ class NewChatNotifier extends StateNotifier<NewChatState> {
     final currentMessages =
         Map.fromEntries(state.messages.map((m) => MapEntry(m.id, m)));
 
+    // Only add messages that don't already exist or are newer
     for (var msg in newMessages) {
-      currentMessages[msg.id] = msg;
+      final existingMessage = currentMessages[msg.id];
+      if (existingMessage == null ||
+          msg.createdAt.isAfter(existingMessage.createdAt)) {
+        currentMessages[msg.id] = msg;
+        print('📝 Added/Updated message: ${msg.id}');
+      } else {
+        print('⏭️ Skipped duplicate message: ${msg.id}');
+      }
     }
 
     final sortedMessages = currentMessages.values.toList()
@@ -298,7 +306,7 @@ class NewChatNotifier extends StateNotifier<NewChatState> {
       replyToSenderName: replyToMessage?.senderName,
     );
 
-    // Optimistic UI update
+    // Optimistic UI update - add temp message
     _updateMessages([tempMessage]);
 
     try {
@@ -314,12 +322,19 @@ class NewChatNotifier extends StateNotifier<NewChatState> {
         replyToSenderName: replyToMessage?.senderName,
       );
 
-      // Replace temp message with real one
+      // Replace temp message with real one - prevent duplicate
       if (mounted) {
-        final newMessages = state.messages
-            .map((m) => m.id == tempId ? sentMessage : m)
-            .toList();
-        state = state.copyWith(messages: newMessages);
+        final currentMessages =
+            Map.fromEntries(state.messages.map((m) => MapEntry(m.id, m)));
+
+        // Remove temp message and add real message
+        currentMessages.remove(tempId);
+        currentMessages[sentMessage.id] = sentMessage;
+
+        final sortedMessages = currentMessages.values.toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+        state = state.copyWith(messages: sortedMessages);
         _cacheService.cacheMessage(sentMessage, currentUser.id);
         _cacheService.clearMessage(
             params.conversationId, tempId, currentUser.id);
@@ -328,12 +343,62 @@ class NewChatNotifier extends StateNotifier<NewChatState> {
       if (mounted) {
         final failedMessage =
             tempMessage.copyWith(isSent: false, isPending: false);
-        final newMessages = state.messages
-            .map((m) => m.id == tempId ? failedMessage : m)
-            .toList();
+        final currentMessages =
+            Map.fromEntries(state.messages.map((m) => MapEntry(m.id, m)));
+
+        // Replace temp message with failed message
+        currentMessages[tempId] = failedMessage;
+
+        final sortedMessages = currentMessages.values.toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
         state = state.copyWith(
-            messages: newMessages, error: "Failed to send message");
+            messages: sortedMessages, error: "Failed to send message");
       }
+    }
+  }
+
+  Future<void> deleteMessage(String messageId,
+      {bool forEveryone = false}) async {
+    try {
+      print('🗑️ Deleting message: $messageId (forEveryone: $forEveryone)');
+
+      // حذف خوشبینانه از UI - بلافاصله پیام را از state حذف کن
+      final currentMessages =
+          Map.fromEntries(state.messages.map((m) => MapEntry(m.id, m)));
+      currentMessages.remove(messageId);
+
+      final sortedMessages = currentMessages.values.toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      if (mounted) {
+        state = state.copyWith(messages: sortedMessages);
+      }
+
+      // حذف از کش
+      final currentUser = supabase.auth.currentUser;
+      if (currentUser != null) {
+        await _cacheService.clearMessage(
+            params.conversationId, messageId, currentUser.id);
+      }
+
+      // حذف از سرور
+      await _chatService.deleteMessage(messageId, forEveryone: forEveryone);
+
+      print('✅ Message deleted successfully from server');
+    } catch (e) {
+      print('❌ Error deleting message: $e');
+      if (mounted) {
+        state = state.copyWith(error: 'خطا در حذف پیام: $e');
+      }
+      rethrow;
+    }
+  }
+
+  void clearAllMessages() {
+    print('🗑️ Clearing all messages from UI');
+    if (mounted) {
+      state = state.copyWith(messages: []);
     }
   }
 
@@ -344,9 +409,9 @@ class NewChatNotifier extends StateNotifier<NewChatState> {
   }
 }
 
-// The provider for our new notifier
-final newChatProvider = StateNotifierProvider.family
-    .autoDispose<NewChatNotifier, NewChatState, ChatProviderParams>(
+// The provider for chat screen state management
+final chatScreenProvider = StateNotifierProvider.family
+    .autoDispose<ChatScreenNotifier, ChatScreenState, ChatProviderParams>(
         (ref, params) {
-  return NewChatNotifier(params);
+  return ChatScreenNotifier(params);
 });

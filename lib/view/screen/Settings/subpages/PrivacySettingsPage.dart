@@ -56,7 +56,7 @@ class PrivacySettingsPage extends ConsumerWidget {
             final settingsAsync = ref.watch(currentUserSettingsProvider);
             final value =
                 settingsAsync.value?['allow_profile_zoom'] as bool? ?? true;
-            return TelegramSwitchItem(
+            return PrivacySwitchItem(
               icon: Icons.zoom_in,
               iconColor: Colors.blue,
               title: 'اجازه بزرگنمایی پروفایل',
@@ -73,7 +73,7 @@ class PrivacySettingsPage extends ConsumerWidget {
             final settingsAsync = ref.watch(currentUserSettingsProvider);
             final isPrivate =
                 settingsAsync.value?['is_private'] as bool? ?? false;
-            return TelegramSwitchItem(
+            return PrivacySwitchItem(
               icon: Icons.lock,
               iconColor: Colors.deepPurple,
               title: 'حساب خصوصی',
@@ -85,7 +85,7 @@ class PrivacySettingsPage extends ConsumerWidget {
             );
           }),
           _buildDivider(),
-          TelegramSettingsItem(
+          PrivacySettingsItem(
             icon: Icons.message,
             iconColor: Colors.orange,
             title: 'حریم خصوصی پیام‌ها',
@@ -93,7 +93,7 @@ class PrivacySettingsPage extends ConsumerWidget {
             onTap: () => _showMessagePrivacyDialog(context, ref),
           ),
           _buildDivider(),
-          TelegramSettingsItem(
+          PrivacySettingsItem(
             icon: Icons.visibility,
             iconColor: Colors.green,
             title: 'آخرین بازدید',
@@ -119,7 +119,7 @@ class PrivacySettingsPage extends ConsumerWidget {
             builder: (context, ref, _) {
               final blockedCountAsync = ref.watch(blockedUsersCountProvider);
               return blockedCountAsync.when(
-                data: (count) => TelegramSettingsItem(
+                data: (count) => PrivacySettingsItem(
                   icon: Icons.block,
                   iconColor: Colors.brown,
                   title: 'کاربران مسدود شده',
@@ -135,7 +135,7 @@ class PrivacySettingsPage extends ConsumerWidget {
                     );
                   },
                 ),
-                loading: () => TelegramSettingsItem(
+                loading: () => PrivacySettingsItem(
                   icon: Icons.block,
                   iconColor: Colors.brown,
                   title: 'کاربران مسدود شده',
@@ -149,7 +149,7 @@ class PrivacySettingsPage extends ConsumerWidget {
                     );
                   },
                 ),
-                error: (_, __) => TelegramSettingsItem(
+                error: (_, __) => PrivacySettingsItem(
                   icon: Icons.block,
                   iconColor: Colors.brown,
                   title: 'کاربران مسدود شده',
@@ -181,7 +181,7 @@ class PrivacySettingsPage extends ConsumerWidget {
       ),
       child: Column(
         children: [
-          TelegramSettingsItem(
+          PrivacySettingsItem(
             icon: Icons.download,
             iconColor: Colors.indigo,
             title: 'دانلود اطلاعات من',
@@ -192,7 +192,7 @@ class PrivacySettingsPage extends ConsumerWidget {
             },
           ),
           _buildDivider(),
-          TelegramSettingsItem(
+          PrivacySettingsItem(
             icon: Icons.account_circle,
             iconColor: Colors.grey,
             title: 'حذف حساب کاربری',
@@ -446,14 +446,14 @@ class PrivacySettingsPage extends ConsumerWidget {
 }
 
 // Widget برای آیتم‌های تنظیمات
-class TelegramSettingsItem extends StatelessWidget {
+class PrivacySettingsItem extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
 
-  const TelegramSettingsItem({
+  const PrivacySettingsItem({
     super.key,
     required this.icon,
     required this.iconColor,
@@ -522,7 +522,7 @@ class TelegramSettingsItem extends StatelessWidget {
 }
 
 // Widget برای آیتم‌های Switch
-class TelegramSwitchItem extends StatelessWidget {
+class PrivacySwitchItem extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
   final String title;
@@ -530,7 +530,7 @@ class TelegramSwitchItem extends StatelessWidget {
   final bool value;
   final Function(bool) onChanged;
 
-  const TelegramSwitchItem({
+  const PrivacySwitchItem({
     super.key,
     required this.icon,
     required this.iconColor,

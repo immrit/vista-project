@@ -8,14 +8,14 @@ import 'email_username_auth_screen.dart';
 import 'password_auth_screen.dart';
 import 'registration_screen.dart';
 
-class ModernAuthScreen extends ConsumerStatefulWidget {
-  const ModernAuthScreen({super.key});
+class AuthScreen extends ConsumerStatefulWidget {
+  const AuthScreen({super.key});
 
   @override
-  ConsumerState<ModernAuthScreen> createState() => _ModernAuthScreenState();
+  ConsumerState<AuthScreen> createState() => _AuthScreenState();
 }
 
-class _ModernAuthScreenState extends ConsumerState<ModernAuthScreen>
+class _AuthScreenState extends ConsumerState<AuthScreen>
     with TickerProviderStateMixin {
   late AnimationController _slideController;
   late AnimationController _fadeController;

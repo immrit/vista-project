@@ -4,7 +4,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import '../../../model/message_model.dart';
 import '../../util/widgets.dart';
-import '../../widgets/audio_player_widget.dart';
+import '../../widgets/voice_message_widget.dart';
 
 /// Widget بهینه‌شده برای نمایش پیام‌ها - کاهش rebuilds و بهبود performance
 class OptimizedMessageWidget extends StatefulWidget {
@@ -337,11 +337,13 @@ class _OptimizedMessageWidgetState extends State<OptimizedMessageWidget>
 
   Widget _buildAttachmentWidget() {
     if (_isAudioAttachment) {
+      // استفاده از VoiceMessageWidget پیشرفته به جای AudioPlayerWidget ساده
       return Padding(
         padding: const EdgeInsets.only(top: 0.0),
-        child: AudioPlayerWidget(
+        child: VoiceMessageWidget(
           audioUrl: widget.message.attachmentUrl!,
           isMe: widget.isMe,
+          duration: widget.message.duration,
         ),
       );
     } else if (_isImageAttachment) {

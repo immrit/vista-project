@@ -3,16 +3,16 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../main.dart';
 
-class ModernPasswordResetCodeScreen extends StatefulWidget {
-  const ModernPasswordResetCodeScreen({super.key});
+class PasswordResetCodeScreen extends StatefulWidget {
+  const PasswordResetCodeScreen({super.key});
 
   @override
-  State<ModernPasswordResetCodeScreen> createState() =>
-      _ModernPasswordResetCodeScreenState();
+  State<PasswordResetCodeScreen> createState() =>
+      _PasswordResetCodeScreenState();
 }
 
-class _ModernPasswordResetCodeScreenState
-    extends State<ModernPasswordResetCodeScreen> with TickerProviderStateMixin {
+class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
+    with TickerProviderStateMixin {
   final TextEditingController _codeController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
@@ -151,8 +151,7 @@ class _ModernPasswordResetCodeScreenState
         if (updateResponse.user != null) {
           print('✅ رمز عبور با موفقیت تغییر یافت');
           _showSuccessSnackBar('رمز عبور با موفقیت تغییر یافت');
-          Navigator.pushNamedAndRemoveUntil(
-              context, '/modern-auth', (route) => false);
+          Navigator.pushNamedAndRemoveUntil(context, '/auth', (route) => false);
         } else {
           print('❌ خطا در تغییر رمز عبور - پاسخ خالی');
           throw Exception('خطا در تغییر رمز عبور');
@@ -556,7 +555,7 @@ class _ModernPasswordResetCodeScreenState
                             onPressed: () {
                               Navigator.pushNamedAndRemoveUntil(
                                 context,
-                                '/modern-auth',
+                                '/auth',
                                 (route) => false,
                               );
                             },

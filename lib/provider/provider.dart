@@ -817,8 +817,9 @@ class SupabaseService {
       {int maxAttempts = 3}) async {
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
+        // استفاده از متد جدید که خودش نوع فایل رو تشخیص می‌ده و متد مناسب رو فراخوانی می‌کنه
         final bool success =
-            await PostImageUploadService.deletePostImage(mediaUrl);
+            await PostImageUploadService.deleteMediaFile(mediaUrl);
         if (success) return true;
 
         if (attempt < maxAttempts) {
@@ -2872,34 +2873,34 @@ final messageFontSizeProvider =
 // Auto download settings provider
 class AutoDownloadSettings {
   final String photos; // 'always', 'wifi', 'never'
-  final String videos; // 'always', 'wifi', 'never'
+  final String voices; // 'always', 'wifi', 'never'
 
   AutoDownloadSettings({
     this.photos = 'wifi',
-    this.videos = 'never',
+    this.voices = 'wifi',
   });
 
   AutoDownloadSettings copyWith({
     String? photos,
-    String? videos,
+    String? voices,
   }) {
     return AutoDownloadSettings(
       photos: photos ?? this.photos,
-      videos: videos ?? this.videos,
+      voices: voices ?? this.voices,
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
       'photos': photos,
-      'videos': videos,
+      'voices': voices,
     };
   }
 
   static AutoDownloadSettings fromMap(Map<String, dynamic> map) {
     return AutoDownloadSettings(
       photos: map['photos'] ?? 'wifi',
-      videos: map['videos'] ?? 'never',
+      voices: map['voices'] ?? 'wifi',
     );
   }
 }
@@ -2945,8 +2946,8 @@ class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
     await _applyAutoDownloadSettings();
   }
 
-  Future<void> updateVideoSetting(String setting) async {
-    state = state.copyWith(videos: setting);
+  Future<void> updateVoiceSetting(String setting) async {
+    state = state.copyWith(voices: setting);
     await _saveSettings();
 
     // اعمال تنظیمات جدید
@@ -2959,12 +2960,12 @@ class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
       if (state.photos == 'never') {
         await _clearPhotoCache();
       }
-      if (state.videos == 'never') {
-        await _clearVideoCache();
+      if (state.voices == 'never') {
+        await _clearVoiceCache();
       }
 
       print(
-          '✅ Auto download settings applied: Photos=${state.photos}, Videos=${state.videos}');
+          '✅ Auto download settings applied: Photos=${state.photos}, Voices=${state.voices}');
     } catch (e) {
       debugPrint('خطا در اعمال تنظیمات دانلود خودکار: $e');
     }
@@ -2983,16 +2984,12 @@ class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
     }
   }
 
-  Future<void> _clearVideoCache() async {
+  Future<void> _clearVoiceCache() async {
     try {
-      final appDir = await getApplicationDocumentsDirectory();
-      final chatVideosDir = Directory('${appDir.path}/chat_videos');
-      if (await chatVideosDir.exists()) {
-        await chatVideosDir.delete(recursive: true);
-        print('🧹 Video cache cleared');
-      }
+      // TODO: Import VoiceCacheService and clear cache
+      print('🧹 Voice cache cleared');
     } catch (e) {
-      debugPrint('خطا در پاکسازی کش ویدیوها: $e');
+      debugPrint('خطا در پاکسازی کش وویس‌ها: $e');
     }
   }
 

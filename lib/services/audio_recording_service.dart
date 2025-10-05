@@ -7,8 +7,8 @@ import 'package:path/path.dart' as path;
 import 'package:flutter/services.dart';
 import 'package:audio_waveforms/audio_waveforms.dart';
 
-/// سرویس ضبط صدا حرفه‌ای مثل تلگرام
-class TelegramVoiceService {
+/// سرویس ضبط صدا حرفه‌ای
+class VoiceRecordingService {
   // Recorder instance
   static final RecorderController _recorderController = RecorderController();
 

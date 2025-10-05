@@ -3,16 +3,14 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'dart:math' as math;
 import '../../../services/onboarding_service.dart';
 
-class TelegramStyleOnboarding extends StatefulWidget {
-  const TelegramStyleOnboarding({super.key});
+class Onboarding extends StatefulWidget {
+  const Onboarding({super.key});
 
   @override
-  State<TelegramStyleOnboarding> createState() =>
-      _TelegramStyleOnboardingState();
+  State<Onboarding> createState() => _OnboardingState();
 }
 
-class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
-    with TickerProviderStateMixin {
+class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
   late PageController _pageController;
   late AnimationController _mainAnimationController;
   late AnimationController _floatingAnimationController;
@@ -144,29 +142,27 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
       vsync: this,
     );
 
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _mainAnimationController,
-      curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
-    ));
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _mainAnimationController,
+        curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
+      ),
+    );
 
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _mainAnimationController,
-      curve: const Interval(0.2, 0.8, curve: Curves.easeOutCubic),
-    ));
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
+      CurvedAnimation(
+        parent: _mainAnimationController,
+        curve: const Interval(0.2, 0.8, curve: Curves.easeOutCubic),
+      ),
+    );
 
-    _scaleAnimation = Tween<double>(
-      begin: 0.8,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _mainAnimationController,
-      curve: const Interval(0.0, 0.7, curve: Curves.elasticOut),
-    ));
+    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _mainAnimationController,
+        curve: const Interval(0.0, 0.7, curve: Curves.elasticOut),
+      ),
+    );
 
     _floatingAnimation = Tween<double>(
       begin: 0.0,
@@ -178,21 +174,19 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
       end: 1.0,
     ).animate(_particleAnimationController);
 
-    _textSlideAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _textAnimationController,
-      curve: Curves.easeOutCubic,
-    ));
+    _textSlideAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _textAnimationController,
+        curve: Curves.easeOutCubic,
+      ),
+    );
 
-    _textFadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _textAnimationController,
-      curve: const Interval(0.3, 1.0, curve: Curves.easeOut),
-    ));
+    _textFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _textAnimationController,
+        curve: const Interval(0.3, 1.0, curve: Curves.easeOut),
+      ),
+    );
 
     _startAnimations();
   }
@@ -237,11 +231,11 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
   void _navigateToAuth() async {
     // علامت‌گذاری onboarding به عنوان تکمیل شده
     await OnboardingService.markOnboardingCompleted();
-    Navigator.pushReplacementNamed(context, '/modern-auth');
+    Navigator.pushReplacementNamed(context, '/auth');
   }
 
   void _skipOnboarding() {
-    Navigator.pushReplacementNamed(context, '/modern-auth');
+    Navigator.pushReplacementNamed(context, '/auth');
   }
 
   @override
@@ -322,11 +316,7 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
                 ),
               ],
             ),
-            child: Icon(
-              Icons.rocket_launch,
-              color: Colors.white,
-              size: 24.sp,
-            ),
+            child: Icon(Icons.rocket_launch, color: Colors.white, size: 24.sp),
           ),
 
           // Skip Button
@@ -390,10 +380,7 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
               SizedBox(height: 20.h),
 
               // Illustration
-              SizedBox(
-                height: 300.h,
-                child: _buildIllustration(slide),
-              ),
+              SizedBox(height: 300.h, child: _buildIllustration(slide)),
 
               SizedBox(height: 30.h),
 
@@ -435,7 +422,9 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
             builder: (context, child) {
               return Transform.translate(
                 offset: Offset(
-                    0, math.sin(_floatingAnimation.value * math.pi * 2) * 10),
+                  0,
+                  math.sin(_floatingAnimation.value * math.pi * 2) * 10,
+                ),
                 child: _buildMainIllustration(slide),
               );
             },
@@ -485,11 +474,7 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
         alignment: Alignment.center,
         children: [
           // Network/People Icon
-          Icon(
-            Icons.people,
-            size: 80.sp,
-            color: Colors.white,
-          ),
+          Icon(Icons.people, size: 80.sp, color: Colors.white),
 
           // Chat Bubble
           Positioned(
@@ -543,11 +528,7 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
         alignment: Alignment.center,
         children: [
           // Share Icon
-          Icon(
-            Icons.share,
-            size: 80.sp,
-            color: Colors.white,
-          ),
+          Icon(Icons.share, size: 80.sp, color: Colors.white),
 
           // Content Icons around the share
           ...List.generate(4, (index) {
@@ -556,7 +537,7 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
               Icons.image,
               Icons.videocam,
               Icons.music_note,
-              Icons.text_fields
+              Icons.text_fields,
             ];
             return Positioned(
               top: 50.h + math.sin(angle) * 60.h,
@@ -610,11 +591,7 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
         alignment: Alignment.center,
         children: [
           // Story/Circle Icon
-          Icon(
-            Icons.auto_stories,
-            size: 80.sp,
-            color: Colors.white,
-          ),
+          Icon(Icons.auto_stories, size: 80.sp, color: Colors.white),
 
           // Music Note
           Positioned(
@@ -693,11 +670,7 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
         alignment: Alignment.center,
         children: [
           // Shield with Check
-          Icon(
-            Icons.verified_user,
-            size: 80.sp,
-            color: Colors.white,
-          ),
+          Icon(Icons.verified_user, size: 80.sp, color: Colors.white),
 
           // Encryption Symbol
           Positioned(
@@ -751,11 +724,7 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
         alignment: Alignment.center,
         children: [
           // Speed/Performance Icon
-          Icon(
-            Icons.speed,
-            size: 80.sp,
-            color: Colors.white,
-          ),
+          Icon(Icons.speed, size: 80.sp, color: Colors.white),
 
           // Cloud Icon
           Positioned(
@@ -834,11 +803,7 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
         alignment: Alignment.center,
         children: [
           // Rocket Icon
-          Icon(
-            Icons.rocket_launch,
-            size: 80.sp,
-            color: Colors.white,
-          ),
+          Icon(Icons.rocket_launch, size: 80.sp, color: Colors.white),
 
           // Stars
           ...List.generate(4, (index) {
@@ -931,8 +896,10 @@ class _TelegramStyleOnboardingState extends State<TelegramStyleOnboarding>
               alignment: WrapAlignment.center,
               children: slide.features.map((feature) {
                 return Container(
-                  padding:
-                      EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 10.w,
+                    vertical: 4.h,
+                  ),
                   decoration: BoxDecoration(
                     color: slide.primaryColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12.r),
@@ -1084,8 +1051,9 @@ class ParticleBackgroundPainter extends CustomPainter {
       final y = center.dy + math.sin(angle) * distance;
 
       final paint = Paint()
-        ..color = (i % 2 == 0 ? primaryColor : secondaryColor)
-            .withOpacity(0.3 + math.sin(animation * math.pi * 2 + i) * 0.2)
+        ..color = (i % 2 == 0 ? primaryColor : secondaryColor).withOpacity(
+          0.3 + math.sin(animation * math.pi * 2 + i) * 0.2,
+        )
         ..style = PaintingStyle.fill;
 
       final particleSize = 4 + (math.sin(animation * math.pi * 2 + i) * 2);

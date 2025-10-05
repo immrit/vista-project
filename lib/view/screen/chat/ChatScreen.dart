@@ -11,20 +11,23 @@ import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 
 import '../../../main.dart';
 import '../../../model/message_model.dart';
-import '../../../provider/new_chat_provider.dart';
+import '../../../provider/chat_screen_provider.dart';
 import '../../../provider/chat_provider.dart' as chat_provider;
 import '../../../services/uploadAudioChatService.dart';
 import 'package:audio_waveforms/audio_waveforms.dart';
 import '../../../services/uploadImageChatService.dart';
+import '../../../services/global_voice_manager.dart';
 import '../../../services/wallpaper_cache_service.dart';
-import 'new_chat_input.dart';
+import 'chat_input.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../widgets/message_bubble.dart';
 import '../../widgets/date_divider.dart';
 import '../../widgets/connection_status_widget.dart';
 import '../PublicPosts/profileScreen.dart';
 import 'ChatDetailsScreen.dart';
+import 'ChatMessageSearchScreen.dart';
 import '../../../view/util/time_utils.dart';
+import '../../../services/toast_service.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String conversationId;
@@ -50,6 +53,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final ItemPositionsListener _itemPositionsListener =
       ItemPositionsListener.create();
 
+  // Highlight state
+  String? _highlightedMessageId;
+
   // State
   DateTime? _floatingDate;
   Timer? _floatingDateTimer;
@@ -68,6 +74,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isOtherUserBlocked = false;
   bool _isCurrentUserBlocked = false;
   final Set<String> _deletingMessageIds = {};
+  bool _isCacheEmpty = false;
 
   @override
   void initState() {
@@ -87,6 +94,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
     _itemPositionsListener.itemPositions.addListener(_scrollListener);
     _checkBlockStatus();
+
+    // اسکرول به آخرین پیام بعد از بارگذاری اولیه
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final messages = ref.read(chatScreenProvider(_providerParams)).messages;
+      if (messages.isNotEmpty) {
+        _scrollToLatestMessage();
+      } else {
+        // اگر هیچ پیامی نیست، چک کن که آیا کش کار می‌کنه یا نه
+        _checkCacheEmpty();
+      }
+    });
   }
 
   Future<void> _checkBlockStatus() async {
@@ -118,7 +136,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       final firstPosition = positions.first;
       if (firstPosition.index <= 5) {
-        ref.read(newChatProvider(_providerParams).notifier).fetchMoreMessages();
+        ref
+            .read(chatScreenProvider(_providerParams).notifier)
+            .fetchMoreMessages();
       }
 
       _updateFloatingDate(positions);
@@ -138,7 +158,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           .last
           .index;
 
-      final messages = ref.read(newChatProvider(_providerParams)).messages;
+      final messages = ref.read(chatScreenProvider(_providerParams)).messages;
       if (firstVisibleItemIndex >= 0 &&
           firstVisibleItemIndex < messages.length) {
         final messageDate = messages[firstVisibleItemIndex].createdAt;
@@ -171,7 +191,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void _setReplyMessage(MessageModel message) {
     setState(() {
       _replyToMessage = message;
-      // Focus logic is now handled inside NewChatInput
+      // Focus logic is now handled inside ChatInput
     });
   }
 
@@ -185,37 +205,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         .retrySendMessage(message);
 
     // نمایش پیام موفقیت
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('در حال تلاش مجدد برای ارسال پیام...'),
-        duration: const Duration(seconds: 2),
-        backgroundColor: Colors.blue.shade600,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+    ToastService.showInfoToast(context, 'در حال تلاش مجدد برای ارسال پیام...');
   }
 
   void _retryAllFailedMessages() {
     // Haptic feedback
     HapticFeedback.mediumImpact();
 
-    // دریافت تمام پیام‌های ناموفق
-    final messages = ref.read(
-      chat_provider.conversationMessagesProvider(widget.conversationId),
-    );
+    // دریافت تمام پیام‌های ناموفق از chatScreenProvider
+    final messages = ref.read(chatScreenProvider(_providerParams)).messages;
     final failedMessages =
         messages.where((msg) => !msg.isSent && msg.isMe).toList();
 
     if (failedMessages.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('پیام ناموفقی برای ارسال مجدد وجود ندارد'),
-          backgroundColor: Colors.green.shade600,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
+      ToastService.showInfoToast(
+          context, 'پیام ناموفقی برای ارسال مجدد وجود ندارد');
       return;
     }
 
@@ -227,16 +231,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
 
     // نمایش پیام موفقیت
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'در حال تلاش مجدد برای ${failedMessages.length} پیام ناموفق...',
-        ),
-        duration: const Duration(seconds: 3),
-        backgroundColor: Colors.blue.shade600,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
+    ToastService.showInfoToast(
+      context,
+      'در حال تلاش مجدد برای ${failedMessages.length} پیام ناموفق...',
     );
   }
 
@@ -245,8 +242,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     print(
       '🗑️ Disposing ChatScreen for conversation: ${widget.conversationId}',
     );
+
+    // توقف تمام وویس‌های در حال پخش
+    _stopAllVoicePlayback();
+
+    // پاکسازی timers
     _floatingDateTimer?.cancel();
+
     super.dispose();
+  }
+
+  /// توقف تمام وویس‌های در حال پخش
+  void _stopAllVoicePlayback() {
+    try {
+      // توقف تمام وویس‌ها از طریق GlobalVoiceManager
+      final voiceManager = GlobalVoiceManager();
+      voiceManager.stopCurrentVoice();
+      print(
+          '🔇 Stopped all voice playback for conversation: ${widget.conversationId}');
+    } catch (e) {
+      print('⚠️ Error stopping voice playback: $e');
+    }
   }
 
   // --- Message Sending Logic ---
@@ -275,7 +291,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         return;
       }
 
-      await ref.read(newChatProvider(_providerParams).notifier).sendMessage(
+      await ref.read(chatScreenProvider(_providerParams).notifier).sendMessage(
             message,
             attachmentUrl: attachmentUrl,
             attachmentType: attachmentType,
@@ -283,11 +299,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           );
 
       _clearAttachments();
-      _scrollToBottom();
+      _scrollToLatestMessage();
+
+      // اگر قبلاً کش خالی بود، حالا که پیام فرستادیم، چک کن که آیا کش پر شده یا نه
+      if (_isCacheEmpty) {
+        setState(() {
+          _isCacheEmpty = false;
+        });
+      }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('خطا در ارسال پیام: $e')));
+      ToastService.showErrorToast(
+          context, 'خطا در ارسال پیام. لطفاً دوباره تلاش کنید.');
     } finally {
       if (mounted) {
         setState(() {});
@@ -301,13 +323,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       print("🎙️ شروع ارسال پیام صوتی: ${audioFile.path}");
 
       // نمایش پیام در حال ارسال
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('در حال ارسال پیام صوتی...'),
-          backgroundColor: Colors.blue,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      ToastService.showInfoToast(context, 'در حال ارسال پیام صوتی...');
 
       final audioUrl = await _uploadAudio(audioFile);
       if (audioUrl != null) {
@@ -315,40 +331,38 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
         // محاسبه مدت زمان فایل صوتی
         final duration = await _getAudioDuration(audioFile);
-        print("🎵 مدت زمان فایل: ${duration} ثانیه");
+        print("🎵 مدت زمان فایل: $duration ثانیه");
 
-        await ref.read(newChatProvider(_providerParams).notifier).sendMessage(
+        await ref
+            .read(chatScreenProvider(_providerParams).notifier)
+            .sendMessage(
               '', // Voice messages have no text content
               attachmentUrl: audioUrl,
               attachmentType: 'audio',
-              // duration: duration, // موقتاً غیرفعال تا مشکل دیتابیس حل شود
+              duration: duration, // فعال کردن duration برای وویس
               replyToMessage: _replyToMessage,
             );
 
         print("✅ پیام صوتی ارسال شد");
         _clearAttachments();
-        _scrollToBottom();
+        _scrollToLatestMessage();
+
+        // اگر قبلاً کش خالی بود، حالا که پیام فرستادیم، چک کن که آیا کش پر شده یا نه
+        if (_isCacheEmpty) {
+          setState(() {
+            _isCacheEmpty = false;
+          });
+        }
 
         // نمایش پیام موفقیت
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('پیام صوتی با موفقیت ارسال شد'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
+        ToastService.showSuccessToast(context, 'پیام صوتی با موفقیت ارسال شد');
       } else {
         throw Exception('آپلود فایل صوتی ناموفق بود');
       }
     } catch (e) {
       print('❌ خطا در ارسال پیام صوتی: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطا در ارسال پیام صوتی: $e'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      ToastService.showErrorToast(
+          context, 'خطا در ارسال پیام صوتی. لطفاً دوباره تلاش کنید.');
     } finally {
       if (mounted) {
         setState(() {});
@@ -359,6 +373,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   /// محاسبه مدت زمان فایل صوتی
   Future<int?> _getAudioDuration(File audioFile) async {
     try {
+      print('🎵 محاسبه مدت زمان فایل: ${audioFile.path}');
+
       // استفاده از audio_waveforms برای محاسبه مدت زمان
       final playerController = PlayerController();
       await playerController.preparePlayer(path: audioFile.path);
@@ -379,10 +395,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       await subscription.cancel();
       playerController.dispose();
 
-      return durationMs != null ? durationMs! ~/ 1000 : null;
+      final durationSeconds = durationMs != null ? durationMs! ~/ 1000 : null;
+      print('🎵 مدت زمان محاسبه شده: ${durationSeconds} ثانیه');
+
+      return durationSeconds;
     } catch (e) {
-      print('خطا در محاسبه مدت زمان: $e');
-      return null;
+      print('❌ خطا در محاسبه مدت زمان: $e');
+      // در صورت خطا، مدت زمان پیش‌فرض برگردان
+      return 0;
     }
   }
 
@@ -420,9 +440,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         }
       }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('خطا در انتخاب تصویر: $e')));
+      ToastService.showErrorToast(
+          context, 'خطا در انتخاب تصویر. لطفاً دوباره تلاش کنید.');
     }
   }
 
@@ -440,11 +459,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
         // بررسی محدودیت 10 مگابایت
         if (fileSize > 10 * 1024 * 1024) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('حجم فایل باید کمتر از ۱۰ مگابایت باشد'),
-            ),
-          );
+          ToastService.showWarningToast(
+              context, 'حجم فایل باید کمتر از ۱۰ مگابایت باشد');
           return;
         }
 
@@ -456,15 +472,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           final fileUrl =
               'https://storage.389346.ir.cdn.ir/vista-bucket/chats/${widget.conversationId}/files/${DateTime.now().millisecondsSinceEpoch}_${result.files.single.name}';
           // ارسال پیام با فایل
-          await ref.read(newChatProvider(_providerParams).notifier).sendMessage(
+          await ref
+              .read(chatScreenProvider(_providerParams).notifier)
+              .sendMessage(
                 '📎 فایل: ${result.files.single.name}',
                 attachmentUrl: fileUrl,
                 attachmentType: 'document',
               );
         } catch (e) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('خطا در آپلود فایل: $e')));
+          ToastService.showErrorToast(
+              context, 'خطا در آپلود فایل. لطفاً دوباره تلاش کنید.');
         } finally {
           if (mounted) {
             setState(() {});
@@ -472,9 +489,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         }
       }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('خطا در انتخاب فایل: $e')));
+      ToastService.showErrorToast(
+          context, 'خطا در انتخاب فایل. لطفاً دوباره تلاش کنید.');
     }
   }
 
@@ -502,9 +518,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
       return imageUrl;
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('خطا در آپلود تصویر: $e')));
+      ToastService.showErrorToast(
+          context, 'خطا در آپلود تصویر. لطفاً دوباره تلاش کنید.');
       return null;
     } finally {
       if (mounted) {
@@ -536,9 +551,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
       return audioUrl;
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('خطا در آپلود صدا: $e')));
+      ToastService.showErrorToast(
+          context, 'خطا در آپلود صدا. لطفاً دوباره تلاش کنید.');
       return null;
     } finally {
       if (mounted) {
@@ -550,11 +564,45 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // --- UI Methods ---
   void _scrollToBottom() {
     if (_itemScrollController.isAttached) {
-      _itemScrollController.scrollTo(
-        index: 0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+      final messages = ref.read(chatScreenProvider(_providerParams)).messages;
+      if (messages.isNotEmpty) {
+        print(
+            '📱 Scrolling to bottom - messages count: ${messages.length}, newest message: ${messages.first.content}');
+        _itemScrollController.scrollTo(
+          index: 0, // اولین پیام در لیست مرتب‌شده (جدیدترین)
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    }
+  }
+
+  void _scrollToLatestMessage() {
+    // اسکرول به آخرین پیام بعد از بارگذاری
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToBottom();
+    });
+  }
+
+  Future<void> _checkCacheEmpty() async {
+    try {
+      // چک کن که آیا کش خالیه یا نه
+      await ref
+          .read(chatScreenProvider(_providerParams).notifier)
+          .fetchLatestMessages();
+
+      // اگر هنوز هیچ پیامی نیست، احتمالاً کش خالیه
+      final messages = ref.read(chatScreenProvider(_providerParams)).messages;
+      if (messages.isEmpty) {
+        setState(() {
+          _isCacheEmpty = true;
+        });
+
+        // کش باید از سرور پر شده باشه، این اسنک بار رو حذف کردیم
+        // چون کاربر نباید مجبور بشه پیام بفرسته تا کش فعال بشه
+      }
+    } catch (e) {
+      print('خطا در چک کردن وضعیت کش: $e');
     }
   }
 
@@ -587,9 +635,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 onTap: () async {
                   Navigator.pop(context);
                   await Clipboard.setData(ClipboardData(text: message.content));
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('پیام کپی شد')));
+                  ToastService.showSuccessToast(context, 'پیام کپی شد');
                 },
               ),
               ListTile(
@@ -667,24 +713,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       setState(() => _deletingMessageIds.add(messageId));
       await ref
-          .read(chat_provider.messageNotifierProvider.notifier)
+          .read(chatScreenProvider(_providerParams).notifier)
           .deleteMessage(messageId, forEveryone: forEveryone);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            forEveryone ? 'پیام برای همه حذف شد' : 'پیام برای شما حذف شد',
-          ),
-          backgroundColor: Colors.green,
-        ),
+      ToastService.showSuccessToast(
+        context,
+        forEveryone ? 'پیام برای همه حذف شد' : 'پیام برای شما حذف شد',
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطا در حذف پیام: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      ToastService.showErrorToast(
+          context, 'خطا در حذف پیام. لطفاً دوباره تلاش کنید.');
     } finally {
       if (mounted) {
         setState(() => _deletingMessageIds.remove(messageId));
@@ -693,9 +731,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _showReportMessageDialog(BuildContext context, MessageModel message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('قابلیت گزارش پیام به زودی اضافه می‌شود')),
-    );
+    ToastService.showInfoToast(
+        context, 'قابلیت گزارش پیام به زودی اضافه می‌شود');
   }
 
   void _showBlockUserDialog(BuildContext context) {
@@ -735,24 +772,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
                 await _checkBlockStatus();
 
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      isBlocked
-                          ? '${widget.otherUserName} با موفقیت رفع مسدودیت شد'
-                          : '${widget.otherUserName} با موفقیت مسدود شد',
-                    ),
-                  ),
+                ToastService.showSuccessToast(
+                  context,
+                  isBlocked
+                      ? '${widget.otherUserName} با موفقیت رفع مسدودیت شد'
+                      : '${widget.otherUserName} با موفقیت مسدود شد',
                 );
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      isBlocked
-                          ? 'خطا در رفع مسدودیت کاربر'
-                          : 'خطا در مسدود کردن کاربر',
-                    ),
-                  ),
+                ToastService.showErrorToast(
+                  context,
+                  isBlocked
+                      ? 'خطا در رفع مسدودیت کاربر. لطفاً دوباره تلاش کنید.'
+                      : 'خطا در مسدود کردن کاربر. لطفاً دوباره تلاش کنید.',
                 );
               }
             },
@@ -889,15 +920,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           additionalInfo.isEmpty ? null : additionalInfo,
                     )
                     .then((_) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('گزارش شما با موفقیت ارسال شد'),
-                    ),
-                  );
+                  ToastService.showSuccessToast(
+                      context, 'گزارش شما با موفقیت ارسال شد');
                 }).catchError((error) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('خطا در ارسال گزارش: $error')),
-                  );
+                  ToastService.showErrorToast(
+                      context, 'خطا در ارسال گزارش. لطفاً دوباره تلاش کنید.');
                 });
               },
               child: Text(
@@ -911,6 +938,148 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
+  void _showSearchMessagesDialog(BuildContext context) async {
+    final messageId = await Navigator.of(context).push<String?>(
+      MaterialPageRoute<String?>(
+        builder: (context) => ChatMessageSearchScreen(
+          conversationId: widget.conversationId,
+          otherUserName: widget.otherUserName,
+          otherUserAvatar: widget.otherUserAvatar,
+          otherUserId: widget.otherUserId,
+        ),
+      ),
+    );
+
+    if (messageId != null && mounted) {
+      _jumpToMessage(messageId);
+    }
+  }
+
+  void _jumpToMessage(String messageId) {
+    final messages = ref.read(chatScreenProvider(_providerParams)).messages;
+    final messageIndex = messages.indexWhere((msg) => msg.id == messageId);
+
+    if (messageIndex != -1) {
+      // Scroll to the message with animation
+      _itemScrollController.scrollTo(
+        index: messageIndex,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+
+      // Show a brief highlight effect
+      _highlightMessage(messageId);
+
+      ToastService.showSuccessToast(context, 'پرش به پیام انجام شد');
+    } else {
+      ToastService.showWarningToast(context, 'پیام مورد نظر یافت نشد');
+    }
+  }
+
+  void _highlightMessage(String messageId) {
+    // Add a brief highlight effect to the message
+    setState(() {
+      _highlightedMessageId = messageId;
+    });
+
+    // Remove highlight after 3 seconds
+    Timer(const Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() {
+          _highlightedMessageId = null;
+        });
+      }
+    });
+  }
+
+  void _showClearHistoryDialog(BuildContext context) {
+    final isLightMode = Theme.of(context).brightness == Brightness.light;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: isLightMode ? Colors.white : const Color(0xFF1A1A1A),
+        title: Text(
+          'پاکسازی تاریخچه',
+          style: TextStyle(
+            color: isLightMode ? Colors.black87 : Colors.white,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'آیا از پاکسازی تاریخچه این گفتگو اطمینان دارید؟',
+              style: TextStyle(
+                color: isLightMode ? Colors.black87 : Colors.white70,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'گزینه‌های پاکسازی:',
+              style: TextStyle(
+                color: isLightMode ? Colors.black87 : Colors.white70,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.person, color: Colors.blue),
+              title: const Text('فقط برای من'),
+              subtitle: const Text('تاریخچه فقط برای شما پاک می‌شود'),
+              onTap: () {
+                Navigator.pop(context);
+                _clearHistory(false);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.group, color: Colors.red),
+              title: const Text('برای همه'),
+              subtitle: const Text('تاریخچه برای همه شرکت‌کنندگان پاک می‌شود'),
+              onTap: () {
+                Navigator.pop(context);
+                _clearHistory(true);
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'انصراف',
+              style: TextStyle(
+                color: isLightMode ? Colors.grey[800] : Colors.grey[300],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _clearHistory(bool forEveryone) async {
+    try {
+      final chatService = ref.read(chat_provider.chatServiceProvider);
+      await chatService.clearConversation(
+        widget.conversationId,
+        bothSides: forEveryone,
+      );
+
+      // پاکسازی فوری از UI
+      ref.read(chatScreenProvider(_providerParams).notifier).clearAllMessages();
+
+      ToastService.showSuccessToast(
+        context,
+        forEveryone ? 'تاریخچه برای همه پاک شد' : 'تاریخچه برای شما پاک شد',
+      );
+    } catch (e) {
+      ToastService.showErrorToast(
+          context, 'خطا در پاکسازی تاریخچه. لطفاً دوباره تلاش کنید.');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // بررسی اولیه conversationId
@@ -921,7 +1090,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       );
     }
 
-    final chatState = ref.watch(newChatProvider(_providerParams));
+    final chatState = ref.watch(chatScreenProvider(_providerParams));
     final messages = chatState.messages;
 
     return Stack(
@@ -1062,6 +1231,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
                 onSelected: (value) {
                   switch (value) {
+                    case 'search':
+                      _showSearchMessagesDialog(context);
+                      break;
+                    case 'clear_history':
+                      _showClearHistoryDialog(context);
+                      break;
                     case 'block':
                       _showBlockUserDialog(context);
                       break;
@@ -1081,6 +1256,37 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   }
                 },
                 itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'search',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.search,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white70
+                              : Colors.black87,
+                        ),
+                        const SizedBox(width: 12),
+                        const Text('جستجو در پیام‌ها'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'clear_history',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.clear_all,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white70
+                              : Colors.black87,
+                        ),
+                        const SizedBox(width: 12),
+                        const Text('پاکسازی تاریخچه'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(),
                   PopupMenuItem(
                     value: 'profile',
                     child: Row(
@@ -1178,6 +1384,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                                 ),
                                               MessageBubble(
                                                 message: message,
+                                                isHighlighted:
+                                                    _highlightedMessageId ==
+                                                        message.id,
                                                 onLongPress: (msg) =>
                                                     _showMessageOptions(
                                                   context,
@@ -1243,7 +1452,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _buildMessageInput() {
-    return NewChatInput(
+    return ChatInput(
       onSendMessage: _sendMessage,
       onSendVoiceMessage: _sendVoiceMessage,
       onPickImage: _pickImage,

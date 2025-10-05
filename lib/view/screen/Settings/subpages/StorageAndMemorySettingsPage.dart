@@ -6,13 +6,14 @@ import 'dart:math' as math;
 import '../../../../services/storage_info_service.dart';
 import '../../../../services/cache_manager.dart';
 import '../../../../DB/advanced_cache_system.dart';
-import '../../../../DB/profile_cache_service.dart';
+import '../../../../services/user_profile_service.dart';
+import '../../../../services/voice_cache_service.dart';
 import '../../../../DB/database_file_utils.dart';
 import '../../../../main.dart';
 import '../../../../provider/provider.dart';
 import '../../../../services/video_autoplay_service.dart';
 
-// Storage category model like Telegram
+// Storage category model
 class StorageCategory {
   final String name;
   final Color color;
@@ -42,15 +43,17 @@ class _StorageAndMemorySettingsPageState
     with TickerProviderStateMixin {
   final UnifiedCacheManager _cacheManager = UnifiedCacheManager();
   final AdvancedCacheSystem _advancedCache = AdvancedCacheSystem();
-  final ProfileCacheService _profileCache = ProfileCacheService();
+  final UserProfileService _profileService = UserProfileService();
   final StorageInfoService _storageService = StorageInfoService();
+  final VoiceCacheService _voiceCacheService = VoiceCacheService();
 
   bool _isLoading = false;
   Map<String, dynamic> _cacheStats = {};
   Map<String, dynamic> _storageInfo = {};
   Map<String, dynamic> _profileStats = {};
+  Map<String, dynamic> _voiceCacheStats = {};
 
-  // Telegram-style settings
+  // Storage settings
   TabController? _tabController;
   String _autoRemovePrivateChats = '۱ هفته';
   String _autoRemoveProfiles = '۲ روز';
@@ -74,7 +77,7 @@ class _StorageAndMemorySettingsPageState
 
   final List<String> _tabTitles = ['کلی', 'گفتگوها'];
 
-  // Storage categories with colors (like Telegram)
+  // Storage categories with colors
   List<StorageCategory> _storageCategories = [
     StorageCategory('Music', Colors.purple, 'music'),
     StorageCategory('Stickers & Emoji', Colors.orange, 'stickers'),
@@ -104,7 +107,8 @@ class _StorageAndMemorySettingsPageState
       // Initialize all cache systems
       await _cacheManager.initialize();
       await _advancedCache.initialize();
-      await _profileCache.initialize();
+      await _voiceCacheService.initialize();
+      // ProfileService doesn't need explicit initialization
 
       // Load all data
       await _loadAllStats();
@@ -125,12 +129,20 @@ class _StorageAndMemorySettingsPageState
       final storageInfo = await _storageService.getStorageInfo();
 
       // بارگذاری آمار پروفایل‌ها
-      final profileStats = _profileCache.getCacheStats();
+      final profileStats = _getProfileCacheStats();
+
+      // بارگذاری آمار voice cache
+      final voiceCacheSize = await _voiceCacheService.getCacheSize();
+      final voiceCacheCount = _voiceCacheService.getCacheCount();
 
       setState(() {
         _cacheStats = cacheStats;
         _storageInfo = storageInfo;
         _profileStats = profileStats;
+        _voiceCacheStats = {
+          'size_mb': voiceCacheSize / (1024 * 1024),
+          'count': voiceCacheCount,
+        };
       });
 
       // محاسبه storage categories مثل تلگرام
@@ -145,21 +157,33 @@ class _StorageAndMemorySettingsPageState
     }
   }
 
+  /// دریافت آمار کش پروفایل‌ها
+  Map<String, dynamic> _getProfileCacheStats() {
+    return _profileService.getCacheStats();
+  }
+
   void _calculateStorageCategories() {
     // محاسبه حجم‌های واقعی از سیستم‌های cache
-    final imageCache =
-        _cacheStats['image_cache'] as Map<String, dynamic>? ?? {};
+    final imageCacheRaw = _cacheStats['image_cache'];
+    final imageCache = imageCacheRaw is Map<String, dynamic>
+        ? imageCacheRaw
+        : (imageCacheRaw is Map
+            ? Map<String, dynamic>.from(imageCacheRaw)
+            : {});
 
     // دریافت داده‌های واقعی از cache سیستم‌ها
-    final storyCache = imageCache['story_cache']?['size_mb'] ?? 0.0;
-    final postCache = imageCache['post_cache']?['size_mb'] ?? 0.0;
-    final chatImageCache = imageCache['chat_cache']?['size_mb'] ?? 0.0;
-    final wallpaperCache = imageCache['wallpaper_cache']?['size_mb'] ?? 0.0;
+    final storyCache = (imageCache['story_cache'] as Map?)?['size_mb'] ?? 0.0;
+    final postCache = (imageCache['post_cache'] as Map?)?['size_mb'] ?? 0.0;
+    final chatImageCache =
+        (imageCache['chat_cache'] as Map?)?['size_mb'] ?? 0.0;
+    final wallpaperCache =
+        (imageCache['wallpaper_cache'] as Map?)?['size_mb'] ?? 0.0;
 
     final profileCacheSize = _profileStats['total_cache_size_mb'] ?? 0.0;
     final messageCache = _storageInfo['messageCacheSize'] ?? 0.0;
     final conversationCache = _storageInfo['conversationCacheSize'] ?? 0.0;
     final tempCache = _storageInfo['tempCacheSize'] ?? 0.0;
+    final voiceCacheSize = _voiceCacheStats['size_mb'] ?? 0.0;
 
     // Debug: نمایش آمار دریافت شده
     print('📊 آمار کش دریافت شده:');
@@ -171,6 +195,7 @@ class _StorageAndMemorySettingsPageState
     print('   Message Cache: ${messageCache.toStringAsFixed(2)} MB');
     print('   Conversation Cache: ${conversationCache.toStringAsFixed(2)} MB');
     print('   Temp Cache: ${tempCache.toStringAsFixed(2)} MB');
+    print('   Voice Cache: ${voiceCacheSize.toStringAsFixed(2)} MB');
 
     // تخصیص داده‌های واقعی به دسته‌ها
     _storageCategories = [
@@ -185,6 +210,12 @@ class _StorageAndMemorySettingsPageState
         Colors.green,
         'messages',
         size: messageCache + conversationCache,
+      ),
+      StorageCategory(
+        'پیام‌های صوتی',
+        Colors.teal,
+        'voice',
+        size: voiceCacheSize,
       ),
       StorageCategory(
         'پروفایل‌ها و پست‌ها',
@@ -292,7 +323,7 @@ class _StorageAndMemorySettingsPageState
     );
   }
 
-  // Tab content builders (like Telegram)
+  // Tab content builders
   Widget _buildOverviewTab(BuildContext context, bool isDark) {
     final categoriesForChart = _storageCategories
         .where((c) => _visibleCategoryTypes.contains(c.type))
@@ -310,7 +341,7 @@ class _StorageAndMemorySettingsPageState
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Circular chart like Telegram
+          // Circular chart
           SizedBox(
             height: 250,
             child: Center(
@@ -347,7 +378,7 @@ class _StorageAndMemorySettingsPageState
 
           // (قدیمی) لیست دسته‌ها در پایین برای فعال/غیرفعال کردن استفاده می‌شود
 
-          // App usage info like Telegram
+          // App usage info
           Center(
             child: Text(
               'ویستا ${totalSizeGB.toStringAsFixed(2)} گیگابایت از حافظه دستگاه شما استفاده می‌کند.',
@@ -358,7 +389,7 @@ class _StorageAndMemorySettingsPageState
 
           const SizedBox(height: 24),
 
-          // Categories list like Telegram
+          // Categories list
           ...List.generate(_storageCategories.length, (index) {
             final category = _storageCategories[index];
             if (category.percentage < 1.0) return const SizedBox.shrink();
@@ -368,7 +399,7 @@ class _StorageAndMemorySettingsPageState
 
           const SizedBox(height: 24),
 
-          // Clear Cache button like Telegram
+          // Clear Cache button
           SizedBox(
             width: double.infinity,
             height: 50,
@@ -391,7 +422,7 @@ class _StorageAndMemorySettingsPageState
 
           const SizedBox(height: 16),
 
-          // Info text like Telegram
+          // Info text
           Text(
             'تمام رسانه‌ها در فضای ابری ویستا باقی می‌مانند و در صورت نیاز قابل دانلود مجدد هستند.',
             style: TextStyle(color: Colors.grey[600], fontSize: 12),
@@ -400,7 +431,7 @@ class _StorageAndMemorySettingsPageState
 
           const SizedBox(height: 32),
 
-          // Auto-remove section like Telegram
+          // Auto-remove section
           _buildAutoRemoveSection(context, isDark),
         ],
       ),
@@ -765,7 +796,7 @@ class _StorageAndMemorySettingsPageState
         ),
         const SizedBox(height: 16),
 
-        // Slider like Telegram
+        // Slider
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -1364,18 +1395,20 @@ class _StorageAndMemorySettingsPageState
       // 3. بارگذاری پروفایل‌های مفقود
       int loadedProfiles = 0;
       for (final userId in userIdsToLoad) {
-        final existingProfile = _profileCache.getCachedProfile(userId);
+        final existingProfile = _profileService.getCachedProfile(userId);
         if (existingProfile == null) {
           try {
             print('📱 بارگذاری پروفایل برای: $userId');
-            await _profileCache.cacheProfileAndPosts(userId);
+            await _profileService.getUserProfile(userId);
             loadedProfiles++;
           } catch (e) {
             print('⚠️ خطا در بارگذاری پروفایل $userId: $e');
           }
         } else {
-          print(
-              '✅ پروفایل موجود در کش: $userId - ${existingProfile.fullName.isNotEmpty ? existingProfile.fullName : existingProfile.username}');
+          final displayName = existingProfile['full_name']?.isNotEmpty == true
+              ? existingProfile['full_name']
+              : existingProfile['username'] ?? 'کاربر ناشناس';
+          print('✅ پروفایل موجود در کش: $userId - $displayName');
         }
       }
 
@@ -1386,10 +1419,12 @@ class _StorageAndMemorySettingsPageState
       for (final conversation in conversations) {
         if (conversation.otherUserId != null) {
           final profile =
-              _profileCache.getCachedProfile(conversation.otherUserId!);
+              _profileService.getCachedProfile(conversation.otherUserId!);
           if (profile != null) {
-            print(
-                '   ✅ ${conversation.id}: ${profile.fullName.isNotEmpty ? profile.fullName : profile.username}');
+            final displayName = profile['full_name']?.isNotEmpty == true
+                ? profile['full_name']
+                : profile['username'] ?? 'کاربر ناشناس';
+            print('   ✅ ${conversation.id}: $displayName');
           } else {
             print('   ❌ ${conversation.id}: پروفایل یافت نشد');
           }
@@ -1452,14 +1487,14 @@ class _StorageAndMemorySettingsPageState
       for (final userId in userIds) {
         try {
           // اول از cache بررسی کن
-          final cachedProfile = _profileCache.getCachedProfile(userId);
+          final cachedProfile = _profileService.getCachedProfile(userId);
           if (cachedProfile != null) {
             userProfiles[userId] = {
-              'name': cachedProfile.fullName.isNotEmpty
-                  ? cachedProfile.fullName
-                  : cachedProfile.username,
-              'avatar': cachedProfile.avatarUrl,
-              'username': cachedProfile.username,
+              'name': cachedProfile['full_name']?.isNotEmpty == true
+                  ? cachedProfile['full_name']
+                  : cachedProfile['username'] ?? 'کاربر ناشناس',
+              'avatar': cachedProfile['avatar_url'],
+              'username': cachedProfile['username'],
             };
             print(
               '✅ پروفایل کش شده برای $userId: ${userProfiles[userId]!['name']}',
@@ -1468,14 +1503,22 @@ class _StorageAndMemorySettingsPageState
             // اگر در cache نیست، از سرور دریافت کن
             print('🌐 دریافت پروفایل از سرور برای $userId...');
             try {
-              final profile = await _profileCache.getProfile(userId);
-              userProfiles[userId] = {
-                'name': profile.fullName.isNotEmpty
-                    ? profile.fullName
-                    : profile.username,
-                'avatar': profile.avatarUrl,
-                'username': profile.username,
-              };
+              final profile = await _profileService.getUserProfile(userId);
+              if (profile != null) {
+                userProfiles[userId] = {
+                  'name': profile['full_name']?.isNotEmpty == true
+                      ? profile['full_name']
+                      : profile['username'] ?? 'کاربر ناشناس',
+                  'avatar': profile['avatar_url'],
+                  'username': profile['username'],
+                };
+              } else {
+                userProfiles[userId] = {
+                  'name': 'کاربر ناشناس',
+                  'avatar': null,
+                  'username': null,
+                };
+              }
               print(
                 '✅ پروفایل دریافت شده برای $userId: ${userProfiles[userId]!['name']}',
               );
@@ -1556,13 +1599,13 @@ class _StorageAndMemorySettingsPageState
       // Debug ProfileCache
       if (conversation.otherUserId != null) {
         final profile =
-            _profileCache.getCachedProfile(conversation.otherUserId!);
+            _profileService.getCachedProfile(conversation.otherUserId!);
         print(
             '   🔍 ProfileCache برای ${conversation.otherUserId}: ${profile != null ? 'موجود' : 'مفقود'}');
         if (profile != null) {
-          print('     Full Name: "${profile.fullName}"');
-          print('     Username: "${profile.username}"');
-          print('     Avatar: "${profile.avatarUrl}"');
+          print('     Full Name: "${profile['full_name']}"');
+          print('     Username: "${profile['username']}"');
+          print('     Avatar: "${profile['avatar_url']}"');
         }
       }
 
@@ -1586,19 +1629,15 @@ class _StorageAndMemorySettingsPageState
       if (displayName == 'گفتگو ناشناس' || avatarUrl == null) {
         if (conversation.otherUserId != null) {
           final cachedProfile =
-              _profileCache.getCachedProfile(conversation.otherUserId!);
+              _profileService.getCachedProfile(conversation.otherUserId!);
           if (cachedProfile != null) {
             print('✅ لیست اصلی - پروفایل یافت شد در cache');
             if (displayName == 'گفتگو ناشناس') {
-              if (cachedProfile.fullName.isNotEmpty) {
-                displayName = cachedProfile.fullName;
-              } else if (cachedProfile.username.isNotEmpty) {
-                displayName = cachedProfile.username;
-              } else {
-                displayName = 'کاربر ناشناس';
-              }
+              displayName = cachedProfile['full_name']?.isNotEmpty == true
+                  ? cachedProfile['full_name']!
+                  : cachedProfile['username'] ?? 'کاربر ناشناس';
             }
-            avatarUrl ??= cachedProfile.avatarUrl;
+            avatarUrl ??= cachedProfile['avatar_url'];
             print('✅ لیست اصلی - استفاده از cached profile: $displayName');
           } else {
             print(
@@ -1607,16 +1646,15 @@ class _StorageAndMemorySettingsPageState
             for (final participant in conversation.participants) {
               if (participant.userId != conversation.otherUserId) {
                 final participantProfile =
-                    _profileCache.getCachedProfile(participant.userId);
+                    _profileService.getCachedProfile(participant.userId);
                 if (participantProfile != null) {
                   if (displayName == 'گفتگو ناشناس') {
-                    if (participantProfile.fullName.isNotEmpty) {
-                      displayName = participantProfile.fullName;
-                    } else if (participantProfile.username.isNotEmpty) {
-                      displayName = participantProfile.username;
-                    }
+                    displayName =
+                        participantProfile['full_name']?.isNotEmpty == true
+                            ? participantProfile['full_name']!
+                            : participantProfile['username'] ?? 'کاربر ناشناس';
                   }
-                  avatarUrl ??= participantProfile.avatarUrl;
+                  avatarUrl ??= participantProfile['avatar_url'];
                   print(
                       '✅ لیست اصلی - استفاده از participant profile: $displayName');
                   break;
@@ -2002,7 +2040,8 @@ class _StorageAndMemorySettingsPageState
 
       // Clear all caches
       await _cacheManager.clearAllCaches();
-      await _profileCache.clearAllCache();
+      _profileService.clearCache();
+      await _voiceCacheService.clearAllCache();
       await _storageService.clearAllCaches();
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2232,16 +2271,12 @@ class _StorageAndMemorySettingsPageState
       if (displayName == 'گفتگوی ناشناس') {
         if (conversation.otherUserId != null) {
           final cachedProfile =
-              _profileCache.getCachedProfile(conversation.otherUserId!);
+              _profileService.getCachedProfile(conversation.otherUserId!);
           if (cachedProfile != null) {
-            if (cachedProfile.fullName.isNotEmpty) {
-              displayName = cachedProfile.fullName;
-            } else if (cachedProfile.username.isNotEmpty) {
-              displayName = cachedProfile.username;
-            } else {
-              displayName = 'کاربر ناشناس';
-            }
-            avatarUrl ??= cachedProfile.avatarUrl;
+            displayName = cachedProfile['full_name']?.isNotEmpty == true
+                ? cachedProfile['full_name']!
+                : cachedProfile['username'] ?? 'کاربر ناشناس';
+            avatarUrl ??= cachedProfile['avatar_url'];
             print('✅ استفاده از cached profile: $displayName');
           } else {
             displayName = 'کاربر ناشناس';
@@ -2893,14 +2928,17 @@ class _StorageAndMemorySettingsPageState
   /// Clean voice cache for specific conversation
   Future<void> _performVoiceCacheCleanup(String conversationId) async {
     try {
-      // پاک‌سازی cache مرتبط با فایل‌های صوتی
-      // اینجا می‌توان cache مخصوص voice messages را پاک کرد
       print('پاک‌سازی voice cache برای مکالمه: $conversationId');
 
-      // اگر سیستم cache مخصوص voice داریم:
-      // await _voiceCacheManager.clearConversationVoiceCache(conversationId);
+      // پاک‌سازی تمام voice cache (فعلاً conversation-specific نیست)
+      await _voiceCacheService.clearAllCache();
+
+      // بروزرسانی آمار
+      await _loadAllStats();
+
+      print('✅ Voice cache پاک‌سازی شد');
     } catch (e) {
-      print('خطا در پاک‌سازی voice cache: $e');
+      print('❌ خطا در پاک‌سازی voice cache: $e');
     }
   }
 
@@ -3098,7 +3136,7 @@ class ConversationCacheChartPainter extends CustomPainter {
   bool shouldRepaint(CustomPainter oldDelegate) => true;
 }
 
-// Custom painter for the circular storage chart (like Telegram)
+// Custom painter for the circular storage chart
 class StorageChartPainter extends CustomPainter {
   final List<StorageCategory> categories;
   final bool isDark;

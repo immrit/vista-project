@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../provider/chat_provider.dart'; // برای دسترسی به deleteOldMessagesProvider
+import '../../../provider/voice_settings_provider.dart';
+import '../../../services/voice_cache_service.dart';
 
 class ChatSettingsScreen extends ConsumerWidget {
   const ChatSettingsScreen({super.key});
@@ -23,6 +25,7 @@ class ChatSettingsScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.all(16.0),
           children: [
+            _buildVoiceSettingsCard(context, ref, theme),
             _buildStorageManagementCard(context, ref, theme),
             // در آینده می‌توانید گزینه‌های بیشتری به این صفحه اضافه کنید
           ],
@@ -31,16 +34,147 @@ class ChatSettingsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildSectionHeader(BuildContext context, String title) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 16.0, bottom: 8.0, right: 8.0),
-      child: Text(
-        // این متن به دلیل Directionality والد، خودکار راست‌چین می‌شود
-        title,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.primary,
+  Widget _buildVoiceSettingsCard(
+      BuildContext context, WidgetRef ref, ThemeData theme) {
+    final voiceSettings = ref.watch(voiceSettingsProvider);
+    final voiceCacheService = VoiceCacheService();
+
+    return Card(
+      elevation: 1.5,
+      margin: const EdgeInsets.symmetric(vertical: 8.0),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: theme.dividerColor.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            leading: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.record_voice_over_outlined,
+                color: theme.colorScheme.primary,
+                size: 26,
+              ),
             ),
+            title: Text(
+              'تنظیمات پیام‌های وویس',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 4.0),
+      child: Text(
+                'مدیریت دانلود خودکار و کش فایل‌های صوتی',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.hintColor,
+                  height: 1.4,
+                ),
+              ),
+            ),
+            onTap: () => _showVoiceSettingsDialog(context, ref, theme),
+            trailing: Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 18,
+              color: theme.hintColor.withValues(alpha: 0.7),
+            ),
+          ),
+          Divider(
+            height: 0.5,
+            thickness: 0.5,
+            indent: 20,
+            endIndent: 20,
+            color: theme.dividerColor.withValues(alpha: 0.2),
+          ),
+          Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      "دانلود خودکار:",
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: theme.hintColor,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    Text(
+                      voiceSettings.autoDownloadLabel,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      "کش وویس:",
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: theme.hintColor,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    Text(
+                      voiceSettings.cacheEnabled ? "فعال" : "غیرفعال",
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: voiceSettings.cacheEnabled
+                            ? theme.colorScheme.primary
+                            : theme.hintColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                FutureBuilder<int>(
+                  future: voiceCacheService.getCacheSize(),
+                  builder: (context, snapshot) {
+                    final cacheSize = snapshot.data ?? 0;
+                    final cacheSizeMB =
+                        (cacheSize / (1024 * 1024)).toStringAsFixed(1);
+
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "حجم کش:",
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: theme.hintColor,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        Text(
+                          cacheSize > 0 ? "${cacheSizeMB} مگابایت" : "خالی",
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: cacheSize > 0
+                                ? theme.colorScheme.primary
+                                : theme.hintColor,
+              fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -233,8 +367,207 @@ class ChatSettingsScreen extends ConsumerWidget {
       } finally {
         // پس از اتمام عملیات (موفق یا ناموفق)، حجم کش را رفرش کن
         if (context.mounted) {
-          ref.refresh(chatCacheSizeProvider);
+          ref.invalidate(chatCacheSizeProvider);
         }
+      }
+    }
+  }
+
+  void _showVoiceSettingsDialog(
+      BuildContext context, WidgetRef ref, ThemeData theme) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          textDirection: TextDirection.rtl,
+          children: [
+            Icon(Icons.record_voice_over_outlined, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('تنظیمات پیام‌های وویس'),
+          ],
+        ),
+        content: Directionality(
+          textDirection: TextDirection.rtl,
+          child: _VoiceSettingsDialogContent(ref: ref),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('بستن'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VoiceSettingsDialogContent extends ConsumerWidget {
+  final WidgetRef ref;
+
+  const _VoiceSettingsDialogContent({required this.ref});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final voiceSettings = ref.watch(voiceSettingsProvider);
+    final theme = Theme.of(context);
+
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // دانلود خودکار
+          Text(
+            'دانلود خودکار',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SwitchListTile(
+            title: const Text('فعال کردن دانلود خودکار'),
+            subtitle: const Text('وویس‌ها به صورت خودکار دانلود شوند'),
+            value: voiceSettings.autoDownloadEnabled,
+            onChanged: (value) {
+              ref
+                  .read(voiceSettingsProvider.notifier)
+                  .setAutoDownloadEnabled(value);
+            },
+            contentPadding: EdgeInsets.zero,
+          ),
+          if (voiceSettings.autoDownloadEnabled) ...[
+            const SizedBox(height: 8),
+            Text(
+              'زمان دانلود:',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 4),
+            ...['always', 'wifi', 'never'].map((mode) {
+              final labels = {
+                'always': 'همیشه',
+                'wifi': 'فقط Wi-Fi',
+                'never': 'هرگز',
+              };
+
+              return RadioListTile<String>(
+                title: Text(labels[mode]!),
+                value: mode,
+                groupValue: voiceSettings.autoDownloadMode,
+                onChanged: (value) {
+                  if (value != null) {
+                    ref
+                        .read(voiceSettingsProvider.notifier)
+                        .setAutoDownloadMode(value);
+                  }
+                },
+                contentPadding: EdgeInsets.zero,
+              );
+            }),
+          ],
+
+          const SizedBox(height: 16),
+
+          // کش وویس
+          Text(
+            'کش وویس',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SwitchListTile(
+            title: const Text('فعال کردن کش وویس'),
+            subtitle: const Text('فایل‌های وویس برای پخش آفلاین کش شوند'),
+            value: voiceSettings.cacheEnabled,
+            onChanged: (value) {
+              ref.read(voiceSettingsProvider.notifier).setCacheEnabled(value);
+            },
+            contentPadding: EdgeInsets.zero,
+          ),
+
+          if (voiceSettings.cacheEnabled) ...[
+            const SizedBox(height: 8),
+            Text(
+              'حداکثر حجم کش:',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 4),
+            ...['50', '100', '200', '500'].map((size) {
+              return RadioListTile<String>(
+                title: Text('$size مگابایت'),
+                value: size,
+                groupValue: voiceSettings.maxCacheSizeMB.toString(),
+                onChanged: (value) {
+                  if (value != null) {
+                    ref
+                        .read(voiceSettingsProvider.notifier)
+                        .setMaxCacheSize(int.parse(value));
+                  }
+                },
+                contentPadding: EdgeInsets.zero,
+              );
+            }),
+          ],
+
+          const SizedBox(height: 16),
+
+          // مدیریت کش
+          Text(
+            'مدیریت کش',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          FutureBuilder<int>(
+            future: VoiceCacheService().getCacheSize(),
+            builder: (context, snapshot) {
+              final cacheSize = snapshot.data ?? 0;
+              final cacheSizeMB =
+                  (cacheSize / (1024 * 1024)).toStringAsFixed(1);
+
+              return ListTile(
+                title: const Text('حجم فعلی کش'),
+                subtitle:
+                    Text(cacheSize > 0 ? "${cacheSizeMB} مگابایت" : "خالی"),
+                trailing: cacheSize > 0
+                    ? TextButton(
+                        onPressed: () => _clearVoiceCache(context),
+                        child: const Text('پاک کردن'),
+                      )
+                    : null,
+                contentPadding: EdgeInsets.zero,
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _clearVoiceCache(BuildContext context) async {
+    try {
+      await VoiceCacheService().clearAllCache();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('کش وویس با موفقیت پاک شد'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در پاک کردن کش: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }

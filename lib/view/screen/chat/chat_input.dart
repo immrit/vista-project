@@ -7,13 +7,13 @@ import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 
 // Callbacks for the parent widget (ChatScreen)
-class NewChatInput extends StatefulWidget {
+class ChatInput extends StatefulWidget {
   final Function(String) onSendMessage;
   final Function(File) onSendVoiceMessage;
   final VoidCallback onPickImage;
   final VoidCallback onPickFile;
 
-  const NewChatInput({
+  const ChatInput({
     super.key,
     required this.onSendMessage,
     required this.onSendVoiceMessage,
@@ -22,11 +22,10 @@ class NewChatInput extends StatefulWidget {
   });
 
   @override
-  State<NewChatInput> createState() => _NewChatInputState();
+  State<ChatInput> createState() => _ChatInputState();
 }
 
-class _NewChatInputState extends State<NewChatInput>
-    with TickerProviderStateMixin {
+class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
   // --- Controllers ---
   final TextEditingController _textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();

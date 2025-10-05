@@ -184,6 +184,8 @@ class ProfileCacheManager {
     return {
       'cached_profiles': _memoryCache.length,
       'pending_requests': _pendingRequests.length,
+      'total_cache_size_mb':
+          (_memoryCache.length * 1024) / (1024 * 1024), // Rough estimate
       'cache_size_mb':
           (_memoryCache.length * 1024) / (1024 * 1024), // Rough estimate
     };

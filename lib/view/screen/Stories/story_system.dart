@@ -348,6 +348,27 @@ class StoryService {
     try {
       final currentUserId = _client.auth.currentUser?.id;
       if (currentUserId == null) throw Exception('User not authenticated');
+
+      // ابتدا اطلاعات استوری رو دریافت می‌کنیم تا URL فایل رو داشته باشیم
+      final storyResponse = await _client
+          .from('stories')
+          .select('media_url')
+          .eq('id', storyId)
+          .eq('user_id', currentUserId)
+          .single();
+
+      // اگر استوری فایل رسانه دارد، ابتدا از آروان حذف می‌کنیم
+      if (storyResponse['media_url'] != null &&
+          storyResponse['media_url'].isNotEmpty) {
+        final success = await StoryImageUploadService.deleteStoryImage(
+            storyResponse['media_url']);
+        if (!success) {
+          print(
+              'هشدار: حذف فایل استوری از آروان ناموفق بود، اما ادامه می‌دهیم');
+        }
+      }
+
+      // سپس استوری رو از دیتابیس حذف می‌کنیم
       await _client
           .from('stories')
           .delete()

@@ -54,7 +54,7 @@ class CacheSyncService {
     }
 
     _isInitialized = true;
-    debugPrint('✅ Telegram-style cache sync initialized');
+    debugPrint('✅ Cache sync initialized');
   }
 
   /// مدیریت تغییرات network
@@ -369,7 +369,7 @@ class CacheSyncService {
     _pendingSyncs.clear();
 
     _isInitialized = false;
-    debugPrint('🔄 Telegram-style cache sync disposed');
+    debugPrint('🔄 Cache sync disposed');
   }
 
   /// آمار عملکرد

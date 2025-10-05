@@ -426,17 +426,17 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
 
               // خروج از حساب
               await supabase.auth.signOut();
-              Navigator.pushReplacementNamed(context, '/modern-auth');
+              Navigator.pushReplacementNamed(context, '/auth');
             } catch (e) {
               developer.log('Error during logout: $e');
               // در صورت خطا، باز هم سعی کن از حساب خارج شو
               try {
                 await supabase.auth.signOut();
-                Navigator.pushReplacementNamed(context, '/modern-auth');
+                Navigator.pushReplacementNamed(context, '/auth');
               } catch (finalError) {
                 developer.log('Final logout error: $finalError');
-                // آخرین تلاش: بازگشت به صفحه modern-auth
-                Navigator.pushReplacementNamed(context, '/modern-auth');
+                // آخرین تلاش: بازگشت به صفحه ورود
+                Navigator.pushReplacementNamed(context, '/auth');
               }
             }
           },

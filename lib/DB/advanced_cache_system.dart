@@ -356,8 +356,8 @@ class AdvancedCacheSystem {
             !msg.id.startsWith('temp_')) // Filter out temporary messages
         .toList();
 
-    // Sort by creation time (oldest first)
-    messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    // Sort by creation time (newest first for reverse list)
+    messages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
     // Update memory cache
     _messageMemoryCache[conversationId] = messages;
@@ -524,7 +524,7 @@ class AdvancedCacheSystem {
           .from('messages')
           .select('*')
           .eq('conversation_id', conversationId)
-          .order('created_at', ascending: false)
+          .order('created_at', ascending: false) // جدیدترین اول
           .limit(limit)
           .timeout(const Duration(seconds: 30)); // Add timeout
 
@@ -564,7 +564,7 @@ class AdvancedCacheSystem {
       }
     }
 
-    // Convert back to list and sort
+    // Convert back to list and sort (جدیدترین اول برای لیست reverse)
     final merged = messageMap.values.toList();
     merged.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
@@ -709,8 +709,8 @@ class AdvancedCacheSystem {
     // Add new message at the end (chronological order)
     messages.add(message);
 
-    // Sort messages by creation time (oldest first)
-    messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    // Sort messages by creation time (newest first for reverse list)
+    messages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
     // Limit cache size
     if (messages.length > maxMessagesPerConversation) {
@@ -767,8 +767,13 @@ class AdvancedCacheSystem {
     // Fallback to memory cache
     final memoryResult = _messageMemoryCache[conversationId] ?? [];
     if (memoryResult.isNotEmpty) {
+      // مرتب‌سازی از جدید به قدیمی برای نمایش صحیح در لیست reverse
+      final sortedResult = List<MessageModel>.from(memoryResult)
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
       // Cache in performance optimizer for next time
-      _performanceOptimizer.cacheMessages(conversationId, memoryResult);
+      _performanceOptimizer.cacheMessages(conversationId, sortedResult);
+      return sortedResult;
     }
 
     return memoryResult;

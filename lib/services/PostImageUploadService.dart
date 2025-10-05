@@ -148,6 +148,69 @@ class PostImageUploadService {
     }
   }
 
+  static Future<bool> deleteMusicFile(String fileUrl) async {
+    try {
+      final uri = Uri.parse(fileUrl);
+      final key = uri.pathSegments.sublist(1).join('/');
+
+      await s3.deleteObject(
+        bucket: bucketName,
+        key: key,
+      );
+
+      print('فایل موسیقی با موفقیت از آروان حذف شد: $fileUrl');
+      return true;
+    } catch (e) {
+      print('خطا در حذف فایل موسیقی: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> deleteVideoFile(String fileUrl) async {
+    try {
+      final uri = Uri.parse(fileUrl);
+      final key = uri.pathSegments.sublist(1).join('/');
+
+      await s3.deleteObject(
+        bucket: bucketName,
+        key: key,
+      );
+
+      print('فایل ویدیو با موفقیت از آروان حذف شد: $fileUrl');
+      return true;
+    } catch (e) {
+      print('خطا در حذف فایل ویدیو: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> deleteMediaFile(String fileUrl) async {
+    try {
+      // بررسی نوع فایل بر اساس URL یا extension
+      final uri = Uri.parse(fileUrl);
+      final key = uri.pathSegments.sublist(1).join('/');
+      final extension = path.extension(key).toLowerCase();
+
+      // اگر پسوند فایل مشخص نباشد، از URL برای تشخیص نوع استفاده می‌کنیم
+      if (fileUrl.contains('music/') ||
+          extension == '.mp3' ||
+          extension == '.m4a') {
+        return await deleteMusicFile(fileUrl);
+      } else if (fileUrl.contains('videos/') ||
+          extension == '.mp4' ||
+          extension == '.mov' ||
+          extension == '.mkv') {
+        return await deleteVideoFile(fileUrl);
+      } else {
+        // برای تصاویر پست یا فایل‌های نامشخص، از متد حذف تصویر استفاده می‌کنیم
+        return await deletePostImage(fileUrl);
+      }
+    } catch (e) {
+      print('خطا در حذف فایل رسانه: $e');
+      return false;
+    }
+  }
+
   static Future<File?> compressImage(File file) async {
     try {
       final extension = path.extension(file.path).toLowerCase();

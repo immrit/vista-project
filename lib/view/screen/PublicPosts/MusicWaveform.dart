@@ -300,7 +300,7 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
                           child: CustomPaint(
                             size: Size(
                                 constraints.maxWidth - 120, 40), // تنظیم عرض
-                            painter: TelegramWaveformPainter(
+                            painter: MusicWaveformPainter(
                               waveData: _waveform,
                               progress: progress,
                               activeColor: Theme.of(context).primaryColor,
@@ -451,13 +451,13 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
   }
 }
 
-class TelegramWaveformPainter extends CustomPainter {
+class MusicWaveformPainter extends CustomPainter {
   final List<double> waveData;
   final double progress;
   final Color activeColor;
   final Color inactiveColor;
 
-  TelegramWaveformPainter({
+  MusicWaveformPainter({
     required this.waveData,
     required this.progress,
     required this.activeColor,
@@ -512,7 +512,7 @@ class TelegramWaveformPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(TelegramWaveformPainter oldDelegate) {
+  bool shouldRepaint(MusicWaveformPainter oldDelegate) {
     return oldDelegate.progress != progress;
   }
 }
