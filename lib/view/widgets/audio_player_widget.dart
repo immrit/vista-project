@@ -155,7 +155,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
             splashColor: textColor.withValues(alpha: 0.2),
           ),
           Expanded(
-            child: Container(
+            child: SizedBox(
               height: 40,
               child: Stack(
                 children: [

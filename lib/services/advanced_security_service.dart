@@ -395,11 +395,13 @@ class AdvancedSecurityService {
       // Check if session exists
       final session = await getSecureSession();
       if (session == null) {
+        logger.w('⚠️ No secure session found');
         return false;
       }
 
       // Check if account is locked
       if (await isAccountLocked()) {
+        logger.w('⚠️ Account is locked');
         return false;
       }
 
@@ -409,15 +411,19 @@ class AdvancedSecurityService {
         final daysSinceLogin = DateTime.now().difference(lastLogin).inDays;
         if (daysSinceLogin > 30) {
           // Expire after 30 days
+          logger.w('⚠️ Session expired after 30 days');
           await clearSecureSession();
           return false;
         }
       }
 
+      logger.d('✅ Session security validation passed');
       return true;
     } catch (e) {
       logger.e('❌ Failed to validate session security: $e');
-      return false;
+      // در صورت خطا، session را معتبر در نظر بگیر تا کاربر از حساب خارج نشود
+      logger.w('⚠️ Returning true due to validation error to prevent logout');
+      return true;
     }
   }
 

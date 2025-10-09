@@ -30,7 +30,7 @@ class _RegistrationScreenState extends State<RegistrationScreen>
   late AnimationController _animationController;
   late AnimationController _pulseController;
   late Animation<double> _slideAnimation;
-  late Animation<double> _pulseAnimation;
+  // late Animation<double> _pulseAnimation; // removed unused animation
 
   final PageController _pageController = PageController();
   int _currentStep = 0;
@@ -92,13 +92,7 @@ class _RegistrationScreenState extends State<RegistrationScreen>
       curve: Curves.easeOutCubic,
     ));
 
-    _pulseAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.05,
-    ).animate(CurvedAnimation(
-      parent: _pulseController,
-      curve: Curves.easeInOut,
-    ));
+    // removed unused _pulseAnimation setup
 
     _animationController.forward();
     _pulseController.repeat(reverse: true);
@@ -172,19 +166,36 @@ class _RegistrationScreenState extends State<RegistrationScreen>
     setState(() => _isLoading = true);
 
     try {
+      // ورودی‌ها را یک‌بار خوانده و آماده‌سازی می‌کنیم
+      final email = _emailController.text.trim();
+      final username = _usernameController.text.trim();
+
+      // اعتبارسنجی پایه ورودی‌ها
+      final emailRegex =
+          RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+      final usernameRegex = RegExp(r'^[a-zA-Z0-9_]{3,}$');
+      if (!emailRegex.hasMatch(email)) {
+        _showErrorSnackBar('لطفاً یک ایمیل معتبر وارد کنید');
+        return;
+      }
+      if (!usernameRegex.hasMatch(username)) {
+        _showErrorSnackBar(
+            'نام کاربری باید حداقل ۳ کاراکتر و شامل حروف/اعداد/ـ باشد');
+        return;
+      }
+
       // بررسی وجود کاربر قبل از ثبت نام
       final existingUser = await supabase
           .from('profiles')
           .select('email, username')
-          .or('email.eq.${_emailController.text.trim()},username.eq.${_usernameController.text.trim()}')
+          .or('email.eq.$email,username.eq.$username')
           .maybeSingle();
 
       if (existingUser != null) {
-        if (existingUser['email'] == _emailController.text.trim()) {
+        if (existingUser['email'] == email) {
           _showErrorSnackBar('این ایمیل قبلاً ثبت شده است');
           return;
-        } else if (existingUser['username'] ==
-            _usernameController.text.trim()) {
+        } else if (existingUser['username'] == username) {
           _showErrorSnackBar('این نام کاربری قبلاً استفاده شده است');
           return;
         }
@@ -193,7 +204,7 @@ class _RegistrationScreenState extends State<RegistrationScreen>
       // بررسی وجود کاربر در Auth (برای اطمینان بیشتر)
       try {
         await supabase.auth.signInWithPassword(
-          email: _emailController.text.trim(),
+          email: email,
           password: _passwordController.text,
         );
         // اگر لاگین موفق بود، یعنی کاربر قبلاً وجود داره
@@ -206,7 +217,7 @@ class _RegistrationScreenState extends State<RegistrationScreen>
 
       // ثبت نام کاربر در Supabase Auth
       final authResponse = await supabase.auth.signUp(
-        email: _emailController.text.trim(),
+        email: email,
         password: _passwordController.text,
       );
 
@@ -239,8 +250,8 @@ class _RegistrationScreenState extends State<RegistrationScreen>
           // ایجاد پروفایل کاربر در جدول profiles
           final profileData = {
             'id': authResponse.user!.id,
-            'email': _emailController.text.trim(),
-            'username': _usernameController.text.trim(),
+            'email': email,
+            'username': username,
             'full_name': _fullNameController.text.trim(),
             'bio': _bioController.text.trim().isNotEmpty
                 ? _bioController.text.trim()
@@ -279,9 +290,10 @@ class _RegistrationScreenState extends State<RegistrationScreen>
           UserAttributes(
             data: {
               'id': authResponse.user!.id,
-              'username': _usernameController.text.trim(),
+              'username': username,
               'full_name': _fullNameController.text.trim(),
               'avatar_url': _selectedAvatarUrl,
+              'email': email,
             },
           ),
         );
@@ -1442,84 +1454,7 @@ class _RegistrationScreenState extends State<RegistrationScreen>
     );
   }
 
-  Widget _buildContinueButton() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return StatefulBuilder(
-      builder: (context, setState) {
-        final isValid = _validateCurrentStep();
-
-        return Container(
-          width: double.infinity,
-          height: 56.h,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16.r),
-            gradient: isValid && !_isLoading
-                ? const LinearGradient(
-                    colors: [Color(0xFF4A80F0), Color(0xFF6B9EFF)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  )
-                : null,
-            color: isValid && !_isLoading
-                ? null
-                : isDark
-                    ? Colors.grey.shade700
-                    : Colors.grey.shade300,
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(16.r),
-              onTap: isValid && !_isLoading ? _nextStep : null,
-              child: Center(
-                child: _isLoading
-                    ? SizedBox(
-                        width: 24.w,
-                        height: 24.w,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            isDark ? Colors.white : Colors.black87,
-                          ),
-                        ),
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            _currentStep == 3 ? 'ثبت نام' : 'ادامه',
-                            style: TextStyle(
-                              fontSize: 18.sp,
-                              fontWeight: FontWeight.bold,
-                              color: isValid
-                                  ? Colors.white
-                                  : isDark
-                                      ? Colors.grey.shade500
-                                      : Colors.grey.shade400,
-                            ),
-                          ),
-                          SizedBox(width: 8.w),
-                          Icon(
-                            _currentStep == 3
-                                ? Icons.person_add_rounded
-                                : Icons.arrow_forward_rounded,
-                            color: isValid
-                                ? Colors.white
-                                : isDark
-                                    ? Colors.grey.shade500
-                                    : Colors.grey.shade400,
-                            size: 20.sp,
-                          ),
-                        ],
-                      ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
+  // _buildContinueButton حذف شد؛ از دکمه‌های پایین صفحه استفاده می‌شود
 
   Widget _buildRegisterButton() {
     final isDark = Theme.of(context).brightness == Brightness.dark;

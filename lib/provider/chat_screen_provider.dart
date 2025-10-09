@@ -62,6 +62,8 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
   StreamSubscription? _realtimeSubscription;
   bool _isFetching = false;
   static const _pageSize = 30;
+  int _retryCount = 0;
+  static const int _maxRetries = 5; // برای قابلیت اطمینان بهتر
 
   ChatScreenNotifier(this.params) : super(const ChatScreenState()) {
     _initialize();
@@ -208,22 +210,34 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
           if (mounted) {
             state = state.copyWith(error: 'خطا در دریافت پیام‌های جدید');
           }
-          // تلاش مجدد بعد از 5 ثانیه
-          Future.delayed(const Duration(seconds: 5), () {
-            if (mounted) {
-              _listenForRealtimeUpdates();
-            }
-          });
+          // تلاش مجدد با محدودیت
+          if (_retryCount < _maxRetries) {
+            _retryCount++;
+            Future.delayed(const Duration(seconds: 8), () {
+              // از 10 به 8 ثانیه برای پاسخ سریع‌تر
+              if (mounted) {
+                _listenForRealtimeUpdates();
+              }
+            });
+          } else {
+            print('❌ Max retries reached for real-time subscription');
+          }
         },
         onDone: () {
           print('⚠️ Real-time subscription closed, reconnecting...');
           _realtimeSubscription = null;
-          // تلاش مجدد بعد از 3 ثانیه
-          Future.delayed(const Duration(seconds: 3), () {
-            if (mounted) {
-              _listenForRealtimeUpdates();
-            }
-          });
+          // تلاش مجدد با محدودیت
+          if (_retryCount < _maxRetries) {
+            _retryCount++;
+            Future.delayed(const Duration(seconds: 8), () {
+              // از 10 به 8 ثانیه برای پاسخ سریع‌تر
+              if (mounted) {
+                _listenForRealtimeUpdates();
+              }
+            });
+          } else {
+            print('❌ Max retries reached for real-time subscription');
+          }
         },
       );
     } catch (e) {
@@ -231,12 +245,18 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
       if (mounted) {
         state = state.copyWith(error: 'خطا در راه‌اندازی دریافت پیام‌های جدید');
       }
-      // تلاش مجدد بعد از 10 ثانیه
-      Future.delayed(const Duration(seconds: 10), () {
-        if (mounted) {
-          _listenForRealtimeUpdates();
-        }
-      });
+      // تلاش مجدد با محدودیت
+      if (_retryCount < _maxRetries) {
+        _retryCount++;
+        Future.delayed(const Duration(seconds: 8), () {
+          // از 15 به 8 ثانیه برای پاسخ سریع‌تر
+          if (mounted) {
+            _listenForRealtimeUpdates();
+          }
+        });
+      } else {
+        print('❌ Max retries reached for real-time subscription setup');
+      }
     }
   }
 

@@ -58,6 +58,8 @@ dependencies:
   image_editor_plus: ^1.0.6
   gal: ^2.3.0
   image_picker: ^1.1.2
+  photo_manager: ^3.0.0
+  open_filex: ^4.7.0
   intl: ^0.19.0
   just_audio: ^0.9.46
   just_audio_background: ^0.0.1-beta.15

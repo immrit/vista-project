@@ -711,6 +711,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
   List<UserModel> mentionedUsers = [];
   final String currentUserId = supabase.auth.currentUser!.id;
   final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+  bool _isSubmittingComment = false;
 
   @override
   Widget build(BuildContext context) {
@@ -1144,13 +1145,12 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
     final content = commentController.text.trim();
     final mentionedUserIds = mentionedUsers.map((user) => user.id).toList();
 
-    if (content.isNotEmpty) {
-      try {
-        // Show loading
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('در حال ارسال نظر...')),
-        );
+    if (content.isNotEmpty && !_isSubmittingComment) {
+      setState(() {
+        _isSubmittingComment = true;
+      });
 
+      try {
         print('Sending comment with:');
         print('Content: $content');
         print('PostID: ${widget.postId}');
@@ -1171,6 +1171,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
         setState(() {
           replyToCommentId = null;
           mentionedUsers.clear();
+          _isSubmittingComment = false;
         });
 
         // Refresh comments list
@@ -1178,7 +1179,6 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
 
         // Show success message
         if (mounted) {
-          ScaffoldMessenger.of(context).clearSnackBars();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('نظر با موفقیت ثبت شد'),
@@ -1190,7 +1190,9 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
         print('Error sending comment: $e');
         // Show error
         if (mounted) {
-          ScaffoldMessenger.of(context).clearSnackBars();
+          setState(() {
+            _isSubmittingComment = false;
+          });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('خطا در ارسال نظر: $e'),
@@ -1330,8 +1332,32 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
         ),
         labelText: 'کامنت خود را بنویسید...',
         suffixIcon: IconButton(
-          icon: const Icon(Icons.send),
-          onPressed: _sendComment,
+          icon: _isSubmittingComment
+              ? SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white
+                          : const Color(0xFF007AFF),
+                    ),
+                  ),
+                )
+              : Icon(
+                  Icons.send,
+                  color: commentController.text.trim().isNotEmpty &&
+                          !_isSubmittingComment
+                      ? (Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFF007AFF)
+                          : const Color(0xFF007AFF))
+                      : null,
+                ),
+          onPressed: (commentController.text.trim().isNotEmpty &&
+                  !_isSubmittingComment)
+              ? _sendComment
+              : null,
         ),
       ),
       onChanged: _onTextChanged,

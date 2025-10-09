@@ -90,24 +90,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           : null,
       body: profileState == null
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _refreshProfile,
-              child: NestedScrollView(
-                headerSliverBuilder: (context, innerBoxIsScrolled) {
-                  return [
-                    _buildSliverAppBar(profileState, getprofile, currentcolor,
-                        isCurrentUserProfile),
-                    _buildTabBar(),
-                  ];
-                },
-                body: TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _buildPostsList(profileState),
-                    _buildMusicList(profileState),
-                    _buildClipsList(profileState),
-                  ],
-                ),
+          : NestedScrollView(
+              physics: AlwaysScrollableScrollPhysics(),
+              headerSliverBuilder: (context, innerBoxIsScrolled) {
+                return [
+                  _buildSliverAppBar(profileState, getprofile, currentcolor,
+                      isCurrentUserProfile),
+                  _buildTabBar(),
+                ];
+              },
+              body: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildPostsListWithRefresh(profileState),
+                  _buildMusicListWithRefresh(profileState),
+                  _buildClipsListWithRefresh(profileState),
+                ],
               ),
             ),
     );
@@ -115,17 +113,54 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
   Future<void> _refreshProfile() async {
     try {
+      // پاک کردن کش پروفایل برای دریافت داده‌های جدید
+      await ref
+          .read(userProfileProvider(widget.userId).notifier)
+          .clearUserCache(widget.userId);
+
+      // رفرش پروفایل
       await ref
           .read(userProfileProvider(widget.userId).notifier)
           .fetchProfile(widget.userId);
-      ref.read(postsProvider);
-      ref.watch(commentServiceProvider);
+
+      // رفرش تمام provider های مرتبط
+      ref.invalidate(userProfileProvider(widget.userId));
+      ref.invalidate(userSettingsByIdProvider(widget.userId));
+      ref.invalidate(followRequestPendingProvider(widget.userId));
+
+      // نمایش پیام موفقیت
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 16),
+                SizedBox(width: 8),
+                Text('پروفایل با موفقیت به‌روزرسانی شد'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('خطا در به‌روزرسانی: $e'),
-            backgroundColor: Colors.red),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.error, color: Colors.white, size: 16),
+                SizedBox(width: 8),
+                Text('خطا در به‌روزرسانی: $e'),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
@@ -881,7 +916,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
       // ابتدا بررسی کن که آیا مکالمه قبلی وجود دارد یا نه
       String? existingConversationId;
-      bool isNewConversation = true;
 
       try {
         final chatService = ref.read(chat_provider.chatServiceProvider);
@@ -948,7 +982,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             await chatService.findExistingConversation(otherUserId);
         if (existingConversationId != null &&
             existingConversationId.isNotEmpty) {
-          isNewConversation = false;
           print('مکالمه موجود یافت شد: $existingConversationId');
         } else {
           print('هیچ مکالمه موجودی یافت نشد');
@@ -1233,6 +1266,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     );
   }
 
+  Widget _buildPostsListWithRefresh(ProfileModel profile) {
+    return RefreshIndicator(
+      onRefresh: _refreshProfile,
+      color: Colors.blue,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? Colors.grey[800]
+          : Colors.white,
+      child: _buildPostsList(profile),
+    );
+  }
+
   Widget _buildPostsList(ProfileModel profile) {
     // نمایش پیام «حساب کاربری خصوصی» در وسط صفحه شبیه اینستاگرام
     final isPrivateAsync = ref.watch(userSettingsByIdProvider(profile.id));
@@ -1269,6 +1313,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         }
 
         return ListView.builder(
+          physics: AlwaysScrollableScrollPhysics(),
           itemCount: profile.posts.length,
           itemBuilder: (context, index) {
             return _buildPostItem(profile, profile.posts[index]);
@@ -1277,6 +1322,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (_, __) => const Center(child: Text('خطا در بارگذاری پست‌ها')),
+    );
+  }
+
+  Widget _buildMusicListWithRefresh(ProfileModel profile) {
+    return RefreshIndicator(
+      onRefresh: _refreshProfile,
+      color: Colors.blue,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? Colors.grey[800]
+          : Colors.white,
+      child: _buildMusicList(profile),
     );
   }
 
@@ -1332,6 +1388,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         }
 
         return ListView.builder(
+          physics: AlwaysScrollableScrollPhysics(),
           itemCount: musicPosts.length,
           itemBuilder: (context, index) {
             return _buildPostItem(profile, musicPosts[index]);
@@ -1340,6 +1397,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (_, __) => const Center(child: Text('خطا در بارگذاری آهنگ‌ها')),
+    );
+  }
+
+  Widget _buildClipsListWithRefresh(ProfileModel profile) {
+    return RefreshIndicator(
+      onRefresh: _refreshProfile,
+      color: Colors.blue,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? Colors.grey[800]
+          : Colors.white,
+      child: _buildClipsList(profile),
     );
   }
 
@@ -1400,6 +1468,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         }
 
         return ListView.builder(
+          physics: AlwaysScrollableScrollPhysics(),
           itemCount: videoPosts.length,
           itemBuilder: (context, index) {
             return _buildPostItem(profile, videoPosts[index]);
@@ -1685,7 +1754,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                   imageUrl: post.imageUrl!,
                   fit: BoxFit.cover,
                   width: double.infinity,
-                  placeholder: (context, url) => const ShimmerLoading(),
+                  placeholder: (context, url) => const Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
                   errorWidget: (context, url, error) => const Icon(Icons.error),
                 ),
               ),

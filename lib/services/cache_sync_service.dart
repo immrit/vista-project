@@ -24,6 +24,10 @@ class CacheSyncService {
   bool _isOnline = false;
   bool _isInitialized = false;
 
+  // Retry management
+  int _retryCount = 0;
+  static const int _maxRetries = 5; // برای قابلیت اطمینان بهتر
+
   // Sync state
   final Map<String, DateTime> _lastMessageSync = {};
   final Map<String, Timer> _pendingSyncs = {};
@@ -250,10 +254,16 @@ class CacheSyncService {
             // مدیریت خطاهای real-time بدون کرش
             if (error.toString().contains('RealtimeSubscribeException')) {
               debugPrint('⚠️ Realtime conversation stream error: $error');
-              // تلاش مجدد بعد از 5 ثانیه
-              Future.delayed(const Duration(seconds: 5), () {
-                subscribeToConversation(conversationId);
-              });
+              // تلاش مجدد با محدودیت
+              if (_retryCount < _maxRetries) {
+                _retryCount++;
+                Future.delayed(const Duration(seconds: 10), () {
+                  // از 15 به 10 ثانیه برای پاسخ سریع‌تر
+                  subscribeToConversation(conversationId);
+                });
+              } else {
+                debugPrint('Max retries reached for conversation subscription');
+              }
             } else {
               debugPrint('⚠️ Real-time subscription error: $error');
             }
@@ -261,10 +271,16 @@ class CacheSyncService {
           onDone: () {
             debugPrint(
                 '⚠️ Real-time conversation stream closed, attempting to reconnect...');
-            // تلاش مجدد بعد از 3 ثانیه
-            Future.delayed(const Duration(seconds: 3), () {
-              subscribeToConversation(conversationId);
-            });
+            // تلاش مجدد با محدودیت
+            if (_retryCount < _maxRetries) {
+              _retryCount++;
+              Future.delayed(const Duration(seconds: 10), () {
+                // از 15 به 10 ثانیه برای پاسخ سریع‌تر
+                subscribeToConversation(conversationId);
+              });
+            } else {
+              debugPrint('Max retries reached for conversation subscription');
+            }
           },
         );
 

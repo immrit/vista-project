@@ -26,6 +26,7 @@ class SecureConfig {
       return envKey;
     }
 
+    // Only use development credentials in debug mode
     if (kDebugMode) {
       print(
           '⚠️ Using development AWS credentials. Set $_awsAccessKeyEnv environment variable for production.');
@@ -33,7 +34,7 @@ class SecureConfig {
     }
 
     throw Exception(
-        'AWS Access Key not configured. Set $_awsAccessKeyEnv environment variable.');
+        'AWS Access Key not configured. Production builds require $_awsAccessKeyEnv environment variable to be set.');
   }
 
   /// Get AWS Secret Key from environment or fallback
@@ -43,6 +44,7 @@ class SecureConfig {
       return envKey;
     }
 
+    // Only use development credentials in debug mode
     if (kDebugMode) {
       print(
           '⚠️ Using development AWS credentials. Set $_awsSecretKeyEnv environment variable for production.');

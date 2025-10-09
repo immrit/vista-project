@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 
@@ -16,6 +14,7 @@ import '../../../provider/chat_provider.dart' as chat_provider;
 import '../../../services/uploadAudioChatService.dart';
 import 'package:audio_waveforms/audio_waveforms.dart';
 import '../../../services/uploadImageChatService.dart';
+import '../../../services/advanced_file_manager.dart';
 import '../../../services/global_voice_manager.dart';
 import '../../../services/wallpaper_cache_service.dart';
 import 'chat_input.dart';
@@ -396,7 +395,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       playerController.dispose();
 
       final durationSeconds = durationMs != null ? durationMs! ~/ 1000 : null;
-      print('🎵 مدت زمان محاسبه شده: ${durationSeconds} ثانیه');
+      print('🎵 مدت زمان محاسبه شده: $durationSeconds ثانیه');
 
       return durationSeconds;
     } catch (e) {
@@ -416,83 +415,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   // --- File Handling ---
-  Future<void> _pickImage() async {
-    try {
-      final pickedFile = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 70,
-      );
-
-      if (pickedFile != null) {
-        if (kIsWeb) {
-          final bytes = await pickedFile.readAsBytes();
-          setState(() {
-            _selectedImageBytes = bytes;
-            _selectedImageName = pickedFile.name;
-            _selectedImage = null;
-          });
-        } else {
-          setState(() {
-            _selectedImage = File(pickedFile.path);
-            _selectedImageBytes = null;
-            _selectedImageName = null;
-          });
-        }
-      }
-    } catch (e) {
-      ToastService.showErrorToast(
-          context, 'خطا در انتخاب تصویر. لطفاً دوباره تلاش کنید.');
-    }
-  }
-
-  Future<void> _pickFile() async {
-    try {
-      // استفاده از file_picker برای انتخاب فایل‌های عمومی
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.any,
-        allowMultiple: false,
-      );
-
-      if (result != null && result.files.single.path != null) {
-        final file = File(result.files.single.path!);
-        final fileSize = await file.length();
-
-        // بررسی محدودیت 10 مگابایت
-        if (fileSize > 10 * 1024 * 1024) {
-          ToastService.showWarningToast(
-              context, 'حجم فایل باید کمتر از ۱۰ مگابایت باشد');
-          return;
-        }
-
-        // آپلود فایل به آروان (using chat service)
-        setState(() {});
-        try {
-          // For now, we'll use a simple file upload approach
-          // In a real app, you would use a proper file upload service for chat
-          final fileUrl =
-              'https://storage.389346.ir.cdn.ir/vista-bucket/chats/${widget.conversationId}/files/${DateTime.now().millisecondsSinceEpoch}_${result.files.single.name}';
-          // ارسال پیام با فایل
-          await ref
-              .read(chatScreenProvider(_providerParams).notifier)
-              .sendMessage(
-                '📎 فایل: ${result.files.single.name}',
-                attachmentUrl: fileUrl,
-                attachmentType: 'document',
-              );
-        } catch (e) {
-          ToastService.showErrorToast(
-              context, 'خطا در آپلود فایل. لطفاً دوباره تلاش کنید.');
-        } finally {
-          if (mounted) {
-            setState(() {});
-          }
-        }
-      }
-    } catch (e) {
-      ToastService.showErrorToast(
-          context, 'خطا در انتخاب فایل. لطفاً دوباره تلاش کنید.');
-    }
-  }
 
   Future<String?> _uploadImage(dynamic fileOrBytes) async {
     setState(() {});
@@ -506,12 +428,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           widget.conversationId,
         );
       } else if (fileOrBytes is File) {
-        imageUrl = await ChatImageUploadService.uploadChatImage(
+        // استفاده از AdvancedFileManager برای آپلود تصویر
+        imageUrl = await AdvancedFileManager.instance.uploadFile(
           fileOrBytes,
           widget.conversationId,
+          fileType: 'image',
           onProgress: (progress) {
             if (mounted) {
-              setState(() {});
+              // می‌توان در آینده پیشرفت را در UI نمایش داد
+              debugPrint('Image upload progress: ${(progress * 100).toInt()}%');
             }
           },
         );
@@ -1451,12 +1376,87 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return const SizedBox.shrink();
   }
 
+  void _handleSendImages(String caption, List<File> files) async {
+    try {
+      for (final file in files) {
+        await _sendImageMessage(file, caption);
+      }
+    } catch (e) {
+      ToastService.showErrorToast(context, 'خطا در ارسال تصاویر');
+    }
+  }
+
+  Future<void> _sendImageMessage(File file, String caption) async {
+    try {
+      // Upload image using existing service
+      final imageUrl = await ChatImageUploadService.uploadChatImage(
+          file, widget.conversationId);
+
+      final message = MessageModel(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        conversationId: widget.conversationId,
+        senderId: supabase.auth.currentUser!.id,
+        content: caption.isNotEmpty ? caption : 'تصویر',
+        createdAt: DateTime.now(),
+        attachmentUrl: imageUrl,
+        attachmentType: 'image',
+        isMe: true,
+      );
+
+      await ref.read(chatScreenProvider(_providerParams).notifier).sendMessage(
+            message.content,
+            attachmentUrl: message.attachmentUrl,
+            attachmentType: message.attachmentType,
+          );
+    } catch (e) {
+      ToastService.showErrorToast(context, 'خطا در ارسال تصویر');
+    }
+  }
+
+  void _handleFileSelected(File file) async {
+    await _sendFileMessage(file);
+  }
+
+  Future<void> _sendFileMessage(File file) async {
+    setState(() {});
+    try {
+      // آپلود فایل با استفاده از AdvancedFileManager
+      final fileUrl = await AdvancedFileManager.instance.uploadFile(
+        file,
+        widget.conversationId,
+        fileType: 'document',
+        onProgress: (progress) {
+          if (mounted) {
+            // می‌توان در آینده پیشرفت را در UI نمایش داد
+            debugPrint('File upload progress: ${(progress * 100).toInt()}%');
+          }
+        },
+      );
+
+      if (fileUrl == null) {
+        ToastService.showErrorToast(context, 'خطا در آپلود فایل');
+        return;
+      }
+
+      final fileName = file.path.split('/').last;
+
+      await ref.read(chatScreenProvider(_providerParams).notifier).sendMessage(
+            fileName,
+            attachmentUrl: fileUrl,
+            attachmentType: 'document',
+          );
+    } catch (e) {
+      ToastService.showErrorToast(context, 'خطا در ارسال فایل');
+    }
+  }
+
   Widget _buildMessageInput() {
     return ChatInput(
       onSendMessage: _sendMessage,
       onSendVoiceMessage: _sendVoiceMessage,
-      onPickImage: _pickImage,
-      onPickFile: _pickFile,
+      onSendImages: _handleSendImages,
+      onFileSelected: _handleFileSelected,
+      parentContext: context,
     );
   }
 }

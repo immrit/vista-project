@@ -2160,8 +2160,10 @@ class ChatService {
 
   // Configuration
   static const int maxCacheSize = 1000;
-  static const Duration syncInterval = Duration(seconds: 5);
-  static const Duration offlineRetryInterval = Duration(seconds: 10);
+  static const Duration syncInterval =
+      Duration(seconds: 60); // از 5 به 60 ثانیه برای کاهش درخواست‌ها
+  static const Duration offlineRetryInterval =
+      Duration(seconds: 30); // از 10 به 30 ثانیه برای عملکرد بهتر پیام‌رسانی
 
   Timer? _syncTimer;
   Timer? _offlineRetryTimer;
@@ -2177,7 +2179,8 @@ class ChatService {
 
   /// Setup connectivity monitoring
   void _setupConnectivityListener() {
-    Timer.periodic(const Duration(seconds: 3), (timer) async {
+    Timer.periodic(const Duration(seconds: 45), (timer) async {
+      // از 3 به 45 ثانیه برای کاهش درخواست‌ها
       final wasOnline = _isOnline;
       _isOnline = await isDeviceOnline();
 

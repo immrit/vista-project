@@ -30,6 +30,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
 
   String? _replyingToCommentId;
   String? _replyingToUsername;
+  bool _isSubmittingComment = false;
 
   late AnimationController _sheetAnimationController;
   late Animation<double> _sheetAnimation;
@@ -100,24 +101,36 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
 
   Future<void> _submitComment() async {
     final content = _commentController.text.trim();
-    if (content.isEmpty) return;
+    if (content.isEmpty || _isSubmittingComment) return;
 
-    final notifier = ref.read(commentsProvider(widget.postId).notifier);
-    final success = await notifier.addComment(content,
-        parentCommentId: _replyingToCommentId);
+    setState(() {
+      _isSubmittingComment = true;
+    });
 
-    if (success) {
-      _commentController.clear();
-      _cancelReply();
-      FocusScope.of(context).unfocus();
-    } else {
-      // Get the error message from the provider state
-      final error = ref.read(commentsProvider(widget.postId)).error;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content:
-                Text(error ?? 'خطا در ارسال کامنت. لطفا دوباره تلاش کنید.')),
-      );
+    try {
+      final notifier = ref.read(commentsProvider(widget.postId).notifier);
+      final success = await notifier.addComment(content,
+          parentCommentId: _replyingToCommentId);
+
+      if (success) {
+        _commentController.clear();
+        _cancelReply();
+        FocusScope.of(context).unfocus();
+      } else {
+        // Get the error message from the provider state
+        final error = ref.read(commentsProvider(widget.postId)).error;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content:
+                  Text(error ?? 'خطا در ارسال کامنت. لطفا دوباره تلاش کنید.')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmittingComment = false;
+        });
+      }
     }
   }
 
@@ -478,7 +491,8 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   child: InkWell(
-                    onTap: _commentController.text.trim().isNotEmpty
+                    onTap: (_commentController.text.trim().isNotEmpty &&
+                            !_isSubmittingComment)
                         ? _submitComment
                         : null,
                     borderRadius: BorderRadius.circular(20),
@@ -486,19 +500,44 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: _commentController.text.trim().isNotEmpty
-                            ? theme.colorScheme.primary
+                        color: _commentController.text.trim().isNotEmpty &&
+                                !_isSubmittingComment
+                            ? (Theme.of(context).brightness == Brightness.dark
+                                ? const Color(
+                                    0xFF007AFF) // Custom blue color for dark theme
+                                : const Color(
+                                    0xFF007AFF)) // Same blue for light theme
                             : theme.colorScheme.outline.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: Icon(
-                        Icons.send_rounded,
-                        size: 20,
-                        color: _commentController.text.trim().isNotEmpty
-                            ? theme.colorScheme.onPrimary
-                            : theme.colorScheme.onSurface
-                                .withValues(alpha: 0.4),
-                      ),
+                      child: _isSubmittingComment
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors
+                                          .white // White spinner on blue background in dark theme
+                                      : Colors
+                                          .white, // White spinner on blue background in light theme
+                                ),
+                              ),
+                            )
+                          : Icon(
+                              Icons.send_rounded,
+                              size: 20,
+                              color: _commentController.text
+                                          .trim()
+                                          .isNotEmpty &&
+                                      !_isSubmittingComment
+                                  ? Colors
+                                      .white // White icon on blue background
+                                  : theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.4),
+                            ),
                     ),
                   ),
                 ),

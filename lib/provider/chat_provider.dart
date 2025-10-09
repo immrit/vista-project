@@ -1046,7 +1046,8 @@ class UserOnlineNotifier {
 
   void _startTimer() {
     _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+    _timer = Timer.periodic(const Duration(minutes: 3), (_) {
+      // از 30 ثانیه به 3 دقیقه برای کاهش درخواست‌ها
       if (!_isDisposed) {
         updateOnlineStatus();
       }
@@ -1122,7 +1123,8 @@ final userOnlineStatusStreamProvider =
       .from('profiles')
       .stream(primaryKey: ['id'])
       .eq('id', userId)
-      .timeout(const Duration(seconds: 30))
+      .timeout(
+          const Duration(seconds: 60)) // از 30 به 60 ثانیه برای کاهش درخواست‌ها
       .asyncMap((list) async {
         if (list.isEmpty) return false;
 
@@ -1495,7 +1497,8 @@ final deviceOnlineStatusProvider = StreamProvider<bool>((ref) async* {
   bool lastStatus = await chatService.isDeviceOnline();
   yield lastStatus;
   while (true) {
-    await Future.delayed(const Duration(seconds: 3));
+    await Future.delayed(
+        const Duration(seconds: 45)); // از 3 به 45 ثانیه برای کاهش درخواست‌ها
     final isOnline = await chatService.isDeviceOnline();
     if (isOnline != lastStatus) {
       lastStatus = isOnline;

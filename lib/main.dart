@@ -5,7 +5,6 @@ import 'package:Vista/view/screen/SplashScreen.dart';
 import 'package:Vista/view/util/const.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -120,6 +119,18 @@ void main() async {
           },
         );
         print('✅ Supabase initialized successfully');
+
+        // بررسی session بعد از initialization
+        try {
+          final currentSession = Supabase.instance.client.auth.currentSession;
+          if (currentSession != null) {
+            print('🔐 Existing session found after initialization');
+          } else {
+            print('🔍 No existing session found after initialization');
+          }
+        } catch (e) {
+          print('⚠️ Error checking session after initialization: $e');
+        }
       } catch (e) {
         print('❌ Supabase initialization failed: $e');
 

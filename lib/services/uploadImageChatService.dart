@@ -61,6 +61,12 @@ class ChatImageUploadService {
         throw Exception('فایل مورد نظر وجود ندارد');
       }
 
+      // بررسی حجم فایل - حداکثر 5MB برای تصاویر چت
+      final fileSize = await file.length();
+      if (fileSize > 5 * 1024 * 1024) {
+        throw Exception('حجم تصویر باید کمتر از ۵ مگابایت باشد');
+      }
+
       final extension = path.extension(file.path).toLowerCase();
 
       if (extension == '.png') {
@@ -134,6 +140,11 @@ class ChatImageUploadService {
   ) async {
     try {
       print('Starting web image upload...');
+
+      // بررسی حجم فایل - حداکثر 5MB برای تصاویر چت
+      if (fileBytes.length > 5 * 1024 * 1024) {
+        throw Exception('حجم تصویر باید کمتر از ۵ مگابایت باشد');
+      }
 
       // حذف کاراکترهای غیرمجاز از نام فایل
       final sanitizedFileName =

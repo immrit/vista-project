@@ -33,6 +33,7 @@ class ProfileData {
   final bool? isOnline;
   final DateTime? lastOnline;
   final DateTime cachedAt;
+  final DateTime? lastUpdate;
 
   ProfileData({
     required this.userId,
@@ -42,6 +43,7 @@ class ProfileData {
     this.isOnline,
     this.lastOnline,
     DateTime? cachedAt,
+    this.lastUpdate,
   }) : cachedAt = cachedAt ?? DateTime.now();
 
   String get displayName => username?.trim().isNotEmpty == true
@@ -122,6 +124,10 @@ class ProfileService {
   final Map<String, Completer<ProfileData?>> _pendingRequests = {};
   final Queue<String> _recentUserIds = Queue<String>();
 
+  // Retry management
+  int _retryCount = 0;
+  static const int _maxRetries = 5; // برای قابلیت اطمینان بهتر
+
   // تنظیمات کشینگ
   static const Duration _cacheValidityDuration = Duration(hours: 6);
   static const int _maxMemoryCacheSize = 200;
@@ -139,6 +145,14 @@ class ProfileService {
 
   // کنترل غیرفعال کردن real-time updates
   bool _disableRealtimeUpdates = false;
+
+  // Heartbeat mechanism برای نگه داشتن connection زنده
+  Timer? _heartbeatTimer;
+  DateTime? _lastActivityTime;
+
+  // Fallback polling mechanism
+  Timer? _pollingTimer;
+  bool _usePollingFallback = false;
 
   /// دسترسی سریع به پروفایل کش‌شده
   ProfileData? getCachedProfile(String userId) {
@@ -357,6 +371,9 @@ class ProfileService {
       lastOnline: data['last_online'] != null
           ? DateTime.parse(data['last_online'])
           : oldProfile?.lastOnline,
+      lastUpdate: data['updated_at'] != null
+          ? DateTime.parse(data['updated_at'])
+          : DateTime.now(),
     );
 
     _memoryCache[userId] = newProfile;
@@ -484,9 +501,13 @@ class ProfileService {
       _profilesSubscription = supabase
           .from('profiles')
           .stream(primaryKey: ['id'])
-          .timeout(const Duration(seconds: 30))
+          .timeout(const Duration(
+              minutes: 5)) // افزایش timeout از 30 ثانیه به 5 دقیقه
           .listen(
             (data) {
+              // به‌روزرسانی زمان آخرین فعالیت
+              _lastActivityTime = DateTime.now();
+
               for (final row in data) {
                 final userId = row['id'] as String;
                 updateProfileFromRealtime(userId, row);
@@ -497,33 +518,54 @@ class ProfileService {
               if (error.toString().contains('RealtimeSubscribeException') ||
                   error.toString().contains('PostgrestException') ||
                   error.toString().contains('could not translate host name') ||
-                  error.toString().contains('Database connection error')) {
+                  error.toString().contains('Database connection error') ||
+                  error.toString().contains('TimeoutException')) {
                 logger.w('⚠️ Real-time subscription error (handled): $error');
-                // تلاش مجدد بعد از 10 ثانیه (کمتر تلاش کنیم)
-                Future.delayed(const Duration(seconds: 10), () async {
-                  if (_profilesSubscription == null &&
-                      !_disableRealtimeUpdates) {
-                    await startRealtimeUpdates();
-                  }
-                });
+                // تلاش مجدد با محدودیت
+                if (_retryCount < _maxRetries) {
+                  _retryCount++;
+                  Future.delayed(const Duration(seconds: 20), () async {
+                    // از 30 به 20 ثانیه برای پاسخ سریع‌تر
+                    if (_profilesSubscription == null &&
+                        !_disableRealtimeUpdates) {
+                      await startRealtimeUpdates();
+                    }
+                  });
+                } else {
+                  logger.w(
+                      'Max retries reached for profile real-time updates, switching to polling fallback');
+                  _switchToPollingFallback();
+                }
               } else {
                 logger.e('خطا در دریافت real-time updates پروفایل: $error');
+                // در صورت خطای غیرقابل مدیریت، به polling fallback تغییر دهیم
+                _switchToPollingFallback();
               }
             },
             onDone: () {
               logger.w(
                   'Real-time subscription closed, attempting to reconnect...');
               _profilesSubscription = null;
-              // تلاش مجدد بعد از 15 ثانیه (کمتر تلاش کنیم)
-              Future.delayed(const Duration(seconds: 15), () async {
-                if (_profilesSubscription == null && !_disableRealtimeUpdates) {
-                  await startRealtimeUpdates();
-                }
-              });
+              // تلاش مجدد با محدودیت
+              if (_retryCount < _maxRetries) {
+                _retryCount++;
+                Future.delayed(const Duration(seconds: 20), () async {
+                  // از 30 به 20 ثانیه برای پاسخ سریع‌تر
+                  if (_profilesSubscription == null &&
+                      !_disableRealtimeUpdates) {
+                    await startRealtimeUpdates();
+                  }
+                });
+              } else {
+                logger.w('Max retries reached for profile real-time updates');
+              }
             },
           );
 
       logger.d('Real-time subscription برای پروفایل‌ها شروع شد');
+
+      // شروع heartbeat mechanism
+      _startHeartbeat();
     } catch (e) {
       logger.e('خطا در شروع real-time subscription: $e');
       // تلاش مجدد بعد از 30 ثانیه در صورت خطای کلی
@@ -539,7 +581,51 @@ class ProfileService {
   void stopRealtimeUpdates() {
     _profilesSubscription?.cancel();
     _profilesSubscription = null;
+    _stopHeartbeat();
     logger.d('Real-time subscription برای پروفایل‌ها متوقف شد');
+  }
+
+  /// شروع heartbeat mechanism
+  void _startHeartbeat() {
+    _lastActivityTime = DateTime.now();
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
+      _checkConnectionHealth();
+    });
+  }
+
+  /// متوقف کردن heartbeat
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+
+  /// بررسی سلامت اتصال
+  void _checkConnectionHealth() {
+    if (_lastActivityTime == null) return;
+
+    final timeSinceLastActivity = DateTime.now().difference(_lastActivityTime!);
+    if (timeSinceLastActivity > const Duration(minutes: 3)) {
+      logger.w(
+          '⚠️ No activity for ${timeSinceLastActivity.inMinutes} minutes, checking connection...');
+
+      // بررسی اتصال با یک query ساده
+      supabase.from('profiles').select().limit(1).then((_) {
+        logger.d('✅ Connection health check passed');
+        _lastActivityTime = DateTime.now();
+      }).catchError((error) {
+        logger.w('⚠️ Connection health check failed: $error');
+        // تلاش مجدد اتصال
+        if (_profilesSubscription != null) {
+          stopRealtimeUpdates();
+          Future.delayed(const Duration(seconds: 5), () {
+            if (!_disableRealtimeUpdates) {
+              startRealtimeUpdates();
+            }
+          });
+        }
+      });
+    }
   }
 
   /// فعال کردن مجدد real-time updates
@@ -552,12 +638,78 @@ class ProfileService {
   void disableRealtimeUpdates() {
     _disableRealtimeUpdates = true;
     stopRealtimeUpdates();
+    _stopPollingFallback();
     logger.w('⚠️ Real-time updates غیرفعال شد');
+  }
+
+  /// تغییر به polling fallback
+  void _switchToPollingFallback() {
+    if (_usePollingFallback) return; // قبلاً فعال شده
+
+    logger.w('🔄 Switching to polling fallback for profile updates');
+    _usePollingFallback = true;
+    stopRealtimeUpdates();
+    _startPollingFallback();
+  }
+
+  /// شروع polling fallback
+  void _startPollingFallback() {
+    _pollingTimer?.cancel();
+    _pollingTimer = Timer.periodic(const Duration(minutes: 1), (timer) async {
+      await _pollForProfileUpdates();
+    });
+    logger.d('📡 Polling fallback started for profile updates');
+  }
+
+  /// متوقف کردن polling fallback
+  void _stopPollingFallback() {
+    _pollingTimer?.cancel();
+    _pollingTimer = null;
+    _usePollingFallback = false;
+    logger.d('📡 Polling fallback stopped');
+  }
+
+  /// Polling برای به‌روزرسانی‌های پروفایل
+  Future<void> _pollForProfileUpdates() async {
+    try {
+      // فقط پروفایل‌های کش‌شده را بررسی کن
+      final cachedUserIds = _memoryCache.keys.toList();
+      if (cachedUserIds.isEmpty) return;
+
+      // دریافت آخرین به‌روزرسانی‌ها
+      final response = await supabase
+          .from('profiles')
+          .select(
+              'id, username, full_name, avatar_url, is_online, last_online, updated_at')
+          .inFilter('id', cachedUserIds)
+          .timeout(const Duration(seconds: 10));
+
+      for (final row in response) {
+        final userId = row['id'] as String;
+        final cachedProfile = _memoryCache[userId];
+        final updatedAt = row['updated_at'] as String?;
+
+        // بررسی اینکه آیا پروفایل به‌روزرسانی شده یا نه
+        if (cachedProfile != null && updatedAt != null) {
+          final lastUpdate = DateTime.tryParse(updatedAt);
+          if (lastUpdate != null &&
+              (cachedProfile.lastUpdate == null ||
+                  lastUpdate.isAfter(cachedProfile.lastUpdate!))) {
+            // پروفایل به‌روزرسانی شده
+            updateProfileFromRealtime(userId, row);
+          }
+        }
+      }
+    } catch (e) {
+      logger.w('⚠️ Polling fallback error: $e');
+    }
   }
 
   /// پاکسازی منابع
   void dispose() {
     stopRealtimeUpdates();
+    _stopHeartbeat();
+    _stopPollingFallback();
     _profileUpdates.close();
     clearCache();
   }

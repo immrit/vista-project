@@ -58,7 +58,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       const ChatConversationsScreen(), // صفحه چت
       ProfileScreen(
         userId: supabase.auth.currentUser!.id,
-        username: supabase.auth.currentUser!.email!,
+        username: supabase.auth.currentUser!.userMetadata?['username'] ??
+            supabase.auth.currentUser!.userMetadata?['full_name'] ??
+            'کاربر',
       ), // صفحه پروفایل
     ];
   }

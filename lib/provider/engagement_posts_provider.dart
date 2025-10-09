@@ -456,7 +456,8 @@ class EngagementPostsNotifier
     try {
       // اضافه کردن تأخیر کوتاه برای جلوگیری از درخواست‌های مکرر به سرور
       if (_offset > 0) {
-        await Future.delayed(const Duration(milliseconds: 300));
+        await Future.delayed(const Duration(
+            milliseconds: 1000)); // از 300ms به 1000ms برای کاهش درخواست‌ها
       }
 
       // استفاده از روش بهینه‌شده

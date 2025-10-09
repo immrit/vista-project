@@ -72,7 +72,7 @@ class ChatSettingsScreen extends ConsumerWidget {
             ),
             subtitle: Padding(
               padding: const EdgeInsets.only(top: 4.0),
-      child: Text(
+              child: Text(
                 'مدیریت دانلود خودکار و کش فایل‌های صوتی',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.hintColor,
@@ -159,12 +159,12 @@ class ChatSettingsScreen extends ConsumerWidget {
                           ),
                         ),
                         Text(
-                          cacheSize > 0 ? "${cacheSizeMB} مگابایت" : "خالی",
+                          cacheSize > 0 ? "$cacheSizeMB مگابایت" : "خالی",
                           style: theme.textTheme.titleSmall?.copyWith(
                             color: cacheSize > 0
                                 ? theme.colorScheme.primary
                                 : theme.hintColor,
-              fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ],
@@ -532,8 +532,7 @@ class _VoiceSettingsDialogContent extends ConsumerWidget {
 
               return ListTile(
                 title: const Text('حجم فعلی کش'),
-                subtitle:
-                    Text(cacheSize > 0 ? "${cacheSizeMB} مگابایت" : "خالی"),
+                subtitle: Text(cacheSize > 0 ? "$cacheSizeMB مگابایت" : "خالی"),
                 trailing: cacheSize > 0
                     ? TextButton(
                         onPressed: () => _clearVoiceCache(context),

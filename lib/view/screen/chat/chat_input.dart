@@ -5,20 +5,24 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
+import '../../widgets/attachment_bottom_sheet.dart';
+import '../../widgets/image_preview_bottom_sheet.dart';
 
 // Callbacks for the parent widget (ChatScreen)
 class ChatInput extends StatefulWidget {
   final Function(String) onSendMessage;
   final Function(File) onSendVoiceMessage;
-  final VoidCallback onPickImage;
-  final VoidCallback onPickFile;
+  final Function(String, List<File>) onSendImages;
+  final Function(File) onFileSelected;
+  final BuildContext parentContext;
 
   const ChatInput({
     super.key,
     required this.onSendMessage,
     required this.onSendVoiceMessage,
-    required this.onPickImage,
-    required this.onPickFile,
+    required this.onSendImages,
+    required this.onFileSelected,
+    required this.parentContext,
   });
 
   @override
@@ -203,6 +207,53 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
     return '$minutes:$remainingSeconds';
   }
 
+  void _showAttachmentBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => AttachmentBottomSheet(
+        onImageSelected: (file) {
+          // Single image selection - open preview
+          showModalBottomSheet(
+            context: widget.parentContext,
+            backgroundColor: Colors.transparent,
+            isScrollControlled: true,
+            builder: (ctx) => ImagePreviewBottomSheet(
+              files: [file],
+              onConfirm: (confirmedFiles, caption) {
+                if (confirmedFiles.isNotEmpty) {
+                  widget.onSendImages(caption ?? '', confirmedFiles);
+                }
+              },
+            ),
+          );
+        },
+        onImagesSelected: (files) {
+          // Multiple images selection - open preview
+          showModalBottomSheet(
+            context: widget.parentContext,
+            backgroundColor: Colors.transparent,
+            isScrollControlled: true,
+            builder: (ctx) => ImagePreviewBottomSheet(
+              files: files,
+              onConfirm: (confirmedFiles, caption) {
+                if (confirmedFiles.isNotEmpty) {
+                  widget.onSendImages(caption ?? '', confirmedFiles);
+                }
+              },
+            ),
+          );
+        },
+        onFileSelected: widget.onFileSelected,
+        onCameraSelected: () async {
+          // This will be handled by the attachment bottom sheet
+        },
+        parentContext: widget.parentContext,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -273,7 +324,7 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
                             .iconTheme
                             .color
                             ?.withOpacity(0.7)),
-                    onPressed: widget.onPickFile,
+                    onPressed: _showAttachmentBottomSheet,
                   ),
                 ),
               ],

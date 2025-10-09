@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">storage.389346.ir.cdn.ir</domain>
+        <domain includeSubdomains="true">coffevista.s3.ir-thr-at1.arvanstorage.ir</domain>
+        <domain includeSubdomains="true">389346.ir.cdn.ir</domain>
+        <domain includeSubdomains="true">arvanstorage.ir</domain>
+    </domain-config>
+</network-security-config>

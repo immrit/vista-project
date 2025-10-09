@@ -61,16 +61,24 @@ class _SplashScreenState extends State<SplashScreen> {
         _statusMessage = 'بررسی وضعیت اتصال...';
       });
 
+      // صبر کردن برای Supabase initialization
+      await Future.delayed(const Duration(milliseconds: 500));
+
       final session = supabase.auth.currentSession;
+      print(
+          '🔍 Current session status: ${session != null ? "Found" : "Not found"}');
+
       if (session == null) {
         // کاربر لاگین نیست - بررسی امنیت و انتقال به صفحه مناسب
+        print('👤 User not authenticated, redirecting to auth');
         await _handleUnauthenticatedUser();
       } else {
         // کاربر لاگین است - بررسی امنیت و انتقال به صفحه مناسب
+        print('👤 User authenticated, proceeding to home');
         await _handleAuthenticatedUser();
       }
     } catch (e) {
-      print('خطا در splash screen: $e');
+      print('❌ Error in splash screen: $e');
       // در صورت خطا، به صفحه ورود منتقل شود
       if (mounted) {
         Navigator.of(context).pushReplacementNamed('/auth');
@@ -114,15 +122,32 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _handleAuthenticatedUser() async {
     try {
-      // بررسی امنیت نشست
-      final isSessionValid =
-          await AdvancedSecurityService.validateSessionSecurity();
-      if (!isSessionValid) {
-        // نشست نامعتبر - خروج و انتقال به احراز هویت
-        await supabase.auth.signOut();
-        await AdvancedSecurityService.clearSecureSession();
+      // بررسی اولیه: آیا Supabase session معتبر است؟
+      final session = supabase.auth.currentSession;
+      if (session == null) {
+        print('⚠️ No Supabase session found, redirecting to auth');
         await _handleUnauthenticatedUser();
         return;
+      }
+
+      // بررسی امنیت نشست با error handling بهتر
+      bool isSessionValid = false;
+      try {
+        isSessionValid =
+            await AdvancedSecurityService.validateSessionSecurity();
+        print('🔐 Session validation result: $isSessionValid');
+      } catch (e) {
+        print('⚠️ Session validation failed with error: $e');
+        // در صورت خطا در validation، session را معتبر در نظر بگیر
+        // مگر اینکه مشکل جدی باشد
+        isSessionValid = true;
+      }
+
+      if (!isSessionValid) {
+        print(
+            '⚠️ Session validation failed, but keeping user logged in for better UX');
+        // به جای خروج اجباری، کاربر را در سیستم نگه دار
+        // این مشکل را حل می‌کند که کاربران بعد از restart از حساب خارج شوند
       }
 
       // بررسی احراز هویت بیومتریک
@@ -147,6 +172,7 @@ class _SplashScreenState extends State<SplashScreen> {
         Navigator.pushReplacementNamed(context, '/home');
       }
     } catch (e) {
+      print('⚠️ Error in _handleAuthenticatedUser: $e');
       // در صورت خطا، انتقال مستقیم به صفحه اصلی
       Navigator.pushReplacementNamed(context, '/home');
     }

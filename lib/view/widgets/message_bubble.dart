@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:photo_view/photo_view.dart';
+import 'package:open_filex/open_filex.dart';
+import 'dart:io';
+import '../../services/toast_service.dart';
+import '../../services/advanced_file_manager.dart';
+import '../../services/file_manager_service.dart';
 import '../../../model/message_model.dart';
 import 'voice_message_widget.dart';
 import '../../../view/util/time_utils.dart';
@@ -32,6 +37,8 @@ class _MessageBubbleState extends State<MessageBubble>
   bool _isReplying = false;
   bool _isRetrying = false;
   late AnimationController _retryAnimationController;
+  final Map<String, double> _downloadProgress = {};
+  final Map<String, bool> _isDownloading = {};
 
   @override
   void initState() {
@@ -40,6 +47,15 @@ class _MessageBubbleState extends State<MessageBubble>
       duration: const Duration(milliseconds: 1000),
       vsync: this,
     );
+
+    // گوش دادن به پیشرفت دانلود
+    AdvancedFileManager.instance.downloadProgress.listen((progress) {
+      if (mounted) {
+        setState(() {
+          _downloadProgress[progress.url] = progress.progress;
+        });
+      }
+    });
   }
 
   @override
@@ -231,10 +247,6 @@ class _MessageBubbleState extends State<MessageBubble>
       );
     }
     if (type == 'audio') {
-      final bubbleColor = widget.message.isMe
-          ? (isLightMode ? const Color(0xFFE9F5FF) : const Color(0xFF3A3A3A))
-          : (isLightMode ? Colors.white : const Color(0xFF2C2C2C));
-
       return VoiceMessageWidget(
         audioUrl: url,
         isMe: widget.message.isMe,
@@ -243,7 +255,453 @@ class _MessageBubbleState extends State<MessageBubble>
         onReply: null,
       );
     }
+    if (type == 'document' || type == 'file' || type == 'pdf') {
+      final fileName = _extractFileName(url);
+      final isDownloading = _isDownloading[url] ?? false;
+      final progress = _downloadProgress[url] ?? 0.0;
+
+      return GestureDetector(
+        onTap: () => _downloadAndOpen(url),
+        onLongPress: () => _showFileOptions(context, url),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isLightMode ? Colors.white : const Color(0xFF2A2A2A),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isLightMode
+                  ? const Color(0xFFE0E0E0)
+                  : const Color(0xFF3A3A3A),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: theme.primaryColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.insert_drive_file_rounded,
+                  color: theme.primaryColor,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      fileName,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: isLightMode
+                            ? const Color(0xFF1A1A1A)
+                            : Colors.white,
+                        letterSpacing: -0.2,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    if (isDownloading) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: isLightMode
+                                    ? const Color(0xFFF0F0F0)
+                                    : const Color(0xFF3A3A3A),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                              child: FractionallySizedBox(
+                                alignment: Alignment.centerLeft,
+                                widthFactor: progress,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: theme.primaryColor,
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            '${(progress * 100).toInt()}%',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isLightMode
+                                  ? const Color(0xFF6B6B6B)
+                                  : const Color(0xFF9E9E9E),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else ...[
+                      Text(
+                        'برای باز کردن ضربه بزنید',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isLightMode
+                              ? const Color(0xFF6B6B6B)
+                              : const Color(0xFF9E9E9E),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (isDownloading)
+                Container(
+                  width: 24,
+                  height: 24,
+                  margin: const EdgeInsets.only(left: 12),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(theme.primaryColor),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
     return const SizedBox.shrink();
+  }
+
+  String _extractFileName(String url) {
+    try {
+      debugPrint('🔍 Extracting filename from: $url');
+      final uri = Uri.parse(url);
+      final path = uri.path;
+      debugPrint('📄 Path: $path');
+
+      final name = path.split('/').last;
+      debugPrint('📄 Raw name: $name');
+
+      if (name.isNotEmpty) {
+        final decodedName = Uri.decodeComponent(name);
+        debugPrint('📄 Decoded name: $decodedName');
+
+        // Clean filename for filesystem compatibility
+        final cleanName = _cleanFileName(decodedName);
+        debugPrint('📄 Clean name: $cleanName');
+        return cleanName;
+      }
+
+      // Fallback: generate filename with timestamp
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fallbackName = 'vista_file_$timestamp';
+      debugPrint('📄 Fallback name: $fallbackName');
+      return fallbackName;
+    } catch (e) {
+      debugPrint('❌ Error extracting filename: $e');
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      return 'vista_file_$timestamp';
+    }
+  }
+
+  String _cleanFileName(String fileName) {
+    // Keep Persian characters but clean problematic filesystem chars
+    String clean = fileName
+        .replaceAll(
+            RegExp(r'[<>:"/\\|?*]'), '_') // Replace invalid filesystem chars
+        .replaceAll(RegExp(r'\s+'), '_'); // Replace spaces with underscores
+
+    // Ensure it's not too long (max 255 chars for most filesystems)
+    if (clean.length > 200) {
+      final extension = clean.split('.').last;
+      final nameWithoutExt = clean.substring(0, clean.lastIndexOf('.'));
+      clean =
+          '${nameWithoutExt.substring(0, 200 - extension.length - 1)}.$extension';
+    }
+
+    // Ensure it doesn't start with dot or end with space/dot
+    clean = clean.replaceAll(RegExp(r'^\.+'), 'file_');
+    clean = clean.replaceAll(RegExp(r'[\s\.]+$'), '');
+
+    return clean.isEmpty
+        ? 'vista_file_${DateTime.now().millisecondsSinceEpoch}'
+        : clean;
+  }
+
+  Future<void> _downloadAndOpen(String url) async {
+    try {
+      setState(() {
+        _isDownloading[url] = true;
+        _downloadProgress[url] = 0.0;
+      });
+
+      // دانلود فایل
+      File? file;
+      try {
+        file = await AdvancedFileManager.instance.getFile(url);
+      } catch (downloadError) {
+        setState(() {
+          _isDownloading[url] = false;
+        });
+        ToastService.showErrorToast(context, 'خطا در دانلود فایل');
+        return;
+      }
+
+      if (file == null) {
+        setState(() {
+          _isDownloading[url] = false;
+        });
+        ToastService.showErrorToast(context, 'دانلود فایل ناموفق بود');
+        return;
+      }
+
+      setState(() {
+        _isDownloading[url] = false;
+        _downloadProgress[url] = 1.0;
+      });
+
+      // باز کردن فایل
+      try {
+        await _openLocal(file);
+      } catch (openError) {
+        ToastService.showErrorToast(context, 'خطا در باز کردن فایل');
+      }
+    } finally {
+      // اطمینان از ریست وضعیت دانلود در هر حالت
+      if (mounted) {
+        setState(() {
+          _isDownloading[url] = false;
+        });
+      }
+    }
+  }
+
+  // این متد دیگر استفاده نمی‌شود - از AdvancedFileManager استفاده می‌کنیم
+  /*
+  Future<File?> _ensureDownloadedWithProgress(String url) async {
+    try {
+      debugPrint('🔄 Starting download: $url');
+
+      final dir = await _getVistaFolder();
+      final fileName = _extractFileName(url);
+      final filePath = '${dir.path}/$fileName';
+      final file = File(filePath);
+
+      debugPrint('📁 Vista folder: ${dir.path}');
+      debugPrint('📄 File name: $fileName');
+      debugPrint('📄 File path: $filePath');
+
+      if (!await file.exists()) {
+        debugPrint('⬇️ File does not exist, starting download...');
+
+        // Try original URL first
+        var request = http.Request('GET', Uri.parse(url));
+        var streamedResponse = await request.send();
+
+        // If 404, try with proper URL encoding
+        if (streamedResponse.statusCode == 404) {
+          debugPrint('🔄 404 error, trying with proper URL encoding...');
+          final uri = Uri.parse(url);
+          final encodedPath = uri.path.split('/').map((segment) {
+            return Uri.encodeComponent(segment);
+          }).join('/');
+          final encodedUrl = '${uri.scheme}://${uri.host}${encodedPath}';
+          debugPrint('🔄 Encoded URL: $encodedUrl');
+
+          request = http.Request('GET', Uri.parse(encodedUrl));
+          streamedResponse = await request.send();
+        }
+
+        debugPrint('📡 Response status: ${streamedResponse.statusCode}');
+        debugPrint('📏 Content length: ${streamedResponse.contentLength}');
+
+        if (streamedResponse.statusCode == 200) {
+          final contentLength = streamedResponse.contentLength;
+          final bytes = <int>[];
+          double downloadedBytes = 0;
+
+          await for (final chunk in streamedResponse.stream) {
+            bytes.addAll(chunk);
+            downloadedBytes += chunk.length;
+
+            if (contentLength != null && mounted) {
+              final progress = downloadedBytes / contentLength;
+              debugPrint(
+                  '📊 Progress: ${(progress * 100).toInt()}% ($downloadedBytes/$contentLength)');
+              setState(() {
+                _downloadProgress[url] = progress;
+              });
+            }
+          }
+
+          debugPrint('💾 Writing ${bytes.length} bytes to file...');
+          try {
+            await file.writeAsBytes(bytes);
+            debugPrint('✅ File saved successfully to: ${file.path}');
+
+            // Verify file was written
+            if (await file.exists()) {
+              final fileSize = await file.length();
+              debugPrint('📏 File size: $fileSize bytes');
+            } else {
+              debugPrint('❌ File does not exist after writing!');
+            }
+          } catch (writeError) {
+            debugPrint('❌ Error writing file: $writeError');
+            throw writeError;
+          }
+        } else {
+          debugPrint(
+              '❌ Download failed with status: ${streamedResponse.statusCode}');
+          return null;
+        }
+      } else {
+        debugPrint('✅ File already exists');
+      }
+      return file;
+    } catch (e) {
+      debugPrint('❌ Download error: $e');
+      return null;
+    }
+  }
+  */
+
+  Future<void> _openLocal(File file) async {
+    try {
+      debugPrint('🔓 Opening file: ${file.path}');
+
+      // استفاده از FileManagerService برای بررسی اعتبار فایل
+      final isValid = await FileManagerService.isFileValid(file);
+      if (!isValid) {
+        debugPrint('❌ File is invalid: ${file.path}');
+        ToastService.showErrorToast(
+            context, 'فایل معتبر نیست یا آسیب دیده است');
+        return;
+      }
+
+      final fileSize = await file.length();
+      debugPrint('📏 File size: $fileSize bytes');
+
+      // استفاده از open_filex برای باز کردن فایل (حل مشکل FileUriExposedException)
+      debugPrint('🚀 Opening file with open_filex: ${file.path}');
+
+      try {
+        final result = await OpenFilex.open(file.path);
+
+        if (result.type == ResultType.done) {
+          debugPrint('✅ File opened successfully with open_filex');
+          final fileType =
+              _isPdfFile(widget.message.attachmentUrl ?? '') ? 'PDF' : 'فایل';
+          ToastService.showSuccessToast(context, '$fileType باز شد');
+        } else {
+          debugPrint(
+              '❌ Failed to open file with open_filex: ${result.message}');
+          ToastService.showErrorToast(context,
+              'نمی‌توان فایل را باز کرد. برنامه مناسبی برای باز کردن این فایل نصب نیست.');
+        }
+      } catch (e) {
+        debugPrint('❌ Error with open_filex: $e');
+        ToastService.showErrorToast(
+            context, 'خطا در باز کردن فایل: ${e.toString()}');
+      }
+    } catch (e) {
+      debugPrint('❌ Error opening file: $e');
+      ToastService.showErrorToast(
+          context, 'خطا در باز کردن فایل: ${e.toString()}');
+    }
+  }
+
+  bool _isPdfFile(String url) {
+    return url.toLowerCase().endsWith('.pdf');
+  }
+
+  void _showFileOptions(BuildContext context, String url) async {
+    final fileName = _extractFileName(url);
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.open_in_new_rounded),
+                title: const Text('باز کردن'),
+                subtitle: Text(
+                  fileName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await _downloadAndOpen(url);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.download_rounded),
+                title: const Text('ذخیره در پوشه vista'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  try {
+                    setState(() {
+                      _isDownloading[url] = true;
+                      _downloadProgress[url] = 0.0;
+                    });
+
+                    // استفاده از AdvancedFileManager برای دانلود
+                    final file =
+                        await AdvancedFileManager.instance.getFile(url);
+                    if (file != null) {
+                      setState(() {
+                        _isDownloading[url] = false;
+                        _downloadProgress[url] = 1.0;
+                      });
+                      ToastService.showSuccessToast(
+                        context,
+                        'فایل ذخیره شد: ${file.path}',
+                      );
+                    } else {
+                      setState(() {
+                        _isDownloading[url] = false;
+                      });
+                      ToastService.showErrorToast(
+                        context,
+                        'دانلود فایل ناموفق بود',
+                      );
+                    }
+                  } catch (e) {
+                    setState(() {
+                      _isDownloading[url] = false;
+                    });
+                    ToastService.showErrorToast(context, 'خطا در دانلود فایل');
+                  }
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildReplyPreview(BuildContext context, MessageModel message) {

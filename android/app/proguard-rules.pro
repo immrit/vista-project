@@ -79,3 +79,48 @@
 # Keep Flutter deferred components managers
 -keep class io.flutter.embedding.engine.deferredcomponents.** { *; }
 -dontwarn io.flutter.embedding.engine.deferredcomponents.**
+
+# AWS SDK ProGuard rules
+-keep class software.amazon.awssdk.** { *; }
+-keep class software.amazon.awssdk.services.s3.** { *; }
+-keep class software.amazon.awssdk.core.** { *; }
+-keep class software.amazon.awssdk.auth.** { *; }
+-keep class software.amazon.awssdk.regions.** { *; }
+-keep class software.amazon.awssdk.http.** { *; }
+-keep class software.amazon.awssdk.protocols.** { *; }
+-keep class software.amazon.eventstream.** { *; }
+-keep class com.amazonaws.** { *; }
+-keep class com.amazonaws.services.s3.** { *; }
+-keep class com.amazonaws.auth.** { *; }
+-keep class com.amazonaws.regions.** { *; }
+-keep class com.amazonaws.http.** { *; }
+-keep class com.amazonaws.util.** { *; }
+-keep class com.amazonaws.internal.** { *; }
+-keep class com.amazonaws.metrics.** { *; }
+-keep class org.apache.commons.logging.** { *; }
+-keep class org.apache.http.** { *; }
+-keep class org.joda.time.** { *; }
+-keep class com.fasterxml.jackson.** { *; }
+-dontwarn software.amazon.awssdk.**
+-dontwarn com.amazonaws.**
+-dontwarn org.apache.commons.logging.**
+-dontwarn org.apache.http.**
+-dontwarn org.joda.time.**
+-dontwarn com.fasterxml.jackson.**
+
+# Flutter Image Compress ProGuard rules
+-keep class com.fluttercandies.** { *; }
+-keep class top.kikt.** { *; }
+-keep class io.flutter.plugins.imagepicker.** { *; }
+-keep class androidx.exifinterface.** { *; }
+-keep class android.graphics.** { *; }
+-dontwarn com.fluttercandies.**
+-dontwarn top.kikt.**
+-dontwarn io.flutter.plugins.imagepicker.**
+-dontwarn androidx.exifinterface.**
+-dontwarn android.graphics.**
+
+# File handling and path operations
+-keep class java.io.** { *; }
+-keep class java.nio.** { *; }
+-keepattributes *FileName*,*FileDescriptor*
