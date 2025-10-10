@@ -726,7 +726,7 @@ class AdvancedCacheSystem {
     final conversation = _conversationMemoryCache[conversationId];
     if (conversation != null) {
       // Get the latest message (including temp messages)
-      final latestMessage = messages.isNotEmpty ? messages.last : message;
+      final latestMessage = messages.isNotEmpty ? messages.first : message;
 
       // Format last message content for temp messages
       String lastMessageContent = latestMessage.content;

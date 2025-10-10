@@ -11,12 +11,14 @@ import '../../../main.dart';
 import '../../../model/message_model.dart';
 import '../../../provider/chat_screen_provider.dart';
 import '../../../provider/chat_provider.dart' as chat_provider;
+import '../../../provider/chat_provider.dart';
 import '../../../services/uploadAudioChatService.dart';
 import 'package:audio_waveforms/audio_waveforms.dart';
 import '../../../services/uploadImageChatService.dart';
 import '../../../services/advanced_file_manager.dart';
 import '../../../services/global_voice_manager.dart';
 import '../../../services/wallpaper_cache_service.dart';
+import '../../../services/current_chat_tracker.dart';
 import 'chat_input.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../widgets/message_bubble.dart';
@@ -55,6 +57,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // Highlight state
   String? _highlightedMessageId;
 
+  // Message selection state
+  final Set<String> _selectedMessageIds = {};
+  bool _isSelectionMode = false;
+
   // State
   DateTime? _floatingDate;
   Timer? _floatingDateTimer;
@@ -65,6 +71,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   File? _selectedImage;
   Uint8List? _selectedImageBytes;
   String? _selectedImageName;
+  File? _selectedFile;
+  String? _selectedFileName;
+  bool _showFileCaptionInput = false;
+  late TextEditingController _fileCaptionController;
 
   // UI state
   bool _isScrolling = false; // جلوگیری از فراخوانی مکرر scroll listener
@@ -72,7 +82,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       false; // جلوگیری از فراخوانی مکرر floating date update
   bool _isOtherUserBlocked = false;
   bool _isCurrentUserBlocked = false;
-  final Set<String> _deletingMessageIds = {};
   bool _isCacheEmpty = false;
 
   @override
@@ -91,8 +100,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       conversationId: widget.conversationId,
       otherUserId: widget.otherUserId,
     );
+    _fileCaptionController = TextEditingController();
     _itemPositionsListener.itemPositions.addListener(_scrollListener);
     _checkBlockStatus();
+
+    // ثبت مکالمه باز برای مدیریت unread
+    CurrentChatTracker.instance.setOpenConversation(widget.conversationId);
+
+    // بازنشانی تعداد پیام‌های خوانده‌نشده وقتی کاربر وارد مکالمه می‌شود
+    _resetUnreadCount();
 
     // اسکرول به آخرین پیام بعد از بارگذاری اولیه
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -121,6 +137,415 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
     } catch (e) {
       print('خطا در بررسی وضعیت مسدودیت: $e');
+    }
+  }
+
+  // Message selection methods
+  void _toggleMessageSelection(String messageId) {
+    setState(() {
+      if (_selectedMessageIds.contains(messageId)) {
+        _selectedMessageIds.remove(messageId);
+        if (_selectedMessageIds.isEmpty) {
+          _isSelectionMode = false;
+        }
+      } else {
+        _selectedMessageIds.add(messageId);
+        _isSelectionMode = true;
+      }
+    });
+  }
+
+  void _clearMessageSelection() {
+    setState(() {
+      _selectedMessageIds.clear();
+      _isSelectionMode = false;
+    });
+  }
+
+  void _showMessageActionsBottomSheet(
+      BuildContext context, MessageModel message) {
+    final isMe = message.senderId == supabase.auth.currentUser?.id;
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Options
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.reply,
+                    color: Theme.of(context).primaryColor,
+                    size: 20,
+                  ),
+                ),
+                title: const Text('پاسخ'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _setReplyMessage(message);
+                },
+              ),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.copy, color: Colors.blue, size: 20),
+                ),
+                title: const Text('کپی پیام'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await Clipboard.setData(ClipboardData(text: message.content));
+                  ToastService.showSuccessToast(context, 'پیام کپی شد');
+                },
+              ),
+              if (message.attachmentType == 'document' ||
+                  message.attachmentType == 'image')
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.download_rounded,
+                        color: Colors.green, size: 20),
+                  ),
+                  title: const Text('ذخیره فایل'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    if (message.attachmentUrl != null) {
+                      // فراخوانی متد ذخیره فایل
+                      _saveFile(message);
+                    }
+                  },
+                ),
+              if (isMe)
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child:
+                        const Icon(Icons.delete, color: Colors.red, size: 20),
+                  ),
+                  title: const Text('حذف پیام'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showDeleteMessageDialog(message);
+                  },
+                ),
+              if (!isMe)
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.report,
+                        color: Colors.orange, size: 20),
+                  ),
+                  title: const Text('گزارش پیام'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showReportMessageDialog(context, message);
+                  },
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _saveFile(MessageModel message) {
+    // Implementation for saving file
+    ToastService.showInfoToast(context, 'در حال ذخیره فایل...');
+  }
+
+  void _showReportMessageDialog(BuildContext context, MessageModel message) {
+    ToastService.showInfoToast(
+        context, 'قابلیت گزارش پیام به زودی اضافه می‌شود');
+  }
+
+  void _showDeleteMessageDialog(MessageModel message) async {
+    final isSender = message.senderId == supabase.auth.currentUser?.id;
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('حذف پیام'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('پیام را چگونه می‌خواهید حذف کنید؟'),
+            if (isSender) ...[
+              const SizedBox(height: 8),
+              Text(
+                'توجه: حذف برای همه قابل بازگشت نیست.',
+                style: TextStyle(color: Colors.red[700], fontSize: 12),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('انصراف'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _deleteMessage(message.id, false);
+            },
+            child: const Text('حذف برای من'),
+          ),
+          if (isSender)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _deleteMessage(message.id, true);
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red[700]),
+              child: const Text('حذف برای همه'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteMessage(String messageId, bool forEveryone) async {
+    try {
+      await ref
+          .read(chatScreenProvider(_providerParams).notifier)
+          .deleteMessage(messageId, forEveryone: forEveryone);
+
+      ToastService.showSuccessToast(
+        context,
+        forEveryone ? 'پیام برای همه حذف شد' : 'پیام برای شما حذف شد',
+      );
+    } catch (e) {
+      ToastService.showErrorToast(
+          context, 'خطا در حذف پیام. لطفاً دوباره تلاش کنید.');
+    }
+  }
+
+  void _showMultiSelectOptions() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child:
+                      const Icon(Icons.forward, color: Colors.blue, size: 20),
+                ),
+                title: const Text('فوروارد پیام‌ها'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _forwardSelectedMessages();
+                },
+              ),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.delete, color: Colors.red, size: 20),
+                ),
+                title: const Text('حذف پیام‌ها'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showDeleteSelectedMessagesDialog();
+                },
+              ),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.info_outline,
+                      color: Colors.grey[600], size: 20),
+                ),
+                title: const Text('اطلاعات پیام‌ها'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showSelectedMessagesInfo();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _forwardSelectedMessages() {
+    // Implementation for forwarding selected messages
+    // For now, just show a message that this feature is coming soon
+    ToastService.showInfoToast(context,
+        'فوروارد ${_selectedMessageIds.length} پیام در حال پیاده‌سازی...');
+    _clearMessageSelection();
+  }
+
+  void _showDeleteSelectedMessagesDialog() {
+    final messages = ref.read(chatScreenProvider(_providerParams)).messages;
+    final selectedMessages =
+        messages.where((msg) => _selectedMessageIds.contains(msg.id)).toList();
+    final myMessages = selectedMessages
+        .where((msg) => msg.senderId == supabase.auth.currentUser?.id)
+        .toList();
+    final otherMessages = selectedMessages
+        .where((msg) => msg.senderId != supabase.auth.currentUser?.id)
+        .toList();
+
+    final hasOnlyMyMessages = otherMessages.isEmpty;
+    final hasMixedMessages = myMessages.isNotEmpty && otherMessages.isNotEmpty;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('حذف پیام‌ها'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+                'آیا مطمئن هستید که می‌خواهید ${_selectedMessageIds.length} پیام انتخاب شده را حذف کنید؟'),
+            if (hasOnlyMyMessages) ...[
+              const SizedBox(height: 8),
+              Text(
+                'توجه: حذف برای همه قابل بازگشت نیست.',
+                style: TextStyle(color: Colors.red[700], fontSize: 12),
+              ),
+            ],
+            if (hasMixedMessages) ...[
+              const SizedBox(height: 8),
+              Text(
+                'پیام‌های انتخاب شده شامل پیام‌های شما و طرف مقابل است.',
+                style: TextStyle(color: Colors.orange[700], fontSize: 12),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('لغو'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _deleteSelectedMessages(false);
+            },
+            child: const Text('حذف برای من'),
+          ),
+          if (hasOnlyMyMessages)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _deleteSelectedMessages(true);
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red[700]),
+              child: const Text('حذف برای همه'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteSelectedMessages(bool forEveryone) async {
+    try {
+      final chatService = ref.read(chat_provider.chatServiceProvider);
+
+      for (final messageId in _selectedMessageIds) {
+        await chatService.deleteMessage(messageId, forEveryone: forEveryone);
+      }
+
+      ToastService.showSuccessToast(
+          context,
+          forEveryone
+              ? '${_selectedMessageIds.length} پیام برای همه حذف شد'
+              : '${_selectedMessageIds.length} پیام برای شما حذف شد');
+      _clearMessageSelection();
+
+      // Refresh the conversation list to update last message
+      ref.invalidate(conversationsProvider);
+      ref.invalidate(conversationsStreamProvider);
+      ref.invalidate(cachedConversationsStreamProvider);
+
+      // Refresh the current chat screen
+      ref.invalidate(chatScreenProvider(_providerParams));
+    } catch (e) {
+      ToastService.showErrorToast(context, 'خطا در حذف پیام‌ها');
+    }
+  }
+
+  void _showSelectedMessagesInfo() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('اطلاعات پیام‌های انتخاب شده'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('تعداد پیام‌های انتخاب شده: ${_selectedMessageIds.length}'),
+            const SizedBox(height: 8),
+            Text('این قابلیت در حال پیاده‌سازی است.'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('بستن'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _resetUnreadCount() async {
+    try {
+      final chatService = ref.read(chat_provider.chatServiceProvider);
+      await chatService.resetUnreadCount(
+          widget.conversationId, supabase.auth.currentUser!.id);
+      print('✅ Unread count reset for conversation: ${widget.conversationId}');
+    } catch (e) {
+      print('خطا در بازنشانی تعداد خوانده‌نشده: $e');
     }
   }
 
@@ -247,6 +672,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     // پاکسازی timers
     _floatingDateTimer?.cancel();
+    _fileCaptionController.dispose();
+
+    // پاک کردن وضعیت مکالمه باز
+    CurrentChatTracker.instance.clearOpenConversation();
 
     super.dispose();
   }
@@ -306,6 +735,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _isCacheEmpty = false;
         });
       }
+
+      // بروزرسانی لیست مکالمات برای نمایش آخرین پیام
+      ref.invalidate(conversationsProvider);
+      ref.invalidate(conversationsStreamProvider);
+      ref.invalidate(cachedConversationsStreamProvider);
+      // برای StateNotifier، refresh method فراخوانی کنیم
+      ref.read(cachedConversationsProvider.notifier).refresh();
     } catch (e) {
       ToastService.showErrorToast(
           context, 'خطا در ارسال پیام. لطفاً دوباره تلاش کنید.');
@@ -352,6 +788,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             _isCacheEmpty = false;
           });
         }
+
+        // بروزرسانی لیست مکالمات برای نمایش آخرین پیام
+        ref.invalidate(conversationsProvider);
+        ref.invalidate(conversationsStreamProvider);
+        ref.invalidate(cachedConversationsStreamProvider);
 
         // نمایش پیام موفقیت
         ToastService.showSuccessToast(context, 'پیام صوتی با موفقیت ارسال شد');
@@ -410,6 +851,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _selectedImage = null;
       _selectedImageBytes = null;
       _selectedImageName = null;
+      _selectedFile = null;
+      _selectedFileName = null;
+      _showFileCaptionInput = false;
+      _fileCaptionController.clear();
       _replyToMessage = null;
     });
   }
@@ -529,135 +974,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     } catch (e) {
       print('خطا در چک کردن وضعیت کش: $e');
     }
-  }
-
-  // --- Dialogs & Menus ---
-  void _showMessageOptions(BuildContext context, MessageModel message) {
-    final isMe = message.senderId == supabase.auth.currentUser?.id;
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Wrap(
-            children: [
-              ListTile(
-                leading: Icon(
-                  Icons.reply,
-                  color: Theme.of(context).primaryColor,
-                ),
-                title: const Text('پاسخ'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _setReplyMessage(message);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.copy, color: Colors.blue),
-                title: const Text('کپی پیام'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await Clipboard.setData(ClipboardData(text: message.content));
-                  ToastService.showSuccessToast(context, 'پیام کپی شد');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.delete, color: Colors.red),
-                title: const Text('حذف پیام'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showDeleteMessageDialog(message);
-                },
-              ),
-              if (!isMe)
-                ListTile(
-                  leading: const Icon(Icons.report, color: Colors.orange),
-                  title: const Text('گزارش پیام'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showReportMessageDialog(context, message);
-                  },
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> _showDeleteMessageDialog(MessageModel message) async {
-    final isSender = message.senderId == supabase.auth.currentUser?.id;
-
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('حذف پیام'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('پیام را چگونه می‌خواهید حذف کنید؟'),
-            if (isSender) ...[
-              const SizedBox(height: 8),
-              Text(
-                'توجه: حذف برای همه قابل بازگشت نیست.',
-                style: TextStyle(color: Colors.red[700], fontSize: 12),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('انصراف'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _deleteMessage(message.id, false);
-            },
-            child: const Text('حذف برای من'),
-          ),
-          if (isSender)
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _deleteMessage(message.id, true);
-              },
-              style: TextButton.styleFrom(foregroundColor: Colors.red[700]),
-              child: const Text('حذف برای همه'),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _deleteMessage(String messageId, bool forEveryone) async {
-    try {
-      setState(() => _deletingMessageIds.add(messageId));
-      await ref
-          .read(chatScreenProvider(_providerParams).notifier)
-          .deleteMessage(messageId, forEveryone: forEveryone);
-
-      ToastService.showSuccessToast(
-        context,
-        forEveryone ? 'پیام برای همه حذف شد' : 'پیام برای شما حذف شد',
-      );
-    } catch (e) {
-      ToastService.showErrorToast(
-          context, 'خطا در حذف پیام. لطفاً دوباره تلاش کنید.');
-    } finally {
-      if (mounted) {
-        setState(() => _deletingMessageIds.remove(messageId));
-      }
-    }
-  }
-
-  void _showReportMessageDialog(BuildContext context, MessageModel message) {
-    ToastService.showInfoToast(
-        context, 'قابلیت گزارش پیام به زودی اضافه می‌شود');
   }
 
   void _showBlockUserDialog(BuildContext context) {
@@ -1065,206 +1381,243 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ? const Color(0xFF1A1A1A).withValues(alpha: 0.9)
                 : Colors.white.withValues(alpha: 0.9),
             titleSpacing: 0,
-            title: InkWell(
-              onTap: () async {
-                final messageIdToJump = await Navigator.push<String?>(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ChatDetailsScreen(
-                      conversationId: widget.conversationId,
-                      otherUserName: widget.otherUserName,
-                      otherUserAvatar: widget.otherUserAvatar,
-                      otherUserId: widget.otherUserId,
-                    ),
-                  ),
-                );
-
-                if (messageIdToJump != null && mounted) {
-                  // TODO: Implement jump to message functionality
-                  print('Jump to message: $messageIdToJump');
-                }
-              },
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    backgroundImage: widget.otherUserAvatar != null
-                        ? CachedNetworkImageProvider(widget.otherUserAvatar!)
-                        : null,
-                    child: widget.otherUserAvatar == null
-                        ? const Icon(Icons.person)
-                        : null,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          widget.otherUserName,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        Consumer(
-                          builder: (context, ref, child) {
-                            final isOnlineAsync = ref.watch(
-                              chat_provider.userOnlineStatusStreamProvider(
-                                widget.otherUserId,
-                              ),
-                            );
-
-                            return isOnlineAsync.when(
-                              data: (isOnline) {
-                                return Text(
-                                  isOnline ? 'آنلاین' : 'آفلاین',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color:
-                                        isOnline ? Colors.green : Colors.grey,
-                                  ),
-                                );
-                              },
-                              loading: () => const Text(
-                                'در حال بارگذاری...',
-                                style: TextStyle(fontSize: 12),
-                              ),
-                              error: (_, __) => const Text(
-                                'آفلاین',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert),
-                tooltip: 'گزینه‌های بیشتر',
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                onSelected: (value) {
-                  switch (value) {
-                    case 'search':
-                      _showSearchMessagesDialog(context);
-                      break;
-                    case 'clear_history':
-                      _showClearHistoryDialog(context);
-                      break;
-                    case 'block':
-                      _showBlockUserDialog(context);
-                      break;
-                    case 'report':
-                      _showReportUserDialog(context);
-                      break;
-                    case 'profile':
-                      Navigator.of(context).push(
+            title: _isSelectionMode
+                ? Text('${_selectedMessageIds.length} پیام انتخاب شده')
+                : InkWell(
+                    onTap: () async {
+                      final messageIdToJump = await Navigator.push<String?>(
+                        context,
                         MaterialPageRoute(
-                          builder: (context) => ProfileScreen(
-                            userId: widget.otherUserId,
-                            username: widget.otherUserName,
+                          builder: (context) => ChatDetailsScreen(
+                            conversationId: widget.conversationId,
+                            otherUserName: widget.otherUserName,
+                            otherUserAvatar: widget.otherUserAvatar,
+                            otherUserId: widget.otherUserId,
                           ),
                         ),
                       );
-                      break;
-                  }
-                },
-                itemBuilder: (context) => [
-                  PopupMenuItem(
-                    value: 'search',
+
+                      if (messageIdToJump != null && mounted) {
+                        // TODO: Implement jump to message functionality
+                        print('Jump to message: $messageIdToJump');
+                      }
+                    },
                     child: Row(
                       children: [
-                        Icon(
-                          Icons.search,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white70
-                              : Colors.black87,
+                        CircleAvatar(
+                          backgroundImage: widget.otherUserAvatar != null
+                              ? CachedNetworkImageProvider(
+                                  widget.otherUserAvatar!)
+                              : null,
+                          child: widget.otherUserAvatar == null
+                              ? const Icon(Icons.person)
+                              : null,
                         ),
                         const SizedBox(width: 12),
-                        const Text('جستجو در پیام‌ها'),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                widget.otherUserName,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Consumer(
+                                builder: (context, ref, child) {
+                                  final isOnlineAsync = ref.watch(
+                                    chat_provider
+                                        .userOnlineStatusStreamProvider(
+                                      widget.otherUserId,
+                                    ),
+                                  );
+
+                                  return isOnlineAsync.when(
+                                    data: (isOnline) {
+                                      return Text(
+                                        isOnline ? 'آنلاین' : 'آفلاین',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: isOnline
+                                              ? Colors.green
+                                              : Colors.grey,
+                                        ),
+                                      );
+                                    },
+                                    loading: () => const Text(
+                                      'در حال بارگذاری...',
+                                      style: TextStyle(fontSize: 12),
+                                    ),
+                                    error: (_, __) => const Text(
+                                      'آفلاین',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                  PopupMenuItem(
-                    value: 'clear_history',
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.clear_all,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white70
-                              : Colors.black87,
+            actions: _isSelectionMode
+                ? [
+                    // Selection mode actions
+                    IconButton(
+                      onPressed: _showMultiSelectOptions,
+                      icon: const Icon(Icons.more_vert),
+                      tooltip: 'گزینه‌های بیشتر',
+                    ),
+                    IconButton(
+                      onPressed: _clearMessageSelection,
+                      icon: const Icon(Icons.close),
+                      tooltip: 'لغو انتخاب',
+                    ),
+                  ]
+                : [
+                    // Normal mode actions
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert),
+                      tooltip: 'گزینه‌های بیشتر',
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      onSelected: (value) {
+                        switch (value) {
+                          case 'search':
+                            _showSearchMessagesDialog(context);
+                            break;
+                          case 'clear_history':
+                            _showClearHistoryDialog(context);
+                            break;
+                          case 'block':
+                            _showBlockUserDialog(context);
+                            break;
+                          case 'report':
+                            _showReportUserDialog(context);
+                            break;
+                          case 'profile':
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => ProfileScreen(
+                                  userId: widget.otherUserId,
+                                  username: widget.otherUserName,
+                                ),
+                              ),
+                            );
+                            break;
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        PopupMenuItem(
+                          value: 'search',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.search,
+                                color: Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? Colors.white70
+                                    : Colors.black87,
+                              ),
+                              const SizedBox(width: 12),
+                              const Text('جستجو در پیام‌ها'),
+                            ],
+                          ),
                         ),
-                        const SizedBox(width: 12),
-                        const Text('پاکسازی تاریخچه'),
+                        PopupMenuItem(
+                          value: 'clear_history',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.clear_all,
+                                color: Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? Colors.white70
+                                    : Colors.black87,
+                              ),
+                              const SizedBox(width: 12),
+                              const Text('پاکسازی تاریخچه'),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuDivider(),
+                        PopupMenuItem(
+                          value: 'profile',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.person_outline,
+                                color: Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? Colors.white70
+                                    : Colors.black87,
+                              ),
+                              const SizedBox(width: 12),
+                              const Text('مشاهده پروفایل'),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'block',
+                          child: Row(
+                            children: [
+                              Icon(
+                                _isOtherUserBlocked
+                                    ? Icons.lock_open
+                                    : Icons.block,
+                                color: Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? Colors.white70
+                                    : Colors.black87,
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                _isOtherUserBlocked
+                                    ? 'رفع مسدودیت'
+                                    : 'مسدود کردن',
+                              ),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'report',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.report_problem_outlined,
+                                color: Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? Colors.white70
+                                    : Colors.black87,
+                              ),
+                              const SizedBox(width: 12),
+                              const Text('گزارش کاربر'),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
-                  ),
-                  const PopupMenuDivider(),
-                  PopupMenuItem(
-                    value: 'profile',
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.person_outline,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white70
-                              : Colors.black87,
-                        ),
-                        const SizedBox(width: 12),
-                        const Text('مشاهده پروفایل'),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'block',
-                    child: Row(
-                      children: [
-                        Icon(
-                          _isOtherUserBlocked ? Icons.lock_open : Icons.block,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white70
-                              : Colors.black87,
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          _isOtherUserBlocked ? 'رفع مسدودیت' : 'مسدود کردن',
-                        ),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'report',
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.report_problem_outlined,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white70
-                              : Colors.black87,
-                        ),
-                        const SizedBox(width: 12),
-                        const Text('گزارش کاربر'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
           ),
-          body: Column(
-            children: [
+          body: GestureDetector(
+            onTap: () {
+              // Clear focus from text fields when tapping outside
+              FocusScope.of(context).unfocus();
+              // Clear message selection if in selection mode
+              if (_isSelectionMode) {
+                _clearMessageSelection();
+              }
+            },
+            child: Column(children: [
               Expanded(
                 child: Stack(
                   alignment: Alignment.topCenter,
@@ -1312,11 +1665,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                                 isHighlighted:
                                                     _highlightedMessageId ==
                                                         message.id,
+                                                isSelected: _selectedMessageIds
+                                                    .contains(message.id),
                                                 onLongPress: (msg) =>
-                                                    _showMessageOptions(
-                                                  context,
-                                                  msg,
-                                                ),
+                                                    _toggleMessageSelection(
+                                                        message.id),
+                                                onTap: _isSelectionMode
+                                                    ? (messageId) {
+                                                        _showMessageActionsBottomSheet(
+                                                            context, message);
+                                                      }
+                                                    : null,
+                                                onSelectTap: _isSelectionMode
+                                                    ? (messageId) =>
+                                                        _toggleMessageSelection(
+                                                            messageId)
+                                                    : null,
+                                                onSingleTap: (msg) =>
+                                                    _showMessageActionsBottomSheet(
+                                                        context, msg),
                                                 onReply: (msg) =>
                                                     _setReplyMessage(msg),
                                                 onRetry: (msg) =>
@@ -1341,9 +1708,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   _retryAllFailedMessages();
                 },
               ),
-              if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
-                _buildMessageInput(),
-            ],
+              if (!_isCurrentUserBlocked && !_isOtherUserBlocked) ...[
+                if (_showFileCaptionInput && _selectedFile != null)
+                  _buildFileCaptionInput()
+                else
+                  _buildMessageInput(),
+              ],
+            ]),
           ),
         ),
       ],
@@ -1414,10 +1785,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _handleFileSelected(File file) async {
-    await _sendFileMessage(file);
+    setState(() {
+      _selectedFile = file;
+      _selectedFileName = file.path.split('/').last;
+      _showFileCaptionInput = true;
+    });
   }
 
-  Future<void> _sendFileMessage(File file) async {
+  Future<void> _sendFileMessage(File file, {String caption = ''}) async {
     setState(() {});
     try {
       // آپلود فایل با استفاده از AdvancedFileManager
@@ -1438,15 +1813,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         return;
       }
 
-      final fileName = file.path.split('/').last;
-
       await ref.read(chatScreenProvider(_providerParams).notifier).sendMessage(
-            fileName,
+            caption.isNotEmpty ? caption : '',
             attachmentUrl: fileUrl,
             attachmentType: 'document',
           );
+
+      // بروزرسانی لیست مکالمات برای نمایش آخرین پیام
+      ref.invalidate(conversationsProvider);
+      ref.invalidate(conversationsStreamProvider);
+      ref.invalidate(cachedConversationsStreamProvider);
+      // برای StateNotifier، refresh method فراخوانی کنیم
+      ref.read(cachedConversationsProvider.notifier).refresh();
     } catch (e) {
       ToastService.showErrorToast(context, 'خطا در ارسال فایل');
+    }
+  }
+
+  void _sendFileWithCaption(String caption) {
+    if (_selectedFile != null) {
+      _sendFileMessage(_selectedFile!, caption: caption);
+      _clearAttachments();
     }
   }
 
@@ -1457,6 +1844,169 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       onSendImages: _handleSendImages,
       onFileSelected: _handleFileSelected,
       parentContext: context,
+    );
+  }
+
+  Widget _buildFileCaptionInput() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: theme.dividerColor.withOpacity(0.3),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header with file info and close button
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: theme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.insert_drive_file_rounded,
+                  color: theme.primaryColor,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'ارسال فایل',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: theme.textTheme.titleLarge?.color,
+                      ),
+                    ),
+                    Text(
+                      _selectedFileName ?? 'فایل انتخاب شده',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: theme.hintColor,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    _showFileCaptionInput = false;
+                    _selectedFile = null;
+                    _selectedFileName = null;
+                  });
+                },
+                icon: Icon(
+                  Icons.close_rounded,
+                  color: theme.hintColor,
+                  size: 20,
+                ),
+                tooltip: 'لغو',
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Caption input
+          TextField(
+            controller: _fileCaptionController,
+            decoration: InputDecoration(
+              hintText: 'کپشن فایل (اختیاری)...',
+              hintStyle: TextStyle(
+                color: theme.hintColor,
+                fontSize: 16,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: theme.dividerColor.withOpacity(0.3),
+                  width: 1,
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: theme.dividerColor.withOpacity(0.3),
+                  width: 1,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: theme.primaryColor,
+                  width: 2,
+                ),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
+              ),
+              filled: true,
+              fillColor: isDark ? const Color(0xFF1A1A1A) : Colors.grey.shade50,
+            ),
+            style: TextStyle(
+              fontSize: 16,
+              color: theme.textTheme.bodyLarge?.color,
+            ),
+            maxLines: 3,
+            minLines: 1,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (value) {
+              if (value.trim().isNotEmpty || _selectedFile != null) {
+                _sendFileWithCaption(value.trim());
+              }
+            },
+          ),
+          const SizedBox(height: 16),
+
+          // Send button
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                final caption = _fileCaptionController.text.trim();
+                _sendFileWithCaption(caption);
+              },
+              icon: const Icon(Icons.send_rounded),
+              label: const Text('ارسال فایل'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

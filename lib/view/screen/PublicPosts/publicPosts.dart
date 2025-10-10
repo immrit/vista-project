@@ -899,9 +899,11 @@ Widget _buildPostItem(
                             );
                       } catch (e) {
                         // اگر خطا رخ داد، state را به حالت قبل برگردان
-                        ref
-                            .read(likeStateProvider.notifier)
-                            .updateLikeState(post.id, isLiked);
+                        if (context.mounted) {
+                          ref
+                              .read(likeStateProvider.notifier)
+                              .updateLikeState(post.id, isLiked);
+                        }
                       }
                     },
                   );

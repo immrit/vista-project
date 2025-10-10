@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
@@ -52,10 +53,22 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       _initializeWebSpecificCode();
     }
 
-    contentController.addListener(() {
-      setState(() {
-        remainingChars = maxCharLength - contentController.text.length;
-      });
+    // تنظیمات برای بهبود عملکرد cursor در RTL برای CupertinoTextField
+    _focusNode.addListener(() {
+      if (_focusNode.hasFocus) {
+        // اطمینان از اینکه cursor در موقعیت صحیح قرار می‌گیرد
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            final text = contentController.text;
+            if (text.isNotEmpty) {
+              // تنظیم cursor در انتهای متن اگر فوکوس دارد
+              contentController.selection = TextSelection.fromPosition(
+                TextPosition(offset: text.length),
+              );
+            }
+          }
+        });
+      }
     });
   }
 
@@ -1033,23 +1046,25 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: TextField(
+        child: CupertinoTextField(
           controller: contentController,
-          // focusNode: _focusNode,
+          focusNode: _focusNode,
           maxLines: 7,
           minLines: 3,
           keyboardType: TextInputType.multiline,
           textDirection: TextDirection.rtl,
+          textAlign: TextAlign.right,
+          cursorColor: textColor,
           style: TextStyle(
             color: textColor,
             fontSize: 16,
           ),
-          decoration: InputDecoration(
-            hintText: 'چیزی بنویسید...',
-            hintStyle: TextStyle(color: secondaryTextColor),
-            border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+          placeholder: 'چیزی بنویسید...',
+          placeholderStyle: TextStyle(color: secondaryTextColor),
+          decoration: BoxDecoration(
+            color: Colors.transparent,
           ),
+          padding: const EdgeInsets.symmetric(vertical: 8),
         ),
       ),
     );

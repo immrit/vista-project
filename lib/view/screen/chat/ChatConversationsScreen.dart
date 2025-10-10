@@ -57,13 +57,23 @@ class UnifiedChatItem {
     // Keep original username - let the UI decide what to show
     String displayName = conversation.otherUserName ?? '';
 
+    // نمایش آخرین پیام - اولویت با formattedLastMessage
+    String? subtitle =
+        conversation.formattedLastMessage ?? conversation.lastMessage;
+    if (subtitle == null || subtitle.isEmpty) {
+      subtitle = 'پیام جدیدی ارسال کنید';
+    }
+
+    // لاگ برای بررسی آخرین پیام و unreadCount (فقط در debug mode)
+    // print('📱 Conversation ${conversation.id}: lastMessage="${conversation.lastMessage}", formattedLastMessage="${conversation.formattedLastMessage}", subtitle="$subtitle", unreadCount=${conversation.unreadCount}');
+
     return UnifiedChatItem(
       id: conversation.id,
       title: displayName,
-      subtitle: conversation.lastMessage,
+      subtitle: subtitle,
       avatarUrl: conversation.otherUserAvatar,
       lastActivity: conversation.lastMessageTime,
-      unreadCount: 0, // قابلیت خوانده نشده حذف شد
+      unreadCount: conversation.unreadCount, // فعال کردن قابلیت خوانده نشده
       isChannel: false,
       isPinned: conversation.isPinned,
       isMuted: conversation.isMuted,
@@ -565,10 +575,19 @@ class _ChatConversationsScreenState
 
   // لیست یکپارچه چت‌ها و کانال‌ها
   Widget _buildUnifiedList(ThemeData theme) {
-    // ابتدا کش را بررسی کنیم
+    // همواره به استریم کش گوش بده تا تغییرات real-time اعمال شود
+    final cachedStreamAsync = ref.watch(cachedConversationsStreamProvider);
     final cachedConversations = ref.watch(cachedConversationsProvider);
 
-    // اگر کش موجود است، آن را بررسی کنیم
+    // اگر استریم داده دارد، همان را نمایش بده (اولویت با استریم برای realtime)
+    final streamData = cachedStreamAsync.maybeWhen(
+        data: (value) => value, orElse: () => <ConversationModel>[]);
+
+    if (streamData.isNotEmpty) {
+      return _buildConversationsList(theme, streamData);
+    }
+
+    // در غیر اینصورت اگر کش موجود است، آن را بررسی کنیم
     if (cachedConversations.isNotEmpty) {
       print(
           '📱 UI: Displaying cached conversations: ${cachedConversations.length} items');
@@ -941,6 +960,31 @@ class _ChatConversationsScreenState
               fontSize: 11,
               color: theme.hintColor.withValues(alpha: 0.7),
               fontWeight: FontWeight.w500,
+            ),
+          ),
+        // Badge برای نمایش تعداد پیام‌های خوانده‌نشده (فقط برای مکالمات)
+        if (!item.isChannel && item.unreadCount > 0)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: item.unreadCount > 9 ? Colors.red : Colors.blue,
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: [
+                BoxShadow(
+                  color: (item.unreadCount > 9 ? Colors.red : Colors.blue)
+                      .withValues(alpha: 0.3),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Text(
+              item.unreadCount > 99 ? '99+' : item.unreadCount.toString(),
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
           ),
       ],

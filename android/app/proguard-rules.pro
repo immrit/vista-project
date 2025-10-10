@@ -101,12 +101,20 @@
 -keep class org.apache.http.** { *; }
 -keep class org.joda.time.** { *; }
 -keep class com.fasterxml.jackson.** { *; }
+-keep class aws.smithy.kotlin.** { *; }
+-keep class aws.sdk.kotlin.** { *; }
+-keep class aws.sdk.kotlin.services.s3.** { *; }
+-keep class aws.sdk.kotlin.core.** { *; }
+-keep class aws.sdk.kotlin.auth.** { *; }
 -dontwarn software.amazon.awssdk.**
 -dontwarn com.amazonaws.**
 -dontwarn org.apache.commons.logging.**
 -dontwarn org.apache.http.**
 -dontwarn org.joda.time.**
 -dontwarn com.fasterxml.jackson.**
+-dontwarn aws.smithy.kotlin.**
+-dontwarn aws.sdk.kotlin.**
+-dontwarn aws.sdk.kotlin.services.s3.**
 
 # Flutter Image Compress ProGuard rules
 -keep class com.fluttercandies.** { *; }

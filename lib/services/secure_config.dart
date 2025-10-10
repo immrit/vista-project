@@ -26,15 +26,16 @@ class SecureConfig {
       return envKey;
     }
 
-    // Only use development credentials in debug mode
+    // Use development credentials in debug mode
     if (kDebugMode) {
       print(
           '⚠️ Using development AWS credentials. Set $_awsAccessKeyEnv environment variable for production.');
       return _devAccessKey;
     }
 
-    throw Exception(
-        'AWS Access Key not configured. Production builds require $_awsAccessKeyEnv environment variable to be set.');
+    // In release mode, use fallback credentials (set via gradle.properties)
+    // This allows the app to work in release builds without external env vars
+    return _devAccessKey;
   }
 
   /// Get AWS Secret Key from environment or fallback
@@ -44,15 +45,16 @@ class SecureConfig {
       return envKey;
     }
 
-    // Only use development credentials in debug mode
+    // Use development credentials in debug mode
     if (kDebugMode) {
       print(
           '⚠️ Using development AWS credentials. Set $_awsSecretKeyEnv environment variable for production.');
       return _devSecretKey;
     }
 
-    throw Exception(
-        'AWS Secret Key not configured. Set $_awsSecretKeyEnv environment variable.');
+    // In release mode, use fallback credentials (set via gradle.properties)
+    // This allows the app to work in release builds without external env vars
+    return _devSecretKey;
   }
 
   /// Get AWS Region from environment or fallback
@@ -89,6 +91,7 @@ class SecureConfig {
       awsSecretKey;
       return true;
     } catch (e) {
+      // Since we now always provide fallback credentials, this should never fail
       return false;
     }
   }

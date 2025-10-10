@@ -4,6 +4,7 @@ import '../model/message_model.dart';
 import '../services/ChatService.dart';
 import '../DB/unified_message_cache_service.dart';
 import '../main.dart';
+import 'chat_provider.dart';
 
 // Class to hold parameters for the chat provider
 class ChatProviderParams {
@@ -57,6 +58,7 @@ class ChatScreenState {
 // The single, efficient StateNotifier for the chat screen
 class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
   final ChatProviderParams params;
+  final Ref? _ref;
   final ChatService _chatService = ChatService();
   final UnifiedMessageCacheService _cacheService = UnifiedMessageCacheService();
   StreamSubscription? _realtimeSubscription;
@@ -65,7 +67,7 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
   int _retryCount = 0;
   static const int _maxRetries = 5; // برای قابلیت اطمینان بهتر
 
-  ChatScreenNotifier(this.params) : super(const ChatScreenState()) {
+  ChatScreenNotifier(this.params, this._ref) : super(const ChatScreenState()) {
     _initialize();
   }
 
@@ -298,6 +300,17 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
       final currentUser = supabase.auth.currentUser;
       if (currentUser != null) {
         _cacheService.cacheMessages(newMessages, currentUser.id);
+
+        // بروزرسانی conversation برای پیام‌های دریافتی جدید
+        if (newMessages.isNotEmpty &&
+            newMessages.any((msg) => msg.senderId != currentUser.id) &&
+            _ref != null) {
+          _ref.invalidate(conversationsProvider);
+          _ref.invalidate(conversationsStreamProvider);
+          _ref.invalidate(cachedConversationsStreamProvider);
+          // برای StateNotifier، refresh method فراخوانی کنیم
+          _ref.read(cachedConversationsProvider.notifier).refresh();
+        }
       }
     } catch (e) {
       print('⚠️ Error caching messages: $e');
@@ -358,6 +371,15 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
         _cacheService.cacheMessage(sentMessage, currentUser.id);
         _cacheService.clearMessage(
             params.conversationId, tempId, currentUser.id);
+
+        // بروزرسانی providerهای conversation برای نمایش آخرین پیام
+        if (_ref != null) {
+          _ref.invalidate(conversationsProvider);
+          _ref.invalidate(conversationsStreamProvider);
+          _ref.invalidate(cachedConversationsStreamProvider);
+          // برای StateNotifier، refresh method فراخوانی کنیم
+          _ref.read(cachedConversationsProvider.notifier).refresh();
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -374,6 +396,18 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
 
         state = state.copyWith(
             messages: sortedMessages, error: "Failed to send message");
+
+        // اگر پیام موقت داشتیم، conversation رو هم بروزرسانی کنیم (برای نمایش پیام ناموفق)
+        if (tempMessage.content.isNotEmpty ||
+            tempMessage.attachmentType != null) {
+          if (_ref != null) {
+            _ref.invalidate(conversationsProvider);
+            _ref.invalidate(conversationsStreamProvider);
+            _ref.invalidate(cachedConversationsStreamProvider);
+            // برای StateNotifier، refresh method فراخوانی کنیم
+            _ref.read(cachedConversationsProvider.notifier).refresh();
+          }
+        }
       }
     }
   }
@@ -433,5 +467,5 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
 final chatScreenProvider = StateNotifierProvider.family
     .autoDispose<ChatScreenNotifier, ChatScreenState, ChatProviderParams>(
         (ref, params) {
-  return ChatScreenNotifier(params);
+  return ChatScreenNotifier(params, ref);
 });

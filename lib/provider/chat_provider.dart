@@ -2066,7 +2066,34 @@ class CachedConversationsNotifier
   }
 
   void refresh() {
-    _loadCachedConversations();
+    _loadConversationsFromServer();
+  }
+
+  Future<void> _loadConversationsFromServer() async {
+    if (userId == null) return;
+
+    try {
+      // دریافت مکالمات از سرور با آخرین پیام‌ها
+      final chatService = ChatService();
+      final serverConversations = await chatService.getConversations();
+
+      if (serverConversations.isNotEmpty) {
+        // بروزرسانی کش برای هر مکالمه
+        final conversationCache = UnifiedConversationCacheService();
+        for (final conversation in serverConversations) {
+          await conversationCache.cacheConversation(conversation, userId!);
+        }
+
+        // بروزرسانی state
+        state = serverConversations;
+        print(
+            '✅ CachedConversationsNotifier: Refreshed with ${serverConversations.length} conversations from server');
+      }
+    } catch (e) {
+      print('⚠️ Error refreshing conversations from server: $e');
+      // fallback to cache
+      _loadCachedConversations();
+    }
   }
 }
 

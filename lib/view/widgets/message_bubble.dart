@@ -17,7 +17,11 @@ class MessageBubble extends StatefulWidget {
   final Function(MessageModel) onLongPress;
   final Function(MessageModel)? onReply;
   final Function(MessageModel)? onRetry;
+  final Function(String)? onTap;
+  final Function(MessageModel)? onSingleTap;
+  final Function(String)? onSelectTap;
   final bool isHighlighted;
+  final bool isSelected;
 
   const MessageBubble({
     super.key,
@@ -25,7 +29,11 @@ class MessageBubble extends StatefulWidget {
     required this.onLongPress,
     this.onReply,
     this.onRetry,
+    this.onTap,
+    this.onSingleTap,
+    this.onSelectTap,
     this.isHighlighted = false,
+    this.isSelected = false,
   });
 
   @override
@@ -70,6 +78,20 @@ class _MessageBubbleState extends State<MessageBubble>
         content.contains('🔗 مشاهده در Vista:');
   }
 
+  bool _isFileWithoutCaption(MessageModel message) {
+    // اگر فایل است و کپشن خالی یا فقط شامل اسم فایل است
+    if (message.attachmentType == 'document' ||
+        message.attachmentType == 'file') {
+      if (message.content.isEmpty) {
+        return true;
+      }
+      // اگر کپشن دقیقاً برابر با اسم فایل باشد، آن را به عنوان بدون کپشن در نظر می‌گیریم
+      final fileName = _extractFileName(message.attachmentUrl ?? '');
+      return message.content.trim() == fileName;
+    }
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -85,6 +107,15 @@ class _MessageBubbleState extends State<MessageBubble>
 
     return GestureDetector(
       onLongPress: () => widget.onLongPress(widget.message),
+      onTap: () {
+        if (widget.isSelected && widget.onTap != null) {
+          widget.onTap!(widget.message.id);
+        } else if (widget.onSelectTap != null) {
+          widget.onSelectTap!(widget.message.id);
+        } else if (widget.onSingleTap != null) {
+          widget.onSingleTap!(widget.message);
+        }
+      },
       onHorizontalDragUpdate: (details) {
         if (widget.onReply == null) return;
 
@@ -131,16 +162,20 @@ class _MessageBubbleState extends State<MessageBubble>
             decoration: BoxDecoration(
               color: (isImageOnly || _isSharedPost(widget.message.content))
                   ? Colors.transparent
-                  : (isMe ? outgoingBubbleColor : incomingBubbleColor),
+                  : (widget.isSelected
+                      ? Theme.of(context).primaryColor.withOpacity(0.2)
+                      : (isMe ? outgoingBubbleColor : incomingBubbleColor)),
               borderRadius: BorderRadius.only(
                 topLeft: const Radius.circular(18),
                 topRight: const Radius.circular(18),
                 bottomLeft: Radius.circular(isMe ? 18 : 4),
                 bottomRight: Radius.circular(isMe ? 4 : 18),
               ),
-              border: widget.isHighlighted
+              border: widget.isHighlighted || widget.isSelected
                   ? Border.all(
-                      color: Colors.amber,
+                      color: widget.isSelected
+                          ? Theme.of(context).primaryColor
+                          : Colors.amber,
                       width: 2,
                     )
                   : null,
@@ -152,51 +187,60 @@ class _MessageBubbleState extends State<MessageBubble>
                         blurRadius: 5,
                         offset: const Offset(0, 2),
                       ),
-                      if (widget.isHighlighted)
+                      if (widget.isHighlighted || widget.isSelected)
                         BoxShadow(
-                          color: Colors.amber.withOpacity(0.3),
+                          color: (widget.isSelected
+                                  ? Theme.of(context).primaryColor
+                                  : Colors.amber)
+                              .withOpacity(0.3),
                           blurRadius: 10,
                           offset: const Offset(0, 0),
                         ),
                     ],
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
+            child: Stack(
               children: [
-                if (widget.message.replyToMessageId != null)
-                  _buildReplyPreview(context, widget.message),
-                if (widget.message.attachmentUrl != null &&
-                    !_isSharedPost(widget.message.content))
-                  _buildAttachment(context, widget.message.attachmentType,
-                      widget.message.attachmentUrl!),
-                if (widget.message.content.isNotEmpty)
-                  _isSharedPost(widget.message.content)
-                      ? _buildSharedPostWidget()
-                      : _buildMessageContent(context, widget.message, isMe),
-                if (!isImageOnly || _isSharedPost(widget.message.content))
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4, right: 8, bottom: 4),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Text(
-                          TimeUtils.formatTime(widget.message.createdAt),
-                          textAlign: TextAlign.right,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: theme.textTheme.bodySmall?.color
-                                ?.withOpacity(0.6),
-                          ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (widget.message.replyToMessageId != null)
+                      _buildReplyPreview(context, widget.message),
+                    if (widget.message.attachmentUrl != null &&
+                        !_isSharedPost(widget.message.content))
+                      _buildAttachment(context, widget.message.attachmentType,
+                          widget.message.attachmentUrl!),
+                    if (widget.message.content.isNotEmpty &&
+                        !(_isFileWithoutCaption(widget.message)))
+                      _isSharedPost(widget.message.content)
+                          ? _buildSharedPostWidget()
+                          : _buildMessageContent(context, widget.message, isMe),
+                    if (!isImageOnly || _isSharedPost(widget.message.content))
+                      Padding(
+                        padding:
+                            const EdgeInsets.only(top: 4, right: 8, bottom: 4),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Text(
+                              TimeUtils.formatTime(widget.message.createdAt),
+                              textAlign: TextAlign.right,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: theme.textTheme.bodySmall?.color
+                                    ?.withOpacity(0.6),
+                              ),
+                            ),
+                            if (isMe) ...[
+                              const SizedBox(width: 5),
+                              _buildStatusIcon(widget.message),
+                            ],
+                          ],
                         ),
-                        if (isMe) ...[
-                          const SizedBox(width: 5),
-                          _buildStatusIcon(widget.message),
-                        ],
-                      ],
-                    ),
-                  ),
+                      ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -492,6 +536,119 @@ class _MessageBubbleState extends State<MessageBubble>
     }
   }
 
+  void _showFileOptions(BuildContext context, String url) async {
+    final fileName = _extractFileName(url);
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Theme.of(context).dividerColor.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.insert_drive_file_rounded,
+                        color: Theme.of(context).primaryColor,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        fileName,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).textTheme.titleLarge?.color,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Options
+              ListTile(
+                leading:
+                    const Icon(Icons.open_in_new_rounded, color: Colors.blue),
+                title: const Text('باز کردن'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await _downloadAndOpen(url);
+                },
+              ),
+              ListTile(
+                leading:
+                    const Icon(Icons.download_rounded, color: Colors.green),
+                title: const Text('ذخیره در دستگاه'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  try {
+                    setState(() {
+                      _isDownloading[url] = true;
+                      _downloadProgress[url] = 0.0;
+                    });
+
+                    // استفاده از AdvancedFileManager برای دانلود
+                    final file =
+                        await AdvancedFileManager.instance.getFile(url);
+                    if (file != null) {
+                      setState(() {
+                        _isDownloading[url] = false;
+                        _downloadProgress[url] = 1.0;
+                      });
+                      ToastService.showSuccessToast(
+                        context,
+                        'فایل ذخیره شد: ${file.path}',
+                      );
+                    } else {
+                      setState(() {
+                        _isDownloading[url] = false;
+                      });
+                      ToastService.showErrorToast(
+                        context,
+                        'دانلود فایل ناموفق بود',
+                      );
+                    }
+                  } catch (e) {
+                    setState(() {
+                      _isDownloading[url] = false;
+                    });
+                    ToastService.showErrorToast(context, 'خطا در دانلود فایل');
+                  }
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   // این متد دیگر استفاده نمی‌شود - از AdvancedFileManager استفاده می‌کنیم
   /*
   Future<File?> _ensureDownloadedWithProgress(String url) async {
@@ -629,79 +786,6 @@ class _MessageBubbleState extends State<MessageBubble>
 
   bool _isPdfFile(String url) {
     return url.toLowerCase().endsWith('.pdf');
-  }
-
-  void _showFileOptions(BuildContext context, String url) async {
-    final fileName = _extractFileName(url);
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.open_in_new_rounded),
-                title: const Text('باز کردن'),
-                subtitle: Text(
-                  fileName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  await _downloadAndOpen(url);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.download_rounded),
-                title: const Text('ذخیره در پوشه vista'),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  try {
-                    setState(() {
-                      _isDownloading[url] = true;
-                      _downloadProgress[url] = 0.0;
-                    });
-
-                    // استفاده از AdvancedFileManager برای دانلود
-                    final file =
-                        await AdvancedFileManager.instance.getFile(url);
-                    if (file != null) {
-                      setState(() {
-                        _isDownloading[url] = false;
-                        _downloadProgress[url] = 1.0;
-                      });
-                      ToastService.showSuccessToast(
-                        context,
-                        'فایل ذخیره شد: ${file.path}',
-                      );
-                    } else {
-                      setState(() {
-                        _isDownloading[url] = false;
-                      });
-                      ToastService.showErrorToast(
-                        context,
-                        'دانلود فایل ناموفق بود',
-                      );
-                    }
-                  } catch (e) {
-                    setState(() {
-                      _isDownloading[url] = false;
-                    });
-                    ToastService.showErrorToast(context, 'خطا در دانلود فایل');
-                  }
-                },
-              ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        );
-      },
-    );
   }
 
   Widget _buildReplyPreview(BuildContext context, MessageModel message) {
@@ -865,6 +949,29 @@ class _MessageBubbleState extends State<MessageBubble>
                 ),
               ],
             ),
+          // Selection checkbox
+          if (widget.isSelected)
+            Positioned(
+              top: 8,
+              left: widget.message.isMe ? 8 : null,
+              right: widget.message.isMe ? null : 8,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).primaryColor,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white,
+                    width: 2,
+                  ),
+                ),
+                child: Icon(
+                  Icons.check,
+                  color: Colors.white,
+                  size: 16,
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -1008,81 +1115,48 @@ class _MessageBubbleState extends State<MessageBubble>
 
   Widget _buildStatusIcon(MessageModel message) {
     if (message.isPending) {
-      return Icon(Icons.schedule, size: 14, color: Colors.grey.shade500);
+      return _buildStatusBadge(Icons.schedule, Colors.grey.shade500, 14);
     } else if (!message.isSent) {
       // برای پیام‌های ناموفق، دکمه retry نمایش داده می‌شود
       return _buildFailedMessageStatus(message);
     } else if (!message.isDelivered) {
-      return const Icon(Icons.done, size: 16, color: Colors.grey);
+      return _buildStatusBadge(Icons.done, Colors.grey.shade400, 16);
     } else if (!message.isSeen) {
-      return const Icon(Icons.done_all, size: 16, color: Colors.grey);
+      return _buildStatusBadge(Icons.done_all, Colors.grey.shade400, 16);
     } else {
-      return const Icon(Icons.done_all, size: 16, color: Colors.blue);
+      return _buildStatusBadge(Icons.done_all, Colors.blue, 16);
     }
+  }
+
+  Widget _buildStatusBadge(IconData icon, Color color, double size) {
+    return Icon(
+      icon,
+      size: size,
+      color: color,
+    );
   }
 
   Widget _buildFailedMessageStatus(MessageModel message) {
     return GestureDetector(
       onTap: () => _onRetryMessage(message),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: Colors.red.shade50,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.red.shade200, width: 1),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.red.shade100,
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.error_outline,
-              size: 14,
-              color: Colors.red.shade600,
-            ),
-            const SizedBox(width: 4),
-            _isRetrying
-                ? SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(Colors.red.shade600),
-                    ),
-                  )
-                : AnimatedRotation(
-                    duration: const Duration(milliseconds: 300),
-                    turns:
-                        message.retryCount * 0.1, // چرخش بر اساس تعداد تلاش‌ها
-                    child: Icon(
-                      Icons.refresh,
-                      size: 12,
-                      color: Colors.red.shade600,
-                    ),
-                  ),
-            // نمایش تعداد تلاش‌های ناموفق (اختیاری)
-            if (message.retryCount > 0) ...[
-              const SizedBox(width: 2),
-              Text(
-                '${message.retryCount}',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.red.shade600,
-                  fontWeight: FontWeight.bold,
-                ),
+      child: _isRetrying
+          ? SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.red.shade600),
               ),
-            ],
-          ],
-        ),
-      ),
+            )
+          : AnimatedRotation(
+              duration: const Duration(milliseconds: 300),
+              turns: message.retryCount * 0.1,
+              child: Icon(
+                Icons.error_outline,
+                size: 16,
+                color: Colors.red.shade600,
+              ),
+            ),
     );
   }
 

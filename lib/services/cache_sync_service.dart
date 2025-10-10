@@ -319,9 +319,10 @@ class CacheSyncService {
         // کش پیام‌های جدید
         await _messageCache.cacheMessages(newMessages, userId);
 
-        // بروزرسانی مکالمه
+        // بروزرسانی مکالمه با جدیدترین پیام بر اساس created_at
         if (newMessages.isNotEmpty) {
-          final latestMessage = newMessages.first;
+          final latestMessage = newMessages
+              .reduce((a, b) => a.createdAt.isAfter(b.createdAt) ? a : b);
           await _updateConversationFromMessage(
               conversationId, latestMessage, userId);
         }

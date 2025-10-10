@@ -17,6 +17,7 @@ import '/main.dart';
 import 'uploadImageChatService.dart';
 import 'uploadAudioChatService.dart';
 import 'profile_service.dart';
+import 'current_chat_tracker.dart';
 
 class ChatService {
   final SupabaseClient _supabase = supabase;
@@ -103,7 +104,7 @@ class ChatService {
             .map((e) => e['conversation_id'] as String)
             .toList();
 
-        // دریافت مکالمات به صورت باتچ
+        // دریافت مکالمات به صورت باتچ از سرور
         final conversationsResponse = await _supabase
             .from('conversations')
             .select()
@@ -213,7 +214,8 @@ class ChatService {
                       .map((e) => e['message_id'])
                       .toList(),
                 )
-                .order('created_at', ascending: false)
+                .order('created_at',
+                    ascending: false) // جدیدترین پیام بر اساس زمان ایجاد
                 .limit(1)
                 .maybeSingle();
 
@@ -341,6 +343,103 @@ class ChatService {
         conversationId, _supabase.auth.currentUser!.id); // استفاده از متد صحیح
   }
 
+  /// دریافت متن مناسب برای نمایش attachment
+  String _getAttachmentDisplayText(String? attachmentType) {
+    switch (attachmentType) {
+      case 'image':
+        return '🖼️ تصویر';
+      case 'audio':
+        return '🎵 پیام صوتی';
+      case 'document':
+        return '📄 فایل';
+      default:
+        return 'پیام';
+    }
+  }
+
+  /// افزایش تعداد پیام‌های خوانده‌نشده برای یک مکالمه
+  Future<void> incrementUnreadCount(
+      String conversationId, String currentUserId) async {
+    try {
+      // دریافت تعداد فعلی خوانده‌نشده
+      final conversation = await _conversationCache.getConversation(
+          conversationId, currentUserId);
+      if (conversation == null) return;
+
+      final newUnreadCount = conversation.unreadCount + 1;
+
+      // بروزرسانی در دیتابیس (اگر فیلد وجود ندارد، خطا نده)
+      try {
+        await _supabase
+            .from('conversations')
+            .update({'unread_count': newUnreadCount}).eq('id', conversationId);
+      } catch (e) {
+        print('⚠️ Could not update unread_count in database: $e');
+      }
+
+      // بروزرسانی کش
+      final updatedConversation =
+          conversation.copyWith(unreadCount: newUnreadCount);
+      await _conversationCache.updateConversation(
+          updatedConversation, currentUserId);
+
+      print(
+          '✅ Unread count incremented for conversation: $conversationId, new count: $newUnreadCount');
+    } catch (e) {
+      print('⚠️ Error incrementing unread count: $e');
+    }
+  }
+
+  /// بازنشانی تعداد پیام‌های خوانده‌نشده برای یک مکالمه (وقتی کاربر وارد مکالمه می‌شود)
+  Future<void> resetUnreadCount(
+      String conversationId, String currentUserId) async {
+    try {
+      // بروزرسانی در دیتابیس (اگر فیلد وجود ندارد، خطا نده)
+      try {
+        await _supabase
+            .from('conversations')
+            .update({'unread_count': 0}).eq('id', conversationId);
+      } catch (e) {
+        print('⚠️ Could not reset unread_count in database: $e');
+      }
+
+      // بروزرسانی کش
+      final conversation = await _conversationCache.getConversation(
+          conversationId, currentUserId);
+      if (conversation != null) {
+        final updatedConversation = conversation.copyWith(unreadCount: 0);
+        await _conversationCache.updateConversation(
+            updatedConversation, currentUserId);
+      }
+
+      print('✅ Unread count reset for conversation: $conversationId');
+    } catch (e) {
+      print('⚠️ Error resetting unread count: $e');
+    }
+  }
+
+  /// بروزرسانی conversation در دیتابیس با آخرین پیام
+  Future<void> _updateConversationWithLatestMessage(
+      String conversationId, String content, DateTime messageTime) async {
+    try {
+      // بروزرسانی فقط فیلدهای موجود
+      final updateData = {
+        'last_message': content,
+        'last_message_time': messageTime.toUtc().toIso8601String(),
+        'updated_at': messageTime.toUtc().toIso8601String(),
+      };
+
+      await _supabase
+          .from('conversations')
+          .update(updateData)
+          .eq('id', conversationId);
+
+      print('✅ Conversation updated with latest message: $conversationId');
+    } catch (e) {
+      print('⚠️ Error updating conversation: $e');
+    }
+  }
+
   Future<MessageModel> sendMessage({
     required String conversationId,
     required String content,
@@ -389,6 +488,33 @@ class ChatService {
           .single();
 
       print('✅ پیام با موفقیت ارسال شد');
+
+      // بروزرسانی conversation با آخرین پیام
+      final messageTime = DateTime.parse(response['created_at']);
+      // اگر پیام خالی است اما دارای فایل است، از متن مناسب استفاده کن
+      String lastMessageContent = content.isNotEmpty
+          ? content
+          : _getAttachmentDisplayText(attachmentType);
+      await _updateConversationWithLatestMessage(
+          conversationId, lastMessageContent, messageTime);
+
+      // بروزرسانی کش conversation برای بروزرسانی فوری UI
+      try {
+        final cachedConversation =
+            await _conversationCache.getConversation(conversationId, userId);
+        if (cachedConversation != null) {
+          final updatedConversation = cachedConversation.copyWith(
+            lastMessage: lastMessageContent,
+            lastMessageTime: messageTime,
+            updatedAt: messageTime,
+          );
+          await _conversationCache.updateConversation(
+              updatedConversation, userId);
+          print('✅ Conversation cache updated for: $conversationId');
+        }
+      } catch (e) {
+        print('⚠️ Error updating conversation cache: $e');
+      }
 
       // دریافت اطلاعات پروفایل کاربر
       final profileResponse =
@@ -495,10 +621,12 @@ class ChatService {
       );
       if (conversation != null) {
         // Format last message content for temp messages
-        String lastMessageContent = content;
+        String lastMessageContent = content.isNotEmpty
+            ? content
+            : _getAttachmentDisplayText(attachmentType);
         if (temporaryId.startsWith('temp_')) {
           // Add clock icon for pending messages
-          lastMessageContent = '🕐 $content';
+          lastMessageContent = '🕐 $lastMessageContent';
         }
 
         final updatedConversation = conversation.copyWith(
@@ -667,8 +795,11 @@ class ChatService {
             'createOrGetConversation: هیچ مکالمه موجودی یافت نشد، ایجاد مکالمه جدید...');
 
         // اگر هیچ گفتگویی پیدا نشد، مکالمه جدید بساز
-        final newConversation =
-            await _supabase.from('conversations').insert({}).select().single();
+        final newConversation = await _supabase
+            .from('conversations')
+            .insert({'unread_count': 0})
+            .select()
+            .single();
 
         final conversationId = newConversation['id'];
         print('createOrGetConversation: مکالمه جدید ایجاد شد: $conversationId');
@@ -1132,7 +1263,8 @@ class ChatService {
               .map((e) => e['message_id'])
               .toList(),
         )
-        .order('created_at', ascending: false)
+        .order('created_at',
+            ascending: false) // جدیدترین پیام بر اساس زمان ایجاد
         .limit(1)
         .maybeSingle();
 
@@ -1145,9 +1277,10 @@ class ChatService {
           lastMessageQuery['created_at'] as String?;
     }
 
-    // محاسبه تعداد پیام‌های خوانده‌نشده
-    final int unreadCount = 0;
-    final bool hasUnreadMessages = false;
+    // خواندن تعداد پیام‌های خوانده‌نشده از دیتابیس
+    final int unreadCount =
+        (updatedConversationData['unread_count'] as int?) ?? 0;
+    final bool hasUnreadMessages = unreadCount > 0;
     return ConversationModel.fromJson(
       updatedConversationData,
       currentUserId: userId,
@@ -2489,19 +2622,65 @@ class ChatService {
           final conversation =
               await _conversationCache.getConversation(conversationId, userId);
           if (conversation != null) {
+            // چک کردن اینکه آیا پیام جدید از کاربر فعلی هست یا نه
+            final hasUnreadMessages = latestMessage.senderId != userId;
+
+            // تنظیم متن آخرین پیام (اگر خالی باشد، متن مناسب برای attachment استفاده کن)
+            final String lastMessageContent = latestMessage.content.isNotEmpty
+                ? latestMessage.content
+                : _getAttachmentDisplayText(latestMessage.attachmentType);
+
             final updatedConversation = conversation.copyWith(
-              lastMessage: latestMessage.content,
+              lastMessage: lastMessageContent,
               lastMessageTime: latestMessage.createdAt,
               updatedAt: latestMessage.createdAt,
+              // افزایش تعداد خوانده‌نشده اگر پیام از کاربر دیگری باشد
+              unreadCount: hasUnreadMessages
+                  ? conversation.unreadCount + 1
+                  : conversation.unreadCount,
             );
             await _conversationCache.updateConversation(
                 updatedConversation, userId);
+
+            // بروزرسانی unreadCount در دیتابیس
+            try {
+              await _supabase
+                  .from('conversations')
+                  .update({'unread_count': updatedConversation.unreadCount}).eq(
+                      'id', conversationId);
+            } catch (e) {
+              print('⚠️ Could not update unread_count in database: $e');
+            }
           }
         }
       }
 
       // Broadcast updates
       _broadcastMessageUpdates(conversationId, newMessages);
+
+      // بروزرسانی لیست مکالمات برای نمایش آخرین پیام
+      try {
+        // Invalidate providers to refresh conversation list
+        // Note: This is handled in ChatScreenProvider._updateMessages
+      } catch (e) {
+        print('⚠️ Error invalidating providers: $e');
+      }
+
+      // افزایش شمارنده پیام‌های خوانده‌نشده اگر صفحه چت باز نیست
+      try {
+        final openId = CurrentChatTracker.instance.openConversationId;
+        final currentUserId = _supabase.auth.currentUser?.id;
+        if (currentUserId != null && openId != conversationId) {
+          // فقط پیام‌هایی که فرستنده‌شان کاربر فعلی نیست را unread حساب کن
+          final hasIncomingFromOther = newMessages.any(
+              (m) => m.senderId != currentUserId && !m.id.startsWith('temp_'));
+          if (hasIncomingFromOther) {
+            await incrementUnreadCount(conversationId, currentUserId);
+          }
+        }
+      } catch (e) {
+        print('⚠️ Error incrementing unread count: $e');
+      }
     } catch (e) {
       print('⚠️ Error handling incoming messages: $e');
     }
