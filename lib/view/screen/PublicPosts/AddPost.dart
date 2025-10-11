@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
@@ -12,9 +11,8 @@ import 'package:video_player/video_player.dart';
 import '../../../main.dart';
 import '../../../model/UserModel.dart';
 import '../../../services/PostImageUploadService.dart';
-import '../../../services/user_friendly_error_handler.dart';
 import '../../../provider/provider.dart';
-import '../../widgets/CustomVideoTrimmer.dart';
+import '../../widgets/YourVideoTrimmerPage .dart';
 
 class AddPublicPostScreen extends ConsumerStatefulWidget {
   const AddPublicPostScreen({super.key});
@@ -53,22 +51,10 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       _initializeWebSpecificCode();
     }
 
-    // تنظیمات برای بهبود عملکرد cursor در RTL برای CupertinoTextField
-    _focusNode.addListener(() {
-      if (_focusNode.hasFocus) {
-        // اطمینان از اینکه cursor در موقعیت صحیح قرار می‌گیرد
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            final text = contentController.text;
-            if (text.isNotEmpty) {
-              // تنظیم cursor در انتهای متن اگر فوکوس دارد
-              contentController.selection = TextSelection.fromPosition(
-                TextPosition(offset: text.length),
-              );
-            }
-          }
-        });
-      }
+    contentController.addListener(() {
+      setState(() {
+        remainingChars = maxCharLength - contentController.text.length;
+      });
     });
   }
 
@@ -230,10 +216,8 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                     setState(() {});
                   }
                 } catch (e) {
-                  UserFriendlyErrorHandler.logError(e,
-                      context: 'video_loading');
-                  _showError(UserFriendlyErrorHandler.getFriendlyMessage(e,
-                      context: 'video_loading'));
+                  debugPrint('Error initializing video player: $e');
+                  _showError('خطا در بارگذاری ویدیو: $e');
                 }
 
                 debugPrint(
@@ -249,10 +233,9 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
         }
       }
     } catch (e, s) {
-      UserFriendlyErrorHandler.logError(e,
-          context: 'video_selection', stackTrace: s);
-      _showError(UserFriendlyErrorHandler.getFriendlyMessage(e,
-          context: 'video_selection'));
+      debugPrint('خطا در انتخاب/برش ویدیو: $e\n$s');
+      _showError(
+          'خطایی در انتخاب یا پردازش ویدیو رخ داد. لطفاً دوباره تلاش کنید.');
     }
   }
 
@@ -1046,25 +1029,23 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: CupertinoTextField(
+        child: TextField(
           controller: contentController,
-          focusNode: _focusNode,
+          // focusNode: _focusNode,
           maxLines: 7,
           minLines: 3,
           keyboardType: TextInputType.multiline,
           textDirection: TextDirection.rtl,
-          textAlign: TextAlign.right,
-          cursorColor: textColor,
           style: TextStyle(
             color: textColor,
             fontSize: 16,
           ),
-          placeholder: 'چیزی بنویسید...',
-          placeholderStyle: TextStyle(color: secondaryTextColor),
-          decoration: BoxDecoration(
-            color: Colors.transparent,
+          decoration: InputDecoration(
+            hintText: 'چیزی بنویسید...',
+            hintStyle: TextStyle(color: secondaryTextColor),
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(vertical: 8),
           ),
-          padding: const EdgeInsets.symmetric(vertical: 8),
         ),
       ),
     );
