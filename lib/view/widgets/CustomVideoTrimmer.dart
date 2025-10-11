@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -14,12 +15,12 @@ class CustomVideoTrimmer extends ConsumerStatefulWidget {
   final Duration maxDuration;
 
   const CustomVideoTrimmer({
-    Key? key,
+    super.key,
     required this.videoFile,
     required this.onVideoSaved,
     this.isWeb = kIsWeb,
     this.maxDuration = const Duration(minutes: 1),
-  }) : super(key: key);
+  });
 
   @override
   ConsumerState<CustomVideoTrimmer> createState() =>
@@ -37,7 +38,7 @@ class _CustomVideoTrimmerState extends ConsumerState<CustomVideoTrimmer> {
   Duration _videoDuration = Duration.zero;
   Duration _currentPosition = Duration.zero;
   final double _thumbWidth = 10;
-  Subscription? _progressSubscription;
+  dynamic _progressSubscription;
   List<Uint8List> _thumbnails = [];
   bool _loadingThumbnails = false;
   int _compressionProgress = 0;
@@ -50,7 +51,7 @@ class _CustomVideoTrimmerState extends ConsumerState<CustomVideoTrimmer> {
 
   @override
   void dispose() {
-    _progressSubscription?.unsubscribe();
+    _progressSubscription?.cancel();
     _controller.removeListener(_videoListener);
     _controller.dispose();
     super.dispose();
@@ -216,7 +217,7 @@ class _CustomVideoTrimmerState extends ConsumerState<CustomVideoTrimmer> {
       setState(() => _isPlaying = false);
 
       // دریافت پیشرفت فشرده‌سازی
-      _progressSubscription?.unsubscribe();
+      _progressSubscription?.cancel();
       _progressSubscription =
           VideoCompress.compressProgress$.subscribe((progress) {
         debugPrint('پیشرفت فشرده‌سازی: $progress%');
@@ -246,7 +247,7 @@ class _CustomVideoTrimmerState extends ConsumerState<CustomVideoTrimmer> {
       debugPrint('خطا در _trimVideo: $e');
       _showError(e.toString());
     } finally {
-      _progressSubscription?.unsubscribe();
+      _progressSubscription?.cancel();
       _progressSubscription = null;
       setState(() => _isTrimming = false);
     }
@@ -261,7 +262,7 @@ class _CustomVideoTrimmerState extends ConsumerState<CustomVideoTrimmer> {
           _selectedDuration.inMilliseconds;
     }
 
-    return Container(
+    return SizedBox(
       height: 2,
       child: LinearProgressIndicator(
         value: progress.clamp(0.0, 1.0),
@@ -372,10 +373,13 @@ class _CustomVideoTrimmerState extends ConsumerState<CustomVideoTrimmer> {
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: !_isTrimming,
+      onPopInvokedWithResult: (didPop, result) {
         // بررسی می‌کنیم که آیا در حال برش هستیم
-        return !_isTrimming;
+        if (!didPop && _isTrimming) {
+          // عملیات خاصی انجام نده، چون canPop = false است
+        }
       },
       child: Scaffold(
         appBar: AppBar(
