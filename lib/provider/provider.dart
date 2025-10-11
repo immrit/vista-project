@@ -1531,8 +1531,8 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
 
       final followingCount = followingResponse.length;
 
-      // دریافت آخرین 10 پست - برای همه کاربران (نه فقط کاربر فعلی)
-      print('🔍 Fetching posts for userId: $userId');
+      // دریافت اولین 10 پست - برای lazy loading
+      print('🔍 Fetching initial posts for userId: $userId');
       final postsResponse = await supabase
           .from('posts')
           .select('''
@@ -3247,4 +3247,112 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
 final performanceProvider =
     StateNotifierProvider<PerformanceNotifier, PerformanceSettings>((ref) {
   return PerformanceNotifier();
+});
+
+// Provider برای lazy loading پست‌های پروفایل
+class ProfilePostsNotifier
+    extends StateNotifier<AsyncValue<List<PublicPostModel>>> {
+  final SupabaseClient supabase;
+  final String userId;
+  final int _limit = 10;
+  int _offset = 0;
+  bool _hasMore = true;
+  bool _isLoading = false;
+  List<PublicPostModel> _allPosts = [];
+
+  ProfilePostsNotifier(this.supabase, this.userId)
+      : super(const AsyncValue.loading()) {
+    _loadInitialPosts();
+  }
+
+  Future<void> _loadInitialPosts() async {
+    state = const AsyncValue.loading();
+    _offset = 0;
+    _hasMore = true;
+    _isLoading = false;
+    _allPosts.clear();
+    await _loadMorePosts();
+  }
+
+  Future<void> _loadMorePosts() async {
+    if (!_hasMore || _isLoading) return;
+
+    _isLoading = true;
+
+    try {
+      final currentUserId = supabase.auth.currentUser?.id;
+
+      final postsResponse = await supabase
+          .from('posts')
+          .select('''
+            *,
+            profiles!posts_user_id_fkey (
+              username,
+              avatar_url,
+              is_verified,
+              verification_type
+            ),
+            likes (
+              user_id
+            ),
+            comments (
+              id
+            )
+          ''')
+          .eq('user_id', userId)
+          .order('created_at', ascending: false)
+          .range(_offset, _offset + _limit - 1);
+
+      if (postsResponse.isEmpty) {
+        _hasMore = false;
+        _isLoading = false;
+        return;
+      }
+
+      final newPosts = postsResponse.map((post) {
+        final postLikes = post['likes'] as List? ?? [];
+        final comments = post['comments'] as List<dynamic>? ?? [];
+
+        return PublicPostModel.fromMap({
+          ...post,
+          'like_count': postLikes.length,
+          'is_liked': postLikes.any((like) => like['user_id'] == currentUserId),
+          'username': post['profiles']['username'] ??
+              post['profiles']['full_name'] ??
+              'Unknown',
+          'avatar_url': post['profiles']['avatar_url'] ?? '',
+          'is_verified': post['profiles']['is_verified'] ?? false,
+          'comment_count': comments.length,
+          'verification_type': post['profiles']['verification_type'],
+        });
+      }).toList();
+
+      _allPosts.addAll(newPosts);
+      _offset += _limit;
+      _hasMore = postsResponse.length == _limit;
+
+      state = AsyncValue.data(_allPosts);
+    } catch (e) {
+      state = AsyncValue.error(e, StackTrace.current);
+    } finally {
+      _isLoading = false;
+    }
+  }
+
+  Future<void> loadMore() async {
+    await _loadMorePosts();
+  }
+
+  Future<void> refresh() async {
+    await _loadInitialPosts();
+  }
+
+  bool get hasMore => _hasMore;
+  bool get isLoading => _isLoading;
+}
+
+final profilePostsProvider = StateNotifierProvider.family<ProfilePostsNotifier,
+    AsyncValue<List<PublicPostModel>>, String>((ref, userId) {
+  final supabase = ref.watch(supabaseClientProvider);
+  return ProfilePostsNotifier(supabase, userId);
 });

@@ -266,7 +266,8 @@ class _YourVideoTrimmerPageState extends State<YourVideoTrimmerPage> {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                            color: Colors.blue.withValues(alpha: 0.3), width: 2),
+                            color: Colors.blue.withValues(alpha: 0.3),
+                            width: 2),
                       ),
                       clipBehavior: Clip.antiAlias,
                       child: VideoViewer(trimmer: _trimmer),

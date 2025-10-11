@@ -68,7 +68,7 @@ class UnifiedMessageCacheService {
   /// Clear messages for a conversation
   Future<void> clearConversationMessages(
       String conversationId, String userId) async {
-    // Advanced cache handles clearing
+    await _advancedCache.clearConversationMessages(conversationId);
   }
 
   /// Clear a specific message
@@ -84,7 +84,7 @@ class UnifiedMessageCacheService {
 
   /// Clear all cached messages
   Future<void> clearAllCache() async {
-    // Advanced cache handles clearing
+    await _advancedCache.clearAllMessages();
   }
 
   /// Delete messages older than specified date

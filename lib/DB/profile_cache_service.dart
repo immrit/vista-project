@@ -18,7 +18,8 @@ class ProfileCacheService {
   static const String _lastUpdateKey = 'profile_cache_last_update';
 
   // تنظیمات کش
-  static const int maxCachedPostsPerUser = 10;
+  static const int maxCachedPostsPerUser =
+      50; // محدودیت کش برای بهینه‌سازی عملکرد
   static const Duration cacheValidityDuration = Duration(hours: 2);
 
   // Memory cache برای دسترسی سریع
@@ -181,7 +182,7 @@ class ProfileCacheService {
 
       final followingCount = followingResponse.length;
 
-      // دریافت آخرین 10 پست
+      // دریافت همه پست‌ها
       final postsResponse = await supabase
           .from('posts')
           .select('''

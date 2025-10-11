@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:convert';
 import '../DB/unified_message_cache_service.dart';
 import '../DB/unified_conversation_cache_service.dart';
+import 'file_manager_service.dart';
 
 /// سیستم مدیریت کش مرکزی و هوشمند
 class UnifiedCacheManager {
@@ -32,86 +33,41 @@ class UnifiedCacheManager {
   bool _isInitialized = false;
   bool _disabled = false; // Flag to disable cache manager
 
+  // تنظیمات کش برای انواع مختلف رسانه
+  bool _imageCacheEnabled = true;
+  bool _musicCacheEnabled = true;
+  bool _videoCacheEnabled = true;
+
   Future<void> initialize() async {
     if (_isInitialized) return;
 
-    // Disable cache manager to prevent SQLite conflicts
-    _disabled = true;
-    _isInitialized = true;
-    print('⚠️ UnifiedCacheManager disabled to prevent SQLite conflicts');
-
-    // Note: The following code is commented out to prevent SQLite conflicts
-    // but kept for future reference when the conflicts are resolved
-
-    /*
     try {
       print('🚀 Initializing UnifiedCacheManager...');
 
-      // مقداردهی اولیه کش‌های تصویر به صورت متوالی برای جلوگیری از تداخل SQLite
-      print('📸 Initializing story cache...');
-      storyInstance = CacheManager(
-        Config(
-          storyKey,
-          stalePeriod: const Duration(days: 1),
-          maxNrOfCacheObjects: 100,
-        ),
-      );
-      await Future.delayed(const Duration(milliseconds: 200)); // تاخیر بیشتر
+      // استفاده از DefaultCacheManager به جای ایجاد چندین CacheManager جداگانه
+      // این کار تداخل SQLite را کاهش می‌دهد
+      print('📸 Initializing unified cache manager...');
 
-      print('📷 Initializing post cache...');
-      postInstance = CacheManager(
-        Config(
-          postKey,
-          stalePeriod: const Duration(days: 7),
-          maxNrOfCacheObjects: 200,
-        ),
-      );
-      await Future.delayed(const Duration(milliseconds: 200));
-
-      print('💬 Initializing chat cache...');
-      chatInstance = CacheManager(
-        Config(
-          'chat_image_cache',
-          stalePeriod: const Duration(days: 7),
-          maxNrOfCacheObjects: 200,
-        ),
-      );
-      await Future.delayed(const Duration(milliseconds: 200));
-
-      print('🖼️ Initializing wallpaper cache...');
-      wallpaperInstance = CacheManager(
-        Config(
-          'chat_wallpaper_cache',
-          stalePeriod: const Duration(days: 30),
-          maxNrOfCacheObjects: 50,
-          fileService: HttpFileService(),
-        ),
-      );
-      await Future.delayed(const Duration(milliseconds: 200));
+      // ایجاد یک CacheManager واحد با تنظیمات بهینه
+      storyInstance = DefaultCacheManager();
+      postInstance = DefaultCacheManager();
+      chatInstance = DefaultCacheManager();
+      wallpaperInstance = DefaultCacheManager();
 
       _isInitialized = true;
-      print('✅ UnifiedCacheManager initialized successfully');
+      _disabled = false; // فعال کردن cache manager
+      print(
+          '✅ UnifiedCacheManager initialized successfully with DefaultCacheManager');
 
       // شروع پاکسازی هوشمند
       _startSmartCleanup();
     } catch (e) {
       print('❌ Failed to initialize UnifiedCacheManager: $e');
-      // در صورت خطا، حداقل یک instance ساده ایجاد کن
-      try {
-        storyInstance = CacheManager(Config(storyKey));
-        postInstance = CacheManager(Config(postKey));
-        chatInstance = CacheManager(Config('chat_image_cache'));
-        wallpaperInstance = CacheManager(Config('chat_wallpaper_cache'));
-        _isInitialized = true;
-        print('⚠️ Fallback cache managers created');
-      } catch (fallbackError) {
-        print('❌ Failed to create fallback cache managers: $fallbackError');
-        // در صورت خطای کامل، بدون کش ادامه بده
-        _isInitialized = true;
-        print('⚠️ Continuing without cache managers');
-      }
+      // در صورت خطا، بدون کش ادامه بده
+      _disabled = true;
+      _isInitialized = true;
+      print('⚠️ Continuing without cache managers due to initialization error');
     }
-    */
   }
 
   /// دریافت آمار کامل کش
@@ -126,6 +82,9 @@ class UnifiedCacheManager {
         'battery_saver_mode': false,
         'max_cache_size_mb': 0,
         'last_cleanup': null,
+        'image_cache_enabled': _imageCacheEnabled,
+        'music_cache_enabled': _musicCacheEnabled,
+        'video_cache_enabled': _videoCacheEnabled,
       };
     }
 
@@ -140,6 +99,9 @@ class UnifiedCacheManager {
         'battery_saver_mode': _batterySaverMode,
         'max_cache_size_mb': _maxCacheSizeMB,
         'last_cleanup': await _getLastCleanupTime(),
+        'image_cache_enabled': _imageCacheEnabled,
+        'music_cache_enabled': _musicCacheEnabled,
+        'video_cache_enabled': _videoCacheEnabled,
       };
     } catch (e) {
       return {'error': e.toString()};
@@ -186,6 +148,11 @@ class UnifiedCacheManager {
       itemsRemoved += (messageCleanup['items_removed'] as num).toInt();
       spaceFreed += (messageCleanup['space_freed'] as num).toDouble();
 
+      // پاکسازی فایل‌های موقت
+      final tempCleanup = await _cleanupTempFiles();
+      itemsRemoved += (tempCleanup['items_removed'] as num).toInt();
+      spaceFreed += (tempCleanup['space_freed'] as num).toDouble();
+
       // بروزرسانی زمان آخرین پاکسازی
       await _updateLastCleanupTime();
 
@@ -207,6 +174,15 @@ class UnifiedCacheManager {
 
   /// پاکسازی کامل تمام کش‌ها
   Future<Map<String, dynamic>> clearAllCaches() async {
+    if (_disabled) {
+      return {
+        'disabled': true,
+        'message': 'Cache manager disabled',
+        'items_removed': 0,
+        'space_freed_mb': 0.0,
+      };
+    }
+
     int itemsRemoved = 0;
     double spaceFreed = 0.0;
 
@@ -279,14 +255,13 @@ class UnifiedCacheManager {
       final storySize = await _getSpecificCacheSize('storyImageCache');
       final postSize = await _getSpecificCacheSize('postImageCache');
       final chatSize = await _getSpecificCacheSize('chat_image_cache');
-      final wallpaperSize = await _getSpecificCacheSize('chat_wallpaper_cache');
+      // wallpaper حذف شد چون فایل‌های محلی هستند
 
       // شمارش تعداد فایل‌ها برای هر کش
       final storyCount = await _countSpecificCacheFiles('storyImageCache');
       final postCount = await _countSpecificCacheFiles('postImageCache');
       final chatCount = await _countSpecificCacheFiles('chat_image_cache');
-      final wallpaperCount =
-          await _countSpecificCacheFiles('chat_wallpaper_cache');
+      // wallpaper حذف شد چون فایل‌های محلی هستند
 
       return {
         'story_cache': {
@@ -301,10 +276,7 @@ class UnifiedCacheManager {
           'items': chatCount,
           'size_mb': chatSize,
         },
-        'wallpaper_cache': {
-          'items': wallpaperCount,
-          'size_mb': wallpaperSize,
-        },
+        // wallpaper_cache حذف شد چون فایل‌های محلی هستند
       };
     } catch (e) {
       print('خطا در دریافت آمار کش تصاویر: $e');
@@ -312,7 +284,7 @@ class UnifiedCacheManager {
         'story_cache': {'items': 0, 'size_mb': 0.0},
         'post_cache': {'items': 0, 'size_mb': 0.0},
         'chat_cache': {'items': 0, 'size_mb': 0.0},
-        'wallpaper_cache': {'items': 0, 'size_mb': 0.0},
+        // wallpaper_cache حذف شد چون فایل‌های محلی هستند
       };
     }
   }
@@ -362,8 +334,7 @@ class UnifiedCacheManager {
         return 45.2; // 45.2 MB برای کش پست‌ها
       case 'chat_image_cache':
         return 28.7; // 28.7 MB برای کش چت
-      case 'chat_wallpaper_cache':
-        return 8.3; // 8.3 MB برای کش والپیپر
+      // case 'chat_wallpaper_cache' حذف شد چون فایل‌های محلی هستند
       default:
         return 0.0;
     }
@@ -416,8 +387,7 @@ class UnifiedCacheManager {
         return 78; // 78 فایل برای کش پست‌ها
       case 'chat_image_cache':
         return 45; // 45 فایل برای کش چت
-      case 'chat_wallpaper_cache':
-        return 12; // 12 فایل برای کش والپیپر
+      // case 'chat_wallpaper_cache' حذف شد چون فایل‌های محلی هستند
       default:
         return 0;
     }
@@ -439,9 +409,7 @@ class UnifiedCacheManager {
       if (imageStats['chat_cache'] != null) {
         totalSize += (imageStats['chat_cache']['size_mb'] ?? 0.0);
       }
-      if (imageStats['wallpaper_cache'] != null) {
-        totalSize += (imageStats['wallpaper_cache']['size_mb'] ?? 0.0);
-      }
+      // wallpaper_cache حذف شد چون فایل‌های محلی هستند
 
       return totalSize;
     } catch (e) {
@@ -450,6 +418,13 @@ class UnifiedCacheManager {
   }
 
   Future<Map<String, dynamic>> _cleanupOldImages(double targetSizeMB) async {
+    if (_disabled) {
+      return {
+        'items_removed': 0,
+        'space_freed': 0.0,
+      };
+    }
+
     int itemsRemoved = 0;
     double spaceFreed = 0.0;
 
@@ -493,6 +468,83 @@ class UnifiedCacheManager {
     };
   }
 
+  /// پاکسازی فایل‌های موقت
+  Future<Map<String, dynamic>> _cleanupTempFiles() async {
+    int itemsRemoved = 0;
+    double spaceFreed = 0.0;
+
+    try {
+      // پاکسازی دایرکتوری temp اصلی
+      final tempDir = await getTemporaryDirectory();
+      if (await tempDir.exists()) {
+        final files = await tempDir.list(recursive: true).toList();
+        for (final file in files) {
+          if (file is File) {
+            final fileSize = await file.length();
+            await file.delete();
+            itemsRemoved++;
+            spaceFreed += fileSize / (1024 * 1024); // تبدیل به MB
+          }
+        }
+      }
+
+      // پاکسازی فایل‌های موقت Vista
+      try {
+        final vistaTempDir = await FileManagerService.getTempDirectory();
+        if (await vistaTempDir.exists()) {
+          final files = await vistaTempDir.list(recursive: true).toList();
+          for (final file in files) {
+            if (file is File) {
+              final fileSize = await file.length();
+              await file.delete();
+              itemsRemoved++;
+              spaceFreed += fileSize / (1024 * 1024); // تبدیل به MB
+            }
+          }
+        }
+      } catch (e) {
+        print('خطا در پاکسازی فایل‌های موقت Vista: $e');
+      }
+
+      // پاکسازی فایل‌های قدیمی در پوشه‌های مختلف
+      final directories = [
+        await FileManagerService.getFilesDirectory(),
+        await FileManagerService.getImageDirectory(),
+        await FileManagerService.getAudioDirectory(),
+      ];
+
+      for (final dir in directories) {
+        if (await dir.exists()) {
+          final files = await dir.list(recursive: true).toList();
+          for (final file in files) {
+            if (file is File) {
+              final stat = await file.stat();
+              final age = DateTime.now().difference(stat.modified);
+
+              // حذف فایل‌های قدیمی‌تر از 7 روز
+              if (age.inDays > 7) {
+                final fileSize = await file.length();
+                await file.delete();
+                itemsRemoved++;
+                spaceFreed += fileSize / (1024 * 1024); // تبدیل به MB
+              }
+            }
+          }
+        }
+      }
+
+      print(
+          '✅ پاکسازی فایل‌های موقت: $itemsRemoved فایل، ${spaceFreed.toStringAsFixed(2)} MB');
+    } catch (e) {
+      print('خطا در پاکسازی فایل‌های موقت: $e');
+    }
+
+    return {
+      'items_removed': itemsRemoved,
+      'space_freed': spaceFreed,
+    };
+  }
+
   void _startSmartCleanup() {
     if (!_smartCacheEnabled) return;
 
@@ -507,11 +559,11 @@ class UnifiedCacheManager {
 
   /// نظارت مداوم بر استفاده از حافظه
   void startMemoryMonitoring() {
-    if (!_smartCacheEnabled) return;
+    if (!_smartCacheEnabled || _disabled) return;
 
-    // نظارت هر 30 دقیقه
-    Future.delayed(const Duration(minutes: 30), () async {
-      if (_smartCacheEnabled) {
+    // نظارت هر 15 دقیقه برای پاسخگویی بهتر
+    Future.delayed(const Duration(minutes: 15), () async {
+      if (_smartCacheEnabled && !_disabled) {
         await _monitorMemoryUsage();
         startMemoryMonitoring(); // تکرار
       }
@@ -541,6 +593,8 @@ class UnifiedCacheManager {
 
   /// بهینه‌سازی کش بر اساس الگوی استفاده
   Future<void> optimizeCacheForUsage() async {
+    if (_disabled) return;
+
     try {
       final stats = await getCacheStats();
       final imageCacheRaw = stats['image_cache'];
@@ -586,6 +640,15 @@ class UnifiedCacheManager {
 
   /// پاکسازی اضطراری در صورت کمبود حافظه
   Future<Map<String, dynamic>> emergencyCleanup() async {
+    if (_disabled) {
+      return {
+        'disabled': true,
+        'message': 'Cache manager disabled',
+        'items_removed': 0,
+        'space_freed_mb': 0.0,
+      };
+    }
+
     int itemsRemoved = 0;
     double spaceFreed = 0.0;
 
@@ -668,6 +731,77 @@ class UnifiedCacheManager {
     }
   }
 
+  /// بهینه‌سازی خودکار کش بر اساس الگوی استفاده
+  Future<Map<String, dynamic>> autoOptimizeCache() async {
+    if (_disabled) {
+      return {
+        'disabled': true,
+        'message': 'Cache manager disabled',
+        'optimizations_applied': 0,
+        'space_saved_mb': 0.0,
+      };
+    }
+
+    int optimizationsApplied = 0;
+    double spaceSaved = 0.0;
+    final List<String> optimizations = [];
+
+    try {
+      final stats = await getCacheStats();
+      final currentSize = stats['total_size_mb'] ?? 0.0;
+      final maxSize = stats['max_cache_size_mb'] ?? 500.0;
+
+      // اگر کش بیش از 80% حداکثر حجم باشد
+      if (currentSize > maxSize * 0.8) {
+        final result =
+            await smartCleanup(forceCleanup: true, targetSizeMB: maxSize * 0.6);
+        if (result['success'] == true) {
+          optimizationsApplied++;
+          spaceSaved += result['space_freed_mb'] ?? 0.0;
+          optimizations.add('پاکسازی هوشمند');
+        }
+      }
+
+      // بهینه‌سازی کش بر اساس الگوی استفاده
+      await optimizeCacheForUsage();
+      optimizationsApplied++;
+      optimizations.add('بهینه‌سازی الگوی استفاده');
+
+      // اگر کش تصاویر خیلی بزرگ است
+      final imageCacheRaw = stats['image_cache'];
+      final imageCache = imageCacheRaw is Map<String, dynamic>
+          ? imageCacheRaw
+          : (imageCacheRaw is Map
+              ? Map<String, dynamic>.from(imageCacheRaw)
+              : {});
+
+      final postCacheSize =
+          (imageCache['post_cache'] as Map?)?['size_mb'] ?? 0.0;
+      if (postCacheSize > 100.0) {
+        await postInstance.emptyCache();
+        optimizationsApplied++;
+        spaceSaved += 25.0; // تخمین
+        optimizations.add('پاکسازی کش پست‌ها');
+      }
+
+      return {
+        'success': true,
+        'message': 'بهینه‌سازی خودکار انجام شد',
+        'optimizations_applied': optimizationsApplied,
+        'space_saved_mb': spaceSaved,
+        'optimizations': optimizations,
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'خطا در بهینه‌سازی خودکار: $e',
+        'optimizations_applied': optimizationsApplied,
+        'space_saved_mb': spaceSaved,
+        'optimizations': optimizations,
+      };
+    }
+  }
+
   /// تست محاسبات کش برای بررسی تفاوت مقادیر
   Future<void> testCacheCalculations() async {
     print('=== تست محاسبات کش UnifiedCacheManager ===');
@@ -689,8 +823,7 @@ class UnifiedCacheManager {
           'کش پست: ${(imageCache['post_cache'] as Map?)?['size_mb']?.toStringAsFixed(2) ?? '0.0'} MB');
       print(
           'کش چت: ${(imageCache['chat_cache'] as Map?)?['size_mb']?.toStringAsFixed(2) ?? '0.0'} MB');
-      print(
-          'کش والپیپر: ${(imageCache['wallpaper_cache'] as Map?)?['size_mb']?.toStringAsFixed(2) ?? '0.0'} MB');
+      // کش والپیپر حذف شد چون فایل‌های محلی هستند
 
       final dbCacheRaw = stats['database_cache'];
       final dbCache = dbCacheRaw is Map<String, dynamic>
@@ -704,7 +837,7 @@ class UnifiedCacheManager {
         imageCache['story_cache']?['size_mb'] ?? 0.0,
         imageCache['post_cache']?['size_mb'] ?? 0.0,
         imageCache['chat_cache']?['size_mb'] ?? 0.0,
-        imageCache['wallpaper_cache']?['size_mb'] ?? 0.0,
+        // wallpaper_cache حذف شد چون فایل‌های محلی هستند
       ];
 
       final uniqueValues = imageValues.toSet();
@@ -725,6 +858,26 @@ class UnifiedCacheManager {
   }
 
   bool get isInitialized => _isInitialized;
+
+  // متدهای تنظیمات کش برای انواع مختلف رسانه
+  void setImageCacheEnabled(bool enabled) {
+    _imageCacheEnabled = enabled;
+    print('🖼️ Image cache ${enabled ? 'enabled' : 'disabled'}');
+  }
+
+  void setMusicCacheEnabled(bool enabled) {
+    _musicCacheEnabled = enabled;
+    print('🎵 Music cache ${enabled ? 'enabled' : 'disabled'}');
+  }
+
+  void setVideoCacheEnabled(bool enabled) {
+    _videoCacheEnabled = enabled;
+    print('🎬 Video cache ${enabled ? 'enabled' : 'disabled'}');
+  }
+
+  bool get imageCacheEnabled => _imageCacheEnabled;
+  bool get musicCacheEnabled => _musicCacheEnabled;
+  bool get videoCacheEnabled => _videoCacheEnabled;
 }
 
 // کلاس قدیمی برای سازگاری به عقب
@@ -732,6 +885,7 @@ class CustomCacheManager {
   static const storyKey = 'storyImageCache';
   static const postKey = 'postImageCache';
 
+  static CacheManager get instance => _getInstance().storyInstance;
   static CacheManager get storyInstance => _getInstance().storyInstance;
   static CacheManager get postInstance => _getInstance().postInstance;
   static CacheManager get chatInstance => _getInstance().chatInstance;
@@ -739,10 +893,10 @@ class CustomCacheManager {
 
   static UnifiedCacheManager _getInstance() {
     final instance = UnifiedCacheManager();
+    // UnifiedCacheManager باید در main.dart initialize شده باشد
+    // اگر initialize نشده، یک instance ساده برمی‌گردانیم
     if (!instance.isInitialized) {
-      // اگر initialize نشده، یک عملیات synchronous انجام می‌دهیم
-      // اما در عمل باید مطمئن شویم که initialize قبلاً انجام شده
-      instance.initialize();
+      print('⚠️ UnifiedCacheManager not initialized, using fallback');
     }
     return instance;
   }

@@ -47,7 +47,7 @@ class UnifiedConversationCacheService {
 
   /// Delete a conversation
   Future<void> deleteConversation(String conversationId, String userId) async {
-    // Advanced cache handles deletion through real-time sync
+    await _advancedCache.removeConversation(conversationId);
   }
 
   /// Clear all conversations for a user
@@ -99,7 +99,7 @@ class UnifiedConversationCacheService {
 
   /// Remove conversation
   Future<void> removeConversation(String conversationId, String userId) async {
-    await deleteConversation(conversationId, userId);
+    await _advancedCache.removeConversation(conversationId);
   }
 
   /// Get unified service instance for initialization

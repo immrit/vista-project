@@ -1267,8 +1267,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   }
 
   Widget _buildPostsListWithRefresh(ProfileModel profile) {
+    final postsNotifier = ref.read(profilePostsProvider(profile.id).notifier);
+
     return RefreshIndicator(
-      onRefresh: _refreshProfile,
+      onRefresh: () async {
+        await _refreshProfile();
+        await postsNotifier.refresh();
+      },
       color: Colors.blue,
       backgroundColor: Theme.of(context).brightness == Brightness.dark
           ? Colors.grey[800]
@@ -1281,6 +1286,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     // نمایش پیام «حساب کاربری خصوصی» در وسط صفحه شبیه اینستاگرام
     final isPrivateAsync = ref.watch(userSettingsByIdProvider(profile.id));
     final currentUserId = ref.read(authProvider)?.id;
+    final postsAsync = ref.watch(profilePostsProvider(profile.id));
+    final postsNotifier = ref.read(profilePostsProvider(profile.id).notifier);
+
     return isPrivateAsync.when(
       data: (settings) {
         final isPrivate = (settings?['is_private'] as bool?) ?? false;
@@ -1308,16 +1316,41 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           );
         }
 
-        if (profile.posts.isEmpty) {
-          return const Center(child: Text('هنوز پستی وجود ندارد'));
-        }
+        return postsAsync.when(
+          data: (posts) {
+            if (posts.isEmpty) {
+              return const Center(child: Text('هنوز پستی وجود ندارد'));
+            }
 
-        return ListView.builder(
-          physics: AlwaysScrollableScrollPhysics(),
-          itemCount: profile.posts.length,
-          itemBuilder: (context, index) {
-            return _buildPostItem(profile, profile.posts[index]);
+            return NotificationListener<ScrollNotification>(
+              onNotification: (ScrollNotification scrollInfo) {
+                if (scrollInfo.metrics.pixels ==
+                        scrollInfo.metrics.maxScrollExtent &&
+                    postsNotifier.hasMore &&
+                    !postsNotifier.isLoading) {
+                  postsNotifier.loadMore();
+                }
+                return false;
+              },
+              child: ListView.builder(
+                physics: AlwaysScrollableScrollPhysics(),
+                itemCount: posts.length + (postsNotifier.hasMore ? 1 : 0),
+                itemBuilder: (context, index) {
+                  if (index == posts.length) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+                  }
+                  return _buildPostItem(profile, posts[index]);
+                },
+              ),
+            );
           },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (_, __) => const Center(child: Text('خطا در بارگذاری پست‌ها')),
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -1481,15 +1514,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   }
 
   Widget _buildPostContent(PublicPostModel post, BuildContext context) {
-    final pattern = RegExp(
-      r'(#[\w\u0600-\u06FF]+)|((https?:\/\/)?([\w\-])+\.{1}([a-zA-Z]{2,63})([\/\w-]*)*\/?\??([^\s<>#]*))',
+    // Updated regex to catch domains without http/https
+    final urlRegex = RegExp(
+      r'(?:(?:https?:\/\/)?(?:www\.)?)?[a-zA-Z0-9][-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&\/=]*)',
+      caseSensitive: false,
+    );
+
+    final hashtagRegex = RegExp(
+      r'#[\w\u0600-\u06FF]+',
       multiLine: true,
       unicode: true,
     );
     List<TextSpan> spans = [];
-    int start = 0;
+    var start = 0;
 
-    for (Match match in pattern.allMatches(post.content)) {
+    // First process hashtags
+    for (final match in hashtagRegex.allMatches(post.content)) {
       if (match.start > start) {
         spans.add(TextSpan(
           text: post.content.substring(start, match.start),
@@ -1499,54 +1539,76 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                   : Colors.black),
         ));
       }
-      final matchedText = match.group(0)!;
-      if (matchedText.startsWith('#')) {
+
+      final hashtag = match.group(0)!;
+      spans.add(
+        TextSpan(
+          text: hashtag,
+          style:
+              const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SearchPage(initialHashtag: hashtag),
+                ),
+              );
+            },
+        ),
+      );
+      start = match.end;
+    }
+
+    // Then process URLs in the remaining text
+    final remainingText = post.content.substring(start);
+    start = 0;
+
+    for (final match in urlRegex.allMatches(remainingText)) {
+      if (match.start > start) {
+        spans.add(TextSpan(
+          text: remainingText.substring(start, match.start),
+          style: TextStyle(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : Colors.black),
+        ));
+      }
+
+      final url = match.group(0)!;
+      // فیلتر کردن لینک‌های Vista و پست‌های اشتراکی
+      if (!_isVistaOrSharedPostLink(url)) {
         spans.add(
           TextSpan(
-            text: matchedText,
+            text: url,
             style: const TextStyle(
-                color: Colors.blue, fontWeight: FontWeight.bold),
+                color: Colors.blue, decoration: TextDecoration.underline),
             recognizer: TapGestureRecognizer()
-              ..onTap = () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        SearchPage(initialHashtag: matchedText),
-                  ),
-                );
+              ..onTap = () async {
+                final formattedUrl =
+                    url.startsWith('http') ? url : 'https://$url';
+                if (await canLaunchUrl(Uri.parse(formattedUrl))) {
+                  await launchUrl(Uri.parse(formattedUrl));
+                }
               },
           ),
         );
       } else {
-        // فیلتر کردن لینک‌های Vista و پست‌های اشتراکی
-        if (!_isVistaOrSharedPostLink(matchedText)) {
-          spans.add(
-            TextSpan(
-              text: matchedText,
-              style: const TextStyle(
-                  color: Colors.blue, decoration: TextDecoration.underline),
-              recognizer: TapGestureRecognizer()
-                ..onTap = () async {
-                  final url = matchedText.startsWith('http')
-                      ? matchedText
-                      : 'https://$matchedText';
-                  if (await canLaunchUrl(Uri.parse(url))) {
-                    await launchUrl(Uri.parse(url));
-                  }
-                },
-            ),
-          );
-        } else {
-          // نمایش لینک‌های Vista به صورت متن عادی
-          spans.add(TextSpan(text: matchedText));
-        }
+        // نمایش لینک‌های Vista به صورت متن عادی
+        spans.add(TextSpan(
+          text: url,
+          style: TextStyle(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : Colors.black),
+        ));
       }
       start = match.end;
     }
-    if (start < post.content.length) {
+    // Add remaining text after hashtags and URLs
+    if (start < remainingText.length) {
       spans.add(TextSpan(
-        text: post.content.substring(start),
+        text: remainingText.substring(start),
         style: TextStyle(
             color: Theme.of(context).brightness == Brightness.dark
                 ? Colors.white
@@ -1560,7 +1622,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         if (post.content.isNotEmpty)
           Directionality(
             textDirection: getDirectionality(post.content),
-            child: RichText(text: TextSpan(children: spans)),
+            child: RichText(
+              text: TextSpan(
+                style: DefaultTextStyle.of(context).style,
+                children: spans,
+              ),
+            ),
           ),
         if (post.musicUrl != null && post.musicUrl!.isNotEmpty)
           Consumer(

@@ -833,4 +833,77 @@ extension VideoThumbnailCacheExt on AdvancedCacheSystem {
       _videoThumbMemoryCache.remove(oldest);
     }
   }
+
+  /// Clear messages for a specific conversation
+  Future<void> clearConversationMessages(String conversationId) async {
+    try {
+      // Remove from memory cache
+      _messageMemoryCache.remove(conversationId);
+
+      // Close stream if exists
+      _messageStreams[conversationId]?.close();
+      _messageStreams.remove(conversationId);
+
+      // Remove from disk cache
+      final prefs = await SharedPreferences.getInstance();
+      final messagesKey = 'cached_messages_$conversationId';
+      await prefs.remove(messagesKey);
+
+      print('✅ Cleared messages for conversation: $conversationId');
+    } catch (e) {
+      print('❌ Error clearing conversation messages: $e');
+    }
+  }
+
+  /// Clear all cached messages
+  Future<void> clearAllMessages() async {
+    try {
+      // Clear memory cache
+      _messageMemoryCache.clear();
+
+      // Close all message streams
+      for (final stream in _messageStreams.values) {
+        stream.close();
+      }
+      _messageStreams.clear();
+
+      // Clear disk cache
+      final prefs = await SharedPreferences.getInstance();
+      final keys = prefs.getKeys();
+      for (final key in keys) {
+        if (key.startsWith('cached_messages_')) {
+          await prefs.remove(key);
+        }
+      }
+
+      print('✅ Cleared all cached messages');
+    } catch (e) {
+      print('❌ Error clearing all messages: $e');
+    }
+  }
+
+  /// Remove a specific conversation
+  Future<void> removeConversation(String conversationId) async {
+    try {
+      // Remove from memory cache
+      _conversationMemoryCache.remove(conversationId);
+      _messageMemoryCache.remove(conversationId);
+
+      // Close stream if exists
+      _messageStreams[conversationId]?.close();
+      _messageStreams.remove(conversationId);
+
+      // Remove from disk cache
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('cached_conversations');
+      await prefs.remove('cached_messages_$conversationId');
+
+      // Re-save conversations without the removed one
+      await _saveToDisk();
+
+      print('✅ Removed conversation: $conversationId');
+    } catch (e) {
+      print('❌ Error removing conversation: $e');
+    }
+  }
 }

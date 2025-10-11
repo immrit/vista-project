@@ -67,6 +67,42 @@ class _CacheManagementSettingsPageState
     }
   }
 
+  Future<void> _performAutoOptimization() async {
+    setState(() => _isLoading = true);
+    try {
+      final result = await _cacheManager.autoOptimizeCache();
+      if (result['success'] == true) {
+        final optimizations = result['optimizations'] as List<String>? ?? [];
+        final optimizationsText = optimizations.isNotEmpty
+            ? '\nبهینه‌سازی‌ها: ${optimizations.join(', ')}'
+            : '';
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                '${result['message']}\n${result['optimizations_applied']} بهینه‌سازی اعمال شد - ${result['space_saved_mb'].toStringAsFixed(1)}MB صرفه‌جویی شد$optimizationsText'),
+            backgroundColor: Colors.blue,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا: ${result['message']}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      await _loadCacheStats();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در بهینه‌سازی خودکار: $e')),
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _clearAllCaches() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -426,6 +462,48 @@ class _CacheManagementSettingsPageState
               },
             ),
           ),
+          _buildDivider(),
+          SettingsListItem(
+            icon: Icons.image_rounded,
+            iconColor: Colors.blue,
+            title: 'کش تصاویر',
+            subtitle: 'ذخیره تصاویر برای دسترسی سریع‌تر',
+            trailing: Switch(
+              value: _cacheStats['image_cache_enabled'] ?? true,
+              onChanged: (value) {
+                _cacheManager.setImageCacheEnabled(value);
+                setState(() => _cacheStats['image_cache_enabled'] = value);
+              },
+            ),
+          ),
+          _buildDivider(),
+          SettingsListItem(
+            icon: Icons.music_note_rounded,
+            iconColor: Colors.purple,
+            title: 'کش موزیک',
+            subtitle: 'ذخیره فایل‌های صوتی برای پخش آفلاین',
+            trailing: Switch(
+              value: _cacheStats['music_cache_enabled'] ?? true,
+              onChanged: (value) {
+                _cacheManager.setMusicCacheEnabled(value);
+                setState(() => _cacheStats['music_cache_enabled'] = value);
+              },
+            ),
+          ),
+          _buildDivider(),
+          SettingsListItem(
+            icon: Icons.video_library_rounded,
+            iconColor: Colors.red,
+            title: 'کش کلیپ‌ها',
+            subtitle: 'ذخیره ویدیوها برای پخش آفلاین',
+            trailing: Switch(
+              value: _cacheStats['video_cache_enabled'] ?? true,
+              onChanged: (value) {
+                _cacheManager.setVideoCacheEnabled(value);
+                setState(() => _cacheStats['video_cache_enabled'] = value);
+              },
+            ),
+          ),
         ],
       ),
     );
@@ -475,6 +553,14 @@ class _CacheManagementSettingsPageState
             title: 'پاکسازی هوشمند',
             subtitle: 'پاکسازی خودکار کش‌های قدیمی و غیرضروری',
             onTap: _performSmartCleanup,
+          ),
+          _buildDivider(),
+          SettingsListItem(
+            icon: Icons.tune_rounded,
+            iconColor: Colors.purple,
+            title: 'بهینه‌سازی خودکار',
+            subtitle: 'بهینه‌سازی کامل کش بر اساس الگوی استفاده',
+            onTap: _performAutoOptimization,
           ),
           _buildDivider(),
           SettingsListItem(

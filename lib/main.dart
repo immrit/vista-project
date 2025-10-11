@@ -22,6 +22,7 @@ import 'provider/theme_provider.dart';
 import 'services/optimized_messaging_system.dart';
 import 'services/cache_cleanup_service.dart';
 import 'services/memory_leak_detector.dart';
+import 'services/cache_manager.dart';
 
 import 'services/ChatService.dart';
 import 'services/deep_link_service.dart' as new_deep_link;
@@ -152,11 +153,10 @@ void main() async {
       // 🧹 غیرفعالسازی cache systems اضافی
       await _disableRedundantCacheSystems();
 
-      // 📦 مقداردهی اولیه سیستم کش (once only) - غیرفعال شده
-      // UnifiedCacheManager باعث تداخل SQLite می‌شود
-      print(
-        '⚠️ Skipping UnifiedCacheManager initialization to prevent SQLite conflicts',
-      );
+      // 📦 مقداردهی اولیه سیستم کش (once only) - فعال شده
+      // UnifiedCacheManager حالا با DefaultCacheManager کار می‌کند
+      print('🚀 Initializing UnifiedCacheManager...');
+      await UnifiedCacheManager().initialize();
 
       // 🗄️ مقداردهی اولیه مدیریتگر دیتابیس (قبل از سایر سرویس‌ها)
       await DatabaseManager().initializeAllDatabases();

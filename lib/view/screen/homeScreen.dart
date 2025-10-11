@@ -10,6 +10,7 @@ import 'PublicPosts/profileScreen.dart';
 import 'PublicPosts/publicPosts.dart';
 import 'searchPage.dart';
 import '../../provider/chat_provider.dart';
+import '../util/responsive_constants.dart';
 
 // استریم تعداد *مکالمه‌های* خوانده‌نشده
 final unreadConversationsCountProvider = StreamProvider<int>((ref) {
@@ -243,7 +244,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           showBadge: count > 0,
           badgeContent: Text(
             count > 9 ? '۹+' : count.toString(),
-            style: const TextStyle(color: Colors.white, fontSize: 10),
+            style: AppTextStyles.labelTiny.copyWith(color: Colors.white),
           ),
           badgeStyle: badges.BadgeStyle(
             badgeColor: Colors.red,
