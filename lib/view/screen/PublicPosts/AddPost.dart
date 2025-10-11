@@ -417,9 +417,10 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
+        color: Colors.black, // اضافه کردن پس‌زمینه مشکی
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -492,7 +493,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
               child: Container(
                 padding: const EdgeInsets.all(5),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.6),
+                  color: Colors.black.withValues(alpha: 0.6),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -518,7 +519,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
               child: Container(
                 padding: const EdgeInsets.all(5),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.6),
+                  color: Colors.black.withValues(alpha: 0.6),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -755,7 +756,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                                         top: Radius.circular(8)),
                                     child: Container(
                                       height: 200,
-                                      color: Colors.black87,
+                                      color: Colors.black,
                                       child: _videoPlayerController != null &&
                                               _videoPlayerController!
                                                   .value.isInitialized
@@ -790,7 +791,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                                                             .play_circle_fill,
                                                     size: 64,
                                                     color: Colors.white
-                                                        .withOpacity(0.8),
+                                                        .withValues(alpha: 0.8),
                                                   ),
                                                 ),
                                               ],
