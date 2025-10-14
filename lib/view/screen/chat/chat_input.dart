@@ -7,6 +7,7 @@ import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import '../../widgets/attachment_bottom_sheet.dart';
 import '../../widgets/image_preview_bottom_sheet.dart';
+import '../../../model/message_model.dart';
 
 // Callbacks for the parent widget (ChatScreen)
 class ChatInput extends StatefulWidget {
@@ -15,6 +16,8 @@ class ChatInput extends StatefulWidget {
   final Function(String, List<File>) onSendImages;
   final Function(File) onFileSelected;
   final BuildContext parentContext;
+  final MessageModel? replyTo;
+  final VoidCallback? onClearReply;
 
   const ChatInput({
     super.key,
@@ -23,6 +26,8 @@ class ChatInput extends StatefulWidget {
     required this.onSendImages,
     required this.onFileSelected,
     required this.parentContext,
+    this.replyTo,
+    this.onClearReply,
   });
 
   @override
@@ -78,8 +83,14 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
 
     _keyboardSubscription =
         KeyboardVisibilityController().onChange.listen((bool isVisible) {
+      // بهینه‌سازی keyboard handling
       if (isVisible && _showEmojiPicker) {
-        setState(() => _showEmojiPicker = false);
+        // استفاده از SchedulerBinding برای بهینه‌سازی performance
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() => _showEmojiPicker = false);
+          }
+        });
       }
     });
   }
@@ -110,7 +121,13 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
     } else {
       _focusNode.unfocus();
     }
-    setState(() => _showEmojiPicker = !_showEmojiPicker);
+
+    // بهینه‌سازی setState برای keyboard handling
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() => _showEmojiPicker = !_showEmojiPicker);
+      }
+    });
   }
 
   void _onEmojiSelected(String emoji) {
@@ -262,6 +279,7 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (widget.replyTo != null) _buildReplyPreview(widget.replyTo!),
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: AnimatedSwitcher(
@@ -270,6 +288,74 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
             ),
           ),
           if (_showEmojiPicker) _buildEmojiPicker(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReplyPreview(MessageModel reply) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2A2A2A) : Colors.grey[200],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).dividerColor.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.reply, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  reply.replyToSenderName ?? reply.senderName ?? 'کاربر',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  reply.replyToContent?.isNotEmpty == true
+                      ? reply.replyToContent!
+                      : (reply.content.isNotEmpty
+                          ? reply.content
+                          : (reply.attachmentType == 'image'
+                              ? ''
+                              : reply.attachmentType == 'audio'
+                                  ? 'صوت'
+                                  : reply.attachmentType == 'document'
+                                      ? 'فایل'
+                                      : '')),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Theme.of(context).textTheme.bodySmall?.color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          InkWell(
+            onTap: () {
+              // Clear reply state in parent
+              widget.onClearReply?.call();
+              // Keep focus on input
+              _focusNode.requestFocus();
+            },
+            borderRadius: BorderRadius.circular(16),
+            child: const Padding(
+              padding: EdgeInsets.all(4.0),
+              child: Icon(Icons.close, size: 18),
+            ),
+          ),
         ],
       ),
     );
@@ -558,27 +644,19 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
         height: 48,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: LinearGradient(
+          gradient: const LinearGradient(
             colors: [
-              Theme.of(context).brightness == Brightness.dark
-                  ? const Color(0xFF4CAF50) // سبز در تم تاریک
-                  : const Color(0xFF2196F3), // آبی در تم روشن
-              (Theme.of(context).brightness == Brightness.dark
-                      ? const Color(0xFF4CAF50)
-                      : const Color(0xFF2196F3))
-                  .withValues(alpha: 0.8),
+              Color(0xFF2196F3),
+              Color(0xFF2196F3),
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          boxShadow: [
+          boxShadow: const [
             BoxShadow(
-              color: (Theme.of(context).brightness == Brightness.dark
-                      ? const Color(0xFF4CAF50)
-                      : const Color(0xFF2196F3))
-                  .withValues(alpha: 0.3),
+              color: Color(0x4D2196F3),
               blurRadius: 8,
-              offset: const Offset(0, 2),
+              offset: Offset(0, 2),
             ),
           ],
         ),

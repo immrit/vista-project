@@ -77,12 +77,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   late TextEditingController _fileCaptionController;
 
   // UI state
-  bool _isScrolling = false; // جلوگیری از فراخوانی مکرر scroll listener
-  bool _isUpdatingFloatingDate =
-      false; // جلوگیری از فراخوانی مکرر floating date update
   bool _isOtherUserBlocked = false;
   bool _isCurrentUserBlocked = false;
   bool _isCacheEmpty = false;
+
+  // Performance optimization
+  Timer? _scrollDebounceTimer;
+  Timer? _floatingDateDebounceTimer;
 
   @override
   void initState() {
@@ -550,62 +551,76 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _scrollListener() {
-    // جلوگیری از فراخوانی مکرر
-    if (_isScrolling) return;
-    _isScrolling = true;
+    // استفاده از debouncing برای بهبود performance
+    _scrollDebounceTimer?.cancel();
+    _scrollDebounceTimer = Timer(const Duration(milliseconds: 150), () {
+      if (!mounted) return;
 
-    try {
-      final positions = _itemPositionsListener.itemPositions.value;
-      if (positions.isEmpty) return;
+      try {
+        final positions = _itemPositionsListener.itemPositions.value;
+        if (positions.isEmpty) return;
 
-      final firstPosition = positions.first;
-      if (firstPosition.index <= 5) {
-        ref
-            .read(chatScreenProvider(_providerParams).notifier)
-            .fetchMoreMessages();
+        final firstPosition = positions.first;
+        if (firstPosition.index <= 5) {
+          ref
+              .read(chatScreenProvider(_providerParams).notifier)
+              .fetchMoreMessages();
+        }
+
+        _updateFloatingDate(positions);
+      } catch (e) {
+        debugPrint('❌ Scroll listener error: $e');
       }
-
-      _updateFloatingDate(positions);
-    } finally {
-      _isScrolling = false;
-    }
+    });
   }
 
   void _updateFloatingDate(Iterable<ItemPosition> positions) {
-    if (!mounted || _isUpdatingFloatingDate) return;
+    if (!mounted) return;
 
-    _isUpdatingFloatingDate = true;
+    // استفاده از debouncing برای floating date updates
+    _floatingDateDebounceTimer?.cancel();
+    _floatingDateDebounceTimer = Timer(const Duration(milliseconds: 200), () {
+      if (!mounted) return;
 
-    try {
-      final firstVisibleItemIndex = positions
-          .where((position) => position.itemLeadingEdge < 1)
-          .last
-          .index;
+      try {
+        final firstVisibleItemIndex = positions
+            .where((position) => position.itemLeadingEdge < 1)
+            .last
+            .index;
 
-      final messages = ref.read(chatScreenProvider(_providerParams)).messages;
-      if (firstVisibleItemIndex >= 0 &&
-          firstVisibleItemIndex < messages.length) {
-        final messageDate = messages[firstVisibleItemIndex].createdAt;
-        if (_floatingDate == null || !_isSameDay(_floatingDate!, messageDate)) {
-          if (mounted) {
-            setState(() {
-              _floatingDate = messageDate;
+        final messages = ref.read(chatScreenProvider(_providerParams)).messages;
+        if (firstVisibleItemIndex >= 0 &&
+            firstVisibleItemIndex < messages.length) {
+          final messageDate = messages[firstVisibleItemIndex].createdAt;
+          if (_floatingDate == null ||
+              !_isSameDay(_floatingDate!, messageDate)) {
+            // استفاده از SchedulerBinding برای بهینه‌سازی performance
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() {
+                  _floatingDate = messageDate;
+                });
+              }
             });
           }
         }
-      }
 
-      _floatingDateTimer?.cancel();
-      _floatingDateTimer = Timer(const Duration(seconds: 2), () {
-        if (mounted) {
-          setState(() {
-            _floatingDate = null;
-          });
-        }
-      });
-    } finally {
-      _isUpdatingFloatingDate = false;
-    }
+        _floatingDateTimer?.cancel();
+        _floatingDateTimer = Timer(const Duration(seconds: 2), () {
+          if (mounted) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() {
+                  _floatingDate = null;
+                });
+              }
+            });
+          }
+        });
+      } catch (e) {
+        debugPrint('❌ Floating date update error: $e');
+      }
+    });
   }
 
   bool _isSameDay(DateTime d1, DateTime d2) {
@@ -672,6 +687,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     // پاکسازی timers
     _floatingDateTimer?.cancel();
+    _scrollDebounceTimer?.cancel();
+    _floatingDateDebounceTimer?.cancel();
     _fileCaptionController.dispose();
 
     // پاک کردن وضعیت مکالمه باز
@@ -1617,6 +1634,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 _clearMessageSelection();
               }
             },
+            // بهینه‌سازی برای keyboard handling
+            behavior: HitTestBehavior.opaque,
             child: Column(children: [
               Expanded(
                 child: Stack(
@@ -1626,76 +1645,83 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         ? const Center(child: CircularProgressIndicator())
                         : messages.isEmpty && !chatState.isLoading
                             ? const Center(child: Text('پیامی یافت نشد'))
-                            : AnimationLimiter(
-                                child: ScrollablePositionedList.builder(
-                                  itemScrollController: _itemScrollController,
-                                  itemPositionsListener: _itemPositionsListener,
-                                  reverse: true,
-                                  itemCount: messages.length,
-                                  itemBuilder: (context, index) {
-                                    final message = messages[index];
-                                    bool showDateDivider = false;
-                                    if (index < messages.length - 1) {
-                                      final prevMessage = messages[index + 1];
-                                      if (TimeUtils.shouldShowDateDivider(
-                                        message.createdAt,
-                                        prevMessage.createdAt,
-                                      )) {
-                                        showDateDivider = true;
-                                      }
-                                    } else {
+                            : ScrollablePositionedList.builder(
+                                itemScrollController: _itemScrollController,
+                                itemPositionsListener: _itemPositionsListener,
+                                reverse: true,
+                                itemCount: messages.length,
+                                itemBuilder: (context, index) {
+                                  final message = messages[index];
+                                  bool showDateDivider = false;
+                                  if (index < messages.length - 1) {
+                                    final prevMessage = messages[index + 1];
+                                    if (TimeUtils.shouldShowDateDivider(
+                                      message.createdAt,
+                                      prevMessage.createdAt,
+                                    )) {
                                       showDateDivider = true;
                                     }
+                                  } else {
+                                    showDateDivider = true;
+                                  }
 
+                                  // فقط برای پیام‌های جدید (آخرین 10 پیام) انیمیشن اعمال کن
+                                  final shouldAnimate = index < 10;
+
+                                  Widget messageWidget = Column(
+                                    children: [
+                                      if (showDateDivider)
+                                        DateDivider(
+                                          date: message.createdAt,
+                                        ),
+                                      MessageBubble(
+                                        message: message,
+                                        isHighlighted:
+                                            _highlightedMessageId == message.id,
+                                        isSelected: _selectedMessageIds
+                                            .contains(message.id),
+                                        onLongPress: (msg) =>
+                                            _toggleMessageSelection(message.id),
+                                        onTap: _isSelectionMode
+                                            ? (messageId) {
+                                                _showMessageActionsBottomSheet(
+                                                    context, message);
+                                              }
+                                            : null,
+                                        onSelectTap: _isSelectionMode
+                                            ? (messageId) =>
+                                                _toggleMessageSelection(
+                                                    messageId)
+                                            : null,
+                                        onSingleTap: (msg) =>
+                                            _showMessageActionsBottomSheet(
+                                                context, msg),
+                                        onReply: (msg) => _setReplyMessage(msg),
+                                        onRetry: (msg) =>
+                                            _retryFailedMessage(msg),
+                                      ),
+                                    ],
+                                  );
+
+                                  // اعمال انیمیشن فقط برای پیام‌های جدید
+                                  if (shouldAnimate) {
                                     return AnimationConfiguration.staggeredList(
                                       position: index,
-                                      duration:
-                                          const Duration(milliseconds: 375),
+                                      duration: const Duration(
+                                          milliseconds:
+                                              200), // کاهش مدت انیمیشن
                                       child: SlideAnimation(
-                                        verticalOffset: 50.0,
+                                        verticalOffset:
+                                            30.0, // کاهش فاصله انیمیشن
                                         child: FadeInAnimation(
-                                          child: Column(
-                                            children: [
-                                              if (showDateDivider)
-                                                DateDivider(
-                                                  date: message.createdAt,
-                                                ),
-                                              MessageBubble(
-                                                message: message,
-                                                isHighlighted:
-                                                    _highlightedMessageId ==
-                                                        message.id,
-                                                isSelected: _selectedMessageIds
-                                                    .contains(message.id),
-                                                onLongPress: (msg) =>
-                                                    _toggleMessageSelection(
-                                                        message.id),
-                                                onTap: _isSelectionMode
-                                                    ? (messageId) {
-                                                        _showMessageActionsBottomSheet(
-                                                            context, message);
-                                                      }
-                                                    : null,
-                                                onSelectTap: _isSelectionMode
-                                                    ? (messageId) =>
-                                                        _toggleMessageSelection(
-                                                            messageId)
-                                                    : null,
-                                                onSingleTap: (msg) =>
-                                                    _showMessageActionsBottomSheet(
-                                                        context, msg),
-                                                onReply: (msg) =>
-                                                    _setReplyMessage(msg),
-                                                onRetry: (msg) =>
-                                                    _retryFailedMessage(msg),
-                                              ),
-                                            ],
-                                          ),
+                                          child: messageWidget,
                                         ),
                                       ),
                                     );
-                                  },
-                                ),
+                                  } else {
+                                    return messageWidget;
+                                  }
+                                },
                               ),
                     _buildFloatingDateChip(),
                   ],
@@ -1767,7 +1793,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         conversationId: widget.conversationId,
         senderId: supabase.auth.currentUser!.id,
-        content: caption.isNotEmpty ? caption : 'تصویر',
+        content: caption.isNotEmpty ? caption : '',
         createdAt: DateTime.now(),
         attachmentUrl: imageUrl,
         attachmentType: 'image',
@@ -1844,6 +1870,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       onSendImages: _handleSendImages,
       onFileSelected: _handleFileSelected,
       parentContext: context,
+      replyTo: _replyToMessage,
+      onClearReply: () {
+        if (mounted) {
+          setState(() {
+            _replyToMessage = null;
+          });
+        }
+      },
     );
   }
 
@@ -1996,7 +2030,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               icon: const Icon(Icons.send_rounded),
               label: const Text('ارسال فایل'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: theme.primaryColor,
+                backgroundColor: const Color(0xFF2196F3),
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),

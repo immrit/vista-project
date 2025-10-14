@@ -182,6 +182,12 @@ class ProfileCacheService {
 
       final followingCount = followingResponse.length;
 
+      // دریافت تعداد کل پست‌ها
+      final postsCountResponse =
+          await supabase.from('posts').select('id').eq('user_id', userId);
+
+      final postsCount = postsCountResponse.length;
+
       // دریافت همه پست‌ها
       final postsResponse = await supabase
           .from('posts')
@@ -217,6 +223,7 @@ class ProfileCacheService {
         ...profileResponse,
         'followers_count': followersCount,
         'following_count': followingCount,
+        'posts_count': postsCount,
       });
 
       // ساخت لیست پست‌ها

@@ -117,11 +117,19 @@ class _TelegramGalleryBottomSheetState extends State<TelegramGalleryBottomSheet>
     try {
       final file = await asset.file;
       if (file != null) {
-        // Close this sheet first, then invoke callback to open preview
-        await _closeSheet();
-        widget.onImageSelected(file);
+        // بررسی وجود فایل قبل از ارسال
+        if (await file.exists()) {
+          // Close this sheet first, then invoke callback to open preview
+          await _closeSheet();
+          widget.onImageSelected(file);
+        } else {
+          _showErrorDialog('فایل تصویر در دسترس نیست. لطفاً دوباره تلاش کنید.');
+        }
+      } else {
+        _showErrorDialog('خطا در انتخاب تصویر');
       }
     } catch (e) {
+      debugPrint('❌ Error selecting image: $e');
       _showErrorDialog('خطا در انتخاب تصویر');
     }
   }
@@ -144,11 +152,16 @@ class _TelegramGalleryBottomSheetState extends State<TelegramGalleryBottomSheet>
       final asset = _images.firstWhere((img) => img.id == assetId);
       try {
         final file = await asset.file;
-        if (file != null) files.add(file);
+        if (file != null && await file.exists()) {
+          files.add(file);
+        } else {
+          debugPrint('⚠️ Skipping invalid file for asset: $assetId');
+        }
       } catch (e) {
-        debugPrint('Error preparing image: $e');
+        debugPrint('❌ Error preparing image: $e');
       }
     }
+
     if (files.isNotEmpty) {
       // Close this sheet before opening preview in callback
       await _closeSheet();
@@ -160,6 +173,8 @@ class _TelegramGalleryBottomSheetState extends State<TelegramGalleryBottomSheet>
           widget.onImageSelected(f);
         }
       }
+    } else {
+      _showErrorDialog('هیچ تصویر معتبری انتخاب نشده است');
     }
   }
 

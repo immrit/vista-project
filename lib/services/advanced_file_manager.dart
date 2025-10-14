@@ -231,19 +231,33 @@ class AdvancedFileManager {
 
       String? resultUrl;
 
-      if (fileType == 'document' || _isPdfFile(file.path)) {
-        resultUrl = await ChatFileUploadService.uploadChatPdfFile(
-          file,
-          conversationId,
-          onProgress: (progress) {
-            _uploadProgressController.add(FileUploadProgress(
-                id: uploadId,
-                fileName: path.basename(file.path),
-                progress: progress,
-                status: UploadStatus.uploading));
-            onProgress?.call(progress);
-          },
-        );
+      if (fileType == 'document') {
+        final isPdf = _isPdfFile(file.path);
+        resultUrl = isPdf
+            ? await ChatFileUploadService.uploadChatPdfFile(
+                file,
+                conversationId,
+                onProgress: (progress) {
+                  _uploadProgressController.add(FileUploadProgress(
+                      id: uploadId,
+                      fileName: path.basename(file.path),
+                      progress: progress,
+                      status: UploadStatus.uploading));
+                  onProgress?.call(progress);
+                },
+              )
+            : await ChatFileUploadService.uploadChatBinaryFile(
+                file,
+                conversationId,
+                onProgress: (progress) {
+                  _uploadProgressController.add(FileUploadProgress(
+                      id: uploadId,
+                      fileName: path.basename(file.path),
+                      progress: progress,
+                      status: UploadStatus.uploading));
+                  onProgress?.call(progress);
+                },
+              );
       } else {
         // برای تصاویر
         resultUrl = await ChatImageUploadService.uploadChatImage(
@@ -477,4 +491,3 @@ class FileDownloadTask {
     _client?.close();
   }
 }
-

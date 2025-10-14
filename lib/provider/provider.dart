@@ -1531,6 +1531,12 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
 
       final followingCount = followingResponse.length;
 
+      // دریافت تعداد کل پست‌ها
+      final postsCountResponse =
+          await supabase.from('posts').select('id').eq('user_id', userId);
+
+      final postsCount = postsCountResponse.length;
+
       // دریافت اولین 10 پست - برای lazy loading
       print('🔍 Fetching initial posts for userId: $userId');
       final postsResponse = await supabase
@@ -1562,6 +1568,7 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
         ...profileResponse,
         'followers_count': followersCount,
         'following_count': followingCount,
+        'posts_count': postsCount,
       });
 
       final posts = postsResponse.map((post) {
@@ -3254,7 +3261,7 @@ class ProfilePostsNotifier
     extends StateNotifier<AsyncValue<List<PublicPostModel>>> {
   final SupabaseClient supabase;
   final String userId;
-  final int _limit = 10;
+  final int _limit = 30; // نمایش اولیه بیشتر برای پروفایل‌ها
   int _offset = 0;
   bool _hasMore = true;
   bool _isLoading = false;
@@ -3328,7 +3335,7 @@ class ProfilePostsNotifier
       }).toList();
 
       _allPosts.addAll(newPosts);
-      _offset += _limit;
+      _offset += postsResponse.length; // مطابق تعداد واقعی دریافتی
       _hasMore = postsResponse.length == _limit;
 
       state = AsyncValue.data(_allPosts);

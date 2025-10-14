@@ -342,15 +342,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Avatar Section
-            Column(
-              children: [
-                _buildProfileAvatar(profile),
-                const SizedBox(height: 16),
-                _buildProfileName(profile),
-              ],
+            SizedBox(
+              width: 130, // ثابت برای پین شدن آواتار در گوشه
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildProfileAvatar(profile),
+                  const SizedBox(height: 16),
+                  _buildProfileName(profile),
+                ],
+              ),
             ),
             const SizedBox(width: 24),
-            // Action Buttons Section
+            // Action Buttons Section (نام طولانی نباید آواتار را جابجا کند)
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -1092,7 +1096,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           color: isDark ? Colors.grey[600] : Colors.grey[300],
         ),
         _buildStatItem(
-          count: profile.posts.length.toString(),
+          count: profile.postsCount.toString(),
           label: 'پست',
           onTap: null,
           headerTextColor: headerTextColor,
@@ -1562,16 +1566,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
     // Then process URLs in the remaining text
     final remainingText = post.content.substring(start);
+    // Base post text style for better readability and stable layout
+    final baseColor = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white
+        : Colors.black;
+    final baseStyle = TextStyle(
+      fontSize: 16,
+      height: 1.45,
+      color: baseColor,
+      leadingDistribution: TextLeadingDistribution.even,
+    );
     start = 0;
 
     for (final match in urlRegex.allMatches(remainingText)) {
       if (match.start > start) {
         spans.add(TextSpan(
           text: remainingText.substring(start, match.start),
-          style: TextStyle(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.white
-                  : Colors.black),
+          style: baseStyle,
         ));
       }
 
@@ -1581,7 +1592,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         spans.add(
           TextSpan(
             text: url,
-            style: const TextStyle(
+            style: baseStyle.copyWith(
                 color: Colors.blue, decoration: TextDecoration.underline),
             recognizer: TapGestureRecognizer()
               ..onTap = () async {
@@ -1597,10 +1608,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         // نمایش لینک‌های Vista به صورت متن عادی
         spans.add(TextSpan(
           text: url,
-          style: TextStyle(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.white
-                  : Colors.black),
+          style: baseStyle,
         ));
       }
       start = match.end;
@@ -1609,10 +1617,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     if (start < remainingText.length) {
       spans.add(TextSpan(
         text: remainingText.substring(start),
-        style: TextStyle(
-            color: Theme.of(context).brightness == Brightness.dark
-                ? Colors.white
-                : Colors.black),
+        style: baseStyle,
       ));
     }
 
@@ -1620,15 +1625,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (post.content.isNotEmpty)
-          Directionality(
-            textDirection: getDirectionality(post.content),
-            child: RichText(
-              text: TextSpan(
-                style: DefaultTextStyle.of(context).style,
-                children: spans,
+          Builder(builder: (context) {
+            final dir =
+                getDirectionality(post.content); // تشخیص خودکار فارسی/انگلیسی
+            return Directionality(
+              textDirection: dir,
+              child: RichText(
+                textAlign:
+                    dir == TextDirection.rtl ? TextAlign.right : TextAlign.left,
+                textHeightBehavior: const TextHeightBehavior(
+                  applyHeightToFirstAscent: false,
+                  applyHeightToLastDescent: false,
+                ),
+                textScaler: MediaQuery.of(context)
+                    .textScaler
+                    .clamp(minScaleFactor: 0.9, maxScaleFactor: 1.1),
+                text: TextSpan(
+                  style: baseStyle,
+                  children: spans,
+                ),
               ),
-            ),
-          ),
+            );
+          }),
         if (post.musicUrl != null && post.musicUrl!.isNotEmpty)
           Consumer(
             builder: (context, ref, child) {

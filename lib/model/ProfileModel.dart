@@ -30,6 +30,7 @@ class ProfileModel extends Equatable {
   final List<PublicPostModel> posts;
   final List<Story> stories; // اضافه کردن لیست استوری‌ها
   final String? role; // فیلد نقش کاربر
+  final int postsCount;
 
   const ProfileModel({
     required this.id,
@@ -48,6 +49,7 @@ class ProfileModel extends Equatable {
     this.posts = const [],
     this.stories = const [], // مقدار پیش‌فرض برای استوری‌ها
     this.role, // پارامتر نقش کاربر
+    this.postsCount = 0,
   });
 
   factory ProfileModel.fromMap(Map<String, dynamic> map) {
@@ -81,6 +83,7 @@ class ProfileModel extends Equatable {
           .map((story) => Story.fromMap(story))
           .toList(), // واکشی استوری‌ها
       role: map['role']?.toString(), // واکشی نقش کاربر
+      postsCount: map['posts_count'] ?? 0,
     );
   }
 
@@ -103,6 +106,7 @@ class ProfileModel extends Equatable {
       'stories':
           stories.map((story) => story.toMap()).toList(), // ذخیره استوری‌ها
       'role': role, // ذخیره نقش کاربر
+      'posts_count': postsCount,
     };
   }
 
@@ -125,6 +129,7 @@ class ProfileModel extends Equatable {
     List<PublicPostModel>? posts,
     List<Story>? stories, // اضافه کردن استوری‌ها به copyWith
     String? role, // اضافه کردن نقش کاربر به copyWith
+    int? postsCount,
   }) {
     return ProfileModel(
       id: id ?? this.id,
@@ -143,6 +148,7 @@ class ProfileModel extends Equatable {
       posts: posts ?? this.posts,
       stories: stories ?? this.stories, // اضافه کردن استوری‌ها
       role: role ?? this.role, // اضافه کردن نقش کاربر
+      postsCount: postsCount ?? this.postsCount,
     );
   }
 
@@ -164,6 +170,7 @@ class ProfileModel extends Equatable {
         posts,
         stories, // اضافه کردن استوری‌ها به props
         role, // اضافه کردن نقش کاربر به props
+        postsCount,
       ];
   bool get hasBlueBadge =>
       isVerified && verificationType == VerificationType.blueTick;
