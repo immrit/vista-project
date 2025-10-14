@@ -22,6 +22,8 @@ class MessageBubble extends StatefulWidget {
   final Function(String)? onSelectTap;
   final bool isHighlighted;
   final bool isSelected;
+  final MessageModel? previousMessage;
+  final MessageModel? nextMessage;
 
   const MessageBubble({
     super.key,
@@ -34,6 +36,8 @@ class MessageBubble extends StatefulWidget {
     this.onSelectTap,
     this.isHighlighted = false,
     this.isSelected = false,
+    this.previousMessage,
+    this.nextMessage,
   });
 
   @override
@@ -108,9 +112,10 @@ class _MessageBubbleState extends State<MessageBubble>
     return GestureDetector(
       onLongPress: () => widget.onLongPress(widget.message),
       onTap: () {
-        if (widget.isSelected && widget.onTap != null) {
-          widget.onTap!(widget.message.id);
-        } else if (widget.onSelectTap != null) {
+        // اگر در حالت selection mode هستیم، همیشه toggle selection انجام بده
+        if (widget.onSelectTap != null) {
+          // Haptic feedback برای انتخاب/لغو انتخاب
+          HapticFeedback.lightImpact();
           widget.onSelectTap!(widget.message.id);
         } else if (widget.onSingleTap != null) {
           widget.onSingleTap!(widget.message);
@@ -150,6 +155,18 @@ class _MessageBubbleState extends State<MessageBubble>
           _isReplying ? (isMe ? -20 : 20) : 0,
           0,
           0,
+        ),
+        // کل فضای پیام را highlight می‌کنیم وقتی انتخاب شده
+        padding: widget.isSelected
+            ? const EdgeInsets.all(8)
+            : const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: widget.isSelected
+              ? Theme.of(context)
+                  .primaryColor
+                  .withOpacity(0.08) // highlight ملایم کل فضای پیام
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Align(
           alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -276,7 +293,9 @@ class _MessageBubbleState extends State<MessageBubble>
       return ClipRRect(
         borderRadius: BorderRadius.circular(15),
         child: GestureDetector(
-          onTap: () => _showFullScreenImage(context, url),
+          onTap: widget.onSelectTap != null
+              ? null // در حالت selection، اجازه نده تصویر باز شود
+              : () => _showFullScreenImage(context, url),
           child: CachedNetworkImage(
             imageUrl: url,
             placeholder: (context, url) => Container(

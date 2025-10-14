@@ -24,6 +24,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../widgets/message_bubble.dart';
 import '../../widgets/date_divider.dart';
 import '../../widgets/connection_status_widget.dart';
+import '../../widgets/typing_indicator.dart';
 import '../PublicPosts/profileScreen.dart';
 import 'ChatDetailsScreen.dart';
 import 'ChatMessageSearchScreen.dart';
@@ -80,10 +81,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isOtherUserBlocked = false;
   bool _isCurrentUserBlocked = false;
   bool _isCacheEmpty = false;
+  bool _isOtherUserTyping = false; // typing indicator state
 
   // Performance optimization
   Timer? _scrollDebounceTimer;
   Timer? _floatingDateDebounceTimer;
+  Timer? _typingTimer; // timer for typing indicator
+  bool _isNearBottom = true; // track if user is near bottom for auto-scroll
+  Timer? _autoScrollTimer;
 
   @override
   void initState() {
@@ -567,6 +572,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               .fetchMoreMessages();
         }
 
+        // Check if user is near bottom (within 3 messages)
+        final messages = ref.read(chatScreenProvider(_providerParams)).messages;
+        _isNearBottom = firstPosition.index >= (messages.length - 3);
+
         _updateFloatingDate(positions);
       } catch (e) {
         debugPrint('❌ Scroll listener error: $e');
@@ -689,6 +698,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _floatingDateTimer?.cancel();
     _scrollDebounceTimer?.cancel();
     _floatingDateDebounceTimer?.cancel();
+    _typingTimer?.cancel();
+    _autoScrollTimer?.cancel();
     _fileCaptionController.dispose();
 
     // پاک کردن وضعیت مکالمه باز
@@ -744,7 +755,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           );
 
       _clearAttachments();
-      _scrollToLatestMessage();
+      _autoScrollToBottom();
 
       // اگر قبلاً کش خالی بود، حالا که پیام فرستادیم، چک کن که آیا کش پر شده یا نه
       if (_isCacheEmpty) {
@@ -797,7 +808,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
         print("✅ پیام صوتی ارسال شد");
         _clearAttachments();
-        _scrollToLatestMessage();
+        _autoScrollToBottom();
 
         // اگر قبلاً کش خالی بود، حالا که پیام فرستادیم، چک کن که آیا کش پر شده یا نه
         if (_isCacheEmpty) {
@@ -969,6 +980,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToBottom();
     });
+  }
+
+  void _autoScrollToBottom() {
+    // Auto-scroll only if user is near bottom
+    if (_isNearBottom) {
+      _autoScrollTimer?.cancel();
+      _autoScrollTimer = Timer(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          _scrollToBottom();
+        }
+      });
+    }
   }
 
   Future<void> _checkCacheEmpty() async {
@@ -1399,7 +1422,50 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 : Colors.white.withValues(alpha: 0.9),
             titleSpacing: 0,
             title: _isSelectionMode
-                ? Text('${_selectedMessageIds.length} پیام انتخاب شده')
+                ? Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color:
+                              Theme.of(context).primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color:
+                                Theme.of(context).primaryColor.withOpacity(0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.check_circle,
+                              color: Theme.of(context).primaryColor,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '${_selectedMessageIds.length}',
+                              style: TextStyle(
+                                color: Theme.of(context).primaryColor,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Text(
+                        'انتخاب شده',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  )
                 : InkWell(
                     onTap: () async {
                       final messageIdToJump = await Navigator.push<String?>(
@@ -1488,15 +1554,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             actions: _isSelectionMode
                 ? [
                     // Selection mode actions
-                    IconButton(
-                      onPressed: _showMultiSelectOptions,
-                      icon: const Icon(Icons.more_vert),
-                      tooltip: 'گزینه‌های بیشتر',
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      child: IconButton(
+                        onPressed: _showMultiSelectOptions,
+                        icon: const Icon(Icons.more_vert),
+                        tooltip: 'گزینه‌های بیشتر',
+                        style: IconButton.styleFrom(
+                          backgroundColor:
+                              Theme.of(context).primaryColor.withOpacity(0.1),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
                     ),
-                    IconButton(
-                      onPressed: _clearMessageSelection,
-                      icon: const Icon(Icons.close),
-                      tooltip: 'لغو انتخاب',
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      child: IconButton(
+                        onPressed: _clearMessageSelection,
+                        icon: const Icon(Icons.close),
+                        tooltip: 'لغو انتخاب',
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.red.withOpacity(0.1),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
                     ),
                   ]
                 : [
@@ -1652,18 +1737,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 itemCount: messages.length,
                                 itemBuilder: (context, index) {
                                   final message = messages[index];
-                                  bool showDateDivider = false;
-                                  if (index < messages.length - 1) {
-                                    final prevMessage = messages[index + 1];
-                                    if (TimeUtils.shouldShowDateDivider(
-                                      message.createdAt,
-                                      prevMessage.createdAt,
-                                    )) {
-                                      showDateDivider = true;
-                                    }
-                                  } else {
-                                    showDateDivider = true;
-                                  }
+                                  final prevMessage =
+                                      index < messages.length - 1
+                                          ? messages[index + 1]
+                                          : null;
+                                  final nextMessage =
+                                      index > 0 ? messages[index - 1] : null;
+
+                                  // بررسی نمایش date divider
+                                  final showDateDivider =
+                                      TimeUtils.shouldShowDateDivider(
+                                    message.createdAt,
+                                    prevMessage?.createdAt,
+                                  );
+
+                                  // محاسبه spacing و radius برای bubble
+                                  final spacing =
+                                      TimeUtils.calculateMessageSpacing(
+                                    message.createdAt,
+                                    prevMessage?.createdAt,
+                                    message.senderId,
+                                    prevMessage?.senderId,
+                                  );
 
                                   // فقط برای پیام‌های جدید (آخرین 10 پیام) انیمیشن اعمال کن
                                   final shouldAnimate = index < 10;
@@ -1674,12 +1769,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                         DateDivider(
                                           date: message.createdAt,
                                         ),
+                                      SizedBox(height: spacing),
                                       MessageBubble(
                                         message: message,
                                         isHighlighted:
                                             _highlightedMessageId == message.id,
                                         isSelected: _selectedMessageIds
                                             .contains(message.id),
+                                        previousMessage: prevMessage,
+                                        nextMessage: nextMessage,
                                         onLongPress: (msg) =>
                                             _toggleMessageSelection(message.id),
                                         onTap: _isSelectionMode
@@ -1728,6 +1826,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
               ),
               _buildBlockedBanner(),
+              // Typing indicator
+              TypingIndicatorWidget(
+                userName: widget.otherUserName,
+                isTyping: _isOtherUserTyping,
+              ),
               ConnectionStatusWidget(
                 onRetry: () {
                   // تلاش مجدد برای ارسال پیام‌های ناموفق
@@ -1805,6 +1908,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             attachmentUrl: message.attachmentUrl,
             attachmentType: message.attachmentType,
           );
+
+      _autoScrollToBottom();
     } catch (e) {
       ToastService.showErrorToast(context, 'خطا در ارسال تصویر');
     }
@@ -1844,6 +1949,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             attachmentUrl: fileUrl,
             attachmentType: 'document',
           );
+
+      _autoScrollToBottom();
 
       // بروزرسانی لیست مکالمات برای نمایش آخرین پیام
       ref.invalidate(conversationsProvider);

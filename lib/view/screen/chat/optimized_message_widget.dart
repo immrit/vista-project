@@ -559,16 +559,23 @@ class _OptimizedMessageWidgetState extends State<OptimizedMessageWidget>
   Widget _buildStatusIcon() {
     Widget icon;
     Color color = _timeColor;
+    double iconSize = math.max(12, widget.fontSize * 0.8);
 
     if (widget.message.isPending) {
-      icon = Icon(Icons.schedule_rounded,
-          size: math.max(12, widget.fontSize * 0.8), color: color);
+      // پیام در حال ارسال
+      icon = Icon(Icons.schedule_rounded, size: iconSize, color: Colors.grey);
     } else if (!widget.message.isSent) {
-      icon = Icon(Icons.refresh_rounded,
-          size: math.max(12, widget.fontSize * 0.8), color: Colors.red);
+      // پیام ارسال نشده
+      icon = Icon(Icons.error_outline_rounded, size: iconSize, color: Colors.red);
+    } else if (widget.message.isSeen) {
+      // پیام خوانده شده (double tick blue)
+      icon = Icon(Icons.done_all_rounded, size: iconSize, color: Colors.blue);
+    } else if (widget.message.isDelivered) {
+      // پیام تحویل داده شده (double tick grey)
+      icon = Icon(Icons.done_all_rounded, size: iconSize, color: color);
     } else {
-      icon = Icon(Icons.done_rounded,
-          size: math.max(12, widget.fontSize * 0.8), color: color);
+      // پیام ارسال شده (single tick)
+      icon = Icon(Icons.done_rounded, size: iconSize, color: color);
     }
 
     return Container(
