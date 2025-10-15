@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
@@ -41,7 +42,7 @@ class AdvancedAudioEnhancementService {
     if (_isInitialized) return;
 
     _isInitialized = true;
-    print('🎵 Advanced Audio Enhancement Service initialized');
+    logInfo('🎵 Advanced Audio Enhancement Service initialized');
   }
 
   /// بهبود کیفیت فایل صوتی
@@ -98,7 +99,7 @@ class AdvancedAudioEnhancementService {
 
       return outputFile;
     } catch (e) {
-      print('❌ خطا در بهبود فایل صوتی: $e');
+      logInfo('❌ خطا در بهبود فایل صوتی: $e');
       onStatusChanged?.call('خطا در پردازش: $e');
       return null;
     }
@@ -279,7 +280,7 @@ class AdvancedAudioEnhancementService {
         },
       );
     } catch (e) {
-      print('❌ خطا در تحلیل کیفیت صدا: $e');
+      logInfo('❌ خطا در تحلیل کیفیت صدا: $e');
       return AdvancedAudioQualityAnalysis(
         quality: AudioQuality.unknown,
         description: 'خطا در تحلیل',
@@ -374,7 +375,7 @@ class AdvancedAudioEnhancementService {
   /// پاکسازی منابع
   void dispose() {
     _isInitialized = false;
-    print('🧹 Advanced Audio Enhancement Service disposed');
+    logInfo('🧹 Advanced Audio Enhancement Service disposed');
   }
 }
 

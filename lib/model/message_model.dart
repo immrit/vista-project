@@ -6,6 +6,7 @@ class MessageModel {
   final DateTime createdAt;
   final String? attachmentUrl;
   final String? attachmentType;
+  final String? attachmentFileName;
   final int? duration; // مدت زمان فایل صوتی (ثانیه)
   final bool isRead;
   final bool isSent;
@@ -20,6 +21,8 @@ class MessageModel {
   final bool isPending;
   final String? localId;
   final int retryCount; // اضافه کنید
+  final String? errorMessage; // پیام خطای ارسال برای نمایش به کاربر
+  final DateTime? lastRetryTime; // آخرین زمان تلاش مجدد
 
   // Typing indicators برای نشان دادن کاربران در حال تایپ
   final Map<String, DateTime>? typingUsers;
@@ -35,6 +38,7 @@ class MessageModel {
     required this.createdAt, // Add this parameter
     this.attachmentUrl,
     this.attachmentType,
+    this.attachmentFileName,
     this.duration,
     this.isRead = false,
     this.isSent = true,
@@ -49,6 +53,8 @@ class MessageModel {
     this.isPending = false,
     this.localId,
     this.retryCount = 0, // مقدار پیش‌فرض
+    this.errorMessage,
+    this.lastRetryTime,
     this.typingUsers,
     this.reactions,
   });
@@ -84,6 +90,7 @@ class MessageModel {
       isSeen: json['is_seen'] as bool? ?? false,
       attachmentUrl: json['attachment_url'],
       attachmentType: json['attachment_type'],
+      attachmentFileName: json['attachment_file_name'] as String?,
       senderName: json['sender_name'],
       senderAvatar: json['sender_avatar'],
       isMe: json['sender_id'] == currentUserId,
@@ -93,6 +100,10 @@ class MessageModel {
       localId: json['local_id'] as String?,
       retryCount: json['retry_count'] as int? ?? 0,
       isPending: json['is_pending'] as bool? ?? false,
+      errorMessage: json['error_message'] as String?,
+      lastRetryTime: json['last_retry_time'] != null
+          ? DateTime.parse(json['last_retry_time'] as String)
+          : null,
       typingUsers: json['typing_users'] != null
           ? Map<String, DateTime>.from(json['typing_users'])
           : null,
@@ -107,6 +118,7 @@ class MessageModel {
     required String content,
     String? attachmentUrl,
     String? attachmentType,
+    String? attachmentFileName,
     int? duration,
     String? replyToMessageId,
     String? replyToContent,
@@ -126,6 +138,7 @@ class MessageModel {
       createdAt: DateTime.now(),
       attachmentUrl: attachmentUrl,
       attachmentType: attachmentType,
+      attachmentFileName: attachmentFileName,
       duration: duration,
       isRead: false,
       isSent: false,
@@ -149,6 +162,7 @@ class MessageModel {
     DateTime? createdAt,
     String? attachmentUrl,
     String? attachmentType,
+    String? attachmentFileName,
     bool? isRead,
     bool? isSent,
     bool? isDelivered,
@@ -162,6 +176,8 @@ class MessageModel {
     bool? isPending,
     String? localId,
     int? retryCount, // اضافه کنید
+    String? errorMessage,
+    DateTime? lastRetryTime,
     Map<String, DateTime>? typingUsers,
     List<dynamic>? reactions,
   }) {
@@ -173,6 +189,7 @@ class MessageModel {
       createdAt: createdAt ?? this.createdAt,
       attachmentUrl: attachmentUrl ?? this.attachmentUrl,
       attachmentType: attachmentType ?? this.attachmentType,
+      attachmentFileName: attachmentFileName ?? this.attachmentFileName,
       isRead: isRead ?? this.isRead,
       isSent: isSent ?? this.isSent,
       isDelivered: isDelivered ?? this.isDelivered,
@@ -186,6 +203,8 @@ class MessageModel {
       isPending: isPending ?? this.isPending,
       localId: localId ?? this.localId,
       retryCount: retryCount ?? this.retryCount,
+      errorMessage: errorMessage ?? this.errorMessage,
+      lastRetryTime: lastRetryTime ?? this.lastRetryTime,
       typingUsers: typingUsers ?? this.typingUsers,
       reactions: reactions ?? this.reactions,
     );
@@ -200,6 +219,7 @@ class MessageModel {
       'created_at': createdAt.toIso8601String(),
       'attachment_url': attachmentUrl,
       'attachment_type': attachmentType,
+      'attachment_file_name': attachmentFileName,
       'is_read': isRead,
       'is_sent': isSent,
       'is_delivered': isDelivered,
@@ -212,6 +232,8 @@ class MessageModel {
       'is_pending': isPending,
       'local_id': localId,
       'retry_count': retryCount,
+      'error_message': errorMessage,
+      'last_retry_time': lastRetryTime?.toIso8601String(),
       'typing_users': typingUsers,
       'reactions': reactions,
     };

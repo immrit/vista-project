@@ -1,3 +1,4 @@
+import '../../../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -212,7 +213,7 @@ class _RegistrationScreenState extends State<RegistrationScreen>
         return;
       } catch (e) {
         // اگر لاگین ناموفق بود، یعنی کاربر وجود نداره و می‌تونیم ثبت نام کنیم
-        print('User does not exist in Auth, proceeding with registration');
+        logInfo('User does not exist in Auth, proceeding with registration');
       }
 
       // ثبت نام کاربر در Supabase Auth
@@ -234,15 +235,15 @@ class _RegistrationScreenState extends State<RegistrationScreen>
           String? uploadedAvatarUrl;
           if (_selectedImageFile != null) {
             try {
-              print('آپلود عکس پروفایل به سرور...');
+              logInfo('آپلود عکس پروفایل به سرور...');
               uploadedAvatarUrl =
                   await ProfileImageUploadService.uploadImageForRegistration(
                 _selectedImageFile!,
                 authResponse.user!.id,
               );
-              print('عکس پروفایل با موفقیت آپلود شد: $uploadedAvatarUrl');
+              logInfo('عکس پروفایل با موفقیت آپلود شد: $uploadedAvatarUrl');
             } catch (e) {
-              print('خطا در آپلود عکس پروفایل: $e');
+              logInfo('خطا در آپلود عکس پروفایل: $e');
               // ادامه ثبت نام بدون عکس
             }
           }
@@ -278,11 +279,11 @@ class _RegistrationScreenState extends State<RegistrationScreen>
             'last_active': DateTime.now().toIso8601String(),
           };
 
-          print('🔍 Inserting profile data: $profileData');
+          logInfo('🔍 Inserting profile data: $profileData');
           await supabase.from('profiles').insert(profileData);
-          print('✅ Profile inserted successfully');
+          logInfo('✅ Profile inserted successfully');
         } else {
-          print('Profile already exists, skipping insert');
+          logInfo('Profile already exists, skipping insert');
         }
 
         // آپدیت متادیتای کاربر
@@ -373,7 +374,7 @@ class _RegistrationScreenState extends State<RegistrationScreen>
       try {
         _selectedImageFile!.delete();
       } catch (e) {
-        print('خطا در حذف فایل کش شده: $e');
+        logInfo('خطا در حذف فایل کش شده: $e');
       }
     }
     _selectedImageFile = null;
@@ -445,7 +446,7 @@ class _RegistrationScreenState extends State<RegistrationScreen>
       try {
         _selectedImageFile!.delete();
       } catch (e) {
-        print('خطا در حذف فایل کش شده: $e');
+        logInfo('خطا در حذف فایل کش شده: $e');
       }
     }
 
@@ -458,7 +459,7 @@ class _RegistrationScreenState extends State<RegistrationScreen>
   Future<File?> _compressAndCacheImage(File file) async {
     try {
       final extension = path.extension(file.path).toLowerCase();
-      print('فشرده‌سازی عکس محلی: $extension');
+      logInfo('فشرده‌سازی عکس محلی: $extension');
 
       Uint8List? compressedBytes;
 
@@ -481,7 +482,7 @@ class _RegistrationScreenState extends State<RegistrationScreen>
       }
 
       if (compressedBytes == null) {
-        print('فشرده‌سازی ناموفق بود');
+        logInfo('فشرده‌سازی ناموفق بود');
         return null;
       }
 
@@ -491,10 +492,10 @@ class _RegistrationScreenState extends State<RegistrationScreen>
       final cachedFile = File('${cacheDir.path}/profile_image_$timestamp.jpg');
       await cachedFile.writeAsBytes(compressedBytes);
 
-      print('عکس در cache ذخیره شد: ${cachedFile.path}');
+      logInfo('عکس در cache ذخیره شد: ${cachedFile.path}');
       return cachedFile;
     } catch (e) {
-      print('خطا در فشرده‌سازی و cache کردن عکس: $e');
+      logInfo('خطا در فشرده‌سازی و cache کردن عکس: $e');
       return null;
     }
   }

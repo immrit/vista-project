@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
@@ -623,7 +624,7 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
       final chatService = ref.read(chatServiceProvider);
       return await chatService.searchMessages(conversationId, query);
     } catch (e) {
-      print('خطا در جستجوی پیام‌ها: $e');
+      logInfo('خطا در جستجوی پیام‌ها: $e');
       rethrow;
     }
   }
@@ -672,7 +673,7 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
 
     // اگر پیام مشابه در حال ارسال وجود دارد، از ارسال دوباره جلوگیری کن
     if (existingTempMessages.isNotEmpty) {
-      print('⚠️ پیام تکراری تشخیص داده شد - از ارسال دوباره جلوگیری شد');
+      logInfo('⚠️ پیام تکراری تشخیص داده شد - از ارسال دوباره جلوگیری شد');
       return;
     }
 
@@ -688,7 +689,7 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
             5); // پیام‌های ۵ ثانیه اخیر
 
     if (recentMessages.isNotEmpty) {
-      print('⚠️ پیام مشابه اخیراً ارسال شده - از ارسال دوباره جلوگیری شد');
+      logInfo('⚠️ پیام مشابه اخیراً ارسال شده - از ارسال دوباره جلوگیری شد');
       return;
     }
 
@@ -761,7 +762,7 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
 
     // اگر پیام در حال ارسال یا ارسال شده هست، از retry جلوگیری کن
     if (existingTempMessages.isNotEmpty) {
-      print('⚠️ پیام در حال ارسال یا ارسال شده - از retry جلوگیری شد');
+      logInfo('⚠️ پیام در حال ارسال یا ارسال شده - از retry جلوگیری شد');
       return;
     }
 
@@ -877,7 +878,7 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
               .markTempFailed(tempMessage.id);
         } else {
           // اگر پیام temp وجود ندارد، آن را حذف کن
-          print('⚠️ پیام temp حذف شده - از علامت‌گذاری ناموفق جلوگیری شد');
+          logInfo('⚠️ پیام temp حذف شده - از علامت‌گذاری ناموفق جلوگیری شد');
         }
       }
     }
@@ -935,7 +936,7 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
 
       state = const AsyncValue.data(null);
     } catch (e, stack) {
-      print('خطا در پاکسازی مکالمه: $e');
+      logInfo('خطا در پاکسازی مکالمه: $e');
       state = AsyncValue.error(e, stack);
     }
   }
@@ -993,7 +994,7 @@ class SafeMessageHandler {
         replyToSenderName: replyToSenderName,
       );
     } catch (e) {
-      print('خطا در ارسال پیام: $e');
+      logInfo('خطا در ارسال پیام: $e');
       rethrow;
     }
   }
@@ -1002,7 +1003,7 @@ class SafeMessageHandler {
     try {
       await _notifier.deleteMessage(messageId);
     } catch (e) {
-      print('خطا در حذف پیام: $e');
+      logInfo('خطا در حذف پیام: $e');
       rethrow;
     }
   }
@@ -1061,7 +1062,7 @@ class UserOnlineNotifier {
       final chatService = _ref.read(chatServiceProvider);
       await chatService.updateUserOnlineStatus();
     } catch (e) {
-      print('خطا در به‌روزرسانی وضعیت آنلاین: $e');
+      logInfo('خطا در به‌روزرسانی وضعیت آنلاین: $e');
     }
   }
 
@@ -1074,10 +1075,10 @@ class UserOnlineNotifier {
           'is_online': false,
           'last_online': DateTime.now().toUtc().toIso8601String(),
         }).eq('id', userId);
-        print('setOffline: وضعیت کاربر به آفلاین تغییر یافت');
+        logInfo('setOffline: وضعیت کاربر به آفلاین تغییر یافت');
       }
     } catch (e) {
-      print('خطا در تنظیم وضعیت آفلاین: $e');
+      logInfo('خطا در تنظیم وضعیت آفلاین: $e');
     }
   }
 
@@ -1166,7 +1167,7 @@ final userOnlineStatusStreamProvider =
             if (iFollowOther == null) return false;
           }
         } catch (e) {
-          print('Error checking privacy settings for $userId: $e');
+          logInfo('Error checking privacy settings for $userId: $e');
           // در صورت خطا، محدودیت اعمال نشود
         }
 
@@ -1183,7 +1184,7 @@ final userOnlineStatusStreamProvider =
         return now.difference(lastOnline).inMinutes < 2;
       })
       .handleError((e) {
-        print('Error in userOnlineStatusStreamProvider for $userId: $e');
+        logInfo('Error in userOnlineStatusStreamProvider for $userId: $e');
         return false; // در صورت خطا، آفلاین در نظر بگیر
       });
 });
@@ -1924,19 +1925,22 @@ final cachedConversationsProvider =
 class CachedConversationsNotifier
     extends StateNotifier<List<ConversationModel>> {
   final String? userId;
+  bool _disposed = false;
 
   CachedConversationsNotifier(this.userId) : super([]) {
     _loadCachedConversations();
   }
 
   Future<void> _loadCachedConversations() async {
-    if (userId == null) return;
+    if (userId == null || _disposed) return;
 
     try {
       // دریافت کش مکالمات
       final conversationCache = UnifiedConversationCacheService();
       final cachedConversations =
           await conversationCache.getCachedConversations(userId!);
+
+      if (_disposed) return;
 
       if (cachedConversations.isNotEmpty) {
         print(
@@ -1946,7 +1950,7 @@ class CachedConversationsNotifier
         final needsProfileLoading = _needsProfileLoading(cachedConversations);
 
         if (needsProfileLoading) {
-          print('🔄 Cached provider: Loading profiles for conversations');
+          logInfo('🔄 Cached provider: Loading profiles for conversations');
 
           // جمع‌آوری userId ها
           final userIdsToLoad = <String>[];
@@ -1965,9 +1969,13 @@ class CachedConversationsNotifier
             final userProfileService = UserProfileService();
             await userProfileService.preloadProfiles(userIdsToLoad);
 
+            if (_disposed) return;
+
             // دوباره کش را دریافت کن و enrich کن
             final cachedConversationsAfterLoad =
                 await conversationCache.getCachedConversations(userId!);
+
+            if (_disposed) return;
 
             // Enrich conversations with loaded profiles
             final enrichedConversations =
@@ -1992,7 +2000,7 @@ class CachedConversationsNotifier
             }).toList();
 
             state = enrichedConversations;
-            print('✅ Cached provider: Profiles loaded, conversations enriched');
+            logInfo('✅ Cached provider: Profiles loaded, conversations enriched');
           } else {
             state = cachedConversations;
           }
@@ -2006,6 +2014,8 @@ class CachedConversationsNotifier
         try {
           final chatService = ChatService();
           final conversations = await chatService.getConversations();
+
+          if (_disposed) return;
 
           if (conversations.isNotEmpty) {
             // Enrich conversations with profiles
@@ -2021,10 +2031,12 @@ class CachedConversationsNotifier
                 );
                 enrichedConversations.add(enrichedConversation);
               } catch (e) {
-                print('Error enriching conversation ${conversation.id}: $e');
+                logInfo('Error enriching conversation ${conversation.id}: $e');
                 enrichedConversations.add(conversation);
               }
             }
+
+            if (_disposed) return;
 
             state = enrichedConversations;
             print(
@@ -2033,12 +2045,12 @@ class CachedConversationsNotifier
             state = [];
           }
         } catch (e) {
-          print('⚠️ Error fetching conversations from server: $e');
+          logInfo('⚠️ Error fetching conversations from server: $e');
           state = [];
         }
       }
     } catch (e) {
-      print('⚠️ Error getting cached conversations: $e');
+      logInfo('⚠️ Error getting cached conversations: $e');
       state = [];
     }
   }
@@ -2070,12 +2082,14 @@ class CachedConversationsNotifier
   }
 
   Future<void> _loadConversationsFromServer() async {
-    if (userId == null) return;
+    if (userId == null || _disposed) return;
 
     try {
       // دریافت مکالمات از سرور با آخرین پیام‌ها
       final chatService = ChatService();
       final serverConversations = await chatService.getConversations();
+
+      if (_disposed) return;
 
       if (serverConversations.isNotEmpty) {
         // بروزرسانی کش برای هر مکالمه
@@ -2085,15 +2099,32 @@ class CachedConversationsNotifier
         }
 
         // بروزرسانی state
-        state = serverConversations;
-        print(
-            '✅ CachedConversationsNotifier: Refreshed with ${serverConversations.length} conversations from server');
+        if (!_disposed) {
+          state = serverConversations;
+          print(
+              '✅ CachedConversationsNotifier: Refreshed with ${serverConversations.length} conversations from server');
+        }
       }
     } catch (e) {
-      print('⚠️ Error refreshing conversations from server: $e');
+      logInfo('⚠️ Error refreshing conversations from server: $e');
       // fallback to cache
-      _loadCachedConversations();
+      if (!_disposed) {
+        _loadCachedConversations();
+      }
     }
+  }
+
+  @override
+  set state(List<ConversationModel> value) {
+    if (!_disposed) {
+      super.state = value;
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }
 
@@ -2129,7 +2160,7 @@ final conversationsWithProfilesProvider =
           );
           enrichedConversations.add(enrichedConversation);
         } catch (e) {
-          print('Error enriching cached conversation ${conversation.id}: $e');
+          logInfo('Error enriching cached conversation ${conversation.id}: $e');
           enrichedConversations.add(conversation);
         }
       }
@@ -2138,7 +2169,7 @@ final conversationsWithProfilesProvider =
     }
 
     // اگر کش موجود نیست، از سرور دریافت کنیم
-    print('🌐 No cache found, fetching from server...');
+    logInfo('🌐 No cache found, fetching from server...');
     final chatService = ChatService();
     final conversations = await chatService.getConversations();
 
@@ -2155,7 +2186,7 @@ final conversationsWithProfilesProvider =
         );
         enrichedConversations.add(enrichedConversation);
       } catch (e) {
-        print('Error enriching conversation ${conversation.id}: $e');
+        logInfo('Error enriching conversation ${conversation.id}: $e');
         enrichedConversations
             .add(conversation); // در صورت خطا، مکالمه اصلی را اضافه کنیم
       }
@@ -2163,7 +2194,7 @@ final conversationsWithProfilesProvider =
 
     return enrichedConversations;
   } catch (e) {
-    print('Error in conversationsWithProfilesProvider: $e');
+    logInfo('Error in conversationsWithProfilesProvider: $e');
     return [];
   }
 });
@@ -2207,15 +2238,27 @@ final enrichedConversationsStreamProvider =
 
     yield enrichedConversations;
   } else {
-    // اگر کش موجود نیست، از provider اصلی استفاده کنیم
-    print('🌐 Stream: No cache found, using provider...');
-    final conversationsAsync = ref.read(conversationsWithProfilesProvider);
-    final conversations = conversationsAsync.when(
-      data: (data) => data,
-      loading: () => <ConversationModel>[],
-      error: (error, stack) => <ConversationModel>[],
-    );
-    yield conversations;
+    // اگر کش موجود نیست، ابتدا loading state ارسال کنیم
+    logInfo('🌐 Stream: No cache found, yielding loading state...');
+    yield []; // Empty list but will be handled as loading in UI
+
+    // سپس از provider اصلی استفاده کنیم و منتظر نتیجه بمانیم
+    try {
+      final conversations =
+          await ref.read(conversationsWithProfilesProvider.future);
+
+      if (conversations.isNotEmpty) {
+        print(
+            '📱 Stream: Loaded ${conversations.length} conversations from server');
+        yield conversations;
+      } else {
+        logInfo('📱 Stream: No conversations found');
+        yield []; // Real empty state after loading
+      }
+    } catch (e) {
+      logInfo('⚠️ Error loading conversations: $e');
+      yield []; // Error state will be handled in UI
+    }
   }
 
   // سپس استریم real-time را شروع کنیم و اطلاعات پروفایل را تکمیل کنیم
@@ -2243,14 +2286,14 @@ final enrichedConversationsStreamProvider =
             enrichedConversations.add(conversation);
           }
         } catch (e) {
-          print('Error enriching conversation ${conversation.id}: $e');
+          logInfo('Error enriching conversation ${conversation.id}: $e');
           enrichedConversations.add(conversation);
         }
       }
 
       yield enrichedConversations;
     } catch (e) {
-      print('Error processing cached conversations: $e');
+      logInfo('Error processing cached conversations: $e');
       yield []; // در صورت خطا، لیست خالی برگردان
     }
   }
@@ -2334,7 +2377,7 @@ final userProfileDetailsProvider = FutureProvider.family
         await supabase.from('profiles').select().eq('id', userId).maybeSingle();
     return response;
   } catch (e) {
-    print('Error fetching user profile details for $userId: $e');
+    logInfo('Error fetching user profile details for $userId: $e');
     return null;
   }
 });

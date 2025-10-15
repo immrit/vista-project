@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
@@ -64,7 +65,7 @@ class VoiceRecordingService {
       final status = await Permission.microphone.request();
       return status == PermissionStatus.granted;
     } catch (e) {
-      print('خطا در درخواست مجوز میکروفون: $e');
+      logInfo('خطا در درخواست مجوز میکروفون: $e');
       return false;
     }
   }
@@ -128,10 +129,10 @@ class VoiceRecordingService {
       _onCancelingStateChanged?.call(false);
       _onPausedStateChanged?.call(false);
 
-      print('🎙️ ضبط صدا شروع شد: $_currentRecordingPath');
+      logInfo('🎙️ ضبط صدا شروع شد: $_currentRecordingPath');
       return true;
     } catch (e) {
-      print('❌ خطا در شروع ضبط: $e');
+      logInfo('❌ خطا در شروع ضبط: $e');
       _cleanup();
       return false;
     }
@@ -150,7 +151,7 @@ class VoiceRecordingService {
       if (recordedPath != null &&
           await File(recordedPath).exists() &&
           wasValid) {
-        print('✅ ضبط صدا متوقف شد: $recordedPath (${_recordingDuration}s)');
+        logInfo('✅ ضبط صدا متوقف شد: $recordedPath (${_recordingDuration}s)');
         return File(recordedPath);
       }
 
@@ -159,13 +160,13 @@ class VoiceRecordingService {
         final file = File(recordedPath);
         if (await file.exists()) {
           await file.delete();
-          print('🗑️ فایل کوتاه حذف شد');
+          logInfo('🗑️ فایل کوتاه حذف شد');
         }
       }
 
       return null;
     } catch (e) {
-      print('❌ خطا در توقف ضبط: $e');
+      logInfo('❌ خطا در توقف ضبط: $e');
       _cleanup();
       return null;
     }
@@ -187,14 +188,14 @@ class VoiceRecordingService {
         final file = File(_currentRecordingPath!);
         if (await file.exists()) {
           await file.delete();
-          print('🗑️ فایل ضبط لغو شد');
+          logInfo('🗑️ فایل ضبط لغو شد');
         }
       }
 
       // haptic feedback
       HapticFeedback.mediumImpact();
     } catch (e) {
-      print('❌ خطا در لغو ضبط: $e');
+      logInfo('❌ خطا در لغو ضبط: $e');
       _cleanup();
     }
   }
@@ -209,7 +210,7 @@ class VoiceRecordingService {
     // haptic feedback
     HapticFeedback.heavyImpact();
 
-    print('🔒 ضبط قفل شد');
+    logInfo('🔒 ضبط قفل شد');
   }
 
   /// باز کردن قفل ضبط صدا
@@ -219,7 +220,7 @@ class VoiceRecordingService {
     _isLocked = false;
     _onLockedStateChanged?.call(false);
 
-    print('🔓 قفل باز شد');
+    logInfo('🔓 قفل باز شد');
   }
 
   /// مکث ضبط صدا
@@ -238,9 +239,9 @@ class VoiceRecordingService {
       _onPausedStateChanged?.call(true);
       HapticFeedback.lightImpact();
 
-      print('⏸️ ضبط مکث شد');
+      logInfo('⏸️ ضبط مکث شد');
     } catch (e) {
-      print('❌ خطا در مکث ضبط: $e');
+      logInfo('❌ خطا در مکث ضبط: $e');
     }
   }
 
@@ -272,9 +273,9 @@ class VoiceRecordingService {
       _onPausedStateChanged?.call(false);
       HapticFeedback.lightImpact();
 
-      print('▶️ ضبط ادامه یافت');
+      logInfo('▶️ ضبط ادامه یافت');
     } catch (e) {
-      print('❌ خطا در ادامه ضبط: $e');
+      logInfo('❌ خطا در ادامه ضبط: $e');
     }
   }
 
@@ -339,6 +340,6 @@ class VoiceRecordingService {
   /// پاکسازی کامل سرویس
   static void dispose() {
     _cleanup();
-    print('🧹 سرویس ضبط صدا پاکسازی شد');
+    logInfo('🧹 سرویس ضبط صدا پاکسازی شد');
   }
 }

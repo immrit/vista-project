@@ -889,7 +889,7 @@ class SupabaseService {
       ''').eq('follower_id', userId);
 
     // تبدیل داده به مدل پروفایل
-    final List data = response ?? [];
+    final List data = response;
     return data.map((item) {
       final profileMap = item['profiles']; // بررسی وجود داده‌های پروفایل
       if (profileMap == null) {
@@ -1206,7 +1206,7 @@ class CommentService {
       if (comment.parentCommentId != null) {
         final parentComment = commentMap[comment.parentCommentId];
         if (parentComment != null) {
-          parentComment.replies ??= [];
+          parentComment.replies = parentComment.replies ?? [];
           parentComment.replies.add(comment);
           return true; // حذف ریپلای از لیست اصلی
         }
@@ -1417,7 +1417,7 @@ class CommentsNotifier extends StateNotifier<List<CommentModel>> {
       // پیدا کردن کامنت والد و اضافه کردن ریپلای
       state = state.map((existingComment) {
         if (existingComment.id == parentCommentId) {
-          final updatedReplies = [...(existingComment.replies ?? []), comment];
+          final updatedReplies = [...(existingComment.replies), comment];
           return existingComment.copyWith(
             replies: updatedReplies.cast<CommentModel>(),
           );
@@ -3265,7 +3265,7 @@ class ProfilePostsNotifier
   int _offset = 0;
   bool _hasMore = true;
   bool _isLoading = false;
-  List<PublicPostModel> _allPosts = [];
+  final List<PublicPostModel> _allPosts = [];
 
   ProfilePostsNotifier(this.supabase, this.userId)
       : super(const AsyncValue.loading()) {

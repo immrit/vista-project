@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -211,7 +212,7 @@ class ImprovedErrorHandler {
     } catch (error) {
       if (fallbackValue != null) {
         if (kDebugMode) {
-          print('Using fallback value due to error: $error');
+          logInfo('Using fallback value due to error: $error');
         }
         return fallbackValue;
       }
@@ -231,7 +232,7 @@ class ImprovedErrorHandler {
       }
 
       if (kDebugMode) {
-        print('Stream error: $error');
+        logInfo('Stream error: $error');
       }
 
       // برای خطاهای authentication، stream را terminate کن

@@ -1,3 +1,4 @@
+import '../../security/logging_utility.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'dart:async';
@@ -112,7 +113,7 @@ extension PostgrestFilterBuilderExtensions on PostgrestFilterBuilder {
 
     while (attempt < maxRetries) {
       try {
-        print('🔄 Postgrest query attempt ${attempt + 1}/$maxRetries');
+        logInfo('🔄 Postgrest query attempt ${attempt + 1}/$maxRetries');
 
         // اجرای query با timeout
         final responseFuture = this;
@@ -159,7 +160,7 @@ Future<bool> checkSupabaseConnectivity() async {
         );
     return true;
   } catch (e) {
-    print('❌ Supabase connectivity check failed: $e');
+    logInfo('❌ Supabase connectivity check failed: $e');
     return false;
   }
 }
@@ -167,7 +168,7 @@ Future<bool> checkSupabaseConnectivity() async {
 Future<void> initializeSupabaseWithFailover() async {
   // تلاش اول: استفاده از CDN URL با HTTP client جدید
   try {
-    print('Attempting Supabase initialization with CDN URL: $supabaseCdnUrl');
+    logInfo('Attempting Supabase initialization with CDN URL: $supabaseCdnUrl');
 
     // ایجاد Supabase client با HTTP client جدید
     final httpClient = SupabaseHttpClient();
@@ -183,7 +184,7 @@ Future<void> initializeSupabaseWithFailover() async {
         );
     return; // اتصال موفق، خروج از تابع
   } catch (e) {
-    print('⚠️ CDN URL failed: $e');
+    logInfo('⚠️ CDN URL failed: $e');
 
     // CDN attempt failed, will try direct URL
 
@@ -205,7 +206,7 @@ Future<void> initializeSupabaseWithFailover() async {
       try {
         await Supabase.instance.dispose(); // ریست کردن وضعیت Supabase
       } catch (disposeError) {
-        print('⚠️ Error disposing Supabase instance: $disposeError');
+        logInfo('⚠️ Error disposing Supabase instance: $disposeError');
       }
     }
 
@@ -226,7 +227,7 @@ Future<void> initializeSupabaseWithFailover() async {
             onTimeout: () => throw TimeoutException('Ping timeout'),
           );
 
-      print('✅ Supabase initialized successfully with Direct URL');
+      logInfo('✅ Supabase initialized successfully with Direct URL');
     } catch (err) {
       print(
           '❌ اتصال به سرور قطع است - لطفاً اتصال اینترنت خود را بررسی کنید: $err');
@@ -243,13 +244,13 @@ Future<void> initializeSupabaseWithFailover() async {
                 'https://localhost:54321', // این URL کار نخواهد کرد اما instance ایجاد می‌شود
             anonKey: supabaseAnonKey,
           );
-          print('✅ Supabase با تنظیمات minimal initialize شد (حالت توسعه)');
-          print('⚠️ اتصال به دیتابیس ممکن است کار نکند اما برنامه اجرا می‌شود');
+          logInfo('✅ Supabase با تنظیمات minimal initialize شد (حالت توسعه)');
+          logInfo('⚠️ اتصال به دیتابیس ممکن است کار نکند اما برنامه اجرا می‌شود');
           return; // خروج موفق
         } catch (minimalErr) {
-          print('❌ حتی minimal Supabase هم شکست خورد: $minimalErr');
+          logInfo('❌ حتی minimal Supabase هم شکست خورد: $minimalErr');
           // در این حالت نیز اجازه بده برنامه اجرا شود
-          print('🔧 برنامه بدون Supabase اجرا می‌شود');
+          logInfo('🔧 برنامه بدون Supabase اجرا می‌شود');
           return;
         }
       } else {

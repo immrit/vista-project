@@ -1,3 +1,4 @@
+import '../../security/logging_utility.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -373,7 +374,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
         }
       }
     } catch (e) {
-      print('Instagram sharing error: $e');
+      logInfo('Instagram sharing error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -403,7 +404,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
       // تصویر ترکیبی را مستقیماً به اینستاگرام ارسال می‌کنیم
       await _shareToInstagramViaIntent(imageFile);
     } catch (e) {
-      print('Direct sharing failed: $e');
+      logInfo('Direct sharing failed: $e');
       // اگر روش مستقیم کار نکرد، از روش fallback استفاده می‌کنیم
       await _generator.shareToInstagramStory(imageFile);
     }
@@ -442,7 +443,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
       }
     } catch (e) {
       // اگر Intent کار نکرد، از روش قدیمی استفاده می‌کنیم
-      print('Intent failed: $e');
+      logInfo('Intent failed: $e');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

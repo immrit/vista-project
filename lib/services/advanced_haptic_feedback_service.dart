@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 
@@ -32,7 +33,7 @@ class AdvancedHapticFeedbackService {
     if (_isInitialized) return;
 
     _isInitialized = true;
-    print('📳 Advanced Haptic Feedback Service initialized');
+    logInfo('📳 Advanced Haptic Feedback Service initialized');
   }
 
   /// تنظیم کانفیگ
@@ -264,7 +265,7 @@ class AdvancedHapticFeedbackService {
           break;
       }
     } catch (e) {
-      print('❌ خطا در بازخورد لمسی: $e');
+      logInfo('❌ خطا در بازخورد لمسی: $e');
     }
   }
 
@@ -438,7 +439,7 @@ class AdvancedHapticFeedbackService {
   void dispose() {
     _lastHapticTimer?.cancel();
     _isInitialized = false;
-    print('🧹 Advanced Haptic Feedback Service disposed');
+    logInfo('🧹 Advanced Haptic Feedback Service disposed');
   }
 }
 

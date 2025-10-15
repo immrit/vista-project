@@ -1,3 +1,4 @@
+import '../../../security/logging_utility.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -134,8 +135,11 @@ class _ChatConversationsScreenState
     timeago.setLocaleMessages('fa', timeago.FaMessages());
     _initializeOptimizedMessaging();
 
+    // شروع prefetch سریع برای بهبود سرعت بارگیری اولیه
+    _startInitialPrefetch();
+
     // به تعویق انداختن بارگذاری پروفایل ها برای جلوگیری از فریز UI
-    Future.delayed(const Duration(milliseconds: 500), () {
+    Future.delayed(const Duration(milliseconds: 300), () {
       if (mounted) {
         _preloadUserProfiles();
       }
@@ -183,7 +187,7 @@ class _ChatConversationsScreenState
         }
       }
     } catch (e) {
-      print('⚠️ Error in background profile loading: $e');
+      logInfo('⚠️ Error in background profile loading: $e');
     }
   }
 
@@ -230,7 +234,7 @@ class _ChatConversationsScreenState
           final userProfileService = UserProfileService();
           await userProfileService.preloadProfiles(limitedUserIds);
 
-          print('✅ Preloaded profiles for ${userIdsToLoad.length} users');
+          logInfo('✅ Preloaded profiles for ${userIdsToLoad.length} users');
 
           // بروزرسانی UI
           if (mounted) {
@@ -239,7 +243,7 @@ class _ChatConversationsScreenState
             ref.invalidate(enrichedConversationsStreamProvider);
           }
         } else {
-          print('✅ All conversations already have usernames');
+          logInfo('✅ All conversations already have usernames');
         }
       } else {
         // اگر کش موجود نیست، از provider استفاده کنیم
@@ -276,7 +280,7 @@ class _ChatConversationsScreenState
         }
       }
     } catch (e) {
-      print('⚠️ Error preloading user profiles: $e');
+      logInfo('⚠️ Error preloading user profiles: $e');
     }
   }
 
@@ -292,9 +296,47 @@ class _ChatConversationsScreenState
     try {
       final chatService = ref.read(chatServiceProvider);
       await chatService.initializeOptimizedMessaging();
-      print('✅ Optimized messaging initialized for conversations screen');
+      logInfo('✅ Optimized messaging initialized for conversations screen');
     } catch (e) {
-      print('⚠️ Error initializing optimized messaging: $e');
+      logInfo('⚠️ Error initializing optimized messaging: $e');
+    }
+  }
+
+  /// Start initial prefetch for faster loading
+  Future<void> _startInitialPrefetch() async {
+    try {
+      // شروع prefetch در پس‌زمینه برای بهبود سرعت بارگیری اولیه
+      Future.microtask(() async {
+        try {
+          final chatService = ref.read(chatServiceProvider);
+
+          // prefetch مکالمات در پس‌زمینه
+          final conversationsFuture = chatService.getConversations();
+
+          // منتظر نتایج prefetch بمانیم اما UI را مسدود نکنیم
+          final conversations = await conversationsFuture;
+
+          if (conversations.isNotEmpty && mounted) {
+            print(
+                '✅ Initial prefetch completed: ${conversations.length} conversations');
+
+            // اگر مکالمات prefetch شده‌اند، کش را بروزرسانی کنیم
+            final conversationCache = UnifiedConversationCacheService();
+            for (final conversation in conversations) {
+              await conversationCache.cacheConversation(
+                  conversation, supabase.auth.currentUser?.id ?? '');
+            }
+
+            // رفرش providerها
+            ref.invalidate(cachedConversationsProvider);
+            ref.invalidate(enrichedConversationsStreamProvider);
+          }
+        } catch (e) {
+          logInfo('⚠️ Error in initial prefetch: $e');
+        }
+      });
+    } catch (e) {
+      logInfo('⚠️ Error starting initial prefetch: $e');
     }
   }
 
@@ -316,6 +358,9 @@ class _ChatConversationsScreenState
 
   // AppBar بهینه‌شده
   PreferredSizeWidget _buildAppBar(ThemeData theme) {
+    final conversationsAsync = ref.watch(enrichedConversationsStreamProvider);
+    final isLoading = conversationsAsync.isLoading;
+
     return AppBar(
       backgroundColor: theme.appBarTheme.backgroundColor,
       elevation: 0,
@@ -326,17 +371,34 @@ class _ChatConversationsScreenState
             ? Brightness.dark
             : Brightness.light,
       ),
-      title: Text(
-        'پیام‌ها',
-        style: theme.appBarTheme.titleTextStyle?.copyWith(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-            ) ??
-            TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: theme.textTheme.titleLarge?.color,
+      title: Row(
+        children: [
+          Text(
+            'پیام‌ها',
+            style: theme.appBarTheme.titleTextStyle?.copyWith(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                ) ??
+                TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: theme.textTheme.titleLarge?.color,
+                ),
+          ),
+          if (isLoading) ...[
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  theme.primaryColor,
+                ),
+              ),
             ),
+          ],
+        ],
       ),
       centerTitle: false,
       actions: [
@@ -612,14 +674,34 @@ class _ChatConversationsScreenState
     }
 
     // اگر کش خالی است، از stream provider استفاده کنیم
-    print('🌐 No cached conversations, using stream provider');
+    logInfo('🌐 No cached conversations, using stream provider');
     final conversationsAsync = ref.watch(enrichedConversationsStreamProvider);
     final channelsAsync = ref.watch(channelsProvider);
 
     return conversationsAsync.when(
-      loading: () => _buildLoadingState(theme),
-      error: (error, stack) => _buildErrorState(theme, error.toString()),
+      loading: () {
+        // اگر در حالت loading هستیم، loading state نشان بده
+        logInfo('⏳ UI: Provider is loading, showing loading state');
+        return _buildLoadingState(theme);
+      },
+      error: (error, stack) {
+        logInfo('❌ UI: Provider error: $error');
+        return _buildErrorState(theme, error.toString());
+      },
       data: (enrichedConversations) {
+        print(
+            '📱 UI: Provider data received: ${enrichedConversations.length} conversations');
+
+        // اگر هیچ مکالمه‌ای وجود ندارد، empty state نشان بده
+        if (enrichedConversations.isEmpty) {
+          logInfo('📱 UI: No conversations found, showing empty state');
+          return _buildEmptyState(
+            theme,
+            'هیچ گفتگویی وجود ندارد',
+            Icons.chat_bubble_outline_rounded,
+          );
+        }
+
         // محدود کردن تعداد مکالمات برای جلوگیری از فریز
         final limitedConversations = enrichedConversations.length > 50
             ? enrichedConversations.take(50).toList()

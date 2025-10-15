@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -220,9 +221,9 @@ class UserFriendlyErrorHandler {
   static void logError(dynamic error,
       {String? context, StackTrace? stackTrace}) {
     if (kDebugMode) {
-      print('🚨 Error in $context: $error');
+      logInfo('🚨 Error in $context: $error');
       if (stackTrace != null) {
-        print('Stack trace: $stackTrace');
+        logInfo('Stack trace: $stackTrace');
       }
     }
   }

@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
@@ -68,7 +69,7 @@ class AudioEnhancementService {
 
       return outputFile;
     } catch (e) {
-      print('❌ خطا در بهبود فایل صوتی: $e');
+      logInfo('❌ خطا در بهبود فایل صوتی: $e');
       return null;
     }
   }
@@ -170,7 +171,7 @@ class AudioEnhancementService {
         recommendations: _getRecommendations(quality, extension),
       );
     } catch (e) {
-      print('❌ خطا در تحلیل کیفیت صدا: $e');
+      logInfo('❌ خطا در تحلیل کیفیت صدا: $e');
       return AudioQualityAnalysis(
         quality: AudioQuality.unknown,
         description: 'خطا در تحلیل',

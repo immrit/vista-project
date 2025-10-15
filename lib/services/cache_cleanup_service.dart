@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 
 /// سرویس پاکسازی و غیرفعالسازی cache های اضافی
@@ -13,7 +14,7 @@ class CacheCleanupService {
   Future<void> disableRedundantCacheSystems() async {
     if (_isCleanupComplete) return;
 
-    print('🧹 Starting cache cleanup process...');
+    logInfo('🧹 Starting cache cleanup process...');
 
     try {
       // غیرفعالسازی UnifiedCacheManager (مهم‌ترین)
@@ -41,7 +42,7 @@ class CacheCleanupService {
       // نمایش آمار بهبود
       _showOptimizationStats();
     } catch (e) {
-      print('❌ Error during cache cleanup: $e');
+      logInfo('❌ Error during cache cleanup: $e');
     }
   }
 
@@ -49,9 +50,9 @@ class CacheCleanupService {
     try {
       // غیرفعالسازی UnifiedCacheManager
       _disabledSystems.add('UnifiedCacheManager');
-      print('🚫 UnifiedCacheManager disabled to prevent SQLite conflicts');
+      logInfo('🚫 UnifiedCacheManager disabled to prevent SQLite conflicts');
     } catch (e) {
-      print('⚠️ Could not disable UnifiedCacheManager: $e');
+      logInfo('⚠️ Could not disable UnifiedCacheManager: $e');
     }
   }
 
@@ -60,9 +61,9 @@ class CacheCleanupService {
       // Mock کردن AdvancedCacheManager
       _mockAdvancedCacheManager();
       _disabledSystems.add('AdvancedCacheManager');
-      print('🚫 AdvancedCacheManager disabled');
+      logInfo('🚫 AdvancedCacheManager disabled');
     } catch (e) {
-      print('⚠️ Could not disable AdvancedCacheManager: $e');
+      logInfo('⚠️ Could not disable AdvancedCacheManager: $e');
     }
   }
 
@@ -71,9 +72,9 @@ class CacheCleanupService {
       // Mock کردن ImprovedCacheManager
       _mockImprovedCacheManager();
       _disabledSystems.add('ImprovedCacheManager');
-      print('🚫 ImprovedCacheManager disabled');
+      logInfo('🚫 ImprovedCacheManager disabled');
     } catch (e) {
-      print('⚠️ Could not disable ImprovedCacheManager: $e');
+      logInfo('⚠️ Could not disable ImprovedCacheManager: $e');
     }
   }
 
@@ -82,9 +83,9 @@ class CacheCleanupService {
       // Mock کردن SmartMessageCache
       _mockSmartMessageCache();
       _disabledSystems.add('SmartMessageCache');
-      print('🚫 SmartMessageCache disabled');
+      logInfo('🚫 SmartMessageCache disabled');
     } catch (e) {
-      print('⚠️ Could not disable SmartMessageCache: $e');
+      logInfo('⚠️ Could not disable SmartMessageCache: $e');
     }
   }
 
@@ -93,9 +94,9 @@ class CacheCleanupService {
       // Mock کردن RealtimeCacheManager
       _mockRealtimeCacheManager();
       _disabledSystems.add('RealtimeCacheManager');
-      print('🚫 RealtimeCacheManager disabled');
+      logInfo('🚫 RealtimeCacheManager disabled');
     } catch (e) {
-      print('⚠️ Could not disable RealtimeCacheManager: $e');
+      logInfo('⚠️ Could not disable RealtimeCacheManager: $e');
     }
   }
 
@@ -104,9 +105,9 @@ class CacheCleanupService {
       // Mock کردن BackgroundCacheSync
       _mockBackgroundCacheSync();
       _disabledSystems.add('BackgroundCacheSync');
-      print('🚫 BackgroundCacheSync disabled');
+      logInfo('🚫 BackgroundCacheSync disabled');
     } catch (e) {
-      print('⚠️ Could not disable BackgroundCacheSync: $e');
+      logInfo('⚠️ Could not disable BackgroundCacheSync: $e');
     }
   }
 
@@ -157,7 +158,7 @@ class CacheCleanupService {
   Future<void> reEnableCacheSystems() async {
     _isCleanupComplete = false;
     _disabledSystems.clear();
-    print('🔄 All cache systems re-enabled');
+    logInfo('🔄 All cache systems re-enabled');
   }
 
   /// بررسی وضعیت cleanup

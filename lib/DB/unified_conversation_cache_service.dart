@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import '../model/conversation_model.dart';
 import 'advanced_cache_system.dart';
 
@@ -12,7 +13,7 @@ class UnifiedConversationCacheService {
 
   Future<void> initialize() async {
     await _advancedCache.initialize();
-    print('UnifiedConversationCacheService initialized with Advanced Cache');
+    logInfo('UnifiedConversationCacheService initialized with Advanced Cache');
   }
 
   /// Cache a conversation

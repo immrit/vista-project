@@ -1,3 +1,4 @@
+import '../../security/logging_utility.dart';
 import 'dart:async';
 import 'package:Vista/view/util/widgets.dart';
 import 'package:flutter/material.dart';
@@ -84,9 +85,9 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
         _directVerificationType = response['verification_type'];
       });
 
-      print('Direct verification type from API: $_directVerificationType');
+      logInfo('Direct verification type from API: $_directVerificationType');
     } catch (e) {
-      print('Error fetching verification type: $e');
+      logInfo('Error fetching verification type: $e');
     }
   }
 
@@ -126,7 +127,7 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
         }
       }
     } catch (e) {
-      print('Error initializing video: $e');
+      logInfo('Error initializing video: $e');
     }
   }
 
@@ -219,7 +220,7 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
         widget.post.isLiked = previousLikeState;
         widget.post.likeCount += previousLikeState ? 1 : -1;
       });
-      debugPrint('Error in handleLike: $e');
+      logDebug('Error in handleLike: $e');
     }
   }
 

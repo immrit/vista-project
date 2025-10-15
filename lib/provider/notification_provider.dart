@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -52,7 +53,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
 
     final userId = _userId ?? supabase.auth.currentUser?.id;
     if (userId == null) {
-      print('⚠️ کاربر لاگین نشده، اعلان‌ها بارگیری نمی‌شوند');
+      logInfo('⚠️ کاربر لاگین نشده، اعلان‌ها بارگیری نمی‌شوند');
       state = [];
       _isFetching = false;
       _hasMore = false;
@@ -63,14 +64,14 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
       _page = 0;
       _hasMore = true;
       state = [];
-      print('🔄 شروع رفرش اعلان‌ها...');
+      logInfo('🔄 شروع رفرش اعلان‌ها...');
     }
 
     try {
       final from = _page * _kPageSize;
       final to = from + _kPageSize - 1;
 
-      print('📡 درخواست اعلان‌ها از $from تا $to');
+      logInfo('📡 درخواست اعلان‌ها از $from تا $to');
 
       final response = await supabase
           .from('notifications')
@@ -84,33 +85,33 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
           .map((item) => NotificationModel.fromMap(item))
           .toList();
 
-      print('📥 ${notifications.length} اعلان دریافت شد');
+      logInfo('📥 ${notifications.length} اعلان دریافت شد');
 
       if (refresh) {
         state = notifications;
-        print('✅ اعلان‌ها رفرش شدند');
+        logInfo('✅ اعلان‌ها رفرش شدند');
       } else {
         // تکراری اضافه نشود
         final existingIds = state.map((n) => n.id).toSet();
         final newNotifications =
             notifications.where((n) => !existingIds.contains(n.id)).toList();
         state = [...state, ...newNotifications];
-        print('➕ ${newNotifications.length} اعلان جدید اضافه شد');
+        logInfo('➕ ${newNotifications.length} اعلان جدید اضافه شد');
       }
 
       if (notifications.length < _kPageSize) {
         _hasMore = false;
-        print('📄 آخرین صفحه اعلان‌ها بارگیری شد');
+        logInfo('📄 آخرین صفحه اعلان‌ها بارگیری شد');
       } else {
         _hasMore = true;
         _page++;
-        print('📄 صفحه بعدی آماده: $_page');
+        logInfo('📄 صفحه بعدی آماده: $_page');
       }
     } catch (e) {
       print("❌ خطا در واکشی اعلان‌ها: $e");
       if (refresh) {
         state = [];
-        print('🔄 لیست اعلان‌ها پاک شد به دلیل خطا');
+        logInfo('🔄 لیست اعلان‌ها پاک شد به دلیل خطا');
       }
       _hasMore = false;
     } finally {
@@ -143,7 +144,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
           callback: (payload) async {
             try {
               final newData = payload.newRecord;
-              print('🔔 اعلان جدید دریافت شد: ${newData['type']}');
+              logInfo('🔔 اعلان جدید دریافت شد: ${newData['type']}');
 
               // دریافت اطلاعات کامل فرستنده
               final senderData = await supabase
@@ -161,12 +162,12 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
               if (!state.any((n) => n.id == notif.id)) {
                 state = [notif, ...state];
                 await _showLocalNotification(notif);
-                print('✅ اعلان جدید به لیست اضافه شد: ${notif.type}');
+                logInfo('✅ اعلان جدید به لیست اضافه شد: ${notif.type}');
               } else {
-                print('⚠️ اعلان تکراری نادیده گرفته شد: ${notif.id}');
+                logInfo('⚠️ اعلان تکراری نادیده گرفته شد: ${notif.id}');
               }
             } catch (e) {
-              print('❌ خطا در پردازش اعلان ریل تایم: $e');
+              logInfo('❌ خطا در پردازش اعلان ریل تایم: $e');
               // در صورت خطا، اعلان ساده را اضافه کن
               try {
                 final notif = NotificationModel.fromMap(payload.newRecord);
@@ -175,7 +176,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
                   await _showLocalNotification(notif);
                 }
               } catch (fallbackError) {
-                print('❌ خطا در fallback اعلان: $fallbackError');
+                logInfo('❌ خطا در fallback اعلان: $fallbackError');
               }
             }
           },
@@ -311,7 +312,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
             notification
       ];
     } catch (e) {
-      print('خطا در علامت‌گذاری اعلان‌ها به عنوان خوانده شده: $e');
+      logInfo('خطا در علامت‌گذاری اعلان‌ها به عنوان خوانده شده: $e');
     }
   }
 
@@ -334,7 +335,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
             notification
       ];
     } catch (e) {
-      print('خطا در خوانده‌شدن اعلان: $e');
+      logInfo('خطا در خوانده‌شدن اعلان: $e');
     }
   }
 
@@ -349,7 +350,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
       await supabase.from('notifications').delete().eq('id', notificationId);
       state = state.where((n) => n.id != notificationId).toList();
     } catch (e) {
-      print('خطا در حذف اعلان: $e');
+      logInfo('خطا در حذف اعلان: $e');
     }
   }
 
@@ -364,7 +365,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
       await supabase.from('notifications').delete().eq('id', notificationId);
       state = state.where((n) => n.id != notificationId).toList();
     } catch (e) {
-      print('خطا در حذف اعلان درخواست دنبال کردن: $e');
+      logInfo('خطا در حذف اعلان درخواست دنبال کردن: $e');
     }
   }
 
@@ -377,12 +378,12 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
       if (!state.any((n) => n.id == notification.id)) {
         // اضافه کردن به ابتدای لیست (جدیدترین اول)
         state = [notification, ...state];
-        print('✅ اعلان جدید از FCM اضافه شد: ${notification.type}');
+        logInfo('✅ اعلان جدید از FCM اضافه شد: ${notification.type}');
       } else {
-        print('⚠️ اعلان FCM تکراری نادیده گرفته شد: ${notification.id}');
+        logInfo('⚠️ اعلان FCM تکراری نادیده گرفته شد: ${notification.id}');
       }
     } catch (e) {
-      print('❌ خطا در اضافه کردن اعلان از FCM: $e');
+      logInfo('❌ خطا در اضافه کردن اعلان از FCM: $e');
     }
   }
 
@@ -404,7 +405,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
         await fetchNotifications(refresh: true);
       }
     } catch (e) {
-      print('❌ خطا در بررسی اتصال: $e');
+      logInfo('❌ خطا در بررسی اتصال: $e');
     }
   }
 }

@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class PostService {
@@ -16,7 +17,7 @@ class PostService {
 
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
-      print('خطا در دریافت پست‌ها: $e');
+      logInfo('خطا در دریافت پست‌ها: $e');
       rethrow;
     }
   }
@@ -35,7 +36,7 @@ class PostService {
 
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
-      print('خطا در دریافت پست‌ها: $e');
+      logInfo('خطا در دریافت پست‌ها: $e');
       rethrow;
     }
   }
@@ -86,7 +87,7 @@ class PostService {
 
       return postsWithEngagement;
     } catch (e) {
-      print('خطا در دریافت پست‌ها: $e');
+      logInfo('خطا در دریافت پست‌ها: $e');
       rethrow;
     }
   }

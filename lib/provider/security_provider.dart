@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -45,7 +46,7 @@ class SecurityProvider extends ChangeNotifier {
       UserFriendlyErrorHandler.logError(e, context: 'login');
       _lastError =
           UserFriendlyErrorHandler.getFriendlyMessage(e, context: 'login');
-      debugPrint('خطا در ورود: $e');
+      logDebug('خطا در ورود: $e');
       return false;
     } finally {
       _setLoading(false);
@@ -67,7 +68,7 @@ class SecurityProvider extends ChangeNotifier {
       UserFriendlyErrorHandler.logError(e, context: 'logout');
       _lastError =
           UserFriendlyErrorHandler.getFriendlyMessage(e, context: 'logout');
-      debugPrint('خطا در خروج: $e');
+      logDebug('خطا در خروج: $e');
       return false;
     } finally {
       _setLoading(false);
@@ -87,7 +88,7 @@ class SecurityProvider extends ChangeNotifier {
       }
       notifyListeners();
     } catch (e) {
-      debugPrint('خطا در بررسی وضعیت احراز هویت: $e');
+      logDebug('خطا در بررسی وضعیت احراز هویت: $e');
     }
   }
 
@@ -122,7 +123,7 @@ class SecurityProvider extends ChangeNotifier {
 
       return response.length;
     } catch (e) {
-      debugPrint('خطا در دریافت تعداد کاربران مسدود شده: $e');
+      logDebug('خطا در دریافت تعداد کاربران مسدود شده: $e');
       return 0;
     }
   }
@@ -141,7 +142,7 @@ class SecurityProvider extends ChangeNotifier {
 
       return response != null;
     } catch (e) {
-      debugPrint('خطا در بررسی وضعیت مسدودیت کاربر: $e');
+      logDebug('خطا در بررسی وضعیت مسدودیت کاربر: $e');
       return false;
     }
   }

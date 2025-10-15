@@ -1,3 +1,4 @@
+import '../../../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -137,7 +138,7 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
     if (_isDownloading) return;
 
     setState(() => _isDownloading = true);
-    debugPrint('شروع دانلود از MusicWaveform: ${widget.musicUrl}');
+    logDebug('شروع دانلود از MusicWaveform: ${widget.musicUrl}');
 
     try {
       final downloadManager = ref.read(musicDownloadManagerProvider.notifier);
@@ -153,12 +154,12 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
       final filePath = await downloadManager.downloadMusic(
         widget.musicUrl,
         onProgress: (progress) {
-          debugPrint('پیشرفت دانلود: ${(progress * 100).toStringAsFixed(1)}%');
+          logDebug('پیشرفت دانلود: ${(progress * 100).toStringAsFixed(1)}%');
         },
       );
 
       if (filePath != null) {
-        debugPrint('دانلود با موفقیت انجام شد: $filePath');
+        logDebug('دانلود با موفقیت انجام شد: $filePath');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -177,7 +178,7 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
           });
         }
       } else {
-        debugPrint('خطا در دانلود فایل: مسیر خالی برگشت داده شد');
+        logDebug('خطا در دانلود فایل: مسیر خالی برگشت داده شد');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -188,8 +189,8 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
         }
       }
     } catch (e, stackTrace) {
-      debugPrint('خطا در دانلود: $e');
-      debugPrint('جزئیات خطا: $stackTrace');
+      logDebug('خطا در دانلود: $e');
+      logDebug('جزئیات خطا: $stackTrace');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

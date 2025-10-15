@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
@@ -8,7 +9,7 @@ class StorageInfoService {
 
   /// متد تست برای بررسی محاسبات
   Future<void> testStorageCalculations() async {
-    print('=== تست محاسبات حافظه ===');
+    logInfo('=== تست محاسبات حافظه ===');
 
     try {
       final tempDir = await getTemporaryDirectory();
@@ -16,7 +17,7 @@ class StorageInfoService {
       final availableSpace = await _getAvailableSpace(tempDir);
       final storageInfo = await _getStorageFromSystem();
 
-      print('اندازه دایرکتوری temp: ${dirSize.toStringAsFixed(2)} MB');
+      logInfo('اندازه دایرکتوری temp: ${dirSize.toStringAsFixed(2)} MB');
       print(
           'فضای تخمین زده شده موجود: ${availableSpace.toStringAsFixed(2)} MB');
       print(
@@ -28,25 +29,25 @@ class StorageInfoService {
       print(
           'تخمین از روی فضای موجود: ${estimatedFromAvailable.toStringAsFixed(2)} MB');
     } catch (e) {
-      print('خطا در تست: $e');
+      logInfo('خطا در تست: $e');
     }
 
-    print('=== پایان تست ===');
+    logInfo('=== پایان تست ===');
   }
 
   /// تست محاسبات کش برای بررسی تفاوت مقادیر
   Future<void> testCacheCalculations() async {
-    print('=== تست محاسبات کش ===');
+    logInfo('=== تست محاسبات کش ===');
 
     try {
       final cacheInfo = await _getCacheStorageInfo();
 
-      print('مجموع کش: ${cacheInfo['total']!.toStringAsFixed(2)} MB');
-      print('کش پیام‌ها: ${cacheInfo['messages']!.toStringAsFixed(2)} MB');
-      print('کش مکالمات: ${cacheInfo['conversations']!.toStringAsFixed(2)} MB');
-      print('کش کانال‌ها: ${cacheInfo['channels']!.toStringAsFixed(2)} MB');
-      print('کش موقت: ${cacheInfo['temp']!.toStringAsFixed(2)} MB');
-      print('کش تصاویر: ${cacheInfo['images']!.toStringAsFixed(2)} MB');
+      logInfo('مجموع کش: ${cacheInfo['total']!.toStringAsFixed(2)} MB');
+      logInfo('کش پیام‌ها: ${cacheInfo['messages']!.toStringAsFixed(2)} MB');
+      logInfo('کش مکالمات: ${cacheInfo['conversations']!.toStringAsFixed(2)} MB');
+      logInfo('کش کانال‌ها: ${cacheInfo['channels']!.toStringAsFixed(2)} MB');
+      logInfo('کش موقت: ${cacheInfo['temp']!.toStringAsFixed(2)} MB');
+      logInfo('کش تصاویر: ${cacheInfo['images']!.toStringAsFixed(2)} MB');
 
       // بررسی اینکه آیا مقادیر متفاوت هستند
       final values = [
@@ -59,15 +60,15 @@ class StorageInfoService {
 
       final uniqueValues = values.toSet();
       if (uniqueValues.length > 1) {
-        print('✅ مقادیر کش متفاوت هستند - تست موفق');
+        logInfo('✅ مقادیر کش متفاوت هستند - تست موفق');
       } else {
-        print('❌ مقادیر کش یکسان هستند - تست ناموفق');
+        logInfo('❌ مقادیر کش یکسان هستند - تست ناموفق');
       }
     } catch (e) {
-      print('خطا در تست کش: $e');
+      logInfo('خطا در تست کش: $e');
     }
 
-    print('=== پایان تست کش ===');
+    logInfo('=== پایان تست کش ===');
   }
 
   /// دریافت اطلاعات کامل حافظه دستگاه
@@ -109,7 +110,7 @@ class StorageInfoService {
         'lastUpdated': DateTime.now(),
       };
     } catch (e) {
-      print('Error getting storage info: $e');
+      logInfo('Error getting storage info: $e');
       return _getFallbackStorageInfo();
     }
   }
@@ -125,7 +126,7 @@ class StorageInfoService {
         return await _getDesktopStorageInfo();
       }
     } catch (e) {
-      print('Error getting device storage info: $e');
+      logInfo('Error getting device storage info: $e');
       return {'total': 0.0, 'used': 0.0};
     }
   }
@@ -139,7 +140,7 @@ class StorageInfoService {
 
       return storageInfo;
     } catch (e) {
-      print('Error getting Android storage: $e');
+      logInfo('Error getting Android storage: $e');
       return await _getStorageFromSystem();
     }
   }
@@ -153,7 +154,7 @@ class StorageInfoService {
 
       return storageInfo;
     } catch (e) {
-      print('Error getting iOS storage: $e');
+      logInfo('Error getting iOS storage: $e');
       return await _getStorageFromSystem();
     }
   }
@@ -173,7 +174,7 @@ class StorageInfoService {
         'used': estimatedUsed,
       };
     } catch (e) {
-      print('Error getting desktop storage: $e');
+      logInfo('Error getting desktop storage: $e');
       return {'total': 256000.0, 'used': 51200.0}; // 256GB total, 50GB used
     }
   }
@@ -203,7 +204,7 @@ class StorageInfoService {
         'used': usedSpace,
       };
     } catch (e) {
-      print('Error in _getStorageFromSystem: $e');
+      logInfo('Error in _getStorageFromSystem: $e');
       // در صورت خطا، مقادیر پیش‌فرض منطقی
       return {
         'total': 64000.0, // 64GB
@@ -273,7 +274,7 @@ class StorageInfoService {
         return 4000.0; // 4GB آزاد
       }
     } catch (e) {
-      print('Error getting available space: $e');
+      logInfo('Error getting available space: $e');
       // مقدار پیش‌فرض امن
       return 16000.0; // 16GB فضای آزاد
     }
@@ -303,7 +304,7 @@ class StorageInfoService {
         documentsSize = await _getDirectorySize(docDir);
         totalSize += documentsSize;
       } catch (e) {
-        print('Error getting documents directory size: $e');
+        logInfo('Error getting documents directory size: $e');
       }
 
       // اندازه دایرکتوری Library/Application Support
@@ -312,7 +313,7 @@ class StorageInfoService {
         supportSize = await _getDirectorySize(supportDir);
         totalSize += supportSize;
       } catch (e) {
-        print('Error getting support directory size: $e');
+        logInfo('Error getting support directory size: $e');
       }
 
       // اندازه دایرکتوری Library (برای iOS)
@@ -325,7 +326,7 @@ class StorageInfoService {
             totalSize += librarySize;
           }
         } catch (e) {
-          print('Error getting library directory size: $e');
+          logInfo('Error getting library directory size: $e');
         }
       }
 
@@ -336,7 +337,7 @@ class StorageInfoService {
         'support': supportSize,
       };
     } catch (e) {
-      print('Error getting app storage info: $e');
+      logInfo('Error getting app storage info: $e');
       return {'total': 0.0, 'documents': 0.0, 'library': 0.0, 'support': 0.0};
     }
   }
@@ -358,7 +359,7 @@ class StorageInfoService {
         totalCache += messageCacheSize;
       }
     } catch (e) {
-      print('Error getting message cache size: $e');
+      logInfo('Error getting message cache size: $e');
     }
 
     // کش مکالمات
@@ -371,7 +372,7 @@ class StorageInfoService {
         totalCache += conversationCacheSize;
       }
     } catch (e) {
-      print('Error getting conversation cache size: $e');
+      logInfo('Error getting conversation cache size: $e');
     }
 
     // کش کانال‌ها
@@ -379,7 +380,7 @@ class StorageInfoService {
       // Channel cache removed
       channelCacheSize = 0.0;
     } catch (e) {
-      print('Error getting channel cache size: $e');
+      logInfo('Error getting channel cache size: $e');
     }
 
     // کش temp
@@ -388,7 +389,7 @@ class StorageInfoService {
       tempCacheSize = await _getDirectorySize(tempDir);
       totalCache += tempCacheSize;
     } catch (e) {
-      print('Error getting temp cache size: $e');
+      logInfo('Error getting temp cache size: $e');
     }
 
     // کش تصاویر (اگر موجود باشد)
@@ -400,7 +401,7 @@ class StorageInfoService {
         totalCache += imageCacheSize;
       }
     } catch (e) {
-      print('Error getting image cache size: $e');
+      logInfo('Error getting image cache size: $e');
     }
 
     return {
@@ -432,7 +433,7 @@ class StorageInfoService {
         }
       }
     } catch (e) {
-      print('Error calculating directory size for ${dir.path}: $e');
+      logInfo('Error calculating directory size for ${dir.path}: $e');
     }
     return size / (1024 * 1024); // تبدیل به مگابایت
   }
@@ -487,26 +488,26 @@ class StorageInfoService {
       try {
         await deleteMessageCacheDbFile();
         clearedItems++;
-        print('Message cache cleared');
+        logInfo('Message cache cleared');
       } catch (e) {
-        print('Error clearing message cache: $e');
+        logInfo('Error clearing message cache: $e');
       }
 
       // پاک‌سازی کش مکالمات
       try {
         await deleteConversationCacheDbFile();
         clearedItems++;
-        print('Conversation cache cleared');
+        logInfo('Conversation cache cleared');
       } catch (e) {
-        print('Error clearing conversation cache: $e');
+        logInfo('Error clearing conversation cache: $e');
       }
 
       // پاک‌سازی کش کانال‌ها - حذف شده
       try {
         // Channel cache removed, nothing to clear
-        print('Channel cache cleared (no-op)');
+        logInfo('Channel cache cleared (no-op)');
       } catch (e) {
-        print('Error clearing channel cache: $e');
+        logInfo('Error clearing channel cache: $e');
       }
 
       // پاک‌سازی دایرکتوری temp
@@ -520,9 +521,9 @@ class StorageInfoService {
           freedSpace += (sizeBefore - sizeAfter);
         }
         clearedItems++;
-        print('Temp directory cleared');
+        logInfo('Temp directory cleared');
       } catch (e) {
-        print('Error clearing temp directory: $e');
+        logInfo('Error clearing temp directory: $e');
       }
 
       // پاک‌سازی کش تصاویر
@@ -535,12 +536,12 @@ class StorageInfoService {
           freedSpace += sizeBefore;
           clearedItems++;
         }
-        print('Image cache cleared');
+        logInfo('Image cache cleared');
       } catch (e) {
-        print('Error clearing image cache: $e');
+        logInfo('Error clearing image cache: $e');
       }
     } catch (e) {
-      print('Error in clearAllCaches: $e');
+      logInfo('Error in clearAllCaches: $e');
     }
 
     return {

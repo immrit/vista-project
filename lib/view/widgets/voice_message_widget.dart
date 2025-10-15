@@ -1,3 +1,4 @@
+import '../../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:io';
@@ -94,7 +95,7 @@ class _VoiceMessageWidgetState extends ConsumerState<VoiceMessageWidget> {
 
         // همچنین بررسی تنظیمات وویس
         if (shouldAutoDownload && voiceSettings.shouldAutoDownload()) {
-          print('🔄 Auto-downloading voice: ${widget.audioUrl}');
+          logInfo('🔄 Auto-downloading voice: ${widget.audioUrl}');
           _downloadAndInitializePlayer();
         }
       }
@@ -220,11 +221,11 @@ class _VoiceMessageWidgetState extends ConsumerState<VoiceMessageWidget> {
           if (cachedFilePath != null) {
             // استفاده از فایل کش شده به جای فایل موقت
             localFile = File(cachedFilePath);
-            print('✅ Voice file cached: $cachedFilePath');
+            logInfo('✅ Voice file cached: $cachedFilePath');
           }
         }
       } else {
-        print('✅ Using cached voice file: ${localFile.path}');
+        logInfo('✅ Using cached voice file: ${localFile.path}');
       }
 
       if (!_isDownloading) return;
@@ -537,7 +538,7 @@ class _VoiceMessageWidgetState extends ConsumerState<VoiceMessageWidget> {
 
   @override
   void dispose() {
-    print('🗑️ Disposing VoiceMessageWidget for: ${widget.audioUrl}');
+    logInfo('🗑️ Disposing VoiceMessageWidget for: ${widget.audioUrl}');
 
     // توقف پخش از طریق GlobalVoiceManager
     try {
@@ -547,7 +548,7 @@ class _VoiceMessageWidgetState extends ConsumerState<VoiceMessageWidget> {
       }
       _audioPlayer.stop();
     } catch (e) {
-      print('⚠️ Error stopping audio player: $e');
+      logInfo('⚠️ Error stopping audio player: $e');
     }
 
     // dispose players
@@ -560,10 +561,10 @@ class _VoiceMessageWidgetState extends ConsumerState<VoiceMessageWidget> {
         final file = File(_localFilePath!);
         if (file.existsSync()) {
           file.deleteSync();
-          print('🗑️ Deleted temporary voice file: $_localFilePath');
+          logInfo('🗑️ Deleted temporary voice file: $_localFilePath');
         }
       } catch (e) {
-        print('⚠️ Error deleting temporary file: $e');
+        logInfo('⚠️ Error deleting temporary file: $e');
       }
     }
 

@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/message_model.dart';
@@ -110,7 +111,7 @@ class _AnimatedMessageDeletionState extends State<AnimatedMessageDeletion>
       // اتمام انیمیشن - اطلاع به parent
       widget.onAnimationComplete?.call();
     } catch (e) {
-      debugPrint('خطا در انیمیشن حذف: $e');
+      logDebug('خطا در انیمیشن حذف: $e');
       widget.onAnimationComplete?.call();
     }
   }

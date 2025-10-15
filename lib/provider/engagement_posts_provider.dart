@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -18,14 +19,14 @@ class EngagementPostService {
     int offset = 0,
   }) async {
     try {
-      print('🔄 شروع دریافت پست‌ها - offset: $offset, limit: $limit');
+      logInfo('🔄 شروع دریافت پست‌ها - offset: $offset, limit: $limit');
 
       // محاسبه تاریخ یک هفته پیش
       final oneWeekAgo = DateTime.now().subtract(const Duration(days: 7));
       final userId = _supabase.auth.currentUser?.id;
 
       if (userId == null) {
-        print('❌ کاربر وارد نشده است');
+        logInfo('❌ کاربر وارد نشده است');
         return [];
       }
 
@@ -39,7 +40,7 @@ class EngagementPostService {
           .map((follow) => follow['following_id'] as String)
           .toList();
 
-      print('👥 کاربران دنبال شده: ${followingIds.length} نفر');
+      logInfo('👥 کاربران دنبال شده: ${followingIds.length} نفر');
 
       // مرحله 1: دریافت پست‌ها
       final postsResponse = await _supabase
@@ -66,9 +67,9 @@ class EngagementPostService {
       final List<PublicPostModel> likedPosts = []; // پست‌های لایک شده جداگانه
       final List<PublicPostModel> nonLikedPosts = []; // پست‌های لایک نشده
 
-      print('📊 تعداد پست‌های دریافت شده: ${posts.length}');
-      print('👤 کاربر فعلی ID: $userId');
-      print('📅 محدوده تاریخ: از ${oneWeekAgo.toString()} تا الان');
+      logInfo('📊 تعداد پست‌های دریافت شده: ${posts.length}');
+      logInfo('👤 کاربر فعلی ID: $userId');
+      logInfo('📅 محدوده تاریخ: از ${oneWeekAgo.toString()} تا الان');
 
       // دریافت لیست کاربرانی که پست دارند
       final userIds =
@@ -108,20 +109,21 @@ class EngagementPostService {
           shouldShowPost = !isPrivate;
         }
 
-        print('🔍 بررسی پست: $username ($postUserId)');
-        print('   - isCurrentUser: ${postUserId == userId}');
-        print('   - isFollowing: ${followingIds.contains(postUserId)}');
-        print('   - isPrivate: $isPrivate');
-        print('   - shouldShowPost: $shouldShowPost');
+        logInfo('🔍 بررسی پست: $username ($postUserId)');
+        logInfo('   - isCurrentUser: ${postUserId == userId}');
+        logInfo('   - isFollowing: ${followingIds.contains(postUserId)}');
+        logInfo('   - isPrivate: $isPrivate');
+        logInfo('   - shouldShowPost: $shouldShowPost');
 
         if (shouldShowPost) {
           filteredPosts.add(post);
         } else {
-          print('🔒 پست فیلتر شد (کاربر دنبال نشده): $username ($postUserId)');
+          logInfo(
+              '🔒 پست فیلتر شد (کاربر دنبال نشده): $username ($postUserId)');
         }
       }
 
-      print('📊 تعداد پست‌های فیلتر شده: ${filteredPosts.length}');
+      logInfo('📊 تعداد پست‌های فیلتر شده: ${filteredPosts.length}');
 
       // مرحله 3: محاسبه تعامل برای هر پست
       for (final post in filteredPosts) {
@@ -152,7 +154,7 @@ class EngagementPostService {
           final likeUserId = like['user_id'] as String?;
           final isUserLiked = likeUserId == userId;
           if (isUserLiked) {
-            print('❤️ کاربر $userId پست ${post['id']} را لایک کرده است');
+            logInfo('❤️ کاربر $userId پست ${post['id']} را لایک کرده است');
           }
           return isUserLiked;
         });
@@ -173,7 +175,7 @@ class EngagementPostService {
                   '🔧 کاربر $userId پست ${post['id']} را لایک کرده است (از کوئری جداگانه)');
             }
           } catch (e) {
-            print('⚠️ خطا در بررسی لایک کاربر از کوئری جداگانه: $e');
+            logInfo('⚠️ خطا در بررسی لایک کاربر از کوئری جداگانه: $e');
           }
         }
 
@@ -236,7 +238,7 @@ class EngagementPostService {
 
       // اگر همه پست‌ها لایک شده‌اند، همه را بر اساس تعامل مرتب می‌کنیم
       if (nonLikedPosts.isEmpty && likedPosts.isNotEmpty) {
-        print('⚠️ همه پست‌ها لایک شده‌اند - مرتب‌سازی کلی بر اساس تعامل');
+        logInfo('⚠️ همه پست‌ها لایک شده‌اند - مرتب‌سازی کلی بر اساس تعامل');
         finalPosts.sort((a, b) {
           final aEngagement = a.likeCount + a.commentCount;
           final bEngagement = b.likeCount + b.commentCount;
@@ -253,12 +255,12 @@ class EngagementPostService {
         });
       }
 
-      print('✅ مرتب‌سازی انجام شد:');
-      print('📊 پست‌های لایک نشده: ${nonLikedPosts.length}');
-      print('📊 پست‌های لایک شده: ${likedPosts.length}');
+      logInfo('✅ مرتب‌سازی انجام شد:');
+      logInfo('📊 پست‌های لایک نشده: ${nonLikedPosts.length}');
+      logInfo('📊 پست‌های لایک شده: ${likedPosts.length}');
 
       // نمایش 5 پست اول با امتیاز تعامل
-      print('🏆 5 پست اول:');
+      logInfo('🏆 5 پست اول:');
       for (int i = 0; i < finalPosts.length && i < 5; i++) {
         final post = finalPosts[i];
         final engagement = post.likeCount + post.commentCount;
@@ -268,7 +270,7 @@ class EngagementPostService {
 
       return finalPosts;
     } catch (e) {
-      print('❌ خطا در دریافت پست‌ها با امتیاز تعامل: $e');
+      logInfo('❌ خطا در دریافت پست‌ها با امتیاز تعامل: $e');
       rethrow;
     }
   }
@@ -278,7 +280,7 @@ class EngagementPostService {
     try {
       await _supabase.rpc('refresh_all_engagement_scores');
     } catch (e) {
-      print('خطا در بروزرسانی امتیاز تعامل: $e');
+      logInfo('خطا در بروزرسانی امتیاز تعامل: $e');
       // اگر function وجود ندارد، مستقیماً بروزرسانی می‌کنیم
       await _updateEngagementScoresDirectly();
     }
@@ -289,9 +291,9 @@ class EngagementPostService {
     try {
       // بروزرسانی ساده - فقط engagement_score را بر اساس فیلدهای موجود محاسبه می‌کنیم
       // این کار در کوئری اصلی انجام می‌شود
-      print('بروزرسانی امتیاز تعامل انجام شد');
+      logInfo('بروزرسانی امتیاز تعامل انجام شد');
     } catch (e) {
-      print('خطا در بروزرسانی مستقیم امتیاز تعامل: $e');
+      logInfo('خطا در بروزرسانی مستقیم امتیاز تعامل: $e');
     }
   }
 
@@ -320,7 +322,7 @@ class EngagementPostService {
       print(
           'امتیاز تعامل پست $postId بروزرسانی شد: لایک=$likesCount, کامنت=$commentsCount, امتیاز=$engagementScore');
     } catch (e) {
-      print('خطا در بروزرسانی امتیاز تعامل: $e');
+      logInfo('خطا در بروزرسانی امتیاز تعامل: $e');
       rethrow;
     }
   }
@@ -330,33 +332,33 @@ class EngagementPostService {
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
-        print('❌ کاربر وارد نشده است');
+        logInfo('❌ کاربر وارد نشده است');
         return;
       }
 
-      print('🧪 تست لایک‌های کاربر: $userId');
+      logInfo('🧪 تست لایک‌های کاربر: $userId');
 
       // دریافت همه لایک‌های کاربر
       final userLikes =
           await _supabase.from('likes').select('post_id').eq('user_id', userId);
 
-      print('📊 تعداد کل لایک‌های کاربر: ${userLikes.length}');
+      logInfo('📊 تعداد کل لایک‌های کاربر: ${userLikes.length}');
       print(
           '📝 پست‌های لایک شده: ${userLikes.map((l) => l['post_id']).toList()}');
     } catch (e) {
-      print('❌ خطا در تست لایک‌های کاربر: $e');
+      logInfo('❌ خطا در تست لایک‌های کاربر: $e');
     }
   }
 
   /// تست: بررسی مرتب‌سازی پست‌ها
   Future<void> testPostSorting() async {
     try {
-      print('🧪 تست مرتب‌سازی پست‌ها');
+      logInfo('🧪 تست مرتب‌سازی پست‌ها');
 
       // دریافت چند پست برای تست
       final testPosts = await getPostsWithEngagement(limit: 10, offset: 0);
 
-      print('📊 تعداد پست‌های تست: ${testPosts.length}');
+      logInfo('📊 تعداد پست‌های تست: ${testPosts.length}');
 
       // بررسی ترتیب امتیاز تعامل
       for (int i = 0; i < testPosts.length - 1; i++) {
@@ -369,7 +371,7 @@ class EngagementPostService {
             '🔍 بررسی ${i + 1}: ${current.username}(امتیاز:$currentEngagement) vs ${next.username}(امتیاز:$nextEngagement)');
 
         if (current.isLiked && !next.isLiked) {
-          print('✅ درست: پست لایک شده بعد از پست لایک نشده');
+          logInfo('✅ درست: پست لایک شده بعد از پست لایک نشده');
         } else if (!current.isLiked && !next.isLiked) {
           if (currentEngagement >= nextEngagement) {
             print(
@@ -390,7 +392,7 @@ class EngagementPostService {
       }
 
       // نمایش خلاصه
-      print('📋 خلاصه مرتب‌سازی:');
+      logInfo('📋 خلاصه مرتب‌سازی:');
       for (int i = 0; i < testPosts.length && i < 5; i++) {
         final post = testPosts[i];
         final engagement = post.likeCount + post.commentCount;
@@ -398,7 +400,7 @@ class EngagementPostService {
             '  ${i + 1}. ${post.username} - امتیاز: $engagement (لایک: ${post.likeCount}, کامنت: ${post.commentCount}) - لایک شده: ${post.isLiked}');
       }
     } catch (e) {
-      print('❌ خطا در تست مرتب‌سازی: $e');
+      logInfo('❌ خطا در تست مرتب‌سازی: $e');
     }
   }
 
@@ -413,7 +415,7 @@ class EngagementPostService {
 
       return userLikes.map((like) => like['post_id'] as String).toList();
     } catch (e) {
-      print('❌ خطا در دریافت پست‌های لایک شده: $e');
+      logInfo('❌ خطا در دریافت پست‌های لایک شده: $e');
       return [];
     }
   }
@@ -451,7 +453,7 @@ class EngagementPostsNotifier
     if (!_hasMore || _isLoading) return;
 
     _isLoading = true;
-    print('🔄 شروع بارگذاری پست‌های بیشتر - offset: $_offset');
+    logInfo('🔄 شروع بارگذاری پست‌های بیشتر - offset: $_offset');
 
     try {
       // اضافه کردن تأخیر کوتاه برای جلوگیری از درخواست‌های مکرر به سرور
@@ -467,7 +469,7 @@ class EngagementPostsNotifier
       );
 
       if (posts.isEmpty) {
-        print('📭 هیچ پست جدیدی یافت نشد');
+        logInfo('📭 هیچ پست جدیدی یافت نشد');
         _hasMore = false;
         _isLoading = false;
         return;
@@ -481,7 +483,7 @@ class EngagementPostsNotifier
       final currentPosts = state.value ?? [];
       state = AsyncValue.data([...currentPosts, ...posts]);
 
-      print('✅ پست‌های جدید بارگذاری شدند: ${posts.length} پست');
+      logInfo('✅ پست‌های جدید بارگذاری شدند: ${posts.length} پست');
       print(
           '📊 کل پست‌ها: ${currentPosts.length + posts.length}, offset جدید: $_offset, hasMore: $_hasMore');
     } catch (e, stackTrace) {
@@ -497,7 +499,7 @@ class EngagementPostsNotifier
         errorMessage = 'لطفا دوباره وارد حساب کاربری خود شوید';
       }
 
-      print('❌ خطا در بارگذاری پست‌ها: $e');
+      logInfo('❌ خطا در بارگذاری پست‌ها: $e');
       state = AsyncValue.error(errorMessage, stackTrace);
     } finally {
       _isLoading = false;
@@ -545,7 +547,7 @@ class EngagementPostsNotifier
         if (isLiked) {
           newPosts.removeAt(index);
           newPosts.add(updatedPost);
-          print('🔄 پست $postId به انتهای لیست منتقل شد (لایک شد)');
+          logInfo('🔄 پست $postId به انتهای لیست منتقل شد (لایک شد)');
         }
 
         state = AsyncValue.data(newPosts);

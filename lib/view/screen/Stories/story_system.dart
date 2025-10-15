@@ -1,4 +1,5 @@
 // story_system.dart
+import '../../../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -174,7 +175,7 @@ class StoryService {
 
       return List<String>.from(response.map((row) => row['following_id']));
     } catch (e) {
-      print('Error fetching following IDs: $e');
+      logInfo('Error fetching following IDs: $e');
       return [];
     }
   }
@@ -251,7 +252,7 @@ class StoryService {
         ...otherUsersStories,
       ];
     } catch (e) {
-      print('Error fetching active users: $e');
+      logInfo('Error fetching active users: $e');
       rethrow;
     }
   }
@@ -288,9 +289,9 @@ class StoryService {
             DateTime.now().add(const Duration(hours: 24)).toIso8601String(),
       }).select();
 
-      print('Story created with ID: storyId');
+      logInfo('Story created with ID: storyId');
     } catch (e) {
-      print('Error uploading story: e');
+      logInfo('Error uploading story: e');
       rethrow;
     }
   }
@@ -327,7 +328,7 @@ class StoryService {
           .eq('viewer_id', userId)
           .maybeSingle();
       if (existingView != null) {
-        debugPrint('This story view is already tracked');
+        logDebug('This story view is already tracked');
         return; // اگر قبلاً ثبت شده، دیگر تکرار نکن
       }
       // ثبت بازدید جدید با is_viewed = TRUE
@@ -337,9 +338,9 @@ class StoryService {
         'viewed_at': DateTime.now().toIso8601String(),
         'is_viewed': true, // اضافه کردن این فیلد
       });
-      debugPrint('Story view tracked successfully');
+      logDebug('Story view tracked successfully');
     } catch (e) {
-      debugPrint('Error tracking story view: $e');
+      logDebug('Error tracking story view: $e');
       throw 'Failed to track story view';
     }
   }
@@ -374,9 +375,9 @@ class StoryService {
           .delete()
           .eq('id', storyId)
           .eq('user_id', currentUserId);
-      print('Story deleted: $storyId');
+      logInfo('Story deleted: $storyId');
     } catch (e) {
-      print('Error deleting story: $e');
+      logInfo('Error deleting story: $e');
       rethrow;
     }
   }
@@ -391,9 +392,9 @@ class StoryService {
         'reason': reason,
         'reported_at': DateTime.now().toIso8601String(),
       });
-      print('Story reported: $storyId');
+      logInfo('Story reported: $storyId');
     } catch (e) {
-      print('Error reporting story: $e');
+      logInfo('Error reporting story: $e');
       rethrow;
     }
   }
@@ -825,7 +826,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       _loadingCache[story.mediaUrl] = false;
     } catch (e) {
       _loadingCache[story.mediaUrl] = false;
-      debugPrint('خطا در پیش‌بارگذاری تصویر: $e');
+      logDebug('خطا در پیش‌بارگذاری تصویر: $e');
     }
   }
 
@@ -862,7 +863,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       }
     } catch (e) {
       _loadingCache[story.mediaUrl] = false;
-      debugPrint('خطا در بارگذاری تصویر: $e');
+      logDebug('خطا در بارگذاری تصویر: $e');
       if (!_isDisposed) {
         setState(() {
           _isLoading = false;
@@ -1062,7 +1063,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
         _preloadedImages.add(nextStory.mediaUrl);
       }
     } catch (e) {
-      debugPrint('Error preloading next image: $e');
+      logDebug('Error preloading next image: $e');
     }
   }
 
@@ -1164,6 +1165,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
@@ -1998,7 +2000,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       _trackedStoryViews.add(viewKey);
       await ref.read(storyServiceProvider).trackStoryView(story.id!);
     } catch (e) {
-      debugPrint('Error tracking story view: $e');
+      logDebug('Error tracking story view: $e');
     }
   }
 

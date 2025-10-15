@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 class ConversationModel {
   final String id;
   final DateTime createdAt;
@@ -105,8 +106,8 @@ class ConversationModel {
         isArchived: json['is_archived'] ?? false,
       );
     } catch (e) {
-      print('❌ خطا در تبدیل JSON به ConversationModel: $e');
-      print('📄 JSON داده: $json');
+      logInfo('❌ خطا در تبدیل JSON به ConversationModel: $e');
+      logInfo('📄 JSON داده: $json');
       rethrow;
     }
   }

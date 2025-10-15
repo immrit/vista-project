@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -70,7 +71,7 @@ class PushNotificationService {
                 handleNotificationNavigation(context, data);
               }
             } catch (e) {
-              print('❌ خطا در پردازش payload نوتیفیکیشن: $e');
+              logInfo('❌ خطا در پردازش payload نوتیفیکیشن: $e');
             }
           }
         },
@@ -81,7 +82,7 @@ class PushNotificationService {
 
       // گوش دادن به پیام‌ها در فورگراند
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        print('📱 پیام FCM در فورگراند دریافت شد: ${message.data['type']}');
+        logInfo('📱 پیام FCM در فورگراند دریافت شد: ${message.data['type']}');
         _notifications.add(message);
         _showNotification(message);
 
@@ -100,7 +101,7 @@ class PushNotificationService {
         handleNotificationNavigation(context, initialMessage.data);
       }
     } catch (e) {
-      print('❌ خطا در راه‌اندازی PushNotificationService: $e');
+      logInfo('❌ خطا در راه‌اندازی PushNotificationService: $e');
     }
   }
 
@@ -109,7 +110,7 @@ class PushNotificationService {
     try {
       // بررسی اینکه Firebase initialize شده یا نه
       if (Firebase.apps.isEmpty) {
-        print('⚠️ Firebase not initialized, skipping FCM token save');
+        logInfo('⚠️ Firebase not initialized, skipping FCM token save');
         return;
       }
 
@@ -120,15 +121,15 @@ class PushNotificationService {
           await _supabase
               .from("profiles")
               .update({"fcm_token": token}).eq("id", user.id);
-          print('✅ FCM Token با موفقیت در سوپابیس ذخیره شد');
+          logInfo('✅ FCM Token با موفقیت در سوپابیس ذخیره شد');
         } else {
-          print('⚠️ کاربر لاگین نشده، FCM Token ذخیره نشد');
+          logInfo('⚠️ کاربر لاگین نشده، FCM Token ذخیره نشد');
         }
       } else {
-        print('⚠️ FCM Token دریافت نشد');
+        logInfo('⚠️ FCM Token دریافت نشد');
       }
     } catch (e) {
-      print('❌ خطا در ذخیره FCM Token: $e');
+      logInfo('❌ خطا در ذخیره FCM Token: $e');
     }
   }
 
@@ -292,7 +293,7 @@ class PushNotificationService {
     try {
       // ارسال پیام به سرور
       // اینجا باید ChatService یا سرویس مربوطه را فراخوانی کنید
-      print('📱 پاسخ سریع ارسال شد: $replyText به چت $conversationId');
+      logInfo('📱 پاسخ سریع ارسال شد: $replyText به چت $conversationId');
 
       // ارسال پیام به سرور
       try {
@@ -301,14 +302,14 @@ class PushNotificationService {
           conversationId: conversationId,
           content: replyText,
         );
-        print('✅ پیام پاسخ سریع با موفقیت ارسال شد');
+        logInfo('✅ پیام پاسخ سریع با موفقیت ارسال شد');
       } catch (e) {
-        print('❌ خطا در ارسال پیام به سرور: $e');
+        logInfo('❌ خطا در ارسال پیام به سرور: $e');
         // در صورت خطا، پیام را به صورت محلی ذخیره کنید
         // یا به کاربر اطلاع دهید که پیام ارسال نشده
       }
     } catch (e) {
-      print('❌ خطا در ارسال پاسخ سریع: $e');
+      logInfo('❌ خطا در ارسال پاسخ سریع: $e');
     }
   }
 
@@ -318,10 +319,10 @@ class PushNotificationService {
       // استفاده از ref.read برای دسترسی به notificationsProvider
       final notifier = ref.read(notificationsProvider.notifier);
       notifier.addNotificationFromPush(message);
-      print('✅ اعلان با موفقیت به provider اضافه شد: ${message.data['type']}');
+      logInfo('✅ اعلان با موفقیت به provider اضافه شد: ${message.data['type']}');
     } catch (e) {
-      print('❌ خطا در اضافه کردن اعلان به provider: $e');
-      print('Stack trace: ${StackTrace.current}');
+      logInfo('❌ خطا در اضافه کردن اعلان به provider: $e');
+      logInfo('Stack trace: ${StackTrace.current}');
     }
   }
 }

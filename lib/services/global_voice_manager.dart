@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'package:just_audio/just_audio.dart';
 
@@ -16,7 +17,7 @@ class GlobalVoiceManager {
     // توقف وویس قبلی اگر در حال پخش است
     if (_currentPlayer != null && _currentPlayer != player) {
       await _currentPlayer!.stop();
-      print('🔇 Stopped previous voice: $_currentVoiceId');
+      logInfo('🔇 Stopped previous voice: $_currentVoiceId');
     }
 
     _currentPlayer = player;
@@ -28,18 +29,18 @@ class GlobalVoiceManager {
       if (playerState.processingState == ProcessingState.completed) {
         _currentPlayer = null;
         _currentVoiceId = null;
-        print('🎵 Voice playback completed: $voiceId');
+        logInfo('🎵 Voice playback completed: $voiceId');
       }
     });
 
-    print('🎵 Started playing voice: $voiceId');
+    logInfo('🎵 Started playing voice: $voiceId');
   }
 
   /// توقف وویس فعلی
   Future<void> stopCurrentVoice() async {
     if (_currentPlayer != null) {
       await _currentPlayer!.stop();
-      print('🔇 Stopped current voice: $_currentVoiceId');
+      logInfo('🔇 Stopped current voice: $_currentVoiceId');
       _currentPlayer = null;
       _currentVoiceId = null;
     }
@@ -59,7 +60,7 @@ class GlobalVoiceManager {
     _playerStateSubscription?.cancel();
     _currentPlayer = null;
     _currentVoiceId = null;
-    print('🧹 GlobalVoiceManager disposed');
+    logInfo('🧹 GlobalVoiceManager disposed');
   }
 }
 

@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -31,9 +32,9 @@ class ProfileCacheService {
   Future<void> initialize() async {
     try {
       await _loadFromDisk();
-      print('✅ Profile Cache Service initialized');
+      logInfo('✅ Profile Cache Service initialized');
     } catch (e) {
-      print('❌ Failed to initialize Profile Cache Service: $e');
+      logInfo('❌ Failed to initialize Profile Cache Service: $e');
     }
   }
 
@@ -51,7 +52,7 @@ class ProfileCacheService {
           final profile = ProfileModel.fromMap(profileData);
           _profileMemoryCache[entry.key] = profile;
         }
-        print('📥 Loaded ${_profileMemoryCache.length} profiles from disk');
+        logInfo('📥 Loaded ${_profileMemoryCache.length} profiles from disk');
       }
 
       // بارگذاری پست‌ها
@@ -77,7 +78,7 @@ class ProfileCacheService {
         }
       }
     } catch (e) {
-      print('⚠️ Error loading profile cache from disk: $e');
+      logInfo('⚠️ Error loading profile cache from disk: $e');
     }
   }
 
@@ -107,9 +108,9 @@ class ProfileCacheService {
       }
       await prefs.setString(_lastUpdateKey, jsonEncode(lastUpdateMap));
 
-      print('💾 Profile cache saved to disk');
+      logInfo('💾 Profile cache saved to disk');
     } catch (e) {
-      print('⚠️ Error saving profile cache to disk: $e');
+      logInfo('⚠️ Error saving profile cache to disk: $e');
     }
   }
 
@@ -143,7 +144,7 @@ class ProfileCacheService {
       // بررسی وجود کاربر در Auth
       final currentUser = supabase.auth.currentUser;
       if (currentUser == null || currentUser.id != userId) {
-        print('⚠️ User not authenticated or ID mismatch');
+        logInfo('⚠️ User not authenticated or ID mismatch');
         return;
       }
 
@@ -233,8 +234,8 @@ class ProfileCacheService {
         final comments = post['comments'] as List<dynamic>? ?? [];
 
         // Debug logging for cache
-        print('🔍 Cache Post Debug - Post ID: ${post['id']}');
-        print('🔍 Cache Likes array: $postLikes (length: ${postLikes.length})');
+        logInfo('🔍 Cache Post Debug - Post ID: ${post['id']}');
+        logInfo('🔍 Cache Likes array: $postLikes (length: ${postLikes.length})');
         print(
             '🔍 Cache Comments array: $comments (length: ${comments.length})');
 
@@ -263,9 +264,9 @@ class ProfileCacheService {
       // ذخیره در دیسک
       await _saveToDisk();
 
-      print('✅ Cached profile and ${posts.length} posts for user: $userId');
+      logInfo('✅ Cached profile and ${posts.length} posts for user: $userId');
     } catch (e) {
-      print('❌ Failed to cache profile for user $userId: $e');
+      logInfo('❌ Failed to cache profile for user $userId: $e');
       rethrow;
     }
   }
@@ -276,13 +277,13 @@ class ProfileCacheService {
     if (_isCacheValid(userId)) {
       final cachedProfile = getCachedProfile(userId);
       if (cachedProfile != null) {
-        print('📱 Using cached profile for user: $userId');
+        logInfo('📱 Using cached profile for user: $userId');
         return cachedProfile;
       }
     }
 
     // دریافت از سرور و کش کردن
-    print('🌐 Fetching profile from server for user: $userId');
+    logInfo('🌐 Fetching profile from server for user: $userId');
     await cacheProfileAndPosts(userId);
 
     final profile = _profileMemoryCache[userId];
@@ -299,13 +300,13 @@ class ProfileCacheService {
     if (_isCacheValid(userId)) {
       final cachedPosts = getCachedPosts(userId);
       if (cachedPosts.isNotEmpty) {
-        print('📱 Using cached posts for user: $userId');
+        logInfo('📱 Using cached posts for user: $userId');
         return cachedPosts;
       }
     }
 
     // دریافت از سرور و کش کردن
-    print('🌐 Fetching posts from server for user: $userId');
+    logInfo('🌐 Fetching posts from server for user: $userId');
     await cacheProfileAndPosts(userId);
 
     return _postsMemoryCache[userId] ?? [];
@@ -316,7 +317,7 @@ class ProfileCacheService {
     _profileMemoryCache[profile.id] = profile;
     _lastFetch[profile.id] = DateTime.now();
     await _saveToDisk();
-    print('✅ Updated cached profile for user: ${profile.id}');
+    logInfo('✅ Updated cached profile for user: ${profile.id}');
   }
 
   /// اضافه کردن پست جدید به کش
@@ -336,7 +337,7 @@ class ProfileCacheService {
 
     _postsMemoryCache[userId] = posts;
     await _saveToDisk();
-    print('✅ Added post to cache for user: $userId');
+    logInfo('✅ Added post to cache for user: $userId');
   }
 
   /// حذف پست از کش
@@ -345,7 +346,7 @@ class ProfileCacheService {
     posts.removeWhere((p) => p.id == postId);
     _postsMemoryCache[userId] = posts;
     await _saveToDisk();
-    print('✅ Removed post from cache for user: $userId');
+    logInfo('✅ Removed post from cache for user: $userId');
   }
 
   /// پاک کردن کش کاربر خاص
@@ -354,7 +355,7 @@ class ProfileCacheService {
     _postsMemoryCache.remove(userId);
     _lastFetch.remove(userId);
     await _saveToDisk();
-    print('🧹 Cleared cache for user: $userId');
+    logInfo('🧹 Cleared cache for user: $userId');
   }
 
   /// پاک کردن تمام کش
@@ -368,7 +369,7 @@ class ProfileCacheService {
     await prefs.remove(_postsCacheKey);
     await prefs.remove(_lastUpdateKey);
 
-    print('🧹 Cleared all profile cache');
+    logInfo('🧹 Cleared all profile cache');
   }
 
   /// دریافت آمار کش
@@ -423,9 +424,9 @@ class ProfileCacheService {
   Future<void> refreshCacheInBackground(String userId) async {
     try {
       await cacheProfileAndPosts(userId);
-      print('🔄 Background cache refresh completed for user: $userId');
+      logInfo('🔄 Background cache refresh completed for user: $userId');
     } catch (e) {
-      print('⚠️ Background cache refresh failed for user $userId: $e');
+      logInfo('⚠️ Background cache refresh failed for user $userId: $e');
     }
   }
 
@@ -435,17 +436,17 @@ class ProfileCacheService {
       // بررسی وجود کاربر در Auth
       final currentUser = supabase.auth.currentUser;
       if (currentUser == null || currentUser.id != userId) {
-        print('⚠️ User not authenticated or ID mismatch');
+        logInfo('⚠️ User not authenticated or ID mismatch');
         return;
       }
 
       // صبر کردن کمی تا پروفایل در دیتابیس ایجاد شود
       await Future.delayed(const Duration(seconds: 2));
 
-      print('✅ Registration successful, caching profile for user: $userId');
+      logInfo('✅ Registration successful, caching profile for user: $userId');
       await cacheProfileAndPosts(userId);
     } catch (e) {
-      print('❌ Failed to cache profile after registration: $e');
+      logInfo('❌ Failed to cache profile after registration: $e');
       // اگر کش ناموفق بود، خطا نده چون ثبت نام موفق بوده
     }
   }

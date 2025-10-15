@@ -1,3 +1,4 @@
+import '../../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:developer' as developer;
 import 'package:cached_network_image/cached_network_image.dart';
@@ -210,7 +211,7 @@ Future<void> uploadProfilePicture() async {
           .from('user-profile-pics')
           .upload(fileName, file);
 
-      print('خطا در آپلود عکس: $response');
+      logInfo('خطا در آپلود عکس: $response');
     }
   }
 }
@@ -1151,11 +1152,11 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
       });
 
       try {
-        print('Sending comment with:');
-        print('Content: $content');
-        print('PostID: ${widget.postId}');
-        print('ParentCommentID: $replyToCommentId');
-        print('MentionedUsers: $mentionedUserIds');
+        logInfo('Sending comment with:');
+        logInfo('Content: $content');
+        logInfo('PostID: ${widget.postId}');
+        logInfo('ParentCommentID: $replyToCommentId');
+        logInfo('MentionedUsers: $mentionedUserIds');
 
         await ref.read(commentNotifierProvider.notifier).addComment(
               postId: widget.postId,
@@ -1187,7 +1188,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
           );
         }
       } catch (e) {
-        print('Error sending comment: $e');
+        logInfo('Error sending comment: $e');
         // Show error
         if (mounted) {
           setState(() {
@@ -1649,7 +1650,7 @@ class _ReportProfileDialogState extends State<ReportProfileDialog> {
                   ),
                 );
               } catch (e) {
-                print('خطا در گزارش پروفایل: $e');
+                logInfo('خطا در گزارش پروفایل: $e');
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('خطا در گزارش پروفایل.'),

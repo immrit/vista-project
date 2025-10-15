@@ -1,3 +1,4 @@
+import '../../../../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -440,7 +441,7 @@ class PrivacySettingsPage extends ConsumerWidget {
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     } else {
-      print('Could not launch $url');
+      logInfo('Could not launch $url');
     }
   }
 }

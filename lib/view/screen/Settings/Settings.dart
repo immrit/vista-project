@@ -700,9 +700,8 @@ class Settings extends ConsumerWidget {
                 width: double.infinity,
                 height: 54,
                 child: ElevatedButton(
-                  onPressed: isSubmitting
-                      ? null
-                      : () async {
+                  onPressed: !isSubmitting
+                      ? () async {
                           if (formKey.currentState!.validate()) {
                             setState(() {
                               isSubmitting = true;
@@ -803,7 +802,8 @@ class Settings extends ConsumerWidget {
                               });
                             }
                           }
-                        },
+                        }
+                      : null,
                   style: ElevatedButton.styleFrom(
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),

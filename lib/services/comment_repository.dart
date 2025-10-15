@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../model/CommentModel.dart';
 
@@ -69,7 +70,7 @@ class CommentRepository {
 
       return replies;
     } catch (e) {
-      print('Error fetching replies: $e');
+      logInfo('Error fetching replies: $e');
       throw Exception('خطا در دریافت پاسخ‌ها: $e');
     }
   }
@@ -567,7 +568,7 @@ class CommentRepository {
 
       return CommentModel.fromMap(response);
     } catch (e) {
-      print('Error getting current user profile: $e');
+      logInfo('Error getting current user profile: $e');
       return null;
     }
   }

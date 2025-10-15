@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import '../security/logging_utility.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import '../model/MusicModel.dart';
@@ -55,7 +55,7 @@ class MusicListNotifier extends StateNotifier<AsyncValue<List<MusicModel>>> {
       state = AsyncValue.data([...currentSongs, ...moreSongs]);
     } catch (e) {
       // Handle error but keep current state
-      print('Error loading more songs: $e');
+      logInfo('Error loading more songs: $e');
     } finally {
       _isLoading = false;
     }
@@ -152,7 +152,7 @@ class MusicPlayerNotifier extends StateNotifier<AsyncValue<Duration>> {
       _playlist.clear();
       _currentIndex = -1;
     } catch (e) {
-      debugPrint('Error stopping music: $e');
+      logDebug('Error stopping music: $e');
     }
   }
 
@@ -189,7 +189,7 @@ class MusicPlayerNotifier extends StateNotifier<AsyncValue<Duration>> {
 
       await player.play();
     } catch (e, stack) {
-      print('Error playing music: $e');
+      logInfo('Error playing music: $e');
       state = AsyncValue.error(e, stack);
       _ref.read(isPlayingProvider.notifier).state = false;
       rethrow;
@@ -216,7 +216,7 @@ class MusicPlayerNotifier extends StateNotifier<AsyncValue<Duration>> {
 
       await player.play();
     } catch (e, stack) {
-      print('Error playing next music: $e');
+      logInfo('Error playing next music: $e');
       state = AsyncValue.error(e, stack);
       _ref.read(isPlayingProvider.notifier).state = false;
     }
@@ -242,7 +242,7 @@ class MusicPlayerNotifier extends StateNotifier<AsyncValue<Duration>> {
 
       await player.play();
     } catch (e, stack) {
-      print('Error playing previous music: $e');
+      logInfo('Error playing previous music: $e');
       state = AsyncValue.error(e, stack);
       _ref.read(isPlayingProvider.notifier).state = false;
     }
@@ -273,7 +273,7 @@ class MusicPlayerNotifier extends StateNotifier<AsyncValue<Duration>> {
       }
       _ref.read(isPlayingProvider.notifier).state = player.playing;
     } catch (e) {
-      debugPrint('Error toggling play/pause: $e');
+      logDebug('Error toggling play/pause: $e');
     }
   }
 
@@ -319,7 +319,7 @@ class AudioPlayerNotifier extends StateNotifier<Duration> {
       await _player.setUrl(url);
       await _player.play();
     } catch (e) {
-      print('Error playing audio: $e');
+      logInfo('Error playing audio: $e');
     }
   }
 

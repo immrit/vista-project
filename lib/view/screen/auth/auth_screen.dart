@@ -1,3 +1,4 @@
+import '../../../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -184,28 +185,28 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
       // بررسی نوع ورود (ایمیل یا نام کاربری)
       if (_emailOrUsername.contains('@')) {
         email = _emailOrUsername;
-        print('🔍 Logging in with email: $email');
+        logInfo('🔍 Logging in with email: $email');
         userProfile = await supabase
             .from('profiles')
             .select('*')
             .eq('email', email)
             .single();
       } else {
-        print('🔍 Logging in with username: $_emailOrUsername');
+        logInfo('🔍 Logging in with username: $_emailOrUsername');
         userProfile = await supabase
             .from('profiles')
             .select('*')
             .eq('username', _emailOrUsername)
             .single();
         email = userProfile['email'];
-        print('📧 Found email for username: $email');
+        logInfo('📧 Found email for username: $email');
       }
 
-      print('👤 User profile data from database:');
-      print('📧 Email: ${userProfile['email']}');
-      print('👤 Username: ${userProfile['username']}');
-      print('📝 Full Name: ${userProfile['full_name']}');
-      print('🖼️ Avatar URL: ${userProfile['avatar_url']}');
+      logInfo('👤 User profile data from database:');
+      logInfo('📧 Email: ${userProfile['email']}');
+      logInfo('👤 Username: ${userProfile['username']}');
+      logInfo('📝 Full Name: ${userProfile['full_name']}');
+      logInfo('🖼️ Avatar URL: ${userProfile['avatar_url']}');
 
       // لاگین کردن کاربر
       final authResponse = await supabase.auth.signInWithPassword(
@@ -270,11 +271,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
   Future<void> _updateUserMetadata(
       User user, Map<String, dynamic> profile) async {
     try {
-      print('🔍 Updating user metadata with profile data:');
-      print('📧 Email: ${profile['email']}');
-      print('👤 Username: ${profile['username']}');
-      print('📝 Full Name: ${profile['full_name']}');
-      print('🖼️ Avatar URL: ${profile['avatar_url']}');
+      logInfo('🔍 Updating user metadata with profile data:');
+      logInfo('📧 Email: ${profile['email']}');
+      logInfo('👤 Username: ${profile['username']}');
+      logInfo('📝 Full Name: ${profile['full_name']}');
+      logInfo('🖼️ Avatar URL: ${profile['avatar_url']}');
 
       await supabase.auth.updateUser(
         UserAttributes(
@@ -289,9 +290,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
         ),
       );
 
-      print('✅ User metadata updated successfully');
+      logInfo('✅ User metadata updated successfully');
     } catch (e) {
-      print('❌ Error updating user metadata: $e');
+      logInfo('❌ Error updating user metadata: $e');
       if (mounted) {
         _showErrorSnackBar('خطا در بروزرسانی اطلاعات: $e');
       }

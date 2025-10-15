@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// سرویس مدیریت کیفیت تصاویر
@@ -18,14 +19,14 @@ class ImageQualityService {
   /// تنظیم کیفیت تصاویر
   Future<void> setImageQuality(String quality) async {
     if (_batterySaverMode && quality != 'low') {
-      print('⚠️ Cannot set high quality while battery saver mode is active');
+      logInfo('⚠️ Cannot set high quality while battery saver mode is active');
       return;
     }
 
     _imageQuality = quality;
     await _saveSettings();
 
-    print('🖼️ Image quality set to: $quality');
+    logInfo('🖼️ Image quality set to: $quality');
   }
 
   /// تنظیم حالت کم‌مصرف
@@ -35,13 +36,13 @@ class ImageQualityService {
     if (enabled) {
       _imageQuality = 'low';
       await _saveSettings();
-      print('🔋 Battery saver mode enabled - Image quality set to low');
+      logInfo('🔋 Battery saver mode enabled - Image quality set to low');
     } else {
       // بازگردانی کیفیت تصاویر از SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       _imageQuality = prefs.getString('image_quality') ?? 'high';
       await _saveSettings();
-      print('⚡ Battery saver mode disabled - Image quality restored');
+      logInfo('⚡ Battery saver mode disabled - Image quality restored');
     }
   }
 
@@ -55,7 +56,7 @@ class ImageQualityService {
       print(
           '📱 Image quality settings loaded: quality=$_imageQuality, battery_saver=$_batterySaverMode');
     } catch (e) {
-      print('❌ Error loading image quality settings: $e');
+      logInfo('❌ Error loading image quality settings: $e');
     }
   }
 
@@ -66,7 +67,7 @@ class ImageQualityService {
       await prefs.setString('image_quality', _imageQuality);
       await prefs.setBool('battery_saver_mode', _batterySaverMode);
     } catch (e) {
-      print('❌ Error saving image quality settings: $e');
+      logInfo('❌ Error saving image quality settings: $e');
     }
   }
 

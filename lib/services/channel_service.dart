@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -51,14 +52,14 @@ class ChannelService {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final imageUrl = '$endpoint/$bucketName/$fileName';
-        print('تصویر با موفقیت آپلود شد: $imageUrl');
+        logInfo('تصویر با موفقیت آپلود شد: $imageUrl');
         return imageUrl;
       } else {
-        print('خطا در آپلود تصویر: ${response.statusCode}');
+        logInfo('خطا در آپلود تصویر: ${response.statusCode}');
         return null;
       }
     } catch (e) {
-      print('خطا در آپلود تصویر به آروان: $e');
+      logInfo('خطا در آپلود تصویر به آروان: $e');
       return null;
     }
   }
@@ -82,14 +83,14 @@ class ChannelService {
       final response = await http.delete(deleteUri);
 
       if (response.statusCode == 204 || response.statusCode == 200) {
-        print('تصویر با موفقیت حذف شد');
+        logInfo('تصویر با موفقیت حذف شد');
         return true;
       } else {
-        print('خطا در حذف تصویر: ${response.statusCode}');
+        logInfo('خطا در حذف تصویر: ${response.statusCode}');
         return false;
       }
     } catch (e) {
-      print('خطا در حذف تصویر از آروان: $e');
+      logInfo('خطا در حذف تصویر از آروان: $e');
       return false;
     }
   }
@@ -124,7 +125,7 @@ class ChannelService {
         'canManageChannel': ['owner', 'admin'].contains(role),
       };
     } catch (e) {
-      print('خطا در بررسی مجوزها: $e');
+      logInfo('خطا در بررسی مجوزها: $e');
       return {
         'isMember': false,
         'canSendMessage': false,
@@ -149,10 +150,10 @@ class ChannelService {
 
       // Channel cache removed
 
-      print('${channels.length} کانال از سرور دریافت و کش شد');
+      logInfo('${channels.length} کانال از سرور دریافت و کش شد');
       return channels;
     } catch (e) {
-      print('خطا در دریافت کانال‌ها: $e');
+      logInfo('خطا در دریافت کانال‌ها: $e');
 
       // Channel cache removed - no fallback available
 
@@ -194,9 +195,9 @@ class ChannelService {
     try {
       final channels = await _fetchChannelsFromServer(userId);
       // Channel cache removed
-      print('کش کانال‌ها در پس‌زمینه آپدیت شد');
+      logInfo('کش کانال‌ها در پس‌زمینه آپدیت شد');
     } catch (e) {
-      print('خطا در آپدیت پس‌زمینه: $e');
+      logInfo('خطا در آپدیت پس‌زمینه: $e');
     }
   }
 
@@ -243,7 +244,7 @@ class ChannelService {
 
       return channel;
     } catch (e) {
-      print('خطا در دریافت کانال: $e');
+      logInfo('خطا در دریافت کانال: $e');
 
       // Channel cache removed - no fallback available
 
@@ -257,10 +258,10 @@ class ChannelService {
       final channel = await getChannel(channelId, forceRefresh: true);
       if (channel != null) {
         // Channel cache removed
-        print('کش کانال $channelId در پس‌زمینه آپدیت شد');
+        logInfo('کش کانال $channelId در پس‌زمینه آپدیت شد');
       }
     } catch (e) {
-      print('خطا در آپدیت کانال در پس‌زمینه: $e');
+      logInfo('خطا در آپدیت کانال در پس‌زمینه: $e');
     }
   }
 
@@ -318,10 +319,10 @@ class ChannelService {
       // Channel cache removed
       // Channel cache removed // برای آپدیت لیست
 
-      print('کانال ${channel.name} با موفقیت ایجاد شد');
+      logInfo('کانال ${channel.name} با موفقیت ایجاد شد');
       return channel;
     } catch (e) {
-      print('خطا در ایجاد کانال: $e');
+      logInfo('خطا در ایجاد کانال: $e');
       rethrow;
     }
   }
@@ -359,9 +360,9 @@ class ChannelService {
       // Channel cache removed
       // Channel cache removed
 
-      print('با موفقیت به کانال پیوستید');
+      logInfo('با موفقیت به کانال پیوستید');
     } catch (e) {
-      print('خطا در پیوستن به کانال: $e');
+      logInfo('خطا در پیوستن به کانال: $e');
       rethrow;
     }
   }
@@ -402,9 +403,9 @@ class ChannelService {
       // Channel cache removed
       // Channel cache removed
 
-      print('با موفقیت کانال را ترک کردید');
+      logInfo('با موفقیت کانال را ترک کردید');
     } catch (e) {
-      print('خطا در ترک کانال: $e');
+      logInfo('خطا در ترک کانال: $e');
       rethrow;
     }
   }
@@ -430,7 +431,7 @@ class ChannelService {
             }).toList();
           });
     } catch (e) {
-      print('خطا در دریافت استریم پیام‌ها: $e');
+      logInfo('خطا در دریافت استریم پیام‌ها: $e');
       rethrow;
     }
   }
@@ -540,9 +541,9 @@ class ChannelService {
       final messages =
           await _fetchMessagesFromServer(channelId, limit, null, userId);
       // Channel cache removed
-      print('کش پیام‌ها در پس‌زمینه آپدیت شد');
+      logInfo('کش پیام‌ها در پس‌زمینه آپدیت شد');
     } catch (e) {
-      print('خطا در آپدیت پس‌زمینه پیام‌ها: $e');
+      logInfo('خطا در آپدیت پس‌زمینه پیام‌ها: $e');
     }
   }
 
@@ -617,10 +618,10 @@ class ChannelService {
         currentUserId: userId,
       );
 
-      print('پیام با موفقیت ارسال شد');
+      logInfo('پیام با موفقیت ارسال شد');
       return message;
     } catch (e) {
-      print('خطا در ارسال پیام: $e');
+      logInfo('خطا در ارسال پیام: $e');
       rethrow;
     }
   }
@@ -650,7 +651,7 @@ class ChannelService {
               await _uploadImageToArvan(imageFile, 'channel_messages');
           attachmentType = 'image';
         } catch (e) {
-          print('خطا در آپلود تصویر: $e');
+          logInfo('خطا در آپلود تصویر: $e');
           throw Exception('خطا در آپلود تصویر');
         }
       }
@@ -728,10 +729,10 @@ class ChannelService {
       // آپدیت کش کانال
       // Channel cache removed
 
-      print('پیام با موفقیت ارسال شد');
+      logInfo('پیام با موفقیت ارسال شد');
       return message;
     } catch (e) {
-      print('خطا در ارسال پیام: $e');
+      logInfo('خطا در ارسال پیام: $e');
       rethrow;
     }
   }
@@ -773,9 +774,9 @@ class ChannelService {
         'attachment_url': null, // پاک کردن ضمیمه
       }).eq('id', messageId);
 
-      print('پیام با موفقیت حذف شد');
+      logInfo('پیام با موفقیت حذف شد');
     } catch (e) {
-      print('خطا در حذف پیام: $e');
+      logInfo('خطا در حذف پیام: $e');
       rethrow;
     }
   }
@@ -830,10 +831,10 @@ class ChannelService {
         currentUserId: userId,
       );
 
-      print('پیام با موفقیت ویرایش شد');
+      logInfo('پیام با موفقیت ویرایش شد');
       return editedMessage;
     } catch (e) {
-      print('خطا در ویرایش پیام: $e');
+      logInfo('خطا در ویرایش پیام: $e');
       rethrow;
     }
   }
@@ -863,7 +864,7 @@ class ChannelService {
       final permissions = await getUserPermissions(channelId);
       return permissions['canDeleteMessage'] ?? false;
     } catch (e) {
-      print('خطا در بررسی مجوز حذف: $e');
+      logInfo('خطا در بررسی مجوز حذف: $e');
       return false;
     }
   }
@@ -903,7 +904,7 @@ class ChannelService {
 
       return true;
     } catch (e) {
-      print('خطا در بررسی مجوز ویرایش: $e');
+      logInfo('خطا در بررسی مجوز ویرایش: $e');
       return false;
     }
   }
@@ -933,7 +934,7 @@ class ChannelService {
         'deleted': deletedMessages,
       };
     } catch (e) {
-      print('خطا در گرفتن آمار: $e');
+      logInfo('خطا در گرفتن آمار: $e');
       rethrow;
     }
   }
@@ -1047,7 +1048,7 @@ class ChannelService {
         return ChannelMessageModel.fromJson(data, currentUserId: userId);
       }).toList();
     } catch (e) {
-      print('خطا در جستجوی پیام‌ها: $e');
+      logInfo('خطا در جستجوی پیام‌ها: $e');
       rethrow;
     }
   }
@@ -1096,7 +1097,7 @@ class ChannelService {
         };
       }).toList();
     } catch (e) {
-      print('خطا در دریافت اعضا: $e');
+      logInfo('خطا در دریافت اعضا: $e');
       rethrow;
     }
   }
@@ -1144,9 +1145,9 @@ class ChannelService {
           .eq('channel_id', channelId)
           .eq('user_id', memberId);
 
-      print('نقش عضو با موفقیت تغییر کرد');
+      logInfo('نقش عضو با موفقیت تغییر کرد');
     } catch (e) {
-      print('خطا در تغییر نقش: $e');
+      logInfo('خطا در تغییر نقش: $e');
       rethrow;
     }
   }
@@ -1182,9 +1183,9 @@ class ChannelService {
       await _supabase.rpc('decrement_channel_member_count',
           params: {'channel_id_param': channelId});
 
-      print('عضو با موفقیت اخراج شد');
+      logInfo('عضو با موفقیت اخراج شد');
     } catch (e) {
-      print('خطا در اخراج عضو: $e');
+      logInfo('خطا در اخراج عضو: $e');
       rethrow;
     }
   }
@@ -1264,10 +1265,10 @@ class ChannelService {
       // Channel cache removed
       // Channel cache removed
 
-      print('تنظیمات کانال با موفقیت آپدیت شد');
+      logInfo('تنظیمات کانال با موفقیت آپدیت شد');
       return channel;
     } catch (e) {
-      print('خطا در آپدیت تنظیمات کانال: $e');
+      logInfo('خطا در آپدیت تنظیمات کانال: $e');
       rethrow;
     }
   }
@@ -1313,9 +1314,9 @@ class ChannelService {
       // Channel cache removed
       // Channel cache removed
 
-      print('کانال با موفقیت حذف شد');
+      logInfo('کانال با موفقیت حذف شد');
     } catch (e) {
-      print('خطا در حذف کانال: $e');
+      logInfo('خطا در حذف کانال: $e');
       rethrow;
     }
   }
@@ -1325,7 +1326,7 @@ class ChannelService {
     try {
       // Channel cache removed
     } catch (e) {
-      print('خطا در پاک کردن کش: $e');
+      logInfo('خطا در پاک کردن کش: $e');
       rethrow;
     }
   }
@@ -1335,7 +1336,7 @@ class ChannelService {
     try {
       return {'cache_size_kb': 0.0, 'item_count': 0};
     } catch (e) {
-      print('خطا در دریافت آمار کش: $e');
+      logInfo('خطا در دریافت آمار کش: $e');
       rethrow;
     }
   }

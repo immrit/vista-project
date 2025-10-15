@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -58,7 +59,7 @@ class CacheSyncService {
     }
 
     _isInitialized = true;
-    debugPrint('✅ Cache sync initialized');
+    logDebug('✅ Cache sync initialized');
   }
 
   /// مدیریت تغییرات network
@@ -68,12 +69,12 @@ class CacheSyncService {
 
     if (!wasOnline && _isOnline) {
       // آنلاین شدن - sync فوری
-      debugPrint('📡 Device came online - starting immediate sync');
+      logDebug('📡 Device came online - starting immediate sync');
       _performFullSync();
       _startBackgroundSync();
     } else if (wasOnline && !_isOnline) {
       // آفلاین شدن - توقف background sync
-      debugPrint('📡 Device went offline - stopping background sync');
+      logDebug('📡 Device went offline - stopping background sync');
       _stopBackgroundSync();
     }
   }
@@ -97,7 +98,7 @@ class CacheSyncService {
   /// sync کامل (هنگام آنلاین شدن)
   Future<void> _performFullSync() async {
     try {
-      debugPrint('🔄 Starting full cache sync...');
+      logDebug('🔄 Starting full cache sync...');
 
       // sync مکالمات
       await _syncConversations();
@@ -105,9 +106,9 @@ class CacheSyncService {
       // sync پیام‌های فعال
       await _syncActiveConversations();
 
-      debugPrint('✅ Full cache sync completed');
+      logDebug('✅ Full cache sync completed');
     } catch (e) {
-      debugPrint('❌ Full cache sync failed: $e');
+      logDebug('❌ Full cache sync failed: $e');
     }
   }
 
@@ -124,7 +125,7 @@ class CacheSyncService {
         await _syncConversationIfNeeded(conversation.id);
       }
     } catch (e) {
-      debugPrint('❌ Incremental sync failed: $e');
+      logDebug('❌ Incremental sync failed: $e');
     }
   }
 
@@ -138,9 +139,9 @@ class CacheSyncService {
         await _conversationCache.updateConversation(conversation, userId);
       }
 
-      debugPrint('📋 Synced ${serverConversations.length} conversations');
+      logDebug('📋 Synced ${serverConversations.length} conversations');
     } catch (e) {
-      debugPrint('❌ Conversation sync failed: $e');
+      logDebug('❌ Conversation sync failed: $e');
     }
   }
 
@@ -228,7 +229,7 @@ class CacheSyncService {
             '📥 Synced ${newMessages.length} new messages for conversation $conversationId');
       }
     } catch (e) {
-      debugPrint('❌ Message sync failed for conversation $conversationId: $e');
+      logDebug('❌ Message sync failed for conversation $conversationId: $e');
     }
   }
 
@@ -253,7 +254,7 @@ class CacheSyncService {
           onError: (error) {
             // مدیریت خطاهای real-time بدون کرش
             if (error.toString().contains('RealtimeSubscribeException')) {
-              debugPrint('⚠️ Realtime conversation stream error: $error');
+              logDebug('⚠️ Realtime conversation stream error: $error');
               // تلاش مجدد با محدودیت
               if (_retryCount < _maxRetries) {
                 _retryCount++;
@@ -262,10 +263,10 @@ class CacheSyncService {
                   subscribeToConversation(conversationId);
                 });
               } else {
-                debugPrint('Max retries reached for conversation subscription');
+                logDebug('Max retries reached for conversation subscription');
               }
             } else {
-              debugPrint('⚠️ Real-time subscription error: $error');
+              logDebug('⚠️ Real-time subscription error: $error');
             }
           },
           onDone: () {
@@ -279,7 +280,7 @@ class CacheSyncService {
                 subscribeToConversation(conversationId);
               });
             } else {
-              debugPrint('Max retries reached for conversation subscription');
+              logDebug('Max retries reached for conversation subscription');
             }
           },
         );
@@ -295,7 +296,7 @@ class CacheSyncService {
     await subscription?.cancel();
 
     if (subscription != null) {
-      debugPrint('📡 Unsubscribed from conversation $conversationId');
+      logDebug('📡 Unsubscribed from conversation $conversationId');
     }
   }
 
@@ -331,7 +332,7 @@ class CacheSyncService {
             '📨 Received ${newMessages.length} real-time messages for conversation $conversationId');
       }
     } catch (e) {
-      debugPrint('❌ Real-time update handling failed: $e');
+      logDebug('❌ Real-time update handling failed: $e');
     }
   }
 
@@ -352,7 +353,7 @@ class CacheSyncService {
             updatedConversation, userId);
       }
     } catch (e) {
-      debugPrint('❌ Conversation update failed: $e');
+      logDebug('❌ Conversation update failed: $e');
     }
   }
 
@@ -386,7 +387,7 @@ class CacheSyncService {
     _pendingSyncs.clear();
 
     _isInitialized = false;
-    debugPrint('🔄 Cache sync disposed');
+    logDebug('🔄 Cache sync disposed');
   }
 
   /// آمار عملکرد

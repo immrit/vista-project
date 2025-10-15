@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
@@ -58,7 +59,7 @@ class AutoCleanupService {
   /// پاکسازی کش خودکار
   Future<void> _performCacheCleanup() async {
     try {
-      print('شروع پاکسازی خودکار کش...');
+      logInfo('شروع پاکسازی خودکار کش...');
 
       final result = await _cacheManager.smartCleanup(
         targetSizeMB: 300.0, // هدف 300MB
@@ -68,17 +69,17 @@ class AutoCleanupService {
         print(
             'پاکسازی کش خودکار: ${result['items_removed']} مورد پاک شد، ${result['space_freed_mb']}MB آزاد شد');
       } else {
-        print('خطا در پاکسازی خودکار کش: ${result['message']}');
+        logInfo('خطا در پاکسازی خودکار کش: ${result['message']}');
       }
     } catch (e) {
-      print('خطا در پاکسازی خودکار کش: $e');
+      logInfo('خطا در پاکسازی خودکار کش: $e');
     }
   }
 
   /// پاکسازی داده‌های قدیمی خودکار
   Future<void> _performOldDataCleanup() async {
     try {
-      print('شروع پاکسازی خودکار داده‌های قدیمی...');
+      logInfo('شروع پاکسازی خودکار داده‌های قدیمی...');
 
       int totalItemsRemoved = 0;
       double totalSpaceFreed = 0.0;
@@ -100,7 +101,7 @@ class AutoCleanupService {
         totalItemsRemoved += 50; // تخمین
         totalSpaceFreed += 5.0; // تخمین
       } catch (e) {
-        print('خطا در پاکسازی کش رمزگشایی: $e');
+        logInfo('خطا در پاکسازی کش رمزگشایی: $e');
       }
 
       // پاکسازی فایل‌های temp قدیمی
@@ -119,7 +120,7 @@ class AutoCleanupService {
       // ذخیره گزارش پاکسازی
       await _saveCleanupReport(totalItemsRemoved, totalSpaceFreed);
     } catch (e) {
-      print('خطا در پاکسازی خودکار داده‌های قدیمی: $e');
+      logInfo('خطا در پاکسازی خودکار داده‌های قدیمی: $e');
     }
   }
 
@@ -152,7 +153,7 @@ class AutoCleanupService {
         }
       }
     } catch (e) {
-      print('خطا در پاکسازی فایل‌های temp قدیمی: $e');
+      logInfo('خطا در پاکسازی فایل‌های temp قدیمی: $e');
     }
 
     return {
@@ -177,7 +178,7 @@ class AutoCleanupService {
       itemsRemoved += 50; // تخمین
       spaceFreed += 15.0; // تخمین
     } catch (e) {
-      print('خطا در پاکسازی کش تصاویر قدیمی: $e');
+      logInfo('خطا در پاکسازی کش تصاویر قدیمی: $e');
     }
 
     return {
@@ -197,7 +198,7 @@ class AutoCleanupService {
       itemsRemoved += 100;
       spaceFreed += 15.0;
     } catch (e) {
-      print('خطا در پاکسازی مکالمات غیرفعال: $e');
+      logInfo('خطا در پاکسازی مکالمات غیرفعال: $e');
     }
 
     return {
@@ -243,7 +244,7 @@ class AutoCleanupService {
       // ذخیره
       await reportFile.writeAsString(jsonEncode(reports));
     } catch (e) {
-      print('خطا در ذخیره گزارش پاکسازی: $e');
+      logInfo('خطا در ذخیره گزارش پاکسازی: $e');
     }
   }
 
@@ -261,7 +262,7 @@ class AutoCleanupService {
         }
       }
     } catch (e) {
-      print('خطا در خواندن گزارش پاکسازی: $e');
+      logInfo('خطا در خواندن گزارش پاکسازی: $e');
     }
 
     return [];

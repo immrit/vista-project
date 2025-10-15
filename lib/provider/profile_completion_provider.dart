@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -32,7 +33,7 @@ class ProfileCompletionNotifier extends StateNotifier<bool> {
       state = isComplete;
       return isComplete;
     } catch (e) {
-      print('Error checking profile completion: $e');
+      logInfo('Error checking profile completion: $e');
       return false;
     }
   }

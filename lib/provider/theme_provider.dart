@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sembast/sembast_io.dart';
@@ -39,7 +40,7 @@ class SelectedColorNotifier extends StateNotifier<ThemeColor> {
       _database = await DatabaseManager().getSettingsDatabase();
       _loadFromSembast();
     } catch (e) {
-      debugPrint('خطا در باز کردن دیتابیس تنظیمات: $e');
+      logDebug('خطا در باز کردن دیتابیس تنظیمات: $e');
     }
   }
 
@@ -50,7 +51,7 @@ class SelectedColorNotifier extends StateNotifier<ThemeColor> {
           await _store.record('selectedColor').get(_database!) ?? 'white';
       state = _parseThemeColor(colorName);
     } catch (e) {
-      debugPrint('خطا در بارگذاری رنگ: $e');
+      logDebug('خطا در بارگذاری رنگ: $e');
     }
   }
 
@@ -66,7 +67,7 @@ class SelectedColorNotifier extends StateNotifier<ThemeColor> {
           .record('selectedColor')
           .put(_database!, _themeColorToString(state));
     } catch (e) {
-      debugPrint('خطا در ذخیره رنگ: $e');
+      logDebug('خطا در ذخیره رنگ: $e');
     }
   }
 
@@ -122,7 +123,7 @@ class BrightnessNotifier extends StateNotifier<Brightness> {
       _database = await databaseFactoryIo.openDatabase(dbPath);
       _loadFromSembast();
     } catch (e) {
-      debugPrint('خطا در باز کردن دیتابیس تنظیمات: $e');
+      logDebug('خطا در باز کردن دیتابیس تنظیمات: $e');
     }
   }
 
@@ -132,7 +133,7 @@ class BrightnessNotifier extends StateNotifier<Brightness> {
       final isDark = await _store.record('isDark').get(_database!) ?? false;
       state = isDark ? Brightness.dark : Brightness.light;
     } catch (e) {
-      debugPrint('خطا در بارگذاری brightness: $e');
+      logDebug('خطا در بارگذاری brightness: $e');
     }
   }
 
@@ -151,7 +152,7 @@ class BrightnessNotifier extends StateNotifier<Brightness> {
     try {
       await _store.record('isDark').put(_database!, state == Brightness.dark);
     } catch (e) {
-      debugPrint('خطا در ذخیره brightness: $e');
+      logDebug('خطا در ذخیره brightness: $e');
     }
   }
 }

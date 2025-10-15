@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/message_model.dart';
@@ -35,11 +36,11 @@ class OptimizedMessagingSystem {
   /// مقداردهی اولیه سیستم بهینه
   Future<void> initialize() async {
     if (_isInitialized) {
-      print('✅ Optimized Messaging System already initialized');
+      logInfo('✅ Optimized Messaging System already initialized');
       return;
     }
 
-    print('🚀 Initializing Optimized Messaging System...');
+    logInfo('🚀 Initializing Optimized Messaging System...');
 
     try {
       // Initialize cache service first
@@ -50,9 +51,9 @@ class OptimizedMessagingSystem {
       await _cacheOptimizer.startOptimization();
 
       _isInitialized = true;
-      print('✅ Optimized Messaging System initialized');
+      logInfo('✅ Optimized Messaging System initialized');
     } catch (e) {
-      print('❌ Failed to initialize messaging system: $e');
+      logInfo('❌ Failed to initialize messaging system: $e');
       rethrow;
     }
   }
@@ -122,7 +123,7 @@ class OptimizedMessagingSystem {
         }
       },
       onError: (error) {
-        print('❌ Realtime error for $conversationId: $error');
+        logInfo('❌ Realtime error for $conversationId: $error');
       },
     );
   }

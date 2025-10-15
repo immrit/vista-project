@@ -1,3 +1,4 @@
+import '../../security/logging_utility.dart';
 import 'package:Vista/view/screen/chat/ChatConversationsScreen.dart'
     show ChatConversationsScreen;
 import 'package:flutter/material.dart';
@@ -27,7 +28,7 @@ final unreadConversationsCountProvider = StreamProvider<int>((ref) {
         },
         loading: () => Stream.value(0), // در حال بارگذاری، تعداد صفر است
         error: (error, stackTrace) {
-          print('Error in unreadConversationsCountProvider: $error');
+          logInfo('Error in unreadConversationsCountProvider: $error');
           return Stream.value(0); // در صورت خطا، تعداد صفر است
         },
       );

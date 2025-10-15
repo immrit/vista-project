@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../DB/unified_message_cache_service.dart';
 
@@ -28,11 +29,11 @@ class SmartCacheService {
       _cacheSizeLimit = 100;
       _cacheExpiryDays = 7;
       await _performSmartCacheCleanup();
-      print('🧠 Smart cache enabled - Auto cleanup active');
+      logInfo('🧠 Smart cache enabled - Auto cleanup active');
     } else {
       _cacheSizeLimit = 500;
       _cacheExpiryDays = 30;
-      print('🧠 Smart cache disabled - Full cache mode');
+      logInfo('🧠 Smart cache disabled - Full cache mode');
     }
 
     await _saveSettings();
@@ -49,7 +50,7 @@ class SmartCacheService {
       print(
           '🧹 Smart cache cleanup completed - Removed messages older than $_cacheExpiryDays days');
     } catch (e) {
-      print('❌ Error during smart cache cleanup: $e');
+      logInfo('❌ Error during smart cache cleanup: $e');
     }
   }
 
@@ -63,9 +64,9 @@ class SmartCacheService {
       // پاکسازی فایل‌های موقت
       await _cleanupTempFiles();
 
-      print('🧹 Periodic cache cleanup completed');
+      logInfo('🧹 Periodic cache cleanup completed');
     } catch (e) {
-      print('❌ Error during periodic cleanup: $e');
+      logInfo('❌ Error during periodic cleanup: $e');
     }
   }
 
@@ -74,9 +75,9 @@ class SmartCacheService {
     try {
       // اینجا می‌توانید فایل‌های موقت را پاک کنید
       // برای مثال: فایل‌های دانلود شده، تصاویر موقت، etc.
-      print('🧹 Temp files cleanup completed');
+      logInfo('🧹 Temp files cleanup completed');
     } catch (e) {
-      print('❌ Error cleaning temp files: $e');
+      logInfo('❌ Error cleaning temp files: $e');
     }
   }
 
@@ -91,7 +92,7 @@ class SmartCacheService {
       print(
           '📱 Smart cache settings loaded: enabled=$_smartCacheEnabled, size_limit=${_cacheSizeLimit}MB, expiry_days=$_cacheExpiryDays');
     } catch (e) {
-      print('❌ Error loading smart cache settings: $e');
+      logInfo('❌ Error loading smart cache settings: $e');
     }
   }
 
@@ -103,7 +104,7 @@ class SmartCacheService {
       await prefs.setInt('cache_size_limit', _cacheSizeLimit);
       await prefs.setInt('cache_expiry_days', _cacheExpiryDays);
     } catch (e) {
-      print('❌ Error saving smart cache settings: $e');
+      logInfo('❌ Error saving smart cache settings: $e');
     }
   }
 
@@ -128,7 +129,7 @@ class SmartCacheService {
       // برای مثال: بررسی اندازه فایل‌های کش شده
       return 0; // placeholder
     } catch (e) {
-      print('❌ Error getting cache size: $e');
+      logInfo('❌ Error getting cache size: $e');
       return 0;
     }
   }

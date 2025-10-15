@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:path/path.dart' as path;
@@ -80,7 +81,7 @@ class ChatFileUploadService {
 
       final uploadedUrl =
           'https://storage.389346.ir.cdn.ir/$bucketName/$fileName';
-      print('فایل چت با موفقیت آپلود شد: $uploadedUrl');
+      logInfo('فایل چت با موفقیت آپلود شد: $uploadedUrl');
 
       if (uploadedUrl.isEmpty) {
         throw Exception('لینک آپلود فایل خالی است!');
@@ -88,6 +89,9 @@ class ChatFileUploadService {
 
       return uploadedUrl;
     } catch (e) {
+      // Log the actual error for debugging
+      logInfo('PDF Upload Error: $e');
+      logInfo('Error type: ${e.runtimeType}');
       UserFriendlyErrorHandler.logError(e, context: 'file_upload');
       throw Exception(UserFriendlyErrorHandler.getFriendlyMessage(e,
           context: 'file_upload'));
@@ -142,7 +146,7 @@ class ChatFileUploadService {
 
       final uploadedUrl =
           'https://storage.389346.ir.cdn.ir/$bucketName/$fileName';
-      print('فایل چت با موفقیت آپلود شد: $uploadedUrl');
+      logInfo('فایل چت با موفقیت آپلود شد: $uploadedUrl');
 
       if (uploadedUrl.isEmpty) {
         throw Exception('لینک آپلود فایل خالی است!');
@@ -213,7 +217,7 @@ class ChatFileUploadService {
     String conversationId,
   ) async {
     try {
-      print('Starting web PDF file upload...');
+      logInfo('Starting web PDF file upload...');
 
       // بررسی پسوند فایل - فقط PDF پشتیبانی می‌شود
       if (!fileName.toLowerCase().endsWith('.pdf')) {
@@ -241,7 +245,7 @@ class ChatFileUploadService {
       final s3FileName =
           'chats/$conversationId/${userId}_${timestamp}_$sanitizedFileName';
 
-      print('Uploading to S3 with key: $s3FileName');
+      logInfo('Uploading to S3 with key: $s3FileName');
 
       try {
         await s3.putObject(
@@ -254,7 +258,7 @@ class ChatFileUploadService {
 
         final uploadedUrl =
             'https://storage.389346.ir.cdn.ir/$bucketName/$s3FileName';
-        print('Web PDF file upload successful: $uploadedUrl');
+        logInfo('Web PDF file upload successful: $uploadedUrl');
 
         return uploadedUrl;
       } catch (e) {
@@ -282,7 +286,7 @@ class ChatFileUploadService {
 
       return true;
     } catch (e) {
-      print('خطا در حذف فایل چت: $e');
+      logInfo('خطا در حذف فایل چت: $e');
       return false;
     }
   }

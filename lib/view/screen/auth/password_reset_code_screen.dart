@@ -1,3 +1,4 @@
+import '../../../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -37,8 +38,8 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
       final args =
           ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
       _email = args?['email'] as String?;
-      print('📨 ایمیل دریافتی از صفحه قبلی: $_email');
-      print('📨 Arguments کامل: $args');
+      logInfo('📨 ایمیل دریافتی از صفحه قبلی: $_email');
+      logInfo('📨 Arguments کامل: $args');
     });
 
     _fadeController = AnimationController(
@@ -82,107 +83,107 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
   }
 
   Future<void> _resetPassword() async {
-    print('🔍 شروع اعتبارسنجی');
+    logInfo('🔍 شروع اعتبارسنجی');
 
     if (_email == null) {
-      print('❌ ایمیل یافت نشد');
+      logInfo('❌ ایمیل یافت نشد');
       _showErrorSnackBar('ایمیل یافت نشد. لطفاً دوباره تلاش کنید');
       return;
     }
 
     if (_codeController.text.trim().isEmpty) {
-      print('❌ کد خالی است');
+      logInfo('❌ کد خالی است');
       _showErrorSnackBar('لطفاً کد بازیابی را وارد کنید');
       return;
     }
 
     if (_newPasswordController.text.trim().isEmpty) {
-      print('❌ رمز جدید خالی است');
+      logInfo('❌ رمز جدید خالی است');
       _showErrorSnackBar('لطفاً رمز جدید را وارد کنید');
       return;
     }
 
     if (_newPasswordController.text.length < 6) {
-      print('❌ رمز کوتاه است: ${_newPasswordController.text.length} کاراکتر');
+      logInfo('❌ رمز کوتاه است: ${_newPasswordController.text.length} کاراکتر');
       _showErrorSnackBar('رمز عبور باید حداقل ۶ کاراکتر باشد');
       return;
     }
 
     if (_newPasswordController.text != _confirmPasswordController.text) {
-      print('❌ رمزها یکسان نیستند');
-      print('رمز جدید: ${_newPasswordController.text}');
-      print('رمز تایید: ${_confirmPasswordController.text}');
+      logInfo('❌ رمزها یکسان نیستند');
+      logInfo('رمز جدید: ${_newPasswordController.text}');
+      logInfo('رمز تایید: ${_confirmPasswordController.text}');
       _showErrorSnackBar('رمز عبور و تایید آن یکسان نیستند');
       return;
     }
 
-    print('✅ تمام اعتبارسنجی‌ها پاس شد');
+    logInfo('✅ تمام اعتبارسنجی‌ها پاس شد');
 
     setState(() => _isLoading = true);
 
     try {
-      print('🔍 شروع تغییر رمزعبور');
-      print('📧 ایمیل: $_email');
-      print('🔑 کد وارد شده: ${_codeController.text.trim()}');
-      print('🔒 رمز جدید: ${_newPasswordController.text.trim()}');
-      print('✅ رمز تایید: ${_confirmPasswordController.text.trim()}');
+      logInfo('🔍 شروع تغییر رمزعبور');
+      logInfo('📧 ایمیل: $_email');
+      logInfo('🔑 کد وارد شده: ${_codeController.text.trim()}');
+      logInfo('🔒 رمز جدید: ${_newPasswordController.text.trim()}');
+      logInfo('✅ رمز تایید: ${_confirmPasswordController.text.trim()}');
 
       // در Supabase، برای بازیابی رمزعبور، باید از verifyOTP استفاده کنیم
       // این method کد بازیابی رو تایید می‌کنه و session موقت ایجاد می‌کنه
-      print('🔐 تایید کد بازیابی با verifyOTP...');
+      logInfo('🔐 تایید کد بازیابی با verifyOTP...');
       final verifyResponse = await supabase.auth.verifyOTP(
         type: OtpType.recovery,
         token: _codeController.text.trim(),
         email: _email!,
       );
-      print('🔄 پاسخ verifyOTP: ${verifyResponse.user?.email ?? 'null'}');
-      print('👤 کاربر تایید شده: ${verifyResponse.user?.id ?? 'null'}');
+      logInfo('🔄 پاسخ verifyOTP: ${verifyResponse.user?.email ?? 'null'}');
+      logInfo('👤 کاربر تایید شده: ${verifyResponse.user?.id ?? 'null'}');
 
       if (verifyResponse.user != null) {
-        print('✅ کد بازیابی تایید شد، حالا رمز رو تغییر می‌دیم');
+        logInfo('✅ کد بازیابی تایید شد، حالا رمز رو تغییر می‌دیم');
         // حالا که کد تایید شد، رمز رو تغییر می‌دیم
         final updateResponse = await supabase.auth.updateUser(
           UserAttributes(
             password: _newPasswordController.text.trim(),
           ),
         );
-        print('🔄 پاسخ updateUser: ${updateResponse.user?.email ?? 'null'}');
+        logInfo('🔄 پاسخ updateUser: ${updateResponse.user?.email ?? 'null'}');
 
         if (updateResponse.user != null) {
-          print('✅ رمز عبور با موفقیت تغییر یافت');
+          logInfo('✅ رمز عبور با موفقیت تغییر یافت');
           _showSuccessSnackBar('رمز عبور با موفقیت تغییر یافت');
           Navigator.pushNamedAndRemoveUntil(context, '/auth', (route) => false);
         } else {
-          print('❌ خطا در تغییر رمز عبور - پاسخ خالی');
+          logInfo('❌ خطا در تغییر رمز عبور - پاسخ خالی');
           throw Exception('خطا در تغییر رمز عبور');
         }
       } else {
-        print('❌ کد بازیابی نامعتبر است');
+        logInfo('❌ کد بازیابی نامعتبر است');
         throw Exception('کد بازیابی نامعتبر است');
       }
     } catch (error) {
-      print('🚨 خطای تغییر رمزعبور: $error');
-      print('🚨 نوع خطا: ${error.runtimeType}');
-      print('🚨 جزئیات خطا: ${error.toString()}');
+      logInfo('🚨 خطای تغییر رمزعبور: $error');
+      logInfo('🚨 نوع خطا: ${error.runtimeType}');
+      logInfo('🚨 جزئیات خطا: ${error.toString()}');
 
       String errorMessage = 'خطا در تغییر رمز عبور';
 
       if (error.toString().contains('Invalid OTP') ||
           error.toString().contains('invalid_token')) {
         errorMessage = 'کد بازیابی نامعتبر است';
-        print('🚨 تشخیص خطا: کد نامعتبر');
+        logInfo('🚨 تشخیص خطا: کد نامعتبر');
       } else if (error.toString().contains('expired')) {
         errorMessage = 'کد بازیابی منقضی شده است';
-        print('🚨 تشخیص خطا: کد منقضی شده');
+        logInfo('🚨 تشخیص خطا: کد منقضی شده');
       } else if (error.toString().contains('Auth session missing')) {
         errorMessage = 'لطفاً دوباره از صفحه بازیابی رمزعبور شروع کنید';
-        print('🚨 تشخیص خطا: session missing');
+        logInfo('🚨 تشخیص خطا: session missing');
       } else if (error.toString().contains('password')) {
         errorMessage = 'رمز عبور معتبر نیست';
-        print('🚨 تشخیص خطا: مشکل رمز عبور');
+        logInfo('🚨 تشخیص خطا: مشکل رمز عبور');
       }
 
-      print('📝 پیام خطا برای کاربر: $errorMessage');
+      logInfo('📝 پیام خطا برای کاربر: $errorMessage');
       _showErrorSnackBar(errorMessage);
     } finally {
       if (mounted) {

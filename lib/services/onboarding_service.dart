@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class OnboardingService {
@@ -20,7 +21,7 @@ class OnboardingService {
 
       return isCompleted;
     } catch (e) {
-      print('Error checking onboarding status: $e');
+      logInfo('Error checking onboarding status: $e');
       return false;
     }
   }
@@ -31,9 +32,9 @@ class OnboardingService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_onboardingCompletedKey, true);
       await prefs.setString(_onboardingVersionKey, _currentOnboardingVersion);
-      print('✅ Onboarding marked as completed');
+      logInfo('✅ Onboarding marked as completed');
     } catch (e) {
-      print('❌ Error marking onboarding as completed: $e');
+      logInfo('❌ Error marking onboarding as completed: $e');
     }
   }
 
@@ -42,9 +43,9 @@ class OnboardingService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_onboardingCompletedKey, false);
-      print('🔄 Onboarding marked as incomplete due to version change');
+      logInfo('🔄 Onboarding marked as incomplete due to version change');
     } catch (e) {
-      print('❌ Error marking onboarding as incomplete: $e');
+      logInfo('❌ Error marking onboarding as incomplete: $e');
     }
   }
 
@@ -54,9 +55,9 @@ class OnboardingService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_onboardingCompletedKey);
       await prefs.remove(_onboardingVersionKey);
-      print('🔄 Onboarding status reset');
+      logInfo('🔄 Onboarding status reset');
     } catch (e) {
-      print('❌ Error resetting onboarding status: $e');
+      logInfo('❌ Error resetting onboarding status: $e');
     }
   }
 

@@ -1,3 +1,4 @@
+import '../../security/logging_utility.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_trimmer/video_trimmer.dart';
@@ -76,7 +77,7 @@ class _YourVideoTrimmerPageState extends State<YourVideoTrimmerPage> {
       onSave: (outputPath) {
         setState(() => _progressVisibility = false);
         if (outputPath != null && outputPath.isNotEmpty) {
-          debugPrint('OUTPUT PATH: $outputPath');
+          logDebug('OUTPUT PATH: $outputPath');
           Navigator.pop(context, outputPath);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(

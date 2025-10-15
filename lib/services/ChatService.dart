@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:collection';
@@ -46,7 +47,7 @@ class ChatService {
         }
       }
     } catch (e) {
-      print('هشدار: حذف فایل پیوست چت ناموفق بود: $e');
+      logInfo('هشدار: حذف فایل پیوست چت ناموفق بود: $e');
     }
   }
 
@@ -269,7 +270,7 @@ class ChatService {
       final fallbackCachedConversations =
           await _conversationCache.getCachedConversations(userId);
       if (fallbackCachedConversations.isNotEmpty) {
-        print('خطا در دریافت مکالمات از سرور. استفاده از کش: $e');
+        logInfo('خطا در دریافت مکالمات از سرور. استفاده از کش: $e');
         return fallbackCachedConversations;
       }
 
@@ -374,7 +375,7 @@ class ChatService {
             .from('conversations')
             .update({'unread_count': newUnreadCount}).eq('id', conversationId);
       } catch (e) {
-        print('⚠️ Could not update unread_count in database: $e');
+        logInfo('⚠️ Could not update unread_count in database: $e');
       }
 
       // بروزرسانی کش
@@ -386,7 +387,7 @@ class ChatService {
       print(
           '✅ Unread count incremented for conversation: $conversationId, new count: $newUnreadCount');
     } catch (e) {
-      print('⚠️ Error incrementing unread count: $e');
+      logInfo('⚠️ Error incrementing unread count: $e');
     }
   }
 
@@ -400,7 +401,7 @@ class ChatService {
             .from('conversations')
             .update({'unread_count': 0}).eq('id', conversationId);
       } catch (e) {
-        print('⚠️ Could not reset unread_count in database: $e');
+        logInfo('⚠️ Could not reset unread_count in database: $e');
       }
 
       // بروزرسانی کش
@@ -412,9 +413,9 @@ class ChatService {
             updatedConversation, currentUserId);
       }
 
-      print('✅ Unread count reset for conversation: $conversationId');
+      logInfo('✅ Unread count reset for conversation: $conversationId');
     } catch (e) {
-      print('⚠️ Error resetting unread count: $e');
+      logInfo('⚠️ Error resetting unread count: $e');
     }
   }
 
@@ -434,9 +435,9 @@ class ChatService {
           .update(updateData)
           .eq('id', conversationId);
 
-      print('✅ Conversation updated with latest message: $conversationId');
+      logInfo('✅ Conversation updated with latest message: $conversationId');
     } catch (e) {
-      print('⚠️ Error updating conversation: $e');
+      logInfo('⚠️ Error updating conversation: $e');
     }
   }
 
@@ -445,6 +446,7 @@ class ChatService {
     required String content,
     String? attachmentUrl,
     String? attachmentType,
+    String? attachmentFileName,
     int? duration,
     String? replyToMessageId,
     String? replyToContent,
@@ -468,6 +470,8 @@ class ChatService {
         'content': content,
         'attachment_url': attachmentUrl,
         'attachment_type': attachmentType,
+        if (attachmentFileName != null)
+          'attachment_file_name': attachmentFileName,
         'reply_to_message_id': replyToMessageId,
         'reply_to_content': replyToContent,
         'reply_to_sender_name': replyToSenderName,
@@ -478,7 +482,7 @@ class ChatService {
         'created_at': DateTime.now().toUtc().toIso8601String(),
       };
 
-      print('📝 ارسال پیام به سرور (insert مستقیم): $messageData');
+      logInfo('📝 ارسال پیام به سرور (insert مستقیم): $messageData');
 
       // ارسال پیام به سرور با insert مستقیم
       final response = await _supabase
@@ -487,7 +491,7 @@ class ChatService {
           .select()
           .single();
 
-      print('✅ پیام با موفقیت ارسال شد');
+      logInfo('✅ پیام با موفقیت ارسال شد');
 
       // بروزرسانی conversation با آخرین پیام
       final messageTime = DateTime.parse(response['created_at']);
@@ -510,10 +514,10 @@ class ChatService {
           );
           await _conversationCache.updateConversation(
               updatedConversation, userId);
-          print('✅ Conversation cache updated for: $conversationId');
+          logInfo('✅ Conversation cache updated for: $conversationId');
         }
       } catch (e) {
-        print('⚠️ Error updating conversation cache: $e');
+        logInfo('⚠️ Error updating conversation cache: $e');
       }
 
       // دریافت اطلاعات پروفایل کاربر
@@ -528,7 +532,7 @@ class ChatService {
         isPending: false, // و isPending=false
       );
     } catch (e) {
-      print('❌ خطا در ارسال پیام: $e');
+      logInfo('❌ خطا در ارسال پیام: $e');
       throw AppException(
         userFriendlyMessage: 'ارسال پیام با مشکل مواجه شد',
         technicalMessage: 'Error in sendMessage: $e',
@@ -551,7 +555,7 @@ class ChatService {
         }
       }
     } catch (e) {
-      print('خطا در پاک کردن کش قدیمی: $e');
+      logInfo('خطا در پاک کردن کش قدیمی: $e');
     }
   }
 
@@ -569,9 +573,9 @@ class ChatService {
       for (final conversation in conversations) {
         await getMessages(conversation.id, limit: 20, offset: 0);
       }
-      print('همگام‌سازی کش با موفقیت انجام شد');
+      logInfo('همگام‌سازی کش با موفقیت انجام شد');
     } catch (e) {
-      print('خطا در همگام‌سازی کش: $e');
+      logInfo('خطا در همگام‌سازی کش: $e');
     }
   }
 
@@ -663,7 +667,7 @@ class ChatService {
       // در صف ذخیره می‌کنیم تا بعداً ارسال شود
       return temporaryMessage;
     } catch (e) {
-      print('خطا در ارسال پیام آفلاین: $e');
+      logInfo('خطا در ارسال پیام آفلاین: $e');
       throw AppException(
         userFriendlyMessage: 'ارسال پیام با مشکل مواجه شد',
         technicalMessage: 'خطا در ارسال پیام آفلاین: $e',
@@ -699,7 +703,7 @@ class ChatService {
           (msg) => msg['temporaryId'] == pendingMessage['temporaryId'],
         );
       } catch (e) {
-        print('خطا در ارسال پیام در صف: $e');
+        logInfo('خطا در ارسال پیام در صف: $e');
       }
     }
   }
@@ -721,11 +725,11 @@ class ChatService {
           params: {'user1': userId, 'user2': otherUserId},
         );
         if (existingQuery != null && existingQuery.isNotEmpty) {
-          print('مکالمه موجود در سرور یافت شد: ${existingQuery[0]['id']}');
+          logInfo('مکالمه موجود در سرور یافت شد: ${existingQuery[0]['id']}');
           return existingQuery[0]['id'];
         }
       } catch (e) {
-        print('find_conversation_between_users RPC failed: $e');
+        logInfo('find_conversation_between_users RPC failed: $e');
       }
 
       // 2) جستجو در کش محلی
@@ -733,12 +737,12 @@ class ChatService {
         final cached = await _conversationCache.getCachedConversations(userId);
         for (final c in cached) {
           if (c.otherUserId == otherUserId) {
-            print('مکالمه موجود در کش یافت شد: ${c.id}');
+            logInfo('مکالمه موجود در کش یافت شد: ${c.id}');
             return c.id;
           }
         }
       } catch (e) {
-        print('خطا در جستجوی کش: $e');
+        logInfo('خطا در جستجوی کش: $e');
       }
 
       // 3) جستجو در سرور (از طریق getConversations)
@@ -752,13 +756,13 @@ class ChatService {
           }
         }
       } catch (e) {
-        print('خطا در جستجوی سرور: $e');
+        logInfo('خطا در جستجوی سرور: $e');
       }
 
-      print('هیچ مکالمه موجودی یافت نشد');
+      logInfo('هیچ مکالمه موجودی یافت نشد');
       return null;
     } catch (e) {
-      print('خطا در findExistingConversation: $e');
+      logInfo('خطا در findExistingConversation: $e');
       return null;
     }
   }
@@ -778,7 +782,7 @@ class ChatService {
     // اگر درحال ساخت/واکشی همین مکالمه هستیم، همان Future را برگردان
     final inFlight = _pendingConversationFutures[key];
     if (inFlight != null) {
-      print('createOrGetConversation: در حال انجام برای کلید $key');
+      logInfo('createOrGetConversation: در حال انجام برای کلید $key');
       return await inFlight;
     }
 
@@ -787,7 +791,7 @@ class ChatService {
         // ابتدا بررسی کن که آیا مکالمه موجود است
         final existingId = await findExistingConversation(otherUserId);
         if (existingId != null && existingId.isNotEmpty) {
-          print('createOrGetConversation: مکالمه موجود یافت شد: $existingId');
+          logInfo('createOrGetConversation: مکالمه موجود یافت شد: $existingId');
           return existingId;
         }
 
@@ -802,7 +806,7 @@ class ChatService {
             .single();
 
         final conversationId = newConversation['id'];
-        print('createOrGetConversation: مکالمه جدید ایجاد شد: $conversationId');
+        logInfo('createOrGetConversation: مکالمه جدید ایجاد شد: $conversationId');
 
         // افزودن کاربران به مکالمه
         await _supabase.from('conversation_participants').insert([
@@ -825,7 +829,7 @@ class ChatService {
         await refreshConversation(conversationId);
         return conversationId;
       } catch (e) {
-        print('createOrGetConversation: خطا در ایجاد مکالمه: $e');
+        logInfo('createOrGetConversation: خطا در ایجاد مکالمه: $e');
         throw AppException(
           userFriendlyMessage: 'مشکل در ایجاد گفتگو',
           technicalMessage: 'خطا در createOrGetConversation: $e',
@@ -837,7 +841,7 @@ class ChatService {
     _pendingConversationFutures[key] = future;
     try {
       final result = await future;
-      print('createOrGetConversation: عملیات با موفقیت انجام شد: $result');
+      logInfo('createOrGetConversation: عملیات با موفقیت انجام شد: $result');
       return result;
     } finally {
       _pendingConversationFutures.remove(key);
@@ -914,13 +918,13 @@ class ChatService {
   Future<void> updateUserOnlineStatus() async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) {
-      print('updateUserOnlineStatus: کاربر وارد نشده است');
+      logInfo('updateUserOnlineStatus: کاربر وارد نشده است');
       return;
     }
 
     try {
       // اطلاعات دیباگ
-      print('updateUserOnlineStatus: به‌روزرسانی وضعیت برای کاربر: $userId');
+      logInfo('updateUserOnlineStatus: به‌روزرسانی وضعیت برای کاربر: $userId');
 
       // به‌روزرسانی is_online و last_online
       await _supabase.from('profiles').update({
@@ -928,9 +932,9 @@ class ChatService {
         'is_online': true,
       }).eq('id', userId);
 
-      print('updateUserOnlineStatus: وضعیت آنلاین کاربر به‌روزرسانی شد');
+      logInfo('updateUserOnlineStatus: وضعیت آنلاین کاربر به‌روزرسانی شد');
     } catch (e) {
-      print('updateUserOnlineStatus: خطا در به‌روزرسانی وضعیت آنلاین: $e');
+      logInfo('updateUserOnlineStatus: خطا در به‌روزرسانی وضعیت آنلاین: $e');
     }
   }
 
@@ -984,7 +988,7 @@ class ChatService {
       }
       return null;
     } catch (e) {
-      print('خطا در دریافت زمان آخرین فعالیت: $e');
+      logInfo('خطا در دریافت زمان آخرین فعالیت: $e');
       return null;
     }
   }
@@ -1037,7 +1041,7 @@ class ChatService {
           .maybeSingle();
 
       if (response == null) {
-        print('isUserOnline: اطلاعات برای کاربر $userId یافت نشد');
+        logInfo('isUserOnline: اطلاعات برای کاربر $userId یافت نشد');
         return false;
       }
 
@@ -1070,7 +1074,7 @@ class ChatService {
 
       return isOnlineBased;
     } catch (e) {
-      print('خطا در بررسی وضعیت آنلاین: $e');
+      logInfo('خطا در بررسی وضعیت آنلاین: $e');
       return false;
     }
   }
@@ -1135,7 +1139,7 @@ class ChatService {
       await getConversations();
       return conversationId;
     } catch (e) {
-      print('خطا در حذف پیام: $e');
+      logInfo('خطا در حذف پیام: $e');
       rethrow;
     }
   }
@@ -1156,7 +1160,7 @@ class ChatService {
       );
       await _conversationCache.updateConversation(conversation, userId);
     } catch (e) {
-      print('خطا در بروزرسانی مکالمه: $e');
+      logInfo('خطا در بروزرسانی مکالمه: $e');
     }
   }
 
@@ -1368,7 +1372,7 @@ class ChatService {
       // 3. Refresh the conversation in the local cache from the server to ensure consistency
       await refreshConversation(conversationId);
     } catch (e) {
-      print('خطا در پاکسازی مکالمه: $e');
+      logInfo('خطا در پاکسازی مکالمه: $e');
       rethrow;
     }
   }
@@ -1408,7 +1412,7 @@ class ChatService {
 
       return messages;
     } catch (e) {
-      print('خطا در دریافت پیام‌های جدید: $e');
+      logInfo('خطا در دریافت پیام‌های جدید: $e');
       return [];
     }
   }
@@ -1426,7 +1430,7 @@ class ChatService {
 
     // Throttle requests to prevent excessive server calls
     if (_shouldThrottleRequest(requestKey)) {
-      print('🚫 Throttling request for $requestKey');
+      logInfo('🚫 Throttling request for $requestKey');
       final cachedMessages = await _messageCache.getConversationMessages(
         conversationId,
         userId,
@@ -1481,7 +1485,7 @@ class ChatService {
             .where((message) => !hiddenMessageIds.contains(message['id']))
             .toList();
 
-        print('messagesResponse ${messagesResponse.length}');
+        logInfo('messagesResponse ${messagesResponse.length}');
 
         // استخراج sender_id های منحصر به فرد
         final senderIds = filteredMessages
@@ -1516,7 +1520,7 @@ class ChatService {
           await markConversationAsRead(conversationId);
         }
 
-        print('getMessages From Server ${messages.length}');
+        logInfo('getMessages From Server ${messages.length}');
         return messages;
       }
 
@@ -1526,10 +1530,10 @@ class ChatService {
       final fallbackCachedMessages = await _messageCache
           .getConversationMessages(conversationId, userId, limit: limit);
       if (fallbackCachedMessages.isNotEmpty) {
-        print('خطا در دریافت پیام‌ها از سرور. استفاده از کش: $e');
+        logInfo('خطا در دریافت پیام‌ها از سرور. استفاده از کش: $e');
         return fallbackCachedMessages;
       }
-      print('خطا در دریافت پیام‌ها: $e');
+      logInfo('خطا در دریافت پیام‌ها: $e');
       throw AppException(
         userFriendlyMessage: 'دریافت پیام‌ها با مشکل مواجه شد',
         technicalMessage: 'خطا در دریافت پیام‌ها: $e',
@@ -1616,18 +1620,18 @@ class ChatService {
 
   // دریافت مکالمات بلادرنگ
   Stream<List<ConversationModel>> subscribeToConversations() {
-    print('📡 شروع گوش دادن به تغییرات مکالمات');
+    logInfo('📡 شروع گوش دادن به تغییرات مکالمات');
 
     return _supabase
         .from('conversations')
         .stream(primaryKey: ['id'])
         .map((event) async {
-          print('🔔 دریافت تغییرات جدید از سرور');
+          logInfo('🔔 دریافت تغییرات جدید از سرور');
           return await getConversations();
         })
         .asyncMap((future) => future)
         .handleError((error) {
-          print('❌ خطا در استریم مکالمات: $error');
+          logInfo('❌ خطا در استریم مکالمات: $error');
           return [];
         });
   }
@@ -1635,7 +1639,7 @@ class ChatService {
   // حذف مکالمه برای همه (مثل تلگرام)
   Future<void> deleteConversationForEveryone(String conversationId) async {
     try {
-      print('🔥 حذف مکالمه برای همه شرکت‌کنندگان: $conversationId');
+      logInfo('🔥 حذف مکالمه برای همه شرکت‌کنندگان: $conversationId');
 
       // حذف همه شرکت‌کنندگان از مکالمه
       await _supabase
@@ -1652,9 +1656,9 @@ class ChatService {
       // حذف خود گفتگو
       await _supabase.from('conversations').delete().eq('id', conversationId);
 
-      print('✅ مکالمه برای همه حذف شد');
+      logInfo('✅ مکالمه برای همه حذف شد');
     } catch (e) {
-      print('❌ خطا در حذف مکالمه برای همه: $e');
+      logInfo('❌ خطا در حذف مکالمه برای همه: $e');
       rethrow;
     }
   }
@@ -1715,7 +1719,7 @@ class ChatService {
         // 🔥 راهکار جدید: برای جلوگیری از نمایش "کاربر" به طرف مقابل
         // مکالمه را برای همه شرکت‌کنندگان حذف کن (مثل تلگرام)
         if (conversationData['type'] == 'private') {
-          print('🔥 حذف مکالمه خصوصی برای همه شرکت‌کنندگان (مثل تلگرام)');
+          logInfo('🔥 حذف مکالمه خصوصی برای همه شرکت‌کنندگان (مثل تلگرام)');
 
           // حذف همه شرکت‌کنندگان از مکالمه
           await _supabase
@@ -1735,7 +1739,7 @@ class ChatService {
               .delete()
               .eq('id', conversationId);
 
-          print('✅ مکالمه خصوصی برای همه حذف شد');
+          logInfo('✅ مکالمه خصوصی برای همه حذف شد');
         }
       }
 
@@ -1751,10 +1755,10 @@ class ChatService {
         conversationId,
         userId,
       ); // استفاده از متد صحیح
-      print('گفتگو و پیام‌های آن از کش لوکال حذف شدند: $conversationId');
+      logInfo('گفتگو و پیام‌های آن از کش لوکال حذف شدند: $conversationId');
       // --- پایان اضافه شده ---
     } catch (e) {
-      print('خطا در حذف مکالمه (ترک گفتگو): $e');
+      logInfo('خطا در حذف مکالمه (ترک گفتگو): $e');
       // می‌توانید یک Exception سفارشی پرتاب کنید یا خطا را مدیریت کنید
       throw AppException(
         userFriendlyMessage: 'ترک گفتگو با مشکل مواجه شد',
@@ -1789,7 +1793,7 @@ class ChatService {
       // به‌روزرسانی مکالمات (برای پنهان کردن مکالمه با کاربر بلاک شده)
       await updateBlockedConversations();
     } catch (e) {
-      print('خطا در بلاک کردن کاربر: $e');
+      logInfo('خطا در بلاک کردن کاربر: $e');
       throw Exception('بلاک کردن کاربر با خطا مواجه شد: $e');
     }
   }
@@ -1810,7 +1814,7 @@ class ChatService {
       // به‌روزرسانی مکالمات (برای نمایش مجدد مکالمه با کاربر)
       await updateBlockedConversations();
     } catch (e) {
-      print('خطا در لغو بلاک کاربر: $e');
+      logInfo('خطا در لغو بلاک کاربر: $e');
       throw Exception('لغو بلاک کاربر با خطا مواجه شد: $e');
     }
   }
@@ -1833,7 +1837,7 @@ class ChatService {
 
       return blockingRecord != null;
     } catch (e) {
-      print('خطا در بررسی وضعیت بلاک کاربر: $e');
+      logInfo('خطا در بررسی وضعیت بلاک کاربر: $e');
       return false;
     }
   }
@@ -1852,7 +1856,7 @@ class ChatService {
 
       return blockingRecord != null;
     } catch (e) {
-      print('خطا در بررسی مسدودیت کاربر جاری: $e');
+      logInfo('خطا در بررسی مسدودیت کاربر جاری: $e');
       return false;
     }
   }
@@ -1884,7 +1888,7 @@ class ChatService {
             'pending', // وضعیت‌های ممکن: pending, reviewed, dismissed, actioned
       });
     } catch (e) {
-      print('خطا در گزارش کاربر: $e');
+      logInfo('خطا در گزارش کاربر: $e');
       throw Exception('گزارش کاربر با خطا مواجه شد: $e');
     }
   }
@@ -1912,7 +1916,7 @@ class ChatService {
 
       return messages;
     } catch (e) {
-      print('خطا در جستجوی پیام‌ها: $e');
+      logInfo('خطا در جستجوی پیام‌ها: $e');
       rethrow;
     }
   }
@@ -1974,7 +1978,7 @@ class ChatService {
 
       return filePath;
     } catch (e) {
-      print('خطا در دانلود تصویر: $e');
+      logInfo('خطا در دانلود تصویر: $e');
       throw AppException(
         userFriendlyMessage: 'دانلود تصویر با مشکل مواجه شد',
         technicalMessage: 'خطا در دانلود تصویر: $e',
@@ -2131,7 +2135,7 @@ class ChatService {
         await _conversationCache.removeConversation(conversationId, userId);
       }
     } catch (e) {
-      print('خطا در پاکسازی مکالمه: $e');
+      logInfo('خطا در پاکسازی مکالمه: $e');
       throw Exception('پاکسازی مکالمه با خطا مواجه شد: $e');
     }
   }
@@ -2223,7 +2227,7 @@ class ChatService {
         conversationId,
       ); // برای اطمینان از همگام‌سازی کامل مدل در کش
     } catch (e) {
-      print('Error toggling conversation mute status: $e');
+      logInfo('Error toggling conversation mute status: $e');
       throw AppException(
         userFriendlyMessage:
             'تغییر وضعیت اعلان با خطا مواجه شد. ${e.toString()}',
@@ -2267,7 +2271,7 @@ class ChatService {
       );
       await refreshConversation(conversationId);
     } catch (e, stack) {
-      print('Error toggling conversation archive status: $e');
+      logInfo('Error toggling conversation archive status: $e');
       throw AppException(
         technicalMessage:
             'Error in toggleConversationArchive: $e, Stack: $stack',
@@ -2307,7 +2311,7 @@ class ChatService {
     _startBackgroundSync();
     _startOfflineRetry();
     _setupConnectivityListener();
-    print('🚀 Optimized Messaging initialized');
+    logInfo('🚀 Optimized Messaging initialized');
   }
 
   /// Setup connectivity monitoring
@@ -2349,7 +2353,7 @@ class ChatService {
         await _syncConversationMessages(conversationId);
       }
     } catch (e) {
-      print('⚠️ Background sync error: $e');
+      logInfo('⚠️ Background sync error: $e');
     }
   }
 
@@ -2383,7 +2387,7 @@ class ChatService {
         }
       }
     } catch (e) {
-      print('⚠️ Sync error for $conversationId: $e');
+      logInfo('⚠️ Sync error for $conversationId: $e');
     }
   }
 
@@ -2455,7 +2459,7 @@ class ChatService {
         _optimizedPendingMessages.remove(tempId);
         return realMessage;
       } catch (e) {
-        print('⚠️ Send failed, queuing for retry: $e');
+        logInfo('⚠️ Send failed, queuing for retry: $e');
         _offlineMessageQueue.add(tempMessage);
       }
     } else {
@@ -2511,9 +2515,9 @@ class ChatService {
             message.id, realMessage, message.conversationId);
         _optimizedPendingMessages.remove(message.id);
 
-        print('✅ Successfully synced offline message: ${message.content}');
+        logInfo('✅ Successfully synced offline message: ${message.content}');
       } catch (e) {
-        print('⚠️ Failed to sync message ${message.id}: $e');
+        logInfo('⚠️ Failed to sync message ${message.id}: $e');
         // Re-queue for retry
         _offlineMessageQueue.add(message);
       }
@@ -2554,7 +2558,7 @@ class ChatService {
         await _syncConversationMessages(conversationId);
       }
     } catch (e) {
-      print('⚠️ Error loading initial messages: $e');
+      logInfo('⚠️ Error loading initial messages: $e');
     }
   }
 
@@ -2591,7 +2595,7 @@ class ChatService {
                 _setupRealtimeListener(conversationId);
               });
             } else {
-              print('⚠️ Real-time listener error: $error');
+              logInfo('⚠️ Real-time listener error: $error');
             }
           },
           onDone: () {
@@ -2649,7 +2653,7 @@ class ChatService {
                   .update({'unread_count': updatedConversation.unreadCount}).eq(
                       'id', conversationId);
             } catch (e) {
-              print('⚠️ Could not update unread_count in database: $e');
+              logInfo('⚠️ Could not update unread_count in database: $e');
             }
           }
         }
@@ -2663,7 +2667,7 @@ class ChatService {
         // Invalidate providers to refresh conversation list
         // Note: This is handled in ChatScreenProvider._updateMessages
       } catch (e) {
-        print('⚠️ Error invalidating providers: $e');
+        logInfo('⚠️ Error invalidating providers: $e');
       }
 
       // افزایش شمارنده پیام‌های خوانده‌نشده اگر صفحه چت باز نیست
@@ -2679,10 +2683,10 @@ class ChatService {
           }
         }
       } catch (e) {
-        print('⚠️ Error incrementing unread count: $e');
+        logInfo('⚠️ Error incrementing unread count: $e');
       }
     } catch (e) {
-      print('⚠️ Error handling incoming messages: $e');
+      logInfo('⚠️ Error handling incoming messages: $e');
     }
   }
 

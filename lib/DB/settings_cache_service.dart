@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -32,9 +33,9 @@ class SettingsCacheService {
   Future<void> initialize() async {
     try {
       await _loadFromDisk();
-      print('✅ Settings Cache Service initialized');
+      logInfo('✅ Settings Cache Service initialized');
     } catch (e) {
-      print('❌ Failed to initialize Settings Cache Service: $e');
+      logInfo('❌ Failed to initialize Settings Cache Service: $e');
     }
   }
 
@@ -77,9 +78,9 @@ class SettingsCacheService {
         }
       }
 
-      print('📥 Loaded settings cache from disk');
+      logInfo('📥 Loaded settings cache from disk');
     } catch (e) {
-      print('⚠️ Error loading settings cache from disk: $e');
+      logInfo('⚠️ Error loading settings cache from disk: $e');
     }
   }
 
@@ -102,9 +103,9 @@ class SettingsCacheService {
       }
       await prefs.setString(_lastUpdateKey, jsonEncode(lastUpdateMap));
 
-      print('💾 Settings cache saved to disk');
+      logInfo('💾 Settings cache saved to disk');
     } catch (e) {
-      print('⚠️ Error saving settings cache to disk: $e');
+      logInfo('⚠️ Error saving settings cache to disk: $e');
     }
   }
 
@@ -130,10 +131,10 @@ class SettingsCacheService {
         _userSettingsCache[userId] = response;
         _lastFetch['user_settings'] = DateTime.now();
         await _saveToDisk();
-        print('✅ Cached user settings for user: $userId');
+        logInfo('✅ Cached user settings for user: $userId');
       }
     } catch (e) {
-      print('❌ Failed to cache user settings for user $userId: $e');
+      logInfo('❌ Failed to cache user settings for user $userId: $e');
     }
   }
 
@@ -161,9 +162,9 @@ class SettingsCacheService {
       _appSettingsCache.addAll(defaultAppSettings);
       _lastFetch['app_settings'] = DateTime.now();
       await _saveToDisk();
-      print('✅ Cached app settings');
+      logInfo('✅ Cached app settings');
     } catch (e) {
-      print('❌ Failed to cache app settings: $e');
+      logInfo('❌ Failed to cache app settings: $e');
     }
   }
 
@@ -180,7 +181,7 @@ class SettingsCacheService {
         _privacySettingsCache[userId] = response;
         _lastFetch['privacy_settings'] = DateTime.now();
         await _saveToDisk();
-        print('✅ Cached privacy settings for user: $userId');
+        logInfo('✅ Cached privacy settings for user: $userId');
       } else {
         // تنظیمات پیش‌فرض حریم خصوصی
         final defaultPrivacySettings = {
@@ -198,7 +199,7 @@ class SettingsCacheService {
         await _saveToDisk();
       }
     } catch (e) {
-      print('❌ Failed to cache privacy settings for user $userId: $e');
+      logInfo('❌ Failed to cache privacy settings for user $userId: $e');
     }
   }
 
@@ -215,7 +216,7 @@ class SettingsCacheService {
         _notificationSettingsCache[userId] = response;
         _lastFetch['notification_settings'] = DateTime.now();
         await _saveToDisk();
-        print('✅ Cached notification settings for user: $userId');
+        logInfo('✅ Cached notification settings for user: $userId');
       } else {
         // تنظیمات پیش‌فرض اعلان‌ها
         final defaultNotificationSettings = {
@@ -237,7 +238,7 @@ class SettingsCacheService {
         await _saveToDisk();
       }
     } catch (e) {
-      print('❌ Failed to cache notification settings for user $userId: $e');
+      logInfo('❌ Failed to cache notification settings for user $userId: $e');
     }
   }
 
@@ -267,13 +268,13 @@ class SettingsCacheService {
     if (_isCacheValid('user_settings')) {
       final cachedSettings = getCachedUserSettings(userId);
       if (cachedSettings != null) {
-        print('📱 Using cached user settings for user: $userId');
+        logInfo('📱 Using cached user settings for user: $userId');
         return cachedSettings;
       }
     }
 
     // دریافت از سرور و کش کردن
-    print('🌐 Fetching user settings from server for user: $userId');
+    logInfo('🌐 Fetching user settings from server for user: $userId');
     await cacheUserSettings(userId);
     return getCachedUserSettings(userId);
   }
@@ -284,13 +285,13 @@ class SettingsCacheService {
     if (_isCacheValid('app_settings')) {
       final cachedSettings = getCachedAppSettings();
       if (cachedSettings.isNotEmpty) {
-        print('📱 Using cached app settings');
+        logInfo('📱 Using cached app settings');
         return cachedSettings;
       }
     }
 
     // دریافت از سرور و کش کردن
-    print('🌐 Fetching app settings from server');
+    logInfo('🌐 Fetching app settings from server');
     await cacheAppSettings();
     return getCachedAppSettings();
   }
@@ -301,13 +302,13 @@ class SettingsCacheService {
     if (_isCacheValid('privacy_settings')) {
       final cachedSettings = getCachedPrivacySettings(userId);
       if (cachedSettings != null) {
-        print('📱 Using cached privacy settings for user: $userId');
+        logInfo('📱 Using cached privacy settings for user: $userId');
         return cachedSettings;
       }
     }
 
     // دریافت از سرور و کش کردن
-    print('🌐 Fetching privacy settings from server for user: $userId');
+    logInfo('🌐 Fetching privacy settings from server for user: $userId');
     await cachePrivacySettings(userId);
     return getCachedPrivacySettings(userId);
   }
@@ -318,13 +319,13 @@ class SettingsCacheService {
     if (_isCacheValid('notification_settings')) {
       final cachedSettings = getCachedNotificationSettings(userId);
       if (cachedSettings != null) {
-        print('📱 Using cached notification settings for user: $userId');
+        logInfo('📱 Using cached notification settings for user: $userId');
         return cachedSettings;
       }
     }
 
     // دریافت از سرور و کش کردن
-    print('🌐 Fetching notification settings from server for user: $userId');
+    logInfo('🌐 Fetching notification settings from server for user: $userId');
     await cacheNotificationSettings(userId);
     return getCachedNotificationSettings(userId);
   }
@@ -335,7 +336,7 @@ class SettingsCacheService {
     _userSettingsCache[userId] = settings;
     _lastFetch['user_settings'] = DateTime.now();
     await _saveToDisk();
-    print('✅ Updated cached user settings for user: $userId');
+    logInfo('✅ Updated cached user settings for user: $userId');
   }
 
   /// به‌روزرسانی تنظیمات اپلیکیشن در کش
@@ -343,7 +344,7 @@ class SettingsCacheService {
     _appSettingsCache.addAll(settings);
     _lastFetch['app_settings'] = DateTime.now();
     await _saveToDisk();
-    print('✅ Updated cached app settings');
+    logInfo('✅ Updated cached app settings');
   }
 
   /// به‌روزرسانی تنظیمات حریم خصوصی در کش
@@ -352,7 +353,7 @@ class SettingsCacheService {
     _privacySettingsCache[userId] = settings;
     _lastFetch['privacy_settings'] = DateTime.now();
     await _saveToDisk();
-    print('✅ Updated cached privacy settings for user: $userId');
+    logInfo('✅ Updated cached privacy settings for user: $userId');
   }
 
   /// به‌روزرسانی تنظیمات اعلان‌ها در کش
@@ -361,7 +362,7 @@ class SettingsCacheService {
     _notificationSettingsCache[userId] = settings;
     _lastFetch['notification_settings'] = DateTime.now();
     await _saveToDisk();
-    print('✅ Updated cached notification settings for user: $userId');
+    logInfo('✅ Updated cached notification settings for user: $userId');
   }
 
   /// پاک کردن کش کاربر خاص
@@ -370,7 +371,7 @@ class SettingsCacheService {
     _privacySettingsCache.remove(userId);
     _notificationSettingsCache.remove(userId);
     await _saveToDisk();
-    print('🧹 Cleared settings cache for user: $userId');
+    logInfo('🧹 Cleared settings cache for user: $userId');
   }
 
   /// پاک کردن تمام کش
@@ -388,7 +389,7 @@ class SettingsCacheService {
     await prefs.remove(_notificationSettingsKey);
     await prefs.remove(_lastUpdateKey);
 
-    print('🧹 Cleared all settings cache');
+    logInfo('🧹 Cleared all settings cache');
   }
 
   /// دریافت آمار کش
@@ -449,9 +450,9 @@ class SettingsCacheService {
         cachePrivacySettings(userId),
         cacheNotificationSettings(userId),
       ]);
-      print('🔄 Background settings cache refresh completed for user: $userId');
+      logInfo('🔄 Background settings cache refresh completed for user: $userId');
     } catch (e) {
-      print('⚠️ Background settings cache refresh failed for user $userId: $e');
+      logInfo('⚠️ Background settings cache refresh failed for user $userId: $e');
     }
   }
 
@@ -464,9 +465,9 @@ class SettingsCacheService {
         cachePrivacySettings(userId),
         cacheNotificationSettings(userId),
       ]);
-      print('✅ Initialized settings cache for user: $userId');
+      logInfo('✅ Initialized settings cache for user: $userId');
     } catch (e) {
-      print('❌ Failed to initialize settings cache for user $userId: $e');
+      logInfo('❌ Failed to initialize settings cache for user $userId: $e');
     }
   }
 }

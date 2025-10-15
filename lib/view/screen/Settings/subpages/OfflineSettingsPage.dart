@@ -1,3 +1,4 @@
+import '../../../../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../DB/settings_cache_service.dart';
@@ -45,7 +46,7 @@ class _OfflineSettingsPageState extends ConsumerState<OfflineSettingsPage> {
 
       setState(() => _isLoading = false);
     } catch (e) {
-      print('⚠️ Failed to load offline settings: $e');
+      logInfo('⚠️ Failed to load offline settings: $e');
       setState(() => _isLoading = false);
 
       // نمایش پیام خطا

@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import '../model/message_model.dart';
 import '../model/conversation_model.dart';
@@ -22,7 +23,7 @@ class UnifiedCacheSystem {
   Future<void> initialize() async {
     if (_isInitialized) return;
 
-    print('🚀 Initializing Unified Cache System...');
+    logInfo('🚀 Initializing Unified Cache System...');
 
     try {
       // Initialize cache components
@@ -35,12 +36,12 @@ class UnifiedCacheSystem {
       _startSystemMonitoring();
 
       _isInitialized = true;
-      print('✅ Unified Cache System initialized successfully');
+      logInfo('✅ Unified Cache System initialized successfully');
 
       // Perform initial health check
       await _performSystemHealthCheck();
     } catch (e) {
-      print('❌ Failed to initialize Unified Cache System: $e');
+      logInfo('❌ Failed to initialize Unified Cache System: $e');
       rethrow;
     }
   }
@@ -105,13 +106,13 @@ class UnifiedCacheSystem {
   /// Perform intelligent cleanup
   Future<void> performIntelligentCleanup() async {
     // Simple cleanup implementation
-    print('🧹 Performing cleanup...');
+    logInfo('🧹 Performing cleanup...');
   }
 
   /// Force immediate sync
   Future<void> forceSync() async {
     // Simple sync implementation
-    print('🔄 Performing sync...');
+    logInfo('🔄 Performing sync...');
   }
 
   /// Get comprehensive system statistics
@@ -137,21 +138,21 @@ class UnifiedCacheSystem {
 
   /// Optimize entire system
   Future<void> optimizeSystem() async {
-    print('🔧 Optimizing Unified Cache System...');
+    logInfo('🔧 Optimizing Unified Cache System...');
 
     await performIntelligentCleanup();
     await _performSystemHealthCheck();
 
-    print('✅ System optimization completed');
+    logInfo('✅ System optimization completed');
   }
 
   /// Reset entire system
   Future<void> resetSystem() async {
-    print('🔄 Resetting Unified Cache System...');
+    logInfo('🔄 Resetting Unified Cache System...');
 
     _systemHealth.clear();
 
-    print('✅ System reset completed');
+    logInfo('✅ System reset completed');
   }
 
   /// Start system monitoring
@@ -190,12 +191,12 @@ class UnifiedCacheSystem {
       _systemHealth['uptime'] = _isInitialized ? 'active' : 'inactive';
 
       if (issues.isNotEmpty) {
-        print('⚠️ System health issues detected: ${issues.join(', ')}');
+        logInfo('⚠️ System health issues detected: ${issues.join(', ')}');
       } else {
-        print('✅ System health check passed');
+        logInfo('✅ System health check passed');
       }
     } catch (e) {
-      print('❌ System health check failed: $e');
+      logInfo('❌ System health check failed: $e');
       _systemHealth['status'] = 'error';
       _systemHealth['last_error'] = e.toString();
     }
@@ -203,6 +204,6 @@ class UnifiedCacheSystem {
 
   /// Dispose all resources
   void dispose() {
-    print('🧹 Unified Cache System disposed');
+    logInfo('🧹 Unified Cache System disposed');
   }
 }

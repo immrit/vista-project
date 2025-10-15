@@ -1,3 +1,4 @@
+import '../../../security/logging_utility.dart';
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -53,7 +54,7 @@ class MusicDownloadManagerNotifier
     String url, {
     Function(double)? onProgress,
   }) async {
-    debugPrint('شروع دانلود موزیک از آدرس: $url');
+    logDebug('شروع دانلود موزیک از آدرس: $url');
 
     // بررسی معتبر بودن URL
     if (!await _isValidUrl(url)) {
@@ -68,13 +69,13 @@ class MusicDownloadManagerNotifier
     }
     // اگر قبلاً دانلود شده باشد، مسیر را برمی‌گرداند
     if (isDownloaded(url)) {
-      debugPrint('فایل قبلاً دانلود شده است: ${state[url]?.localPath}');
+      logDebug('فایل قبلاً دانلود شده است: ${state[url]?.localPath}');
       return state[url]?.localPath;
     }
 
     // بررسی و درخواست دسترسی به حافظه
     if (!kIsWeb && !await _checkAndRequestPermission()) {
-      debugPrint('خطا: دسترسی به حافظه وجود ندارد');
+      logDebug('خطا: دسترسی به حافظه وجود ندارد');
       state = {
         ...state,
         url: DownloadInfo(
@@ -89,7 +90,7 @@ class MusicDownloadManagerNotifier
       // تنظیم مسیر ذخیره‌سازی
       final fileName = url.split('/').last;
       Directory? directory;
-      debugPrint('نام فایل: $fileName');
+      logDebug('نام فایل: $fileName');
 
       if (Platform.isAndroid) {
         try {
@@ -100,7 +101,7 @@ class MusicDownloadManagerNotifier
             directory = await getExternalStorageDirectory();
           }
         } catch (e) {
-          debugPrint('خطا در دسترسی به پوشه دانلود اندروید: $e');
+          logDebug('خطا در دسترسی به پوشه دانلود اندروید: $e');
           directory = await getExternalStorageDirectory();
         }
       } else if (Platform.isIOS) {
@@ -116,12 +117,12 @@ class MusicDownloadManagerNotifier
       }
 
       final savePath = '${directory.path}/$fileName';
-      debugPrint('مسیر ذخیره‌سازی: $savePath');
+      logDebug('مسیر ذخیره‌سازی: $savePath');
 
       // بررسی اگر فایل قبلاً دانلود شده باشد
       final file = File(savePath);
       if (await file.exists()) {
-        debugPrint('فایل از قبل موجود است در: $savePath');
+        logDebug('فایل از قبل موجود است در: $savePath');
         state = {
           ...state,
           url: DownloadInfo(
@@ -134,7 +135,7 @@ class MusicDownloadManagerNotifier
       }
 
       // شروع دانلود
-      debugPrint('شروع دانلود فایل...');
+      logDebug('شروع دانلود فایل...');
       state = {
         ...state,
         url: DownloadInfo(
@@ -144,18 +145,18 @@ class MusicDownloadManagerNotifier
       };
 
       // دریافت اطلاعات فایل برای تخمین اندازه
-      debugPrint('دریافت اندازه فایل...');
+      logDebug('دریافت اندازه فایل...');
       final response = await http.head(Uri.parse(url));
       final fileSize =
           int.tryParse(response.headers['content-length'] ?? '0') ?? 0;
-      debugPrint('اندازه فایل: $fileSize بایت');
+      logDebug('اندازه فایل: $fileSize بایت');
 
       // دانلود با استفاده از http
-      debugPrint('ارسال درخواست دانلود...');
+      logDebug('ارسال درخواست دانلود...');
       final request = http.Request('GET', Uri.parse(url));
       final streamedResponse = await http.Client().send(request);
 
-      debugPrint('شروع دریافت داده‌ها...');
+      logDebug('شروع دریافت داده‌ها...');
       final output = file.openWrite();
       int receivedBytes = 0;
 
@@ -182,7 +183,7 @@ class MusicDownloadManagerNotifier
       }
 
       await output.close();
-      debugPrint('دانلود کامل شد. فایل در $savePath ذخیره شد');
+      logDebug('دانلود کامل شد. فایل در $savePath ذخیره شد');
 
       // دانلود موفقیت‌آمیز
       state = {
@@ -196,8 +197,8 @@ class MusicDownloadManagerNotifier
 
       return savePath;
     } catch (e, stackTrace) {
-      debugPrint('خطا در دانلود: $e');
-      debugPrint('جزئیات خطا: $stackTrace');
+      logDebug('خطا در دانلود: $e');
+      logDebug('جزئیات خطا: $stackTrace');
       state = {
         ...state,
         url: DownloadInfo(
@@ -212,7 +213,7 @@ class MusicDownloadManagerNotifier
   // بررسی و درخواست دسترسی به حافظه
   Future<bool> _checkAndRequestPermission() async {
     if (Platform.isAndroid) {
-      debugPrint('بررسی دسترسی به حافظه برای اندروید...');
+      logDebug('بررسی دسترسی به حافظه برای اندروید...');
 
       // دریافت اطلاعات نسخه اندروید
       final androidInfo = await DeviceInfoPlugin().androidInfo;
@@ -220,21 +221,21 @@ class MusicDownloadManagerNotifier
 
       if (sdkInt >= 30) {
         // اندروید 11 یا بالاتر
-        debugPrint('اندروید 11 یا بالاتر شناسایی شد');
+        logDebug('اندروید 11 یا بالاتر شناسایی شد');
 
         // درخواست دسترسی MANAGE_EXTERNAL_STORAGE
         if (!await Permission.manageExternalStorage.isGranted) {
-          debugPrint('درخواست دسترسی مدیریت فایل...');
+          logDebug('درخواست دسترسی مدیریت فایل...');
           final status = await Permission.manageExternalStorage.request();
           if (status != PermissionStatus.granted) {
-            debugPrint('دسترسی به مدیریت فایل رد شد');
+            logDebug('دسترسی به مدیریت فایل رد شد');
             return false;
           }
         }
         return true;
       } else {
         // برای نسخه‌های قدیمی‌تر
-        debugPrint('درخواست دسترسی ذخیره‌سازی استاندارد...');
+        logDebug('درخواست دسترسی ذخیره‌سازی استاندارد...');
         final status = await Permission.storage.request();
         return status == PermissionStatus.granted;
       }
@@ -248,14 +249,14 @@ class MusicDownloadManagerNotifier
         // ابتدا پوشه Downloads را امتحان می‌کنیم
         final downloadsDir = Directory('/storage/emulated/0/Download');
         if (await downloadsDir.exists()) {
-          debugPrint('استفاده از پوشه Download');
+          logDebug('استفاده از پوشه Download');
           return downloadsDir;
         }
 
         // اگر در دسترس نبود، از مسیر اختصاصی برنامه استفاده می‌کنیم
         final appDir = await getExternalStorageDirectory();
         if (appDir != null) {
-          debugPrint('استفاده از پوشه اختصاصی برنامه: ${appDir.path}');
+          logDebug('استفاده از پوشه اختصاصی برنامه: ${appDir.path}');
           return appDir;
         }
       }
@@ -266,10 +267,10 @@ class MusicDownloadManagerNotifier
       }
 
       // در نهایت از پوشه موقت استفاده می‌کنیم
-      debugPrint('استفاده از پوشه موقت');
+      logDebug('استفاده از پوشه موقت');
       return await getTemporaryDirectory();
     } catch (e) {
-      debugPrint('خطا در دریافت مسیر ذخیره‌سازی: $e');
+      logDebug('خطا در دریافت مسیر ذخیره‌سازی: $e');
       return await getTemporaryDirectory();
     }
   }
@@ -280,7 +281,7 @@ class MusicDownloadManagerNotifier
       final uri = Uri.parse(url);
       // بررسی می‌کنیم که URL به یک سرور واقعی اشاره کند
       if (!uri.hasScheme || !uri.hasAuthority) {
-        debugPrint('URL نامعتبر است: $url');
+        logDebug('URL نامعتبر است: $url');
         return false;
       }
 
@@ -293,11 +294,11 @@ class MusicDownloadManagerNotifier
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return true;
       } else {
-        debugPrint('خطا در دسترسی به URL: کد وضعیت ${response.statusCode}');
+        logDebug('خطا در دسترسی به URL: کد وضعیت ${response.statusCode}');
         return false;
       }
     } catch (e) {
-      debugPrint('خطا در بررسی URL: $e');
+      logDebug('خطا در بررسی URL: $e');
       return false;
     }
   }
@@ -320,7 +321,7 @@ class MusicDownloadManagerNotifier
         };
         return true;
       } catch (e) {
-        debugPrint('خطا در حذف فایل: $e');
+        logDebug('خطا در حذف فایل: $e');
         return false;
       }
     }

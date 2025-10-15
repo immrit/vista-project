@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -26,7 +27,7 @@ final advancedCacheProvider = Provider<AdvancedCacheSystem>((ref) {
     try {
       await cache.initialize();
     } catch (e) {
-      print('Error initializing advanced cache in provider: $e');
+      logInfo('Error initializing advanced cache in provider: $e');
     }
   });
 
@@ -207,12 +208,12 @@ class UnifiedMessagesNotifier extends StateNotifier<UnifiedMessagesState> {
           ),
           callback: (payload) {
             // Handle real-time message updates
-            print('Real-time message update: $payload');
+            logInfo('Real-time message update: $payload');
           },
         )
         .subscribe((status, [error]) {
       if (status == RealtimeSubscribeStatus.subscribed) {
-        print('Real-time messages subscription active for $conversationId');
+        logInfo('Real-time messages subscription active for $conversationId');
       }
     });
 
@@ -492,7 +493,7 @@ final enrichedConversationsProvider =
             enrichedConversations.add(conversation);
           }
         } catch (e) {
-          print('⚠️ Error enriching conversation ${conversation.id}: $e');
+          logInfo('⚠️ Error enriching conversation ${conversation.id}: $e');
           enrichedConversations.add(conversation);
         }
       }
@@ -503,7 +504,7 @@ final enrichedConversationsProvider =
       yield [];
     },
     error: (error, stack) async* {
-      print('⚠️ Error in enriched conversations provider: $error');
+      logInfo('⚠️ Error in enriched conversations provider: $error');
       yield [];
     },
   );

@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
@@ -37,7 +38,7 @@ class VistaStoryTemplateGenerator {
         customImageUrl: customImageUrl,
       );
     } catch (e) {
-      debugPrint('Error generating Vista story template: $e');
+      logDebug('Error generating Vista story template: $e');
       return null;
     }
   }
@@ -57,7 +58,7 @@ class VistaStoryTemplateGenerator {
         textColor: textColor,
       );
     } catch (e) {
-      debugPrint('Error generating Vista background: $e');
+      logDebug('Error generating Vista background: $e');
       return null;
     }
   }
@@ -77,7 +78,7 @@ class VistaStoryTemplateGenerator {
         customImageUrl: customImageUrl,
       );
     } catch (e) {
-      debugPrint('Error generating Vista post card: $e');
+      logDebug('Error generating Vista post card: $e');
       return null;
     }
   }
@@ -93,8 +94,8 @@ class VistaStoryTemplateGenerator {
     String? customImageUrl,
   }) async {
     try {
-      debugPrint('=== شروع تولید تصویر از ویجت ===');
-      debugPrint('RepaintBoundary key: $repaintBoundaryKey');
+      logDebug('=== شروع تولید تصویر از ویجت ===');
+      logDebug('RepaintBoundary key: $repaintBoundaryKey');
 
       final BuildContext? context = repaintBoundaryKey.currentContext;
       if (context == null) {
@@ -104,52 +105,52 @@ class VistaStoryTemplateGenerator {
       }
       final RenderRepaintBoundary boundary =
           context.findRenderObject() as RenderRepaintBoundary;
-      debugPrint('RenderRepaintBoundary پیدا شد');
+      logDebug('RenderRepaintBoundary پیدا شد');
 
       // گرفتن تصویر با رزولوشن بالا برای کیفیت بهتر
-      debugPrint('تبدیل ویجت به تصویر...');
+      logDebug('تبدیل ویجت به تصویر...');
       final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
-      debugPrint('اندازه تصویر: ${image.width}x${image.height}');
+      logDebug('اندازه تصویر: ${image.width}x${image.height}');
 
       // تبدیل به ByteData
-      debugPrint('تبدیل تصویر به ByteData...');
+      logDebug('تبدیل تصویر به ByteData...');
       final ByteData? byteData =
           await image.toByteData(format: ui.ImageByteFormat.png);
 
       if (byteData == null) {
-        debugPrint('❌ تبدیل ویجت به تصویر ناموفق');
+        logDebug('❌ تبدیل ویجت به تصویر ناموفق');
         throw Exception('Failed to convert widget to image');
       }
-      debugPrint('اندازه ByteData: ${byteData.lengthInBytes} بایت');
+      logDebug('اندازه ByteData: ${byteData.lengthInBytes} بایت');
 
       // درخواست مجوز ذخیره (برای اندروید 13+)
-      debugPrint('درخواست مجوز photos...');
+      logDebug('درخواست مجوز photos...');
       PermissionStatus status = await Permission.photos.request();
-      debugPrint('وضعیت مجوز photos: $status');
+      logDebug('وضعیت مجوز photos: $status');
 
       // اگر photos رد شد، photosAddOnly را امتحان کن
       if (status != PermissionStatus.granted) {
-        debugPrint('درخواست مجوز photosAddOnly...');
+        logDebug('درخواست مجوز photosAddOnly...');
         status = await Permission.photosAddOnly.request();
-        debugPrint('وضعیت مجوز photosAddOnly: $status');
+        logDebug('وضعیت مجوز photosAddOnly: $status');
       }
 
       // اگر هر دو رد شدند، از temp directory استفاده کن
       if (status != PermissionStatus.granted) {
-        debugPrint('⚠️ مجوز photos رد شد، استفاده از temp directory');
+        logDebug('⚠️ مجوز photos رد شد، استفاده از temp directory');
         final Directory tempDir = await getTemporaryDirectory();
         final String fileName =
             'Vista_Story_${DateTime.now().millisecondsSinceEpoch}.png';
         final File file = File('${tempDir.path}/$fileName');
         await file.writeAsBytes(byteData.buffer.asUint8List());
-        debugPrint('فایل در temp directory ذخیره شد: ${file.path}');
+        logDebug('فایل در temp directory ذخیره شد: ${file.path}');
         return file;
       }
 
       // ذخیره تصویر در پوشه Pictures
-      debugPrint('دریافت مسیر external storage...');
+      logDebug('دریافت مسیر external storage...');
       final Directory? picturesDir = await getExternalStorageDirectory();
-      debugPrint('مسیر external storage: ${picturesDir?.path}');
+      logDebug('مسیر external storage: ${picturesDir?.path}');
 
       if (picturesDir == null) {
         debugPrint(
@@ -159,42 +160,42 @@ class VistaStoryTemplateGenerator {
             'Vista_Story_${DateTime.now().millisecondsSinceEpoch}.png';
         final File file = File('${tempDir.path}/$fileName');
         await file.writeAsBytes(byteData.buffer.asUint8List());
-        debugPrint('فایل در temp directory ذخیره شد: ${file.path}');
+        logDebug('فایل در temp directory ذخیره شد: ${file.path}');
         return file;
       }
 
       // ایجاد پوشه Pictures در external storage
       final Directory picturesPath =
           Directory('${picturesDir.path}/Pictures/Vista');
-      debugPrint('مسیر مقصد: ${picturesPath.path}');
+      logDebug('مسیر مقصد: ${picturesPath.path}');
 
       if (!await picturesPath.exists()) {
-        debugPrint('ایجاد پوشه Pictures/Vista...');
+        logDebug('ایجاد پوشه Pictures/Vista...');
         await picturesPath.create(recursive: true);
-        debugPrint('✅ پوشه ایجاد شد');
+        logDebug('✅ پوشه ایجاد شد');
       } else {
-        debugPrint('✅ پوشه از قبل موجود است');
+        logDebug('✅ پوشه از قبل موجود است');
       }
 
       final String fileName =
           'Vista_Story_${DateTime.now().millisecondsSinceEpoch}.png';
       final File file = File('${picturesPath.path}/$fileName');
-      debugPrint('نام فایل: $fileName');
-      debugPrint('مسیر کامل: ${file.path}');
+      logDebug('نام فایل: $fileName');
+      logDebug('مسیر کامل: ${file.path}');
 
-      debugPrint('نوشتن فایل...');
+      logDebug('نوشتن فایل...');
       await file.writeAsBytes(byteData.buffer.asUint8List());
 
       final fileSize = await file.length();
-      debugPrint('اندازه فایل نهایی: $fileSize بایت');
-      debugPrint('✅ تصویر با موفقیت تولید شد: ${file.path}');
-      debugPrint('=== پایان تولید تصویر ===');
+      logDebug('اندازه فایل نهایی: $fileSize بایت');
+      logDebug('✅ تصویر با موفقیت تولید شد: ${file.path}');
+      logDebug('=== پایان تولید تصویر ===');
 
       return file;
     } catch (e, stackTrace) {
-      debugPrint('❌ خطا در تولید تصویر: $e');
-      debugPrint('Stack trace: $stackTrace');
-      debugPrint('=== پایان تولید تصویر با خطا ===');
+      logDebug('❌ خطا در تولید تصویر: $e');
+      logDebug('Stack trace: $stackTrace');
+      logDebug('=== پایان تولید تصویر با خطا ===');
       return null;
     }
   }
@@ -210,7 +211,7 @@ class VistaStoryTemplateGenerator {
         subject: 'Vista Story Template',
       );
     } catch (e) {
-      debugPrint('Error sharing to Instagram: $e');
+      logDebug('Error sharing to Instagram: $e');
       throw Exception('Failed to share to Instagram');
     }
   }
@@ -218,49 +219,49 @@ class VistaStoryTemplateGenerator {
   /// ذخیره تصویر در گالری
   Future<bool> saveToGallery(File imageFile) async {
     try {
-      debugPrint('=== شروع ذخیره تصویر ===');
-      debugPrint('مسیر فایل ورودی: ${imageFile.path}');
-      debugPrint('آیا فایل وجود دارد: ${await imageFile.exists()}');
+      logDebug('=== شروع ذخیره تصویر ===');
+      logDebug('مسیر فایل ورودی: ${imageFile.path}');
+      logDebug('آیا فایل وجود دارد: ${await imageFile.exists()}');
 
       if (await imageFile.exists()) {
         final fileSize = await imageFile.length();
-        debugPrint('اندازه فایل: $fileSize بایت');
+        logDebug('اندازه فایل: $fileSize بایت');
       }
 
       // درخواست مجوز (برای اندروید 13+)
-      debugPrint('درخواست مجوز photos...');
+      logDebug('درخواست مجوز photos...');
       PermissionStatus status = await Permission.photos.request();
-      debugPrint('وضعیت مجوز photos: $status');
+      logDebug('وضعیت مجوز photos: $status');
 
       // اگر photos رد شد، photosAddOnly را امتحان کن
       if (status != PermissionStatus.granted) {
-        debugPrint('درخواست مجوز photosAddOnly...');
+        logDebug('درخواست مجوز photosAddOnly...');
         status = await Permission.photosAddOnly.request();
-        debugPrint('وضعیت مجوز photosAddOnly: $status');
+        logDebug('وضعیت مجوز photosAddOnly: $status');
       }
 
       if (status != PermissionStatus.granted) {
-        debugPrint('❌ مجوز photos رد شد');
+        logDebug('❌ مجوز photos رد شد');
         return false;
       }
 
       // استفاده از gal برای ذخیره در گالری
-      debugPrint('شروع ذخیره با gal...');
+      logDebug('شروع ذخیره با gal...');
 
       try {
         await Gal.putImage(imageFile.path);
-        debugPrint('✅ تصویر با موفقیت در گالری ذخیره شد');
-        debugPrint('=== پایان ذخیره تصویر ===');
+        logDebug('✅ تصویر با موفقیت در گالری ذخیره شد');
+        logDebug('=== پایان ذخیره تصویر ===');
         return true;
       } catch (e) {
-        debugPrint('❌ خطا در gal: $e');
-        debugPrint('تلاش با روش fallback...');
+        logDebug('❌ خطا در gal: $e');
+        logDebug('تلاش با روش fallback...');
         return await _saveToGalleryFallback(imageFile);
       }
     } catch (e, stackTrace) {
-      debugPrint('❌ خطا در ذخیره تصویر: $e');
-      debugPrint('Stack trace: $stackTrace');
-      debugPrint('تلاش با روش fallback...');
+      logDebug('❌ خطا در ذخیره تصویر: $e');
+      logDebug('Stack trace: $stackTrace');
+      logDebug('تلاش با روش fallback...');
 
       // fallback به روش قدیمی
       return await _saveToGalleryFallback(imageFile);
@@ -270,49 +271,49 @@ class VistaStoryTemplateGenerator {
   /// روش fallback برای ذخیره در گالری
   Future<bool> _saveToGalleryFallback(File imageFile) async {
     try {
-      debugPrint('=== شروع fallback ذخیره ===');
+      logDebug('=== شروع fallback ذخیره ===');
 
       // کپی فایل به پوشه Pictures
-      debugPrint('دریافت مسیر external storage...');
+      logDebug('دریافت مسیر external storage...');
       final Directory? picturesDir = await getExternalStorageDirectory();
-      debugPrint('مسیر external storage: ${picturesDir?.path}');
+      logDebug('مسیر external storage: ${picturesDir?.path}');
 
       if (picturesDir == null) {
-        debugPrint('❌ دسترسی به external storage ممکن نیست');
+        logDebug('❌ دسترسی به external storage ممکن نیست');
         return false;
       }
 
       final Directory picturesPath =
           Directory('${picturesDir.path}/Pictures/Vista');
-      debugPrint('مسیر مقصد: ${picturesPath.path}');
+      logDebug('مسیر مقصد: ${picturesPath.path}');
 
       if (!await picturesPath.exists()) {
-        debugPrint('ایجاد پوشه Pictures/Vista...');
+        logDebug('ایجاد پوشه Pictures/Vista...');
         await picturesPath.create(recursive: true);
-        debugPrint('✅ پوشه ایجاد شد');
+        logDebug('✅ پوشه ایجاد شد');
       } else {
-        debugPrint('✅ پوشه از قبل موجود است');
+        logDebug('✅ پوشه از قبل موجود است');
       }
 
       final String fileName =
           'Vista_Story_${DateTime.now().millisecondsSinceEpoch}.png';
       final File savedFile = File('${picturesPath.path}/$fileName');
-      debugPrint('نام فایل نهایی: $fileName');
-      debugPrint('مسیر کامل فایل: ${savedFile.path}');
+      logDebug('نام فایل نهایی: $fileName');
+      logDebug('مسیر کامل فایل: ${savedFile.path}');
 
-      debugPrint('شروع کپی فایل...');
+      logDebug('شروع کپی فایل...');
       await imageFile.copy(savedFile.path);
 
       final savedFileSize = await savedFile.length();
-      debugPrint('اندازه فایل ذخیره شده: $savedFileSize بایت');
-      debugPrint('✅ تصویر با موفقیت ذخیره شد: ${savedFile.path}');
-      debugPrint('=== پایان fallback ذخیره ===');
+      logDebug('اندازه فایل ذخیره شده: $savedFileSize بایت');
+      logDebug('✅ تصویر با موفقیت ذخیره شد: ${savedFile.path}');
+      logDebug('=== پایان fallback ذخیره ===');
 
       return true;
     } catch (e, stackTrace) {
-      debugPrint('❌ خطا در fallback ذخیره: $e');
-      debugPrint('Stack trace: $stackTrace');
-      debugPrint('=== پایان fallback ذخیره با خطا ===');
+      logDebug('❌ خطا در fallback ذخیره: $e');
+      logDebug('Stack trace: $stackTrace');
+      logDebug('=== پایان fallback ذخیره با خطا ===');
       return false;
     }
   }
@@ -340,7 +341,7 @@ class VistaStoryTemplateGenerator {
           await image.toByteData(format: ui.ImageByteFormat.png);
 
       if (byteData == null) {
-        debugPrint('❌ خطا در تبدیل تصویر به byte data');
+        logDebug('❌ خطا در تبدیل تصویر به byte data');
         return null;
       }
 
@@ -351,10 +352,10 @@ class VistaStoryTemplateGenerator {
       final File file = File('${tempDir.path}/$fileName');
       await file.writeAsBytes(byteData.buffer.asUint8List());
 
-      debugPrint('✅ تصویر بک‌گراند تولید شد: ${file.path}');
+      logDebug('✅ تصویر بک‌گراند تولید شد: ${file.path}');
       return file;
     } catch (e) {
-      debugPrint('❌ خطا در تولید تصویر بک‌گراند: $e');
+      logDebug('❌ خطا در تولید تصویر بک‌گراند: $e');
       return null;
     }
   }
@@ -382,7 +383,7 @@ class VistaStoryTemplateGenerator {
           await image.toByteData(format: ui.ImageByteFormat.png);
 
       if (byteData == null) {
-        debugPrint('❌ خطا در تبدیل تصویر کارت پست به byte data');
+        logDebug('❌ خطا در تبدیل تصویر کارت پست به byte data');
         return null;
       }
 
@@ -393,10 +394,10 @@ class VistaStoryTemplateGenerator {
       final File file = File('${tempDir.path}/$fileName');
       await file.writeAsBytes(byteData.buffer.asUint8List());
 
-      debugPrint('✅ تصویر کارت پست تولید شد: ${file.path}');
+      logDebug('✅ تصویر کارت پست تولید شد: ${file.path}');
       return file;
     } catch (e) {
-      debugPrint('❌ خطا در تولید تصویر کارت پست: $e');
+      logDebug('❌ خطا در تولید تصویر کارت پست: $e');
       return null;
     }
   }

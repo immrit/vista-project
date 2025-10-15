@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -88,11 +89,11 @@ class StoryImageUploadService {
 
       // ایجاد آدرس عمومی فایل
       final uploadedUrl = '$storageBaseUrl/$bucketName/$fileName';
-      print('تصویر استوری با موفقیت آپلود شد: $uploadedUrl');
+      logInfo('تصویر استوری با موفقیت آپلود شد: $uploadedUrl');
 
       return uploadedUrl;
     } catch (e) {
-      print('خطا در آپلود تصویر استوری: $e');
+      logInfo('خطا در آپلود تصویر استوری: $e');
       return null;
     }
   }
@@ -108,7 +109,7 @@ class StoryImageUploadService {
         acl: ObjectCannedACL.publicRead,
       );
     } catch (e) {
-      print('خطا در آپلود به S3: $e');
+      logInfo('خطا در آپلود به S3: $e');
       throw Exception('خطا در آپلود به سرور: $e');
     }
   }
@@ -127,14 +128,14 @@ class StoryImageUploadService {
         );
 
         if (result.isNotEmpty) {
-          print('تصویر فشرده شد: ${bytes.length} -> ${result.length} bytes');
+          logInfo('تصویر فشرده شد: ${bytes.length} -> ${result.length} bytes');
           return result;
         }
       }
 
       return bytes; // برگرداندن بایت‌های اصلی در صورت عدم فشرده‌سازی
     } catch (e) {
-      print('خطا در بهینه‌سازی تصویر: $e');
+      logInfo('خطا در بهینه‌سازی تصویر: $e');
       return bytes; // در صورت خطا، داده‌های اصلی را برمی‌گردانیم
     }
   }
@@ -171,7 +172,7 @@ class StoryImageUploadService {
 
       return compressedFile;
     } catch (e) {
-      print('خطا در فشرده‌سازی تصویر: $e');
+      logInfo('خطا در فشرده‌سازی تصویر: $e');
       return null;
     }
   }
@@ -184,7 +185,7 @@ class StoryImageUploadService {
           await file.delete();
         }
       } catch (e) {
-        print('خطا در حذف فایل موقت: $e');
+        logInfo('خطا در حذف فایل موقت: $e');
       }
     });
   }
@@ -208,10 +209,10 @@ class StoryImageUploadService {
         key: key,
       );
 
-      print('تصویر استوری با موفقیت حذف شد: $fileUrl');
+      logInfo('تصویر استوری با موفقیت حذف شد: $fileUrl');
       return true;
     } catch (e) {
-      print('خطا در حذف تصویر استوری: $e');
+      logInfo('خطا در حذف تصویر استوری: $e');
       return false;
     }
   }
@@ -228,7 +229,7 @@ class StoryImageUploadService {
           uploadedUrls.add(url);
         }
       } catch (e) {
-        print('خطا در آپلود یکی از تصاویر: $e');
+        logInfo('خطا در آپلود یکی از تصاویر: $e');
         // ادامه با تصویر بعدی
       }
     }
@@ -243,7 +244,7 @@ class StoryImageUploadService {
       await s3.headBucket(bucket: bucketName);
       return true;
     } catch (e) {
-      print('خطا در اتصال به سرور: $e');
+      logInfo('خطا در اتصال به سرور: $e');
       return false;
     }
   }

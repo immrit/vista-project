@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 class ChannelModel {
   final String id;
   final String creatorId;
@@ -36,8 +37,8 @@ class ChannelModel {
   factory ChannelModel.fromJson(Map<String, dynamic> json,
       {String? currentUserId}) {
     // اضافه کردن پرینت برای دیباگ
-    print('Channel JSON: $json');
-    print('Member Role from JSON: ${json['member_role']}');
+    logInfo('Channel JSON: $json');
+    logInfo('Member Role from JSON: ${json['member_role']}');
 
     return ChannelModel(
       id: json['id'],

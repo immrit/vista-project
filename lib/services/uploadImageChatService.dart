@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -37,7 +38,7 @@ class ChatImageUploadService {
     );
 
     if (img == null) {
-      print('تبدیل به JPEG ناموفق بود');
+      logInfo('تبدیل به JPEG ناموفق بود');
       return null;
     }
 
@@ -109,7 +110,7 @@ class ChatImageUploadService {
       // اطمینان از اینکه لینک خروجی معتبر و قابل استفاده است
       final uploadedUrl =
           'https://storage.389346.ir.cdn.ir/$bucketName/$fileName';
-      print('تصویر چت با موفقیت آپلود شد: $uploadedUrl');
+      logInfo('تصویر چت با موفقیت آپلود شد: $uploadedUrl');
 
       // بررسی نهایی: اگر لینک خالی یا null بود، خطا بده
       if (uploadedUrl.isEmpty) {
@@ -126,7 +127,7 @@ class ChatImageUploadService {
         try {
           await compressedFile.delete();
         } catch (e) {
-          print('خطا در حذف فایل موقت: $e');
+          logInfo('خطا در حذف فایل موقت: $e');
         }
       }
     }
@@ -139,7 +140,7 @@ class ChatImageUploadService {
     String conversationId,
   ) async {
     try {
-      print('Starting web image upload...');
+      logInfo('Starting web image upload...');
 
       // بررسی حجم فایل - حداکثر 5MB برای تصاویر چت
       if (fileBytes.length > 5 * 1024 * 1024) {
@@ -159,7 +160,7 @@ class ChatImageUploadService {
       final s3FileName =
           'chats/$conversationId/${userId}_${timestamp}_$sanitizedFileName';
 
-      print('Uploading to S3 with key: $s3FileName');
+      logInfo('Uploading to S3 with key: $s3FileName');
 
       try {
         await s3.putObject(
@@ -173,7 +174,7 @@ class ChatImageUploadService {
 
         final uploadedUrl =
             'https://storage.389346.ir.cdn.ir/$bucketName/$s3FileName';
-        print('Web image upload successful: $uploadedUrl');
+        logInfo('Web image upload successful: $uploadedUrl');
 
         return uploadedUrl;
       } catch (e) {
@@ -201,7 +202,7 @@ class ChatImageUploadService {
 
       return true;
     } catch (e) {
-      print('خطا در حذف تصویر چت: $e');
+      logInfo('خطا در حذف تصویر چت: $e');
       return false;
     }
   }
@@ -235,7 +236,7 @@ class ChatImageUploadService {
 
       return compressedFile;
     } catch (e) {
-      print('خطا در فشرده‌سازی تصویر چت: $e');
+      logInfo('خطا در فشرده‌سازی تصویر چت: $e');
       return null;
     }
   }

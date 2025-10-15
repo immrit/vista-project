@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:logger/logger.dart';
+import '../security/logging_utility.dart';
 
 final logger = Logger(
   printer: PrettyPrinter(
@@ -461,7 +462,7 @@ class AdvancedSecurityService {
 
       logger.i('🔍 Security Event: $event');
       if (kDebugMode) {
-        print('Security Log: $logEntry');
+        logInfo('Security Log: $logEntry');
       }
     } catch (e) {
       logger.e('❌ Failed to log security event: $e');

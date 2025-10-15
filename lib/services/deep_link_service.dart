@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:app_links/app_links.dart';
@@ -32,7 +33,7 @@ class DeepLinkService {
       _subscription = _appLinks.uriLinkStream.listen((Uri uri) {
         handleDeepLink(uri, navigatorKey);
       }, onError: (err) {
-        print('Deep link error: $err');
+        logInfo('Deep link error: $err');
       });
 
       // بررسی deep link اولیه (اگر اپ از طریق deep link باز شده)
@@ -42,10 +43,10 @@ class DeepLinkService {
           handleDeepLink(initialUri, navigatorKey);
         }
       } catch (e) {
-        print('Error getting initial URI: $e');
+        logInfo('Error getting initial URI: $e');
       }
     } catch (e) {
-      print('Error initializing deep links: $e');
+      logInfo('Error initializing deep links: $e');
     }
   }
 
@@ -59,7 +60,7 @@ class DeepLinkService {
     // امن‌سازی لاگ: از چاپ کل URI خودداری کنید
     final safe =
         'scheme=${uri.scheme}, host=${uri.host}, path=${uri.path}, segments=${uri.pathSegments.length}';
-    print('Received deep link (safe): $safe');
+    logInfo('Received deep link (safe): $safe');
 
     final scheme = uri.scheme;
     final host = uri.host;
@@ -71,22 +72,22 @@ class DeepLinkService {
       // پردازش مسیرهای مختلف
       if (path.startsWith('/post/') && pathSegments.length >= 2) {
         final postId = pathSegments[1];
-        print('Navigating to post: $postId');
+        logInfo('Navigating to post: $postId');
         _navigateToPost(postId, navigatorKey);
       } else if (path.startsWith('/profile/') && pathSegments.length >= 2) {
         final username = pathSegments[1];
-        print('Navigating to profile: $username');
+        logInfo('Navigating to profile: $username');
         _navigateToProfile(username, navigatorKey);
       } else if (path == '/feed') {
-        print('Navigating to feed');
+        logInfo('Navigating to feed');
         _navigateToFeed(navigatorKey);
       } else {
-        print('Unsupported path: $path');
+        logInfo('Unsupported path: $path');
       }
       return;
     }
 
-    print('Unsupported deep link: $uri');
+    logInfo('Unsupported deep link: $uri');
   }
 
   // Navigation مشترک برای پست‌ها

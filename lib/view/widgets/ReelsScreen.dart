@@ -1,3 +1,4 @@
+import '../../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 // removed unused imports
@@ -43,7 +44,7 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
 
     // لاگ کردن موقعیت‌های اولیه برای دیباگ
     if (widget.initialPositions.isNotEmpty) {
-      print('Initial positions: ${widget.initialPositions}');
+      logInfo('Initial positions: ${widget.initialPositions}');
     }
   }
 
@@ -73,7 +74,7 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
       // برای لود کردن پست‌های بیشتر
       await ref.read(publicPostsProvider.notifier).loadMorePosts();
     } catch (e) {
-      print('خطا در بارگذاری پست‌های بیشتر: $e');
+      logInfo('خطا در بارگذاری پست‌های بیشتر: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('خطا در بارگذاری پست‌های بیشتر')),

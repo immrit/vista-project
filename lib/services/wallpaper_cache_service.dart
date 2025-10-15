@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'cache_manager.dart';
 import 'dart:io';
@@ -55,29 +56,29 @@ class WallpaperCacheService {
             return <void>[];
           },
         );
-        print('✅ پیش‌بارگذاری والپیپرها تکمیل شد');
+        logInfo('✅ پیش‌بارگذاری والپیپرها تکمیل شد');
       } else {
-        print('ℹ️  والپیپرها از قبل در کش موجود هستند');
+        logInfo('ℹ️  والپیپرها از قبل در کش موجود هستند');
       }
     } catch (e) {
-      print('❌ خطا در پیش‌بارگذاری والپیپرها: $e');
+      logInfo('❌ خطا در پیش‌بارگذاری والپیپرها: $e');
     }
   }
 
   /// دانلود والپیپر با نمایش پیشرفت
   static Future<void> _downloadWallpaper(String url, String type) async {
     try {
-      print('🔄 در حال دانلود والپیپر $type...');
+      logInfo('🔄 در حال دانلود والپیپر $type...');
       try {
         await CustomCacheManager.wallpaperInstance.downloadFile(url).timeout(
               const Duration(seconds: 8),
             );
       } catch (e) {
-        print('⚠️ والپیپر $type دانلود timeout - using local asset');
+        logInfo('⚠️ والپیپر $type دانلود timeout - using local asset');
       }
-      print('✅ والپیپر $type با موفقیت دانلود و کش شد');
+      logInfo('✅ والپیپر $type با موفقیت دانلود و کش شد');
     } catch (e) {
-      print('❌ خطا در دانلود والپیپر $type: $e');
+      logInfo('❌ خطا در دانلود والپیپر $type: $e');
     }
   }
 
@@ -116,9 +117,9 @@ class WallpaperCacheService {
   static Future<void> clearWallpaperCache() async {
     try {
       await CustomCacheManager.wallpaperInstance.emptyCache();
-      print('🗑️  کش والپیپرها پاک شد');
+      logInfo('🗑️  کش والپیپرها پاک شد');
     } catch (e) {
-      print('❌ خطا در پاک کردن کش والپیپرها: $e');
+      logInfo('❌ خطا در پاک کردن کش والپیپرها: $e');
     }
   }
 
@@ -131,9 +132,9 @@ class WallpaperCacheService {
 
       // دانلود مجدد
       await preloadWallpapers();
-      print('🔄 والپیپرها بروزرسانی شدند');
+      logInfo('🔄 والپیپرها بروزرسانی شدند');
     } catch (e) {
-      print('❌ خطا در بروزرسانی والپیپرها: $e');
+      logInfo('❌ خطا در بروزرسانی والپیپرها: $e');
     }
   }
 

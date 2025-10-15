@@ -2,7 +2,9 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/message_model.dart';
 import '../services/ChatService.dart';
+import '../services/message_retry_service.dart';
 import '../DB/unified_message_cache_service.dart';
+import '../services/optimized_message_deletion_service.dart';
 import '../main.dart';
 import 'chat_provider.dart';
 
@@ -61,11 +63,20 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
   final Ref? _ref;
   final ChatService _chatService = ChatService();
   final UnifiedMessageCacheService _cacheService = UnifiedMessageCacheService();
+  final MessageRetryService _retryService = MessageRetryService();
+  final OptimizedMessageDeletionService _deletionService =
+      OptimizedMessageDeletionService();
   StreamSubscription? _realtimeSubscription;
   bool _isFetching = false;
   static const _pageSize = 30;
   int _retryCount = 0;
   static const int _maxRetries = 5; // برای قابلیت اطمینان بهتر
+
+  // Tracking tempIds برای پیام‌های در حال ارسال تا از duplicate جلوگیری کنیم
+  final Set<String> _pendingTempIds = {};
+
+  // Mapping از localId به serverId برای بهتر deduplication
+  final Map<String, String> _localToServerIdMap = {};
 
   ChatScreenNotifier(this.params, this._ref) : super(const ChatScreenState()) {
     _initialize();
@@ -275,8 +286,26 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
         Map.fromEntries(state.messages.map((m) => MapEntry(m.id, m)));
 
     // Only add messages that don't already exist or are newer
+    // AND skip messages that we're currently sending (pending tempIds)
     for (var msg in newMessages) {
       final existingMessage = currentMessages[msg.id];
+
+      // اگر پیام‌ای از سرور می‌آید و ما همینطور قبلاً آن را موقتاً ارسال کرده‌ایم
+      // آن را ignore کن تا duplicate نشود
+      if (_pendingTempIds.contains(msg.id)) {
+        print('⏭️ Skipped pending message from real-time: ${msg.id}');
+        continue;
+      }
+
+      // اگر localId این پیام در mapping ما موجود است (یعنی ما ارسال کردیم)
+      // پیام موقتی را پیدا کن و جایگزین کن
+      if (msg.localId != null && _localToServerIdMap.containsKey(msg.localId)) {
+        final oldTempId = msg.localId!;
+        currentMessages.remove(oldTempId);
+        print(
+            '✨ Replacing temp message with server message: $oldTempId → ${msg.id}');
+      }
+
       if (existingMessage == null ||
           msg.createdAt.isAfter(existingMessage.createdAt)) {
         currentMessages[msg.id] = msg;
@@ -320,6 +349,7 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
   Future<void> sendMessage(String content,
       {String? attachmentUrl,
       String? attachmentType,
+      String? attachmentFileName,
       int? duration,
       MessageModel? replyToMessage}) async {
     final currentUser = supabase.auth.currentUser;
@@ -333,83 +363,197 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
       content: content,
       attachmentUrl: attachmentUrl,
       attachmentType: attachmentType,
+      attachmentFileName: attachmentFileName,
       duration: duration,
       replyToMessageId: replyToMessage?.id,
       replyToContent: replyToMessage?.content,
       replyToSenderName: replyToMessage?.senderName,
     );
 
-    // Optimistic UI update - add temp message
-    _updateMessages([tempMessage]);
+    // 📌 اضافه کردن tempId به set تا real-time updates آن را ignore کند
+    _pendingTempIds.add(tempId);
+    print('📌 Added tempId to pending set: $tempId');
 
+    // فوری نمایش پیام (Optimistic Update) - آنی و بدون تاخیر
+    _showMessageOptimistically(tempMessage);
+
+    // سپس ارسال به سرور در پس‌زمینه
+    _performSendMessage(
+      tempId,
+      tempMessage,
+      currentUser.id,
+      content,
+      attachmentUrl,
+      attachmentType,
+      attachmentFileName,
+      duration,
+      replyToMessage,
+    );
+  }
+
+  /// نمایش فوری پیام قبل از تایید سرور (Optimistic Update)
+  void _showMessageOptimistically(MessageModel tempMessage) {
+    if (!mounted) return;
+
+    print('⚡ Optimistic update: نمایش فوری پیام - ${tempMessage.id}');
+
+    final currentMessages =
+        Map.fromEntries(state.messages.map((m) => MapEntry(m.id, m)));
+    currentMessages[tempMessage.id] = tempMessage;
+
+    final sortedMessages = currentMessages.values.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    state = state.copyWith(messages: sortedMessages);
+    print('✅ پیام فوری نمایش داده شد - ${tempMessage.id}');
+  }
+
+  Future<void> _performSendMessage(
+    String tempId,
+    MessageModel tempMessage,
+    String userId,
+    String content,
+    String? attachmentUrl,
+    String? attachmentType,
+    String? attachmentFileName,
+    int? duration,
+    MessageModel? replyToMessage,
+  ) async {
     try {
       final sentMessage = await _chatService.sendMessage(
         conversationId: params.conversationId,
         content: content,
         attachmentUrl: attachmentUrl,
         attachmentType: attachmentType,
-        // duration: duration, // موقتاً غیرفعال تا مشکل دیتابیس حل شود
+        attachmentFileName: attachmentFileName,
         localId: tempId,
         replyToMessageId: replyToMessage?.id,
         replyToContent: replyToMessage?.content,
         replyToSenderName: replyToMessage?.senderName,
       );
 
-      // Replace temp message with real one - prevent duplicate
+      // Success - بروزرسانی پیام موقتی با پیام واقعی (بدون duplicate)
       if (mounted) {
         final currentMessages =
             Map.fromEntries(state.messages.map((m) => MapEntry(m.id, m)));
 
-        // Remove temp message and add real message
+        // حذف پیام موقتی
         currentMessages.remove(tempId);
+
+        // اگر پیام واقعی قبلاً موجود است (از real-time)، حذف کن تا دوپلیکت نشود
+        if (currentMessages.containsKey(sentMessage.id)) {
+          print('⚠️ Message already exists from real-time, updating it');
+          currentMessages.remove(sentMessage.id);
+        }
+
+        // اضافه کردن پیام واقعی
         currentMessages[sentMessage.id] = sentMessage;
 
         final sortedMessages = currentMessages.values.toList()
           ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
         state = state.copyWith(messages: sortedMessages);
-        _cacheService.cacheMessage(sentMessage, currentUser.id);
-        _cacheService.clearMessage(
-            params.conversationId, tempId, currentUser.id);
+        print('✅ Message successfully sent and updated: ${sentMessage.id}');
 
-        // بروزرسانی providerهای conversation برای نمایش آخرین پیام
+        _cacheService.cacheMessage(sentMessage, userId);
+        _cacheService.clearMessage(params.conversationId, tempId, userId);
+
+        // Update conversation list
         if (_ref != null) {
           _ref.invalidate(conversationsProvider);
           _ref.invalidate(conversationsStreamProvider);
           _ref.invalidate(cachedConversationsStreamProvider);
-          // برای StateNotifier، refresh method فراخوانی کنیم
           _ref.read(cachedConversationsProvider.notifier).refresh();
         }
       }
+
+      // 📌 حذف tempId از pending set
+      _pendingTempIds.remove(tempId);
+
+      // 📌 اضافه کردن mapping از localId به serverId
+      _localToServerIdMap[tempId] = sentMessage.id;
+      print(
+          '✅ Removed tempId from pending set: $tempId → ${sentMessage.id} (total pending: ${_pendingTempIds.length})');
+
+      // Cancel any pending retries
+      _retryService.cancelRetry(tempId);
     } catch (e) {
+      // Failure - نمایش پیام با خطا
+      print('❌ Failed to send message: $e');
+
+      final errorMessage = e.toString();
+      final failedMessage = tempMessage.copyWith(
+        isSent: false,
+        isPending: false,
+        errorMessage: errorMessage,
+        retryCount: 1,
+        lastRetryTime: DateTime.now(),
+      );
+
+      // بروزرسانی پیام در UI با وضعیت خطا
       if (mounted) {
-        final failedMessage =
-            tempMessage.copyWith(isSent: false, isPending: false);
         final currentMessages =
             Map.fromEntries(state.messages.map((m) => MapEntry(m.id, m)));
-
-        // Replace temp message with failed message
         currentMessages[tempId] = failedMessage;
 
         final sortedMessages = currentMessages.values.toList()
           ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-        state = state.copyWith(
-            messages: sortedMessages, error: "Failed to send message");
-
-        // اگر پیام موقت داشتیم، conversation رو هم بروزرسانی کنیم (برای نمایش پیام ناموفق)
-        if (tempMessage.content.isNotEmpty ||
-            tempMessage.attachmentType != null) {
-          if (_ref != null) {
-            _ref.invalidate(conversationsProvider);
-            _ref.invalidate(conversationsStreamProvider);
-            _ref.invalidate(cachedConversationsStreamProvider);
-            // برای StateNotifier، refresh method فراخوانی کنیم
-            _ref.read(cachedConversationsProvider.notifier).refresh();
-          }
-        }
+        state = state.copyWith(messages: sortedMessages);
       }
+
+      // 📌 حذف tempId از pending set (حتی اگر ناموفق باشد)
+      _pendingTempIds.remove(tempId);
+      print('⚠️ Removed tempId from pending set due to error: $tempId');
+
+      // Schedule automatic retry
+      await _retryService.scheduleRetry(
+        tempId,
+        onRetry: () => _performSendMessage(
+          tempId,
+          failedMessage,
+          userId,
+          content,
+          attachmentUrl,
+          attachmentType,
+          attachmentFileName,
+          duration,
+          replyToMessage,
+        ),
+        retryCount: 0,
+      );
     }
+  }
+
+  /// Manually retry sending a failed message
+  Future<void> resendMessage(String messageId) async {
+    final message = state.messages.firstWhere(
+      (m) => m.id == messageId,
+      orElse: () => MessageModel.empty(),
+    );
+
+    if (message.id.isEmpty) {
+      print('❌ Message not found: $messageId');
+      return;
+    }
+
+    print('👤 Manual resend for message: $messageId');
+
+    // Remove error and retry the send
+    await _retryService.manualRetry(
+      messageId,
+      onRetry: () => _performSendMessage(
+        messageId,
+        message,
+        supabase.auth.currentUser?.id ?? '',
+        message.content,
+        message.attachmentUrl,
+        message.attachmentType,
+        message.attachmentFileName,
+        message.duration,
+        null,
+      ),
+    );
   }
 
   Future<void> deleteMessage(String messageId,
@@ -417,7 +561,15 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
     try {
       print('🗑️ Deleting message: $messageId (forEveryone: $forEveryone)');
 
-      // حذف خوشبینانه از UI - بلافاصله پیام را از state حذف کن
+      // استفاده از سرویس حذف بهینه‌شده (Optimistic + Batching)
+      await _deletionService.deleteMessage(
+        messageId: messageId,
+        conversationId: params.conversationId,
+        mode: forEveryone ? DeletionMode.everyone : DeletionMode.me,
+        optimisticDelete: true,
+      );
+
+      // حذف فوری از UI (Optimistic Update)
       final currentMessages =
           Map.fromEntries(state.messages.map((m) => MapEntry(m.id, m)));
       currentMessages.remove(messageId);
@@ -429,21 +581,51 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
         state = state.copyWith(messages: sortedMessages);
       }
 
-      // حذف از کش
-      final currentUser = supabase.auth.currentUser;
-      if (currentUser != null) {
-        await _cacheService.clearMessage(
-            params.conversationId, messageId, currentUser.id);
-      }
-
-      // حذف از سرور
-      await _chatService.deleteMessage(messageId, forEveryone: forEveryone);
-
-      print('✅ Message deleted successfully from server');
+      print('✅ Message marked for deletion (will be synced): $messageId');
     } catch (e) {
       print('❌ Error deleting message: $e');
       if (mounted) {
         state = state.copyWith(error: 'خطا در حذف پیام: $e');
+      }
+      rethrow;
+    }
+  }
+
+  /// حذف دسته‌ای پیام‌ها (بهینه برای Clear All)
+  Future<void> deleteMultipleMessages(List<String> messageIds,
+      {bool forEveryone = false}) async {
+    try {
+      if (messageIds.isEmpty) return;
+
+      print(
+          '🗑️ Batch deleting ${messageIds.length} messages (forEveryone: $forEveryone)');
+
+      // استفاده از حذف دسته‌ای بهینه‌شده
+      await _deletionService.deleteMultipleMessages(
+        conversationId: params.conversationId,
+        messageIds: messageIds,
+        mode: forEveryone ? DeletionMode.everyone : DeletionMode.me,
+      );
+
+      // حذف فوری از UI
+      final currentMessages =
+          Map.fromEntries(state.messages.map((m) => MapEntry(m.id, m)));
+      for (final msgId in messageIds) {
+        currentMessages.remove(msgId);
+      }
+
+      final sortedMessages = currentMessages.values.toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      if (mounted) {
+        state = state.copyWith(messages: sortedMessages);
+      }
+
+      print('✅ ${messageIds.length} messages marked for deletion');
+    } catch (e) {
+      print('❌ Error batch deleting messages: $e');
+      if (mounted) {
+        state = state.copyWith(error: 'خطا در حذف پیام‌ها: $e');
       }
       rethrow;
     }
@@ -454,11 +636,25 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
     if (mounted) {
       state = state.copyWith(messages: []);
     }
+
+    // شروع حذف دسته‌ای در background
+    // (بدون انتظار برای UI responsiveness)
+    _deletionService
+        .clearConversationMessages(
+          conversationId: params.conversationId,
+          mode: DeletionMode.me,
+        )
+        .then(
+          (_) => print('✅ Conversation clear all initiated'),
+          onError: (e) => print('⚠️ Error clearing conversation: $e'),
+        );
   }
 
   @override
   void dispose() {
     _realtimeSubscription?.cancel();
+    _retryService.dispose();
+    _deletionService.dispose();
     super.dispose();
   }
 }

@@ -1,3 +1,4 @@
+import '../../../../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -113,7 +114,7 @@ class _StorageAndMemorySettingsPageState
       // Load all data
       await _loadAllStats();
     } catch (e) {
-      print('خطا در مقداردهی سیستم‌های کش: $e');
+      logInfo('خطا در مقداردهی سیستم‌های کش: $e');
       // در صورت خطا، باز هم سعی کن آمار را بارگذاری کن
       await _loadAllStats();
     }
@@ -148,7 +149,7 @@ class _StorageAndMemorySettingsPageState
       // محاسبه storage categories مثل تلگرام
       _calculateStorageCategories();
     } catch (e) {
-      print('خطا در دریافت آمار: $e');
+      logInfo('خطا در دریافت آمار: $e');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('خطا در دریافت اطلاعات: $e')));
@@ -186,16 +187,16 @@ class _StorageAndMemorySettingsPageState
     final voiceCacheSize = _voiceCacheStats['size_mb'] ?? 0.0;
 
     // Debug: نمایش آمار دریافت شده
-    print('📊 آمار کش دریافت شده:');
-    print('   Story Cache: ${storyCache.toStringAsFixed(2)} MB');
-    print('   Post Cache: ${postCache.toStringAsFixed(2)} MB');
-    print('   Chat Image Cache: ${chatImageCache.toStringAsFixed(2)} MB');
-    print('   Wallpaper Cache: ${wallpaperCache.toStringAsFixed(2)} MB');
-    print('   Profile Cache: ${profileCacheSize.toStringAsFixed(2)} MB');
-    print('   Message Cache: ${messageCache.toStringAsFixed(2)} MB');
-    print('   Conversation Cache: ${conversationCache.toStringAsFixed(2)} MB');
-    print('   Temp Cache: ${tempCache.toStringAsFixed(2)} MB');
-    print('   Voice Cache: ${voiceCacheSize.toStringAsFixed(2)} MB');
+    logInfo('📊 آمار کش دریافت شده:');
+    logInfo('   Story Cache: ${storyCache.toStringAsFixed(2)} MB');
+    logInfo('   Post Cache: ${postCache.toStringAsFixed(2)} MB');
+    logInfo('   Chat Image Cache: ${chatImageCache.toStringAsFixed(2)} MB');
+    logInfo('   Wallpaper Cache: ${wallpaperCache.toStringAsFixed(2)} MB');
+    logInfo('   Profile Cache: ${profileCacheSize.toStringAsFixed(2)} MB');
+    logInfo('   Message Cache: ${messageCache.toStringAsFixed(2)} MB');
+    logInfo('   Conversation Cache: ${conversationCache.toStringAsFixed(2)} MB');
+    logInfo('   Temp Cache: ${tempCache.toStringAsFixed(2)} MB');
+    logInfo('   Voice Cache: ${voiceCacheSize.toStringAsFixed(2)} MB');
 
     // تخصیص داده‌های واقعی به دسته‌ها
     _storageCategories = [
@@ -274,7 +275,7 @@ class _StorageAndMemorySettingsPageState
     }
 
     // Debug: چاپ مقادیر واقعی
-    print('=== Real Storage Categories ===');
+    logInfo('=== Real Storage Categories ===');
     for (var cat in _storageCategories) {
       print(
         '${cat.name}: ${cat.size.toStringAsFixed(2)} MB (${cat.percentage.toStringAsFixed(1)}%)',
@@ -565,9 +566,9 @@ class _StorageAndMemorySettingsPageState
       // اجرای حذف خودکار بر اساس تنظیمات جدید
       await _performAutoRemoval(key, value);
 
-      print('✅ تنظیمات حذف خودکار ذخیره شد: $key = $value');
+      logInfo('✅ تنظیمات حذف خودکار ذخیره شد: $key = $value');
     } catch (e) {
-      print('❌ خطا در ذخیره تنظیمات حذف خودکار: $e');
+      logInfo('❌ خطا در ذخیره تنظیمات حذف خودکار: $e');
     }
   }
 
@@ -593,7 +594,7 @@ class _StorageAndMemorySettingsPageState
         _autoPlayEnabled = videoAutoplayService.autoPlayEnabled;
       });
     } catch (e) {
-      print('❌ خطا در بارگذاری تنظیمات حذف خودکار: $e');
+      logInfo('❌ خطا در بارگذاری تنظیمات حذف خودکار: $e');
     }
   }
 
@@ -619,9 +620,9 @@ class _StorageAndMemorySettingsPageState
       // بروزرسانی آمار
       await _loadAllStats();
 
-      print('✅ حذف خودکار انجام شد برای $category');
+      logInfo('✅ حذف خودکار انجام شد برای $category');
     } catch (e) {
-      print('❌ خطا در حذف خودکار: $e');
+      logInfo('❌ خطا در حذف خودکار: $e');
     }
   }
 
@@ -645,7 +646,7 @@ class _StorageAndMemorySettingsPageState
   /// پاک‌سازی رسانه‌های گفتگوهای خصوصی
   Future<void> _cleanupConversationsMedia(DateTime cutoffDate) async {
     try {
-      print('🧹 شروع پاک‌سازی رسانه‌های گفتگوها قدیمی‌تر از $cutoffDate');
+      logInfo('🧹 شروع پاک‌سازی رسانه‌های گفتگوها قدیمی‌تر از $cutoffDate');
 
       // دریافت تمام گفتگوها
       final conversations = _advancedCache.getCachedConversations();
@@ -665,9 +666,9 @@ class _StorageAndMemorySettingsPageState
         }
       }
 
-      print('✅ $cleanedItems آیتم رسانه از گفتگوها پاک شد');
+      logInfo('✅ $cleanedItems آیتم رسانه از گفتگوها پاک شد');
     } catch (e) {
-      print('❌ خطا در پاک‌سازی رسانه‌های گفتگوها: $e');
+      logInfo('❌ خطا در پاک‌سازی رسانه‌های گفتگوها: $e');
     }
   }
 
@@ -677,15 +678,15 @@ class _StorageAndMemorySettingsPageState
   /// پاک‌سازی رسانه‌های پروفایل
   Future<void> _cleanupProfilesMedia(DateTime cutoffDate) async {
     try {
-      print('🧹 شروع پاک‌سازی رسانه‌های پروفایل قدیمی‌تر از $cutoffDate');
+      logInfo('🧹 شروع پاک‌سازی رسانه‌های پروفایل قدیمی‌تر از $cutoffDate');
 
       // پاک‌سازی تصاویر پروفایل و پست‌های قدیمی
       print(
           '📝 پاک‌سازی کش پروفایل - نیاز به پیاده‌سازی در ProfileCacheService');
 
-      print('✅ پاک‌سازی رسانه‌های پروفایل تکمیل شد');
+      logInfo('✅ پاک‌سازی رسانه‌های پروفایل تکمیل شد');
     } catch (e) {
-      print('❌ خطا در پاک‌سازی رسانه‌های پروفایل: $e');
+      logInfo('❌ خطا در پاک‌سازی رسانه‌های پروفایل: $e');
     }
   }
 
@@ -695,15 +696,15 @@ class _StorageAndMemorySettingsPageState
       // اگر پیام دارای attachment است
       if (message.attachmentUrl != null && message.attachmentUrl!.isNotEmpty) {
         // حذف فایل از cache
-        print('📝 حذف attachment: ${message.attachmentUrl}');
+        logInfo('📝 حذف attachment: ${message.attachmentUrl}');
       }
 
       // اگر پیام دارای تصویر است
       if (message.imageUrl != null && message.imageUrl!.isNotEmpty) {
-        print('📝 حذف تصویر: ${message.imageUrl}');
+        logInfo('📝 حذف تصویر: ${message.imageUrl}');
       }
     } catch (e) {
-      print('❌ خطا در حذف رسانه پیام: $e');
+      logInfo('❌ خطا در حذف رسانه پیام: $e');
     }
   }
 
@@ -738,9 +739,9 @@ class _StorageAndMemorySettingsPageState
         }
       }
 
-      print('✅ تنظیمات ویدیو ذخیره شد: $key = $value');
+      logInfo('✅ تنظیمات ویدیو ذخیره شد: $key = $value');
     } catch (e) {
-      print('❌ خطا در ذخیره تنظیمات ویدیو: $e');
+      logInfo('❌ خطا در ذخیره تنظیمات ویدیو: $e');
     }
   }
 
@@ -908,9 +909,9 @@ class _StorageAndMemorySettingsPageState
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble('max_cache_size', _maxCacheSize);
-      print('✅ حداکثر اندازه کش ذخیره شد: $_maxCacheSize GB');
+      logInfo('✅ حداکثر اندازه کش ذخیره شد: $_maxCacheSize GB');
     } catch (e) {
-      print('❌ خطا در ذخیره حداکثر اندازه کش: $e');
+      logInfo('❌ خطا در ذخیره حداکثر اندازه کش: $e');
     }
   }
 
@@ -1372,11 +1373,11 @@ class _StorageAndMemorySettingsPageState
   /// بارگذاری گفتگوها و تضمین وجود پروفایل‌ها
   Future<List<dynamic>> _loadConversationsWithProfiles() async {
     try {
-      print('🔄 شروع بارگذاری گفتگوها و پروفایل‌ها...');
+      logInfo('🔄 شروع بارگذاری گفتگوها و پروفایل‌ها...');
 
       // 1. دریافت گفتگوها از cache
       final conversations = _advancedCache.getCachedConversations();
-      print('📥 تعداد گفتگوها در کش: ${conversations.length}');
+      logInfo('📥 تعداد گفتگوها در کش: ${conversations.length}');
 
       // 2. جمع‌آوری تمام user ID های نیاز به پروفایل
       final Set<String> userIdsToLoad = {};
@@ -1390,7 +1391,7 @@ class _StorageAndMemorySettingsPageState
         }
       }
 
-      print('👥 تعداد کاربران برای بارگذاری پروفایل: ${userIdsToLoad.length}');
+      logInfo('👥 تعداد کاربران برای بارگذاری پروفایل: ${userIdsToLoad.length}');
 
       // 3. بارگذاری پروفایل‌های مفقود
       int loadedProfiles = 0;
@@ -1398,24 +1399,24 @@ class _StorageAndMemorySettingsPageState
         final existingProfile = _profileService.getCachedProfile(userId);
         if (existingProfile == null) {
           try {
-            print('📱 بارگذاری پروفایل برای: $userId');
+            logInfo('📱 بارگذاری پروفایل برای: $userId');
             await _profileService.getUserProfile(userId);
             loadedProfiles++;
           } catch (e) {
-            print('⚠️ خطا در بارگذاری پروفایل $userId: $e');
+            logInfo('⚠️ خطا در بارگذاری پروفایل $userId: $e');
           }
         } else {
           final displayName = existingProfile['full_name']?.isNotEmpty == true
               ? existingProfile['full_name']
               : existingProfile['username'] ?? 'کاربر ناشناس';
-          print('✅ پروفایل موجود در کش: $userId - $displayName');
+          logInfo('✅ پروفایل موجود در کش: $userId - $displayName');
         }
       }
 
-      print('✅ تعداد پروفایل‌های جدید بارگذاری شده: $loadedProfiles');
+      logInfo('✅ تعداد پروفایل‌های جدید بارگذاری شده: $loadedProfiles');
 
       // 4. بررسی نهایی پروفایل‌ها
-      print('🔍 بررسی نهایی پروفایل‌ها:');
+      logInfo('🔍 بررسی نهایی پروفایل‌ها:');
       for (final conversation in conversations) {
         if (conversation.otherUserId != null) {
           final profile =
@@ -1424,9 +1425,9 @@ class _StorageAndMemorySettingsPageState
             final displayName = profile['full_name']?.isNotEmpty == true
                 ? profile['full_name']
                 : profile['username'] ?? 'کاربر ناشناس';
-            print('   ✅ ${conversation.id}: $displayName');
+            logInfo('   ✅ ${conversation.id}: $displayName');
           } else {
-            print('   ❌ ${conversation.id}: پروفایل یافت نشد');
+            logInfo('   ❌ ${conversation.id}: پروفایل یافت نشد');
           }
         }
       }
@@ -1440,10 +1441,10 @@ class _StorageAndMemorySettingsPageState
         return sizeB.compareTo(sizeA);
       });
 
-      print('🎯 گفتگوها آماده نمایش: ${conversations.length}');
+      logInfo('🎯 گفتگوها آماده نمایش: ${conversations.length}');
       return conversations;
     } catch (e) {
-      print('❌ خطا در بارگذاری گفتگوها: $e');
+      logInfo('❌ خطا در بارگذاری گفتگوها: $e');
       rethrow;
     }
   }
@@ -1481,7 +1482,7 @@ class _StorageAndMemorySettingsPageState
         }
       }
 
-      print('🔍 در حال دریافت پروفایل برای ${userIds.length} کاربر...');
+      logInfo('🔍 در حال دریافت پروفایل برای ${userIds.length} کاربر...');
 
       // دریافت اطلاعات پروفایل برای هر userId
       for (final userId in userIds) {
@@ -1501,7 +1502,7 @@ class _StorageAndMemorySettingsPageState
             );
           } else {
             // اگر در cache نیست، از سرور دریافت کن
-            print('🌐 دریافت پروفایل از سرور برای $userId...');
+            logInfo('🌐 دریافت پروفایل از سرور برای $userId...');
             try {
               final profile = await _profileService.getUserProfile(userId);
               if (profile != null) {
@@ -1545,7 +1546,7 @@ class _StorageAndMemorySettingsPageState
                   '✅ پروفایل مستقیم دریافت شده برای $userId: ${userProfiles[userId]!['name']}',
                 );
               } catch (supabaseError) {
-                print('❌ خطا در دریافت مستقیم از Supabase: $supabaseError');
+                logInfo('❌ خطا در دریافت مستقیم از Supabase: $supabaseError');
                 // Don't re-throw, use fallback instead
                 userProfiles[userId] = {
                   'name': 'کاربر ناشناس',
@@ -1556,7 +1557,7 @@ class _StorageAndMemorySettingsPageState
             }
           }
         } catch (e) {
-          print('❌ خطا در دریافت پروفایل کاربر $userId: $e');
+          logInfo('❌ خطا در دریافت پروفایل کاربر $userId: $e');
           // fallback
           userProfiles[userId] = {
             'name': 'کاربر ناشناس',
@@ -1566,9 +1567,9 @@ class _StorageAndMemorySettingsPageState
         }
       }
 
-      print('📊 مجموع ${userProfiles.length} پروفایل دریافت شد');
+      logInfo('📊 مجموع ${userProfiles.length} پروفایل دریافت شد');
     } catch (e) {
-      print('خطا در دریافت پروفایل‌ها: $e');
+      logInfo('خطا در دریافت پروفایل‌ها: $e');
     }
 
     return userProfiles;
@@ -1583,17 +1584,17 @@ class _StorageAndMemorySettingsPageState
     String initials = 'گ';
 
     try {
-      print('🔍 Debug Conversation Info:');
-      print('   Conversation ID: ${conversation.id}');
-      print('   Other User ID: ${conversation.otherUserId}');
-      print('   Other User Name: "${conversation.otherUserName}"');
-      print('   Other User Avatar: "${conversation.otherUserAvatar}"');
-      print('   Participants Count: ${conversation.participants.length}');
+      logInfo('🔍 Debug Conversation Info:');
+      logInfo('   Conversation ID: ${conversation.id}');
+      logInfo('   Other User ID: ${conversation.otherUserId}');
+      logInfo('   Other User Name: "${conversation.otherUserName}"');
+      logInfo('   Other User Avatar: "${conversation.otherUserAvatar}"');
+      logInfo('   Participants Count: ${conversation.participants.length}');
 
       // Debug participants
       for (int i = 0; i < conversation.participants.length; i++) {
         final participant = conversation.participants[i];
-        print('   Participant $i: User ID = ${participant.userId}');
+        logInfo('   Participant $i: User ID = ${participant.userId}');
       }
 
       // Debug ProfileCache
@@ -1603,9 +1604,9 @@ class _StorageAndMemorySettingsPageState
         print(
             '   🔍 ProfileCache برای ${conversation.otherUserId}: ${profile != null ? 'موجود' : 'مفقود'}');
         if (profile != null) {
-          print('     Full Name: "${profile['full_name']}"');
-          print('     Username: "${profile['username']}"');
-          print('     Avatar: "${profile['avatar_url']}"');
+          logInfo('     Full Name: "${profile['full_name']}"');
+          logInfo('     Username: "${profile['username']}"');
+          logInfo('     Avatar: "${profile['avatar_url']}"');
         }
       }
 
@@ -1631,14 +1632,14 @@ class _StorageAndMemorySettingsPageState
           final cachedProfile =
               _profileService.getCachedProfile(conversation.otherUserId!);
           if (cachedProfile != null) {
-            print('✅ لیست اصلی - پروفایل یافت شد در cache');
+            logInfo('✅ لیست اصلی - پروفایل یافت شد در cache');
             if (displayName == 'گفتگو ناشناس') {
               displayName = cachedProfile['full_name']?.isNotEmpty == true
                   ? cachedProfile['full_name']!
                   : cachedProfile['username'] ?? 'کاربر ناشناس';
             }
             avatarUrl ??= cachedProfile['avatar_url'];
-            print('✅ لیست اصلی - استفاده از cached profile: $displayName');
+            logInfo('✅ لیست اصلی - استفاده از cached profile: $displayName');
           } else {
             print(
                 '❌ لیست اصلی - پروفایل در cache نیست: ${conversation.otherUserId}');
@@ -1665,11 +1666,11 @@ class _StorageAndMemorySettingsPageState
             // fallback نهایی
             if (displayName == 'گفتگو ناشناس') {
               displayName = 'کاربر ناشناس';
-              print('⚠️ لیست اصلی - fallback به ID: $displayName');
+              logInfo('⚠️ لیست اصلی - fallback به ID: $displayName');
             }
           }
         } else {
-          print('❌ لیست اصلی - otherUserId null است');
+          logInfo('❌ لیست اصلی - otherUserId null است');
         }
       }
 
@@ -1677,7 +1678,7 @@ class _StorageAndMemorySettingsPageState
           '🎯 لیست اصلی - Final Result: Display Name = "$displayName", Avatar = "${avatarUrl ?? 'none'}"');
       print('=' * 50);
     } catch (e) {
-      print('❌ خطا در دریافت اطلاعات کاربر: $e');
+      logInfo('❌ خطا در دریافت اطلاعات کاربر: $e');
       displayName = 'گفتگو ناشناس';
     }
 
@@ -2086,7 +2087,7 @@ class _StorageAndMemorySettingsPageState
       final cachedMessages = _advancedCache.getCachedMessages(conversationId);
       final messageCount = cachedMessages.length;
 
-      print('پاک شده Messages: $messageCount پیام برای گفتگو $conversationId');
+      logInfo('پاک شده Messages: $messageCount پیام برای گفتگو $conversationId');
 
       // پاک‌سازی از database files
       await _clearConversationFromDatabase(conversationId);
@@ -2094,7 +2095,7 @@ class _StorageAndMemorySettingsPageState
       // Force reload to clear memory cache
       await _advancedCache.initialize();
     } catch (e) {
-      print('خطا در پاک‌سازی message cache: $e');
+      logInfo('خطا در پاک‌سازی message cache: $e');
       // Don't rethrow - this is not critical
     }
   }
@@ -2110,17 +2111,17 @@ class _StorageAndMemorySettingsPageState
       if (messageCacheFile != null && await messageCacheFile.exists()) {
         // اینجا می‌توان از SQLite برای حذف رکوردهای مربوط به conversation استفاده کرد
         // فعلاً فایل را به‌روزرسانی می‌کنیم
-        print('پاک‌سازی database برای گفتگو: $conversationId');
+        logInfo('پاک‌سازی database برای گفتگو: $conversationId');
       }
 
       // پاک‌سازی از conversation cache database
       final conversationCacheFile = await getConversationCacheDbFile();
       if (conversationCacheFile != null &&
           await conversationCacheFile.exists()) {
-        print('پاک‌سازی conversation database برای گفتگو: $conversationId');
+        logInfo('پاک‌سازی conversation database برای گفتگو: $conversationId');
       }
     } catch (e) {
-      print('خطا در پاک‌سازی database: $e');
+      logInfo('خطا در پاک‌سازی database: $e');
     }
   }
 
@@ -2128,12 +2129,12 @@ class _StorageAndMemorySettingsPageState
     try {
       // پاک‌سازی از chat image cache
       await _cacheManager.chatInstance.emptyCache();
-      print('پاک شده Chat images cache');
+      logInfo('پاک شده Chat images cache');
 
       // اگر نیاز به پاک‌سازی selective باشد، می‌توان از conversation ID استفاده کرد
       // فعلاً کل chat cache پاک می‌شود
     } catch (e) {
-      print('خطا در پاک‌سازی image cache: $e');
+      logInfo('خطا در پاک‌سازی image cache: $e');
       // Don't rethrow - this is not critical
     }
   }
@@ -2217,7 +2218,7 @@ class _StorageAndMemorySettingsPageState
     String? avatarUrl;
 
     try {
-      print('🔍 محاسبه اطلاعات کش برای مکالمه: ${conversation.id}');
+      logInfo('🔍 محاسبه اطلاعات کش برای مکالمه: ${conversation.id}');
       print(
           '📋 اطلاعات conversation: otherUserName=${conversation.otherUserName}, otherUserId=${conversation.otherUserId}');
 
@@ -2226,13 +2227,13 @@ class _StorageAndMemorySettingsPageState
           conversation.otherUserName!.isNotEmpty &&
           conversation.otherUserName != 'کاربر ناشناس') {
         displayName = conversation.otherUserName!;
-        print('✅ استفاده از conversation.otherUserName: $displayName');
+        logInfo('✅ استفاده از conversation.otherUserName: $displayName');
       }
 
       if (conversation.otherUserAvatar != null &&
           conversation.otherUserAvatar!.isNotEmpty) {
         avatarUrl = conversation.otherUserAvatar!;
-        print('✅ استفاده از conversation.otherUserAvatar: $avatarUrl');
+        logInfo('✅ استفاده از conversation.otherUserAvatar: $avatarUrl');
       }
 
       // اولویت 2: استفاده از userProfiles اگر conversation info کامل نیست
@@ -2249,7 +2250,7 @@ class _StorageAndMemorySettingsPageState
             displayName = userInfo['name'] ?? 'کاربر ناشناس';
           }
           avatarUrl ??= userInfo['avatar'];
-          print('✅ استفاده از userProfiles برای otherUserId: $displayName');
+          logInfo('✅ استفاده از userProfiles برای otherUserId: $displayName');
         } else {
           // از participants استفاده کن
           for (final participant in conversation.participants) {
@@ -2260,7 +2261,7 @@ class _StorageAndMemorySettingsPageState
                 displayName = userInfo['name'] ?? 'کاربر ناشناس';
               }
               avatarUrl ??= userInfo['avatar'];
-              print('✅ استفاده از userProfiles برای participant: $displayName');
+              logInfo('✅ استفاده از userProfiles برای participant: $displayName');
               break;
             }
           }
@@ -2277,7 +2278,7 @@ class _StorageAndMemorySettingsPageState
                 ? cachedProfile['full_name']!
                 : cachedProfile['username'] ?? 'کاربر ناشناس';
             avatarUrl ??= cachedProfile['avatar_url'];
-            print('✅ استفاده از cached profile: $displayName');
+            logInfo('✅ استفاده از cached profile: $displayName');
           } else {
             displayName = 'کاربر ناشناس';
           }
@@ -2290,9 +2291,9 @@ class _StorageAndMemorySettingsPageState
             'گفتگو ${conversation.id.substring(0, math.min<int>(8, conversation.id.length))}';
       }
 
-      print('🎯 Final display name: $displayName, avatar: $avatarUrl');
+      logInfo('🎯 Final display name: $displayName, avatar: $avatarUrl');
     } catch (e) {
-      print('❌ خطا در محاسبه اطلاعات مکالمه: $e');
+      logInfo('❌ خطا در محاسبه اطلاعات مکالمه: $e');
       displayName = 'گفتگوی ناشناس';
       avatarUrl = null;
     }
@@ -2928,7 +2929,7 @@ class _StorageAndMemorySettingsPageState
   /// Clean voice cache for specific conversation
   Future<void> _performVoiceCacheCleanup(String conversationId) async {
     try {
-      print('پاک‌سازی voice cache برای مکالمه: $conversationId');
+      logInfo('پاک‌سازی voice cache برای مکالمه: $conversationId');
 
       // پاک‌سازی تمام voice cache (فعلاً conversation-specific نیست)
       await _voiceCacheService.clearAllCache();
@@ -2936,9 +2937,9 @@ class _StorageAndMemorySettingsPageState
       // بروزرسانی آمار
       await _loadAllStats();
 
-      print('✅ Voice cache پاک‌سازی شد');
+      logInfo('✅ Voice cache پاک‌سازی شد');
     } catch (e) {
-      print('❌ خطا در پاک‌سازی voice cache: $e');
+      logInfo('❌ خطا در پاک‌سازی voice cache: $e');
     }
   }
 

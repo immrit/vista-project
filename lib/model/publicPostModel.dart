@@ -3,7 +3,6 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 import 'ProfileModel.dart'; // واردکردن ProfileModel برای استفاده از VerificationType
 
-@immutable
 class PublicPostModel extends Equatable {
   final String id;
   final String userId;

@@ -1,3 +1,4 @@
+import '../../../security/logging_utility.dart';
 import 'package:Vista/view/screen/PublicPosts/PostDetailPage.dart';
 import 'package:Vista/view/util/comments_bottom_sheet.dart';
 import 'package:badges/badges.dart' as badges;
@@ -90,7 +91,7 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
         await _updateConnectionStatus(result);
       }
     } catch (e) {
-      debugPrint('Error checking connectivity: $e');
+      logDebug('Error checking connectivity: $e');
       if (mounted) {
         setState(() {
           _connectionStatus = 'آفلاین';
@@ -1286,10 +1287,10 @@ void showEditPostDialog(
           bucket: SecureConfig.awsBucketName,
           key: key,
         );
-        print('فایل با موفقیت از آروان کلود حذف شد: $fileUrl');
+        logInfo('فایل با موفقیت از آروان کلود حذف شد: $fileUrl');
       }
     } catch (e) {
-      print('خطا در حذف فایل از آروان کلود: $e');
+      logInfo('خطا در حذف فایل از آروان کلود: $e');
     }
   }
 

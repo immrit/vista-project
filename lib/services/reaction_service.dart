@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import '../main.dart';
 import '../model/message_reaction.dart';
 
@@ -36,7 +37,7 @@ class ReactionService {
           .firstOrNull;
 
       if (existingReaction != null) {
-        print('⚠️ کاربر قبلاً این ری‌اکشن را داده است');
+        logInfo('⚠️ کاربر قبلاً این ری‌اکشن را داده است');
         return null;
       }
 
@@ -53,11 +54,11 @@ class ReactionService {
           .single();
 
       final reaction = MessageReaction.fromJson(response);
-      print('✅ ری‌اکشن اضافه شد: ${reaction.emoji} به پیام $messageId');
+      logInfo('✅ ری‌اکشن اضافه شد: ${reaction.emoji} به پیام $messageId');
 
       return reaction;
     } catch (e) {
-      print('⚠️ خطا در اضافه کردن ری‌اکشن: $e');
+      logInfo('⚠️ خطا در اضافه کردن ری‌اکشن: $e');
       return null;
     }
   }
@@ -77,12 +78,12 @@ class ReactionService {
           .eq('emoji', emoji);
 
       if (result != null) {
-        print('✅ ری‌اکشن حذف شد: $emoji از پیام $messageId');
+        logInfo('✅ ری‌اکشن حذف شد: $emoji از پیام $messageId');
         return true;
       }
       return false;
     } catch (e) {
-      print('⚠️ خطا در حذف ری‌اکشن: $e');
+      logInfo('⚠️ خطا در حذف ری‌اکشن: $e');
       return false;
     }
   }
@@ -100,7 +101,7 @@ class ReactionService {
           .map((json) => MessageReaction.fromJson(json))
           .toList();
     } catch (e) {
-      print('⚠️ خطا در دریافت ری‌اکشن‌های پیام: $e');
+      logInfo('⚠️ خطا در دریافت ری‌اکشن‌های پیام: $e');
       return [];
     }
   }
@@ -121,7 +122,7 @@ class ReactionService {
       }
       return null;
     } catch (e) {
-      print('⚠️ خطا در دریافت ری‌اکشن کاربر: $e');
+      logInfo('⚠️ خطا در دریافت ری‌اکشن کاربر: $e');
       return null;
     }
   }
@@ -164,7 +165,7 @@ class ReactionService {
         emoji: newEmoji,
       );
     } catch (e) {
-      print('⚠️ خطا در تغییر ری‌اکشن: $e');
+      logInfo('⚠️ خطا در تغییر ری‌اکشن: $e');
       return null;
     }
   }
@@ -191,7 +192,7 @@ class ReactionService {
 
       return groupedReactions;
     } catch (e) {
-      print('⚠️ خطا در دریافت ری‌اکشن‌های مکالمه: $e');
+      logInfo('⚠️ خطا در دریافت ری‌اکشن‌های مکالمه: $e');
       return {};
     }
   }
@@ -208,7 +209,7 @@ class ReactionService {
 
       return stats;
     } catch (e) {
-      print('⚠️ خطا در دریافت آمار ری‌اکشن‌ها: $e');
+      logInfo('⚠️ خطا در دریافت آمار ری‌اکشن‌ها: $e');
       return {};
     }
   }
@@ -221,9 +222,9 @@ class ReactionService {
           .delete()
           .eq('message_id', messageId);
 
-      print('✅ تمام ری‌اکشن‌های پیام $messageId حذف شدند');
+      logInfo('✅ تمام ری‌اکشن‌های پیام $messageId حذف شدند');
     } catch (e) {
-      print('⚠️ خطا در حذف ری‌اکشن‌های پیام: $e');
+      logInfo('⚠️ خطا در حذف ری‌اکشن‌های پیام: $e');
     }
   }
 

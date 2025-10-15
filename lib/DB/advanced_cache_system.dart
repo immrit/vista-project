@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -56,11 +57,11 @@ class AdvancedCacheSystem {
   /// Initialize the advanced cache system
   Future<void> initialize() async {
     if (_isInitialized) {
-      print('✅ Advanced Cache System already initialized');
+      logInfo('✅ Advanced Cache System already initialized');
       return;
     }
 
-    print('🚀 Initializing Advanced Cache System...');
+    logInfo('🚀 Initializing Advanced Cache System...');
 
     try {
       // Load from persistent storage
@@ -76,16 +77,16 @@ class AdvancedCacheSystem {
       _startPeriodicSync();
 
       _isInitialized = true;
-      print('✅ Advanced Cache System initialized successfully');
+      logInfo('✅ Advanced Cache System initialized successfully');
 
       // Initial sync (only if cache is empty)
       if (_conversationMemoryCache.isEmpty) {
         _performInitialSync();
       } else {
-        print('📦 Using existing cache, skipping initial sync');
+        logInfo('📦 Using existing cache, skipping initial sync');
       }
     } catch (e) {
-      print('❌ Failed to initialize Advanced Cache System: $e');
+      logInfo('❌ Failed to initialize Advanced Cache System: $e');
       rethrow;
     }
   }
@@ -139,7 +140,7 @@ class AdvancedCacheSystem {
         }
       }
     } catch (e) {
-      print('⚠️ Error loading from disk: $e');
+      logInfo('⚠️ Error loading from disk: $e');
     }
   }
 
@@ -164,7 +165,7 @@ class AdvancedCacheSystem {
         await prefs.setString('cached_messages_$conversationId', messagesJson);
       }
 
-      print('💾 Cache saved to disk');
+      logInfo('💾 Cache saved to disk');
 
       // Save video thumbnails (limit to latest maxVideoThumbs)
       final List<Map<String, String>> thumbList = [];
@@ -177,7 +178,7 @@ class AdvancedCacheSystem {
       final toPersist = thumbList.take(maxVideoThumbs).toList();
       await prefs.setString('cached_video_thumbs', jsonEncode(toPersist));
     } catch (e) {
-      print('⚠️ Error saving to disk: $e');
+      logInfo('⚠️ Error saving to disk: $e');
     }
   }
 
@@ -207,12 +208,12 @@ class AdvancedCacheSystem {
           _handleConversationUpdates(List<Map<String, dynamic>>.from(data));
         },
         onError: (error) {
-          print('⚠️ Realtime conversation stream error: $error');
+          logInfo('⚠️ Realtime conversation stream error: $error');
           // Don't crash the app, just log the error
         },
       );
     } catch (e) {
-      print('⚠️ Failed to setup conversation realtime stream: $e');
+      logInfo('⚠️ Failed to setup conversation realtime stream: $e');
     }
 
     // Listen to profile changes for real-time updates
@@ -223,11 +224,11 @@ class AdvancedCacheSystem {
           _handleProfileUpdates(List<Map<String, dynamic>>.from(data));
         },
         onError: (error) {
-          print('⚠️ Realtime profile stream error: $error');
+          logInfo('⚠️ Realtime profile stream error: $error');
         },
       );
     } catch (e) {
-      print('⚠️ Failed to setup profile realtime stream: $e');
+      logInfo('⚠️ Failed to setup profile realtime stream: $e');
     }
 
     // Listen to message changes for active conversations
@@ -266,7 +267,7 @@ class AdvancedCacheSystem {
             },
           );
     } catch (e) {
-      print('⚠️ Failed to setup message listener for $conversationId: $e');
+      logInfo('⚠️ Failed to setup message listener for $conversationId: $e');
     }
   }
 
@@ -414,7 +415,7 @@ class AdvancedCacheSystem {
         await _syncMessages(conversation.id);
       }
     } catch (e) {
-      print('⚠️ Initial sync failed: $e');
+      logInfo('⚠️ Initial sync failed: $e');
     } finally {
       _isSyncing = false;
     }
@@ -448,7 +449,7 @@ class AdvancedCacheSystem {
         await _syncMessages(conversation.id, limit: 20); // Limit messages
       }
     } catch (e) {
-      print('⚠️ Background sync failed: $e');
+      logInfo('⚠️ Background sync failed: $e');
     } finally {
       _isSyncing = false;
     }
@@ -510,7 +511,7 @@ class AdvancedCacheSystem {
 
       _lastFetch['conversations'] = DateTime.now();
     } catch (e) {
-      print('⚠️ Failed to sync conversations: $e');
+      logInfo('⚠️ Failed to sync conversations: $e');
     }
   }
 
@@ -541,7 +542,7 @@ class AdvancedCacheSystem {
 
       _lastFetch['messages_$conversationId'] = DateTime.now();
     } catch (e) {
-      print('⚠️ Failed to sync messages for $conversationId: $e');
+      logInfo('⚠️ Failed to sync messages for $conversationId: $e');
     }
   }
 
@@ -631,7 +632,7 @@ class AdvancedCacheSystem {
               '✅ Uploaded and replaced message: $messageId -> ${realMessage.id}');
         }
       } catch (e) {
-        print('⚠️ Failed to upload message $messageId: $e');
+        logInfo('⚠️ Failed to upload message $messageId: $e');
         // Keep in pending uploads for retry
       }
     }
@@ -799,7 +800,7 @@ class AdvancedCacheSystem {
     _videoThumbOrder.clear();
 
     _isInitialized = false;
-    print('🧹 Advanced Cache System disposed');
+    logInfo('🧹 Advanced Cache System disposed');
   }
 }
 
@@ -849,9 +850,121 @@ extension VideoThumbnailCacheExt on AdvancedCacheSystem {
       final messagesKey = 'cached_messages_$conversationId';
       await prefs.remove(messagesKey);
 
-      print('✅ Cleared messages for conversation: $conversationId');
+      logInfo('✅ Cleared messages for conversation: $conversationId');
     } catch (e) {
-      print('❌ Error clearing conversation messages: $e');
+      logInfo('❌ Error clearing conversation messages: $e');
+    }
+  }
+
+  /// Delete a specific message from cache
+  Future<void> deleteMessageFromCache(
+      String conversationId, String messageId) async {
+    try {
+      final messages = _messageMemoryCache[conversationId];
+      if (messages != null) {
+        messages.removeWhere((m) => m.id == messageId);
+
+        // Broadcast updated messages
+        _broadcastMessageUpdates(conversationId, messages);
+
+        // Update conversation if this was the last message
+        final conversation = _conversationMemoryCache[conversationId];
+        if (conversation != null && messages.isNotEmpty) {
+          final latestMessage = messages.first;
+          final updatedConversation = conversation.copyWith(
+            lastMessage: latestMessage.content,
+            lastMessageTime: latestMessage.createdAt,
+            updatedAt: latestMessage.createdAt,
+          );
+          _conversationMemoryCache[conversationId] = updatedConversation;
+          _broadcastConversationUpdates();
+        }
+
+        // Save to disk
+        _saveToDisk();
+
+        logInfo('✅ Message deleted from cache: $messageId');
+      }
+    } catch (e) {
+      logInfo('⚠️ Error deleting message from cache: $e');
+    }
+  }
+
+  /// Delete multiple messages efficiently
+  Future<void> deleteMultipleMessagesFromCache(
+    String conversationId,
+    List<String> messageIds,
+  ) async {
+    try {
+      final messages = _messageMemoryCache[conversationId];
+      if (messages != null) {
+        messages.removeWhere((m) => messageIds.contains(m.id));
+
+        // Broadcast updated messages
+        _broadcastMessageUpdates(conversationId, messages);
+
+        // Update conversation if needed
+        final conversation = _conversationMemoryCache[conversationId];
+        if (conversation != null && messages.isNotEmpty) {
+          final latestMessage = messages.first;
+          final updatedConversation = conversation.copyWith(
+            lastMessage: latestMessage.content,
+            lastMessageTime: latestMessage.createdAt,
+            updatedAt: latestMessage.createdAt,
+          );
+          _conversationMemoryCache[conversationId] = updatedConversation;
+          _broadcastConversationUpdates();
+        }
+
+        // Save to disk
+        _saveToDisk();
+
+        logInfo('✅ ${messageIds.length} messages deleted from cache');
+      }
+    } catch (e) {
+      logInfo('⚠️ Error deleting multiple messages from cache: $e');
+    }
+  }
+
+  /// Clean up old messages (older than specified date) to free memory
+  Future<void> cleanupOldMessages(
+      {Duration olderThan = const Duration(days: 30)}) async {
+    try {
+      final cutoffDate = DateTime.now().subtract(olderThan);
+      int totalDeleted = 0;
+
+      for (final entry in _messageMemoryCache.entries) {
+        final conversationId = entry.key;
+        final messages = entry.value;
+
+        final initialCount = messages.length;
+        messages.removeWhere((m) => m.createdAt.isBefore(cutoffDate));
+
+        final deletedCount = initialCount - messages.length;
+        totalDeleted += deletedCount;
+
+        if (deletedCount > 0) {
+          _broadcastMessageUpdates(conversationId, messages);
+        }
+      }
+
+      if (totalDeleted > 0) {
+        _saveToDisk();
+        logInfo('🧹 Cleaned up $totalDeleted old messages');
+      }
+    } catch (e) {
+      logInfo('⚠️ Error during cleanup: $e');
+    }
+  }
+
+  /// Sync message deletion from server to cache (for remote deletions)
+  Future<void> syncMessageDeletion(
+      String conversationId, List<String> deletedMessageIds) async {
+    try {
+      await deleteMultipleMessagesFromCache(conversationId, deletedMessageIds);
+      logInfo('✅ Synced deletion of ${deletedMessageIds.length} messages');
+    } catch (e) {
+      logInfo('⚠️ Error syncing message deletion: $e');
     }
   }
 
@@ -876,9 +989,9 @@ extension VideoThumbnailCacheExt on AdvancedCacheSystem {
         }
       }
 
-      print('✅ Cleared all cached messages');
+      logInfo('✅ Cleared all cached messages');
     } catch (e) {
-      print('❌ Error clearing all messages: $e');
+      logInfo('❌ Error clearing all messages: $e');
     }
   }
 
@@ -901,9 +1014,9 @@ extension VideoThumbnailCacheExt on AdvancedCacheSystem {
       // Re-save conversations without the removed one
       await _saveToDisk();
 
-      print('✅ Removed conversation: $conversationId');
+      logInfo('✅ Removed conversation: $conversationId');
     } catch (e) {
-      print('❌ Error removing conversation: $e');
+      logInfo('❌ Error removing conversation: $e');
     }
   }
 }

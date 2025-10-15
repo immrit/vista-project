@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:async';
 import 'package:path_provider/path_provider.dart';
@@ -32,9 +33,9 @@ class VoiceCacheService {
       await _setupCacheDirectory();
       await _loadCacheInfo();
       await _cleanExpiredCache();
-      print('✅ Voice Cache Service initialized');
+      logInfo('✅ Voice Cache Service initialized');
     } catch (e) {
-      print('❌ Failed to initialize Voice Cache Service: $e');
+      logInfo('❌ Failed to initialize Voice Cache Service: $e');
     }
   }
 
@@ -60,7 +61,7 @@ class VoiceCacheService {
             .map((key, value) => MapEntry(key, VoiceCacheInfo.fromMap(value)));
       }
     } catch (e) {
-      print('⚠️ Error loading voice cache info: $e');
+      logInfo('⚠️ Error loading voice cache info: $e');
       _cacheInfo = {};
     }
   }
@@ -73,7 +74,7 @@ class VoiceCacheService {
           _cacheInfo.map((key, value) => MapEntry(key, value.toMap()));
       await prefs.setString(_cacheInfoKey, jsonEncode(cacheInfoMap));
     } catch (e) {
-      print('⚠️ Error saving voice cache info: $e');
+      logInfo('⚠️ Error saving voice cache info: $e');
     }
   }
 
@@ -103,7 +104,7 @@ class VoiceCacheService {
 
       return null;
     } catch (e) {
-      print('❌ Error caching voice file: $e');
+      logInfo('❌ Error caching voice file: $e');
       return null;
     }
   }
@@ -125,10 +126,10 @@ class VoiceCacheService {
       _updateCacheInfo(urlHash, filePath);
       await _saveCacheInfo();
 
-      print('✅ Voice file cached locally: $filePath');
+      logInfo('✅ Voice file cached locally: $filePath');
       return filePath;
     } catch (e) {
-      print('❌ Error caching local voice file: $e');
+      logInfo('❌ Error caching local voice file: $e');
       return null;
     }
   }
@@ -154,7 +155,7 @@ class VoiceCacheService {
       await sink.close();
       return file;
     } catch (e) {
-      print('❌ Error downloading voice file: $e');
+      logInfo('❌ Error downloading voice file: $e');
       return null;
     }
   }
@@ -206,7 +207,7 @@ class VoiceCacheService {
 
       return null;
     } catch (e) {
-      print('❌ Error getting cached file: $e');
+      logInfo('❌ Error getting cached file: $e');
       return null;
     }
   }
@@ -238,10 +239,10 @@ class VoiceCacheService {
 
       if (expiredKeys.isNotEmpty) {
         await _saveCacheInfo();
-        print('🧹 Cleaned ${expiredKeys.length} expired voice cache entries');
+        logInfo('🧹 Cleaned ${expiredKeys.length} expired voice cache entries');
       }
     } catch (e) {
-      print('❌ Error cleaning expired cache: $e');
+      logInfo('❌ Error cleaning expired cache: $e');
     }
   }
 
@@ -257,7 +258,7 @@ class VoiceCacheService {
         _cacheInfo.remove(urlHash);
       }
     } catch (e) {
-      print('❌ Error removing cache entry: $e');
+      logInfo('❌ Error removing cache entry: $e');
     }
   }
 
@@ -271,9 +272,9 @@ class VoiceCacheService {
 
       _cacheInfo.clear();
       await _saveCacheInfo();
-      print('🧹 All voice cache cleared');
+      logInfo('🧹 All voice cache cleared');
     } catch (e) {
-      print('❌ Error clearing all cache: $e');
+      logInfo('❌ Error clearing all cache: $e');
     }
   }
 
@@ -288,7 +289,7 @@ class VoiceCacheService {
 
       return totalSize;
     } catch (e) {
-      print('❌ Error getting cache size: $e');
+      logInfo('❌ Error getting cache size: $e');
       return 0;
     }
   }

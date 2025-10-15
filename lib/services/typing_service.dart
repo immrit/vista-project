@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import '../main.dart';
 
@@ -40,7 +41,7 @@ class TypingService {
         stopTyping(conversationId, userId);
       });
     } catch (e) {
-      print('⚠️ خطا در شروع تایپ: $e');
+      logInfo('⚠️ خطا در شروع تایپ: $e');
     }
   }
 
@@ -71,7 +72,7 @@ class TypingService {
       // بروزرسانی stream محلی
       _notifyTypingUpdate(conversationId);
     } catch (e) {
-      print('⚠️ خطا در متوقف کردن تایپ: $e');
+      logInfo('⚠️ خطا در متوقف کردن تایپ: $e');
     }
   }
 

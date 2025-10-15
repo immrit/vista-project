@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -23,23 +24,23 @@ class AnimationControllerService {
     await _saveSettings();
 
     if (enabled) {
-      print('🔋 Battery saver mode enabled - Animations disabled');
+      logInfo('🔋 Battery saver mode enabled - Animations disabled');
     } else {
-      print('⚡ Battery saver mode disabled - Animations enabled');
+      logInfo('⚡ Battery saver mode disabled - Animations enabled');
     }
   }
 
   /// تنظیم وضعیت انیمیشن‌ها
   Future<void> setAnimationsEnabled(bool enabled) async {
     if (_batterySaverMode) {
-      print('⚠️ Cannot enable animations while battery saver mode is active');
+      logInfo('⚠️ Cannot enable animations while battery saver mode is active');
       return;
     }
 
     _animationsEnabled = enabled;
     await _saveSettings();
 
-    print('🎬 Animations ${enabled ? 'enabled' : 'disabled'}');
+    logInfo('🎬 Animations ${enabled ? 'enabled' : 'disabled'}');
   }
 
   /// بارگذاری تنظیمات از SharedPreferences
@@ -52,7 +53,7 @@ class AnimationControllerService {
       print(
           '📱 Animation settings loaded: enabled=$_animationsEnabled, battery_saver=$_batterySaverMode');
     } catch (e) {
-      print('❌ Error loading animation settings: $e');
+      logInfo('❌ Error loading animation settings: $e');
     }
   }
 
@@ -63,7 +64,7 @@ class AnimationControllerService {
       await prefs.setBool('animations_enabled', _animationsEnabled);
       await prefs.setBool('battery_saver_mode', _batterySaverMode);
     } catch (e) {
-      print('❌ Error saving animation settings: $e');
+      logInfo('❌ Error saving animation settings: $e');
     }
   }
 

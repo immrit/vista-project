@@ -588,7 +588,8 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+              color:
+                  Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
@@ -988,8 +989,9 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
                 if (mounted) {
                   Navigator.of(context).pop();
                 }
-              }).catchError(
-                      (e) => _showSnackBar('خطا در حذف گفتگو', isError: true));
+              }).catchError((e) {
+                _showSnackBar('خطا در حذف گفتگو', isError: true);
+              });
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('حذف'),

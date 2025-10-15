@@ -1,3 +1,4 @@
+import '../../../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -165,11 +166,11 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
               setState(() {});
             }
           } catch (e) {
-            debugPrint('Error initializing video player: $e');
+            logDebug('Error initializing video player: $e');
             _showError('خطا در بارگذاری ویدیو: $e');
           }
 
-          debugPrint('ویدیو در نسخه وب انتخاب شد. بدون برش، آماده پیش‌نمایش.');
+          logDebug('ویدیو در نسخه وب انتخاب شد. بدون برش، آماده پیش‌نمایش.');
 
           // نمایش اطلاعات کاربر و محدودیت زمانی در یک اسنک‌بار
           _showUserBadgeInfo(currentUser);
@@ -216,7 +217,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                     setState(() {});
                   }
                 } catch (e) {
-                  debugPrint('Error initializing video player: $e');
+                  logDebug('Error initializing video player: $e');
                   _showError('خطا در بارگذاری ویدیو: $e');
                 }
 
@@ -224,16 +225,16 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                     'ویدیو در موبایل برش خورد و انتخاب شد: ${trimmedFile.path}');
               } else {
                 _showError('فایل برش خورده ویدیو پیدا نشد.');
-                debugPrint('فایل ویدیوی برش خورده وجود ندارد: $trimmedPath');
+                logDebug('فایل ویدیوی برش خورده وجود ندارد: $trimmedPath');
               }
             } else {
-              debugPrint('برش ویدیو لغو شد یا با خطا مواجه شد.');
+              logDebug('برش ویدیو لغو شد یا با خطا مواجه شد.');
             }
           }
         }
       }
     } catch (e, s) {
-      debugPrint('خطا در انتخاب/برش ویدیو: $e\n$s');
+      logDebug('خطا در انتخاب/برش ویدیو: $e\n$s');
       _showError(
           'خطایی در انتخاب یا پردازش ویدیو رخ داد. لطفاً دوباره تلاش کنید.');
     }
@@ -349,7 +350,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
 
   Future<void> _initializeVideoPlayerMobile(File file) async {
     try {
-      debugPrint('Initializing video player with file: ${file.path}');
+      logDebug('Initializing video player with file: ${file.path}');
       await _videoPlayerController?.dispose();
 
       if (!file.existsSync()) {
@@ -362,7 +363,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       await _videoPlayerController!.play(); // پخش ویدیو
       setState(() {}); // اعمال تغییرات در UI
     } catch (e) {
-      debugPrint('Error initializing video player: $e');
+      logDebug('Error initializing video player: $e');
       _showError('خطا در بارگذاری ویدیو');
     }
   }
@@ -394,7 +395,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
         setState(() {}); // اعمال تغییرات در UI
       }
     } catch (e) {
-      debugPrint('Error initializing web video player: $e');
+      logDebug('Error initializing web video player: $e');
       _showError('خطا در بارگذاری ویدیو');
     }
   }
@@ -635,7 +636,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
         _showSnackBar('پست با موفقیت منتشر شد', isError: false);
       }
     } catch (e) {
-      debugPrint('خطا در ارسال پست: $e');
+      logDebug('خطا در ارسال پست: $e');
       if (mounted) {
         String errorMessage = 'خطا در ارسال پست';
         if (e.toString().contains('storage')) {

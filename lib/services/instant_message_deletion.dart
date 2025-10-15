@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/message_model.dart';
@@ -43,7 +44,7 @@ class InstantMessageDeletion {
         // حذف فوری از همه providers
         _removeFromAllProviders(messageId, providers);
 
-        debugPrint('✅ پیام فوراً از UI حذف شد: $messageId');
+        logDebug('✅ پیام فوراً از UI حذف شد: $messageId');
       }
 
       // 2️⃣ SERVER REQUEST - در background (فقط اگر پیام temporary نیست)
@@ -67,14 +68,14 @@ class InstantMessageDeletion {
           }
         }
       } else {
-        debugPrint('⚠️ پیام temporary است، حذف از سرور انجام نشد: $messageId');
+        logDebug('⚠️ پیام temporary است، حذف از سرور انجام نشد: $messageId');
       }
 
       // 3️⃣ SUCCESS - پاک کردن backup
       _deletionBackup.remove(messageId);
       onSuccess?.call();
 
-      debugPrint('✅ حذف پیام در سرور تأیید شد: $messageId');
+      logDebug('✅ حذف پیام در سرور تأیید شد: $messageId');
     } catch (e) {
       // 4️⃣ ROLLBACK - بازگردانی پیام در صورت خطا
       final backedUpMessage = _deletionBackup.remove(messageId);
@@ -82,13 +83,13 @@ class InstantMessageDeletion {
         final providers = _getAllMessageProviders(conversationId, ref);
         _addToAllProviders(backedUpMessage, providers);
 
-        debugPrint('🔄 پیام به علت خطا بازگردانده شد: $messageId');
+        logDebug('🔄 پیام به علت خطا بازگردانده شد: $messageId');
       }
 
       onError?.call();
 
       // نمایش خطا به کاربر
-      debugPrint('❌ خطا در حذف پیام: $e');
+      logDebug('❌ خطا در حذف پیام: $e');
       rethrow;
     }
   }
@@ -104,7 +105,7 @@ class InstantMessageDeletion {
           ref.read(conversationMessagesProvider(conversationId).notifier);
       providers['chat'] = chatProvider;
     } catch (e) {
-      debugPrint('Chat provider not found: $e');
+      logDebug('Chat provider not found: $e');
     }
 
     try {
@@ -113,7 +114,7 @@ class InstantMessageDeletion {
           ref.read(lazyMessagesProvider(conversationId).notifier);
       providers['lazy'] = lazyProvider;
     } catch (e) {
-      debugPrint('Lazy provider not found: $e');
+      logDebug('Lazy provider not found: $e');
     }
 
     try {
@@ -122,7 +123,7 @@ class InstantMessageDeletion {
           ref.read(unifiedMessagesProvider(conversationId).notifier);
       providers['unified'] = unifiedProvider;
     } catch (e) {
-      debugPrint('Unified provider not found: $e');
+      logDebug('Unified provider not found: $e');
     }
 
     try {
@@ -133,7 +134,7 @@ class InstantMessageDeletion {
         providers['improved'] = improvedProvider;
       }
     } catch (e) {
-      debugPrint('Improved provider not found or disposed: $e');
+      logDebug('Improved provider not found or disposed: $e');
     }
 
     return providers;
@@ -160,10 +161,10 @@ class InstantMessageDeletion {
             }
           } catch (e) {
             if (e.toString().contains('dispose')) {
-              debugPrint('⚠️ LazyMessagesNotifier disposed, skipping...');
+              logDebug('⚠️ LazyMessagesNotifier disposed, skipping...');
               continue;
             }
-            debugPrint('Error accessing LazyMessagesNotifier state: $e');
+            logDebug('Error accessing LazyMessagesNotifier state: $e');
           }
         } else if (provider.runtimeType
             .toString()
@@ -182,17 +183,17 @@ class InstantMessageDeletion {
             }
           } catch (e) {
             if (e.toString().contains('dispose')) {
-              debugPrint('⚠️ ImprovedChatProvider disposed, skipping...');
+              logDebug('⚠️ ImprovedChatProvider disposed, skipping...');
               continue;
             }
-            debugPrint('Error accessing ImprovedChatProvider state: $e');
+            logDebug('Error accessing ImprovedChatProvider state: $e');
           }
         }
       } catch (e) {
         if (e.toString().contains('dispose')) {
-          debugPrint('⚠️ Provider disposed, skipping...');
+          logDebug('⚠️ Provider disposed, skipping...');
         } else {
-          debugPrint('Error finding message in provider: $e');
+          logDebug('Error finding message in provider: $e');
         }
       }
     }
@@ -220,7 +221,7 @@ class InstantMessageDeletion {
             provider.removeMessage(messageId);
           } catch (e) {
             if (e.toString().contains('dispose')) {
-              debugPrint('⚠️ LazyMessagesNotifier disposed, skipping...');
+              logDebug('⚠️ LazyMessagesNotifier disposed, skipping...');
               continue;
             }
             rethrow;
@@ -236,19 +237,19 @@ class InstantMessageDeletion {
             provider.deleteMessage(messageId);
           } catch (e) {
             if (e.toString().contains('dispose')) {
-              debugPrint('⚠️ ImprovedChatProvider disposed, skipping...');
+              logDebug('⚠️ ImprovedChatProvider disposed, skipping...');
               continue;
             }
-            debugPrint('❌ خطا در حذف از ImprovedChatProvider: $e');
+            logDebug('❌ خطا در حذف از ImprovedChatProvider: $e');
           }
         }
 
-        debugPrint('✅ پیام از $providerType provider حذف شد');
+        logDebug('✅ پیام از $providerType provider حذف شد');
       } catch (e) {
         if (e.toString().contains('dispose')) {
-          debugPrint('⚠️ Provider ${entry.key} disposed, skipping...');
+          logDebug('⚠️ Provider ${entry.key} disposed, skipping...');
         } else {
-          debugPrint('❌ خطا در حذف از ${entry.key}: $e');
+          logDebug('❌ خطا در حذف از ${entry.key}: $e');
         }
       }
     }
@@ -274,7 +275,7 @@ class InstantMessageDeletion {
             provider.addNewMessage(message);
           } catch (e) {
             if (e.toString().contains('dispose')) {
-              debugPrint('⚠️ LazyMessagesNotifier disposed, skipping...');
+              logDebug('⚠️ LazyMessagesNotifier disposed, skipping...');
               continue;
             }
             rethrow;
@@ -293,19 +294,19 @@ class InstantMessageDeletion {
             provider.state = provider.state.copyWith(messages: updatedMessages);
           } catch (e) {
             if (e.toString().contains('dispose')) {
-              debugPrint('⚠️ ImprovedChatProvider disposed, skipping...');
+              logDebug('⚠️ ImprovedChatProvider disposed, skipping...');
               continue;
             }
-            debugPrint('❌ خطا در آپدیت ImprovedChatProvider: $e');
+            logDebug('❌ خطا در آپدیت ImprovedChatProvider: $e');
           }
         }
 
-        debugPrint('✅ پیام به $providerType provider بازگردانده شد');
+        logDebug('✅ پیام به $providerType provider بازگردانده شد');
       } catch (e) {
         if (e.toString().contains('dispose')) {
-          debugPrint('⚠️ Provider ${entry.key} disposed, skipping...');
+          logDebug('⚠️ Provider ${entry.key} disposed, skipping...');
         } else {
-          debugPrint('❌ خطا در بازگردانی به ${entry.key}: $e');
+          logDebug('❌ خطا در بازگردانی به ${entry.key}: $e');
         }
       }
     }
@@ -345,7 +346,7 @@ class InstantMessageDeletion {
             allMessages.addAll(provider.state.messages);
           }
         } catch (e) {
-          debugPrint('Error backing up messages: $e');
+          logDebug('Error backing up messages: $e');
         }
       }
 
@@ -361,7 +362,7 @@ class InstantMessageDeletion {
       // پاک کردن فوری همه پیام‌ها
       _clearAllProviders(providers);
 
-      debugPrint('✅ گفتگو فوراً از UI پاک شد: $conversationId');
+      logDebug('✅ گفتگو فوراً از UI پاک شد: $conversationId');
 
       // 2️⃣ SERVER REQUEST
       await ImprovedErrorHandler.handleMessageOperation(() async {
@@ -377,11 +378,11 @@ class InstantMessageDeletion {
       _deletionBackup.remove('conversation_$conversationId');
       onSuccess?.call();
 
-      debugPrint('✅ پاک کردن گفتگو در سرور تأیید شد: $conversationId');
+      logDebug('✅ پاک کردن گفتگو در سرور تأیید شد: $conversationId');
     } catch (e) {
       // 4️⃣ ROLLBACK در صورت خطا
       onError?.call();
-      debugPrint('❌ خطا در پاک کردن گفتگو: $e');
+      logDebug('❌ خطا در پاک کردن گفتگو: $e');
       rethrow;
     }
   }
@@ -410,9 +411,9 @@ class InstantMessageDeletion {
           provider.state = provider.state.copyWith(messages: []);
         }
 
-        debugPrint('✅ همه پیام‌ها از ${entry.key} provider پاک شد');
+        logDebug('✅ همه پیام‌ها از ${entry.key} provider پاک شد');
       } catch (e) {
-        debugPrint('❌ خطا در پاک کردن ${entry.key}: $e');
+        logDebug('❌ خطا در پاک کردن ${entry.key}: $e');
       }
     }
   }

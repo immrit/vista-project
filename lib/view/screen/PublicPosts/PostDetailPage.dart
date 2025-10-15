@@ -1,3 +1,4 @@
+import '../../../security/logging_utility.dart';
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -58,7 +59,7 @@ final postDetailProvider =
       'verification_type': profile['verification_type'],
     });
   } catch (e) {
-    print('Error fetching post: $e');
+    logInfo('Error fetching post: $e');
     throw Exception('خطا در بارگذاری پست: $e');
   }
 });
@@ -1405,7 +1406,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
           ),
         );
       } catch (e) {
-        print('خطا در گزارش تخلف: $e');
+        logInfo('خطا در گزارش تخلف: $e');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('خطا در گزارش کامنت.'),

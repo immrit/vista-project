@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/message_model.dart';
@@ -71,7 +72,7 @@ class ImprovedChatProvider extends StateNotifier<ImprovedChatState> {
         hasMore: filteredMessages.length >= 20,
       );
     } catch (e) {
-      print('خطا در بارگذاری پیام‌های کش شده: $e');
+      logInfo('خطا در بارگذاری پیام‌های کش شده: $e');
     }
   }
 

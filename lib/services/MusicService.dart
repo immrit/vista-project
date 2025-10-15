@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:io';
 import 'package:path/path.dart';
 import '/main.dart';
@@ -40,7 +41,7 @@ class MusicService {
 
       return coverUrl;
     } catch (e) {
-      print('خطا در آپلود کاور: $e');
+      logInfo('خطا در آپلود کاور: $e');
       return null;
     }
   }
@@ -101,7 +102,7 @@ class MusicService {
           .from('music')
           .update({'play_count': supabase.rpc('increment')}).eq('id', musicId);
     } catch (e) {
-      print('خطا در افزایش تعداد پخش: $e');
+      logInfo('خطا در افزایش تعداد پخش: $e');
       // عدم throw خطا برای جلوگیری از توقف پخش موزیک
     }
   }

@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -21,7 +22,7 @@ class SmartShareService {
 
       await Share.share(shareText);
     } catch (e) {
-      print('Error sharing post: $e');
+      logInfo('Error sharing post: $e');
       if (context != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('خطا در اشتراک‌گذاری: $e')),
@@ -40,7 +41,7 @@ class SmartShareService {
 
       await Share.share(shareText);
     } catch (e) {
-      print('Error sharing profile: $e');
+      logInfo('Error sharing profile: $e');
       if (context != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('خطا در اشتراک‌گذاری: $e')),
@@ -59,7 +60,7 @@ class SmartShareService {
 
       await Share.share(shareText);
     } catch (e) {
-      print('Error sharing feed: $e');
+      logInfo('Error sharing feed: $e');
       if (context != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('خطا در اشتراک‌گذاری: $e')),
@@ -78,7 +79,7 @@ class SmartShareService {
         throw Exception('Could not launch $url');
       }
     } catch (e) {
-      print('Error opening URL: $e');
+      logInfo('Error opening URL: $e');
     }
   }
 
@@ -118,7 +119,7 @@ class SmartShareService {
         );
       }
     } catch (e) {
-      print('Error sharing with choice: $e');
+      logInfo('Error sharing with choice: $e');
     }
   }
 

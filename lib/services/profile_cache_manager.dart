@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import '../main.dart';
 
@@ -86,7 +87,7 @@ class ProfileCacheManager {
 
       return completer.future;
     } catch (e) {
-      print('⚠️ Error fetching profile for $userId: $e');
+      logInfo('⚠️ Error fetching profile for $userId: $e');
       _pendingRequests.remove(userId);
       completer.complete(null);
       return null;
@@ -144,7 +145,7 @@ class ProfileCacheManager {
 
       return results;
     } catch (e) {
-      print('⚠️ Error in batch profile fetch: $e');
+      logInfo('⚠️ Error in batch profile fetch: $e');
       // Return null for all users on error
       return {for (final userId in userIds) userId: null};
     }

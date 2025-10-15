@@ -1,3 +1,4 @@
+import '../../../../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../model/ProfileModel.dart';
@@ -22,7 +23,7 @@ class FollowingScreen extends ConsumerWidget {
         data: (following) => _buildFollowingList(following),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stackTrace) {
-          debugPrint('Error fetching following: $error'); // لاگ خطا
+          logDebug('Error fetching following: $error'); // لاگ خطا
           return Center(
             child: Text(
               'خطا در دریافت دنبال‌شده‌ها: ${error.toString()}',

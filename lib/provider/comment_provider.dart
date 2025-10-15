@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../model/CommentModel.dart';
@@ -630,7 +631,7 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
         loadingReplies: updatedLoadingReplies,
       );
     } catch (e) {
-      print('Error loading replies: $e');
+      logInfo('Error loading replies: $e');
       final updatedLoadingReplies =
           Map<String, bool>.from(state.loadingReplies);
       updatedLoadingReplies.remove(commentId);

@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -64,7 +65,7 @@ class VoiceActivityDetectionService {
     _isInitialized = true;
     _resetState();
 
-    print('🎤 Voice Activity Detection Service initialized');
+    logInfo('🎤 Voice Activity Detection Service initialized');
   }
 
   /// پردازش داده‌های صوتی
@@ -306,7 +307,7 @@ class VoiceActivityDetectionService {
     double? minSpeechDuration,
   }) {
     // این متد می‌تواند برای تنظیم پویای آستانه‌ها استفاده شود
-    print('🎛️ VAD thresholds updated');
+    logInfo('🎛️ VAD thresholds updated');
   }
 
   /// پاکسازی منابع
@@ -316,7 +317,7 @@ class VoiceActivityDetectionService {
     _resetState();
     _isInitialized = false;
 
-    print('🧹 Voice Activity Detection Service disposed');
+    logInfo('🧹 Voice Activity Detection Service disposed');
   }
 }
 

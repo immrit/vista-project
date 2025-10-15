@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../DB/settings_cache_service.dart';
 import '../main.dart';
@@ -61,7 +62,7 @@ class UserSettingsNotifier
     try {
       return await _settingsCache.getUserSettings(userId);
     } catch (e) {
-      print('⚠️ Failed to get user settings: $e');
+      logInfo('⚠️ Failed to get user settings: $e');
       return null;
     }
   }
@@ -78,7 +79,7 @@ class UserSettingsNotifier
           'updated_at': DateTime.now().toIso8601String(),
         });
       } catch (e) {
-        print('⚠️ Failed to sync settings to server: $e');
+        logInfo('⚠️ Failed to sync settings to server: $e');
         // در صورت خطا، تنظیمات در کش باقی می‌ماند
       }
 
@@ -116,7 +117,7 @@ class AppSettingsNotifier
     try {
       return await _settingsCache.getAppSettings();
     } catch (e) {
-      print('⚠️ Failed to get app settings: $e');
+      logInfo('⚠️ Failed to get app settings: $e');
       return {};
     }
   }
@@ -159,7 +160,7 @@ class PrivacySettingsNotifier
     try {
       return await _settingsCache.getPrivacySettings(userId);
     } catch (e) {
-      print('⚠️ Failed to get privacy settings: $e');
+      logInfo('⚠️ Failed to get privacy settings: $e');
       return null;
     }
   }
@@ -176,7 +177,7 @@ class PrivacySettingsNotifier
           'updated_at': DateTime.now().toIso8601String(),
         });
       } catch (e) {
-        print('⚠️ Failed to sync privacy settings to server: $e');
+        logInfo('⚠️ Failed to sync privacy settings to server: $e');
         // در صورت خطا، تنظیمات در کش باقی می‌ماند
       }
 
@@ -216,7 +217,7 @@ class NotificationSettingsNotifier
     try {
       return await _settingsCache.getNotificationSettings(userId);
     } catch (e) {
-      print('⚠️ Failed to get notification settings: $e');
+      logInfo('⚠️ Failed to get notification settings: $e');
       return null;
     }
   }
@@ -233,7 +234,7 @@ class NotificationSettingsNotifier
           'updated_at': DateTime.now().toIso8601String(),
         });
       } catch (e) {
-        print('⚠️ Failed to sync notification settings to server: $e');
+        logInfo('⚠️ Failed to sync notification settings to server: $e');
         // در صورت خطا، تنظیمات در کش باقی می‌ماند
       }
 

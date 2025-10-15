@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/message_model.dart';
@@ -79,14 +80,14 @@ class SimpleAnimatedMessage extends ConsumerWidget {
         enableAnimation: true,
         onSuccess: () {
           onDeleted?.call();
-          debugPrint('✅ پیام با انیمیشن حذف شد!');
+          logDebug('✅ پیام با انیمیشن حذف شد!');
         },
         onError: () {
-          debugPrint('❌ خطا در حذف پیام');
+          logDebug('❌ خطا در حذف پیام');
         },
       );
     } catch (e) {
-      debugPrint('خطا در حذف انیمیشنی: $e');
+      logDebug('خطا در حذف انیمیشنی: $e');
     }
   }
 
@@ -99,14 +100,14 @@ class SimpleAnimatedMessage extends ConsumerWidget {
         enableAnimation: false,
         onSuccess: () {
           onDeleted?.call();
-          debugPrint('✅ پیام فوراً حذف شد!');
+          logDebug('✅ پیام فوراً حذف شد!');
         },
         onError: () {
-          debugPrint('❌ خطا در حذف پیام');
+          logDebug('❌ خطا در حذف پیام');
         },
       );
     } catch (e) {
-      debugPrint('خطا در حذف فوری: $e');
+      logDebug('خطا در حذف فوری: $e');
     }
   }
 }

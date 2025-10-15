@@ -1,3 +1,4 @@
+import '../../security/logging_utility.dart';
 import 'package:Vista/view/util/widgets.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -118,7 +119,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
     try {
       _database = await DatabaseManager().getRecentSearchesDatabase();
     } catch (e) {
-      debugPrint('خطا در باز کردن دیتابیس Sembast: $e');
+      logDebug('خطا در باز کردن دیتابیس Sembast: $e');
     }
   }
 
@@ -154,7 +155,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
         }
       }
     } catch (e) {
-      debugPrint('خطا در ذخیره جستجوی اخیر: $e');
+      logDebug('خطا در ذخیره جستجوی اخیر: $e');
     }
   }
 
@@ -325,7 +326,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
         ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
       return searches;
     } catch (e) {
-      debugPrint('خطا در دریافت جستجوهای اخیر: $e');
+      logDebug('خطا در دریافت جستجوهای اخیر: $e');
       return [];
     }
   }
@@ -337,7 +338,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
       await _store.record(query).delete(_database!);
       setState(() {}); // Refresh the UI
     } catch (e) {
-      debugPrint('خطا در حذف جستجوی اخیر: $e');
+      logDebug('خطا در حذف جستجوی اخیر: $e');
     }
   }
 
@@ -427,7 +428,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
       await _store.delete(_database!);
       setState(() {}); // Refresh the UI
     } catch (e) {
-      debugPrint('خطا در پاک کردن تمام جستجوهای اخیر: $e');
+      logDebug('خطا در پاک کردن تمام جستجوهای اخیر: $e');
     }
   }
 

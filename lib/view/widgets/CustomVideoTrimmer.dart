@@ -1,3 +1,4 @@
+import '../../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:async';
@@ -88,7 +89,7 @@ class _CustomVideoTrimmerState extends ConsumerState<CustomVideoTrimmer> {
       // شروع بارگذاری تصاویر بندانگشتی
       _loadThumbnails();
     } catch (e) {
-      debugPrint('خطا در راه‌اندازی پخش‌کننده: $e');
+      logDebug('خطا در راه‌اندازی پخش‌کننده: $e');
       _showError('خطا در بارگذاری ویدیو');
     }
   }
@@ -126,7 +127,7 @@ class _CustomVideoTrimmerState extends ConsumerState<CustomVideoTrimmer> {
       // بازگشت به موقعیت اولیه پخش
       await _controller.seekTo(_getStartPosition());
     } catch (e) {
-      debugPrint('خطا در بارگذاری تصاویر بندانگشتی: $e');
+      logDebug('خطا در بارگذاری تصاویر بندانگشتی: $e');
       setState(() => _loadingThumbnails = false);
     }
   }
@@ -210,7 +211,7 @@ class _CustomVideoTrimmerState extends ConsumerState<CustomVideoTrimmer> {
       final endMs = (_endPos * _videoDuration.inMilliseconds).toInt();
       final duration = endMs - startMs;
 
-      debugPrint('شروع برش ویدیو: شروع=${startMs}ms، مدت=${duration}ms');
+      logDebug('شروع برش ویدیو: شروع=${startMs}ms، مدت=${duration}ms');
 
       // توقف پخش قبل از برش
       await _controller.pause();
@@ -220,7 +221,7 @@ class _CustomVideoTrimmerState extends ConsumerState<CustomVideoTrimmer> {
       _progressSubscription?.cancel();
       _progressSubscription =
           VideoCompress.compressProgress$.subscribe((progress) {
-        debugPrint('پیشرفت فشرده‌سازی: $progress%');
+        logDebug('پیشرفت فشرده‌سازی: $progress%');
         setState(() => _compressionProgress = progress.round());
       });
 
@@ -237,14 +238,14 @@ class _CustomVideoTrimmerState extends ConsumerState<CustomVideoTrimmer> {
         throw Exception('خطا در ذخیره ویدیو');
       }
 
-      debugPrint('ویدیو با موفقیت برش خورد: ${result.file!.path}');
+      logDebug('ویدیو با موفقیت برش خورد: ${result.file!.path}');
 
       // برگرداندن نتیجه
       if (mounted) {
         Navigator.pop(context, result.file);
       }
     } catch (e) {
-      debugPrint('خطا در _trimVideo: $e');
+      logDebug('خطا در _trimVideo: $e');
       _showError(e.toString());
     } finally {
       _progressSubscription?.cancel();

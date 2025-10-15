@@ -1,3 +1,4 @@
+import '../../../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../main.dart';
@@ -77,21 +78,21 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen>
     setState(() => _isLoading = true);
 
     try {
-      print('📧 ارسال کد بازیابی به ایمیل: ${_emailController.text.trim()}');
+      logInfo('📧 ارسال کد بازیابی به ایمیل: ${_emailController.text.trim()}');
       await supabase.auth.resetPasswordForEmail(
         _emailController.text.trim(),
         redirectTo: 'vista://auth/reset-password',
       );
-      print('✅ کد بازیابی با موفقیت ارسال شد');
+      logInfo('✅ کد بازیابی با موفقیت ارسال شد');
 
       setState(() => _isEmailSent = true);
       _showSuccessSnackBar('کد بازیابی به ایمیل شما ارسال شد');
 
       // هدایت به صفحه وارد کردن کد بعد از ۲ ثانیه
-      print('⏰ هدایت به صفحه کد بعد از ۲ ثانیه...');
+      logInfo('⏰ هدایت به صفحه کد بعد از ۲ ثانیه...');
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted) {
-          print('🚀 هدایت به صفحه وارد کردن کد');
+          logInfo('🚀 هدایت به صفحه وارد کردن کد');
           Navigator.pushNamed(
             context,
             '/reset-password-code',
@@ -100,9 +101,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen>
         }
       });
     } catch (error) {
-      print('🚨 خطای ارسال ایمیل: $error');
-      print('🚨 نوع خطا: ${error.runtimeType}');
-      print('🚨 جزئیات خطا: ${error.toString()}');
+      logInfo('🚨 خطای ارسال ایمیل: $error');
+      logInfo('🚨 نوع خطا: ${error.runtimeType}');
+      logInfo('🚨 جزئیات خطا: ${error.toString()}');
       _showErrorSnackBar('خطا در ارسال ایمیل. لطفاً دوباره تلاش کنید');
     } finally {
       if (mounted) {

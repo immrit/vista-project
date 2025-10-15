@@ -1,3 +1,4 @@
+import '../../security/logging_utility.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '/main.dart';
@@ -70,15 +71,15 @@ class _SplashScreenState extends State<SplashScreen> {
 
       if (session == null) {
         // کاربر لاگین نیست - بررسی امنیت و انتقال به صفحه مناسب
-        print('👤 User not authenticated, redirecting to auth');
+        logInfo('👤 User not authenticated, redirecting to auth');
         await _handleUnauthenticatedUser();
       } else {
         // کاربر لاگین است - بررسی امنیت و انتقال به صفحه مناسب
-        print('👤 User authenticated, proceeding to home');
+        logInfo('👤 User authenticated, proceeding to home');
         await _handleAuthenticatedUser();
       }
     } catch (e) {
-      print('❌ Error in splash screen: $e');
+      logInfo('❌ Error in splash screen: $e');
       // در صورت خطا، به صفحه ورود منتقل شود
       if (mounted) {
         Navigator.of(context).pushReplacementNamed('/auth');
@@ -125,7 +126,7 @@ class _SplashScreenState extends State<SplashScreen> {
       // بررسی اولیه: آیا Supabase session معتبر است؟
       final session = supabase.auth.currentSession;
       if (session == null) {
-        print('⚠️ No Supabase session found, redirecting to auth');
+        logInfo('⚠️ No Supabase session found, redirecting to auth');
         await _handleUnauthenticatedUser();
         return;
       }
@@ -135,9 +136,9 @@ class _SplashScreenState extends State<SplashScreen> {
       try {
         isSessionValid =
             await AdvancedSecurityService.validateSessionSecurity();
-        print('🔐 Session validation result: $isSessionValid');
+        logInfo('🔐 Session validation result: $isSessionValid');
       } catch (e) {
-        print('⚠️ Session validation failed with error: $e');
+        logInfo('⚠️ Session validation failed with error: $e');
         // در صورت خطا در validation، session را معتبر در نظر بگیر
         // مگر اینکه مشکل جدی باشد
         isSessionValid = true;
@@ -172,7 +173,7 @@ class _SplashScreenState extends State<SplashScreen> {
         Navigator.pushReplacementNamed(context, '/home');
       }
     } catch (e) {
-      print('⚠️ Error in _handleAuthenticatedUser: $e');
+      logInfo('⚠️ Error in _handleAuthenticatedUser: $e');
       // در صورت خطا، انتقال مستقیم به صفحه اصلی
       Navigator.pushReplacementNamed(context, '/home');
     }

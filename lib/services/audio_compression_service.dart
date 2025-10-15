@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
@@ -31,7 +32,7 @@ class AudioCompressionService {
     if (_isInitialized) return;
 
     _isInitialized = true;
-    print('🗜️ Audio Compression Service initialized');
+    logInfo('🗜️ Audio Compression Service initialized');
   }
 
   /// فشرده‌سازی فایل صوتی
@@ -104,7 +105,7 @@ class AudioCompressionService {
 
       return outputFile;
     } catch (e) {
-      print('❌ خطا در فشرده‌سازی: $e');
+      logInfo('❌ خطا در فشرده‌سازی: $e');
       onStatusChanged?.call('خطا در فشرده‌سازی: $e');
       return null;
     }
@@ -373,7 +374,7 @@ class AudioCompressionService {
   /// پاکسازی منابع
   void dispose() {
     _isInitialized = false;
-    print('🧹 Audio Compression Service disposed');
+    logInfo('🧹 Audio Compression Service disposed');
   }
 }
 

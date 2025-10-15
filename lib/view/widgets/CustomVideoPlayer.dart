@@ -1,3 +1,4 @@
+import '../../security/logging_utility.dart';
 import 'dart:async';
 import 'package:Vista/view/widgets/VideoPlayerConfig.dart';
 import 'package:flutter/material.dart';
@@ -137,12 +138,12 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
       // در غیر این صورت از کش سفارشی استفاده می‌کنیم
       if (_isDataSaverMode || videoQuality == 'low') {
         _controller = VideoPlayerController.network(widget.videoUrl);
-        print('🎥 Using network video (low quality/data saver mode)');
+        logInfo('🎥 Using network video (low quality/data saver mode)');
       } else {
         final file =
             await _config.videoCacheManager.getSingleFile(widget.videoUrl);
         _controller = VideoPlayerController.file(file);
-        print('🎥 Using cached video (high quality)');
+        logInfo('🎥 Using cached video (high quality)');
       }
 
       await _controller?.initialize();
@@ -178,7 +179,7 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
         }
       }
     } catch (e) {
-      print('Error initializing player: $e');
+      logInfo('Error initializing player: $e');
       if (mounted) {
         setState(() {
           _isBuffering = false;

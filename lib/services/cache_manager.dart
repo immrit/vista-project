@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
@@ -42,11 +43,11 @@ class UnifiedCacheManager {
     if (_isInitialized) return;
 
     try {
-      print('🚀 Initializing UnifiedCacheManager...');
+      logInfo('🚀 Initializing UnifiedCacheManager...');
 
       // استفاده از DefaultCacheManager به جای ایجاد چندین CacheManager جداگانه
       // این کار تداخل SQLite را کاهش می‌دهد
-      print('📸 Initializing unified cache manager...');
+      logInfo('📸 Initializing unified cache manager...');
 
       // ایجاد یک CacheManager واحد با تنظیمات بهینه
       storyInstance = DefaultCacheManager();
@@ -62,11 +63,11 @@ class UnifiedCacheManager {
       // شروع پاکسازی هوشمند
       _startSmartCleanup();
     } catch (e) {
-      print('❌ Failed to initialize UnifiedCacheManager: $e');
+      logInfo('❌ Failed to initialize UnifiedCacheManager: $e');
       // در صورت خطا، بدون کش ادامه بده
       _disabled = true;
       _isInitialized = true;
-      print('⚠️ Continuing without cache managers due to initialization error');
+      logInfo('⚠️ Continuing without cache managers due to initialization error');
     }
   }
 
@@ -279,7 +280,7 @@ class UnifiedCacheManager {
         // wallpaper_cache حذف شد چون فایل‌های محلی هستند
       };
     } catch (e) {
-      print('خطا در دریافت آمار کش تصاویر: $e');
+      logInfo('خطا در دریافت آمار کش تصاویر: $e');
       return {
         'story_cache': {'items': 0, 'size_mb': 0.0},
         'post_cache': {'items': 0, 'size_mb': 0.0},
@@ -320,7 +321,7 @@ class UnifiedCacheManager {
 
       return totalSize / (1024 * 1024); // تبدیل به مگابایت
     } catch (e) {
-      print('خطا در محاسبه اندازه کش $cacheKey: $e');
+      logInfo('خطا در محاسبه اندازه کش $cacheKey: $e');
       return _getSimulatedCacheSize(cacheKey);
     }
   }
@@ -373,7 +374,7 @@ class UnifiedCacheManager {
 
       return count;
     } catch (e) {
-      print('خطا در شمارش فایل‌های کش $cacheKey: $e');
+      logInfo('خطا در شمارش فایل‌های کش $cacheKey: $e');
       return _getSimulatedCacheFileCount(cacheKey);
     }
   }
@@ -439,7 +440,7 @@ class UnifiedCacheManager {
       itemsRemoved += 100; // تخمین
       spaceFreed += 25.0; // تخمین
     } catch (e) {
-      print('خطا در پاکسازی تصاویر قدیمی: $e');
+      logInfo('خطا در پاکسازی تصاویر قدیمی: $e');
     }
 
     return {
@@ -459,7 +460,7 @@ class UnifiedCacheManager {
       itemsRemoved += 100; // تخمین تعداد پیام‌های حذف شده
       spaceFreed += 10.0; // تخمین فضای آزاد شده (MB)
     } catch (e) {
-      print('خطا در پاکسازی پیام‌های قدیمی: $e');
+      logInfo('خطا در پاکسازی پیام‌های قدیمی: $e');
     }
 
     return {
@@ -503,7 +504,7 @@ class UnifiedCacheManager {
           }
         }
       } catch (e) {
-        print('خطا در پاکسازی فایل‌های موقت Vista: $e');
+        logInfo('خطا در پاکسازی فایل‌های موقت Vista: $e');
       }
 
       // پاکسازی فایل‌های قدیمی در پوشه‌های مختلف
@@ -536,7 +537,7 @@ class UnifiedCacheManager {
       print(
           '✅ پاکسازی فایل‌های موقت: $itemsRemoved فایل، ${spaceFreed.toStringAsFixed(2)} MB');
     } catch (e) {
-      print('خطا در پاکسازی فایل‌های موقت: $e');
+      logInfo('خطا در پاکسازی فایل‌های موقت: $e');
     }
 
     return {
@@ -578,16 +579,16 @@ class UnifiedCacheManager {
 
       // اگر استفاده از حافظه بیش از 90% حداکثر باشد
       if (currentSize > maxSize * 0.9) {
-        print('هشدار: استفاده از کش بیش از 90% - شروع پاکسازی خودکار');
+        logInfo('هشدار: استفاده از کش بیش از 90% - شروع پاکسازی خودکار');
         await smartCleanup(forceCleanup: true, targetSizeMB: maxSize * 0.7);
       }
       // اگر استفاده از حافظه بیش از 80% حداکثر باشد
       else if (currentSize > maxSize * 0.8) {
-        print('هشدار: استفاده از کش بیش از 80% - پاکسازی هوشمند');
+        logInfo('هشدار: استفاده از کش بیش از 80% - پاکسازی هوشمند');
         await smartCleanup(targetSizeMB: maxSize * 0.75);
       }
     } catch (e) {
-      print('خطا در نظارت بر حافظه: $e');
+      logInfo('خطا در نظارت بر حافظه: $e');
     }
   }
 
@@ -634,7 +635,7 @@ class UnifiedCacheManager {
         await postInstance.emptyCache();
       }
     } catch (e) {
-      print('خطا در بهینه‌سازی کش: $e');
+      logInfo('خطا در بهینه‌سازی کش: $e');
     }
   }
 
@@ -727,7 +728,7 @@ class UnifiedCacheManager {
         'timestamp': DateTime.now().toIso8601String(),
       }));
     } catch (e) {
-      print('خطا در بروزرسانی زمان پاکسازی: $e');
+      logInfo('خطا در بروزرسانی زمان پاکسازی: $e');
     }
   }
 
@@ -804,12 +805,12 @@ class UnifiedCacheManager {
 
   /// تست محاسبات کش برای بررسی تفاوت مقادیر
   Future<void> testCacheCalculations() async {
-    print('=== تست محاسبات کش UnifiedCacheManager ===');
+    logInfo('=== تست محاسبات کش UnifiedCacheManager ===');
 
     try {
       final stats = await getCacheStats();
 
-      print('مجموع کش: ${stats['total_size_mb']!.toStringAsFixed(2)} MB');
+      logInfo('مجموع کش: ${stats['total_size_mb']!.toStringAsFixed(2)} MB');
 
       final imageCacheRaw = stats['image_cache'];
       final imageCache = imageCacheRaw is Map<String, dynamic>
@@ -842,19 +843,19 @@ class UnifiedCacheManager {
 
       final uniqueValues = imageValues.toSet();
       if (uniqueValues.length > 1) {
-        print('✅ مقادیر کش تصاویر متفاوت هستند - تست موفق');
+        logInfo('✅ مقادیر کش تصاویر متفاوت هستند - تست موفق');
       } else {
-        print('❌ مقادیر کش تصاویر یکسان هستند - تست ناموفق');
+        logInfo('❌ مقادیر کش تصاویر یکسان هستند - تست ناموفق');
       }
 
-      print('تنظیمات هوشمند: ${stats['smart_cache_enabled']}');
-      print('حالت ذخیره باتری: ${stats['battery_saver_mode']}');
-      print('حداکثر حجم کش: ${stats['max_cache_size_mb']} MB');
+      logInfo('تنظیمات هوشمند: ${stats['smart_cache_enabled']}');
+      logInfo('حالت ذخیره باتری: ${stats['battery_saver_mode']}');
+      logInfo('حداکثر حجم کش: ${stats['max_cache_size_mb']} MB');
     } catch (e) {
-      print('خطا در تست کش: $e');
+      logInfo('خطا در تست کش: $e');
     }
 
-    print('=== پایان تست کش ===');
+    logInfo('=== پایان تست کش ===');
   }
 
   bool get isInitialized => _isInitialized;
@@ -862,17 +863,17 @@ class UnifiedCacheManager {
   // متدهای تنظیمات کش برای انواع مختلف رسانه
   void setImageCacheEnabled(bool enabled) {
     _imageCacheEnabled = enabled;
-    print('🖼️ Image cache ${enabled ? 'enabled' : 'disabled'}');
+    logInfo('🖼️ Image cache ${enabled ? 'enabled' : 'disabled'}');
   }
 
   void setMusicCacheEnabled(bool enabled) {
     _musicCacheEnabled = enabled;
-    print('🎵 Music cache ${enabled ? 'enabled' : 'disabled'}');
+    logInfo('🎵 Music cache ${enabled ? 'enabled' : 'disabled'}');
   }
 
   void setVideoCacheEnabled(bool enabled) {
     _videoCacheEnabled = enabled;
-    print('🎬 Video cache ${enabled ? 'enabled' : 'disabled'}');
+    logInfo('🎬 Video cache ${enabled ? 'enabled' : 'disabled'}');
   }
 
   bool get imageCacheEnabled => _imageCacheEnabled;
@@ -896,7 +897,7 @@ class CustomCacheManager {
     // UnifiedCacheManager باید در main.dart initialize شده باشد
     // اگر initialize نشده، یک instance ساده برمی‌گردانیم
     if (!instance.isInitialized) {
-      print('⚠️ UnifiedCacheManager not initialized, using fallback');
+      logInfo('⚠️ UnifiedCacheManager not initialized, using fallback');
     }
     return instance;
   }

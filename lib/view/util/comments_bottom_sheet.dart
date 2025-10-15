@@ -1,3 +1,4 @@
+import '../../security/logging_utility.dart';
 import 'package:Vista/provider/comment_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -717,7 +718,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
         _isEditing = true;
       });
     } catch (e) {
-      print('Error starting edit: $e');
+      logInfo('Error starting edit: $e');
     }
   }
 

@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -39,7 +40,7 @@ class ProfileImageUploadService {
     );
 
     if (img == null) {
-      print('تبدیل به JPEG ناموفق بود');
+      logInfo('تبدیل به JPEG ناموفق بود');
       return null;
     }
 
@@ -48,7 +49,7 @@ class ProfileImageUploadService {
     final convertedFile = File('$dir/converted_$timestamp.jpg')
       ..writeAsBytesSync(img);
 
-    print('فایل تبدیل شده در مسیر: ${convertedFile.path}');
+    logInfo('فایل تبدیل شده در مسیر: ${convertedFile.path}');
     return convertedFile;
   }
 
@@ -60,10 +61,10 @@ class ProfileImageUploadService {
       }
 
       final extension = path.extension(file.path).toLowerCase();
-      print('نوع فایل ورودی: $extension');
+      logInfo('نوع فایل ورودی: $extension');
 
       if (extension == '.png') {
-        print('تبدیل فایل PNG به JPEG');
+        logInfo('تبدیل فایل PNG به JPEG');
         compressedFile = await convertPngToJpeg(file);
         if (compressedFile == null) {
           throw Exception('تبدیل به JPEG شکست خورد');
@@ -71,7 +72,7 @@ class ProfileImageUploadService {
       } else {
         compressedFile = await compressImage(file);
         if (compressedFile == null) {
-          print('فشرده‌سازی ناموفق بود، استفاده از فایل اصلی');
+          logInfo('فشرده‌سازی ناموفق بود، استفاده از فایل اصلی');
           compressedFile = file;
         }
       }
@@ -88,8 +89,8 @@ class ProfileImageUploadService {
 
       // همیشه با نوع 'image/jpeg' پس از تبدیل کار می‌کنید
       const contentType = 'image/jpeg';
-      print('Content-Type: $contentType');
-      print('File size: ${fileBytes.length} bytes');
+      logInfo('Content-Type: $contentType');
+      logInfo('File size: ${fileBytes.length} bytes');
 
       await s3.putObject(
         bucket: bucketName,
@@ -101,7 +102,7 @@ class ProfileImageUploadService {
 
       final uploadedUrl =
           'https://storage.389346.ir.cdn.ir/$bucketName/$fileName';
-      print('تصویر با موفقیت آپلود شد: $uploadedUrl');
+      logInfo('تصویر با موفقیت آپلود شد: $uploadedUrl');
       return uploadedUrl;
     } catch (e) {
       UserFriendlyErrorHandler.logError(e, context: 'profile_image_upload');
@@ -112,7 +113,7 @@ class ProfileImageUploadService {
         try {
           await compressedFile.delete();
         } catch (e) {
-          print('خطا در حذف فایل موقت: $e');
+          logInfo('خطا در حذف فایل موقت: $e');
         }
       }
     }
@@ -124,7 +125,7 @@ class ProfileImageUploadService {
     try {
       // فقط پسوند فایل را بررسی می‌کنیم
       final extension = path.extension(fileName).toLowerCase();
-      print('نوع فایل ورودی (وب): $extension');
+      logInfo('نوع فایل ورودی (وب): $extension');
 
       // همیشه با نوع 'image/jpeg' کار می‌کنیم
       const contentType = 'image/jpeg';
@@ -137,8 +138,8 @@ class ProfileImageUploadService {
       final s3FileName =
           'avatars/${currentUser.id}_${DateTime.now().millisecondsSinceEpoch}_$fileName';
 
-      print('Content-Type: $contentType');
-      print('File size: ${fileBytes.length} bytes');
+      logInfo('Content-Type: $contentType');
+      logInfo('File size: ${fileBytes.length} bytes');
 
       await s3.putObject(
         bucket: bucketName,
@@ -150,7 +151,7 @@ class ProfileImageUploadService {
 
       final uploadedUrl =
           'https://storage.389346.ir.cdn.ir/$bucketName/$s3FileName';
-      print('تصویر با موفقیت آپلود شد: $uploadedUrl');
+      logInfo('تصویر با موفقیت آپلود شد: $uploadedUrl');
       return uploadedUrl;
     } catch (e) {
       UserFriendlyErrorHandler.logError(e, context: 'profile_image_upload');
@@ -172,7 +173,7 @@ class ProfileImageUploadService {
       // اگر خطایی رخ نداد، یعنی عملیات موفق بوده
       return true;
     } catch (e) {
-      print('خطا در حذف فایل: $e');
+      logInfo('خطا در حذف فایل: $e');
       return false;
     }
   }
@@ -183,11 +184,11 @@ class ProfileImageUploadService {
 
       // اگر فایل PNG است، مستقیماً برگردانده شود
       if (extension == '.png') {
-        print('فایل PNG شناسایی شد - بدون فشرده‌سازی');
+        logInfo('فایل PNG شناسایی شد - بدون فشرده‌سازی');
         return file;
       }
 
-      print('شروع فشرده‌سازی با فرمت: $extension');
+      logInfo('شروع فشرده‌سازی با فرمت: $extension');
 
       final img = await FlutterImageCompress.compressWithFile(
         file.absolute.path,
@@ -198,7 +199,7 @@ class ProfileImageUploadService {
       );
 
       if (img == null) {
-        print('فشرده‌سازی ناموفق بود');
+        logInfo('فشرده‌سازی ناموفق بود');
         return null;
       }
 
@@ -208,10 +209,10 @@ class ProfileImageUploadService {
       final compressedFile = File('$dir/compressed_$timestamp.jpg')
         ..writeAsBytesSync(img);
 
-      print('فایل فشرده شده در مسیر: ${compressedFile.path}');
+      logInfo('فایل فشرده شده در مسیر: ${compressedFile.path}');
       return compressedFile;
     } catch (e) {
-      print('خطا در فشرده‌سازی تصویر: $e');
+      logInfo('خطا در فشرده‌سازی تصویر: $e');
       return null;
     }
   }
@@ -226,10 +227,10 @@ class ProfileImageUploadService {
       }
 
       final extension = path.extension(file.path).toLowerCase();
-      print('نوع فایل ورودی (ثبت نام): $extension');
+      logInfo('نوع فایل ورودی (ثبت نام): $extension');
 
       if (extension == '.png') {
-        print('تبدیل فایل PNG به JPEG');
+        logInfo('تبدیل فایل PNG به JPEG');
         compressedFile = await convertPngToJpeg(file);
         if (compressedFile == null) {
           throw Exception('تبدیل به JPEG شکست خورد');
@@ -237,7 +238,7 @@ class ProfileImageUploadService {
       } else {
         compressedFile = await compressImage(file);
         if (compressedFile == null) {
-          print('فشرده‌سازی ناموفق بود، استفاده از فایل اصلی');
+          logInfo('فشرده‌سازی ناموفق بود، استفاده از فایل اصلی');
           compressedFile = file;
         }
       }
@@ -249,8 +250,8 @@ class ProfileImageUploadService {
 
       // همیشه با نوع 'image/jpeg' پس از تبدیل کار می‌کنید
       const contentType = 'image/jpeg';
-      print('Content-Type: $contentType');
-      print('File size: ${fileBytes.length} bytes');
+      logInfo('Content-Type: $contentType');
+      logInfo('File size: ${fileBytes.length} bytes');
 
       await s3.putObject(
         bucket: bucketName,
@@ -262,7 +263,7 @@ class ProfileImageUploadService {
 
       final uploadedUrl =
           'https://storage.389346.ir.cdn.ir/$bucketName/$fileName';
-      print('تصویر با موفقیت آپلود شد (ثبت نام): $uploadedUrl');
+      logInfo('تصویر با موفقیت آپلود شد (ثبت نام): $uploadedUrl');
       return uploadedUrl;
     } catch (e) {
       UserFriendlyErrorHandler.logError(e,
@@ -274,7 +275,7 @@ class ProfileImageUploadService {
         try {
           await compressedFile.delete();
         } catch (e) {
-          print('خطا در حذف فایل موقت: $e');
+          logInfo('خطا در حذف فایل موقت: $e');
         }
       }
     }

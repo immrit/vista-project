@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// سرویس مدیریت پخش خودکار ویدیوهای پست‌ها
@@ -23,14 +24,14 @@ class VideoAutoplayService {
   /// تنظیم پخش خودکار
   Future<void> setAutoPlay(bool enabled) async {
     if (_batterySaverMode) {
-      print('⚠️ Cannot enable auto-play while battery saver mode is active');
+      logInfo('⚠️ Cannot enable auto-play while battery saver mode is active');
       return;
     }
 
     _autoPlayEnabled = enabled;
     await _saveSettings();
 
-    print('🎥 Video auto-play ${enabled ? 'enabled' : 'disabled'}');
+    logInfo('🎥 Video auto-play ${enabled ? 'enabled' : 'disabled'}');
   }
 
   /// تنظیم حالت کم‌مصرف
@@ -41,13 +42,13 @@ class VideoAutoplayService {
     if (enabled && _autoPlayEnabled) {
       _autoPlayEnabled = false;
       await _saveSettings();
-      print('🔋 Battery saver mode enabled - Auto-play disabled');
+      logInfo('🔋 Battery saver mode enabled - Auto-play disabled');
     } else if (!enabled) {
       // بازگردانی تنظیمات پخش خودکار از SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       _autoPlayEnabled = prefs.getBool('video_auto_play') ?? false;
       await _saveSettings();
-      print('⚡ Battery saver mode disabled - Auto-play settings restored');
+      logInfo('⚡ Battery saver mode disabled - Auto-play settings restored');
     }
   }
 
@@ -56,7 +57,7 @@ class VideoAutoplayService {
     _dataSaverEnabled = enabled;
     await _saveSettings();
 
-    print('📱 Data saver ${enabled ? 'enabled' : 'disabled'}');
+    logInfo('📱 Data saver ${enabled ? 'enabled' : 'disabled'}');
   }
 
   /// بارگذاری تنظیمات از SharedPreferences
@@ -70,7 +71,7 @@ class VideoAutoplayService {
       print(
           '📱 Video autoplay settings loaded: auto_play=$_autoPlayEnabled, battery_saver=$_batterySaverMode, data_saver=$_dataSaverEnabled');
     } catch (e) {
-      print('❌ Error loading video autoplay settings: $e');
+      logInfo('❌ Error loading video autoplay settings: $e');
     }
   }
 
@@ -82,7 +83,7 @@ class VideoAutoplayService {
       await prefs.setBool('battery_saver_mode', _batterySaverMode);
       await prefs.setBool('video_data_saver', _dataSaverEnabled);
     } catch (e) {
-      print('❌ Error saving video autoplay settings: $e');
+      logInfo('❌ Error saving video autoplay settings: $e');
     }
   }
 

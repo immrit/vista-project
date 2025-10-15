@@ -1,7 +1,7 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -80,7 +80,7 @@ class AdvancedFileManager {
           }
         }
       } catch (e) {
-        debugPrint('Error loading file cache: $e');
+        logDebug('Error loading file cache: $e');
       }
     }
   }
@@ -285,7 +285,7 @@ class AdvancedFileManager {
 
       return resultUrl;
     } catch (e) {
-      debugPrint('Upload error: $e');
+      logDebug('Upload error: $e');
       return null;
     }
   }
@@ -308,7 +308,7 @@ class AdvancedFileManager {
               await file.delete();
               expiredUrls.add(entry.key);
             } catch (e) {
-              debugPrint('Error deleting expired file: $e');
+              logDebug('Error deleting expired file: $e');
             }
           }
         } else {
@@ -325,7 +325,7 @@ class AdvancedFileManager {
         await _saveCache();
       }
     } catch (e) {
-      debugPrint('Error cleaning cache: $e');
+      logDebug('Error cleaning cache: $e');
     }
   }
 
@@ -342,7 +342,7 @@ class AdvancedFileManager {
       await FileManagerService.clearDirectory('audio');
       await FileManagerService.clearDirectory('temp');
     } catch (e) {
-      debugPrint('Error clearing cache: $e');
+      logDebug('Error clearing cache: $e');
     }
   }
 

@@ -1,3 +1,4 @@
+import '../../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -96,18 +97,18 @@ class _ImagePreviewBottomSheetState extends State<ImagePreviewBottomSheet>
     for (int i = 0; i < widget.files.length; i++) {
       final file = widget.files[i];
       if (!await file.exists()) {
-        debugPrint('⚠️ فایل ${file.path} وجود ندارد، تلاش برای بازسازی...');
+        logDebug('⚠️ فایل ${file.path} وجود ندارد، تلاش برای بازسازی...');
         // تلاش مجدد بعد از یک تأخیر کوتاه
         await Future.delayed(const Duration(milliseconds: 500));
         if (await file.exists()) {
-          debugPrint('✅ فایل ${file.path} بعد از تأخیر در دسترس قرار گرفت');
+          logDebug('✅ فایل ${file.path} بعد از تأخیر در دسترس قرار گرفت');
           if (mounted) {
             setState(() {
               _imageKeys[i] = UniqueKey(); // مجبور کردن بازسازی PhotoView
             });
           }
         } else {
-          debugPrint('❌ فایل ${file.path} همچنان در دسترس نیست');
+          logDebug('❌ فایل ${file.path} همچنان در دسترس نیست');
         }
       }
     }
@@ -160,7 +161,7 @@ class _ImagePreviewBottomSheetState extends State<ImagePreviewBottomSheet>
                       _imageKeys[_currentIndex] = UniqueKey();
                     });
 
-                    debugPrint('تصویر ویرایش شده در پیش‌نمایش به‌روزرسانی شد');
+                    logDebug('تصویر ویرایش شده در پیش‌نمایش به‌روزرسانی شد');
 
                     // نمایش پیام موفقیت
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -174,7 +175,7 @@ class _ImagePreviewBottomSheetState extends State<ImagePreviewBottomSheet>
                     Navigator.of(context).pop();
                   }
                 } catch (e) {
-                  debugPrint('خطا در ذخیره تصویر ویرایش شده: $e');
+                  logDebug('خطا در ذخیره تصویر ویرایش شده: $e');
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text('خطا در ذخیره تصویر: $e')),
@@ -189,7 +190,7 @@ class _ImagePreviewBottomSheetState extends State<ImagePreviewBottomSheet>
         ),
       );
     } catch (e) {
-      debugPrint('خطا در ویرایش تصویر: $e');
+      logDebug('خطا در ویرایش تصویر: $e');
     }
   }
 
@@ -228,7 +229,7 @@ class _ImagePreviewBottomSheetState extends State<ImagePreviewBottomSheet>
         }
       }
     } catch (e) {
-      debugPrint('خطا در ارسال تصاویر ویرایش شده: $e');
+      logDebug('خطا در ارسال تصاویر ویرایش شده: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('خطا در ارسال تصاویر: $e')),

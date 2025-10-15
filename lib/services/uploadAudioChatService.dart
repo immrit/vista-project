@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:path/path.dart' as path;
@@ -73,7 +74,7 @@ class ChatAudioUploadService {
 
       final uploadedUrl =
           'https://storage.389346.ir.cdn.ir/$bucketName/$fileName';
-      print('فایل صوتی چت با موفقیت آپلود شد: $uploadedUrl');
+      logInfo('فایل صوتی چت با موفقیت آپلود شد: $uploadedUrl');
 
       if (uploadedUrl.isEmpty) {
         throw Exception('لینک آپلود فایل صوتی خالی است!');
@@ -94,7 +95,7 @@ class ChatAudioUploadService {
     String conversationId,
   ) async {
     try {
-      print('شروع آپلود فایل صوتی در وب...');
+      logInfo('شروع آپلود فایل صوتی در وب...');
 
       final sanitizedFileName =
           fileName.replaceAll(RegExp(r'[^\w\s\-\.]'), '_');
@@ -109,7 +110,7 @@ class ChatAudioUploadService {
       final s3FileName =
           'chats/$conversationId/audio/${userId}_${timestamp}_$sanitizedFileName';
 
-      print('آپلود به S3 با کلید: $s3FileName');
+      logInfo('آپلود به S3 با کلید: $s3FileName');
 
       await s3.putObject(
         bucket: bucketName,
@@ -121,7 +122,7 @@ class ChatAudioUploadService {
 
       final uploadedUrl =
           'https://storage.389346.ir.cdn.ir/$bucketName/$s3FileName';
-      print('آپلود فایل صوتی وب موفق: $uploadedUrl');
+      logInfo('آپلود فایل صوتی وب موفق: $uploadedUrl');
 
       return uploadedUrl;
     } catch (e) {
@@ -144,7 +145,7 @@ class ChatAudioUploadService {
 
       return true;
     } catch (e) {
-      print('خطا در حذف فایل صوتی چت: $e');
+      logInfo('خطا در حذف فایل صوتی چت: $e');
       return false;
     }
   }

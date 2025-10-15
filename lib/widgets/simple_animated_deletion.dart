@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/message_model.dart';
@@ -128,7 +129,7 @@ class MessageWithDeletionAnimation extends ConsumerWidget {
       message: message,
       isDeleting: isDeleting,
       onAnimationComplete: () {
-        debugPrint('✅ انیمیشن حذف پیام ${message.id} تکمیل شد');
+        logDebug('✅ انیمیشن حذف پیام ${message.id} تکمیل شد');
       },
       child: child,
     );

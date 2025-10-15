@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import '../main.dart';
 
 /// سرویس مدیریت وضعیت پیام‌ها (delivered, seen)
@@ -16,9 +17,9 @@ class MessageStatusService {
         'delivered_at': DateTime.now().toIso8601String(),
       }).eq('id', messageId);
 
-      print('✅ پیام $messageId به عنوان delivered علامت‌گذاری شد');
+      logInfo('✅ پیام $messageId به عنوان delivered علامت‌گذاری شد');
     } catch (e) {
-      print('⚠️ خطا در علامت‌گذاری پیام به عنوان delivered: $e');
+      logInfo('⚠️ خطا در علامت‌گذاری پیام به عنوان delivered: $e');
     }
   }
 
@@ -31,9 +32,9 @@ class MessageStatusService {
         'seen_at': DateTime.now().toIso8601String(),
       }).eq('id', messageId);
 
-      print('✅ پیام $messageId به عنوان seen علامت‌گذاری شد');
+      logInfo('✅ پیام $messageId به عنوان seen علامت‌گذاری شد');
     } catch (e) {
-      print('⚠️ خطا در علامت‌گذاری پیام به عنوان seen: $e');
+      logInfo('⚠️ خطا در علامت‌گذاری پیام به عنوان seen: $e');
     }
   }
 
@@ -48,9 +49,9 @@ class MessageStatusService {
         'seen_at': DateTime.now().toIso8601String(),
       }).inFilter('id', messageIds);
 
-      print('✅ ${messageIds.length} پیام به عنوان seen علامت‌گذاری شدند');
+      logInfo('✅ ${messageIds.length} پیام به عنوان seen علامت‌گذاری شدند');
     } catch (e) {
-      print('⚠️ خطا در علامت‌گذاری پیام‌ها به عنوان seen: $e');
+      logInfo('⚠️ خطا در علامت‌گذاری پیام‌ها به عنوان seen: $e');
     }
   }
 
@@ -82,7 +83,7 @@ class MessageStatusService {
         'total_unread': undeliveredCount + unseenCount,
       };
     } catch (e) {
-      print('⚠️ خطا در دریافت وضعیت پیام‌ها: $e');
+      logInfo('⚠️ خطا در دریافت وضعیت پیام‌ها: $e');
       return {
         'undelivered_count': 0,
         'unseen_count': 0,

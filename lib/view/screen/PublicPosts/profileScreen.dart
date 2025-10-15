@@ -1,5 +1,5 @@
 // unused import removed
-import 'package:Vista/view/screen/PublicPosts/publicPosts.dart';
+import '../../../security/logging_utility.dart';
 import 'package:Vista/view/util/comments_bottom_sheet.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -986,9 +986,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             await chatService.findExistingConversation(otherUserId);
         if (existingConversationId != null &&
             existingConversationId.isNotEmpty) {
-          print('مکالمه موجود یافت شد: $existingConversationId');
+          logInfo('مکالمه موجود یافت شد: $existingConversationId');
         } else {
-          print('هیچ مکالمه موجودی یافت نشد');
+          logInfo('هیچ مکالمه موجودی یافت نشد');
         }
 
         // بستن نشانگر بارگذاری
@@ -996,7 +996,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           Navigator.of(context).pop();
         }
       } catch (e) {
-        print('خطا در بررسی وجود مکالمه: $e');
+        logInfo('خطا در بررسی وجود مکالمه: $e');
         // در صورت خطا، فرض بر جدید بودن مکالمه
         // بستن نشانگر بارگذاری
         if (context.mounted && Navigator.of(context).canPop()) {
@@ -1883,11 +1883,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             post.likeCount + (isLiked != post.isLiked ? (isLiked ? 1 : -1) : 0);
 
         // Debug logging
-        print('🔍 UI Like Button Debug - Post ID: ${post.id}');
-        print('🔍 Base likeCount: ${post.likeCount}, isLiked: ${post.isLiked}');
+        logInfo('🔍 UI Like Button Debug - Post ID: ${post.id}');
+        logInfo('🔍 Base likeCount: ${post.likeCount}, isLiked: ${post.isLiked}');
         print(
             '🔍 LikeStateProvider value: ${ref.watch(likeStateProvider)[post.id]}');
-        print('🔍 Final likeCount: $likeCount, final isLiked: $isLiked');
+        logInfo('🔍 Final likeCount: $likeCount, final isLiked: $isLiked');
 
         return Row(
           children: [
@@ -1905,8 +1905,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
   Widget _buildCommentButton(PublicPostModel post) {
     // Debug logging
-    print('🔍 UI Comment Button Debug - Post ID: ${post.id}');
-    print('🔍 Comment count: ${post.commentCount}');
+    logInfo('🔍 UI Comment Button Debug - Post ID: ${post.id}');
+    logInfo('🔍 Comment count: ${post.commentCount}');
 
     return Row(
       children: [
@@ -1971,7 +1971,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           .read(likeStateProvider.notifier)
           .updateLikeState(post.id, previousLikeState);
 
-      debugPrint('Error in handleLike: $e');
+      logDebug('Error in handleLike: $e');
     }
   }
 
@@ -2053,10 +2053,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             bucket: SecureConfig.awsBucketName,
             key: key,
           );
-          print('فایل با موفقیت از آروان کلود حذف شد: $fileUrl');
+          logInfo('فایل با موفقیت از آروان کلود حذف شد: $fileUrl');
         }
       } catch (e) {
-        print('خطا در حذف فایل از آروان کلود: $e');
+        logInfo('خطا در حذف فایل از آروان کلود: $e');
       }
     }
 
@@ -2598,9 +2598,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         final canEditPost = isBlueTick;
 
         // Debug: چاپ اطلاعات پروفایل
-        print('DEBUG: Profile data: $profile');
-        print('DEBUG: isBlueTick: $isBlueTick');
-        print('DEBUG: canEditPost (blueTick only): $canEditPost');
+        logInfo('DEBUG: Profile data: $profile');
+        logInfo('DEBUG: isBlueTick: $isBlueTick');
+        logInfo('DEBUG: canEditPost (blueTick only): $canEditPost');
 
         return PopupMenuButton<String>(
           onSelected: (value) async {

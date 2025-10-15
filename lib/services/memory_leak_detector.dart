@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
@@ -26,7 +27,7 @@ class MemoryLeakDetector {
     if (_isMonitoring) return;
 
     _isMonitoring = true;
-    print('🔍 Memory Leak Detection started...');
+    logInfo('🔍 Memory Leak Detection started...');
 
     // بررسی هر 30 ثانیه
     _monitoringTimer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -39,7 +40,7 @@ class MemoryLeakDetector {
     _isMonitoring = false;
     _monitoringTimer?.cancel();
     _monitoringTimer = null;
-    print('🔍 Memory Leak Detection stopped');
+    logInfo('🔍 Memory Leak Detection stopped');
   }
 
   /// ثبت ایجاد object جدید
@@ -143,38 +144,38 @@ class MemoryLeakDetector {
   /// گزارش memory leaks
   void _reportLeaks(List<String> leakedObjects, List<String> longLivedObjects,
       int subscriptions, int timers) {
-    print('\n🚨 MEMORY LEAK DETECTED! 🚨');
+    logInfo('\n🚨 MEMORY LEAK DETECTED! 🚨');
 
     if (leakedObjects.isNotEmpty) {
-      print('💀 Leaked Objects (30+ min):');
+      logInfo('💀 Leaked Objects (30+ min):');
       for (final obj in leakedObjects.take(5)) {
-        print('   - $obj');
+        logInfo('   - $obj');
       }
       if (leakedObjects.length > 5) {
-        print('   ... and ${leakedObjects.length - 5} more');
+        logInfo('   ... and ${leakedObjects.length - 5} more');
       }
     }
 
     if (longLivedObjects.isNotEmpty) {
-      print('⚠️  Long-lived Objects (10+ min):');
+      logInfo('⚠️  Long-lived Objects (10+ min):');
       for (final obj in longLivedObjects.take(3)) {
-        print('   - $obj');
+        logInfo('   - $obj');
       }
     }
 
     if (subscriptions > 10) {
-      print('📡 Too many active subscriptions: $subscriptions');
+      logInfo('📡 Too many active subscriptions: $subscriptions');
     }
 
     if (timers > 5) {
-      print('⏰ Too many active timers: $timers');
+      logInfo('⏰ Too many active timers: $timers');
     }
 
-    print('🔧 Recommended actions:');
-    print('   1. Check dispose() methods in providers');
-    print('   2. Cancel StreamSubscriptions properly');
-    print('   3. Cancel Timers when not needed');
-    print('   4. Use autoDispose for temporary providers\n');
+    logInfo('🔧 Recommended actions:');
+    logInfo('   1. Check dispose() methods in providers');
+    logInfo('   2. Cancel StreamSubscriptions properly');
+    logInfo('   3. Cancel Timers when not needed');
+    logInfo('   4. Use autoDispose for temporary providers\n');
   }
 
   /// گزارش آمار memory
@@ -187,35 +188,35 @@ class MemoryLeakDetector {
 
     if (kDebugMode && _totalMemoryAllocations % 100 == 0) {
       // گزارش هر 100 allocation
-      print('\n📊 Memory Stats:');
-      print('   Allocations: $_totalMemoryAllocations');
-      print('   Deallocations: $_totalMemoryDeallocations');
-      print('   Active Objects: ${_activeObjects.length}');
-      print('   Active Subscriptions: ${_activeSubscriptions.length}');
-      print('   Active Timers: ${_activeTimers.length}');
-      print('   Leak Rate: ${memoryLeakRate.toStringAsFixed(1)}%');
+      logInfo('\n📊 Memory Stats:');
+      logInfo('   Allocations: $_totalMemoryAllocations');
+      logInfo('   Deallocations: $_totalMemoryDeallocations');
+      logInfo('   Active Objects: ${_activeObjects.length}');
+      logInfo('   Active Subscriptions: ${_activeSubscriptions.length}');
+      logInfo('   Active Timers: ${_activeTimers.length}');
+      logInfo('   Leak Rate: ${memoryLeakRate.toStringAsFixed(1)}%');
 
       if (memoryLeakRate > 15) {
-        print('   🚨 HIGH LEAK RATE! Check your dispose methods!');
+        logInfo('   🚨 HIGH LEAK RATE! Check your dispose methods!');
       } else if (memoryLeakRate > 5) {
-        print('   ⚠️  Moderate leak rate, consider optimization');
+        logInfo('   ⚠️  Moderate leak rate, consider optimization');
       } else {
-        print('   ✅ Good memory management');
+        logInfo('   ✅ Good memory management');
       }
-      print('');
+      logInfo('');
     }
   }
 
   /// پاکسازی اجباری برای memory leaks
   void forceCleanup() {
-    print('🧹 Force cleanup started...');
+    logInfo('🧹 Force cleanup started...');
 
     // Cancel همه subscriptions
     for (final subscription in List.from(_activeSubscriptions)) {
       try {
         subscription.cancel();
       } catch (e) {
-        print('⚠️ Error canceling subscription: $e');
+        logInfo('⚠️ Error canceling subscription: $e');
       }
     }
     _activeSubscriptions.clear();
@@ -225,7 +226,7 @@ class MemoryLeakDetector {
       try {
         timer.cancel();
       } catch (e) {
-        print('⚠️ Error canceling timer: $e');
+        logInfo('⚠️ Error canceling timer: $e');
       }
     }
     _activeTimers.clear();
@@ -234,7 +235,7 @@ class MemoryLeakDetector {
     _activeObjects.clear();
     _objectCreationTime.clear();
 
-    print('✅ Force cleanup completed');
+    logInfo('✅ Force cleanup completed');
   }
 
   /// دریافت آمار فعلی

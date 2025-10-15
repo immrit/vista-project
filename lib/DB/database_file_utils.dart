@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
@@ -27,7 +28,7 @@ Future<File?> getConversationCacheDbFile() async {
 /// Delete message cache database file (no-op for web)
 Future<void> deleteMessageCacheDbFile() async {
   if (kIsWeb) {
-    print('[Database] Message cache file deletion skipped on web');
+    logInfo('[Database] Message cache file deletion skipped on web');
     return;
   }
   final file = await getMessageCacheDbFile();
@@ -44,7 +45,7 @@ Future<void> deleteMessageCacheDbFile() async {
 /// Delete conversation cache database file (no-op for web)
 Future<void> deleteConversationCacheDbFile() async {
   if (kIsWeb) {
-    print('[Database] Conversation cache file deletion skipped on web');
+    logInfo('[Database] Conversation cache file deletion skipped on web');
     return;
   }
   final file = await getConversationCacheDbFile();

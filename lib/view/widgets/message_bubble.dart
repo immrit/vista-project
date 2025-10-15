@@ -49,6 +49,8 @@ class _MessageBubbleState extends State<MessageBubble>
   bool _isReplying = false;
   bool _isRetrying = false;
   late AnimationController _retryAnimationController;
+  late AnimationController _statusAnimationController;
+  late Animation<double> _statusIconRotation;
   final Map<String, double> _downloadProgress = {};
   final Map<String, bool> _isDownloading = {};
 
@@ -59,6 +61,21 @@ class _MessageBubbleState extends State<MessageBubble>
       duration: const Duration(milliseconds: 1000),
       vsync: this,
     );
+
+    // Animation controller برای status icon
+    _statusAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    );
+
+    _statusIconRotation = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _statusAnimationController, curve: Curves.linear),
+    );
+
+    // اگر پیام pending است، animation را شروع کن
+    if (widget.message.isPending) {
+      _statusAnimationController.repeat();
+    }
 
     // گوش دادن به پیشرفت دانلود
     AdvancedFileManager.instance.downloadProgress.listen((progress) {
@@ -71,8 +88,31 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   @override
+  void didUpdateWidget(MessageBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // وقتی پیام از pending به sent برود، animation را به صورت smooth نمایش بده
+    if (oldWidget.message.isPending && !widget.message.isPending) {
+      // پایان animation چرخش ساعت
+      _statusAnimationController.stop();
+      _statusAnimationController.reset();
+
+      // یک animation کوتاه برای تغییر icon
+      _statusAnimationController.forward(from: 0).then((_) {
+        if (mounted) {
+          setState(() {});
+        }
+      });
+    } else if (!oldWidget.message.isPending && widget.message.isPending) {
+      // اگر دوباره pending شد، تکرار کن
+      _statusAnimationController.repeat();
+    }
+  }
+
+  @override
   void dispose() {
     _retryAnimationController.dispose();
+    _statusAnimationController.dispose();
     super.dispose();
   }
 
@@ -319,12 +359,13 @@ class _MessageBubbleState extends State<MessageBubble>
       );
     }
     if (type == 'document' || type == 'file' || type == 'pdf') {
-      final fileName = _extractFileName(url);
+      final fileName =
+          widget.message.attachmentFileName ?? _extractFileName(url);
       final isDownloading = _isDownloading[url] ?? false;
       final progress = _downloadProgress[url] ?? 0.0;
 
       return GestureDetector(
-        onTap: () => _downloadAndOpen(url),
+        onTap: () => _showFileOptions(context, url),
         onLongPress: () => _showFileOptions(context, url),
         child: Container(
           padding: const EdgeInsets.all(16),
@@ -556,7 +597,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   void _showFileOptions(BuildContext context, String url) async {
-    final fileName = _extractFileName(url);
+    final fileName = widget.message.attachmentFileName ?? _extractFileName(url);
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -1134,7 +1175,15 @@ class _MessageBubbleState extends State<MessageBubble>
 
   Widget _buildStatusIcon(MessageModel message) {
     if (message.isPending) {
-      return _buildStatusBadge(Icons.schedule, Colors.grey.shade500, 14);
+      // Rotating schedule icon برای pending
+      return RotationTransition(
+        turns: _statusIconRotation,
+        child: Icon(
+          Icons.schedule,
+          size: 14,
+          color: Colors.grey.shade500,
+        ),
+      );
     } else if (!message.isSent) {
       // برای پیام‌های ناموفق، دکمه retry نمایش داده می‌شود
       return _buildFailedMessageStatus(message);

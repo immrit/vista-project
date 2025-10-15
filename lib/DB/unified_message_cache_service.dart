@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import '../model/message_model.dart';
 import 'advanced_cache_system.dart';
 
@@ -12,7 +13,7 @@ class UnifiedMessageCacheService {
 
   Future<void> initialize() async {
     await _advancedCache.initialize();
-    print('UnifiedMessageCacheService initialized with Advanced Cache');
+    logInfo('UnifiedMessageCacheService initialized with Advanced Cache');
   }
 
   /// Cache a message
@@ -110,6 +111,6 @@ class UnifiedMessageCacheService {
   /// Mark message as failed
   Future<void> markMessageAsFailed(
       String conversationId, String messageId) async {
-    print('[UnifiedMessageCache] Marking message as failed: $messageId');
+    logInfo('[UnifiedMessageCache] Marking message as failed: $messageId');
   }
 }

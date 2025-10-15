@@ -1,3 +1,4 @@
+import '../../security/logging_utility.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -93,7 +94,7 @@ class _EnrichedConversationListItemState
         }
       }
     } catch (e) {
-      print('⚠️ Error enriching conversation ${widget.conversation.id}: $e');
+      logInfo('⚠️ Error enriching conversation ${widget.conversation.id}: $e');
       if (mounted) {
         setState(() {
           _isEnriching = false;

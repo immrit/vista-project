@@ -1,3 +1,4 @@
+import '../../security/logging_utility.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -121,7 +122,7 @@ class _AttachmentBottomSheetState extends State<AttachmentBottomSheet>
         });
       }
     } catch (e) {
-      debugPrint('Error picking image from camera: $e');
+      logDebug('Error picking image from camera: $e');
     }
   }
 

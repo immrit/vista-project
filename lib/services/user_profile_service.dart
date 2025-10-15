@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import '../main.dart';
 import '../model/conversation_model.dart';
 import 'profile_cache_manager.dart';
@@ -52,7 +53,7 @@ class UserProfileService {
         'user_id': otherUserId,
       };
     } catch (e) {
-      print('⚠️ Error fetching other user in conversation $conversationId: $e');
+      logInfo('⚠️ Error fetching other user in conversation $conversationId: $e');
       return {
         'username': null,
         'avatar_url': null,
@@ -111,7 +112,7 @@ class UserProfileService {
         userIds.map((userId) => _cacheManager.getProfile(userId)),
       );
     } catch (e) {
-      print('⚠️ Error preloading profiles: $e');
+      logInfo('⚠️ Error preloading profiles: $e');
     }
   }
 

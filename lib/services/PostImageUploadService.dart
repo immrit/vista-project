@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -36,7 +37,7 @@ class PostImageUploadService {
     );
 
     if (img == null) {
-      print('تبدیل به JPEG ناموفق بود');
+      logInfo('تبدیل به JPEG ناموفق بود');
       return null;
     }
 
@@ -84,7 +85,7 @@ class PostImageUploadService {
 
       final uploadedUrl =
           'https://storage.389346.ir.cdn.ir/$bucketName/$fileName';
-      print('تصویر پست با موفقیت آپلود شد: $uploadedUrl');
+      logInfo('تصویر پست با موفقیت آپلود شد: $uploadedUrl');
       return uploadedUrl;
     } catch (e) {
       UserFriendlyErrorHandler.logError(e, context: 'image_upload');
@@ -95,7 +96,7 @@ class PostImageUploadService {
         try {
           await compressedFile.delete();
         } catch (e) {
-          print('خطا در حذف فایل موقت: $e');
+          logInfo('خطا در حذف فایل موقت: $e');
         }
       }
     }
@@ -122,7 +123,7 @@ class PostImageUploadService {
 
       final uploadedUrl =
           'https://storage.389346.ir.cdn.ir/$bucketName/$s3FileName';
-      print('تصویر پست با موفقیت آپلود شد: $uploadedUrl');
+      logInfo('تصویر پست با موفقیت آپلود شد: $uploadedUrl');
       return uploadedUrl;
     } catch (e) {
       UserFriendlyErrorHandler.logError(e, context: 'image_upload');
@@ -143,7 +144,7 @@ class PostImageUploadService {
 
       return true;
     } catch (e) {
-      print('خطا در حذف تصویر پست: $e');
+      logInfo('خطا در حذف تصویر پست: $e');
       return false;
     }
   }
@@ -158,10 +159,10 @@ class PostImageUploadService {
         key: key,
       );
 
-      print('فایل موسیقی با موفقیت از آروان حذف شد: $fileUrl');
+      logInfo('فایل موسیقی با موفقیت از آروان حذف شد: $fileUrl');
       return true;
     } catch (e) {
-      print('خطا در حذف فایل موسیقی: $e');
+      logInfo('خطا در حذف فایل موسیقی: $e');
       return false;
     }
   }
@@ -176,10 +177,10 @@ class PostImageUploadService {
         key: key,
       );
 
-      print('فایل ویدیو با موفقیت از آروان حذف شد: $fileUrl');
+      logInfo('فایل ویدیو با موفقیت از آروان حذف شد: $fileUrl');
       return true;
     } catch (e) {
-      print('خطا در حذف فایل ویدیو: $e');
+      logInfo('خطا در حذف فایل ویدیو: $e');
       return false;
     }
   }
@@ -206,7 +207,7 @@ class PostImageUploadService {
         return await deletePostImage(fileUrl);
       }
     } catch (e) {
-      print('خطا در حذف فایل رسانه: $e');
+      logInfo('خطا در حذف فایل رسانه: $e');
       return false;
     }
   }
@@ -239,7 +240,7 @@ class PostImageUploadService {
 
       return compressedFile;
     } catch (e) {
-      print('خطا در فشرده‌سازی تصویر پست: $e');
+      logInfo('خطا در فشرده‌سازی تصویر پست: $e');
       return null;
     }
   }

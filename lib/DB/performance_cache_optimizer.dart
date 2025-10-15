@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:collection';
 import '../model/conversation_model.dart';
@@ -32,7 +33,7 @@ class PerformanceCacheOptimizer {
   void initialize() {
     if (_isOptimizing) return;
 
-    print('🚀 Initializing Performance Cache Optimizer...');
+    logInfo('🚀 Initializing Performance Cache Optimizer...');
 
     // Start periodic cleanup with longer interval to reduce overhead
     _cleanupTimer = Timer.periodic(const Duration(minutes: 10), (timer) {
@@ -40,7 +41,7 @@ class PerformanceCacheOptimizer {
     });
 
     _isOptimizing = true;
-    print('✅ Performance Cache Optimizer initialized');
+    logInfo('✅ Performance Cache Optimizer initialized');
   }
 
   /// Cache messages with performance optimization
@@ -113,11 +114,11 @@ class PerformanceCacheOptimizer {
             !_hotMessageCache.containsKey(candidateId)) {
           // This would normally load from database/network
           // For now, we'll just mark it as ready for preload
-          print('🔮 Preloading conversation: $candidateId');
+          logInfo('🔮 Preloading conversation: $candidateId');
         }
       }
     } catch (e) {
-      print('⚠️ Preload error: $e');
+      logInfo('⚠️ Preload error: $e');
     } finally {
       _preloadQueue.remove(conversationId);
     }
@@ -136,7 +137,7 @@ class PerformanceCacheOptimizer {
 
   /// Perform cleanup to maintain performance
   void _performCleanup() {
-    print('🧹 Performing cache cleanup...');
+    logInfo('🧹 Performing cache cleanup...');
 
     // Clear old preload cache
     if (_preloadCache.length > 10) {
@@ -152,7 +153,7 @@ class PerformanceCacheOptimizer {
       _preloadQueue.clear();
     }
 
-    print('✅ Cache cleanup completed');
+    logInfo('✅ Cache cleanup completed');
   }
 
   /// Get performance statistics
@@ -186,7 +187,7 @@ class PerformanceCacheOptimizer {
     _preloadCache.clear();
     _preloadQueue.clear();
     _isOptimizing = false;
-    print('🧹 Performance Cache Optimizer disposed');
+    logInfo('🧹 Performance Cache Optimizer disposed');
   }
 }
 

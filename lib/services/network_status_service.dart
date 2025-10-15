@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -42,7 +43,7 @@ class NetworkStatusService extends ChangeNotifier {
         },
         onError: (error) {
           if (kDebugMode) {
-            print('❌ Network status monitoring error: $error');
+            logInfo('❌ Network status monitoring error: $error');
           }
         },
       );
@@ -54,7 +55,7 @@ class NetworkStatusService extends ChangeNotifier {
       }
     } catch (e) {
       if (kDebugMode) {
-        print('❌ Failed to initialize NetworkStatusService: $e');
+        logInfo('❌ Failed to initialize NetworkStatusService: $e');
       }
       // در صورت خطا، فرض کن که آنلاین هستیم
       _isOnline = true;
@@ -76,7 +77,7 @@ class NetworkStatusService extends ChangeNotifier {
       return isConnected;
     } catch (e) {
       if (kDebugMode) {
-        print('❌ Manual connectivity check failed: $e');
+        logInfo('❌ Manual connectivity check failed: $e');
       }
       return _isOnline; // برگرداندن آخرین وضعیت شناخته شده
     }

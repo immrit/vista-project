@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../main.dart';
 import '../model/channel_model.dart';
@@ -92,9 +93,9 @@ class ChannelNotifier extends StateNotifier<AsyncValue<void>> {
       // آپدیت stream
       ref.invalidate(channelMessagesProvider(channelId));
 
-      print('پیام با موفقیت حذف شد');
+      logInfo('پیام با موفقیت حذف شد');
     } catch (e) {
-      print('خطا در حذف پیام: $e');
+      logInfo('خطا در حذف پیام: $e');
       rethrow;
     }
   }
@@ -115,11 +116,11 @@ class ChannelNotifier extends StateNotifier<AsyncValue<void>> {
       );
 
       // ✅ دیگه نیازی به invalidate نیست - stream خودکار بروزرسانی می‌شه!
-      print('پیام ارسال شد - stream خودکار بروزرسانی می‌شه');
+      logInfo('پیام ارسال شد - stream خودکار بروزرسانی می‌شه');
 
       return message;
     } catch (e) {
-      print('خطا در ارسال پیام: $e');
+      logInfo('خطا در ارسال پیام: $e');
       rethrow;
     }
   }
@@ -133,7 +134,7 @@ class ChannelNotifier extends StateNotifier<AsyncValue<void>> {
 
       // Channel cache removed
     } catch (e) {
-      print('Error in leaveChannel: $e');
+      logInfo('Error in leaveChannel: $e');
       rethrow;
     }
   }
@@ -143,7 +144,7 @@ class ChannelNotifier extends StateNotifier<AsyncValue<void>> {
       await _channelService.getChannels();
       state = const AsyncValue.data(null);
     } catch (e) {
-      print('Error loading channels: $e');
+      logInfo('Error loading channels: $e');
       state = AsyncValue.error(e, StackTrace.current);
       rethrow;
     }
@@ -154,7 +155,7 @@ class ChannelNotifier extends StateNotifier<AsyncValue<void>> {
     try {
       return await _channelService.getChannels(forceRefresh: true);
     } catch (e) {
-      print('خطا در رفرش کانال‌ها: $e');
+      logInfo('خطا در رفرش کانال‌ها: $e');
       rethrow;
     }
   }
@@ -164,7 +165,7 @@ class ChannelNotifier extends StateNotifier<AsyncValue<void>> {
     try {
       return await _channelService.getChannel(channelId, forceRefresh: true);
     } catch (e) {
-      print('خطا در رفرش کانال $channelId: $e');
+      logInfo('خطا در رفرش کانال $channelId: $e');
       rethrow;
     }
   }
@@ -174,7 +175,7 @@ class ChannelNotifier extends StateNotifier<AsyncValue<void>> {
     try {
       await _channelService.clearCache();
     } catch (e) {
-      print('خطا در پاک کردن کش: $e');
+      logInfo('خطا در پاک کردن کش: $e');
     }
   }
 
@@ -183,7 +184,7 @@ class ChannelNotifier extends StateNotifier<AsyncValue<void>> {
     try {
       return await _channelService.getCacheStats();
     } catch (e) {
-      print('خطا در دریافت آمار کش: $e');
+      logInfo('خطا در دریافت آمار کش: $e');
       return {};
     }
   }
@@ -267,10 +268,10 @@ class DeleteMessageNotifier extends StateNotifier<AsyncValue<bool>> {
       // رفرش کردن لیست پیام‌ها
       _ref.invalidate(channelMessagesProvider(channelId));
 
-      print('پیام با موفقیت حذف شد');
+      logInfo('پیام با موفقیت حذف شد');
     } catch (e, stack) {
       state = AsyncValue.error(e, stack);
-      print('خطا در حذف پیام: $e');
+      logInfo('خطا در حذف پیام: $e');
       rethrow;
     }
   }
@@ -344,7 +345,7 @@ final messagePermissionsProvider =
             !isDeleted && (channelPermissions['canSendMessage'] ?? false),
       };
     } catch (e) {
-      print('خطا در بررسی مجوزات پیام: $e');
+      logInfo('خطا در بررسی مجوزات پیام: $e');
       return {
         'canEdit': false,
         'canDelete': false,

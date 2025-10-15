@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 class ChannelMessageModel {
   final String id;
   final String channelId;
@@ -6,6 +7,7 @@ class ChannelMessageModel {
   final DateTime createdAt;
   final String? attachmentUrl;
   final String? attachmentType;
+  final String? attachmentFileName;
   final int viewsCount;
   final String? replyToMessageId;
   final String? replyToContent;
@@ -28,6 +30,7 @@ class ChannelMessageModel {
     required this.createdAt,
     this.attachmentUrl,
     this.attachmentType,
+    this.attachmentFileName,
     this.viewsCount = 0,
     this.replyToMessageId,
     this.replyToContent,
@@ -46,8 +49,8 @@ class ChannelMessageModel {
   factory ChannelMessageModel.fromJson(Map<String, dynamic> json,
       {String? currentUserId}) {
     print('Parsing message JSON: $json'); // Debug log
-    print('Is Deleted from JSON: ${json['is_deleted']}');
-    print('Is Edited from JSON: ${json['is_edited']}');
+    logInfo('Is Deleted from JSON: ${json['is_deleted']}');
+    logInfo('Is Edited from JSON: ${json['is_edited']}');
 
     return ChannelMessageModel(
       id: json['id'],
@@ -57,6 +60,7 @@ class ChannelMessageModel {
       createdAt: DateTime.parse(json['created_at']),
       attachmentUrl: json['attachment_url'],
       attachmentType: json['attachment_type'],
+      attachmentFileName: json['attachment_file_name'],
       viewsCount: json['views_count'] ?? 0,
       replyToMessageId: json['reply_to_message_id'],
       replyToContent: json['reply_to_content'],
@@ -84,6 +88,7 @@ class ChannelMessageModel {
       'created_at': createdAt.toIso8601String(),
       'attachment_url': attachmentUrl,
       'attachment_type': attachmentType,
+      'attachment_file_name': attachmentFileName,
       'views_count': viewsCount,
       'reply_to_message_id': replyToMessageId,
       'reply_to_content': replyToContent,

@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
@@ -48,10 +49,10 @@ class DatabaseManager {
       );
 
       _initializationStatus['settings'] = true;
-      print('✅ Settings database initialized successfully');
+      logInfo('✅ Settings database initialized successfully');
       return _settingsDatabase!;
     } catch (e) {
-      print('❌ Failed to initialize settings database: $e');
+      logInfo('❌ Failed to initialize settings database: $e');
       rethrow;
     } finally {
       _isInitializing = false;
@@ -80,10 +81,10 @@ class DatabaseManager {
       );
 
       _initializationStatus['recent_searches'] = true;
-      print('✅ Recent searches database initialized successfully');
+      logInfo('✅ Recent searches database initialized successfully');
       return _recentSearchesDatabase!;
     } catch (e) {
-      print('❌ Failed to initialize recent searches database: $e');
+      logInfo('❌ Failed to initialize recent searches database: $e');
       rethrow;
     }
   }
@@ -92,20 +93,20 @@ class DatabaseManager {
   Future<void> initializeAllDatabases() async {
     if (_initializationStatus['settings'] == true &&
         _initializationStatus['recent_searches'] == true) {
-      print('✅ All databases already initialized');
+      logInfo('✅ All databases already initialized');
       return;
     }
 
-    print('🚀 Initializing all databases...');
+    logInfo('🚀 Initializing all databases...');
 
     try {
       // Initialize databases sequentially to avoid conflicts
       await getSettingsDatabase();
       await getRecentSearchesDatabase();
 
-      print('✅ All databases initialized successfully');
+      logInfo('✅ All databases initialized successfully');
     } catch (e) {
-      print('❌ Failed to initialize databases: $e');
+      logInfo('❌ Failed to initialize databases: $e');
       rethrow;
     }
   }
@@ -125,9 +126,9 @@ class DatabaseManager {
         _initializationStatus['recent_searches'] = false;
       }
 
-      print('✅ All databases closed successfully');
+      logInfo('✅ All databases closed successfully');
     } catch (e) {
-      print('❌ Error closing databases: $e');
+      logInfo('❌ Error closing databases: $e');
     }
   }
 

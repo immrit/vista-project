@@ -1,3 +1,4 @@
+import '../../security/logging_utility.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -63,13 +64,13 @@ class _TelegramGalleryBottomSheetState extends State<TelegramGalleryBottomSheet>
 
   Future<void> _loadImages() async {
     try {
-      debugPrint('🖼️ Starting to load images...');
+      logDebug('🖼️ Starting to load images...');
 
       final result = await PhotoManager.requestPermissionExtend();
-      debugPrint('📱 Permission result: ${result.isAuth}');
+      logDebug('📱 Permission result: ${result.isAuth}');
 
       if (!result.isAuth) {
-        debugPrint('❌ Permission denied');
+        logDebug('❌ Permission denied');
         if (mounted) setState(() => _isLoading = false);
         return;
       }
@@ -79,29 +80,29 @@ class _TelegramGalleryBottomSheetState extends State<TelegramGalleryBottomSheet>
         onlyAll: true,
       );
 
-      debugPrint('📁 Found ${albums.length} albums');
+      logDebug('📁 Found ${albums.length} albums');
 
       if (albums.isEmpty) {
-        debugPrint('❌ No albums found');
+        logDebug('❌ No albums found');
         if (mounted) setState(() => _isLoading = false);
         return;
       }
 
       final recent = albums.first;
-      debugPrint('📂 Using album: ${recent.name}');
+      logDebug('📂 Using album: ${recent.name}');
 
       final images = await recent.getAssetListPaged(page: 0, size: 200);
-      debugPrint('🖼️ Loaded ${images.length} images');
+      logDebug('🖼️ Loaded ${images.length} images');
 
       if (mounted) {
         setState(() {
           _images = images;
           _isLoading = false;
         });
-        debugPrint('✅ Images set in state');
+        logDebug('✅ Images set in state');
       }
     } catch (e) {
-      debugPrint('❌ Error loading images: $e');
+      logDebug('❌ Error loading images: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -129,7 +130,7 @@ class _TelegramGalleryBottomSheetState extends State<TelegramGalleryBottomSheet>
         _showErrorDialog('خطا در انتخاب تصویر');
       }
     } catch (e) {
-      debugPrint('❌ Error selecting image: $e');
+      logDebug('❌ Error selecting image: $e');
       _showErrorDialog('خطا در انتخاب تصویر');
     }
   }
@@ -155,10 +156,10 @@ class _TelegramGalleryBottomSheetState extends State<TelegramGalleryBottomSheet>
         if (file != null && await file.exists()) {
           files.add(file);
         } else {
-          debugPrint('⚠️ Skipping invalid file for asset: $assetId');
+          logDebug('⚠️ Skipping invalid file for asset: $assetId');
         }
       } catch (e) {
-        debugPrint('❌ Error preparing image: $e');
+        logDebug('❌ Error preparing image: $e');
       }
     }
 

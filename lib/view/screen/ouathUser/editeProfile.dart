@@ -1,3 +1,4 @@
+import '../../../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -59,7 +60,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
               _selectedDate = jalali.toDateTime();
             }
           } catch (e) {
-            print('خطا در تبدیل تاریخ: $e');
+            logInfo('خطا در تبدیل تاریخ: $e');
           }
         }
       });
@@ -323,7 +324,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
           SnackBar(content: Text('خطا در حذف تصویر: $e')),
         );
       }
-      print('Error deleting image: $e');
+      logInfo('Error deleting image: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -366,7 +367,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
           SnackBar(content: Text('خطا در انتخاب تصویر: $e')),
         );
       }
-      print('Error picking image: $e');
+      logInfo('Error picking image: $e');
     }
   }
 
@@ -411,7 +412,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
           SnackBar(content: Text('خطا در آپلود تصویر: $e')),
         );
       }
-      print('Error uploading image: $e');
+      logInfo('Error uploading image: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -460,7 +461,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
           SnackBar(content: Text('خطا در آپلود تصویر: $e')),
         );
       }
-      print('Error uploading image: $e');
+      logInfo('Error uploading image: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -531,7 +532,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
             ),
           );
 
-          print('Update user response: ${result.user?.email}');
+          logInfo('Update user response: ${result.user?.email}');
 
           emailChangeRequested = true;
 
@@ -832,7 +833,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
         return '$day ${monthNames[month - 1]} $year';
       }
     } catch (e) {
-      print('خطا در نمایش تاریخ: $e');
+      logInfo('خطا در نمایش تاریخ: $e');
     }
     return date;
   }

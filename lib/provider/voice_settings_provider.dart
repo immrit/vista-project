@@ -1,3 +1,4 @@
+import '../security/logging_utility.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -102,7 +103,7 @@ class VoiceSettingsNotifier extends StateNotifier<VoiceSettings> {
         state = VoiceSettings.fromMap(settingsMap);
       }
     } catch (e) {
-      print('❌ خطا در بارگذاری تنظیمات وویس: $e');
+      logInfo('❌ خطا در بارگذاری تنظیمات وویس: $e');
     }
   }
 
@@ -116,7 +117,7 @@ class VoiceSettingsNotifier extends StateNotifier<VoiceSettings> {
 
       await prefs.setString(_key, settingsJson);
     } catch (e) {
-      print('❌ خطا در ذخیره تنظیمات وویس: $e');
+      logInfo('❌ خطا در ذخیره تنظیمات وویس: $e');
     }
   }
 
