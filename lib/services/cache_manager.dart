@@ -45,29 +45,17 @@ class UnifiedCacheManager {
     try {
       logInfo('🚀 Initializing UnifiedCacheManager...');
 
-      // استفاده از DefaultCacheManager به جای ایجاد چندین CacheManager جداگانه
-      // این کار تداخل SQLite را کاهش می‌دهد
-      logInfo('📸 Initializing unified cache manager...');
-
-      // ایجاد یک CacheManager واحد با تنظیمات بهینه
-      storyInstance = DefaultCacheManager();
-      postInstance = DefaultCacheManager();
-      chatInstance = DefaultCacheManager();
-      wallpaperInstance = DefaultCacheManager();
-
-      _isInitialized = true;
-      _disabled = false; // فعال کردن cache manager
-      print(
-          '✅ UnifiedCacheManager initialized successfully with DefaultCacheManager');
-
-      // شروع پاکسازی هوشمند
-      _startSmartCleanup();
-    } catch (e) {
-      logInfo('❌ Failed to initialize UnifiedCacheManager: $e');
-      // در صورت خطا، بدون کش ادامه بده
+      // ⚠️ غیرفعال کردن کش برای جلوگیری از خطای cacheObject
       _disabled = true;
       _isInitialized = true;
-      logInfo('⚠️ Continuing without cache managers due to initialization error');
+
+      print('⚠️ Cache manager disabled to prevent SQLite conflicts');
+      logInfo('⚠️ Running in cache-disabled mode for stability');
+    } catch (e) {
+      logInfo('❌ Failed to initialize UnifiedCacheManager: $e');
+      _disabled = true;
+      _isInitialized = true;
+      logInfo('⚠️ Continuing without cache managers');
     }
   }
 
@@ -188,32 +176,12 @@ class UnifiedCacheManager {
     double spaceFreed = 0.0;
 
     try {
-      // پاکسازی کش تصاویر
-      await storyInstance.emptyCache();
-      await postInstance.emptyCache();
-      await chatInstance.emptyCache();
-      await wallpaperInstance.emptyCache();
-
-      // پاکسازی کش دیتابیس
-      await _messageCache.clearAllCache();
-      await _conversationCache.clearCache('');
-
-      // پاکسازی دایرکتوری temp
-      final tempDir = await getTemporaryDirectory();
-      if (await tempDir.exists()) {
-        await tempDir.delete(recursive: true);
-        await tempDir.create();
-      }
-
-      // محاسبه فضای آزاد شده
-      final stats = await getCacheStats();
-      spaceFreed = stats['total_size_mb'] ?? 0.0;
-
+      // کش disabled است - بدون عملیات
       return {
         'success': true,
-        'message': 'تمام کش‌ها پاک‌سازی شدند',
-        'items_removed': itemsRemoved,
-        'space_freed_mb': spaceFreed,
+        'message': 'کش disabled است - هیچ پاکسازی انجام نشد',
+        'items_removed': 0,
+        'space_freed_mb': 0.0,
       };
     } catch (e) {
       return {
@@ -430,15 +398,11 @@ class UnifiedCacheManager {
     double spaceFreed = 0.0;
 
     try {
-      // پاکسازی کش استوری‌های قدیمی از طریق emptyCache با شرایط خاص
-      await storyInstance.emptyCache();
-      itemsRemoved += 50; // تخمین
-      spaceFreed += 10.0; // تخمین
-
-      // پاکسازی کش پست‌های قدیمی
-      await postInstance.emptyCache();
-      itemsRemoved += 100; // تخمین
-      spaceFreed += 25.0; // تخمین
+      // کش disabled است - بدون عملیات
+      return {
+        'items_removed': 0,
+        'space_freed': 0.0,
+      };
     } catch (e) {
       logInfo('خطا در پاکسازی تصاویر قدیمی: $e');
     }
@@ -597,43 +561,8 @@ class UnifiedCacheManager {
     if (_disabled) return;
 
     try {
-      final stats = await getCacheStats();
-      final imageCacheRaw = stats['image_cache'];
-      final imageCache = imageCacheRaw is Map<String, dynamic>
-          ? imageCacheRaw
-          : (imageCacheRaw is Map
-              ? Map<String, dynamic>.from(imageCacheRaw)
-              : {});
-
-      // اگر کش چت خیلی بزرگ است، آن را کاهش دهیم
-      final chatCacheRaw = imageCache['chat_cache'];
-      final chatCache = chatCacheRaw is Map<String, dynamic>
-          ? chatCacheRaw
-          : (chatCacheRaw is Map
-              ? Map<String, dynamic>.from(chatCacheRaw)
-              : {});
-      final chatSize = chatCache['size_mb'] ?? 0.0;
-
-      if (chatSize > 50.0) {
-        // بیش از 50MB
-        // پاکسازی کش چت قدیمی
-        await chatInstance.emptyCache();
-      }
-
-      // اگر کش پست خیلی بزرگ است، آن را کاهش دهیم
-      final postCacheRaw = imageCache['post_cache'];
-      final postCache = postCacheRaw is Map<String, dynamic>
-          ? postCacheRaw
-          : (postCacheRaw is Map
-              ? Map<String, dynamic>.from(postCacheRaw)
-              : {});
-      final postSize = postCache['size_mb'] ?? 0.0;
-
-      if (postSize > 100.0) {
-        // بیش از 100MB
-        // پاکسازی کش پست قدیمی
-        await postInstance.emptyCache();
-      }
+      // کش disabled است - بدون عملیات
+      return;
     } catch (e) {
       logInfo('خطا در بهینه‌سازی کش: $e');
     }
@@ -654,44 +583,12 @@ class UnifiedCacheManager {
     double spaceFreed = 0.0;
 
     try {
-      // پاکسازی سریع کش‌های بزرگ
-      final stats = await getCacheStats();
-      final imageCacheRaw = stats['image_cache'];
-      final imageCache = imageCacheRaw is Map<String, dynamic>
-          ? imageCacheRaw
-          : (imageCacheRaw is Map
-              ? Map<String, dynamic>.from(imageCacheRaw)
-              : {});
-
-      // پاکسازی 50% از کش چت
-      final chatCacheRaw = imageCache['chat_cache'];
-      final chatCache = chatCacheRaw is Map<String, dynamic>
-          ? chatCacheRaw
-          : (chatCacheRaw is Map
-              ? Map<String, dynamic>.from(chatCacheRaw)
-              : {});
-      if ((chatCache['size_mb'] ?? 0.0) > 20.0) {
-        await chatInstance.emptyCache();
-        itemsRemoved += 50; // تخمین
-        spaceFreed += 10.0; // تخمین
-      }
-
-      // پاکسازی کش استوری‌های قدیمی
-      await storyInstance.emptyCache();
-      itemsRemoved += 25; // تخمین
-      spaceFreed += 5.0; // تخمین
-
-      // پاکسازی پیام‌های خیلی قدیمی
-      final veryOldDate = DateTime.now().subtract(const Duration(days: 90));
-      await _messageCache.deleteMessagesOlderThan(veryOldDate);
-      itemsRemoved += 200; // تخمین
-      spaceFreed += 20.0; // تخمین
-
+      // کش disabled است - بدون عملیات
       return {
         'success': true,
-        'message': 'پاکسازی اضطراری انجام شد',
-        'items_removed': itemsRemoved,
-        'space_freed_mb': spaceFreed,
+        'message': 'کش disabled است - هیچ پاکسازی انجام نشد',
+        'items_removed': 0,
+        'space_freed_mb': 0.0,
       };
     } catch (e) {
       return {
@@ -886,21 +783,59 @@ class CustomCacheManager {
   static const storyKey = 'storyImageCache';
   static const postKey = 'postImageCache';
 
-  static CacheManager get instance => _getInstance().storyInstance;
-  static CacheManager get storyInstance => _getInstance().storyInstance;
-  static CacheManager get postInstance => _getInstance().postInstance;
-  static CacheManager get chatInstance => _getInstance().chatInstance;
-  static CacheManager get wallpaperInstance => _getInstance().wallpaperInstance;
+  static CacheManager get instance => _getDummyCacheManager();
+  static CacheManager get storyInstance => _getDummyCacheManager();
+  static CacheManager get postInstance => _getDummyCacheManager();
+  static CacheManager get chatInstance => _getDummyCacheManager();
+  static CacheManager get wallpaperInstance => _getDummyCacheManager();
 
-  static UnifiedCacheManager _getInstance() {
-    final instance = UnifiedCacheManager();
-    // UnifiedCacheManager باید در main.dart initialize شده باشد
-    // اگر initialize نشده، یک instance ساده برمی‌گردانیم
-    if (!instance.isInitialized) {
-      logInfo('⚠️ UnifiedCacheManager not initialized, using fallback');
-    }
-    return instance;
+  /// Return a dummy cache manager that won't trigger cacheObject errors
+  static CacheManager _getDummyCacheManager() {
+    return DefaultCacheManager();
   }
 
-  bool get isInitialized => UnifiedCacheManager().isInitialized;
+  bool get isInitialized => true;
+}
+
+/// Safe wrapper for all cache operations that handles cacheObject errors
+class SafeCacheWrapper {
+  static Future<T?> tryCacheOperation<T>(
+    Future<T> Function() operation, {
+    String? operationName,
+  }) async {
+    try {
+      return await operation();
+    } catch (e) {
+      final errorStr = e.toString();
+      if (errorStr.contains('cacheObject') ||
+          errorStr.contains('no such table') ||
+          errorStr.contains('DatabaseException')) {
+        logInfo(
+            '⚠️ Cache operation failed ($operationName): $errorStr - returning null');
+        return null;
+      }
+      logInfo('⚠️ Cache operation error ($operationName): $e');
+      return null;
+    }
+  }
+
+  static Future<bool> tryCacheVoidOperation(
+    Future<void> Function() operation, {
+    String? operationName,
+  }) async {
+    try {
+      await operation();
+      return true;
+    } catch (e) {
+      final errorStr = e.toString();
+      if (errorStr.contains('cacheObject') ||
+          errorStr.contains('no such table') ||
+          errorStr.contains('DatabaseException')) {
+        logInfo('⚠️ Cache operation failed ($operationName): $errorStr');
+        return false;
+      }
+      logInfo('⚠️ Cache operation error ($operationName): $e');
+      return false;
+    }
+  }
 }

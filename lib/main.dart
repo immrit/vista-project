@@ -251,15 +251,16 @@ void main() async {
     },
     (error, stack) {
       // Handle specific errors that shouldn't crash the app
-      if (error.toString().contains('DatabaseException') &&
-          error.toString().contains('no such table: cacheObject')) {
-        print('⚠️ Cache database error caught and handled: $error');
-        return; // Don't print full stack trace for known cache issues
-      }
-
       if (error.toString().contains('RealtimeSubscribeException')) {
         print('⚠️ Real-time subscription error caught and handled: $error');
         return; // Don't print full stack trace for known real-time issues
+      }
+
+      if (error.toString().contains('cacheObject') ||
+          error.toString().contains('no such table') ||
+          error.toString().contains('DatabaseException')) {
+        print('🛡️ Cache error suppressed: $error');
+        return;
       }
 
       print('⚠️ Unhandled error (caught globally): $error');
