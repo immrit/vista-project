@@ -62,8 +62,8 @@ class _SplashScreenState extends State<SplashScreen> {
         _statusMessage = 'بررسی وضعیت اتصال...';
       });
 
-      // صبر کردن برای Supabase initialization
-      await Future.delayed(const Duration(milliseconds: 500));
+      // ✅ بهبود: منتظر بمانید تا session restore شود (به جای تأخیر ثابت 500ms)
+      await _waitForSessionRestoration();
 
       final session = supabase.auth.currentSession;
       print(
@@ -85,6 +85,29 @@ class _SplashScreenState extends State<SplashScreen> {
         Navigator.of(context).pushReplacementNamed('/auth');
       }
     }
+  }
+
+  // ✅ تابع جدید: منتظر بمانید تا session restore شود
+  Future<void> _waitForSessionRestoration({int maxAttempts = 20}) async {
+    print('⏳ Waiting for session restoration from local storage...');
+
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        final session = supabase.auth.currentSession;
+        if (session != null) {
+          print('✅ Session restored successfully! User: ${session.user.email}');
+          return;
+        }
+      } catch (e) {
+        // ignore
+      }
+
+      if (attempt < maxAttempts - 1) {
+        await Future.delayed(const Duration(milliseconds: 150));
+      }
+    }
+
+    print('⏳ Session restoration check completed');
   }
 
   Future<void> _handleUnauthenticatedUser() async {

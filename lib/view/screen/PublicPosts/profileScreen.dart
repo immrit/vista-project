@@ -907,6 +907,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   void _startConversation(String otherUserId, String otherUsername) async {
     try {
       if (_isStartingConversation) return;
+
+      logInfo(
+          '🚀 شروع فرآیند ایجاد/یافتن مکالمه برای کاربر: $otherUserId (نام: $otherUsername)');
+
       setState(() {
         _isStartingConversation = true;
       });
@@ -958,7 +962,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                   ),
                   const SizedBox(height: 20),
                   Text(
-                    'در حال بررسی مکالمات موجود...',
+                    'در حال آماده‌سازی گفتگو...',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -981,33 +985,40 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           ),
         );
 
-        // بررسی وجود مکالمه قبلی
+        // استفاده از createOrGetConversation که هم جستجو می‌کند و هم در صورت نیاز ایجاد می‌کند
+        logInfo('🔍 جستجو و ایجاد مکالمه برای کاربر: $otherUserId');
         existingConversationId =
-            await chatService.findExistingConversation(otherUserId);
-        if (existingConversationId != null &&
-            existingConversationId.isNotEmpty) {
-          logInfo('مکالمه موجود یافت شد: $existingConversationId');
-        } else {
-          logInfo('هیچ مکالمه موجودی یافت نشد');
-        }
+            await chatService.createOrGetConversation(otherUserId);
+        logInfo('✅ مکالمه آماده شد: $existingConversationId');
 
         // بستن نشانگر بارگذاری
         if (context.mounted && Navigator.of(context).canPop()) {
           Navigator.of(context).pop();
         }
       } catch (e) {
-        logInfo('خطا در بررسی وجود مکالمه: $e');
-        // در صورت خطا، فرض بر جدید بودن مکالمه
+        logInfo('❌ خطا در ایجاد/یافتن مکالمه: $e');
         // بستن نشانگر بارگذاری
         if (context.mounted && Navigator.of(context).canPop()) {
           Navigator.of(context).pop();
         }
+
+        // نمایش پیام خطا
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('خطا در ایجاد گفتگو: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
       }
 
       // انتقال به صفحه چت
       if (context.mounted) {
         // بررسی وجود conversationId معتبر
-        if (existingConversationId == null || existingConversationId.isEmpty) {
+        if (existingConversationId.isEmpty) {
+          logInfo('❌ conversationId نامعتبر: $existingConversationId');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('خطا در ایجاد مکالمه جدید'),
@@ -1017,6 +1028,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           return;
         }
 
+        logInfo('🎯 انتقال به صفحه چت با ID: $existingConversationId');
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => ChatScreen(
@@ -1029,7 +1041,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         );
       }
     } catch (e) {
-      print("خطای انتقال به صفحه چت: $e");
+      logInfo('❌ خطای کلی در _startConversation: $e');
       // بستن نشانگر بارگذاری در صورت وجود
       if (context.mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
@@ -1884,7 +1896,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
         // Debug logging
         logInfo('🔍 UI Like Button Debug - Post ID: ${post.id}');
-        logInfo('🔍 Base likeCount: ${post.likeCount}, isLiked: ${post.isLiked}');
+        logInfo(
+            '🔍 Base likeCount: ${post.likeCount}, isLiked: ${post.isLiked}');
         print(
             '🔍 LikeStateProvider value: ${ref.watch(likeStateProvider)[post.id]}');
         logInfo('🔍 Final likeCount: $likeCount, final isLiked: $isLiked');

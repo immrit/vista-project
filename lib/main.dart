@@ -323,6 +323,17 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
           }
         } else if (data.event == AuthChangeEvent.signedOut) {
           debugPrint('کاربر خارج شد - پاک کردن نشست‌ها');
+        } else if (data.event == AuthChangeEvent.initialSession) {
+          // ✅ اضافه شده: هنگام app restart، session اولیه restore می‌شود
+          debugPrint('🔐 Initial session restoration detected');
+          if (data.session != null) {
+            print('✅ User session restored: ${data.session!.user.email}');
+          } else {
+            print('⚠️ No initial session found (user not logged in)');
+          }
+        } else if (data.event == AuthChangeEvent.userUpdated) {
+          // ✅ اضافه شده: کاربر بروزرسانی شد (می‌تواند session restoration نشانگر باشد)
+          debugPrint('👤 User updated - session may have been restored');
         }
       } catch (e) {
         print('⚠️ خطا در مدیریت تغییر وضعیت احراز هویت: $e');

@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:equatable/equatable.dart';
-import 'package:flutter/foundation.dart';
 import 'ProfileModel.dart'; // واردکردن ProfileModel برای استفاده از VerificationType
 
 class PublicPostModel extends Equatable {

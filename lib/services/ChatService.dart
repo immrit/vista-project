@@ -115,7 +115,7 @@ class ChatService {
         // دریافت تمام شرکت‌کنندگان به صورت باتچ برای بهبود عملکرد
         final participantsResponseAll = await _supabase
             .from('conversation_participants')
-            .select('*, profiles:user_id(username, full_name, avatar_url)')
+            .select()
             .inFilter('conversation_id', conversationIds);
 
         // ایجاد مپ از conversation_id به لیست شرکت‌کنندگان
@@ -712,57 +712,102 @@ class ChatService {
   Future<String?> findExistingConversation(String otherUserId) async {
     final userId = _supabase.auth.currentUser!.id;
 
+    logInfo(
+        '🔍 findExistingConversation شروع شد - کاربر فعلی: $userId, کاربر هدف: $otherUserId');
+
     // جلوگیری از جستجو با خود کاربر
     if (userId == otherUserId) {
+      logInfo('❌ تلاش برای جستجوی مکالمه با خود کاربر');
       return null;
     }
 
     try {
       // 1) بررسی روی سرور با RPC (ترجیحی)
+      logInfo('🔍 جستجو با RPC find_conversation_between_users...');
       try {
         final existingQuery = await _supabase.rpc(
           'find_conversation_between_users',
           params: {'user1': userId, 'user2': otherUserId},
         );
         if (existingQuery != null && existingQuery.isNotEmpty) {
-          logInfo('مکالمه موجود در سرور یافت شد: ${existingQuery[0]['id']}');
+          logInfo(
+              '✅ مکالمه موجود در سرور یافت شد (RPC): ${existingQuery[0]['id']}');
           return existingQuery[0]['id'];
         }
+        logInfo('ℹ️ RPC هیچ نتیجه‌ای برنگرداند');
       } catch (e) {
-        logInfo('find_conversation_between_users RPC failed: $e');
+        logInfo(
+            '❌ find_conversation_between_users RPC failed: $e - ادامه با روش‌های جایگزین');
       }
 
-      // 2) جستجو در کش محلی
+      // 2) جستجو مستقیم در دیتابیس (fallback برای RPC)
+      logInfo('🔍 جستجوی مستقیم در دیتابیس...');
+      try {
+        // جستجو برای مکالماتی که هر دو کاربر در آنها شرکت دارند
+        final directQuery = await _supabase
+            .from('conversation_participants')
+            .select('conversation_id')
+            .eq('user_id', userId);
+
+        if (directQuery.isNotEmpty) {
+          final conversationIds =
+              directQuery.map((e) => e['conversation_id'] as String).toList();
+
+          // بررسی اینکه آیا کاربر دیگر هم در این مکالمات شرکت دارد
+          final otherUserQuery = await _supabase
+              .from('conversation_participants')
+              .select('conversation_id')
+              .eq('user_id', otherUserId)
+              .inFilter('conversation_id', conversationIds);
+
+          if (otherUserQuery.isNotEmpty) {
+            final sharedConversationId =
+                otherUserQuery[0]['conversation_id'] as String;
+            logInfo(
+                '✅ مکالمه مشترک یافت شد (جستجوی مستقیم): $sharedConversationId');
+            return sharedConversationId;
+          }
+          logInfo('ℹ️ جستجوی مستقیم هیچ نتیجه‌ای نداشت');
+        }
+      } catch (e) {
+        logInfo('❌ خطا در جستجوی مستقیم دیتابیس: $e');
+      }
+
+      // 3) جستجو در کش محلی
+      logInfo('🔍 جستجو در کش محلی...');
       try {
         final cached = await _conversationCache.getCachedConversations(userId);
         for (final c in cached) {
           if (c.otherUserId == otherUserId) {
-            logInfo('مکالمه موجود در کش یافت شد: ${c.id}');
+            logInfo('✅ مکالمه موجود در کش یافت شد: ${c.id}');
             return c.id;
           }
         }
+        logInfo('ℹ️ کش محلی هیچ نتیجه‌ای نداشت');
       } catch (e) {
-        logInfo('خطا در جستجوی کش: $e');
+        logInfo('❌ خطا در جستجوی کش: $e');
       }
 
-      // 3) جستجو در سرور (از طریق getConversations)
+      // 4) جستجو در سرور (از طریق getConversations)
+      logInfo('🔍 جستجو در سرور از طریق getConversations...');
       try {
         final all = await getConversations();
         for (final c in all) {
           if (c.otherUserId == otherUserId) {
-            print(
-                'مکالمه موجود در سرور (از طریق getConversations) یافت شد: ${c.id}');
+            logInfo(
+                '✅ مکالمه موجود در سرور (از طریق getConversations) یافت شد: ${c.id}');
             return c.id;
           }
         }
+        logInfo('ℹ️ getConversations هیچ نتیجه‌ای نداشت');
       } catch (e) {
-        logInfo('خطا در جستجوی سرور: $e');
+        logInfo('❌ خطا در جستجوی سرور: $e');
       }
 
-      logInfo('هیچ مکالمه موجودی یافت نشد');
+      logInfo('❌ هیچ مکالمه موجودی یافت نشد');
       return null;
     } catch (e) {
-      logInfo('خطا در findExistingConversation: $e');
+      logInfo('❌ خطا در findExistingConversation: $e');
       return null;
     }
   }
@@ -770,45 +815,63 @@ class ChatService {
   Future<String> createOrGetConversation(String otherUserId) async {
     final userId = _supabase.auth.currentUser!.id;
 
+    logInfo(
+        '🚀 createOrGetConversation شروع شد - کاربر فعلی: $userId, کاربر هدف: $otherUserId');
+
     // جلوگیری از ایجاد مکالمه با خود کاربر
     if (userId == otherUserId) {
+      logInfo('❌ تلاش برای ایجاد مکالمه با خود کاربر');
       throw Exception('کاربر نمی‌تواند با خودش گفتگو ایجاد کند.');
     }
 
     final key = _pairKey(userId, otherUserId);
-    print(
-        'createOrGetConversation: جستجو برای کاربر $otherUserId (کلید: $key)');
+    logInfo('🔑 کلید جفت کاربران: $key');
 
     // اگر درحال ساخت/واکشی همین مکالمه هستیم، همان Future را برگردان
     final inFlight = _pendingConversationFutures[key];
     if (inFlight != null) {
-      logInfo('createOrGetConversation: در حال انجام برای کلید $key');
+      logInfo('⏳ عملیات در حال انجام برای کلید $key - انتظار برای تکمیل...');
       return await inFlight;
     }
 
     Future<String> task() async {
       try {
-        // ابتدا بررسی کن که آیا مکالمه موجود است
+        // ابتدا سعی کن از RPC function استفاده کنی
+        logInfo('🔍 تلاش برای استفاده از RPC create_or_get_conversation...');
+        try {
+          final rpcResult = await _supabase.rpc(
+            'create_or_get_conversation',
+            params: {'user1': userId, 'user2': otherUserId},
+          );
+          if (rpcResult != null) {
+            logInfo('✅ مکالمه با موفقیت ایجاد/یافت شد (RPC): $rpcResult');
+            return rpcResult.toString();
+          }
+        } catch (e) {
+          logInfo(
+              '❌ RPC create_or_get_conversation failed: $e - ادامه با روش‌های جایگزین');
+        }
+
+        // اگر RPC کار نکرد، از روش قبلی استفاده کن
+        logInfo('🔍 جستجوی مکالمه موجود...');
         final existingId = await findExistingConversation(otherUserId);
         if (existingId != null && existingId.isNotEmpty) {
-          logInfo('createOrGetConversation: مکالمه موجود یافت شد: $existingId');
+          logInfo('✅ مکالمه موجود یافت شد: $existingId');
           return existingId;
         }
 
-        print(
-            'createOrGetConversation: هیچ مکالمه موجودی یافت نشد، ایجاد مکالمه جدید...');
+        logInfo('🆕 هیچ مکالمه موجودی یافت نشد، ایجاد مکالمه جدید...');
 
         // اگر هیچ گفتگویی پیدا نشد، مکالمه جدید بساز
-        final newConversation = await _supabase
-            .from('conversations')
-            .insert({'unread_count': 0})
-            .select()
-            .single();
+        logInfo('📝 ایجاد رکورد مکالمه جدید در دیتابیس...');
+        final newConversation =
+            await _supabase.from('conversations').insert({}).select().single();
 
         final conversationId = newConversation['id'];
-        logInfo('createOrGetConversation: مکالمه جدید ایجاد شد: $conversationId');
+        logInfo('✅ مکالمه جدید ایجاد شد با ID: $conversationId');
 
         // افزودن کاربران به مکالمه
+        logInfo('👥 افزودن کاربران به مکالمه...');
         await _supabase.from('conversation_participants').insert([
           {
             'conversation_id': conversationId,
@@ -822,14 +885,15 @@ class ChatService {
           },
         ]);
 
-        print(
-            'createOrGetConversation: کاربران به مکالمه $conversationId اضافه شدند');
+        logInfo('✅ کاربران به مکالمه $conversationId اضافه شدند');
 
         // بروزرسانی کش برای جلوگیری از ساخت مجدد
+        logInfo('🔄 بروزرسانی کش مکالمه...');
         await refreshConversation(conversationId);
+        logInfo('🎉 مکالمه با موفقیت ایجاد و آماده شد: $conversationId');
         return conversationId;
       } catch (e) {
-        logInfo('createOrGetConversation: خطا در ایجاد مکالمه: $e');
+        logInfo('❌ خطا در ایجاد مکالمه: $e');
         throw AppException(
           userFriendlyMessage: 'مشکل در ایجاد گفتگو',
           technicalMessage: 'خطا در createOrGetConversation: $e',
@@ -841,10 +905,11 @@ class ChatService {
     _pendingConversationFutures[key] = future;
     try {
       final result = await future;
-      logInfo('createOrGetConversation: عملیات با موفقیت انجام شد: $result');
+      logInfo('🎯 createOrGetConversation با موفقیت تکمیل شد: $result');
       return result;
     } finally {
       _pendingConversationFutures.remove(key);
+      logInfo('🧹 پاکسازی pending futures برای کلید: $key');
     }
   }
 
@@ -864,42 +929,28 @@ class ChatService {
       // دریافت شرکت‌کنندگان و اطلاعات کاربر دیگر
       final participantsJson = await _supabase
           .from('conversation_participants')
-          .select('*, profiles:user_id(*)')
+          .select()
           .eq('conversation_id', conversationId);
 
       final participants = participantsJson
           .map((e) => ConversationParticipantModel.fromJson(e))
           .toList();
 
-      Map<String, dynamic>? otherParticipant;
-      try {
-        otherParticipant = participantsJson
-            .cast<Map<String, dynamic>>()
-            .firstWhere((e) => e['user_id'] == otherUserId);
-      } catch (_) {
-        otherParticipant = null;
-      }
-
+      // دریافت پروفایل کاربر دیگر
       String? otherName;
       String? otherAvatar;
-      if (otherParticipant != null) {
-        final profilesField = otherParticipant['profiles'];
-        final Map<String, dynamic> prof = profilesField is Map<String, dynamic>
-            ? profilesField
-            : <String, dynamic>{};
-        otherName = prof['username'] as String?;
-        otherAvatar = prof['avatar_url'] as String?;
-      } else {
-        // fallback: پروفایل طرف مقابل را مستقیم بخوان
-        try {
-          final otherUserResponse = await _supabase
-              .from('profiles')
-              .select()
-              .eq('id', otherUserId)
-              .maybeSingle();
-          otherName = otherUserResponse?['username'] as String?;
-          otherAvatar = otherUserResponse?['avatar_url'] as String?;
-        } catch (_) {}
+      try {
+        final otherUserResponse = await _supabase
+            .from('profiles')
+            .select('username, avatar_url')
+            .eq('id', otherUserId)
+            .maybeSingle();
+        otherName = otherUserResponse?['username'] as String?;
+        otherAvatar = otherUserResponse?['avatar_url'] as String?;
+      } catch (e) {
+        logInfo('خطا در دریافت پروفایل کاربر دیگر: $e');
+        otherName = 'کاربر';
+        otherAvatar = null;
       }
 
       return ConversationModel.fromJson(conversationResponse).copyWith(

@@ -178,10 +178,18 @@ Future<void> initializeSupabaseWithFailover() async {
       httpClient: httpClient,
     );
 
+    // ✅ اضافه شده: منتظر بمانید تا session restore شود
+    print('⏳ Waiting for session restoration...');
+    await _waitForSessionRestore();
+
     await Supabase.instance.client.from('profiles').select().limit(1).timeout(
           const Duration(seconds: 5), // کاهش timeout از 15 به 5 ثانیه
           onTimeout: () => throw TimeoutException('Ping timeout'),
         );
+
+    // ✅ اضافه شده: پس از initialize موفق، session بازیابی شده را لاگ کنید
+    _logSessionStatus();
+
     return; // اتصال موفق، خروج از تابع
   } catch (e) {
     logInfo('⚠️ CDN URL failed: $e');
@@ -222,10 +230,17 @@ Future<void> initializeSupabaseWithFailover() async {
           anonKey: supabaseAnonKey,
           httpClient: httpClient2);
 
+      // ✅ اضافه شده: منتظر بمانید تا session restore شود
+      print('⏳ Waiting for session restoration (Direct URL)...');
+      await _waitForSessionRestore();
+
       await Supabase.instance.client.from('profiles').select().limit(1).timeout(
             const Duration(seconds: 5), // کاهش timeout از 15 به 5 ثانیه
             onTimeout: () => throw TimeoutException('Ping timeout'),
           );
+
+      // ✅ اضافه شده: پس از initialize موفق، session بازیابی شده را لاگ کنید
+      _logSessionStatus();
 
       logInfo('✅ Supabase initialized successfully with Direct URL');
     } catch (err) {
@@ -245,7 +260,8 @@ Future<void> initializeSupabaseWithFailover() async {
             anonKey: supabaseAnonKey,
           );
           logInfo('✅ Supabase با تنظیمات minimal initialize شد (حالت توسعه)');
-          logInfo('⚠️ اتصال به دیتابیس ممکن است کار نکند اما برنامه اجرا می‌شود');
+          logInfo(
+              '⚠️ اتصال به دیتابیس ممکن است کار نکند اما برنامه اجرا می‌شود');
           return; // خروج موفق
         } catch (minimalErr) {
           logInfo('❌ حتی minimal Supabase هم شکست خورد: $minimalErr');
@@ -257,5 +273,45 @@ Future<void> initializeSupabaseWithFailover() async {
         rethrow; // در حالت production، اجازه نده برنامه اجرا شود
       }
     }
+  }
+}
+
+// ✅ تابع جدید: منتظر بمانید تا session restore شود
+Future<void> _waitForSessionRestore(
+    {int maxAttempts = 15, int delayMs = 200}) async {
+  print('🔄 Checking for session restoration...');
+
+  for (int attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null) {
+        print('✅ Session restored successfully! User: ${session.user.email}');
+        return;
+      }
+    } catch (e) {
+      // ignore errors during polling
+    }
+
+    if (attempt < maxAttempts - 1) {
+      await Future.delayed(Duration(milliseconds: delayMs));
+    }
+  }
+
+  print('⏳ Session restore check completed (may restore asynchronously)');
+}
+
+// ✅ تابع جدید: لاگ کردن وضعیت session
+void _logSessionStatus() {
+  try {
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session != null) {
+      print('🔐 Current session user: ${session.user.email}');
+      print('🔐 Access token present: ${session.accessToken.isNotEmpty}');
+      print('🔐 Token expiry: ${session.expiresAt}');
+    } else {
+      print('⚠️ No session currently available (may restore later)');
+    }
+  } catch (e) {
+    print('⚠️ Error checking session status: $e');
   }
 }

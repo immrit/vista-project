@@ -81,7 +81,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isOtherUserBlocked = false;
   bool _isCurrentUserBlocked = false;
   bool _isCacheEmpty = false;
-  bool _isOtherUserTyping = false; // typing indicator state
+  final bool _isOtherUserTyping = false; // typing indicator state
 
   // Performance optimization
   Timer? _scrollDebounceTimer;
