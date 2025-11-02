@@ -1,6 +1,7 @@
 import '../../security/logging_utility.dart';
 import 'dart:async';
 import 'package:Vista/view/util/widgets.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:video_player/video_player.dart';
@@ -8,6 +9,7 @@ import 'package:visibility_detector/visibility_detector.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../model/publicPostModel.dart';
 import '../../provider/provider.dart';
+import '../../services/cache_manager.dart';
 
 class ReelsVideoPlayer extends ConsumerStatefulWidget {
   final PublicPostModel post;
@@ -402,16 +404,34 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
                   children: [
                     Row(
                       children: [
-                        CircleAvatar(
-                          radius: 20,
-                          backgroundImage: NetworkImage(widget.post.avatarUrl),
-                          child: null,
+                        CachedNetworkImage(
+                          imageUrl: widget.post.avatarUrl,
+                          imageBuilder: (context, imageProvider) =>
+                              CircleAvatar(
+                            radius: 20,
+                            backgroundImage: imageProvider,
+                            child: null,
+                          ),
+                          placeholder: (context, url) => CircleAvatar(
+                            radius: 20,
+                            child:
+                                const CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          errorWidget: (context, url, error) => CircleAvatar(
+                            radius: 20,
+                            backgroundImage:
+                                NetworkImage(widget.post.avatarUrl),
+                            child: null,
+                          ),
+                          cacheManager: CustomCacheManager.instanceSync,
                         ),
                         SizedBox(width: 8),
                         Row(
                           children: [
                             Text(
-                              widget.post.username ?? "کاربر",
+                              widget.post.username.isNotEmpty
+                                  ? widget.post.username
+                                  : "کاربر",
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,

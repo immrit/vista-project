@@ -42,16 +42,37 @@ class UnifiedMessageCacheService {
       String conversationId, String userId,
       {int? limit}) async {
     final messages = _advancedCache.getCachedMessages(conversationId);
+    
+    // اطمینان از اینکه isMe برای همه پیام‌ها به درستی set شده است
+    final correctedMessages = messages.map((message) {
+      // بررسی و اصلاح isMe بر اساس userId فعلی
+      final correctIsMe = message.senderId == userId;
+      if (message.isMe != correctIsMe) {
+        return message.copyWith(isMe: correctIsMe);
+      }
+      return message;
+    }).toList();
+    
     if (limit != null && limit > 0) {
-      return messages.take(limit).toList();
+      return correctedMessages.take(limit).toList();
     }
-    return messages;
+    return correctedMessages;
   }
 
   /// Get cached messages for a conversation
   Future<List<MessageModel>> getCachedMessages(
       String conversationId, String userId) async {
-    return _advancedCache.getCachedMessages(conversationId);
+    final messages = _advancedCache.getCachedMessages(conversationId);
+    
+    // اطمینان از اینکه isMe برای همه پیام‌ها به درستی set شده است
+    return messages.map((message) {
+      // بررسی و اصلاح isMe بر اساس userId فعلی
+      final correctIsMe = message.senderId == userId;
+      if (message.isMe != correctIsMe) {
+        return message.copyWith(isMe: correctIsMe);
+      }
+      return message;
+    }).toList();
   }
 
   /// Get a specific message

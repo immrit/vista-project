@@ -14,24 +14,31 @@ class PostImage extends ConsumerWidget {
     final imageQualityService = ImageQualityService();
     final cacheSettings = imageQualityService.getImageCacheSettings();
 
-    return CachedNetworkImage(
-      imageUrl: imageUrl,
-      cacheManager: CustomCacheManager.postInstance,
-      placeholder: (context, url) => const Center(
-        child: CircularProgressIndicator(),
-      ),
-      errorWidget: (context, url, error) => const Icon(Icons.error),
-      fit: BoxFit.cover,
-      memCacheWidth: cacheSettings['maxWidth'],
-      memCacheHeight: cacheSettings['maxHeight'],
-      imageBuilder: (context, imageProvider) {
-        return Image(
-          image: imageProvider,
+    return FutureBuilder(
+      future: CustomCacheManager.postInstance,
+      builder: (context, snapshot) {
+        final cacheManager = snapshot.data ?? CustomCacheManager.postInstanceSync;
+
+        return CachedNetworkImage(
+          imageUrl: imageUrl,
+          cacheManager: cacheManager,
+          placeholder: (context, url) => const Center(
+            child: CircularProgressIndicator(),
+          ),
+          errorWidget: (context, url, error) => const Icon(Icons.error),
           fit: BoxFit.cover,
-          // اعمال تنظیمات کیفیت تصویر
-          filterQuality: imageQualityService.shouldUseHighQuality()
-              ? FilterQuality.high
-              : FilterQuality.low,
+          memCacheWidth: cacheSettings['maxWidth'],
+          memCacheHeight: cacheSettings['maxHeight'],
+          imageBuilder: (context, imageProvider) {
+            return Image(
+              image: imageProvider,
+              fit: BoxFit.cover,
+              // اعمال تنظیمات کیفیت تصویر
+              filterQuality: imageQualityService.shouldUseHighQuality()
+                  ? FilterQuality.high
+                  : FilterQuality.low,
+            );
+          },
         );
       },
     );

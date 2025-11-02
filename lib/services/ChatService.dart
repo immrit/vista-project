@@ -1547,6 +1547,15 @@ class ChatService {
         // پیش‌بارگذاری پروفایل‌ها
         await _profileService.preloadProfiles(senderIds);
 
+        // ساخت map از senderId به senderName برای استفاده در replyToSenderName
+        final senderNameMap = <String, String>{};
+        for (final senderId in senderIds) {
+          final senderProfile = _profileService.getCachedProfile(senderId);
+          if (senderProfile?.displayName != null) {
+            senderNameMap[senderId] = senderProfile!.displayName;
+          }
+        }
+
         final messages = await Future.wait(
           filteredMessages.map((json) async {
             final senderId = json['sender_id'] as String;
@@ -1559,6 +1568,27 @@ class ChatService {
               senderName: senderProfile?.displayName ?? 'کاربر',
               senderAvatar: senderProfile?.avatar,
             );
+
+            // اصلاح replyToSenderName اگر null یا 'کاربر' است
+            if (message.replyToMessageId != null &&
+                (message.replyToSenderName == null ||
+                 message.replyToSenderName!.isEmpty ||
+                 message.replyToSenderName == 'کاربر')) {
+              // جستجو در filteredMessages برای پیدا کردن پیام ریپلای شده
+              final repliedMessageJson = filteredMessages.firstWhere(
+                (msg) => msg['id'] == message.replyToMessageId,
+                orElse: () => <String, dynamic>{},
+              );
+              
+              if (repliedMessageJson.isNotEmpty) {
+                final repliedSenderId = repliedMessageJson['sender_id'] as String?;
+                if (repliedSenderId != null && senderNameMap.containsKey(repliedSenderId)) {
+                  message = message.copyWith(
+                    replyToSenderName: senderNameMap[repliedSenderId],
+                  );
+                }
+              }
+            }
 
             await _messageCache.cacheMessage(message, userId);
             return message;
@@ -1611,19 +1641,51 @@ class ChatService {
           // پیش‌بارگذاری پروفایل‌ها
           await _profileService.preloadProfiles(senderIds);
 
+          // ساخت map از senderId به senderName برای استفاده در replyToSenderName
+          final senderNameMap = <String, String>{};
+          for (final senderId in senderIds) {
+            final senderProfile = _profileService.getCachedProfile(senderId);
+            if (senderProfile?.displayName != null) {
+              senderNameMap[senderId] = senderProfile!.displayName;
+            }
+          }
+
           // تبدیل به MessageModel
           final messages = await Future.wait(
             data.map((json) async {
               final senderId = json['sender_id'] as String;
               final senderProfile = _profileService.getCachedProfile(senderId);
 
-              return MessageModel.fromJson(
+              var message = MessageModel.fromJson(
                 json,
                 currentUserId: userId,
               ).copyWith(
                 senderName: senderProfile?.displayName ?? 'کاربر',
                 senderAvatar: senderProfile?.avatar,
               );
+
+              // اصلاح replyToSenderName اگر null یا 'کاربر' است
+              if (message.replyToMessageId != null &&
+                  (message.replyToSenderName == null ||
+                   message.replyToSenderName!.isEmpty ||
+                   message.replyToSenderName == 'کاربر')) {
+                // جستجو در data برای پیدا کردن پیام ریپلای شده
+                final repliedMessageJson = data.firstWhere(
+                  (msg) => msg['id'] == message.replyToMessageId,
+                  orElse: () => <String, dynamic>{},
+                );
+                
+                if (repliedMessageJson.isNotEmpty) {
+                  final repliedSenderId = repliedMessageJson['sender_id'] as String?;
+                  if (repliedSenderId != null && senderNameMap.containsKey(repliedSenderId)) {
+                    message = message.copyWith(
+                      replyToSenderName: senderNameMap[repliedSenderId],
+                    );
+                  }
+                }
+              }
+
+              return message;
             }),
           );
 

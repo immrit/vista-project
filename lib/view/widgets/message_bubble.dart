@@ -854,9 +854,35 @@ class _MessageBubbleState extends State<MessageBubble>
         message.replyToContent!.contains('📝 پست از') &&
         message.replyToContent!.contains('🔗 مشاهده در Vista:');
 
+    // تلاش برای پیدا کردن نام واقعی فرستنده از پیام‌های قبلی/بعدی
+    String? actualSenderName = message.replyToSenderName;
+    if (actualSenderName == null || actualSenderName.isEmpty || actualSenderName == 'کاربر') {
+      // بررسی پیام‌های قبلی و بعدی برای پیدا کردن نام
+      if (message.replyToMessageId != null) {
+        // بررسی پیام قبلی
+        if (widget.previousMessage != null && 
+            widget.previousMessage!.id == message.replyToMessageId) {
+          actualSenderName = widget.previousMessage!.senderName;
+        }
+        // بررسی پیام بعدی
+        else if (widget.nextMessage != null && 
+                 widget.nextMessage!.id == message.replyToMessageId) {
+          actualSenderName = widget.nextMessage!.senderName;
+        }
+      }
+    }
+
+    // در نهایت اگر هنوز null است یا 'کاربر' است، از fallback استفاده کن
+    // اما از نام فرستنده پیام فعلی استفاده نمی‌کنیم چون این نام فرستنده ریپلای شده نیست
+    final displayName = (actualSenderName != null && 
+                        actualSenderName.isNotEmpty && 
+                        actualSenderName != 'کاربر') 
+                        ? actualSenderName 
+                        : 'کاربر';
+
     return Container(
-      margin: const EdgeInsets.only(top: 8, left: 8, right: 8),
-      padding: const EdgeInsets.all(8),
+      margin: const EdgeInsets.only(top: 8, bottom: 4), // حذف margin چپ و راست برای پر کردن کل عرض
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), // padding بهتر
       decoration: BoxDecoration(
         color: Colors.black.withOpacity(0.05),
         borderRadius: const BorderRadius.only(
@@ -867,33 +893,45 @@ class _MessageBubbleState extends State<MessageBubble>
           left: BorderSide(color: Colors.blue.shade300, width: 3),
         ),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            message.replyToSenderName ?? 'کاربر',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.blue.shade600,
-              fontSize: 13,
+          // خط عمودی آبی که قبلا border بود
+          const SizedBox(width: 3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  displayName,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue.shade600,
+                    fontSize: 13,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                if (isReplyToSharedPost) ...[
+                  // برای پست‌های اشتراکی، نمایش کارت کوچک
+                  _buildSharedPostReplyPreview(message.replyToContent!),
+                ] else ...[
+                  // برای پیام‌های عادی
+                  Text(
+                    message.replyToContent ?? '',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).textTheme.bodySmall?.color,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
-          const SizedBox(height: 2),
-          if (isReplyToSharedPost) ...[
-            // برای پست‌های اشتراکی، نمایش کارت کوچک
-            _buildSharedPostReplyPreview(message.replyToContent!),
-          ] else ...[
-            // برای پیام‌های عادی
-            Text(
-              message.replyToContent ?? '',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
-                color: Theme.of(context).textTheme.bodySmall?.color,
-              ),
-            ),
-          ],
         ],
       ),
     );

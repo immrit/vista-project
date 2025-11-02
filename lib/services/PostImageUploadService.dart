@@ -246,29 +246,36 @@ class PostImageUploadService {
   }
 
   static Future<void> precacheStoryImages(List<String> imageUrls) async {
+    final cacheManager = await CustomCacheManager.storyInstance;
     for (final url in imageUrls) {
-      await CustomCacheManager.storyInstance.downloadFile(url);
+      await cacheManager.downloadFile(url);
     }
   }
 
   static Future<void> clearOldCache() async {
-    await CustomCacheManager.storyInstance.emptyCache();
+    final cacheManager = await CustomCacheManager.storyInstance;
+    await cacheManager.emptyCache();
   }
 
   static Future<void> precachePostImages(List<String> imageUrls) async {
+    final cacheManager = await CustomCacheManager.postInstance;
     for (final url in imageUrls) {
-      await CustomCacheManager.postInstance.downloadFile(url);
+      await cacheManager.downloadFile(url);
     }
   }
 
   static Future<void> clearCache() async {
-    await CustomCacheManager.postInstance.emptyCache();
-    await CustomCacheManager.storyInstance.emptyCache();
+    final postCache = await CustomCacheManager.postInstance;
+    final storyCache = await CustomCacheManager.storyInstance;
+    await postCache.emptyCache();
+    await storyCache.emptyCache();
   }
 
   static Future<void> removeOldCache() async {
-    await CustomCacheManager.postInstance.emptyCache();
-    await CustomCacheManager.storyInstance.emptyCache();
+    final postCache = await CustomCacheManager.postInstance;
+    final storyCache = await CustomCacheManager.storyInstance;
+    await postCache.emptyCache();
+    await storyCache.emptyCache();
   }
 
   static Future<String> uploadMusicFile(File file) async {

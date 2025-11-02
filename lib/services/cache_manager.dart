@@ -1,11 +1,13 @@
 import '../security/logging_utility.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:path_provider/path_provider.dart';
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import '../DB/unified_message_cache_service.dart';
 import '../DB/unified_conversation_cache_service.dart';
 import 'file_manager_service.dart';
+import 'safe_cache_manager.dart';
 
 /// سیستم مدیریت کش مرکزی و هوشمند
 class UnifiedCacheManager {
@@ -778,21 +780,128 @@ class UnifiedCacheManager {
   bool get videoCacheEnabled => _videoCacheEnabled;
 }
 
-// کلاس قدیمی برای سازگاری به عقب
+// کلاس به‌روز شده برای استفاده از SafeCacheManager
 class CustomCacheManager {
   static const storyKey = 'storyImageCache';
   static const postKey = 'postImageCache';
 
-  static CacheManager get instance => _getDummyCacheManager();
-  static CacheManager get storyInstance => _getDummyCacheManager();
-  static CacheManager get postInstance => _getDummyCacheManager();
-  static CacheManager get chatInstance => _getDummyCacheManager();
-  static CacheManager get wallpaperInstance => _getDummyCacheManager();
+  // Lazy initialization with caching
+  static SafeCacheManager? _defaultInstance;
+  static SafeCacheManager? _storyInstance;
+  static SafeCacheManager? _postInstance;
+  static SafeCacheManager? _chatInstance;
+  static SafeCacheManager? _wallpaperInstance;
 
-  /// Return a dummy cache manager that won't trigger cacheObject errors
-  static CacheManager _getDummyCacheManager() {
-    return DefaultCacheManager();
+  // Completers for async initialization
+  static Completer<SafeCacheManager>? _defaultCompleter;
+  static Completer<SafeCacheManager>? _storyCompleter;
+  static Completer<SafeCacheManager>? _postCompleter;
+  static Completer<SafeCacheManager>? _chatCompleter;
+  static Completer<SafeCacheManager>? _wallpaperCompleter;
+
+  /// Get default cache manager (thread-safe with async initialization)
+  static Future<CacheManager> get instance async {
+    if (_defaultInstance != null) return _defaultInstance!;
+    if (_defaultCompleter != null) return _defaultCompleter!.future;
+
+    _defaultCompleter = Completer<SafeCacheManager>();
+    try {
+      _defaultInstance = OptimizedCacheManagers.defaultCache;
+      _defaultCompleter!.complete(_defaultInstance);
+      return _defaultInstance!;
+    } catch (e) {
+      logInfo('⚠️ Error initializing default cache, using fallback: $e');
+      final fallback = DefaultCacheManager();
+      _defaultCompleter!.completeError(e);
+      _defaultCompleter = null;
+      return fallback;
+    }
   }
+
+  /// Get story cache manager
+  static Future<CacheManager> get storyInstance async {
+    if (_storyInstance != null) return _storyInstance!;
+    if (_storyCompleter != null) return _storyCompleter!.future;
+
+    _storyCompleter = Completer<SafeCacheManager>();
+    try {
+      _storyInstance = await OptimizedCacheManagers.storyCache;
+      _storyCompleter!.complete(_storyInstance);
+      return _storyInstance!;
+    } catch (e) {
+      logInfo('⚠️ Error initializing story cache, using fallback: $e');
+      final fallback = DefaultCacheManager();
+      _storyCompleter!.completeError(e);
+      _storyCompleter = null;
+      return fallback;
+    }
+  }
+
+  /// Get post cache manager
+  static Future<CacheManager> get postInstance async {
+    if (_postInstance != null) return _postInstance!;
+    if (_postCompleter != null) return _postCompleter!.future;
+
+    _postCompleter = Completer<SafeCacheManager>();
+    try {
+      _postInstance = await OptimizedCacheManagers.postCache;
+      _postCompleter!.complete(_postInstance);
+      return _postInstance!;
+    } catch (e) {
+      logInfo('⚠️ Error initializing post cache, using fallback: $e');
+      final fallback = DefaultCacheManager();
+      _postCompleter!.completeError(e);
+      _postCompleter = null;
+      return fallback;
+    }
+  }
+
+  /// Get chat cache manager
+  static Future<CacheManager> get chatInstance async {
+    if (_chatInstance != null) return _chatInstance!;
+    if (_chatCompleter != null) return _chatCompleter!.future;
+
+    _chatCompleter = Completer<SafeCacheManager>();
+    try {
+      _chatInstance = await OptimizedCacheManagers.chatCache;
+      _chatCompleter!.complete(_chatInstance);
+      return _chatInstance!;
+    } catch (e) {
+      logInfo('⚠️ Error initializing chat cache, using fallback: $e');
+      final fallback = DefaultCacheManager();
+      _chatCompleter!.completeError(e);
+      _chatCompleter = null;
+      return fallback;
+    }
+  }
+
+  /// Get wallpaper cache manager (using default for now)
+  static Future<CacheManager> get wallpaperInstance async {
+    if (_wallpaperInstance != null) return _wallpaperInstance!;
+    if (_wallpaperCompleter != null) return _wallpaperCompleter!.future;
+
+    _wallpaperCompleter = Completer<SafeCacheManager>();
+    try {
+      // Use default cache for wallpapers
+      _wallpaperInstance = OptimizedCacheManagers.defaultCache;
+      _wallpaperCompleter!.complete(_wallpaperInstance);
+      return _wallpaperInstance!;
+    } catch (e) {
+      logInfo('⚠️ Error initializing wallpaper cache, using fallback: $e');
+      final fallback = DefaultCacheManager();
+      _wallpaperCompleter!.completeError(e);
+      _wallpaperCompleter = null;
+      return fallback;
+    }
+  }
+
+  /// Synchronous getters for backward compatibility (returns DefaultCacheManager as fallback)
+  /// Note: These should be replaced with async versions in new code
+  static CacheManager get instanceSync => DefaultCacheManager();
+  static CacheManager get storyInstanceSync => DefaultCacheManager();
+  static CacheManager get postInstanceSync => DefaultCacheManager();
+  static CacheManager get chatInstanceSync => DefaultCacheManager();
+  static CacheManager get wallpaperInstanceSync => DefaultCacheManager();
 
   bool get isInitialized => true;
 }

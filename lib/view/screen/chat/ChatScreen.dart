@@ -1415,6 +1415,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         // Main chat interface
         Scaffold(
           backgroundColor: Colors.transparent,
+          resizeToAvoidBottomInset: true, // بهینه‌سازی برای کیبورد
           appBar: AppBar(
             elevation: 1,
             backgroundColor: Theme.of(context).brightness == Brightness.dark
@@ -1720,7 +1721,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               }
             },
             // بهینه‌سازی برای keyboard handling
-            behavior: HitTestBehavior.opaque,
+            behavior: HitTestBehavior.deferToChild, // تغییر از opaque به deferToChild برای عملکرد بهتر
             child: Column(children: [
               Expanded(
                 child: Stack(
@@ -1734,6 +1735,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 itemScrollController: _itemScrollController,
                                 itemPositionsListener: _itemPositionsListener,
                                 reverse: true,
+                                physics: const ClampingScrollPhysics(), // بهینه‌سازی فیزیک اسکرول
                                 itemCount: messages.length,
                                 itemBuilder: (context, index) {
                                   final message = messages[index];
@@ -1744,19 +1746,40 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                   final nextMessage =
                                       index > 0 ? messages[index - 1] : null;
 
-                                  // بررسی نمایش date divider
+                                  // اصلاح replyToSenderName اگر null یا 'کاربر' است
+                                  MessageModel correctedMessage = message;
+                                  if (message.replyToMessageId != null &&
+                                      (message.replyToSenderName == null ||
+                                       message.replyToSenderName!.isEmpty ||
+                                       message.replyToSenderName == 'کاربر')) {
+                                    // جستجو در کل لیست پیام‌ها برای پیدا کردن پیام ریپلای شده
+                                    final repliedMessage = messages.firstWhere(
+                                      (msg) => msg.id == message.replyToMessageId,
+                                      orElse: () => MessageModel.empty(),
+                                    );
+                                    
+                                    if (repliedMessage.id.isNotEmpty && 
+                                        repliedMessage.senderName != null &&
+                                        repliedMessage.senderName!.isNotEmpty) {
+                                      correctedMessage = message.copyWith(
+                                        replyToSenderName: repliedMessage.senderName,
+                                      );
+                                    }
+                                  }
+
+                                  // بررسی نمایش date divider (از message اصلی استفاده می‌کنیم)
                                   final showDateDivider =
                                       TimeUtils.shouldShowDateDivider(
-                                    message.createdAt,
+                                    correctedMessage.createdAt,
                                     prevMessage?.createdAt,
                                   );
 
-                                  // محاسبه spacing و radius برای bubble
+                                  // محاسبه spacing و radius برای bubble (از message اصلی استفاده می‌کنیم)
                                   final spacing =
                                       TimeUtils.calculateMessageSpacing(
-                                    message.createdAt,
+                                    correctedMessage.createdAt,
                                     prevMessage?.createdAt,
-                                    message.senderId,
+                                    correctedMessage.senderId,
                                     prevMessage?.senderId,
                                   );
 
@@ -1767,29 +1790,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                     children: [
                                       if (showDateDivider)
                                         DateDivider(
-                                          date: message.createdAt,
+                                          date: correctedMessage.createdAt,
                                         ),
                                       SizedBox(height: spacing),
                                       MessageBubble(
-                                        message: message,
+                                        message: correctedMessage, // استفاده از پیام اصلاح شده
                                         isHighlighted:
-                                            _highlightedMessageId == message.id,
+                                            _highlightedMessageId == correctedMessage.id,
                                         isSelected: _selectedMessageIds
-                                            .contains(message.id),
+                                            .contains(correctedMessage.id),
                                         previousMessage: prevMessage,
                                         nextMessage: nextMessage,
                                         onLongPress: (msg) =>
-                                            _toggleMessageSelection(message.id),
+                                            _toggleMessageSelection(correctedMessage.id),
                                         onTap: _isSelectionMode
                                             ? (messageId) {
                                                 _showMessageActionsBottomSheet(
-                                                    context, message);
+                                                    context, correctedMessage);
                                               }
                                             : null,
                                         onSelectTap: _isSelectionMode
                                             ? (messageId) =>
                                                 _toggleMessageSelection(
-                                                    messageId)
+                                                    correctedMessage.id)
                                             : null,
                                         onSingleTap: (msg) =>
                                             _showMessageActionsBottomSheet(

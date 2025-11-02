@@ -243,13 +243,15 @@ class ChatImageUploadService {
 
   /// ذخیره‌سازی تصاویر چت در کش
   static Future<void> precacheChatImages(List<String> imageUrls) async {
+    final cacheManager = await CustomCacheManager.chatInstance;
     for (final url in imageUrls) {
-      await CustomCacheManager.chatInstance.downloadFile(url);
+      await cacheManager.downloadFile(url);
     }
   }
 
   /// پاک کردن کش تصاویر چت
   static Future<void> clearChatCache() async {
-    await CustomCacheManager.chatInstance.emptyCache();
+    final cacheManager = await CustomCacheManager.chatInstance;
+    await cacheManager.emptyCache();
   }
 }

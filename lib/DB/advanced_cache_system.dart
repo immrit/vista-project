@@ -762,6 +762,18 @@ class AdvancedCacheSystem {
     // Try performance cache first
     final optimizedResult = _performanceOptimizer.getMessages(conversationId);
     if (optimizedResult != null) {
+      // اطمینان از اینکه isMe به درستی set شده است
+      final currentUserId = supabase.auth.currentUser?.id;
+      if (currentUserId != null) {
+        return optimizedResult.map((message) {
+          // بررسی و اصلاح isMe بر اساس currentUserId فعلی
+          final correctIsMe = message.senderId == currentUserId;
+          if (message.isMe != correctIsMe) {
+            return message.copyWith(isMe: correctIsMe);
+          }
+          return message;
+        }).toList();
+      }
       return optimizedResult;
     }
 
@@ -772,9 +784,22 @@ class AdvancedCacheSystem {
       final sortedResult = List<MessageModel>.from(memoryResult)
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
+      // اصلاح isMe برای همه پیام‌ها بر اساس currentUserId فعلی
+      final currentUserId = supabase.auth.currentUser?.id;
+      final correctedResult = currentUserId != null
+          ? sortedResult.map((message) {
+              // بررسی و اصلاح isMe بر اساس currentUserId فعلی
+              final correctIsMe = message.senderId == currentUserId;
+              if (message.isMe != correctIsMe) {
+                return message.copyWith(isMe: correctIsMe);
+              }
+              return message;
+            }).toList()
+          : sortedResult;
+
       // Cache in performance optimizer for next time
-      _performanceOptimizer.cacheMessages(conversationId, sortedResult);
-      return sortedResult;
+      _performanceOptimizer.cacheMessages(conversationId, correctedResult);
+      return correctedResult;
     }
 
     return memoryResult;

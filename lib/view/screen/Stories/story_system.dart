@@ -15,6 +15,7 @@ import 'package:uuid/uuid.dart';
 import 'package:mime/mime.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../main.dart';
+import '../../../services/cache_manager.dart';
 import '../../../provider/uploadStoryImage.dart';
 import '../../util/const.dart';
 import '../PublicPosts/profileScreen.dart';
@@ -497,7 +498,7 @@ class StoryRing extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final ringColor = isDarkMode ? Colors.grey[800] : Colors.grey[300];
+    // final ringColor = isDarkMode ? Colors.grey[800] : Colors.grey[300]; // Not used yet
     final seenColor = isDarkMode ? Colors.white38 : Colors.grey[300]!;
 
     // بررسی استوری‌های دیده نشده
@@ -813,7 +814,8 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     _loadingCache[story.mediaUrl] = true;
     try {
       // استفاده از سیستم کش شخصی‌سازی شده
-      final file = await CustomCacheManager.instance.getSingleFile(
+      final cacheManager = await CustomCacheManager.storyInstance;
+      final file = await cacheManager.getSingleFile(
         story.mediaUrl,
         headers: {
           'Cache-Control': 'max-age=86400'
@@ -846,7 +848,8 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
 
     try {
       // استفاده از CustomCacheManager با قابلیت نمایش پیشرفت دانلود
-      final file = await CustomCacheManager.instance.getSingleFile(
+      final cacheManager = await CustomCacheManager.storyInstance;
+      final file = await cacheManager.getSingleFile(
         story.mediaUrl,
         headers: {'Cache-Control': 'max-age=86400'},
       );
@@ -874,6 +877,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   }
 
   // افزودن متغیر برای نمایش خطا
+  // ignore: unused_field
   bool _hasError = false;
 
   // بازنویسی نمایش نشانگر بارگذاری
@@ -904,7 +908,8 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     );
   }
 
-  // افزودن نمایش خطا
+  // افزودن نمایش خطا (not used yet)
+  // ignore: unused_element
   Widget _buildErrorView() {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
@@ -1706,9 +1711,10 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     }
   }
 
-// اضافه کردن متد برای تشخیص double tap
+// اضافه کردن متد برای تشخیص double tap (not used yet)
   DateTime? _lastTapTime;
 
+  // ignore: unused_element
   void _handleDoubleTap(TapDownDetails details) {
     final now = DateTime.now();
     if (_lastTapTime != null &&
@@ -1756,14 +1762,21 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
           child: AnimatedOpacity(
             duration: const Duration(milliseconds: 300),
             opacity: _isLoading ? 0.0 : 1.0,
-            child: CachedNetworkImage(
-              imageUrl: story.mediaUrl,
-              fit: BoxFit.cover,
-              placeholder: (context, url) => Container(color: Colors.black),
-              errorWidget: (context, url, error) => const Center(
-                child: Icon(Icons.error, color: Colors.white),
-              ),
-              cacheManager: CustomCacheManager.instance,
+            child: FutureBuilder<CacheManager>(
+              future: CustomCacheManager.storyInstance,
+              builder: (context, snapshot) {
+                final cacheManager =
+                    snapshot.data ?? CustomCacheManager.storyInstanceSync;
+                return CachedNetworkImage(
+                  imageUrl: story.mediaUrl,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(color: Colors.black),
+                  errorWidget: (context, url, error) => const Center(
+                    child: Icon(Icons.error, color: Colors.white),
+                  ),
+                  cacheManager: cacheManager,
+                );
+              },
             ),
           ),
         );
@@ -2144,29 +2157,8 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   }
 }
 
-// Add this class for custom cache management
-class CustomCacheManager {
-  static const key = 'storyImageCache';
-  static CacheManager? _instance;
-
-  static CacheManager get instance {
-    _instance ??= CacheManager(
-      Config(
-        key,
-        stalePeriod: const Duration(hours: 6), // کاهش زمان نگهداری کش
-        maxNrOfCacheObjects: 100, // افزایش تعداد ایتم‌های کش شده
-        repo: JsonCacheInfoRepository(databaseName: key),
-        fileService: HttpFileService(),
-      ),
-    );
-    return _instance!;
-  }
-
-  // روش برای پاک کردن کش استوری‌های قدیمی
-  static Future<void> clearOldCache() async {
-    await instance.emptyCache();
-  }
-}
+// Note: CustomCacheManager is now imported from '../../../services/cache_manager.dart'
+// The local class has been removed to avoid conflicts
 
 class StoryProgressBar extends StatelessWidget {
   final AnimationController controller;

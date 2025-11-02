@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
@@ -83,10 +84,10 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
 
     _keyboardSubscription =
         KeyboardVisibilityController().onChange.listen((bool isVisible) {
-      // بهینه‌سازی keyboard handling
-      if (isVisible && _showEmojiPicker) {
-        // استفاده از SchedulerBinding برای بهینه‌سازی performance
-        WidgetsBinding.instance.addPostFrameCallback((_) {
+      // بهینه‌سازی keyboard handling - حذف تاخیر برای عملکرد سریع‌تر
+      if (isVisible && _showEmojiPicker && mounted) {
+        // استفاده مستقیم از setState بدون تاخیر برای عملکرد سریع‌تر
+        SchedulerBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             setState(() => _showEmojiPicker = false);
           }
@@ -116,18 +117,20 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
   }
 
   void _toggleEmojiPicker() {
+    // بهینه‌سازی: تغییر فوری state بدون تاخیر
     if (_showEmojiPicker) {
-      _focusNode.requestFocus();
+      setState(() => _showEmojiPicker = false);
+      // استفاده از SchedulerBinding برای focus بعد از rebuild
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _focusNode.requestFocus();
+        }
+      });
     } else {
       _focusNode.unfocus();
+      // تغییر فوری state
+      setState(() => _showEmojiPicker = true);
     }
-
-    // بهینه‌سازی setState برای keyboard handling
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        setState(() => _showEmojiPicker = !_showEmojiPicker);
-      }
-    });
   }
 
   void _onEmojiSelected(String emoji) {
@@ -283,11 +286,23 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
+              duration: const Duration(milliseconds: 150), // کاهش مدت زمان انیمیشن برای عملکرد سریع‌تر
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
               child: _isRecording ? _buildRecordingUI() : _buildStandardInput(),
             ),
           ),
-          if (_showEmojiPicker) _buildEmojiPicker(),
+          // بهینه‌سازی: استفاده از AnimatedSize برای انیمیشن نرم‌تر
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            child: _showEmojiPicker 
+                ? SizedBox(
+                    height: 250,
+                    child: _buildEmojiPicker(),
+                  )
+                : const SizedBox.shrink(),
+          ),
         ],
       ),
     );
@@ -393,6 +408,10 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
                     maxLines: 5,
                     keyboardType: TextInputType.multiline,
                     textInputAction: TextInputAction.newline,
+                    enableInteractiveSelection: true,
+                    enableSuggestions: true,
+                    smartDashesType: SmartDashesType.enabled,
+                    smartQuotesType: SmartQuotesType.enabled,
                     decoration: const InputDecoration(
                       hintText: '...پیام',
                       border: InputBorder.none,
@@ -419,7 +438,9 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
         ),
         const SizedBox(width: 8),
         AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
+          duration: const Duration(milliseconds: 150), // کاهش مدت زمان انیمیشن
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
           transitionBuilder: (child, animation) =>
               ScaleTransition(scale: animation, child: child),
           child: _hasText ? _buildSendButton() : _buildMicButton(),
@@ -734,27 +755,24 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
   }
 
   Widget _buildEmojiPicker() {
-    return SizedBox(
-      height: 250,
-      child: EmojiPicker(
-        onEmojiSelected: (category, emoji) => _onEmojiSelected(emoji.emoji),
-        config: Config(
-          height: 256,
-          checkPlatformCompatibility: true,
-          emojiViewConfig: EmojiViewConfig(
-            columns: 8,
-            emojiSizeMax: 28,
-            backgroundColor: Theme.of(context).cardColor,
-          ),
-          categoryViewConfig: CategoryViewConfig(
-            backgroundColor: Theme.of(context).cardColor,
-            indicatorColor: Theme.of(context).colorScheme.primary,
-            iconColor: Colors.grey,
-            iconColorSelected: Theme.of(context).colorScheme.primary,
-          ),
-          bottomActionBarConfig: BottomActionBarConfig(
-            enabled: false,
-          ),
+    return EmojiPicker(
+      onEmojiSelected: (category, emoji) => _onEmojiSelected(emoji.emoji),
+      config: Config(
+        height: 256,
+        checkPlatformCompatibility: true,
+        emojiViewConfig: EmojiViewConfig(
+          columns: 8,
+          emojiSizeMax: 28,
+          backgroundColor: Theme.of(context).cardColor,
+        ),
+        categoryViewConfig: CategoryViewConfig(
+          backgroundColor: Theme.of(context).cardColor,
+          indicatorColor: Theme.of(context).colorScheme.primary,
+          iconColor: Colors.grey,
+          iconColorSelected: Theme.of(context).colorScheme.primary,
+        ),
+        bottomActionBarConfig: BottomActionBarConfig(
+          enabled: false,
         ),
       ),
     );

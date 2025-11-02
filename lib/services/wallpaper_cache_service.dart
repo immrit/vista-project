@@ -29,19 +29,20 @@ class WallpaperCacheService {
   /// پیش‌بارگذاری هوشمند والپیپرها
   static Future<void> preloadWallpapers() async {
     try {
+      // دریافت cache manager
+      final cacheManager = await CustomCacheManager.wallpaperInstance;
+      
       // بررسی وجود والپیپرها در کش
       final List<Future> downloadTasks = [];
 
       // بررسی والپیپر روشن
-      final lightCached = await CustomCacheManager.wallpaperInstance
-          .getFileFromCache(_lightWallpaperUrl);
+      final lightCached = await cacheManager.getFileFromCache(_lightWallpaperUrl);
       if (lightCached == null || _isExpired(lightCached)) {
         downloadTasks.add(_downloadWallpaper(_lightWallpaperUrl, 'light'));
       }
 
       // بررسی والپیپر تاریک
-      final darkCached = await CustomCacheManager.wallpaperInstance
-          .getFileFromCache(_darkWallpaperUrl);
+      final darkCached = await cacheManager.getFileFromCache(_darkWallpaperUrl);
       if (darkCached == null || _isExpired(darkCached)) {
         downloadTasks.add(_downloadWallpaper(_darkWallpaperUrl, 'dark'));
       }
@@ -70,7 +71,8 @@ class WallpaperCacheService {
     try {
       logInfo('🔄 در حال دانلود والپیپر $type...');
       try {
-        await CustomCacheManager.wallpaperInstance.downloadFile(url).timeout(
+        final cacheManager = await CustomCacheManager.wallpaperInstance;
+        await cacheManager.downloadFile(url).timeout(
               const Duration(seconds: 8),
             );
       } catch (e) {
@@ -91,8 +93,8 @@ class WallpaperCacheService {
   static Future<bool> isWallpaperCached(bool isDarkMode) async {
     try {
       final url = getWallpaperUrl(isDarkMode);
-      final cached =
-          await CustomCacheManager.wallpaperInstance.getFileFromCache(url);
+      final cacheManager = await CustomCacheManager.wallpaperInstance;
+      final cached = await cacheManager.getFileFromCache(url);
       return cached != null && !_isExpired(cached);
     } catch (e) {
       return false;
@@ -103,8 +105,8 @@ class WallpaperCacheService {
   static Future<File?> getLocalCachedFile(bool isDarkMode) async {
     try {
       final url = getWallpaperUrl(isDarkMode);
-      final cached =
-          await CustomCacheManager.wallpaperInstance.getFileFromCache(url);
+      final cacheManager = await CustomCacheManager.wallpaperInstance;
+      final cached = await cacheManager.getFileFromCache(url);
       if (cached != null) {
         // حتی اگر منقضی شده، به‌عنوان fallback/thumbnail استفاده می‌کنیم
         return cached.file;
@@ -116,7 +118,8 @@ class WallpaperCacheService {
   /// پاک کردن کش والپیپرها
   static Future<void> clearWallpaperCache() async {
     try {
-      await CustomCacheManager.wallpaperInstance.emptyCache();
+      final cacheManager = await CustomCacheManager.wallpaperInstance;
+      await cacheManager.emptyCache();
       logInfo('🗑️  کش والپیپرها پاک شد');
     } catch (e) {
       logInfo('❌ خطا در پاک کردن کش والپیپرها: $e');
@@ -126,9 +129,10 @@ class WallpaperCacheService {
   /// بروزرسانی والپیپرها (برای آپدیت‌های آینده)
   static Future<void> refreshWallpapers() async {
     try {
+      final cacheManager = await CustomCacheManager.wallpaperInstance;
       // حذف والپیپرهای موجود در کش
-      await CustomCacheManager.wallpaperInstance.removeFile(_lightWallpaperUrl);
-      await CustomCacheManager.wallpaperInstance.removeFile(_darkWallpaperUrl);
+      await cacheManager.removeFile(_lightWallpaperUrl);
+      await cacheManager.removeFile(_darkWallpaperUrl);
 
       // دانلود مجدد
       await preloadWallpapers();
@@ -141,10 +145,9 @@ class WallpaperCacheService {
   /// دریافت اطلاعات کش
   static Future<Map<String, dynamic>> getCacheInfo() async {
     try {
-      final lightCached = await CustomCacheManager.wallpaperInstance
-          .getFileFromCache(_lightWallpaperUrl);
-      final darkCached = await CustomCacheManager.wallpaperInstance
-          .getFileFromCache(_darkWallpaperUrl);
+      final cacheManager = await CustomCacheManager.wallpaperInstance;
+      final lightCached = await cacheManager.getFileFromCache(_lightWallpaperUrl);
+      final darkCached = await cacheManager.getFileFromCache(_darkWallpaperUrl);
 
       return {
         'lightWallpaper': {
