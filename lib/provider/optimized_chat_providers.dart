@@ -14,6 +14,12 @@ class OptimizedChatNotifier extends StateNotifier<OptimizedChatState> {
   StreamSubscription? _subscription;
   bool _isInitialized = false;
   String? _userId;
+  
+  // ✅ متد عمومی برای cleanup
+  void cancelSubscription() {
+    _subscription?.cancel();
+    _subscription = null;
+  }
 
   OptimizedChatNotifier(this.conversationId)
       : super(const OptimizedChatState()) {
@@ -24,7 +30,9 @@ class OptimizedChatNotifier extends StateNotifier<OptimizedChatState> {
 
   @override
   void dispose() {
+    // ✅ لغو subscription بلافاصله برای آزاد کردن حافظه
     _subscription?.cancel();
+    _subscription = null;
     MemoryLeakDetector().untrackMemory('OptimizedChatNotifier_$conversationId');
     _messaging.removeRealtimeListener(conversationId);
     _memoryTracker.trackObjectDisposal('OptimizedChatNotifier', conversationId);
@@ -146,8 +154,10 @@ final optimizedChatProvider = StateNotifierProvider.family
   (ref, conversationId) {
     final notifier = OptimizedChatNotifier(conversationId);
 
-    // Memory tracking
+    // ✅ Memory tracking و cleanup در onDispose
     ref.onDispose(() {
+      // ✅ اطمینان از بسته شدن subscription
+      notifier.cancelSubscription();
       MemoryLeakDetector()
           .trackObjectDisposal('OptimizedChatProvider', conversationId);
     });
@@ -160,7 +170,9 @@ final optimizedChatProvider = StateNotifierProvider.family
 final optimizedOnlineStatusProvider =
     StreamProvider.family.autoDispose<bool, String>(
   (ref, userId) {
-    final subscription = supabase
+    StreamSubscription? subscription;
+    
+    final stream = supabase
         .from('profiles')
         .stream(primaryKey: ['id'])
         .eq('id', userId)
@@ -175,13 +187,16 @@ final optimizedOnlineStatusProvider =
               5; // آنلاین اگر کمتر از 5 دقیقه پیش فعال بوده
         });
 
-    // Memory tracking
+    // ✅ Memory tracking
     MemoryLeakDetector().trackMemory('OnlineStatus_$userId');
+    
+    // ✅ اطمینان از بسته شدن subscription در onDispose
     ref.onDispose(() {
+      subscription?.cancel();
       MemoryLeakDetector().untrackMemory('OnlineStatus_$userId');
     });
 
-    return subscription;
+    return stream;
   },
 );
 

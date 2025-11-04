@@ -28,6 +28,11 @@ class ProfileCacheService {
   final Map<String, List<PublicPostModel>> _postsMemoryCache = {};
   final Map<String, DateTime> _lastFetch = {};
 
+  // ✅ Debouncing برای ذخیره‌سازی در دیسک
+  Timer? _saveDebounceTimer;
+  bool _isDirty = false;
+  static const Duration _saveDebounceDelay = Duration(seconds: 5);
+
   /// مقداردهی اولیه سرویس کش
   Future<void> initialize() async {
     try {
@@ -82,33 +87,74 @@ class ProfileCacheService {
     }
   }
 
-  /// ذخیره داده‌ها در دیسک
+  /// ذخیره داده‌ها در دیسک با debouncing برای عملکرد بهتر
   Future<void> _saveToDisk() async {
+    // ✅ Debouncing: فقط بعد از 5 ثانیه عدم تغییر، ذخیره کن
+    _isDirty = true;
+    _saveDebounceTimer?.cancel();
+    _saveDebounceTimer = Timer(_saveDebounceDelay, () async {
+      if (!_isDirty) return;
+      _isDirty = false;
+
+      try {
+        final prefs = await SharedPreferences.getInstance();
+
+        // ذخیره پروفایل‌ها
+        final profilesMap = <String, dynamic>{};
+        for (final entry in _profileMemoryCache.entries) {
+          profilesMap[entry.key] = entry.value.toMap();
+        }
+        await prefs.setString(_profileCacheKey, jsonEncode(profilesMap));
+
+        // ذخیره پست‌ها
+        final postsMap = <String, dynamic>{};
+        for (final entry in _postsMemoryCache.entries) {
+          postsMap[entry.key] =
+              entry.value.map((post) => post.toMap()).toList();
+        }
+        await prefs.setString(_postsCacheKey, jsonEncode(postsMap));
+
+        // ذخیره زمان آخرین به‌روزرسانی
+        final lastUpdateMap = <String, String>{};
+        for (final entry in _lastFetch.entries) {
+          lastUpdateMap[entry.key] = entry.value.toIso8601String();
+        }
+        await prefs.setString(_lastUpdateKey, jsonEncode(lastUpdateMap));
+
+        logInfo('💾 Profile cache saved to disk (debounced)');
+      } catch (e) {
+        logInfo('⚠️ Error saving profile cache to disk: $e');
+      }
+    });
+  }
+
+  /// ذخیره فوری (برای مواقع ضروری مثل dispose)
+  Future<void> _saveToDiskImmediate() async {
+    _saveDebounceTimer?.cancel();
+    _isDirty = false;
+
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      // ذخیره پروفایل‌ها
       final profilesMap = <String, dynamic>{};
       for (final entry in _profileMemoryCache.entries) {
         profilesMap[entry.key] = entry.value.toMap();
       }
       await prefs.setString(_profileCacheKey, jsonEncode(profilesMap));
 
-      // ذخیره پست‌ها
       final postsMap = <String, dynamic>{};
       for (final entry in _postsMemoryCache.entries) {
         postsMap[entry.key] = entry.value.map((post) => post.toMap()).toList();
       }
       await prefs.setString(_postsCacheKey, jsonEncode(postsMap));
 
-      // ذخیره زمان آخرین به‌روزرسانی
       final lastUpdateMap = <String, String>{};
       for (final entry in _lastFetch.entries) {
         lastUpdateMap[entry.key] = entry.value.toIso8601String();
       }
       await prefs.setString(_lastUpdateKey, jsonEncode(lastUpdateMap));
 
-      logInfo('💾 Profile cache saved to disk');
+      logInfo('💾 Profile cache saved to disk (immediate)');
     } catch (e) {
       logInfo('⚠️ Error saving profile cache to disk: $e');
     }
@@ -235,7 +281,8 @@ class ProfileCacheService {
 
         // Debug logging for cache
         logInfo('🔍 Cache Post Debug - Post ID: ${post['id']}');
-        logInfo('🔍 Cache Likes array: $postLikes (length: ${postLikes.length})');
+        logInfo(
+            '🔍 Cache Likes array: $postLikes (length: ${postLikes.length})');
         print(
             '🔍 Cache Comments array: $comments (length: ${comments.length})');
 
@@ -360,9 +407,11 @@ class ProfileCacheService {
 
   /// پاک کردن تمام کش
   Future<void> clearAllCache() async {
+    _saveDebounceTimer?.cancel();
     _profileMemoryCache.clear();
     _postsMemoryCache.clear();
     _lastFetch.clear();
+    _isDirty = false;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_profileCacheKey);
@@ -370,6 +419,14 @@ class ProfileCacheService {
     await prefs.remove(_lastUpdateKey);
 
     logInfo('🧹 Cleared all profile cache');
+  }
+
+  /// Cleanup و ذخیره نهایی
+  Future<void> dispose() async {
+    _saveDebounceTimer?.cancel();
+    if (_isDirty) {
+      await _saveToDiskImmediate();
+    }
   }
 
   /// دریافت آمار کش

@@ -44,13 +44,49 @@ class PerformanceCacheOptimizer {
     logInfo('✅ Performance Cache Optimizer initialized');
   }
 
+  // ✅ Batch operations برای I/O
+  final List<MapEntry<String, List<MessageModel>>> _pendingBatch = [];
+  Timer? _batchTimer;
+  bool _isWritingBatch = false;
+
   /// Cache messages with performance optimization
   void cacheMessages(String conversationId, List<MessageModel> messages) {
     // Hot cache (immediate access)
     _hotMessageCache.put(conversationId, messages);
 
+    // ✅ Batch operations: اضافه کردن به batch queue
+    _pendingBatch.add(MapEntry(conversationId, messages));
+    _scheduleBatchWrite();
+
     // Preload related conversations
     _schedulePreload(conversationId);
+  }
+  
+  /// ✅ Batch write برای کاهش فشار I/O
+  void _scheduleBatchWrite() {
+    _batchTimer?.cancel();
+    _batchTimer = Timer(const Duration(milliseconds: 100), () async {
+      if (_isWritingBatch || _pendingBatch.isEmpty) return;
+      
+      _isWritingBatch = true;
+      try {
+        // نوشتن batch در دیتابیس
+        await _writeBatch(_pendingBatch);
+        _pendingBatch.clear();
+      } catch (e) {
+        logInfo('⚠️ Batch write error: $e');
+      } finally {
+        _isWritingBatch = false;
+      }
+    });
+  }
+  
+  /// ✅ نوشتن batch به دیتابیس
+  Future<void> _writeBatch(List<MapEntry<String, List<MessageModel>>> batch) async {
+    // اینجا می‌توانید عملیات نوشتن به SQLite را انجام دهید
+    // برای مثال: نوشتن همه پیام‌ها با یک transaction
+    logInfo('📦 Writing batch of ${batch.length} conversations');
+    // TODO: Implement actual batch write to database
   }
 
   /// Cache conversation with optimization
@@ -137,23 +173,26 @@ class PerformanceCacheOptimizer {
 
   /// Perform cleanup to maintain performance
   void _performCleanup() {
-    logInfo('🧹 Performing cache cleanup...');
+    // ✅ بررسی اینکه آیا باید cleanup انجام شود
+    if (_isOptimizing) {
+      logInfo('🧹 Performing cache cleanup...');
 
-    // Clear old preload cache
-    if (_preloadCache.length > 10) {
-      final oldEntries =
-          _preloadCache.keys.take(_preloadCache.length - 10).toList();
-      for (final key in oldEntries) {
-        _preloadCache.remove(key);
+      // Clear old preload cache
+      if (_preloadCache.length > 10) {
+        final oldEntries =
+            _preloadCache.keys.take(_preloadCache.length - 10).toList();
+        for (final key in oldEntries) {
+          _preloadCache.remove(key);
+        }
       }
-    }
 
-    // Clear pending preload queue if too large
-    if (_preloadQueue.length > 5) {
-      _preloadQueue.clear();
-    }
+      // Clear pending preload queue if too large
+      if (_preloadQueue.length > 5) {
+        _preloadQueue.clear();
+      }
 
-    logInfo('✅ Cache cleanup completed');
+      logInfo('✅ Cache cleanup completed');
+    }
   }
 
   /// Get performance statistics
@@ -181,7 +220,16 @@ class PerformanceCacheOptimizer {
 
   /// Dispose resources
   void dispose() {
+    // ✅ لغو تمام timer ها
     _cleanupTimer?.cancel();
+    _batchTimer?.cancel();
+    
+    // ✅ نوشتن batch نهایی قبل از dispose
+    if (_pendingBatch.isNotEmpty && !_isWritingBatch) {
+      _writeBatch(_pendingBatch);
+      _pendingBatch.clear();
+    }
+    
     _hotMessageCache.clear();
     _hotConversationCache.clear();
     _preloadCache.clear();

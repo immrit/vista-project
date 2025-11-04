@@ -134,16 +134,24 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
       final videoAutoplayService = VideoAutoplayService();
       final videoQuality = videoAutoplayService.getVideoQuality();
 
-      // اگر حالت ذخیره‌داده فعال باشد، کش را غیرفعال می‌کنیم و مستقیم از شبکه پخش می‌کنیم
-      // در غیر این صورت از کش سفارشی استفاده می‌کنیم
-      if (_isDataSaverMode || videoQuality == 'low') {
+      // بهینه‌سازی: همیشه از network استفاده کنیم مگر در موارد خاص
+      // کش ویدیو باعث مصرف زیاد حافظه می‌شود
+      if (_isDataSaverMode || videoQuality == 'low' || widget.maxHeight != null) {
         _controller = VideoPlayerController.network(widget.videoUrl);
-        logInfo('🎥 Using network video (low quality/data saver mode)');
+        logInfo('🎥 Using network video (optimized for performance)');
       } else {
-        final file =
-            await _config.videoCacheManager.getSingleFile(widget.videoUrl);
-        _controller = VideoPlayerController.file(file);
-        logInfo('🎥 Using cached video (high quality)');
+        // استفاده محدود از کش فقط برای ویدیوهای کوچک
+        try {
+          final file = await _config.videoCacheManager
+              .getSingleFile(widget.videoUrl)
+              .timeout(const Duration(seconds: 3)); // timeout برای جلوگیری از انتظار طولانی
+          _controller = VideoPlayerController.file(file);
+          logInfo('🎥 Using cached video (limited caching)');
+        } catch (e) {
+          // fallback به network اگر کش شکست خورد
+          logInfo('⚠️ Cache failed, falling back to network: $e');
+          _controller = VideoPlayerController.network(widget.videoUrl);
+        }
       }
 
       await _controller?.initialize();

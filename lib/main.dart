@@ -141,33 +141,43 @@ void main() async {
         print('⚠️ برخی ویژگی‌های آنلاین ممکن است کار نکنند');
       }
 
-      // راه‌اندازی سرویس امنیتی پیشرفته
-      await AdvancedSecurityService.initialize();
+      // راه‌اندازی سرویس امنیتی پیشرفته - در background
+      unawaited(AdvancedSecurityService.initialize());
 
-      // 🚀 سیستم پیام‌رسانی بهینه‌شده (جایگزین 14 cache system!)
-      await _initializeOptimizedMessaging();
-
-      // 🚀 مقداردهی اولیه سیستم پیام‌رسانی بهینه‌سازی شده
-      await _initializeOptimizedChatSystem();
-
-      // 🧹 غیرفعالسازی cache systems اضافی
-      await _disableRedundantCacheSystems();
-
-      // 📦 مقداردهی اولیه سیستم کش (once only) - فعال شده
-      // UnifiedCacheManager حالا با DefaultCacheManager کار می‌کند
-      print('🚀 Initializing UnifiedCacheManager...');
-      await UnifiedCacheManager().initialize();
+      // 🚀 مقداردهی اولیه سیستم پیام‌رسانی بهینه‌سازی شده - در background
+      unawaited(_initializeOptimizedChatSystem());
 
       // 🗄️ مقداردهی اولیه مدیریتگر دیتابیس (قبل از سایر سرویس‌ها)
       await DatabaseManager().initializeAllDatabases();
 
-      // 🚀 مقداردهی اولیه سرویس‌های کش جدید
-      await ProfileCacheService().initialize();
+      // 🚀 مقداردهی اولیه سرویس‌های کش ضروری - بقیه در background
       await SettingsCacheService().initialize();
 
-      // 🎵 مقداردهی اولیه VoiceCacheService
+      // 🎵 مقداردهی اولیه VoiceCacheService (قبل از سایر سرویس‌ها)
       final voiceCacheService = VoiceCacheService();
       await voiceCacheService.initialize();
+
+      // ✅ بهینه‌سازی: Lazy initialization سرویس‌ها با تأخیر برای جلوگیری از لگ
+      // مقداردهی اولیه سایر سرویس‌ها در background با تأخیر برای عملکرد بهتر
+      Future.delayed(const Duration(seconds: 2), () async {
+        try {
+          // 🚀 سیستم پیام‌رسانی بهینه‌شده
+          await _initializeOptimizedMessaging();
+
+          // 🧹 غیرفعالسازی cache systems اضافی
+          await _disableRedundantCacheSystems();
+
+          // 📦 مقداردهی اولیه UnifiedCacheManager
+          await UnifiedCacheManager().initialize();
+
+          // 🚀 مقداردهی اولیه ProfileCacheService (با تأخیر)
+          Future.delayed(const Duration(seconds: 1), () async {
+            await ProfileCacheService().initialize();
+          });
+        } catch (e) {
+          print('⚠️ خطا در مقداردهی اولیه سرویس‌های background: $e');
+        }
+      });
 
       // تنظیم ProviderContainer بعد از راه‌اندازی کامل اپ
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -179,16 +189,19 @@ void main() async {
         }
       });
 
-      // اگر کاربر وارد است، پروفایل و 10 پست آخر او را برای حالت آفلاین پیش‌کش کن
-      try {
-        final currentUser = Supabase.instance.client.auth.currentUser;
-        if (currentUser != null) {
-          // پیش‌کش کردن بدون بلاک کردن راه‌اندازی اپ
-          unawaited(ProfileCacheService().cacheProfileAndPosts(currentUser.id));
+      // ✅ بهینه‌سازی: پیش‌کش پروفایل با تأخیر برای کاهش لگ startup
+      Future.delayed(const Duration(seconds: 3), () async {
+        try {
+          final currentUser = Supabase.instance.client.auth.currentUser;
+          if (currentUser != null) {
+            // پیش‌کش کردن بدون بلاک کردن راه‌اندازی اپ
+            unawaited(
+                ProfileCacheService().cacheProfileAndPosts(currentUser.id));
+          }
+        } catch (e) {
+          print('⚠️ Prefetch profile/posts failed at startup: $e');
         }
-      } catch (e) {
-        print('⚠️ Prefetch profile/posts failed at startup: $e');
-      }
+      });
 
       // 🚀 مقداردهی اولیه ProfileService جدید با real-time updates
       ProfileService().startRealtimeUpdates();
@@ -238,8 +251,8 @@ void main() async {
               AndroidFlutterLocalNotificationsPlugin>()
           ?.createNotificationChannel(socialChannel);
 
-      // پیش‌بارگذاری والپیپرهای چت در background با تأخیر
-      Future.delayed(const Duration(seconds: 3), () {
+      // ✅ بهینه‌سازی: پیش‌بارگذاری والپیپرهای چت با تأخیر بیشتر برای کاهش لگ startup
+      Future.delayed(const Duration(seconds: 5), () {
         unawaited(WallpaperCacheService.preloadWallpapers());
       });
 

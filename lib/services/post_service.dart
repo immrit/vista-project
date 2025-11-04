@@ -41,45 +41,94 @@ class PostService {
     }
   }
 
-  /// دریافت پست‌ها با امتیاز تعامل (روش جایگزین با کوئری پیچیده)
+  /// دریافت پست‌ها با امتیاز تعامل (روش جایگزین با کوئری بهینه‌سازی شده)
   Future<List<Map<String, dynamic>>> getPostsWithEngagementComplex({
     int limit = 20,
     int offset = 0,
   }) async {
     try {
-      // ابتدا پست‌ها را دریافت می‌کنیم
+      // استفاده از کوئری JOIN بهینه‌سازی شده برای جلوگیری از N+1 query
+      final response = await _supabase
+          .rpc('get_posts_with_engagement_optimized', params: {
+        'limit_count': limit,
+        'offset_count': offset,
+      });
+
+      final posts = List<Map<String, dynamic>>.from(response);
+
+      // مرتب‌سازی بر اساس امتیاز تعامل
+      posts.sort((a, b) {
+        final bScore = b['engagement_score'] as int?;
+        final aScore = a['engagement_score'] as int?;
+        return (bScore ?? 0).compareTo(aScore ?? 0);
+      });
+
+      return posts;
+    } catch (e) {
+      logInfo('خطا در دریافت پست‌ها با روش بهینه‌سازی شده: $e');
+      // fallback به روش قدیمی در صورت عدم وجود RPC function
+      return await _getPostsWithBatchQueries(limit: limit, offset: offset);
+    }
+  }
+
+  /// روش کمکی برای دریافت پست‌ها با کوئری‌های دسته‌ای (batch queries)
+  Future<List<Map<String, dynamic>>> _getPostsWithBatchQueries({
+    int limit = 20,
+    int offset = 0,
+  }) async {
+    try {
+      // دریافت پست‌ها
       final postsResponse = await _supabase
           .from('posts')
-          .select('*')
+          .select('id, content, created_at, user_id, media_url, media_type')
           .order('created_at', ascending: false)
           .range(offset, offset + limit - 1);
 
       final posts = List<Map<String, dynamic>>.from(postsResponse);
-      final List<Map<String, dynamic>> postsWithEngagement = [];
+      if (posts.isEmpty) return [];
 
-      // برای هر پست، تعداد لایک و کامنت را دریافت می‌کنیم
-      for (final post in posts) {
-        final postId = post['id'];
+      // دریافت همه لایک‌ها و کامنت‌ها در یک کوئری دسته‌ای
+      final postIds = posts.map((p) => p['id']).toList();
 
-        // دریافت تعداد لایک‌ها
-        final likesResponse =
-            await _supabase.from('likes').select('id').eq('post_id', postId);
+      final [likesResponse, commentsResponse] = await Future.wait([
+        _supabase
+            .from('likes')
+            .select('post_id')
+            .inFilter('post_id', postIds),
+        _supabase
+            .from('comments')
+            .select('post_id')
+            .inFilter('post_id', postIds),
+      ]);
 
-        // دریافت تعداد کامنت‌ها
-        final commentsResponse =
-            await _supabase.from('comments').select('id').eq('post_id', postId);
+      // شمارش لایک‌ها و کامنت‌ها برای هر پست
+      final likeCounts = <String, int>{};
+      final commentCounts = <String, int>{};
 
-        final likeCount = likesResponse.length;
-        final commentCount = commentsResponse.length;
+      for (final like in likesResponse) {
+        final postId = like['post_id'] as String;
+        likeCounts[postId] = (likeCounts[postId] ?? 0) + 1;
+      }
+
+      for (final comment in commentsResponse) {
+        final postId = comment['post_id'] as String;
+        commentCounts[postId] = (commentCounts[postId] ?? 0) + 1;
+      }
+
+      // ترکیب داده‌ها
+      final postsWithEngagement = posts.map((post) {
+        final postId = post['id'] as String;
+        final likeCount = likeCounts[postId] ?? 0;
+        final commentCount = commentCounts[postId] ?? 0;
         final engagementScore = likeCount + commentCount;
 
-        postsWithEngagement.add({
+        return {
           ...post,
           'like_count': likeCount,
           'comment_count': commentCount,
           'engagement_score': engagementScore,
-        });
-      }
+        };
+      }).toList();
 
       // مرتب‌سازی بر اساس امتیاز تعامل
       postsWithEngagement.sort((a, b) => (b['engagement_score'] as int)
@@ -87,7 +136,7 @@ class PostService {
 
       return postsWithEngagement;
     } catch (e) {
-      logInfo('خطا در دریافت پست‌ها: $e');
+      logInfo('خطا در دریافت پست‌ها با روش دسته‌ای: $e');
       rethrow;
     }
   }

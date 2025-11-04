@@ -50,6 +50,7 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
   bool _mounted = true; // اضافه کردن متغیر برای کنترل وضعیت mount
   final _pageStorageKey = const PageStorageKey('public_posts');
   final ScrollController _scrollController = ScrollController();
+  Timer? _connectivityTimer; // Timer برای بررسی دوره‌ای وضعیت اتصال
 
   final GlobalKey _tabControllerKey = GlobalKey();
 
@@ -57,6 +58,8 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
   void dispose() {
     _mounted = false; // تنظیم وضعیت mount
     _connectivitySubscription.cancel();
+    _connectivityTimer?.cancel(); // لغو timer بررسی اتصال
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -72,9 +75,9 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
       }
     });
 
-    // بررسی دوره‌ای وضعیت اتصال
-    Timer.periodic(const Duration(seconds: 30), (timer) {
-      if (mounted) {
+    // بررسی دوره‌ای وضعیت اتصال - فقط هر ۲ دقیقه و فقط وقتی آفلاین باشه
+    _connectivityTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
+      if (mounted && _connectionStatus == 'آفلاین') {
         _initConnectivity();
       }
     });
@@ -105,6 +108,9 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
   Future<void> _updateConnectionStatus(ConnectivityResult result) async {
     if (!_mounted) return; // چک مجدد وضعیت mount
 
+    // محاسبه وضعیت جدید
+    String newStatus = '';
+    
     bool hasInternet = false;
     try {
       final response = await Future.any<dynamic>([
@@ -119,24 +125,34 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
 
     if (!_mounted) return; // چک مجدد وضعیت mount
 
-    setState(() {
-      _isChecking = false;
-      if (!hasInternet) {
-        _connectionStatus = 'آفلاین';
-        return;
-      }
-
+    // تعیین متن وضعیت
+    if (!hasInternet) {
+      newStatus = 'آفلاین';
+    } else {
       switch (result) {
         case ConnectivityResult.wifi:
-          _connectionStatus = 'متصل به وای‌فای';
+          newStatus = 'متصل به وای‌فای';
           break;
         case ConnectivityResult.mobile:
-          _connectionStatus = 'متصل به اینترنت همراه';
+          newStatus = 'متصل به اینترنت همراه';
           break;
         default:
-          _connectionStatus = 'آفلاین';
+          newStatus = 'آفلاین';
       }
-    });
+    }
+
+    // ✅ نکته کلیدی: فقط اگر وضعیت تغییر کرده باشه setState بزن
+    if (_connectionStatus != newStatus) {
+      setState(() {
+        _isChecking = false;
+        _connectionStatus = newStatus;
+      });
+    } else {
+      // اگر وضعیت تغییر نکرده، فقط isChecking رو false کن بدون rebuild
+      if (_isChecking) {
+        _isChecking = false;
+      }
+    }
   }
 
   Widget _buildConnectionStatus() {
@@ -451,6 +467,12 @@ class _AllPostsPaginatedTab extends ConsumerWidget {
 
           return ListView.builder(
             itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
+            physics: const ClampingScrollPhysics(),
+            // ✅ بهینه‌سازی‌های performance:
+            addAutomaticKeepAlives: false,     // state آیتم‌ها رو نگه نداره
+            addRepaintBoundaries: true,        // هر آیتم رو جدا render کنه
+            addSemanticIndexes: false,         // indexing اضافی نداشته باشه
+            cacheExtent: 500,                  // فقط ۵۰۰ پیکسل اطراف رو cache کنه
             itemBuilder: (context, index) {
               if (index == posts.length) {
                 notifier.loadMorePosts();
@@ -466,7 +488,9 @@ class _AllPostsPaginatedTab extends ConsumerWidget {
               }
 
               final post = posts[index];
-              return _buildPostItem(context, ref, post);
+              return RepaintBoundary(
+                child: _buildPostItem(context, ref, post),
+              );
             },
           );
         },
@@ -540,6 +564,12 @@ class _FollowingPostsTab extends ConsumerWidget {
         data: (posts) {
           return ListView.builder(
             itemCount: posts.length + (_hasMore ? 1 : 0),
+            physics: const ClampingScrollPhysics(),
+            // ✅ بهینه‌سازی‌های performance:
+            addAutomaticKeepAlives: false,     // state آیتم‌ها رو نگه نداره
+            addRepaintBoundaries: true,        // هر آیتم رو جدا render کنه
+            addSemanticIndexes: false,         // indexing اضافی نداشته باشه
+            cacheExtent: 500,                  // فقط ۵۰۰ پیکسل اطراف رو cache کنه
             itemBuilder: (context, index) {
               if (index == posts.length) {
                 ref.read(fetchFollowingPostsProvider.notifier).loadMorePosts();
@@ -555,7 +585,9 @@ class _FollowingPostsTab extends ConsumerWidget {
               }
 
               final post = posts[index];
-              return _buildPostItem(context, ref, post);
+              return RepaintBoundary(
+                child: _buildPostItem(context, ref, post),
+              );
             },
           );
         },

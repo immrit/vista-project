@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../provider/post_provider.dart';
@@ -11,7 +12,9 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   final ScrollController _scrollController = ScrollController();
-  final int _currentPage = 0;
+  int _currentPage = 0;
+  bool _isLoadingMore = false;
+  Timer? _debounceTimer;
 
   @override
   void initState() {
@@ -22,23 +25,46 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _debounceTimer?.cancel();
     super.dispose();
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
-      _loadMorePosts();
-    }
+    // بهینه‌سازی: Debounce scroll events برای جلوگیری از فراخوانی‌های مکرر
+    // کاهش زمان debounce برای پاسخ سریع‌تر
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 50), () {
+      if (!mounted) return;
+      if (_scrollController.hasClients &&
+          _scrollController.position.pixels >=
+              _scrollController.position.maxScrollExtent - 200 &&
+          !_isLoadingMore) {
+        _loadMorePosts();
+      }
+    });
   }
 
   void _loadMorePosts() {
+    if (_isLoadingMore) return;
+
+    _isLoadingMore = true;
     final currentPage = ref.read(currentPageProvider);
     ref.read(currentPageProvider.notifier).state = currentPage + 1;
+
+    // ریست کردن فلگ بعد از کمی تأخیر
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        _isLoadingMore = false;
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    // تماشای currentPageProvider برای بروزرسانی _currentPage
+    final currentPageFromProvider = ref.watch(currentPageProvider);
+    _currentPage = currentPageFromProvider;
+
     final postsAsync = ref.watch(postsWithEngagementProvider(_currentPage));
     final cachedPosts = ref.watch(cachedPostsProvider);
 
@@ -55,10 +81,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         },
         child: postsAsync.when(
           data: (posts) {
-            // اضافه کردن پست‌های جدید به کش
-            if (posts.isNotEmpty) {
+            // ✅ بهینه‌سازی: اضافه کردن پست‌های جدید به کش فقط یکبار
+            if (posts.isNotEmpty && posts.length > cachedPosts.length) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                ref.read(cachedPostsProvider.notifier).addPosts(posts);
+                if (mounted) {
+                  ref.read(cachedPostsProvider.notifier).addPosts(posts);
+                }
               });
             }
 
@@ -82,6 +110,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             return ListView.builder(
               controller: _scrollController,
               itemCount: totalItemCount,
+              // ✅ بهینه‌سازی‌های performance:
+              cacheExtent: 500.0, // فقط ۵۰۰ پیکسل اطراف رو cache کنه
+              addAutomaticKeepAlives:
+                  false, // state آیتم‌ها رو نگه نداره (کاهش مصرف حافظه)
+              addRepaintBoundaries: true, // هر آیتم رو جدا render کنه
+              addSemanticIndexes: false, // indexing اضافی نداشته باشه
+              // ✅ استفاده از ClampingScrollPhysics برای عملکرد بهتر
+              physics: const ClampingScrollPhysics(),
               itemBuilder: (context, index) {
                 // بررسی ایندکس loading
                 if (index == totalItemCount - 1) {
@@ -93,14 +129,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   );
                 }
 
-                // محاسبه ایندکس واقعی پست
+                // محاسبه ایندکس واقعی پست با بهینه‌سازی
                 final postIndex = _getPostIndex(index, adInterval);
                 if (postIndex >= allPosts.length) {
                   return const SizedBox.shrink();
                 }
 
                 final post = allPosts[postIndex];
-                return PostCard(post: post);
+                // بهینه‌سازی: استفاده از RepaintBoundary برای جلوگیری از rebuild های غیرضروری
+                return RepaintBoundary(
+                  key: ValueKey('post_${post['id']}'),
+                  child: PostCard(key: ValueKey(post['id']), post: post),
+                );
               },
             );
           },
@@ -135,12 +175,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       ),
     );
-  }
-
-  /// بررسی اینکه آیا ایندکس مربوط به تبلیغ است یا نه
-  bool _isAdIndex(int index, int adInterval) {
-    // تبلیغات در ایندکس‌های 5, 11, 17, ... نمایش داده می‌شوند
-    return (index + 1) % (adInterval + 1) == 0;
   }
 
   /// محاسبه ایندکس واقعی پست با در نظر گیری تبلیغات
@@ -181,7 +215,7 @@ class PostCard extends StatelessWidget {
             // آمار تعامل
             Row(
               children: [
-                Icon(
+                const Icon(
                   Icons.favorite,
                   color: Colors.red,
                   size: 20,

@@ -2,10 +2,8 @@ import 'dart:async';
 import 'dart:io';
 import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
-import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import '../../widgets/attachment_bottom_sheet.dart';
 import '../../widgets/image_preview_bottom_sheet.dart';
 import '../../../model/message_model.dart';
@@ -52,7 +50,6 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
   int _recordingDuration = 0;
   Offset? _longPressStartPosition;
   Timer? _recordingTimer;
-  late StreamSubscription<bool> _keyboardSubscription;
 
   // --- Animations ---
   late Animation<double> _micIconScaleAnimation;
@@ -81,19 +78,6 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
             CurvedAnimation(
                 parent: _slideCancelAnimationController,
                 curve: Curves.easeInOut));
-
-    _keyboardSubscription =
-        KeyboardVisibilityController().onChange.listen((bool isVisible) {
-      // بهینه‌سازی keyboard handling - حذف تاخیر برای عملکرد سریع‌تر
-      if (isVisible && _showEmojiPicker && mounted) {
-        // استفاده مستقیم از setState بدون تاخیر برای عملکرد سریع‌تر
-        SchedulerBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            setState(() => _showEmojiPicker = false);
-          }
-        });
-      }
-    });
   }
 
   @override
@@ -104,7 +88,6 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
     _micIconAnimationController.dispose();
     _slideCancelAnimationController.dispose();
     _recordingTimer?.cancel();
-    _keyboardSubscription.cancel();
     super.dispose();
   }
 
@@ -117,24 +100,22 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
   }
 
   void _toggleEmojiPicker() {
-    // بهینه‌سازی: تغییر فوری state بدون تاخیر
-    if (_showEmojiPicker) {
-      setState(() => _showEmojiPicker = false);
-      // استفاده از SchedulerBinding برای focus بعد از rebuild
-      SchedulerBinding.instance.addPostFrameCallback((_) {
+    // ساده و بدون هیچ delay
+    setState(() {
+      _showEmojiPicker = !_showEmojiPicker;
+    });
+
+    if (!_showEmojiPicker) {
+      // اگه emoji picker بسته شد، focus رو بده به text field
+      WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _focusNode.requestFocus();
         }
       });
     } else {
+      // اگه emoji picker باز شد، focus رو بردار
       _focusNode.unfocus();
-      // تغییر فوری state
-      setState(() => _showEmojiPicker = true);
     }
-  }
-
-  void _onEmojiSelected(String emoji) {
-    _textController.text += emoji;
   }
 
   Future<void> _startRecording(Offset position) async {
@@ -286,22 +267,70 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 150), // کاهش مدت زمان انیمیشن برای عملکرد سریع‌تر
+              duration: const Duration(milliseconds: 150), // کاهش مدت انیمیشن
               switchInCurve: Curves.easeOut,
               switchOutCurve: Curves.easeIn,
+              transitionBuilder: (Widget child, Animation<double> animation) {
+                return FadeTransition(
+                  opacity: animation,
+                  child: child,
+                );
+              },
               child: _isRecording ? _buildRecordingUI() : _buildStandardInput(),
             ),
           ),
-          // بهینه‌سازی: استفاده از AnimatedSize برای انیمیشن نرم‌تر
+          // ✅ بهینه‌سازی: استفاده از AnimatedSize به جای AnimatedContainer
           AnimatedSize(
-            duration: const Duration(milliseconds: 200),
+            duration: const Duration(milliseconds: 200), // ✅ کاهش از ۳۰۰ به ۲۰۰
             curve: Curves.easeInOut,
-            child: _showEmojiPicker 
+            child: _showEmojiPicker
                 ? SizedBox(
                     height: 250,
-                    child: _buildEmojiPicker(),
+                    child: EmojiPicker(
+                      onEmojiSelected: (category, emoji) {
+                        final text = _textController.text;
+                        final selection = _textController.selection;
+                        final newText = text.replaceRange(
+                          selection.start,
+                          selection.end,
+                          emoji.emoji,
+                        );
+                        _textController.value = TextEditingValue(
+                          text: newText,
+                          selection: TextSelection.collapsed(
+                            offset: selection.start + emoji.emoji.length,
+                          ),
+                        );
+                      },
+                      config: Config(
+                        checkPlatformCompatibility: true,
+                        emojiViewConfig: EmojiViewConfig(
+                          columns: 7,
+                          emojiSizeMax: 32,
+                          verticalSpacing: 0,
+                          horizontalSpacing: 0,
+                          gridPadding: EdgeInsets.zero,
+                          backgroundColor:
+                              Theme.of(context).scaffoldBackgroundColor,
+                        ),
+                        categoryViewConfig: CategoryViewConfig(
+                          backgroundColor:
+                              Theme.of(context).scaffoldBackgroundColor,
+                          indicatorColor: Theme.of(context).colorScheme.primary,
+                          iconColor: Colors.grey,
+                          iconColorSelected:
+                              Theme.of(context).colorScheme.primary,
+                        ),
+                        skinToneConfig: const SkinToneConfig(
+                          enabled: true,
+                        ),
+                        bottomActionBarConfig: BottomActionBarConfig(
+                          enabled: false,
+                        ),
+                      ),
+                    ),
                   )
-                : const SizedBox.shrink(),
+                : const SizedBox.shrink(), // ✅ وقتی بسته است خالی
           ),
         ],
       ),
@@ -402,6 +431,7 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
               children: [
                 Expanded(
                   child: TextField(
+                    key: const ValueKey('message_input'),
                     controller: _textController,
                     focusNode: _focusNode,
                     minLines: 1,
@@ -412,6 +442,12 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
                     enableSuggestions: true,
                     smartDashesType: SmartDashesType.enabled,
                     smartQuotesType: SmartQuotesType.enabled,
+                    onTap: () {
+                      // فقط اگر emoji picker باز است، آن را ببند
+                      if (_showEmojiPicker && mounted) {
+                        setState(() => _showEmojiPicker = false);
+                      }
+                    },
                     decoration: const InputDecoration(
                       hintText: '...پیام',
                       border: InputBorder.none,
@@ -749,30 +785,6 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
                 : Colors.grey[700], // خاکستری تیره برای تم روشن
             size: 24,
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmojiPicker() {
-    return EmojiPicker(
-      onEmojiSelected: (category, emoji) => _onEmojiSelected(emoji.emoji),
-      config: Config(
-        height: 256,
-        checkPlatformCompatibility: true,
-        emojiViewConfig: EmojiViewConfig(
-          columns: 8,
-          emojiSizeMax: 28,
-          backgroundColor: Theme.of(context).cardColor,
-        ),
-        categoryViewConfig: CategoryViewConfig(
-          backgroundColor: Theme.of(context).cardColor,
-          indicatorColor: Theme.of(context).colorScheme.primary,
-          iconColor: Colors.grey,
-          iconColorSelected: Theme.of(context).colorScheme.primary,
-        ),
-        bottomActionBarConfig: BottomActionBarConfig(
-          enabled: false,
         ),
       ),
     );

@@ -1,6 +1,7 @@
 import '../security/logging_utility.dart';
 import 'dart:async';
 
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../DB/unified_conversation_cache_service.dart';
@@ -445,23 +446,46 @@ final messagesStreamProvider = StreamProvider.family
   final isOnline = await chatService.isDeviceOnline();
 
   if (isOnline) {
-    // فقط استریم Supabase
-    yield* supabase
+    // ✅ بهینه‌سازی: استفاده از debouncing برای stream
+    Timer? debounceTimer;
+    List<MessageModel>? pendingMessages;
+    final controller = StreamController<List<MessageModel>>();
+
+    final subscription = supabase
         .from('messages')
         .stream(primaryKey: ['id'])
         .eq('conversation_id', conversationId)
-        .order('created_at',
-            ascending: true) // قدیمی‌ترین اول (برای reverse ListView)
-        .map((jsonList) {
+        .order('created_at', ascending: true)
+        .listen((jsonList) {
           // پیام‌های واقعی (id واقعی) را نگه دار، پیام temp را حذف کن
           final messages = jsonList
               .map((json) => MessageModel.fromJson(json, currentUserId: userId))
               .where((msg) => !msg.id.startsWith('temp_'))
               .toList();
-          // کش را sync کن (فقط برای آفلاین)
-          cache.cacheMessages(messages, userId);
-          return messages;
+
+          // ✅ Debouncing: فقط بعد از 150ms عدم تغییر، emit کن
+          pendingMessages = messages;
+          debounceTimer?.cancel();
+          debounceTimer = Timer(const Duration(milliseconds: 150), () {
+            if (pendingMessages != null) {
+              controller.add(pendingMessages!);
+
+              // ✅ کش را sync کن با Future.microtask
+              Future.microtask(() async {
+                await cache.cacheMessages(pendingMessages!, userId);
+              });
+            }
+          });
         });
+
+    // ✅ Cleanup در onDispose
+    ref.onDispose(() {
+      debounceTimer?.cancel();
+      subscription.cancel();
+      controller.close();
+    });
+
+    yield* controller.stream;
   } else {
     // فقط کش (آفلاین)
     final cached = await cache.getConversationMessages(conversationId, userId);
@@ -1792,6 +1816,9 @@ final conversationMessagesProvider = StateNotifierProvider.family
 
     final userId = supabase.auth.currentUser?.id;
     if (userId != null) {
+      // ✅ Debouncing برای جلوگیری از rebuild های مکرر
+      Timer? debounceTimer;
+
       final sub = supabase
           .from('messages')
           .stream(primaryKey: ['id'])
@@ -1799,102 +1826,114 @@ final conversationMessagesProvider = StateNotifierProvider.family
           .order('created_at',
               ascending: true) // قدیمی‌ترین اول (برای reverse ListView)
           .listen((jsonDataList) async {
-            // دریافت لیست پیام‌های مخفی شده برای کاربر فعلی در این گفتگو
-            final hiddenIdsResp = await supabase
-                .from('hidden_messages')
-                .select('message_id')
-                .eq('user_id', userId)
-                .eq('conversation_id', conversationId);
-            final hiddenIds =
-                hiddenIdsResp.map((e) => e['message_id'] as String).toSet();
+            // ✅ Debounce: فقط بعد از 150ms عدم تغییر، پردازش کن
+            debounceTimer?.cancel();
+            debounceTimer = Timer(const Duration(milliseconds: 150), () async {
+              // دریافت لیست پیام‌های مخفی شده برای کاربر فعلی در این گفتگو
+              final hiddenIdsResp = await supabase
+                  .from('hidden_messages')
+                  .select('message_id')
+                  .eq('user_id', userId)
+                  .eq('conversation_id', conversationId);
+              final hiddenIds =
+                  hiddenIdsResp.map((e) => e['message_id'] as String).toSet();
 
-            // مجموعه شناسه‌های پیام‌های روی سرور (بعد از فیلتر مخفی)
-            List<MessageModel> serverMessagesRaw = jsonDataList
-                .map((jsonMsg) =>
-                    MessageModel.fromJson(jsonMsg, currentUserId: userId))
-                .where((m) =>
-                    !hiddenIds.contains(m.id) &&
-                    !notifier._locallyDeletedMessageIds.contains(m.id))
-                .toList();
-            // Process messages in stream for immediate UI
-            try {
-              if (serverMessagesRaw.isNotEmpty) {
-                // Process messages
-              }
-            } catch (_) {}
-            if (notifier._clearedAt != null) {
-              serverMessagesRaw = serverMessagesRaw
-                  .where((m) => m.createdAt.isAfter(notifier._clearedAt!))
+              // مجموعه شناسه‌های پیام‌های روی سرور (بعد از فیلتر مخفی)
+              List<MessageModel> serverMessagesRaw = jsonDataList
+                  .map((jsonMsg) =>
+                      MessageModel.fromJson(jsonMsg, currentUserId: userId))
+                  .where((m) =>
+                      !hiddenIds.contains(m.id) &&
+                      !notifier._locallyDeletedMessageIds.contains(m.id))
                   .toList();
-            }
-            // final serverIds = serverMessagesRaw.map((m) => m.id).toSet();
-
-            // پیام‌های temp موجود از کش که هنوز جایگزین نشده‌اند را نگه دار
-            final cachedNow = await notifier._cacheService
-                .getConversationMessages(conversationId, userId);
-            final tempMessagesInState =
-                cachedNow.where((m) => m.id.startsWith('temp_')).toList();
-
-            // اگر سرور پیامی با localId برابر temp داشت، temp را حذف کن
-            final tempIdsToRemove = tempMessagesInState
-                .where((t) => serverMessagesRaw.any((s) => s.localId == t.id))
-                .map((t) => t.id)
-                .toSet();
-            final remainingTempMessages = tempMessagesInState
-                .where((t) => !tempIdsToRemove.contains(t.id))
-                .toList();
-
-            // ساخت state جدید: temp های باقی‌مانده + پیام‌های سرور (پس از فیلتر مخفی)
-            final List<MessageModel> nextState = [
-              ...remainingTempMessages,
-              ...serverMessagesRaw,
-            ];
-
-            // آپدیت کش فقط برای پیام‌هایی که جدید هستند یا از خود کاربرند
-            final existingIdsInCache = cachedNow.map((m) => m.id).toSet();
-            final toCache = serverMessagesRaw
-                .where((m) => !existingIdsInCache.contains(m.id))
-                .toList();
-            if (toCache.isNotEmpty) {
-              await notifier._cacheService.cacheMessages(toCache, userId);
-            }
-
-            // حذف از کش پیام‌هایی که مخفی شده‌اند
-            if (hiddenIds.isNotEmpty) {
-              for (final hiddenId in hiddenIds) {
-                await notifier._cacheService
-                    .clearMessage(conversationId, hiddenId, userId);
+              // Process messages in stream for immediate UI
+              try {
+                if (serverMessagesRaw.isNotEmpty) {
+                  // Process messages
+                }
+              } catch (_) {}
+              if (notifier._clearedAt != null) {
+                serverMessagesRaw = serverMessagesRaw
+                    .where((m) => m.createdAt.isAfter(notifier._clearedAt!))
+                    .toList();
               }
-            }
+              // final serverIds = serverMessagesRaw.map((m) => m.id).toSet();
 
-            // به‌روزرسانی کش مکالمه بر اساس جدیدترین پیام سرور (در صورت وجود)
-            if (serverMessagesRaw.isNotEmpty) {
-              final latest = serverMessagesRaw
-                  .reduce((a, b) => a.createdAt.isAfter(b.createdAt) ? a : b);
-              final conversationCache = UnifiedConversationCacheService();
-              final conversation = await conversationCache.getConversation(
-                  conversationId, userId);
-              if (conversation != null &&
-                  latest.createdAt.isAfter(conversation.updatedAt)) {
-                final updatedConversation = conversation.copyWith(
-                  lastMessage: latest.content,
-                  lastMessageTime: latest.createdAt,
-                  updatedAt: latest.createdAt,
-                );
-                await conversationCache.updateConversation(
-                    updatedConversation, userId);
-                ref.invalidate(conversationsStreamProvider);
-                ref.invalidate(cachedConversationsStreamProvider);
+              // پیام‌های temp موجود از کش که هنوز جایگزین نشده‌اند را نگه دار
+              final cachedNow = await notifier._cacheService
+                  .getConversationMessages(conversationId, userId);
+              final tempMessagesInState =
+                  cachedNow.where((m) => m.id.startsWith('temp_')).toList();
+
+              // اگر سرور پیامی با localId برابر temp داشت، temp را حذف کن
+              final tempIdsToRemove = tempMessagesInState
+                  .where((t) => serverMessagesRaw.any((s) => s.localId == t.id))
+                  .map((t) => t.id)
+                  .toSet();
+              final remainingTempMessages = tempMessagesInState
+                  .where((t) => !tempIdsToRemove.contains(t.id))
+                  .toList();
+
+              // ساخت state جدید: temp های باقی‌مانده + پیام‌های سرور (پس از فیلتر مخفی)
+              final List<MessageModel> nextState = [
+                ...remainingTempMessages,
+                ...serverMessagesRaw,
+              ];
+
+              // ✅ بهینه‌سازی: استفاده از Future.microtask برای async operations
+              // آپدیت کش فقط برای پیام‌هایی که جدید هستند یا از خود کاربرند
+              final existingIdsInCache = cachedNow.map((m) => m.id).toSet();
+              final toCache = serverMessagesRaw
+                  .where((m) => !existingIdsInCache.contains(m.id))
+                  .toList();
+              if (toCache.isNotEmpty) {
+                Future.microtask(() async {
+                  await notifier._cacheService.cacheMessages(toCache, userId);
+                });
               }
-            }
 
-            // ست کردن state جدید (مرتب‌سازی داخل setter انجام می‌شود)
-            notifier.state = nextState;
+              // ✅ حذف از کش با Future.microtask
+              if (hiddenIds.isNotEmpty) {
+                Future.microtask(() async {
+                  for (final hiddenId in hiddenIds) {
+                    await notifier._cacheService
+                        .clearMessage(conversationId, hiddenId, userId);
+                  }
+                });
+              }
+
+              // ✅ به‌روزرسانی کش مکالمه با Future.microtask
+              if (serverMessagesRaw.isNotEmpty) {
+                Future.microtask(() async {
+                  final latest = serverMessagesRaw.reduce(
+                      (a, b) => a.createdAt.isAfter(b.createdAt) ? a : b);
+                  final conversationCache = UnifiedConversationCacheService();
+                  final conversation = await conversationCache.getConversation(
+                      conversationId, userId);
+                  if (conversation != null &&
+                      latest.createdAt.isAfter(conversation.updatedAt)) {
+                    final updatedConversation = conversation.copyWith(
+                      lastMessage: latest.content,
+                      lastMessageTime: latest.createdAt,
+                      updatedAt: latest.createdAt,
+                    );
+                    await conversationCache.updateConversation(
+                        updatedConversation, userId);
+                    ref.invalidate(conversationsStreamProvider);
+                    ref.invalidate(cachedConversationsStreamProvider);
+                  }
+                });
+              }
+
+              // ✅ ست کردن state جدید (مرتب‌سازی داخل setter انجام می‌شود)
+              notifier.state = nextState;
+            });
           });
 
       ref.onDispose(() {
-        sub.cancel();
-        link.close(); // آزادسازی keepAlive هنگام dispose
+        debounceTimer?.cancel(); // ✅ لغو debounce timer
+        sub.cancel(); // ✅ بستن استریم برای آزاد کردن حافظه
+        link.close(); // ✅ آزادسازی keepAlive هنگام dispose
       });
     }
 
@@ -2000,7 +2039,8 @@ class CachedConversationsNotifier
             }).toList();
 
             state = enrichedConversations;
-            logInfo('✅ Cached provider: Profiles loaded, conversations enriched');
+            logInfo(
+                '✅ Cached provider: Profiles loaded, conversations enriched');
           } else {
             state = cachedConversations;
           }

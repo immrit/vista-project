@@ -68,6 +68,8 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
       OptimizedMessageDeletionService();
   StreamSubscription? _realtimeSubscription;
   bool _isFetching = false;
+  bool _isKeyboardAnimating = false; // ✅ جلوگیری از عملیات سنگین در حین انیمیشن کیبورد
+  DateTime? _lastInvalidateTime; // ✅ Debounce برای invalidation cache
   static const _pageSize = 30;
   int _retryCount = 0;
   static const int _maxRetries = 5; // برای قابلیت اطمینان بهتر
@@ -145,8 +147,16 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
     }
   }
 
-  Future<void> fetchLatestMessages() async {
-    if (_isFetching) return;
+  Future<void> fetchLatestMessages({bool fromKeyboard = false}) async {
+    if (_isFetching || _isKeyboardAnimating) return;
+
+    // ✅ جلوگیری از عملیات سنگین در حین انیمیشن کیبورد
+    if (fromKeyboard) {
+      _isKeyboardAnimating = true;
+      await Future.delayed(const Duration(milliseconds: 300)); // صبر برای پایان انیمیشن
+      _isKeyboardAnimating = false;
+    }
+
     _isFetching = true;
 
     try {
@@ -168,8 +178,15 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
     }
   }
 
-  Future<void> fetchMoreMessages() async {
-    if (state.isLoading || !state.hasMore || _isFetching) return;
+  Future<void> fetchMoreMessages({bool fromKeyboard = false}) async {
+    if (state.isLoading || !state.hasMore || _isFetching || _isKeyboardAnimating) return;
+
+    // ✅ جلوگیری از عملیات سنگین در حین انیمیشن کیبورد
+    if (fromKeyboard) {
+      _isKeyboardAnimating = true;
+      await Future.delayed(const Duration(milliseconds: 300)); // صبر برای پایان انیمیشن
+      _isKeyboardAnimating = false;
+    }
 
     state = state.copyWith(isLoading: true);
     _isFetching = true;
@@ -199,6 +216,9 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
     }
   }
 
+  // ✅ Debouncing برای real-time updates
+  Timer? _realtimeDebounceTimer;
+
   void _listenForRealtimeUpdates() {
     if (_realtimeSubscription != null) {
       print('⚠️ Real-time subscription already exists, skipping');
@@ -213,10 +233,14 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
       _realtimeSubscription =
           _chatService.subscribeToMessages(params.conversationId).listen(
         (messages) {
-          print('📨 Received ${messages.length} real-time messages');
-          if (mounted) {
-            _updateMessages(messages);
-          }
+          // ✅ Debounce: فقط بعد از 150ms عدم تغییر، پردازش کن
+          _realtimeDebounceTimer?.cancel();
+          _realtimeDebounceTimer = Timer(const Duration(milliseconds: 150), () {
+            print('📨 Received ${messages.length} real-time messages');
+            if (mounted) {
+              _updateMessages(messages);
+            }
+          });
         },
         onError: (error) {
           print('❌ Real-time subscription error: $error');
@@ -324,26 +348,35 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
       state = state.copyWith(messages: sortedMessages);
     }
 
-    // Update cache in the background
-    try {
-      final currentUser = supabase.auth.currentUser;
-      if (currentUser != null) {
-        _cacheService.cacheMessages(newMessages, currentUser.id);
+    // ✅ بهینه‌سازی: Update cache در background با scheduleMicrotask
+    scheduleMicrotask(() async {
+      try {
+        final currentUser = supabase.auth.currentUser;
+        if (currentUser != null) {
+          await _cacheService.cacheMessages(newMessages, currentUser.id);
 
-        // بروزرسانی conversation برای پیام‌های دریافتی جدید
-        if (newMessages.isNotEmpty &&
-            newMessages.any((msg) => msg.senderId != currentUser.id) &&
-            _ref != null) {
-          _ref.invalidate(conversationsProvider);
-          _ref.invalidate(conversationsStreamProvider);
-          _ref.invalidate(cachedConversationsStreamProvider);
-          // برای StateNotifier، refresh method فراخوانی کنیم
-          _ref.read(cachedConversationsProvider.notifier).refresh();
+          // ✅ بروزرسانی conversation با debounce (فقط اگر پیام جدید از طرف مقابل باشه)
+          if (newMessages.isNotEmpty &&
+              newMessages.any((msg) => msg.senderId != currentUser.id) &&
+              _ref != null) {
+            // ✅ Debounce: جلوگیری از invalidate مکرر در کمتر از 1 ثانیه
+            final now = DateTime.now();
+            if (_lastInvalidateTime == null ||
+                now.difference(_lastInvalidateTime!).inSeconds >= 1) {
+              scheduleMicrotask(() {
+                _ref.invalidate(conversationsProvider);
+                _ref.invalidate(conversationsStreamProvider);
+                _ref.invalidate(cachedConversationsStreamProvider);
+                _ref.read(cachedConversationsProvider.notifier).refresh();
+                _lastInvalidateTime = DateTime.now();
+              });
+            }
+          }
         }
+      } catch (e) {
+        print('⚠️ Error caching messages: $e');
       }
-    } catch (e) {
-      print('⚠️ Error caching messages: $e');
-    }
+    });
   }
 
   Future<void> sendMessage(String content,
@@ -652,6 +685,8 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
 
   @override
   void dispose() {
+    // ✅ لغو تمام timer ها و subscription ها
+    _realtimeDebounceTimer?.cancel();
     _realtimeSubscription?.cancel();
     _retryService.dispose();
     _deletionService.dispose();

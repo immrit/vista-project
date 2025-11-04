@@ -44,12 +44,8 @@ final advancedConversationsProvider =
     StreamProvider<List<ConversationModel>>((ref) {
   final cache = ref.watch(advancedCacheProvider);
 
-  // Cache is already initialized by the main provider
-  // No need to initialize again
-
-  // Return conversations directly without enrichment to avoid database relationship issues
-  // User profile enrichment will be handled separately in the UI layer
-  return cache.watchConversations();
+  // جلوگیری از انتشار داده‌های تکراری
+  return cache.watchConversations().distinct();
 });
 
 /// Provider for messages in a specific conversation
@@ -193,12 +189,15 @@ class UnifiedMessagesNotifier extends StateNotifier<UnifiedMessagesState> {
     }
   }
 
-  /// Setup real-time listener
+  /// Setup optimized real-time listener
   void _setupRealTimeListener() {
+    // Debounce real-time updates برای جلوگیری از به‌روزرسانی‌های مکرر
+    Timer? debounceTimer;
+
     final channel = supabase
         .channel('messages:$conversationId')
         .onPostgresChanges(
-          event: PostgresChangeEvent.all,
+          event: PostgresChangeEvent.insert, // فقط insert گوش دهیم، update/delete کمتر اتفاق می‌افتد
           schema: 'public',
           table: 'messages',
           filter: PostgresChangeFilter(
@@ -207,13 +206,24 @@ class UnifiedMessagesNotifier extends StateNotifier<UnifiedMessagesState> {
             value: conversationId,
           ),
           callback: (payload) {
-            // Handle real-time message updates
-            logInfo('Real-time message update: $payload');
+            // Debounce updates
+            debounceTimer?.cancel();
+            debounceTimer = Timer(const Duration(milliseconds: 200), () {
+              logInfo('Real-time message insert: ${payload.newRecord}');
+              // Handle real-time message updates with debouncing
+              final currentUserId = supabase.auth.currentUser?.id;
+              if (currentUserId != null) {
+                final newMessage = MessageModel.fromJson(payload.newRecord, currentUserId: currentUserId);
+                addMessage(newMessage);
+              }
+            });
           },
         )
         .subscribe((status, [error]) {
       if (status == RealtimeSubscribeStatus.subscribed) {
-        logInfo('Real-time messages subscription active for $conversationId');
+        logInfo('Optimized real-time messages subscription active for $conversationId');
+      } else if (status == RealtimeSubscribeStatus.closed) {
+        debounceTimer?.cancel();
       }
     });
 

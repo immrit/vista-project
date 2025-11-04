@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
-import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 
 import '../../../main.dart';
 import '../../../model/message_model.dart';
@@ -1371,8 +1370,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       );
     }
 
-    final chatState = ref.watch(chatScreenProvider(_providerParams));
-    final messages = chatState.messages;
+    // ✅ بهینه‌سازی: استفاده از select برای کاهش rebuild های غیرضروری
+    final messages = ref.watch(
+      chatScreenProvider(_providerParams).select((state) => state.messages),
+    );
+    final isLoading = ref.watch(
+      chatScreenProvider(_providerParams).select((state) => state.isLoading),
+    );
+    final chatState = ref.read(chatScreenProvider(_providerParams));
 
     return Stack(
       children: [
@@ -1415,7 +1420,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         // Main chat interface
         Scaffold(
           backgroundColor: Colors.transparent,
-          resizeToAvoidBottomInset: true, // بهینه‌سازی برای کیبورد
+          // ✅ بهینه‌سازی: غیرفعال کردن resizeToAvoidBottomInset برای کنترل دستی کیبورد
+          resizeToAvoidBottomInset: false,
           appBar: AppBar(
             elevation: 1,
             backgroundColor: Theme.of(context).brightness == Brightness.dark
@@ -1721,21 +1727,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               }
             },
             // بهینه‌سازی برای keyboard handling
-            behavior: HitTestBehavior.deferToChild, // تغییر از opaque به deferToChild برای عملکرد بهتر
+            behavior:
+                HitTestBehavior.opaque, // استفاده از opaque برای عملکرد بهتر
             child: Column(children: [
               Expanded(
                 child: Stack(
                   alignment: Alignment.topCenter,
                   children: [
-                    chatState.isLoading && messages.isEmpty
+                    isLoading && messages.isEmpty
                         ? const Center(child: CircularProgressIndicator())
-                        : messages.isEmpty && !chatState.isLoading
+                        : messages.isEmpty && !isLoading
                             ? const Center(child: Text('پیامی یافت نشد'))
                             : ScrollablePositionedList.builder(
                                 itemScrollController: _itemScrollController,
                                 itemPositionsListener: _itemPositionsListener,
                                 reverse: true,
-                                physics: const ClampingScrollPhysics(), // بهینه‌سازی فیزیک اسکرول
+                                // بهینه‌سازی: استفاده از physics بهینه برای اسکرول روان
+                                physics: const ClampingScrollPhysics(),
+                                // ✅ بهینه‌سازی‌های performance:
+                                addAutomaticKeepAlives: false,
+                                addRepaintBoundaries: true,
+                                addSemanticIndexes: false,
                                 itemCount: messages.length,
                                 itemBuilder: (context, index) {
                                   final message = messages[index];
@@ -1750,19 +1762,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                   MessageModel correctedMessage = message;
                                   if (message.replyToMessageId != null &&
                                       (message.replyToSenderName == null ||
-                                       message.replyToSenderName!.isEmpty ||
-                                       message.replyToSenderName == 'کاربر')) {
+                                          message.replyToSenderName!.isEmpty ||
+                                          message.replyToSenderName ==
+                                              'کاربر')) {
                                     // جستجو در کل لیست پیام‌ها برای پیدا کردن پیام ریپلای شده
                                     final repliedMessage = messages.firstWhere(
-                                      (msg) => msg.id == message.replyToMessageId,
+                                      (msg) =>
+                                          msg.id == message.replyToMessageId,
                                       orElse: () => MessageModel.empty(),
                                     );
-                                    
-                                    if (repliedMessage.id.isNotEmpty && 
+
+                                    if (repliedMessage.id.isNotEmpty &&
                                         repliedMessage.senderName != null &&
                                         repliedMessage.senderName!.isNotEmpty) {
                                       correctedMessage = message.copyWith(
-                                        replyToSenderName: repliedMessage.senderName,
+                                        replyToSenderName:
+                                            repliedMessage.senderName,
                                       );
                                     }
                                   }
@@ -1783,65 +1798,54 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                     prevMessage?.senderId,
                                   );
 
-                                  // فقط برای پیام‌های جدید (آخرین 10 پیام) انیمیشن اعمال کن
-                                  final shouldAnimate = index < 10;
-
-                                  Widget messageWidget = Column(
+                                  // ✅ ساخت پیام بدون انیمیشن برای عملکرد بهتر
+                                  final messageWidget = Column(
                                     children: [
                                       if (showDateDivider)
                                         DateDivider(
                                           date: correctedMessage.createdAt,
                                         ),
                                       SizedBox(height: spacing),
-                                      MessageBubble(
-                                        message: correctedMessage, // استفاده از پیام اصلاح شده
-                                        isHighlighted:
-                                            _highlightedMessageId == correctedMessage.id,
-                                        isSelected: _selectedMessageIds
-                                            .contains(correctedMessage.id),
-                                        previousMessage: prevMessage,
-                                        nextMessage: nextMessage,
-                                        onLongPress: (msg) =>
-                                            _toggleMessageSelection(correctedMessage.id),
-                                        onTap: _isSelectionMode
-                                            ? (messageId) {
-                                                _showMessageActionsBottomSheet(
-                                                    context, correctedMessage);
-                                              }
-                                            : null,
-                                        onSelectTap: _isSelectionMode
-                                            ? (messageId) =>
-                                                _toggleMessageSelection(
-                                                    correctedMessage.id)
-                                            : null,
-                                        onSingleTap: (msg) =>
-                                            _showMessageActionsBottomSheet(
-                                                context, msg),
-                                        onReply: (msg) => _setReplyMessage(msg),
-                                        onRetry: (msg) =>
-                                            _retryFailedMessage(msg),
+                                      // ✅ اضافه کردن RepaintBoundary برای بهینه‌سازی render
+                                      RepaintBoundary(
+                                        child: MessageBubble(
+                                          message:
+                                              correctedMessage, // استفاده از پیام اصلاح شده
+                                          isHighlighted:
+                                              _highlightedMessageId ==
+                                                  correctedMessage.id,
+                                          isSelected: _selectedMessageIds
+                                              .contains(correctedMessage.id),
+                                          previousMessage: prevMessage,
+                                          nextMessage: nextMessage,
+                                          onLongPress: (msg) =>
+                                              _toggleMessageSelection(
+                                                  correctedMessage.id),
+                                          onTap: _isSelectionMode
+                                              ? (messageId) {
+                                                  _showMessageActionsBottomSheet(
+                                                      context,
+                                                      correctedMessage);
+                                                }
+                                              : null,
+                                          onSelectTap: _isSelectionMode
+                                              ? (messageId) =>
+                                                  _toggleMessageSelection(
+                                                      correctedMessage.id)
+                                              : null,
+                                          onSingleTap: (msg) =>
+                                              _showMessageActionsBottomSheet(
+                                                  context, msg),
+                                          onReply: (msg) =>
+                                              _setReplyMessage(msg),
+                                          onRetry: (msg) =>
+                                              _retryFailedMessage(msg),
+                                        ),
                                       ),
                                     ],
                                   );
 
-                                  // اعمال انیمیشن فقط برای پیام‌های جدید
-                                  if (shouldAnimate) {
-                                    return AnimationConfiguration.staggeredList(
-                                      position: index,
-                                      duration: const Duration(
-                                          milliseconds:
-                                              200), // کاهش مدت انیمیشن
-                                      child: SlideAnimation(
-                                        verticalOffset:
-                                            30.0, // کاهش فاصله انیمیشن
-                                        child: FadeInAnimation(
-                                          child: messageWidget,
-                                        ),
-                                      ),
-                                    );
-                                  } else {
-                                    return messageWidget;
-                                  }
+                                  return messageWidget; // بدون هیچ انیمیشنی
                                 },
                               ),
                     _buildFloatingDateChip(),
@@ -1864,7 +1868,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 if (_showFileCaptionInput && _selectedFile != null)
                   _buildFileCaptionInput()
                 else
-                  _buildMessageInput(),
+                  // ✅ اضافه کردن AnimatedPadding برای کنترل دستی کیبورد
+                  AnimatedPadding(
+                    duration: Duration.zero, // بدون انیمیشن برای جلوگیری از لگ
+                    padding: EdgeInsets.only(
+                      bottom: MediaQuery.of(context).viewInsets.bottom,
+                    ),
+                    child: _buildMessageInput(),
+                  ),
               ],
             ]),
           ),
@@ -1994,20 +2005,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _buildMessageInput() {
-    return ChatInput(
-      onSendMessage: _sendMessage,
-      onSendVoiceMessage: _sendVoiceMessage,
-      onSendImages: _handleSendImages,
-      onFileSelected: _handleFileSelected,
-      parentContext: context,
-      replyTo: _replyToMessage,
-      onClearReply: () {
-        if (mounted) {
-          setState(() {
-            _replyToMessage = null;
-          });
-        }
-      },
+    // ✅ RepaintBoundary برای بهبود عملکرد کیبورد
+    return RepaintBoundary(
+      child: ChatInput(
+        onSendMessage: _sendMessage,
+        onSendVoiceMessage: _sendVoiceMessage,
+        onSendImages: _handleSendImages,
+        onFileSelected: _handleFileSelected,
+        parentContext: context,
+        replyTo: _replyToMessage,
+        onClearReply: () {
+          if (mounted) {
+            setState(() {
+              _replyToMessage = null;
+            });
+          }
+        },
+      ),
     );
   }
 

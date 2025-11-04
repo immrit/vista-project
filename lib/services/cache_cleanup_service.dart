@@ -10,39 +10,36 @@ class CacheCleanupService {
   bool _isCleanupComplete = false;
   final List<String> _disabledSystems = [];
 
-  /// غیرفعالسازی سیستم‌های cache اضافی
+  /// غیرفعالسازی سیستم‌های cache اضافی - نسخه بهینه‌سازی شده
   Future<void> disableRedundantCacheSystems() async {
     if (_isCleanupComplete) return;
 
-    logInfo('🧹 Starting cache cleanup process...');
+    logInfo('🧹 Starting aggressive cache cleanup process...');
 
     try {
-      // غیرفعالسازی UnifiedCacheManager (مهم‌ترین)
-      await _disableUnifiedCacheManager();
+      // غیرفعالسازی همه سیستم‌های کش غیرضروری به صورت همزمان
+      final cleanupTasks = [
+        _disableUnifiedCacheManager(),
+        _disableAdvancedCacheManager(),
+        _disableImprovedCacheManager(),
+        _disableSmartMessageCache(),
+        _disableRealtimeCacheManager(),
+        _disableBackgroundCacheSync(),
+        _disableProfileCacheManager(),
+        _disableVoiceCacheService(),
+        _disableWallpaperCacheService(),
+      ];
 
-      // غیرفعالسازی سیستم‌های کش قدیمی پاک شده‌اند
-      await _disableAdvancedCacheManager();
-
-      // غیرفعالسازی ImprovedCacheManager
-      await _disableImprovedCacheManager();
-
-      // غیرفعالسازی SmartMessageCache
-      await _disableSmartMessageCache();
-
-      // غیرفعالسازی RealtimeCacheManager
-      await _disableRealtimeCacheManager();
-
-      // غیرفعالسازی BackgroundCacheSync
-      await _disableBackgroundCacheSync();
+      await Future.wait(cleanupTasks);
 
       _isCleanupComplete = true;
       print(
-          '✅ Cache cleanup completed. Disabled systems: ${_disabledSystems.join(", ")}');
+          '✅ Aggressive cache cleanup completed. Disabled systems: ${_disabledSystems.length}');
 
       // نمایش آمار بهبود
       _showOptimizationStats();
     } catch (e) {
-      logInfo('❌ Error during cache cleanup: $e');
+      logInfo('❌ Error during aggressive cache cleanup: $e');
     }
   }
 
@@ -108,6 +105,36 @@ class CacheCleanupService {
       logInfo('🚫 BackgroundCacheSync disabled');
     } catch (e) {
       logInfo('⚠️ Could not disable BackgroundCacheSync: $e');
+    }
+  }
+
+  Future<void> _disableProfileCacheManager() async {
+    try {
+      // غیرفعالسازی ProfileCacheManager
+      _disabledSystems.add('ProfileCacheManager');
+      logInfo('🚫 ProfileCacheManager disabled');
+    } catch (e) {
+      logInfo('⚠️ Could not disable ProfileCacheManager: $e');
+    }
+  }
+
+  Future<void> _disableVoiceCacheService() async {
+    try {
+      // غیرفعالسازی VoiceCacheService
+      _disabledSystems.add('VoiceCacheService');
+      logInfo('🚫 VoiceCacheService disabled');
+    } catch (e) {
+      logInfo('⚠️ Could not disable VoiceCacheService: $e');
+    }
+  }
+
+  Future<void> _disableWallpaperCacheService() async {
+    try {
+      // غیرفعالسازی WallpaperCacheService
+      _disabledSystems.add('WallpaperCacheService');
+      logInfo('🚫 WallpaperCacheService disabled');
+    } catch (e) {
+      logInfo('⚠️ Could not disable WallpaperCacheService: $e');
     }
   }
 

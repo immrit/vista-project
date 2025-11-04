@@ -11,8 +11,8 @@ final postsWithEngagementProvider =
   final limit = 20;
   final offset = page * limit;
 
-  // استفاده از VIEW برای بهترین عملکرد
-  return await postService.getPostsWithEngagement(limit: limit, offset: offset);
+  // استفاده از روش بهینه‌سازی شده برای جلوگیری از N+1 query
+  return await postService.getPostsWithEngagementComplex(limit: limit, offset: offset);
 });
 
 // Provider برای مدیریت وضعیت بارگذاری
