@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:open_filex/open_filex.dart';
@@ -11,8 +12,14 @@ import '../../../model/message_model.dart';
 import 'voice_message_widget.dart';
 import '../../../view/util/time_utils.dart';
 import 'shared_post_card_widget.dart';
+import '../../widgets/reactions/reaction_display.dart';
+import '../../widgets/reactions/reaction_selector.dart';
+import '../../widgets/reactions/reaction_picker_sheet.dart';
+import '../../widgets/reactions/reaction_manager.dart';
+import '../../provider/reaction_provider.dart';
+import '../../provider/chat_provider.dart';
 
-class MessageBubble extends StatefulWidget {
+class MessageBubble extends ConsumerStatefulWidget {
   final MessageModel message;
   final Function(MessageModel) onLongPress;
   final Function(MessageModel)? onReply;
@@ -24,6 +31,12 @@ class MessageBubble extends StatefulWidget {
   final bool isSelected;
   final MessageModel? previousMessage;
   final MessageModel? nextMessage;
+  final String? currentUserId;
+  final String? conversationId;
+  final bool isSelectionMode; // آیا در حالت selection mode هستیم؟
+  final Function(String messageId, Offset position)?
+      onShowReactionPicker; // callback برای نمایش reaction picker
+  final VoidCallback? onReactionSelected; // callback برای خاموش کردن selection mode بعد از انتخاب reaction
 
   const MessageBubble({
     super.key,
@@ -38,16 +51,22 @@ class MessageBubble extends StatefulWidget {
     this.isSelected = false,
     this.previousMessage,
     this.nextMessage,
+    this.currentUserId,
+    this.conversationId,
+    this.isSelectionMode = false,
+    this.onShowReactionPicker,
+    this.onReactionSelected,
   });
 
   @override
-  State<MessageBubble> createState() => _MessageBubbleState();
+  ConsumerState<MessageBubble> createState() => _MessageBubbleState();
 }
 
-class _MessageBubbleState extends State<MessageBubble>
+class _MessageBubbleState extends ConsumerState<MessageBubble>
     with TickerProviderStateMixin {
   bool _isReplying = false;
   bool _isRetrying = false;
+  final GlobalKey _messageBubbleKey = GlobalKey();
   late AnimationController _retryAnimationController;
   late AnimationController _statusAnimationController;
   late Animation<double> _statusIconRotation;
@@ -150,8 +169,71 @@ class _MessageBubbleState extends State<MessageBubble>
         widget.message.content.isEmpty;
 
     return GestureDetector(
-      onLongPress: () => widget.onLongPress(widget.message),
+      onLongPress: () {
+        // بررسی اینکه آیا در selection mode هستیم یا نه (قبل از select کردن)
+        final wasNotInSelectionMode = !widget.isSelectionMode;
+
+        // همیشه پیام را select کن
+        widget.onLongPress(widget.message);
+
+        // اگر قبلاً در selection mode نبودیم (یعنی اولین long press) و conversationId و currentUserId موجود باشد
+        // Reaction Panel را نمایش بده
+        if (wasNotInSelectionMode &&
+            widget.conversationId != null &&
+            widget.currentUserId != null) {
+          HapticFeedback.mediumImpact();
+
+          // ✅ استفاده از ReactionManager برای نمایش overlay
+          final isFromMe = widget.currentUserId == widget.message.senderId;
+          
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              ReactionManager().showReactionPanel(
+                context: context,
+                messageKey: _messageBubbleKey,
+                messageId: widget.message.id,
+                conversationId: widget.conversationId!,
+                isFromMe: isFromMe,
+                ref: ref,
+                onDismiss: () {
+                  // بستن selector قدیمی در صورت وجود
+                  ref.read(reactionSelectorProvider(widget.message.id).notifier).state = false;
+                },
+                onReactionSelected: widget.onReactionSelected,
+              );
+            }
+          });
+
+          // همچنین اگر callback موجود بود، آن را هم فراخوانی کن (برای backward compatibility)
+          if (widget.onShowReactionPicker != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              final RenderBox? renderBox = _messageBubbleKey.currentContext
+                  ?.findRenderObject() as RenderBox?;
+              if (renderBox != null && mounted) {
+                final position = renderBox.localToGlobal(Offset.zero);
+                final size = renderBox.size;
+                final centerPosition = Offset(
+                  position.dx + size.width / 2,
+                  position.dy,
+                );
+                widget.onShowReactionPicker!(widget.message.id, centerPosition);
+              }
+            });
+          }
+        }
+      },
       onTap: () {
+        // بستن selector و overlay reaction panel اگر باز است
+        if (ref.read(reactionSelectorProvider(widget.message.id))) {
+          ref.read(reactionSelectorProvider(widget.message.id).notifier).state =
+              false;
+        }
+        // بستن overlay reaction panel
+        if (ReactionManager().isShowing && 
+            ReactionManager().activeMessageId == widget.message.id) {
+          ReactionManager().hideReactionPanel();
+        }
+
         // اگر در حالت selection mode هستیم، همیشه toggle selection انجام بده
         if (widget.onSelectTap != null) {
           // Haptic feedback برای انتخاب/لغو انتخاب
@@ -208,56 +290,60 @@ class _MessageBubbleState extends State<MessageBubble>
               : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Align(
-          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
-            padding: const EdgeInsets.all(3),
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.75,
-            ),
-            decoration: BoxDecoration(
-              color: (isImageOnly || _isSharedPost(widget.message.content))
-                  ? Colors.transparent
-                  : (widget.isSelected
-                      ? Theme.of(context).primaryColor.withOpacity(0.2)
-                      : (isMe ? outgoingBubbleColor : incomingBubbleColor)),
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(18),
-                topRight: const Radius.circular(18),
-                bottomLeft: Radius.circular(isMe ? 18 : 4),
-                bottomRight: Radius.circular(isMe ? 4 : 18),
-              ),
-              border: widget.isHighlighted || widget.isSelected
-                  ? Border.all(
-                      color: widget.isSelected
-                          ? Theme.of(context).primaryColor
-                          : Colors.amber,
-                      width: 2,
-                    )
-                  : null,
-              boxShadow: (isImageOnly || _isSharedPost(widget.message.content))
-                  ? null
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
-                        blurRadius: 5,
-                        offset: const Offset(0, 2),
-                      ),
-                      if (widget.isHighlighted || widget.isSelected)
-                        BoxShadow(
-                          color: (widget.isSelected
-                                  ? Theme.of(context).primaryColor
-                                  : Colors.amber)
-                              .withOpacity(0.3),
-                          blurRadius: 10,
-                          offset: const Offset(0, 0),
-                        ),
-                    ],
-            ),
-            child: Stack(
-              children: [
-                Column(
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Align(
+              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+              child: Container(
+                key: _messageBubbleKey,
+                margin:
+                    const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
+                padding: const EdgeInsets.all(3),
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.75,
+                ),
+                decoration: BoxDecoration(
+                  color: (isImageOnly || _isSharedPost(widget.message.content))
+                      ? Colors.transparent
+                      : (widget.isSelected
+                          ? Theme.of(context).primaryColor.withOpacity(0.2)
+                          : (isMe ? outgoingBubbleColor : incomingBubbleColor)),
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(18),
+                    topRight: const Radius.circular(18),
+                    bottomLeft: Radius.circular(isMe ? 18 : 4),
+                    bottomRight: Radius.circular(isMe ? 4 : 18),
+                  ),
+                  border: widget.isHighlighted || widget.isSelected
+                      ? Border.all(
+                          color: widget.isSelected
+                              ? Theme.of(context).primaryColor
+                              : Colors.amber,
+                          width: 2,
+                        )
+                      : null,
+                  boxShadow:
+                      (isImageOnly || _isSharedPost(widget.message.content))
+                          ? null
+                          : [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.04),
+                                blurRadius: 5,
+                                offset: const Offset(0, 2),
+                              ),
+                              if (widget.isHighlighted || widget.isSelected)
+                                BoxShadow(
+                                  color: (widget.isSelected
+                                          ? Theme.of(context).primaryColor
+                                          : Colors.amber)
+                                      .withOpacity(0.3),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 0),
+                                ),
+                            ],
+                ),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -280,6 +366,12 @@ class _MessageBubbleState extends State<MessageBubble>
                           mainAxisSize: MainAxisSize.min,
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
+                            // ✅ نمایش Reactions کنار ساعت (مثل واتساپ)
+                            if (widget.message.reactions.isNotEmpty &&
+                                widget.currentUserId != null &&
+                                widget.conversationId != null)
+                              _buildInlineReactions(isMe, theme),
+                            
                             Text(
                               TimeUtils.formatTime(widget.message.createdAt),
                               textAlign: TextAlign.right,
@@ -296,11 +388,53 @@ class _MessageBubbleState extends State<MessageBubble>
                           ],
                         ),
                       ),
+
+                    // ✅ نمایش Reactions کامل زیر پیام (برای reaction های بیشتر)
+                    if (widget.message.reactions.isNotEmpty &&
+                        widget.currentUserId != null &&
+                        widget.conversationId != null &&
+                        widget.message.reactions.values.any((list) => list.length > 1))
+                      ReactionDisplay(
+                        reactions: widget.message.reactions,
+                        currentUserId: widget.currentUserId!,
+                        messageId: widget.message.id,
+                        conversationId: widget.conversationId!,
+                        isMyMessage: isMe,
+                        onTap: () {
+                          // نمایش BottomSheet با لیست کامل کسانی که reaction داده‌اند
+                          ReactionPickerSheet.show(
+                            context,
+                            onEmojiSelected: (emoji) async {
+                              final service = ref.read(reactionServiceProvider);
+                              await service.addReaction(
+                                messageId: widget.message.id,
+                                conversationId: widget.conversationId!,
+                                emoji: emoji,
+                              );
+                              ref.invalidate(
+                                  messageReactionsProvider(widget.message.id));
+                              // بروزرسانی خودکار از طریق real-time listener
+                            },
+                          );
+                        },
+                      ),
                   ],
                 ),
-              ],
+              ),
             ),
-          ),
+            // ✅ نمایش Reaction Selector (بالای پیام - overlay)
+            if (ref.watch(reactionSelectorProvider(widget.message.id)) &&
+                widget.conversationId != null)
+              Positioned(
+                top: -50,
+                right: isMe ? 8 : null,
+                left: isMe ? null : 8,
+                child: ReactionSelectorWidget(
+                  messageId: widget.message.id,
+                  conversationId: widget.conversationId!,
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -856,17 +990,19 @@ class _MessageBubbleState extends State<MessageBubble>
 
     // تلاش برای پیدا کردن نام واقعی فرستنده از پیام‌های قبلی/بعدی
     String? actualSenderName = message.replyToSenderName;
-    if (actualSenderName == null || actualSenderName.isEmpty || actualSenderName == 'کاربر') {
+    if (actualSenderName == null ||
+        actualSenderName.isEmpty ||
+        actualSenderName == 'کاربر') {
       // بررسی پیام‌های قبلی و بعدی برای پیدا کردن نام
       if (message.replyToMessageId != null) {
         // بررسی پیام قبلی
-        if (widget.previousMessage != null && 
+        if (widget.previousMessage != null &&
             widget.previousMessage!.id == message.replyToMessageId) {
           actualSenderName = widget.previousMessage!.senderName;
         }
         // بررسی پیام بعدی
-        else if (widget.nextMessage != null && 
-                 widget.nextMessage!.id == message.replyToMessageId) {
+        else if (widget.nextMessage != null &&
+            widget.nextMessage!.id == message.replyToMessageId) {
           actualSenderName = widget.nextMessage!.senderName;
         }
       }
@@ -874,15 +1010,17 @@ class _MessageBubbleState extends State<MessageBubble>
 
     // در نهایت اگر هنوز null است یا 'کاربر' است، از fallback استفاده کن
     // اما از نام فرستنده پیام فعلی استفاده نمی‌کنیم چون این نام فرستنده ریپلای شده نیست
-    final displayName = (actualSenderName != null && 
-                        actualSenderName.isNotEmpty && 
-                        actualSenderName != 'کاربر') 
-                        ? actualSenderName 
-                        : 'کاربر';
+    final displayName = (actualSenderName != null &&
+            actualSenderName.isNotEmpty &&
+            actualSenderName != 'کاربر')
+        ? actualSenderName
+        : 'کاربر';
 
     return Container(
-      margin: const EdgeInsets.only(top: 8, bottom: 4), // حذف margin چپ و راست برای پر کردن کل عرض
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), // padding بهتر
+      margin: const EdgeInsets.only(
+          top: 8, bottom: 4), // حذف margin چپ و راست برای پر کردن کل عرض
+      padding: const EdgeInsets.symmetric(
+          horizontal: 12, vertical: 8), // padding بهتر
       decoration: BoxDecoration(
         color: Colors.black.withOpacity(0.05),
         borderRadius: const BorderRadius.only(
@@ -1175,6 +1313,87 @@ class _MessageBubbleState extends State<MessageBubble>
     }
 
     return Icon(icon, color: color, size: size);
+  }
+
+  /// ✅ نمایش Reactions کنار ساعت (مثل واتساپ)
+  Widget _buildInlineReactions(bool isMe, ThemeData theme) {
+    if (widget.message.reactions.isEmpty ||
+        widget.currentUserId == null ||
+        widget.conversationId == null) {
+      return const SizedBox.shrink();
+    }
+
+    final currentUserId = widget.currentUserId!;
+    final reactions = widget.message.reactions;
+
+    // فقط اولین reaction را نمایش بده (مثل واتساپ)
+    final firstReaction = reactions.entries.first;
+    final emoji = firstReaction.key;
+    final userIds = firstReaction.value;
+    final hasCurrentUser = userIds.contains(currentUserId);
+    final count = userIds.length;
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, right: 4),
+      child: GestureDetector(
+        onTap: () {
+          // Toggle reaction با کلیک - اگر کاربر reaction داده، حذف می‌شود
+          HapticFeedback.lightImpact();
+          ref.read(messageNotifierProvider.notifier).toggleReaction(
+                messageId: widget.message.id,
+                conversationId: widget.conversationId!,
+                emoji: emoji,
+              );
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: hasCurrentUser
+                ? (theme.brightness == Brightness.dark
+                    ? Colors.blue.withOpacity(0.25)
+                    : Colors.blue.withOpacity(0.15))
+                : (theme.brightness == Brightness.dark
+                    ? Colors.grey.withOpacity(0.2)
+                    : Colors.grey.withOpacity(0.1)),
+            borderRadius: BorderRadius.circular(10),
+            border: hasCurrentUser
+                ? Border.all(
+                    color: theme.brightness == Brightness.dark
+                        ? Colors.blue.withOpacity(0.5)
+                        : Colors.blue.withOpacity(0.4),
+                    width: 1,
+                  )
+                : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                emoji,
+                style: const TextStyle(fontSize: 14),
+              ),
+              if (count > 1) ...[
+                const SizedBox(width: 3),
+                Text(
+                  count.toString(),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: hasCurrentUser
+                        ? (theme.brightness == Brightness.dark
+                            ? Colors.blue[300]
+                            : Colors.blue[700])
+                        : (theme.brightness == Brightness.dark
+                            ? Colors.white70
+                            : Colors.grey[700]),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   bool _containsUrl(String text) {

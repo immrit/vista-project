@@ -1,7 +1,6 @@
 import '../security/logging_utility.dart';
 import 'dart:async';
 
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../DB/unified_conversation_cache_service.dart';
@@ -13,6 +12,8 @@ import '../model/conversation_model.dart';
 import '../model/message_model.dart';
 import '../services/ChatService.dart';
 import '../services/profile_service.dart';
+import '../services/message_reaction_service.dart';
+import 'chat_screen_provider.dart';
 
 // لیست مکالمات
 final conversationsProvider =
@@ -989,6 +990,147 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
       state = AsyncValue.error(e, stack);
     }
   }
+
+  /// Toggle کردن reaction روی یک پیام
+  Future<void> toggleReaction({
+    required String messageId,
+    required String conversationId,
+    required String emoji,
+  }) async {
+    if (_disposed) return;
+
+    try {
+      // ✅ فوراً UI را به‌روزرسانی کن (Optimistic Update)
+      final currentMessages =
+          ref.read(conversationMessagesProvider(conversationId));
+      final messageIndex = currentMessages.indexWhere((m) => m.id == messageId);
+
+      if (messageIndex != -1) {
+        final message = currentMessages[messageIndex];
+        final currentUserId = supabase.auth.currentUser!.id;
+        
+        // ✅ کپی عمیق از reactions
+        final newReactions = Map<String, List<String>>.from(
+          message.reactions.map(
+            (key, value) => MapEntry(key, List<String>.from(value))
+          )
+        );
+
+        // بررسی وجود reaction کاربر
+        bool hasReacted = newReactions[emoji]?.contains(currentUserId) ?? false;
+
+        if (hasReacted) {
+          // حذف reaction
+          newReactions[emoji]?.remove(currentUserId);
+          if (newReactions[emoji]?.isEmpty ?? false) {
+            newReactions.remove(emoji);
+          }
+        } else {
+          // حذف تمام reaction های قبلی کاربر
+          newReactions.forEach((key, value) {
+            value.remove(currentUserId);
+          });
+          newReactions.removeWhere((key, value) => value.isEmpty);
+          
+          // اضافه کردن reaction جدید
+          if (newReactions.containsKey(emoji)) {
+            newReactions[emoji]!.add(currentUserId);
+          } else {
+            newReactions[emoji] = [currentUserId];
+          }
+        }
+
+        // ✅ آپدیت فوری UI
+        final updatedMessage = message.copyWith(reactions: newReactions);
+        
+        // ✅ به‌روزرسانی conversationMessagesProvider
+        ref
+            .read(conversationMessagesProvider(conversationId).notifier)
+            .updateMessage(updatedMessage);
+
+        // ✅ به‌روزرسانی chatScreenProvider برای نمایش فوری در ChatScreen
+        // تلاش برای به‌روزرسانی chatScreenProvider اگر موجود باشد
+        try {
+          // پیدا کردن otherUserId از conversation
+          final currentUserId = supabase.auth.currentUser!.id;
+          String? otherUserId;
+          
+          if (message.senderId == currentUserId) {
+            // پیام از خود کاربر است، باید otherUserId را از conversation پیدا کنیم
+            try {
+              // استفاده از conversationProvider برای پیدا کردن otherUserId
+              final conversationAsync = ref.read(conversationProvider(conversationId).future);
+              conversationAsync.then((conversation) {
+                if (conversation != null && conversation.otherUserId != null) {
+                  try {
+                    final chatScreenNotifier = ref.read(
+                      chatScreenProvider(
+                        ChatProviderParams(
+                          conversationId: conversationId,
+                          otherUserId: conversation.otherUserId!,
+                        ),
+                      ).notifier,
+                    );
+                    chatScreenNotifier.updateMessage(updatedMessage);
+                    logInfo('✅ chatScreenProvider به‌روزرسانی شد');
+                  } catch (e) {
+                    logInfo('⚠️ chatScreenProvider موجود نیست یا خطا: $e');
+                  }
+                }
+              }).catchError((e) {
+                logInfo('⚠️ خطا در دریافت conversation: $e');
+              });
+            } catch (e) {
+              logInfo('⚠️ خطا در دریافت conversation: $e');
+            }
+          } else {
+            // پیام از کاربر دیگر است
+            otherUserId = message.senderId;
+            try {
+              final chatScreenNotifier = ref.read(
+                chatScreenProvider(
+                  ChatProviderParams(
+                    conversationId: conversationId,
+                    otherUserId: otherUserId,
+                  ),
+                ).notifier,
+              );
+              chatScreenNotifier.updateMessage(updatedMessage);
+              logInfo('✅ chatScreenProvider به‌روزرسانی شد');
+            } catch (e) {
+              // اگر chatScreenProvider موجود نبود، مشکلی نیست
+              logInfo('⚠️ chatScreenProvider موجود نیست یا خطا: $e');
+            }
+          }
+        } catch (e) {
+          logInfo('⚠️ خطا در به‌روزرسانی chatScreenProvider: $e');
+        }
+
+        // ✅ ارسال به سرور
+        final reactionService = MessageReactionService();
+        try {
+          logInfo('📤 ارسال reaction به سرور: messageId=$messageId, emoji=$emoji');
+          await reactionService.toggleReaction(
+            messageId: messageId,
+            conversationId: conversationId,
+            emoji: emoji,
+          );
+          logInfo('✅ Reaction با موفقیت به سرور ارسال شد');
+        } catch (serviceError, serviceStackTrace) {
+          logInfo('❌ خطا در ارسال reaction به سرور: $serviceError');
+          logInfo('❌ Stack trace: $serviceStackTrace');
+          // Revert در صورت خطا
+          ref.invalidate(conversationMessagesProvider(conversationId));
+          rethrow;
+        }
+      }
+    } catch (e, stackTrace) {
+      logInfo('❌ خطا در toggle reaction: $e');
+      logInfo('❌ Stack trace: $stackTrace');
+      // Revert در صورت خطا
+      ref.invalidate(conversationMessagesProvider(conversationId));
+    }
+  }
 }
 
 // این کلاس را به chat_provider.dart.dart اضافه کنید
@@ -1807,6 +1949,28 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
   }
 }
 
+// ✅ Helper function برای مقایسه دقیق reactions
+bool _areReactionsEqual(
+  Map<String, List<String>> a,
+  Map<String, List<String>> b,
+) {
+  if (a.length != b.length) return false;
+  
+  for (final key in a.keys) {
+    if (!b.containsKey(key)) return false;
+    
+    final listA = List<String>.from(a[key]!)..sort();
+    final listB = List<String>.from(b[key]!)..sort();
+    
+    if (listA.length != listB.length) return false;
+    for (int i = 0; i < listA.length; i++) {
+      if (listA[i] != listB[i]) return false;
+    }
+  }
+  
+  return true;
+}
+
 final conversationMessagesProvider = StateNotifierProvider.family
     .autoDispose<ConversationMessagesNotifier, List<MessageModel>, String>(
   (ref, conversationId) {
@@ -1846,12 +2010,40 @@ final conversationMessagesProvider = StateNotifierProvider.family
                       !hiddenIds.contains(m.id) &&
                       !notifier._locallyDeletedMessageIds.contains(m.id))
                   .toList();
-              // Process messages in stream for immediate UI
-              try {
-                if (serverMessagesRaw.isNotEmpty) {
-                  // Process messages
+              // ✅ دریافت reactions برای پیام‌ها در stream
+              if (serverMessagesRaw.isNotEmpty) {
+                try {
+                  final messageIds =
+                      serverMessagesRaw.map((m) => m.id).toList();
+                  final reactionsResponse = await supabase
+                      .from('message_reactions')
+                      .select()
+                      .or(messageIds
+                          .map((id) => 'message_id.eq.$id')
+                          .join(','));
+
+                  // گروه‌بندی reactions بر اساس messageId
+                  final Map<String, Map<String, List<String>>>
+                      messageReactions = {};
+                  for (final reactionJson in reactionsResponse) {
+                    final messageId = reactionJson['message_id'] as String;
+                    final emoji = reactionJson['emoji'] as String;
+                    final reactionUserId = reactionJson['user_id'] as String;
+
+                    messageReactions[messageId] ??= {};
+                    messageReactions[messageId]![emoji] ??= [];
+                    messageReactions[messageId]![emoji]!.add(reactionUserId);
+                  }
+
+                  // اضافه کردن reactions به پیام‌ها
+                  serverMessagesRaw = serverMessagesRaw.map((message) {
+                    final reactions = messageReactions[message.id] ?? {};
+                    return message.copyWith(reactions: reactions);
+                  }).toList();
+                } catch (e) {
+                  logInfo('خطا در دریافت reactions در stream: $e');
                 }
-              } catch (_) {}
+              }
               if (notifier._clearedAt != null) {
                 serverMessagesRaw = serverMessagesRaw
                     .where((m) => m.createdAt.isAfter(notifier._clearedAt!))
@@ -1930,14 +2122,63 @@ final conversationMessagesProvider = StateNotifierProvider.family
             });
           });
 
+      // ✅ اضافه کردن listener برای real-time reactions
+      final MessageReactionService reactionService = MessageReactionService();
+      final reactionSubscription =
+          reactionService.watchConversationReactions(conversationId).listen(
+        (reactions) {
+          if (notifier._disposed) return;
+
+          // گروه‌بندی reactions بر اساس messageId
+          final Map<String, Map<String, List<String>>> messageReactions = {};
+          for (final reaction in reactions) {
+            messageReactions[reaction.messageId] ??= {};
+            messageReactions[reaction.messageId]![reaction.emoji] ??= [];
+            // ✅ جلوگیری از duplicate user IDs
+            if (!messageReactions[reaction.messageId]![reaction.emoji]!
+                .contains(reaction.userId)) {
+              messageReactions[reaction.messageId]![reaction.emoji]!
+                  .add(reaction.userId);
+            }
+          }
+
+          // آپدیت پیام‌هایی که reactions آنها تغییر کرده
+          final currentState = notifier.state;
+          bool hasChanges = false;
+          
+          final updatedMessages = currentState.map((message) {
+            final newReactions = messageReactions[message.id] ?? {};
+            
+            // ✅ مقایسه دقیق‌تر reactions
+            if (!_areReactionsEqual(newReactions, message.reactions)) {
+              hasChanges = true;
+              return message.copyWith(reactions: newReactions);
+            }
+            return message;
+          }).toList();
+
+          if (hasChanges && !notifier._disposed) {
+            notifier.state = updatedMessages;
+          }
+        },
+        onError: (error) {
+          logInfo('❌ خطا در real-time reactions: $error');
+        },
+      );
+
       ref.onDispose(() {
         debounceTimer?.cancel(); // ✅ لغو debounce timer
         sub.cancel(); // ✅ بستن استریم برای آزاد کردن حافظه
+        reactionSubscription.cancel(); // ✅ لغو reaction subscription
         link.close(); // ✅ آزادسازی keepAlive هنگام dispose
       });
-    }
 
-    return notifier;
+      return notifier;
+    } else {
+      // اگر کاربر لاگین نیست، dispose link
+      link.close();
+      return notifier;
+    }
   },
 );
 

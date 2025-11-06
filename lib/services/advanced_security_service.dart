@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:logger/logger.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../security/logging_utility.dart';
 
 final logger = Logger(
@@ -17,6 +18,60 @@ final logger = Logger(
     printTime: true,
   ),
 );
+
+/// علت قفل شدن حساب
+enum LockReason {
+  failedLoginAttempts('failed_login_attempts'),
+  adminAction('admin_action'),
+  violation('violation'),
+  suspiciousActivity('suspicious_activity'),
+  spam('spam'),
+  harassment('harassment'),
+  other('other');
+
+  final String value;
+  const LockReason(this.value);
+
+  String get persianName {
+    switch (this) {
+      case LockReason.failedLoginAttempts:
+        return 'تلاش‌های ناموفق ورود';
+      case LockReason.adminAction:
+        return 'اقدام ادمین';
+      case LockReason.violation:
+        return 'تخلف';
+      case LockReason.suspiciousActivity:
+        return 'فعالیت مشکوک';
+      case LockReason.spam:
+        return 'اسپم';
+      case LockReason.harassment:
+        return 'آزار و اذیت';
+      case LockReason.other:
+        return 'سایر';
+    }
+  }
+}
+
+/// نوع قفل
+enum LockType {
+  temporary('temporary'),
+  permanent('permanent'),
+  admin('admin');
+
+  final String value;
+  const LockType(this.value);
+
+  String get persianName {
+    switch (this) {
+      case LockType.temporary:
+        return 'موقت';
+      case LockType.permanent:
+        return 'دائمی';
+      case LockType.admin:
+        return 'توسط ادمین';
+    }
+  }
+}
 
 class AdvancedSecurityService {
   static const _storage = FlutterSecureStorage(
@@ -235,9 +290,16 @@ class AdvancedSecurityService {
   /// Encrypt sensitive data
   static Future<String> _encryptData(String data) async {
     try {
-      final key = await _storage.read(key: _encryptionKey);
+      // Lazy initialization: اگر کلید وجود نداشت، آن را تولید کن
+      var key = await _storage.read(key: _encryptionKey);
       if (key == null) {
-        throw Exception('Encryption key not found');
+        logger.w('⚠️ Encryption key not found, generating new key...');
+        await _generateEncryptionKey();
+        key = await _storage.read(key: _encryptionKey);
+        if (key == null) {
+          throw Exception('Failed to generate encryption key');
+        }
+        logger.d('✅ Encryption key generated successfully');
       }
 
       // Simple XOR encryption (in production, use proper encryption)
@@ -259,9 +321,16 @@ class AdvancedSecurityService {
   /// Decrypt sensitive data
   static Future<String> _decryptData(String encryptedData) async {
     try {
-      final key = await _storage.read(key: _encryptionKey);
+      // Lazy initialization: اگر کلید وجود نداشت، آن را تولید کن
+      var key = await _storage.read(key: _encryptionKey);
       if (key == null) {
-        throw Exception('Encryption key not found');
+        logger.w('⚠️ Encryption key not found, generating new key...');
+        await _generateEncryptionKey();
+        key = await _storage.read(key: _encryptionKey);
+        if (key == null) {
+          throw Exception('Failed to generate encryption key');
+        }
+        logger.d('✅ Encryption key generated successfully');
       }
 
       final keyBytes = utf8.encode(key);
@@ -304,16 +373,19 @@ class AdvancedSecurityService {
   }
 
   /// Record failed login attempt
-  static Future<void> recordFailedAttempt() async {
+  /// [userId] is optional - if provided, will also save to database
+  static Future<void> recordFailedAttempt({String? userId}) async {
     try {
-      final attempts = await _getFailedAttempts();
+      final attempts = await _getFailedAttempts(userId: userId);
       final newAttempts = attempts + 1;
 
+      // ذخیره محلی
       await _storage.write(
           key: _failedAttemptsKey, value: newAttempts.toString());
 
+      DateTime? lockoutUntil;
       if (newAttempts >= _maxFailedAttempts) {
-        final lockoutUntil = DateTime.now().add(
+        lockoutUntil = DateTime.now().add(
           Duration(minutes: _lockoutDurationMinutes),
         );
         await _storage.write(
@@ -322,14 +394,48 @@ class AdvancedSecurityService {
         );
         logger.w('🚫 Account locked due to too many failed attempts');
       }
+
+      // ذخیره در دیتابیس اگر userId داده شده باشد
+      if (userId != null) {
+        try {
+          await _saveFailedAttemptsToDatabase(
+            userId: userId,
+            attempts: newAttempts,
+            lockoutUntil: lockoutUntil,
+            lockReason:
+                lockoutUntil != null ? LockReason.failedLoginAttempts : null,
+          );
+        } catch (e) {
+          logger.w('⚠️ Failed to save to database (continuing with local): $e');
+          // ادامه می‌دهیم حتی اگر دیتابیس خطا بدهد
+        }
+      }
     } catch (e) {
       logger.e('❌ Failed to record failed attempt: $e');
     }
   }
 
   /// Get failed attempts count
-  static Future<int> _getFailedAttempts() async {
+  /// [userId] is optional - if provided, will also check database
+  static Future<int> _getFailedAttempts({String? userId}) async {
     try {
+      // اول از دیتابیس بخوان (اگر userId داده شده باشد)
+      if (userId != null) {
+        try {
+          final dbAttempts =
+              await _getFailedAttemptsFromDatabase(userId: userId);
+          if (dbAttempts != null) {
+            // همگام‌سازی با محلی
+            await _storage.write(
+                key: _failedAttemptsKey, value: dbAttempts.toString());
+            return dbAttempts;
+          }
+        } catch (e) {
+          logger.w('⚠️ Failed to read from database (using local): $e');
+        }
+      }
+
+      // اگر دیتابیس در دسترس نبود یا userId داده نشده، از محلی بخوان
       final attempts = await _storage.read(key: _failedAttemptsKey);
       return attempts != null ? int.parse(attempts) : 0;
     } catch (e) {
@@ -339,8 +445,32 @@ class AdvancedSecurityService {
   }
 
   /// Check if account is locked
-  static Future<bool> isAccountLocked() async {
+  /// [userId] is optional - if provided, will also check database
+  static Future<bool> isAccountLocked({String? userId}) async {
     try {
+      // اول از دیتابیس چک کن (اگر userId داده شده باشد)
+      if (userId != null) {
+        try {
+          final dbLockout = await _getLockoutFromDatabase(userId: userId);
+          if (dbLockout != null) {
+            final lockoutTime = DateTime.fromMillisecondsSinceEpoch(dbLockout);
+            if (DateTime.now().isBefore(lockoutTime)) {
+              // همگام‌سازی با محلی
+              await _storage.write(
+                  key: _lockoutUntilKey, value: dbLockout.toString());
+              return true;
+            } else {
+              // Lockout expired, clear it
+              await clearFailedAttempts(userId: userId);
+              return false;
+            }
+          }
+        } catch (e) {
+          logger.w('⚠️ Failed to check database (using local): $e');
+        }
+      }
+
+      // اگر دیتابیس در دسترس نبود یا userId داده نشده، از محلی چک کن
       final lockoutUntil = await _storage.read(key: _lockoutUntilKey);
       if (lockoutUntil != null) {
         final lockoutTime =
@@ -351,6 +481,14 @@ class AdvancedSecurityService {
           // Lockout expired, clear it
           await _storage.delete(key: _lockoutUntilKey);
           await _storage.delete(key: _failedAttemptsKey);
+          // پاک کردن از دیتابیس هم
+          if (userId != null) {
+            try {
+              await clearFailedAttempts(userId: userId);
+            } catch (e) {
+              logger.w('⚠️ Failed to clear from database: $e');
+            }
+          }
         }
       }
       return false;
@@ -361,8 +499,29 @@ class AdvancedSecurityService {
   }
 
   /// Get remaining lockout time
-  static Future<Duration?> getRemainingLockoutTime() async {
+  /// [userId] is optional - if provided, will also check database
+  static Future<Duration?> getRemainingLockoutTime({String? userId}) async {
     try {
+      // اول از دیتابیس بخوان (اگر userId داده شده باشد)
+      if (userId != null) {
+        try {
+          final dbLockout = await _getLockoutFromDatabase(userId: userId);
+          if (dbLockout != null) {
+            final lockoutTime = DateTime.fromMillisecondsSinceEpoch(dbLockout);
+            final now = DateTime.now();
+            if (now.isBefore(lockoutTime)) {
+              // همگام‌سازی با محلی
+              await _storage.write(
+                  key: _lockoutUntilKey, value: dbLockout.toString());
+              return lockoutTime.difference(now);
+            }
+          }
+        } catch (e) {
+          logger.w('⚠️ Failed to read from database (using local): $e');
+        }
+      }
+
+      // اگر دیتابیس در دسترس نبود یا userId داده نشده، از محلی بخوان
       final lockoutUntil = await _storage.read(key: _lockoutUntilKey);
       if (lockoutUntil != null) {
         final lockoutTime =
@@ -380,10 +539,23 @@ class AdvancedSecurityService {
   }
 
   /// Clear failed attempts (on successful login)
-  static Future<void> clearFailedAttempts() async {
+  /// [userId] is optional - if provided, will also clear from database
+  static Future<void> clearFailedAttempts({String? userId}) async {
     try {
+      // پاک کردن محلی
       await _storage.delete(key: _failedAttemptsKey);
       await _storage.delete(key: _lockoutUntilKey);
+
+      // پاک کردن از دیتابیس اگر userId داده شده باشد
+      if (userId != null) {
+        try {
+          await _clearFailedAttemptsFromDatabase(userId: userId);
+        } catch (e) {
+          logger.w('⚠️ Failed to clear from database: $e');
+          // ادامه می‌دهیم حتی اگر دیتابیس خطا بدهد
+        }
+      }
+
       logger.d('✅ Failed attempts cleared');
     } catch (e) {
       logger.e('❌ Failed to clear failed attempts: $e');
@@ -466,6 +638,310 @@ class AdvancedSecurityService {
       }
     } catch (e) {
       logger.e('❌ Failed to log security event: $e');
+    }
+  }
+
+  // ==================== Database Methods ====================
+
+  /// Save failed attempts to database
+  static Future<void> _saveFailedAttemptsToDatabase({
+    required String userId,
+    required int attempts,
+    DateTime? lockoutUntil,
+    LockReason? lockReason,
+  }) async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      final updateData = <String, dynamic>{
+        'failed_attempts': attempts,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      if (lockoutUntil != null) {
+        updateData['lockout_until'] = lockoutUntil.toIso8601String();
+        updateData['lock_reason'] =
+            lockReason?.value ?? LockReason.failedLoginAttempts.value;
+        updateData['lock_type'] = LockType.temporary.value;
+        updateData['locked_by'] = 'system';
+        updateData['locked_at'] = DateTime.now().toIso8601String();
+      }
+
+      await supabase.from('profiles').update(updateData).eq('id', userId);
+
+      logger.d('💾 Saved failed attempts to database for user: $userId');
+    } catch (e) {
+      // اگر فیلدها وجود ندارند، سعی نکنیم خطا بدهیم
+      if (e.toString().contains('column') ||
+          e.toString().contains('does not exist')) {
+        logger.w(
+            '⚠️ Security columns may not exist in database yet. Please run the migration SQL.');
+      } else {
+        rethrow;
+      }
+    }
+  }
+
+  /// Get failed attempts from database
+  static Future<int?> _getFailedAttemptsFromDatabase(
+      {required String userId}) async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      final response = await supabase
+          .from('profiles')
+          .select('failed_attempts')
+          .eq('id', userId)
+          .maybeSingle();
+
+      if (response != null && response['failed_attempts'] != null) {
+        return response['failed_attempts'] as int;
+      }
+      return null;
+    } catch (e) {
+      if (e.toString().contains('column') ||
+          e.toString().contains('does not exist')) {
+        logger.w('⚠️ Security columns may not exist in database yet.');
+        return null;
+      }
+      rethrow;
+    }
+  }
+
+  /// Get lockout time from database
+  static Future<int?> _getLockoutFromDatabase({required String userId}) async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      final response = await supabase
+          .from('profiles')
+          .select('lockout_until')
+          .eq('id', userId)
+          .maybeSingle();
+
+      if (response != null && response['lockout_until'] != null) {
+        final lockoutStr = response['lockout_until'] as String;
+        final lockoutTime = DateTime.parse(lockoutStr);
+        return lockoutTime.millisecondsSinceEpoch;
+      }
+      return null;
+    } catch (e) {
+      if (e.toString().contains('column') ||
+          e.toString().contains('does not exist')) {
+        logger.w('⚠️ Security columns may not exist in database yet.');
+        return null;
+      }
+      rethrow;
+    }
+  }
+
+  /// Clear failed attempts from database
+  static Future<void> _clearFailedAttemptsFromDatabase(
+      {required String userId}) async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      await supabase.from('profiles').update({
+        'failed_attempts': null,
+        'lockout_until': null,
+        'lock_reason': null,
+        'lock_type': null,
+        'locked_by': null,
+        'lock_notes': null,
+        'locked_at': null,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', userId);
+
+      logger.d('💾 Cleared failed attempts from database for user: $userId');
+    } catch (e) {
+      if (e.toString().contains('column') ||
+          e.toString().contains('does not exist')) {
+        logger.w('⚠️ Security columns may not exist in database yet.');
+      } else {
+        rethrow;
+      }
+    }
+  }
+
+  // ==================== Admin Lock Methods ====================
+
+  /// قفل کردن حساب کاربر توسط ادمین
+  ///
+  /// [userId] شناسه کاربری که باید قفل شود
+  /// [reason] علت قفل شدن
+  /// [lockType] نوع قفل (موقت، دائمی، یا ادمین)
+  /// [duration] مدت زمان قفل (فقط برای قفل موقت)
+  /// [notes] یادداشت/توضیحات
+  /// [adminId] شناسه ادمینی که قفل می‌کند (اختیاری - اگر null باشد از currentUser استفاده می‌شود)
+  static Future<void> lockUserByAdmin({
+    required String userId,
+    required LockReason reason,
+    LockType lockType = LockType.admin,
+    Duration? duration,
+    String? notes,
+    String? adminId,
+  }) async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      // اگر adminId داده نشده، از کاربر فعلی استفاده کن
+      final adminUserId = adminId ?? supabase.auth.currentUser?.id;
+      if (adminUserId == null) {
+        throw Exception('Admin ID is required');
+      }
+
+      DateTime? lockoutUntil;
+      if (lockType == LockType.temporary && duration != null) {
+        lockoutUntil = DateTime.now().add(duration);
+      } else if (lockType == LockType.permanent) {
+        // برای قفل دائمی، یک تاریخ خیلی دور در آینده تنظیم می‌کنیم
+        lockoutUntil =
+            DateTime.now().add(const Duration(days: 365 * 100)); // 100 سال
+      }
+
+      await supabase.from('profiles').update({
+        'lockout_until': lockoutUntil?.toIso8601String(),
+        'lock_reason': reason.value,
+        'lock_type': lockType.value,
+        'locked_by': adminUserId,
+        'lock_notes': notes,
+        'locked_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', userId);
+
+      // همگام‌سازی با محلی (اگر کاربر همان کاربری است که قفل شده)
+      try {
+        final currentUserId = supabase.auth.currentUser?.id;
+        if (currentUserId == userId) {
+          if (lockoutUntil != null) {
+            await _storage.write(
+              key: _lockoutUntilKey,
+              value: lockoutUntil.millisecondsSinceEpoch.toString(),
+            );
+          }
+        }
+      } catch (e) {
+        logger.w('⚠️ Failed to sync to local storage: $e');
+      }
+
+      logger
+          .i('🔒 User locked by admin: $userId, Reason: ${reason.persianName}');
+    } catch (e) {
+      logger.e('❌ Failed to lock user by admin: $e');
+      rethrow;
+    }
+  }
+
+  /// باز کردن قفل حساب کاربر
+  ///
+  /// [userId] شناسه کاربری که باید قفل آن باز شود
+  /// [adminId] شناسه ادمینی که قفل را باز می‌کند (اختیاری)
+  static Future<void> unlockUser({
+    required String userId,
+    String? adminId,
+  }) async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      // اگر adminId داده نشده، از کاربر فعلی استفاده کن
+      final adminUserId = adminId ?? supabase.auth.currentUser?.id;
+      if (adminUserId == null) {
+        throw Exception('Admin ID is required');
+      }
+
+      await supabase.from('profiles').update({
+        'lockout_until': null,
+        'lock_reason': null,
+        'lock_type': null,
+        'locked_by': null,
+        'lock_notes': null,
+        'locked_at': null,
+        'failed_attempts': 0, // پاک کردن تلاش‌های ناموفق هم
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', userId);
+
+      // همگام‌سازی با محلی
+      try {
+        final currentUserId = supabase.auth.currentUser?.id;
+        if (currentUserId == userId) {
+          await _storage.delete(key: _lockoutUntilKey);
+          await _storage.delete(key: _failedAttemptsKey);
+        }
+      } catch (e) {
+        logger.w('⚠️ Failed to sync to local storage: $e');
+      }
+
+      logger.i('🔓 User unlocked by admin: $userId');
+    } catch (e) {
+      logger.e('❌ Failed to unlock user: $e');
+      rethrow;
+    }
+  }
+
+  /// دریافت اطلاعات قفل حساب کاربر
+  ///
+  /// [userId] شناسه کاربر
+  ///
+  /// Returns: Map شامل اطلاعات قفل یا null اگر قفل نشده باشد
+  static Future<Map<String, dynamic>?> getLockInfo(
+      {required String userId}) async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      final response = await supabase
+          .from('profiles')
+          .select(
+              'lockout_until, lock_reason, lock_type, locked_by, lock_notes, locked_at')
+          .eq('id', userId)
+          .maybeSingle();
+
+      if (response == null) {
+        return null;
+      }
+
+      final lockoutUntil = response['lockout_until'] as String?;
+      if (lockoutUntil == null) {
+        return null;
+      }
+
+      final lockTime = DateTime.parse(lockoutUntil);
+      final isLocked = DateTime.now().isBefore(lockTime);
+
+      if (!isLocked) {
+        return null; // قفل منقضی شده
+      }
+
+      return {
+        'lockout_until': lockoutUntil,
+        'lock_reason': response['lock_reason'] as String?,
+        'lock_type': response['lock_type'] as String?,
+        'locked_by': response['locked_by'] as String?,
+        'lock_notes': response['lock_notes'] as String?,
+        'locked_at': response['locked_at'] as String?,
+        'remaining_time': lockTime.difference(DateTime.now()),
+      };
+    } catch (e) {
+      logger.e('❌ Failed to get lock info: $e');
+      return null;
+    }
+  }
+
+  /// دریافت علت قفل شدن به فارسی
+  static Future<String?> getLockReasonPersian({required String userId}) async {
+    final lockInfo = await getLockInfo(userId: userId);
+    if (lockInfo == null) return null;
+
+    final reasonStr = lockInfo['lock_reason'] as String?;
+    if (reasonStr == null) return null;
+
+    try {
+      final reason = LockReason.values.firstWhere(
+        (r) => r.value == reasonStr,
+        orElse: () => LockReason.other,
+      );
+      return reason.persianName;
+    } catch (e) {
+      return 'نامشخص';
     }
   }
 }

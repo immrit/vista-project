@@ -1,3 +1,5 @@
+import 'message_reaction_ui.dart';
+
 class MessageModel {
   final String id;
   final String conversationId;
@@ -19,6 +21,7 @@ class MessageModel {
   final String? replyToContent;
   final String? replyToSenderName;
   final bool isPending;
+  final bool? isFailed;
   final String? localId;
   final int retryCount; // اضافه کنید
   final String? errorMessage; // پیام خطای ارسال برای نمایش به کاربر
@@ -27,8 +30,22 @@ class MessageModel {
   // Typing indicators برای نشان دادن کاربران در حال تایپ
   final Map<String, DateTime>? typingUsers;
 
-  // ری‌اکشن‌های پیام
-  final List<dynamic>? reactions;
+  // ری‌اکشن‌های پیام - Map از emoji به لیست userId ها
+  final Map<String, List<String>> reactions;
+
+  // تبدیل reactions به UI model
+  List<MessageReactionUI> getReactionsList(String currentUserId) {
+    return reactions.entries.map((entry) {
+      return MessageReactionUI(
+        emoji: entry.key,
+        userIds: entry.value,
+        hasCurrentUser: entry.value.contains(currentUserId),
+      );
+    }).toList()
+      ..sort((a, b) => b.count.compareTo(a.count)); // مرتب‌سازی بر اساس تعداد
+  }
+
+  bool hasReactions() => reactions.isNotEmpty;
 
   MessageModel({
     required this.id,
@@ -51,12 +68,13 @@ class MessageModel {
     this.replyToContent,
     this.replyToSenderName,
     this.isPending = false,
+    this.isFailed,
     this.localId,
     this.retryCount = 0, // مقدار پیش‌فرض
     this.errorMessage,
     this.lastRetryTime,
     this.typingUsers,
-    this.reactions,
+    this.reactions = const {},
   });
 
   factory MessageModel.empty() {
@@ -68,6 +86,42 @@ class MessageModel {
       createdAt: DateTime.now(),
       isMe: false,
     );
+  }
+
+  // پارس کردن reactions از JSON
+  static Map<String, List<String>> _parseReactions(dynamic reactionsJson) {
+    if (reactionsJson == null) return {};
+
+    try {
+      if (reactionsJson is Map) {
+        // اگر reactions به صورت Map<String, List<String>> باشد
+        return Map<String, List<String>>.from(reactionsJson.map((key, value) {
+          if (value is List) {
+            return MapEntry(key, List<String>.from(value));
+          } else {
+            return MapEntry(key, <String>[]);
+          }
+        }));
+      } else if (reactionsJson is List) {
+        // اگر reactions به صورت List از MessageReaction باشد
+        final Map<String, List<String>> parsedReactions = {};
+        for (var reactionJson in reactionsJson) {
+          if (reactionJson is Map<String, dynamic>) {
+            final emoji = reactionJson['emoji'] as String?;
+            final userId = reactionJson['user_id'] as String?;
+            if (emoji != null && userId != null) {
+              parsedReactions[emoji] ??= [];
+              parsedReactions[emoji]!.add(userId);
+            }
+          }
+        }
+        return parsedReactions;
+      }
+    } catch (e) {
+      print('خطا در پارس کردن reactions: $e');
+    }
+
+    return {};
   }
 
   factory MessageModel.fromJson(Map<String, dynamic> json,
@@ -107,7 +161,7 @@ class MessageModel {
       typingUsers: json['typing_users'] != null
           ? Map<String, DateTime>.from(json['typing_users'])
           : null,
-      reactions: json['reactions'],
+      reactions: _parseReactions(json['reactions']),
     );
   }
 
@@ -174,12 +228,13 @@ class MessageModel {
     String? replyToContent,
     String? replyToSenderName,
     bool? isPending,
+    bool? isFailed,
     String? localId,
     int? retryCount, // اضافه کنید
     String? errorMessage,
     DateTime? lastRetryTime,
     Map<String, DateTime>? typingUsers,
-    List<dynamic>? reactions,
+    Map<String, List<String>>? reactions,
   }) {
     return MessageModel(
       id: id ?? this.id,
@@ -201,6 +256,7 @@ class MessageModel {
       replyToContent: replyToContent ?? this.replyToContent,
       replyToSenderName: replyToSenderName ?? this.replyToSenderName,
       isPending: isPending ?? this.isPending,
+      isFailed: isFailed ?? this.isFailed,
       localId: localId ?? this.localId,
       retryCount: retryCount ?? this.retryCount,
       errorMessage: errorMessage ?? this.errorMessage,

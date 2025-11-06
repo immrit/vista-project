@@ -154,6 +154,44 @@ class _SplashScreenState extends State<SplashScreen> {
         return;
       }
 
+      final userId = session.user.id;
+      logInfo('👤 Checking lock status for user: $userId');
+
+      // ✅ بررسی محدودیت حساب کاربری از دیتابیس
+      setState(() {
+        _statusMessage = 'بررسی وضعیت حساب...';
+      });
+
+      final isLocked = await AdvancedSecurityService.isAccountLocked(userId: userId);
+      if (isLocked) {
+        logInfo('🚫 User account is locked, logging out...');
+        
+        // دریافت اطلاعات قفل
+        final lockInfo = await AdvancedSecurityService.getLockInfo(userId: userId);
+        final lockReason = lockInfo != null 
+            ? await AdvancedSecurityService.getLockReasonPersian(userId: userId)
+            : null;
+        final remainingTime = await AdvancedSecurityService.getRemainingLockoutTime(userId: userId);
+
+        // خروج از حساب
+        try {
+          await supabase.auth.signOut();
+          await AdvancedSecurityService.clearAllSecurityData();
+        } catch (e) {
+          logInfo('⚠️ Error signing out: $e');
+        }
+
+        // نمایش پیام قفل شدن
+        if (mounted) {
+          _showAccountLockedDialog(
+            remainingTime: remainingTime,
+            lockReason: lockReason,
+            lockType: lockInfo?['lock_type'] as String?,
+          );
+        }
+        return;
+      }
+
       // بررسی امنیت نشست با error handling بهتر
       bool isSessionValid = false;
       try {
@@ -212,8 +250,8 @@ class _SplashScreenState extends State<SplashScreen> {
       builder: (context) => AlertDialog(
         title: const Text('حساب کاربری قفل شده'),
         content: Text(
-          'به دلیل تلاش‌های ناموفق متعدد، حساب کاربری شما قفل شده است.\n'
-          'لطفاً $minutes دقیقه و $seconds ثانیه صبر کنید.',
+          'به دلیل تلاش‌های ناموفق متعدد، حساب کاربری شما قفل شده است.\n\n'
+          'لطفاً $minutes دقیقه و $seconds ثانیه صبر کنید و سپس دوباره تلاش کنید.',
         ),
         actions: [
           TextButton(
@@ -222,6 +260,56 @@ class _SplashScreenState extends State<SplashScreen> {
               _redirect(); // تلاش مجدد
             },
             child: const Text('تلاش مجدد'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAccountLockedDialog({
+    Duration? remainingTime,
+    String? lockReason,
+    String? lockType,
+  }) {
+    String message = 'حساب کاربری شما محدود شده است.\n\n';
+
+    if (lockReason != null) {
+      message += 'علت: $lockReason\n\n';
+    }
+
+    if (lockType == 'permanent') {
+      message += 'این محدودیت دائمی است. لطفاً با پشتیبانی تماس بگیرید.';
+    } else if (remainingTime != null) {
+      final minutes = remainingTime.inMinutes;
+      final seconds = remainingTime.inSeconds % 60;
+      message += 'زمان باقی‌مانده: $minutes دقیقه و $seconds ثانیه\n\n'
+          'لطفاً بعد از اتمام زمان، دوباره تلاش کنید.';
+    } else {
+      message += 'لطفاً با پشتیبانی تماس بگیرید.';
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('⚠️ دسترسی محدود شده'),
+        content: Text(message),
+        actions: [
+          if (lockType != 'permanent' && remainingTime != null)
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _redirect(); // تلاش مجدد بعد از اتمام زمان
+              },
+              child: const Text('تلاش مجدد'),
+            ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              // انتقال به صفحه ورود
+              Navigator.of(context).pushReplacementNamed('/auth');
+            },
+            child: const Text('متوجه شدم'),
           ),
         ],
       ),

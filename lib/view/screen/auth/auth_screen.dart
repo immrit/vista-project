@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../main.dart';
 import '../../../services/advanced_security_service.dart';
 import 'email_username_auth_screen.dart';
 import 'password_auth_screen.dart';
@@ -139,14 +138,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
 
       if (_emailOrUsername.contains('@')) {
         // اگر ایمیل است
-        userProfile = await supabase
+        userProfile = await Supabase.instance.client
             .from('profiles')
             .select('*')
             .eq('email', _emailOrUsername)
             .maybeSingle();
       } else {
         // اگر نام کاربری است
-        userProfile = await supabase
+        userProfile = await Supabase.instance.client
             .from('profiles')
             .select('*')
             .eq('username', _emailOrUsername)
@@ -158,6 +157,34 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
       });
 
       if (_userExists) {
+        // ✅ بررسی محدودیت حساب کاربری قبل از ادامه
+        final userId = userProfile!['id'] as String?;
+        if (userId != null) {
+          final isLocked =
+              await AdvancedSecurityService.isAccountLocked(userId: userId);
+          if (isLocked) {
+            // دریافت اطلاعات قفل
+            final lockInfo =
+                await AdvancedSecurityService.getLockInfo(userId: userId);
+            final lockReason = lockInfo != null
+                ? await AdvancedSecurityService.getLockReasonPersian(
+                    userId: userId)
+                : null;
+            final remainingTime =
+                await AdvancedSecurityService.getRemainingLockoutTime(
+                    userId: userId);
+            final lockType = lockInfo?['lock_type'] as String?;
+
+            // نمایش دیالوگ محدودیت
+            _showAccountLockedDialog(
+              remainingTime: remainingTime,
+              lockReason: lockReason,
+              lockType: lockType,
+            );
+            return; // جلوگیری از ادامه به مرحله بعد
+          }
+        }
+
         _showSuccessSnackBar('کاربر یافت شد');
         _nextStep();
       } else {
@@ -176,31 +203,87 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
       return;
     }
 
+    // ابتدا userProfile را بگیریم تا userId را داشته باشیم
+    String? userId;
+    try {
+      dynamic tempProfile;
+      if (_emailOrUsername.contains('@')) {
+        tempProfile = await Supabase.instance.client
+            .from('profiles')
+            .select('id')
+            .eq('email', _emailOrUsername)
+            .maybeSingle();
+      } else {
+        tempProfile = await Supabase.instance.client
+            .from('profiles')
+            .select('id')
+            .eq('username', _emailOrUsername)
+            .maybeSingle();
+      }
+      if (tempProfile != null) {
+        userId = (tempProfile as Map<String, dynamic>)['id'] as String?;
+      }
+    } catch (e) {
+      // اگر کاربر پیدا نشد، ادامه می‌دهیم (خطا بعداً نمایش داده می‌شود)
+    }
+
+    // بررسی قفل بودن حساب قبل از تلاش برای ورود
+    if (userId != null) {
+      final isLocked =
+          await AdvancedSecurityService.isAccountLocked(userId: userId);
+      if (isLocked) {
+        // دریافت اطلاعات قفل
+        final lockInfo =
+            await AdvancedSecurityService.getLockInfo(userId: userId);
+        final lockReason = lockInfo != null
+            ? await AdvancedSecurityService.getLockReasonPersian(userId: userId)
+            : null;
+        final remainingTime =
+            await AdvancedSecurityService.getRemainingLockoutTime(
+                userId: userId);
+        final lockType = lockInfo?['lock_type'] as String?;
+
+        // نمایش دیالوگ محدودیت
+        _showAccountLockedDialog(
+          remainingTime: remainingTime,
+          lockReason: lockReason,
+          lockType: lockType,
+        );
+        return;
+      }
+    }
+
     setState(() => _isLoading = true);
 
-    try {
-      String email;
-      Map<String, dynamic> userProfile;
+    // تعریف متغیرها در scope خارجی برای استفاده در catch block
+    String? email;
+    Map<String, dynamic>? userProfile;
 
+    try {
       // بررسی نوع ورود (ایمیل یا نام کاربری)
       if (_emailOrUsername.contains('@')) {
         email = _emailOrUsername;
         logInfo('🔍 Logging in with email: $email');
-        userProfile = await supabase
+        final response = await Supabase.instance.client
             .from('profiles')
             .select('*')
             .eq('email', email)
             .single();
+        userProfile = Map<String, dynamic>.from(response);
       } else {
         logInfo('🔍 Logging in with username: $_emailOrUsername');
-        userProfile = await supabase
+        final response = await Supabase.instance.client
             .from('profiles')
             .select('*')
             .eq('username', _emailOrUsername)
             .single();
-        email = userProfile['email'];
+        userProfile = Map<String, dynamic>.from(response);
+        email = userProfile['email'] as String;
         logInfo('📧 Found email for username: $email');
       }
+
+      // به‌روزرسانی userId از userProfile
+      userId = userProfile['id'] as String?;
 
       logInfo('👤 User profile data from database:');
       logInfo('📧 Email: ${userProfile['email']}');
@@ -209,10 +292,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
       logInfo('🖼️ Avatar URL: ${userProfile['avatar_url']}');
 
       // لاگین کردن کاربر
-      final authResponse = await supabase.auth.signInWithPassword(
+      logInfo('🔐 Attempting to sign in with email: $email');
+
+      // استفاده از Supabase.instance.client به جای supabase global برای جلوگیری از مشکل hot reload
+      final supabaseClient = Supabase.instance.client;
+      final authResponse = await supabaseClient.auth.signInWithPassword(
         email: email,
         password: _password,
       );
+      logInfo('✅ Sign in successful!');
 
       // آپدیت متادیتا بعد از لاگین موفق
       if (authResponse.user != null) {
@@ -221,7 +309,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
         // Store secure session
         await AdvancedSecurityService.storeSecureSession(
             'secure_session_token');
-        await AdvancedSecurityService.clearFailedAttempts();
+
+        // پاک کردن تلاش‌های ناموفق (با userId برای پاک کردن از دیتابیس)
+        if (userId != null) {
+          await AdvancedSecurityService.clearFailedAttempts(userId: userId);
+        }
 
         _showSuccessSnackBar('ورود موفقیت‌آمیز');
 
@@ -230,15 +322,87 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
           Navigator.pushReplacementNamed(context, '/home');
         }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      // لاگ کردن خطای دقیق
+      logInfo('❌ Login error occurred:');
+      logInfo('   Error type: ${e.runtimeType}');
+      logInfo('   Error message: ${e.toString()}');
+      if (e is AuthException) {
+        logInfo('   Auth error statusCode: ${e.statusCode}');
+        logInfo('   Auth error message: ${e.message}');
+      }
+      logInfo('   Stack trace: $stackTrace');
+
+      // اگر خطای StateError مربوط به closed stream بود، یک بار دیگر با instance جدید تلاش کنیم
+      if (e is StateError &&
+          e.toString().contains('Cannot add new events after calling close')) {
+        logInfo(
+            '🔄 Detected closed stream error, retrying with fresh Supabase instance...');
+        // فقط اگر email و userProfile موجود باشند، retry کنیم
+        if (email != null && userProfile != null) {
+          try {
+            // استفاده از instance جدید
+            final freshClient = Supabase.instance.client;
+            final retryAuthResponse = await freshClient.auth.signInWithPassword(
+              email: email,
+              password: _password,
+            );
+            logInfo('✅ Retry sign in successful!');
+
+            // ادامه با موفقیت
+            if (retryAuthResponse.user != null) {
+              await _updateUserMetadata(retryAuthResponse.user!, userProfile);
+              await AdvancedSecurityService.storeSecureSession(
+                  'secure_session_token');
+              if (userId != null) {
+                await AdvancedSecurityService.clearFailedAttempts(
+                    userId: userId);
+              }
+              _showSuccessSnackBar('ورود موفقیت‌آمیز');
+              if (mounted) {
+                Navigator.pushReplacementNamed(context, '/home');
+              }
+              return;
+            }
+          } catch (retryError) {
+            logInfo('❌ Retry also failed: $retryError');
+            // ادامه با خطای اصلی
+          }
+        } else {
+          logInfo('⚠️ Cannot retry: email or userProfile not available');
+        }
+      }
+
+      // ثبت تلاش ناموفق (با userId برای ذخیره در دیتابیس)
+      await AdvancedSecurityService.recordFailedAttempt(userId: userId);
+
+      // بررسی مجدد قفل بودن حساب بعد از ثبت تلاش ناموفق
+      final isLockedAfterAttempt =
+          await AdvancedSecurityService.isAccountLocked(userId: userId);
+      if (isLockedAfterAttempt) {
+        final remainingTime =
+            await AdvancedSecurityService.getRemainingLockoutTime(
+                userId: userId);
+        if (remainingTime != null) {
+          _showLockoutDialog(remainingTime);
+          return;
+        }
+      }
+
       if (e is PostgrestException) {
         _showErrorSnackBar('نام کاربری یا ایمیل یافت نشد');
       } else if (e is AuthException) {
-        _showErrorSnackBar('نام کاربری یا رمز عبور اشتباه است');
+        // نمایش پیام خطای دقیق‌تر
+        final errorMessage = e.message;
+        logInfo('🔴 Auth error details: $errorMessage');
+        _showErrorSnackBar(errorMessage.contains('Invalid login credentials')
+            ? 'نام کاربری یا رمز عبور اشتباه است'
+            : (errorMessage.isNotEmpty
+                ? errorMessage
+                : 'نام کاربری یا رمز عبور اشتباه است'));
       } else {
         _showErrorSnackBar('خطا در ورود: ${e.toString()}');
       }
-      await AdvancedSecurityService.recordFailedAttempt();
     } finally {
       setState(() => _isLoading = false);
     }
@@ -277,7 +441,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
       logInfo('📝 Full Name: ${profile['full_name']}');
       logInfo('🖼️ Avatar URL: ${profile['avatar_url']}');
 
-      await supabase.auth.updateUser(
+      await Supabase.instance.client.auth.updateUser(
         UserAttributes(
           data: {
             'id': profile['id'],
@@ -336,6 +500,80 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
           ],
         );
       },
+    );
+  }
+
+  void _showLockoutDialog(Duration remainingTime) {
+    final minutes = remainingTime.inMinutes;
+    final seconds = remainingTime.inSeconds % 60;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('حساب کاربری قفل شده'),
+        content: Text(
+          'به دلیل تلاش‌های ناموفق متعدد، حساب کاربری شما قفل شده است.\n\n'
+          'لطفاً $minutes دقیقه و $seconds ثانیه صبر کنید و سپس دوباره تلاش کنید.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: const Text('متوجه شدم'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAccountLockedDialog({
+    Duration? remainingTime,
+    String? lockReason,
+    String? lockType,
+  }) {
+    String message = 'حساب کاربری شما محدود شده است.\n\n';
+
+    if (lockReason != null) {
+      message += 'علت: $lockReason\n\n';
+    }
+
+    if (lockType == 'permanent') {
+      message += 'این محدودیت دائمی است. لطفاً با پشتیبانی تماس بگیرید.';
+    } else if (remainingTime != null) {
+      final minutes = remainingTime.inMinutes;
+      final seconds = remainingTime.inSeconds % 60;
+      message += 'زمان باقی‌مانده: $minutes دقیقه و $seconds ثانیه\n\n'
+          'لطفاً بعد از اتمام زمان، دوباره تلاش کنید.';
+    } else {
+      message += 'لطفاً با پشتیبانی تماس بگیرید.';
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('⚠️ دسترسی محدود شده'),
+        content: Text(message),
+        actions: [
+          if (lockType != 'permanent' && remainingTime != null)
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                // بازگشت به مرحله اول
+                _previousStep();
+              },
+              child: const Text('تلاش مجدد'),
+            ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: const Text('متوجه شدم'),
+          ),
+        ],
+      ),
     );
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/message_model.dart';
 import '../services/ChatService.dart';
 import '../services/message_retry_service.dart';
+import '../services/message_reaction_service.dart';
 import '../DB/unified_message_cache_service.dart';
 import '../services/optimized_message_deletion_service.dart';
 import '../main.dart';
@@ -67,6 +68,7 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
   final OptimizedMessageDeletionService _deletionService =
       OptimizedMessageDeletionService();
   StreamSubscription? _realtimeSubscription;
+  StreamSubscription? _reactionSubscription; // ✅ Subscription برای reactions
   bool _isFetching = false;
   bool _isKeyboardAnimating = false; // ✅ جلوگیری از عملیات سنگین در حین انیمیشن کیبورد
   DateTime? _lastInvalidateTime; // ✅ Debounce برای invalidation cache
@@ -136,6 +138,10 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
       // 3. Listen for real-time updates
       print('📡 Starting real-time updates...');
       _listenForRealtimeUpdates();
+      
+      // 4. Listen for real-time reaction updates
+      print('📡 Starting real-time reaction updates...');
+      _listenForReactionUpdates();
     } catch (e) {
       print('❌ Error during initialization: $e');
       if (mounted) {
@@ -297,6 +303,91 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
     }
   }
 
+  // ✅ Listener برای real-time reaction updates
+  void _listenForReactionUpdates() {
+    if (_reactionSubscription != null) {
+      print('⚠️ Reaction subscription already exists, skipping');
+      return;
+    }
+
+    print('📡 Setting up reaction subscription for conversation: ${params.conversationId}');
+
+    try {
+      final reactionService = MessageReactionService();
+      _reactionSubscription?.cancel();
+      _reactionSubscription = reactionService
+          .watchConversationReactions(params.conversationId)
+          .listen(
+        (reactions) {
+          if (!mounted) return;
+
+          // گروه‌بندی reactions بر اساس messageId
+          final Map<String, Map<String, List<String>>> messageReactions = {};
+          for (final reaction in reactions) {
+            messageReactions[reaction.messageId] ??= {};
+            messageReactions[reaction.messageId]![reaction.emoji] ??= [];
+            // ✅ جلوگیری از duplicate user IDs
+            if (!messageReactions[reaction.messageId]![reaction.emoji]!
+                .contains(reaction.userId)) {
+              messageReactions[reaction.messageId]![reaction.emoji]!
+                  .add(reaction.userId);
+            }
+          }
+
+          // آپدیت پیام‌هایی که reactions آنها تغییر کرده
+          final currentMessages =
+              Map.fromEntries(state.messages.map((m) => MapEntry(m.id, m)));
+          bool hasChanges = false;
+
+          for (final message in state.messages) {
+            final newReactions = messageReactions[message.id] ?? {};
+
+            // ✅ مقایسه دقیق‌تر reactions
+            if (!_areReactionsEqual(newReactions, message.reactions)) {
+              hasChanges = true;
+              currentMessages[message.id] = message.copyWith(reactions: newReactions);
+              print('📝 Updated reactions for message: ${message.id}');
+            }
+          }
+
+          if (hasChanges && mounted) {
+            final sortedMessages = currentMessages.values.toList()
+              ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+            state = state.copyWith(messages: sortedMessages);
+            print('✅ Updated messages with new reactions');
+          }
+        },
+        onError: (error) {
+          print('❌ Real-time reaction subscription error: $error');
+        },
+      );
+    } catch (e) {
+      print('❌ Error setting up reaction subscription: $e');
+    }
+  }
+
+  // ✅ Helper function برای مقایسه دقیق reactions
+  bool _areReactionsEqual(
+    Map<String, List<String>> a,
+    Map<String, List<String>> b,
+  ) {
+    if (a.length != b.length) return false;
+
+    for (final key in a.keys) {
+      if (!b.containsKey(key)) return false;
+
+      final listA = List<String>.from(a[key]!)..sort();
+      final listB = List<String>.from(b[key]!)..sort();
+
+      if (listA.length != listB.length) return false;
+      for (int i = 0; i < listA.length; i++) {
+        if (listA[i] != listB[i]) return false;
+      }
+    }
+
+    return true;
+  }
+
   void _updateMessages(List<MessageModel> newMessages,
       {bool fromPagination = false}) {
     if (newMessages.isEmpty && !fromPagination) {
@@ -332,10 +423,22 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
 
       if (existingMessage == null ||
           msg.createdAt.isAfter(existingMessage.createdAt)) {
-        currentMessages[msg.id] = msg;
-        print('📝 Added/Updated message: ${msg.id}');
+        // ✅ حفظ reaction‌های موجود اگر پیام جدید reaction ندارد
+        if (msg.reactions.isEmpty && existingMessage != null && existingMessage.reactions.isNotEmpty) {
+          currentMessages[msg.id] = msg.copyWith(reactions: existingMessage.reactions);
+          print('📝 Added/Updated message: ${msg.id} (preserved reactions)');
+        } else {
+          currentMessages[msg.id] = msg;
+          print('📝 Added/Updated message: ${msg.id}');
+        }
       } else {
-        print('⏭️ Skipped duplicate message: ${msg.id}');
+        // ✅ اگر پیام موجود است و جدیدتر نیست، reaction‌های جدید را اعمال کن
+        if (msg.reactions.isNotEmpty && existingMessage.reactions != msg.reactions) {
+          currentMessages[msg.id] = existingMessage.copyWith(reactions: msg.reactions);
+          print('📝 Updated reactions for message: ${msg.id}');
+        } else {
+          print('⏭️ Skipped duplicate message: ${msg.id}');
+        }
       }
     }
 
@@ -683,11 +786,41 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
         );
   }
 
+  /// ✅ به‌روزرسانی یک پیام خاص (برای reactions و ...)
+  void updateMessage(MessageModel updatedMessage) {
+    if (!mounted) return;
+
+    final currentMessages =
+        Map.fromEntries(state.messages.map((m) => MapEntry(m.id, m)));
+    
+    if (currentMessages.containsKey(updatedMessage.id)) {
+      currentMessages[updatedMessage.id] = updatedMessage;
+      
+      final sortedMessages = currentMessages.values.toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      
+      state = state.copyWith(messages: sortedMessages);
+      
+      // به‌روزرسانی کش
+      scheduleMicrotask(() async {
+        try {
+          final currentUser = supabase.auth.currentUser;
+          if (currentUser != null) {
+            await _cacheService.cacheMessage(updatedMessage, currentUser.id);
+          }
+        } catch (e) {
+          print('⚠️ Error caching updated message: $e');
+        }
+      });
+    }
+  }
+
   @override
   void dispose() {
     // ✅ لغو تمام timer ها و subscription ها
     _realtimeDebounceTimer?.cancel();
     _realtimeSubscription?.cancel();
+    _reactionSubscription?.cancel(); // ✅ لغو reaction subscription
     _retryService.dispose();
     _deletionService.dispose();
     super.dispose();

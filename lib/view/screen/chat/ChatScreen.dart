@@ -24,6 +24,7 @@ import '../../widgets/message_bubble.dart';
 import '../../widgets/date_divider.dart';
 import '../../widgets/connection_status_widget.dart';
 import '../../widgets/typing_indicator.dart';
+import '../../../widgets/reactions/reaction_picker.dart';
 import '../PublicPosts/profileScreen.dart';
 import 'ChatDetailsScreen.dart';
 import 'ChatMessageSearchScreen.dart';
@@ -60,6 +61,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // Message selection state
   final Set<String> _selectedMessageIds = {};
   bool _isSelectionMode = false;
+
+  // Reaction picker state
+  String? _reactionPickerMessageId;
+  Offset? _reactionPickerPosition;
 
   // State
   DateTime? _floatingDate;
@@ -147,6 +152,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   // Message selection methods
   void _toggleMessageSelection(String messageId) {
+    final wasInSelectionMode = _isSelectionMode;
+    final previousCount = _selectedMessageIds.length;
+    
     setState(() {
       if (_selectedMessageIds.contains(messageId)) {
         _selectedMessageIds.remove(messageId);
@@ -157,6 +165,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _selectedMessageIds.add(messageId);
         _isSelectionMode = true;
       }
+      
+      // اگر قبلاً در selection mode بودیم و حالا پیام دوم یا بیشتر انتخاب شد، reaction picker را ببند
+      if (wasInSelectionMode && _isSelectionMode && _selectedMessageIds.length > previousCount && _selectedMessageIds.length > 1) {
+        _hideReactionPicker();
+      }
+    });
+  }
+
+  // Show reaction picker at specific position
+  void _showReactionPicker(String messageId, Offset position) {
+    setState(() {
+      _reactionPickerMessageId = messageId;
+      _reactionPickerPosition = position;
+    });
+  }
+
+  // Hide reaction picker
+  void _hideReactionPicker() {
+    setState(() {
+      _reactionPickerMessageId = null;
+      _reactionPickerPosition = null;
     });
   }
 
@@ -164,6 +193,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     setState(() {
       _selectedMessageIds.clear();
       _isSelectionMode = false;
+      _hideReactionPicker(); // بستن reaction picker هنگام پاک کردن selection
     });
   }
 
@@ -1818,9 +1848,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                               .contains(correctedMessage.id),
                                           previousMessage: prevMessage,
                                           nextMessage: nextMessage,
-                                          onLongPress: (msg) =>
-                                              _toggleMessageSelection(
-                                                  correctedMessage.id),
+                                          currentUserId: supabase.auth.currentUser?.id,
+                                          conversationId: widget.conversationId,
+                                          isSelectionMode: _isSelectionMode,
+                                          onShowReactionPicker: _showReactionPicker,
+                                          onLongPress: (msg) {
+                                            // اگر در selection mode هستیم و این پیام قبلاً select نشده، فقط select کن
+                                            // اگر در selection mode نیستیم، select کن و reaction picker نمایش بده (در MessageBubble)
+                                            _toggleMessageSelection(correctedMessage.id);
+                                          },
                                           onTap: _isSelectionMode
                                               ? (messageId) {
                                                   _showMessageActionsBottomSheet(
@@ -1840,6 +1876,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                               _setReplyMessage(msg),
                                           onRetry: (msg) =>
                                               _retryFailedMessage(msg),
+                                          onReactionSelected: () {
+                                            // خاموش کردن selection mode بعد از انتخاب reaction
+                                            _clearMessageSelection();
+                                          },
                                         ),
                                       ),
                                     ],
@@ -1880,6 +1920,70 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ]),
           ),
         ),
+        // ✅ Reaction Picker Overlay - نمایش در سطح بالاتر برای جلوگیری از overflow
+        // فقط نمایش بده اگر در selection mode نیستیم (یعنی اولین long press)
+        if (_reactionPickerMessageId != null && 
+            _reactionPickerPosition != null &&
+            !_isSelectionMode)
+          Builder(
+            builder: (context) {
+              // محاسبه موقعیت بهینه برای جلوگیری از overflow
+              final screenSize = MediaQuery.of(context).size;
+              final pickerWidth = 250.0; // عرض تقریبی picker
+              final pickerHeight = 60.0; // ارتفاع تقریبی picker
+              
+              // محاسبه موقعیت افقی (مرکز picker در مرکز حباب پیام)
+              double left = _reactionPickerPosition!.dx - (pickerWidth / 2);
+              // اطمینان از اینکه picker از صفحه خارج نشود
+              if (left < 10) left = 10;
+              if (left + pickerWidth > screenSize.width - 10) {
+                left = screenSize.width - pickerWidth - 10;
+              }
+              
+              // محاسبه موقعیت عمودی (بالای حباب پیام)
+              double top = _reactionPickerPosition!.dy - pickerHeight - 10;
+              // اگر فضای کافی بالای حباب نیست، زیر حباب نمایش بده
+              if (top < 10) {
+                top = _reactionPickerPosition!.dy + 50; // زیر حباب
+              }
+              
+              return Positioned.fill(
+                child: GestureDetector(
+                  onTap: () => _hideReactionPicker(), // بستن با کلیک خارج
+                  behavior: HitTestBehavior.translucent,
+                  child: Stack(
+                    children: [
+                      // Positioned reaction picker بر اساس موقعیت حباب پیام
+                      Positioned(
+                        left: left,
+                        top: top,
+                        child: Material(
+                          color: Colors.transparent,
+                          elevation: 8,
+                          child: ReactionPicker(
+                            onReactionSelected: (emoji) async {
+                              if (_reactionPickerMessageId != null) {
+                                // ارسال reaction به سرور
+                                await ref.read(messageNotifierProvider.notifier).toggleReaction(
+                                  messageId: _reactionPickerMessageId!,
+                                  conversationId: widget.conversationId,
+                                  emoji: emoji,
+                                );
+                              }
+                              _hideReactionPicker();
+                            },
+                            onClose: () {
+                              _hideReactionPicker();
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
       ],
     );
   }

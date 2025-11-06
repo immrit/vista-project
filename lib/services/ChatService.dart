@@ -12,6 +12,7 @@ import '../DB/unified_conversation_cache_service.dart';
 import '../DB/unified_message_cache_service.dart';
 import '../model/conversation_model.dart';
 import '../model/message_model.dart';
+import '../model/message_reaction.dart';
 import '../view/Exeption/app_exceptions.dart';
 import 'user_friendly_error_handler.dart';
 import '/main.dart';
@@ -1556,7 +1557,7 @@ class ChatService {
           }
         }
 
-        final messages = await Future.wait(
+        var messages = await Future.wait(
           filteredMessages.map((json) async {
             final senderId = json['sender_id'] as String;
             final senderProfile = _profileService.getCachedProfile(senderId);
@@ -1594,6 +1595,38 @@ class ChatService {
             return message;
           }),
         );
+
+        // دریافت ری اکشن‌های پیام‌ها
+        final messageIds = messages.map((m) => m.id).toList();
+        if (messageIds.isNotEmpty) {
+          try {
+            // دریافت reactions برای هر پیام به صورت جداگانه یا از طریق OR
+            final reactionsResponse = await _supabase
+                .from('message_reactions')
+                .select()
+                .or(messageIds.map((id) => 'message_id.eq.$id').join(','));
+
+            // گروه‌بندی reactions بر اساس messageId
+            final Map<String, Map<String, List<String>>> messageReactions = {};
+            for (final reactionJson in reactionsResponse) {
+              final reaction = MessageReaction.fromJson(reactionJson);
+              messageReactions[reaction.messageId] ??= {};
+              messageReactions[reaction.messageId]![reaction.emoji] ??= [];
+              messageReactions[reaction.messageId]![reaction.emoji]!.add(reaction.userId);
+            }
+
+            // اضافه کردن reactions به پیام‌ها
+            final messagesWithReactions = messages.map((message) {
+              final reactions = messageReactions[message.id] ?? {};
+              return message.copyWith(reactions: reactions);
+            }).toList();
+
+            messages = messagesWithReactions;
+          } catch (e) {
+            logInfo('خطا در دریافت reactions: $e');
+            // اگر خطا رخ داد، پیام‌ها را بدون reactions برمی‌گردانیم
+          }
+        }
 
         // در حال دریافت اولین صفحه پیام‌ها هستیم (offset=0)
         // مکالمه را به عنوان خوانده شده علامت‌گذاری می‌کنیم
