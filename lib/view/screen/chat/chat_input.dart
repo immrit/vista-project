@@ -50,6 +50,10 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
   int _recordingDuration = 0;
   Offset? _longPressStartPosition;
   Timer? _recordingTimer;
+  
+  // ✅ Flag برای کنترل animation کیبورد
+  bool _isKeyboardReady = false;
+  Timer? _keyboardReadyTimer;
 
   // --- Animations ---
   late Animation<double> _micIconScaleAnimation;
@@ -78,10 +82,25 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
             CurvedAnimation(
                 parent: _slideCancelAnimationController,
                 curve: Curves.easeInOut));
+    
+    // ✅ آماده‌سازی کیبورد با تأخیر کوتاه
+    _prepareKeyboardForFastOpen();
+  }
+
+  void _prepareKeyboardForFastOpen() {
+    // بعد از 100ms، کیبورد آماده باز شدن سریع است
+    _keyboardReadyTimer = Timer(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        setState(() {
+          _isKeyboardReady = true;
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
+    _keyboardReadyTimer?.cancel();
     _textController.dispose();
     _focusNode.dispose();
     _recorderController.dispose();
@@ -440,9 +459,15 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
                     textInputAction: TextInputAction.newline,
                     enableInteractiveSelection: true,
                     enableSuggestions: true,
+                    autocorrect: true,
                     smartDashesType: SmartDashesType.enabled,
                     smartQuotesType: SmartQuotesType.enabled,
                     onTap: () {
+                      if (!_isKeyboardReady) {
+                        print('⌨️ Keyboard not ready yet - delaying');
+                        return;
+                      }
+                      
                       // فقط اگر emoji picker باز است، آن را ببند
                       if (_showEmojiPicker && mounted) {
                         setState(() => _showEmojiPicker = false);

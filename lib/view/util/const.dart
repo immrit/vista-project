@@ -168,7 +168,7 @@ Future<bool> checkSupabaseConnectivity() async {
 Future<void> initializeSupabaseWithFailover() async {
   // تلاش اول: استفاده از CDN URL با HTTP client جدید
   try {
-    logInfo('Attempting Supabase initialization with CDN URL: $supabaseCdnUrl');
+    logInfo('🔄 Initializing Supabase with CDN URL: $supabaseCdnUrl');
 
     // ایجاد Supabase client با HTTP client جدید
     final httpClient = SupabaseHttpClient();
@@ -176,14 +176,46 @@ Future<void> initializeSupabaseWithFailover() async {
       url: supabaseCdnUrl,
       anonKey: supabaseAnonKey,
       httpClient: httpClient,
+      debug: true, // برای دیباگ
+      authOptions: FlutterAuthClientOptions(
+        authFlowType: AuthFlowType.pkce, // امن‌تر
+        autoRefreshToken: true, // ✅ خیلی مهم: Auto refresh token
+        detectSessionInUri: true,
+      ),
     );
+
+    print('✅ Supabase initialized successfully');
+    
+    // ✅ بررسی session بعد از initialize
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session != null) {
+      print('🔐 Active session found: ${session.user.email}');
+      print('📅 Session expires at: ${session.expiresAt}');
+      
+      // بررسی expire شدن
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final expiresAt = session.expiresAt ?? 0;
+      
+      if (expiresAt < now) {
+        print('⚠️ Session expired, refreshing...');
+        try {
+          await Supabase.instance.client.auth.refreshSession();
+          print('✅ Session refreshed successfully');
+        } catch (e) {
+          print('❌ Session refresh failed: $e');
+          await Supabase.instance.client.auth.signOut();
+        }
+      }
+    } else {
+      print('ℹ️ No active session found');
+    }
 
     // ✅ اضافه شده: منتظر بمانید تا session restore شود
     print('⏳ Waiting for session restoration...');
     await _waitForSessionRestore();
 
     await Supabase.instance.client.from('profiles').select().limit(1).timeout(
-          const Duration(seconds: 5), // کاهش timeout از 15 به 5 ثانیه
+          const Duration(seconds: 10), // افزایش timeout برای شبکه‌های کند
           onTimeout: () => throw TimeoutException('Ping timeout'),
         );
 
@@ -221,21 +253,54 @@ Future<void> initializeSupabaseWithFailover() async {
     // تلاش دوم: استفاده از Direct URL با HTTP client جدید
     try {
       print(
-          'Attempting Supabase initialization with Direct URL: $supabaseDirectUrl');
+          '🔄 Attempting Supabase initialization with Direct URL: $supabaseDirectUrl');
 
       // ایجاد Supabase client جدید با HTTP client جدید
       final httpClient2 = SupabaseHttpClient();
       await Supabase.initialize(
-          url: supabaseDirectUrl,
-          anonKey: supabaseAnonKey,
-          httpClient: httpClient2);
+        url: supabaseDirectUrl,
+        anonKey: supabaseAnonKey,
+        httpClient: httpClient2,
+        debug: true, // برای دیباگ
+        authOptions: FlutterAuthClientOptions(
+          authFlowType: AuthFlowType.pkce, // امن‌تر
+          autoRefreshToken: true, // ✅ خیلی مهم: Auto refresh token
+          detectSessionInUri: true,
+        ),
+      );
+
+      print('✅ Supabase initialized successfully');
+      
+      // ✅ بررسی session بعد از initialize
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null) {
+        print('🔐 Active session found: ${session.user.email}');
+        print('📅 Session expires at: ${session.expiresAt}');
+        
+        // بررسی expire شدن
+        final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+        final expiresAt = session.expiresAt ?? 0;
+        
+        if (expiresAt < now) {
+          print('⚠️ Session expired, refreshing...');
+          try {
+            await Supabase.instance.client.auth.refreshSession();
+            print('✅ Session refreshed successfully');
+          } catch (e) {
+            print('❌ Session refresh failed: $e');
+            await Supabase.instance.client.auth.signOut();
+          }
+        }
+      } else {
+        print('ℹ️ No active session found');
+      }
 
       // ✅ اضافه شده: منتظر بمانید تا session restore شود
       print('⏳ Waiting for session restoration (Direct URL)...');
       await _waitForSessionRestore();
 
       await Supabase.instance.client.from('profiles').select().limit(1).timeout(
-            const Duration(seconds: 5), // کاهش timeout از 15 به 5 ثانیه
+            const Duration(seconds: 10), // افزایش timeout برای شبکه‌های کند
             onTimeout: () => throw TimeoutException('Ping timeout'),
           );
 
@@ -258,6 +323,11 @@ Future<void> initializeSupabaseWithFailover() async {
             url:
                 'https://localhost:54321', // این URL کار نخواهد کرد اما instance ایجاد می‌شود
             anonKey: supabaseAnonKey,
+            authOptions: FlutterAuthClientOptions(
+              authFlowType: AuthFlowType.pkce,
+              autoRefreshToken: true, // ✅ Auto refresh token
+              detectSessionInUri: true,
+            ),
           );
           logInfo('✅ Supabase با تنظیمات minimal initialize شد (حالت توسعه)');
           logInfo(
@@ -286,6 +356,21 @@ Future<void> _waitForSessionRestore(
       final session = Supabase.instance.client.auth.currentSession;
       if (session != null) {
         print('✅ Session restored successfully! User: ${session.user.email}');
+        
+        // بررسی expire شدن و refresh در صورت نیاز
+        final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+        final expiresAt = session.expiresAt ?? 0;
+        
+        if (expiresAt < now) {
+          print('⚠️ Restored session expired, refreshing...');
+          try {
+            await Supabase.instance.client.auth.refreshSession();
+            print('✅ Session refreshed successfully');
+          } catch (e) {
+            print('❌ Session refresh failed: $e');
+          }
+        }
+        
         return;
       }
     } catch (e) {
@@ -305,9 +390,21 @@ void _logSessionStatus() {
   try {
     final session = Supabase.instance.client.auth.currentSession;
     if (session != null) {
-      print('🔐 Current session user: ${session.user.email}');
-      print('🔐 Access token present: ${session.accessToken.isNotEmpty}');
-      print('🔐 Token expiry: ${session.expiresAt}');
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final expiresAt = session.expiresAt ?? 0;
+      final timeUntilExpiry = expiresAt - now;
+      
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      print('📊 SESSION STATUS');
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      print('✅ Session Active');
+      print('👤 User: ${session.user.email}');
+      print('🆔 User ID: ${session.user.id}');
+      print('📅 Created: ${session.user.createdAt}');
+      print('⏰ Expires in: ${Duration(seconds: timeUntilExpiry).inMinutes} minutes');
+      print('🔑 Access Token: ${session.accessToken.substring(0, 20)}...');
+      print('🔄 Refresh Token: ${session.refreshToken?.substring(0, 20) ?? 'N/A'}...');
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     } else {
       print('⚠️ No session currently available (may restore later)');
     }

@@ -1,6 +1,7 @@
 import '../security/logging_utility.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../DB/settings_cache_service.dart';
+import '../DB/advanced_settings_service.dart';
 import '../main.dart';
 
 /// Provider برای تنظیمات کاربر با قابلیت آفلاین
@@ -268,6 +269,61 @@ final initializeSettingsCacheProvider =
     FutureProvider.family<void, String>((ref, userId) async {
   final settingsCache = SettingsCacheService();
   await settingsCache.initializeUserCache(userId);
+});
+
+// ===== Advanced Settings Providers =====
+
+/// Provider برای Advanced Settings Service
+final advancedSettingsServiceProvider = Provider<AdvancedSettingsService>((ref) {
+  return AdvancedSettingsService();
+});
+
+/// Provider برای تنظیمات عملکرد
+final performanceSettingsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final service = ref.watch(advancedSettingsServiceProvider);
+  return service.getPerformanceSettings();
+});
+
+/// Provider برای تنظیمات ذخیره‌سازی
+final storageSettingsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final service = ref.watch(advancedSettingsServiceProvider);
+  return service.getStorageSettings();
+});
+
+/// Provider برای تنظیمات اپلیکیشن پیشرفته
+final advancedAppSettingsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final service = ref.watch(advancedSettingsServiceProvider);
+  return service.getAdvancedAppSettings();
+});
+
+/// Provider برای آمار کامل تنظیمات
+final cacheStatsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final service = ref.watch(advancedSettingsServiceProvider);
+  return await service.getCompleteStats();
+});
+
+/// Provider برای بررسی فعال بودن انیمیشن‌ها
+final animationsEnabledProvider = Provider<bool>((ref) {
+  final service = ref.watch(advancedSettingsServiceProvider);
+  return service.areAnimationsEnabled();
+});
+
+/// Provider برای بررسی فعال بودن GPU Acceleration
+final gpuAccelerationProvider = Provider<bool>((ref) {
+  final service = ref.watch(advancedSettingsServiceProvider);
+  return service.isGPUAccelerationEnabled();
+});
+
+/// Provider برای حداکثر حجم Cache
+final maxCacheSizeProvider = Provider<int>((ref) {
+  final service = ref.watch(advancedSettingsServiceProvider);
+  return service.getMaxCacheSize();
+});
+
+/// Provider برای حجم فعلی Cache
+final currentCacheSizeProvider = Provider<int>((ref) {
+  final service = ref.watch(advancedSettingsServiceProvider);
+  return service.getCurrentCacheSize();
 });
 
 

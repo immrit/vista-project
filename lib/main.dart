@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:Vista/DB/unified_conversation_cache_service.dart';
 import 'package:Vista/view/screen/Settings/vistaStore/store.dart';
 import 'package:Vista/view/screen/SplashScreen.dart';
@@ -6,6 +7,7 @@ import 'package:Vista/view/util/const.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -14,6 +16,7 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'DB/profile_cache_service.dart';
 import 'DB/settings_cache_service.dart';
+import 'DB/advanced_settings_service.dart';
 import 'DB/database_manager.dart';
 import 'services/voice_cache_service.dart';
 import 'services/network_status_service.dart';
@@ -27,6 +30,7 @@ import 'services/cache_manager.dart';
 import 'services/ChatService.dart';
 import 'services/deep_link_service.dart' as new_deep_link;
 import 'services/PushNotificationService.dart';
+import 'services/notification_navigation_service.dart';
 import 'view/screen/chat/ChatScreen.dart';
 import 'view/screen/Settings/Settings.dart';
 import 'view/screen/homeScreen.dart';
@@ -42,6 +46,9 @@ import 'services/profile_service.dart';
 import 'view/screen/PublicPosts/publicPosts.dart';
 import 'view/screen/PublicPosts/PostDetailPage.dart';
 import 'view/screen/PublicPosts/profileScreen.dart';
+import 'utils/performance_monitor.dart';
+import 'DB/telegram_style_cache_system.dart';
+import 'utils/deferred_initialization_manager.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -54,7 +61,46 @@ bool _isAppInitialized = false;
 
 /// Notification response handler
 Future<void> notificationResponseHandler(NotificationResponse response) async {
-  print('Notification response received: ${response.actionId}');
+  print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  print('🔔 کلیک روی Local Notification');
+  print('   Action ID: ${response.actionId}');
+  print('   Input: ${response.input}');
+  print('   Notification ID: ${response.id}');
+  print('   Raw Payload: ${response.payload}');
+  print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+  if (response.payload != null && response.payload!.isNotEmpty) {
+    try {
+      // تست parse کردن
+      final decoded = jsonDecode(response.payload!);
+      print('✅ Payload decoded successfully:');
+      print('   Type: ${decoded['type']}');
+      print('   PostID: ${decoded['post_id']}');
+      print('   CommentID: ${decoded['comment_id']}');
+      print('   ConversationID: ${decoded['conversation_id']}');
+      print('   SenderID: ${decoded['sender_id']}');
+    } catch (e) {
+      print('❌ خطا در parse کردن payload: $e');
+    }
+
+    // منتظر می‌مونیم تا context آماده بشه
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final context = navigatorKey.currentContext;
+      print('📍 Context available: ${context != null}');
+
+      if (context != null) {
+        print('🚀 شروع navigation...');
+        NotificationNavigationService.handleLocalNotificationPayload(
+          context: context,
+          payload: response.payload!,
+        );
+      } else {
+        print('⚠️ Cannot navigate: context is null');
+      }
+    });
+  } else {
+    print('⚠️ Payload is null or empty');
+  }
 }
 
 /// Firebase initialization with duplicate check
@@ -88,6 +134,18 @@ Future<void> _initializeFirebase() async {
   }
 }
 
+void _setupPerformanceOptimizations() {
+  debugPrintRebuildDirtyWidgets = false;
+  debugProfileBuildsEnabled = false;
+
+  final imageCache = PaintingBinding.instance.imageCache;
+  imageCache.maximumSize = 200;
+  imageCache.maximumSizeBytes = 80 * 1024 * 1024;
+
+  SchedulerBinding.instance.scheduleWarmUpFrame();
+  print('⚙️ Performance optimizations applied');
+}
+
 void main() async {
   // Global error handling to prevent crashes
   runZonedGuarded(
@@ -100,6 +158,8 @@ void main() async {
       }
 
       WidgetsFlutterBinding.ensureInitialized();
+      _setupPerformanceOptimizations();
+      PerformanceMonitor().startMonitoring();
 
       // Initialize date formatting for all locales
       await initializeDateFormatting('fa', null);
@@ -107,11 +167,11 @@ void main() async {
       // راه‌اندازی Firebase با بررسی وضعیت قبلی
       await _initializeFirebase();
 
-      // راه‌اندازی Supabase با timeout کوتاه‌تر برای جلوگیری از black screen
+      // راه‌اندازی Supabase با timeout مناسب برای شبکه‌های کند
       try {
-        // استفاده از timeout کوتاه‌تر برای جلوگیری از انتظار طولانی
+        // استفاده از timeout مناسب برای شبکه‌های کند
         await initializeSupabaseWithFailover().timeout(
-          const Duration(seconds: 8), // کاهش timeout از 15+ ثانیه به 8 ثانیه
+          const Duration(seconds: 20), // ✅ افزایش از 8 به 20 ثانیه
           onTimeout: () {
             print(
               '⏰ Supabase initialization timeout - continuing with offline mode',
@@ -121,13 +181,14 @@ void main() async {
         );
         print('✅ Supabase initialized successfully');
 
-        // بررسی session بعد از initialization
+        // ✅ بررسی session بلافاصله بعد از init
         try {
           final currentSession = Supabase.instance.client.auth.currentSession;
           if (currentSession != null) {
-            print('🔐 Existing session found after initialization');
+            print('🔐 Active session detected: ${currentSession.user.email}');
+            print('📅 Expires at: ${DateTime.fromMillisecondsSinceEpoch((currentSession.expiresAt ?? 0) * 1000)}');
           } else {
-            print('🔍 No existing session found after initialization');
+            print('ℹ️ No active session - user needs to login');
           }
         } catch (e) {
           print('⚠️ Error checking session after initialization: $e');
@@ -141,42 +202,55 @@ void main() async {
         print('⚠️ برخی ویژگی‌های آنلاین ممکن است کار نکنند');
       }
 
-      // راه‌اندازی سرویس امنیتی پیشرفته - در background
-      unawaited(AdvancedSecurityService.initialize());
+      // ✅ Deferred Initialization Manager - برای به تعویق انداختن عملیات سنگین
+      final deferredManager = DeferredInitializationManager();
 
-      // 🚀 مقداردهی اولیه سیستم پیام‌رسانی بهینه‌سازی شده - در background
-      unawaited(_initializeOptimizedChatSystem());
+      // ✅ فوری: فقط چیزهای ضروری
+      // 1. Cache System (ضروری برای عملکرد سریع)
+      await TelegramStyleCacheSystem().initialize();
 
-      // 🗄️ مقداردهی اولیه مدیریتگر دیتابیس (قبل از سایر سرویس‌ها)
+      // 2. Database Manager (ضروری)
       await DatabaseManager().initializeAllDatabases();
 
-      // 🚀 مقداردهی اولیه سرویس‌های کش ضروری - بقیه در background
+      // 3. Settings Cache (ضروری)
       await SettingsCacheService().initialize();
 
-      // 🎵 مقداردهی اولیه VoiceCacheService (قبل از سایر سرویس‌ها)
+      // 3.5. Advanced Settings Service (ضروری)
+      await AdvancedSettingsService().initialize();
+
+      // 4. Voice Cache Service (ضروری)
       final voiceCacheService = VoiceCacheService();
       await voiceCacheService.initialize();
 
-      // ✅ بهینه‌سازی: Lazy initialization سرویس‌ها با تأخیر برای جلوگیری از لگ
-      // مقداردهی اولیه سایر سرویس‌ها در background با تأخیر برای عملکرد بهتر
-      Future.delayed(const Duration(seconds: 2), () async {
-        try {
-          // 🚀 سیستم پیام‌رسانی بهینه‌شده
-          await _initializeOptimizedMessaging();
+      // ✅ بقیه کارها را defer کن - تا زمان باز شدن کیبورد منتظر می‌مانند
+      deferredManager.defer(() async {
+        // راه‌اندازی سرویس امنیتی پیشرفته
+        await AdvancedSecurityService.initialize();
+      });
 
-          // 🧹 غیرفعالسازی cache systems اضافی
-          await _disableRedundantCacheSystems();
+      deferredManager.defer(() async {
+        // 🚀 مقداردهی اولیه سیستم پیام‌رسانی بهینه‌سازی شده
+        await _initializeOptimizedChatSystem();
+      });
 
-          // 📦 مقداردهی اولیه UnifiedCacheManager
-          await UnifiedCacheManager().initialize();
+      deferredManager.defer(() async {
+        // 🚀 سیستم پیام‌رسانی بهینه‌شده
+        await _initializeOptimizedMessaging();
+      });
 
-          // 🚀 مقداردهی اولیه ProfileCacheService (با تأخیر)
-          Future.delayed(const Duration(seconds: 1), () async {
-            await ProfileCacheService().initialize();
-          });
-        } catch (e) {
-          print('⚠️ خطا در مقداردهی اولیه سرویس‌های background: $e');
-        }
+      deferredManager.defer(() async {
+        // 🧹 غیرفعالسازی cache systems اضافی
+        await _disableRedundantCacheSystems();
+      });
+
+      deferredManager.defer(() async {
+        // 📦 مقداردهی اولیه UnifiedCacheManager
+        await UnifiedCacheManager().initialize();
+      });
+
+      deferredManager.defer(() async {
+        // 🚀 مقداردهی اولیه ProfileCacheService
+        await ProfileCacheService().initialize();
       });
 
       // تنظیم ProviderContainer بعد از راه‌اندازی کامل اپ
@@ -220,6 +294,9 @@ void main() async {
         ),
         onDidReceiveNotificationResponse: notificationResponseHandler,
       );
+
+      // ✅ بررسی اعلان اولیه FCM (وقتی app کاملاً بسته بود و از اعلان باز شد)
+      _checkInitialNotification();
 
       // ایجاد کانال‌های اعلان
       const chatChannel = AndroidNotificationChannel(
@@ -283,6 +360,40 @@ void main() async {
   );
 }
 
+/// بررسی اعلان اولیه FCM (وقتی app کاملاً بسته بود و از اعلان باز شد)
+Future<void> _checkInitialNotification() async {
+  try {
+    // اگر Firebase initialize نشده، skip کن
+    if (Firebase.apps.isEmpty) {
+      print('⚠️ Firebase not initialized, skipping initial notification check');
+      return;
+    }
+
+    // دریافت پیام اولیه (اگر app از طریق notification باز شده)
+    final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+
+    if (initialMessage != null) {
+      print('🚀 App opened from notification (terminated state)');
+      print('   Data: ${initialMessage.data}');
+
+      // منتظر می‌مونیم تا app کاملاً initialize بشه
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Future.delayed(const Duration(milliseconds: 800), () {
+          final context = navigatorKey.currentContext;
+          if (context != null) {
+            NotificationNavigationService.handleFCMPayload(
+              context: context,
+              data: initialMessage.data,
+            );
+          }
+        });
+      });
+    }
+  } catch (e) {
+    print('❌ خطا در بررسی initial notification: $e');
+  }
+}
+
 final supabase = Supabase.instance.client;
 
 class MyApp extends ConsumerStatefulWidget {
@@ -295,12 +406,16 @@ class MyApp extends ConsumerStatefulWidget {
 class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   late final AppLinks _appLinks;
   StreamSubscription? _linkSubscription;
+  StreamSubscription<AuthState>? _authSubscription; // ✅ برای مدیریت subscription
   bool _isLoading = false;
   bool _appInitialized = false;
   Timer? _profileCheckTimer;
+  Timer? _sessionCheckTimer; // ✅ برای session monitoring
 
   @override
   void dispose() {
+    _authSubscription?.cancel(); // ✅ Cancel subscription
+    _sessionCheckTimer?.cancel(); // ✅ Cancel timer
     WidgetsBinding.instance.removeObserver(this);
     _linkSubscription?.cancel();
     _profileCheckTimer?.cancel();
@@ -316,69 +431,70 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     // مدیریت دیپ لینک‌های ورودی
     _setupDeepLinkHandling();
 
-    supabase.auth.onAuthStateChange.listen((data) async {
+    // ✅ مدیریت صحیح Auth State Changes
+    _authSubscription = supabase.auth.onAuthStateChange.listen((data) async {
+      final event = data.event;
+      final session = data.session;
+      print('🔔 Auth event: $event');
+      
       try {
-        if (data.event == AuthChangeEvent.signedIn) {
-          debugPrint('کاربر وارد شد - بررسی تایید دو مرحله‌ای');
-
-          // به‌روزرسانی وضعیت آنلاین کاربر
-          final chatService = ChatService();
-          chatService.updateUserOnlineStatus();
-
-          // پس از ورود، پروفایل و 10 پست آخر کاربر را کش کن تا در آفلاین نمایش داده شود
-          try {
-            final uid = Supabase.instance.client.auth.currentUser?.id;
-            if (uid != null) {
-              unawaited(ProfileCacheService().cacheProfileAndPosts(uid));
+        switch (event) {
+          case AuthChangeEvent.initialSession:
+            // بررسی session اولیه
+            if (session != null) {
+              print('✅ Initial session restored: ${session.user.email}');
+              await _handleUserSignIn(session);
+            } else {
+              print('ℹ️ No initial session - user needs to login');
             }
-          } catch (e) {
-            print('⚠️ Prefetch profile/posts on sign-in failed: $e');
-          }
-        } else if (data.event == AuthChangeEvent.signedOut) {
-          debugPrint('کاربر خارج شد - پاک کردن نشست‌ها');
-        } else if (data.event == AuthChangeEvent.initialSession) {
-          // ✅ اضافه شده: هنگام app restart، session اولیه restore می‌شود
-          debugPrint('🔐 Initial session restoration detected');
-          if (data.session != null) {
-            print('✅ User session restored: ${data.session!.user.email}');
-          } else {
-            print('⚠️ No initial session found (user not logged in)');
-          }
-        } else if (data.event == AuthChangeEvent.userUpdated) {
-          // ✅ اضافه شده: کاربر بروزرسانی شد (می‌تواند session restoration نشانگر باشد)
-          debugPrint('👤 User updated - session may have been restored');
+            break;
+          case AuthChangeEvent.signedIn:
+            print('✅ User signed in: ${session?.user.email}');
+            await _handleUserSignIn(session);
+            break;
+          case AuthChangeEvent.signedOut:
+            print('🚪 User signed out');
+            await _handleUserSignOut();
+            break;
+          case AuthChangeEvent.tokenRefreshed:
+            print('🔄 Token refreshed successfully');
+            // Session به‌روزرسانی شد - نیازی به کار خاصی نیست
+            break;
+          case AuthChangeEvent.userUpdated:
+            print('👤 User profile updated');
+            break;
+          case AuthChangeEvent.passwordRecovery:
+            print('🔑 Password recovery initiated');
+            break;
+          default:
+            print('ℹ️ Auth event: $event');
         }
       } catch (e) {
-        print('⚠️ خطا در مدیریت تغییر وضعیت احراز هویت: $e');
-
-        // اگر خطا مربوط به اتصال به دیتابیس است، کاربر را به صفحه ورود هدایت کن
+        print('❌ Error handling auth state change: $e');
+        
+        // فقط در صورت خطای critical، کاربر رو sign out کنید
         if (e.toString().contains('AuthRetryableFetchException') ||
-            e.toString().contains('hostname resolving error') ||
-            e.toString().contains('failed to connect')) {
-          print('🔄 خطای اتصال به سرور - نیاز به ورود مجدد');
-
-          // پاک کردن نشست فعلی
-          try {
-            await supabase.auth.signOut();
-          } catch (signOutError) {
-            print('⚠️ خطا در خروج کاربر: $signOutError');
-          }
-
-          // نمایش پیام خطا به کاربر
+            e.toString().contains('JwtException') ||
+            e.toString().contains('Invalid Refresh Token')) {
+          print('🔴 Critical auth error - signing out user');
+          
           if (mounted && navigatorKey.currentContext != null) {
             ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
               const SnackBar(
-                content: Text(
-                  'اتصال به سرور قطع شده است. لطفاً دوباره وارد شوید.',
-                ),
+                content: Text('جلسه کاری شما منقضی شده است. لطفاً دوباره وارد شوید.'),
                 backgroundColor: Colors.red,
                 duration: Duration(seconds: 5),
               ),
             );
           }
+          
+          await supabase.auth.signOut();
         }
       }
     });
+
+    // ✅ شروع session monitoring
+    _startSessionMonitoring();
   }
 
   @override
@@ -390,6 +506,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       _appInitialized = true;
 
       // مدیریت FCM توکن - بعد از Firebase initialization
+      // تنظیم listener برای token refresh
       _setupFCMToken();
 
       // پردازش توکن‌های در انتظار بعد از ایجاد context
@@ -473,47 +590,13 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   }
 
   /// راه‌اندازی مدیریت توکن FCM
+  /// این متد فقط listener برای token refresh تنظیم می‌کنه
+  /// FCM token در _handleUserSignIn -> _setupFCMTokenForUser مدیریت میشه
   void _setupFCMToken() {
-    supabase.auth.onAuthStateChange.listen((event) async {
-      if (event.event == AuthChangeEvent.signedIn) {
-        try {
-          // بررسی اینکه Firebase initialize شده یا نه
-          if (Firebase.apps.isEmpty) {
-            print('⚠️ Firebase not initialized, skipping FCM setup');
-            return;
-          }
-
-          await FirebaseMessaging.instance.requestPermission();
-          await FirebaseMessaging.instance.getAPNSToken();
-          final fcmToken = await FirebaseMessaging.instance.getToken();
-
-          if (fcmToken != null) {
-            await _setFcmToken(fcmToken);
-            // Avoid logging full FCM token
-            final redacted = fcmToken.length > 8
-                ? '${fcmToken.substring(0, 4)}...${fcmToken.substring(fcmToken.length - 4)}'
-                : '***';
-            print("FCM Token updated: $redacted");
-
-            // راه‌اندازی PushNotificationService بعد از لاگین
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) {
-                final pushNotificationService = ref.read(
-                  pushNotificationServiceProvider,
-                );
-                pushNotificationService.init(context);
-              }
-            });
-          }
-        } catch (e) {
-          print('❌ خطا در راه‌اندازی FCM: $e');
-        }
-      }
-    });
-
     // فقط اگر Firebase initialize شده باشه
     if (Firebase.apps.isNotEmpty) {
       FirebaseMessaging.instance.onTokenRefresh.listen((fcmToken) async {
+        print('🔄 FCM Token refreshed, updating in database...');
         await _setFcmToken(fcmToken);
       });
     }
@@ -521,15 +604,20 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
   /// ذخیره توکن FCM در پروفایل کاربر
   Future<void> _setFcmToken(String fcmToken) async {
-    final user = supabase.auth.currentUser;
-    final userId = user?.id;
+    try {
+      final user = supabase.auth.currentUser;
+      final userId = user?.id;
 
-    if (userId != null) {
-      final username = user?.userMetadata?['username'] ??
-          user?.email?.split('@')[0] ??
+      if (userId == null || user == null) {
+        print('⚠️ کاربر لاگین نشده، FCM Token ذخیره نشد');
+        return;
+      }
+
+      final username = user.userMetadata?['username'] ??
+          user.email?.split('@')[0] ??
           'user_$userId';
 
-      final fullName = user?.userMetadata?['full_name'] ?? username;
+      final fullName = user.userMetadata?['full_name'] ?? username;
 
       await supabase.from('profiles').upsert({
         'id': userId,
@@ -537,7 +625,137 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         'username': username,
         'full_name': fullName,
       });
+      
+      print('✅ FCM Token با موفقیت در سوپابیس ذخیره شد برای کاربر: $userId');
+    } catch (e) {
+      print('❌ خطا در ذخیره FCM Token: $e');
+      print('Stack trace: ${StackTrace.current}');
     }
+  }
+
+  // ✅ توابع کمکی برای مدیریت sign in/out
+  Future<void> _handleUserSignIn(Session? session) async {
+    if (session == null) return;
+    debugPrint('🔐 Processing user sign-in');
+    
+    // به‌روزرسانی وضعیت آنلاین کاربر
+    final chatService = ChatService();
+    chatService.updateUserOnlineStatus();
+    
+    // کش کردن پروفایل و پست‌ها
+    try {
+      final uid = session.user.id;
+      unawaited(ProfileCacheService().cacheProfileAndPosts(uid));
+    } catch (e) {
+      print('⚠️ Prefetch profile/posts on sign-in failed: $e');
+    }
+    
+    // تنظیم FCM Token
+    await _setupFCMTokenForUser();
+  }
+
+  Future<void> _handleUserSignOut() async {
+    debugPrint('🚪 Processing user sign-out');
+    
+    // پاک کردن cache‌ها
+    try {
+      // ProfileCacheService به صورت خودکار cache را مدیریت می‌کند
+      // در صورت نیاز می‌توانید متدهای خاصی را فراخوانی کنید
+      // سایر cache‌ها...
+    } catch (e) {
+      print('⚠️ Error clearing caches: $e');
+    }
+    
+    // هدایت به صفحه ورود
+    if (mounted && navigatorKey.currentContext != null) {
+      Navigator.of(navigatorKey.currentContext!).pushNamedAndRemoveUntil(
+        '/auth',
+        (route) => false,
+      );
+    }
+  }
+
+  Future<void> _setupFCMTokenForUser() async {
+    try {
+      // بررسی اینکه Firebase initialize شده یا نه
+      if (Firebase.apps.isEmpty) {
+        print('⚠️ Firebase not initialized, skipping FCM setup');
+        return;
+      }
+
+      await FirebaseMessaging.instance.requestPermission();
+      await FirebaseMessaging.instance.getAPNSToken();
+      final fcmToken = await FirebaseMessaging.instance.getToken();
+
+      if (fcmToken != null) {
+        await _setFcmToken(fcmToken);
+        // Avoid logging full FCM token
+        final redacted = fcmToken.length > 8
+            ? '${fcmToken.substring(0, 4)}...${fcmToken.substring(fcmToken.length - 4)}'
+            : '***';
+        print("FCM Token updated: $redacted");
+
+        // راه‌اندازی PushNotificationService بعد از لاگین
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            final pushNotificationService = ref.read(
+              pushNotificationServiceProvider,
+            );
+            pushNotificationService.init(context);
+          }
+        });
+      }
+    } catch (e) {
+      print('❌ خطا در راه‌اندازی FCM: $e');
+    }
+  }
+
+  // ✅ Session Monitoring
+  void _startSessionMonitoring() {
+    _sessionCheckTimer = Timer.periodic(
+      const Duration(minutes: 5),
+      (timer) async {
+        try {
+          final session = supabase.auth.currentSession;
+          
+          if (session == null) {
+            print('⚠️ No active session found during check');
+            // هدایت به صفحه ورود فقط اگر کاربر در صفحه اصلی باشد
+            final currentRoute = ModalRoute.of(navigatorKey.currentContext!)?.settings.name;
+            if (currentRoute != '/auth' && currentRoute != '/onboarding') {
+              if (mounted) {
+                Navigator.of(navigatorKey.currentContext!).pushNamedAndRemoveUntil(
+                  '/auth',
+                  (route) => false,
+                );
+              }
+            }
+            return;
+          }
+          
+          // بررسی expire شدن token
+          final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+          final expiresAt = session.expiresAt ?? 0;
+          final timeUntilExpiry = expiresAt - now;
+          print('⏰ Session check - Expires in: ${timeUntilExpiry}s');
+          
+          // اگر کمتر از 10 دقیقه مونده، refresh کن
+          if (timeUntilExpiry < 600) { // 10 minutes
+            print('🔄 Session expiring soon, refreshing...');
+            final response = await supabase.auth.refreshSession();
+            
+            if (response.session != null) {
+              print('✅ Session refreshed successfully');
+            } else {
+              print('❌ Session refresh failed');
+              await supabase.auth.signOut();
+            }
+          }
+        } catch (e) {
+          print('❌ Session check error: $e');
+        }
+      },
+    );
   }
 
   @override
@@ -599,23 +817,58 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                 },
                 '/feed': (context) => const PublicPostsScreen(),
                 '/chat': (context) {
-                  final conversationId =
-                      ModalRoute.of(context)?.settings.arguments as String?;
-                  if (conversationId != null) {
+                  print('🔍 ChatScreen route called');
+                  final args = ModalRoute.of(context)?.settings.arguments;
+                  print('   Args type: ${args.runtimeType}');
+                  print('   Args: $args');
+                  
+                  // پشتیبانی از هر دو حالت: String مستقیم یا Map
+                  String? conversationId;
+                  String? otherUserId;
+                  String? username;
+                  String? avatarUrl;
+                  
+                  if (args is String) {
+                    conversationId = args;
+                    print('   Using String argument: $conversationId');
+                  } else if (args is Map<String, dynamic>) {
+                    conversationId = args['conversationId'] as String?;
+                    otherUserId = args['otherUserId'] as String?;
+                    username = args['username'] as String?;
+                    avatarUrl = args['avatarUrl'] as String?;
+                    print('   Using Map argument: conversationId=$conversationId, otherUserId=$otherUserId');
+                  }
+                  
+                  if (conversationId != null && conversationId.isNotEmpty) {
                     final conversation = UnifiedConversationCacheService()
                         .getConversationSync(conversationId);
-                    final otherUserName =
-                        conversation?.otherUserName ?? 'در حال بارگذاری...';
-                    final otherUserId = conversation?.otherUserId ?? '';
-                    final otherUserAvatar = conversation?.otherUserAvatar;
+                    final otherUserName = username ?? 
+                        conversation?.otherUserName ?? 
+                        'در حال بارگذاری...';
+                    final finalOtherUserId = otherUserId ?? 
+                        conversation?.otherUserId ?? '';
+                    final otherUserAvatar = avatarUrl ?? 
+                        conversation?.otherUserAvatar;
+                    
+                    print('✅ Opening ChatScreen:');
+                    print('   conversationId: $conversationId');
+                    print('   otherUserId: $finalOtherUserId');
+                    print('   otherUserName: $otherUserName');
+                    
                     return ChatScreen(
                       conversationId: conversationId,
                       otherUserName: otherUserName,
-                      otherUserId: otherUserId,
+                      otherUserId: finalOtherUserId,
                       otherUserAvatar: otherUserAvatar,
                     );
                   }
-                  return Scaffold(body: Center(child: Text('مکالمه یافت نشد')));
+                  
+                  print('❌ ConversationId is null or empty');
+                  return Scaffold(
+                    body: Center(
+                      child: Text('مکالمه یافت نشد'),
+                    ),
+                  );
                 },
                 '/verification-store': (context) {
                   return VerificationBadgeStore();

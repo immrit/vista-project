@@ -14,6 +14,7 @@ import 'subpages/ChatSettingsGroupPage.dart';
 import 'subpages/AboutSettingsPage.dart';
 import 'subpages/ThemeSettingsPage.dart';
 import 'subpages/PrivacySettingsPage.dart';
+import 'subpages/AdvancedSettingsPage.dart';
 
 class Settings extends ConsumerWidget {
   const Settings({super.key});
@@ -125,6 +126,21 @@ class Settings extends ConsumerWidget {
                             context,
                             MaterialPageRoute(
                               builder: (context) => const ThemeSettingsPage(),
+                            ),
+                          );
+                        },
+                      ),
+                      _buildDivider(),
+                      SettingsItem(
+                        icon: Icons.tune_rounded,
+                        iconColor: Colors.indigo,
+                        title: 'تنظیمات پیشرفته',
+                        subtitle: 'عملکرد، ذخیره‌سازی، دسترسی‌پذیری',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const AdvancedSettingsPage(),
                             ),
                           );
                         },

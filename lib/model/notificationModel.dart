@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
@@ -11,16 +12,21 @@ class NotificationModel extends Equatable {
   final DateTime createdAt;
   final String type;
   final String username;
+  final String fullName; // ✅ اضافه شد
   final bool userIsVerified;
-  final String avatarUrl;
-  final String PostId;
+  final String? avatarUrl; // ✅ nullable شد
+  final String? postId; // ✅ camelCase و nullable
+  final String? commentId;
+  final String? parentCommentId; // ✅ اضافه شد
   final bool isRead;
   final VerificationType verificationType;
   // اضافه کردن فیلدهای جدید برای FCM
   final String? openScreen;
   final String? conversationId;
-  final String? commentId;
   final String? followerId;
+  
+  // Getter برای backward compatibility
+  String get PostId => postId ?? '';
 
   const NotificationModel({
     required this.id,
@@ -30,14 +36,16 @@ class NotificationModel extends Equatable {
     required this.createdAt,
     required this.type,
     required this.username,
+    required this.fullName,
     required this.userIsVerified,
-    required this.avatarUrl,
-    required this.PostId,
+    this.avatarUrl,
+    this.postId,
+    this.commentId,
+    this.parentCommentId,
     required this.isRead,
     required this.verificationType,
     this.openScreen,
     this.conversationId,
-    this.commentId,
     this.followerId,
   });
 
@@ -50,9 +58,12 @@ class NotificationModel extends Equatable {
       createdAt: DateTime.now(),
       type: '',
       username: '',
+      fullName: '',
       userIsVerified: false,
-      avatarUrl: '',
-      PostId: '',
+      avatarUrl: null,
+      postId: null,
+      commentId: null,
+      parentCommentId: null,
       isRead: false,
       verificationType: VerificationType.none,
     );
@@ -67,19 +78,86 @@ class NotificationModel extends Equatable {
     final data = message.data;
     final notification = message.notification;
 
-    // استخراج اطلاعات از payload
-    final type = data['type'] ?? '';
-    final username = data['username'] ?? data['sender_name'] ?? 'کاربر';
-    final avatarUrl = data['avatar_url'] ?? '';
-    final content =
-        data['message'] ?? data['content'] ?? notification?.body ?? '';
-    final postId = data['post_id'] ?? '';
-    final conversationId = data['conversation_id'] ?? '';
-    final commentId = data['comment_id'] ?? '';
-    final followerId = data['follower_id'] ?? '';
-    final openScreen = data['open_screen'] ?? '';
+    // استخراج نوع اعلان
+    String type = '';
+    if (data.containsKey('type')) {
+      type = data['type'] as String;
+    } else {
+      // تبدیل نوع‌های قدیمی به جدید
+      final oldType = data['notification_type'] as String?;
+      switch (oldType) {
+        case 'post_like':
+          type = 'like';
+          break;
+        case 'post_comment':
+          type = 'comment';
+          break;
+        case 'follow':
+          type = 'follow';
+          break;
+        case 'new_message':
+          type = 'message';
+          break;
+        case 'message_reaction':
+          type = 'reaction';
+          break;
+        default:
+          type = oldType ?? 'unknown';
+      }
+    }
 
-    // تعیین verification type بر اساس badges
+    // استخراج اطلاعات فرستنده
+    final username = data['actor_name'] as String? ?? 
+                     data['username'] as String? ?? 
+                     data['sender_name'] as String? ?? 
+                     'کاربر';
+    
+    final fullName = data['full_name'] as String? ?? username;
+    final avatarUrl = data['avatar_url'] as String?;
+
+    // استخراج ID های مرتبط
+    final postId = data['post_id'] as String?;
+    final commentId = data['comment_id'] as String?;
+    final senderId = data['sender_id'] as String? ?? data['actor_id'] as String? ?? '';
+
+    // محتوای نوتیفیکیشن و استخراج conversation_id از nested payload
+    String content = '';
+    String? conversationId;
+    String? messageId;
+    
+    if (data.containsKey('payload')) {
+      try {
+        final payload = data['payload'];
+        if (payload is String) {
+          final payloadMap = jsonDecode(payload) as Map<String, dynamic>;
+          content = payloadMap['content_preview'] as String? ?? '';
+          conversationId = payloadMap['conversation_id'] as String?;
+          messageId = payloadMap['message_id'] as String?;
+          print('✅ Nested payload parsed:');
+          print('   conversation_id: $conversationId');
+          print('   message_id: $messageId');
+          print('   content_preview: $content');
+        } else if (payload is Map) {
+          content = payload['content_preview'] as String? ?? '';
+          conversationId = payload['conversation_id'] as String?;
+          messageId = payload['message_id'] as String?;
+        }
+      } catch (e) {
+        print('⚠️ خطا در parse کردن nested payload: $e');
+      }
+    }
+    
+    if (content.isEmpty) {
+      content = data['content'] as String? ?? 
+                data['message'] as String? ?? 
+                notification?.body ?? 
+                '';
+    }
+    
+    // اگر conversation_id از nested payload نیومد، از data مستقیم بگیر
+    conversationId ??= data['conversation_id'] as String?;
+
+    // تعیین verification type
     VerificationType verificationType = VerificationType.none;
     if (data['has_blue_badge'] == 'true') {
       verificationType = VerificationType.blueTick;
@@ -90,22 +168,26 @@ class NotificationModel extends Equatable {
     }
 
     return NotificationModel(
-      id: data['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
-      senderId: data['sender_id'] ?? '',
-      recipientId: data['recipient_id'] ?? '',
+      id: messageId ?? data['notification_id'] ?? data['message_id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      senderId: senderId,
+      recipientId: data['receiver_id'] as String? ?? data['recipient_id'] as String? ?? '',
       content: content,
-      createdAt: DateTime.now(),
+      createdAt: data['timestamp'] != null 
+          ? DateTime.parse(data['timestamp']) 
+          : DateTime.now(),
       type: type,
       username: username,
-      userIsVerified: false, // از FCM نمی‌توانیم این مقدار را دریافت کنیم
-      avatarUrl: avatarUrl,
-      PostId: postId,
+      fullName: fullName,
+      userIsVerified: data['is_verified'] == 'true' || data['is_verified'] == true,
+      avatarUrl: avatarUrl ?? data['actor_avatar'] as String?,
+      postId: postId,
+      commentId: commentId,
+      parentCommentId: data['parent_comment_id'] as String?,
       isRead: false,
       verificationType: verificationType,
-      openScreen: openScreen,
-      conversationId: conversationId,
-      commentId: commentId,
-      followerId: followerId,
+      openScreen: data['open_screen'] as String?,
+      conversationId: conversationId, // ✅ استفاده از extracted value
+      followerId: data['follower_id'] as String?,
     );
   }
 
@@ -117,109 +199,136 @@ class NotificationModel extends Equatable {
       'content': content,
       'created_at': createdAt.toIso8601String(),
       'type': type,
-      'username': username,
-      'user_is_verified': userIsVerified,
-      'avatar_url': avatarUrl,
-      'post_id': PostId,
-      'is_read': isRead,
-      'verification_type': verificationType.toString().split('.').last,
-      'open_screen': openScreen,
-      'conversation_id': conversationId,
+      'post_id': postId,
       'comment_id': commentId,
-      'follower_id': followerId,
+      'parent_comment_id': parentCommentId,
+      'is_read': isRead,
+      'sender': {
+        'username': username,
+        'full_name': fullName,
+        'avatar_url': avatarUrl,
+        'is_verified': userIsVerified,
+        'verification_type': verificationType == VerificationType.blueTick
+            ? 'blue'
+            : verificationType == VerificationType.goldTick
+                ? 'gold'
+                : verificationType == VerificationType.blackTick
+                    ? 'black'
+                    : null,
+      },
     };
   }
 
+  /// تبدیل به JSON برای payload
+  Map<String, dynamic> toPayloadJson() {
+    return {
+      'id': id,
+      'notification_id': id, // برای backward compatibility
+      'type': type,
+      'sender_id': senderId,
+      'recipient_id': recipientId,
+      'post_id': postId,
+      'comment_id': commentId,
+      'parent_comment_id': parentCommentId,
+      'conversation_id': conversationId,
+      'follower_id': followerId,
+      'content': content,
+      'username': username,
+      'full_name': fullName,
+      'avatar_url': avatarUrl,
+      'is_verified': userIsVerified.toString(),
+      'verification_type': verificationType == VerificationType.blueTick
+          ? 'blue'
+          : verificationType == VerificationType.goldTick
+              ? 'gold'
+              : verificationType == VerificationType.blackTick
+                  ? 'black'
+                  : 'none',
+      'created_at': createdAt.toIso8601String(),
+      'is_read': isRead,
+      'open_screen': openScreen,
+    };
+  }
+
+  /// ساخت از JSON payload
+  factory NotificationModel.fromPayloadJson(Map<String, dynamic> json) {
+    print('🔨 NotificationModel.fromPayloadJson:');
+    json.forEach((key, value) {
+      print('   $key: $value (${value.runtimeType})');
+    });
+
+    return NotificationModel(
+      id: json['id'] ?? json['notification_id'] ?? '',
+      senderId: json['sender_id'] ?? '',
+      recipientId: json['recipient_id'] ?? '',
+      content: json['content'] ?? '',
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : DateTime.now(),
+      type: json['type'] ?? '',
+      username: json['username'] ?? '',
+      fullName: json['full_name'] ?? '',
+      userIsVerified: json['is_verified'] == 'true' || json['is_verified'] == true,
+      avatarUrl: json['avatar_url'],
+      postId: json['post_id'],
+      commentId: json['comment_id'],
+      parentCommentId: json['parent_comment_id'],
+      isRead: json['is_read'] ?? false,
+      verificationType: json['verification_type'] == 'blue'
+          ? VerificationType.blueTick
+          : json['verification_type'] == 'gold'
+              ? VerificationType.goldTick
+              : json['verification_type'] == 'black'
+                  ? VerificationType.blackTick
+                  : VerificationType.none,
+      openScreen: json['open_screen'],
+      conversationId: json['conversation_id'],
+      followerId: json['follower_id'],
+    );
+  }
+
   factory NotificationModel.fromMap(Map<String, dynamic> map) {
-    VerificationType parseVerificationType(dynamic value) {
-      if (value == null) return VerificationType.none;
-      switch (value.toString()) {
-        case 'blueTick':
-          return VerificationType.blueTick;
-        case 'goldTick':
-          return VerificationType.goldTick;
-        case 'blackTick':
-          return VerificationType.blackTick;
-        default:
-          return VerificationType.none;
+    // استخراج اطلاعات sender
+    final sender = map['sender'] as Map<String, dynamic>?;
+    
+    // تبدیل verification type
+    VerificationType verificationType = VerificationType.none;
+    if (sender != null) {
+      final verificationTypeStr = sender['verification_type'] as String?;
+      switch (verificationTypeStr) {
+        case 'blue':
+          verificationType = VerificationType.blueTick;
+          break;
+        case 'gold':
+          verificationType = VerificationType.goldTick;
+          break;
+        case 'black':
+          verificationType = VerificationType.blackTick;
+          break;
       }
-    }
-
-    String getSenderId() {
-      if (map.containsKey('sender_id')) return map['sender_id'];
-      return '';
-    }
-
-    String getUsername() {
-      if (map.containsKey('username')) {
-        final username = map['username'] as String?;
-        if (username != null && username.isNotEmpty) return username;
-        // Fallback to full_name if username is empty
-        final fullName = map['full_name'] as String?;
-        if (fullName != null && fullName.isNotEmpty) return fullName;
-        return '';
-      }
-      if (map.containsKey('sender') && map['sender'] != null) {
-        final senderMap = map['sender'] as Map<String, dynamic>;
-        final username = senderMap['username'] as String?;
-        if (username != null && username.isNotEmpty) return username;
-        // Fallback to full_name if username is empty
-        final fullName = senderMap['full_name'] as String?;
-        if (fullName != null && fullName.isNotEmpty) return fullName;
-        return '';
-      }
-      return '';
-    }
-
-    String getAvatarUrl() {
-      if (map.containsKey('avatar_url')) return map['avatar_url'] ?? '';
-      if (map.containsKey('sender') && map['sender'] != null) {
-        final senderMap = map['sender'] as Map<String, dynamic>;
-        return senderMap['avatar_url'] ?? '';
-      }
-      return '';
-    }
-
-    bool getUserIsVerified() {
-      if (map.containsKey('user_is_verified')) {
-        return map['user_is_verified'] ?? false;
-      }
-      if (map.containsKey('sender') && map['sender'] != null) {
-        final senderMap = map['sender'] as Map<String, dynamic>;
-        return senderMap['is_verified'] ?? false;
-      }
-      return false;
-    }
-
-    VerificationType getVerificationType() {
-      if (map.containsKey('verification_type')) {
-        return parseVerificationType(map['verification_type']);
-      }
-      if (map.containsKey('sender') && map['sender'] != null) {
-        final senderMap = map['sender'] as Map<String, dynamic>;
-        return parseVerificationType(senderMap['verification_type']);
-      }
-      return VerificationType.none;
     }
 
     return NotificationModel(
-      id: map['id'] ?? '',
-      senderId: getSenderId(),
-      recipientId: map['recipient_id'] ?? '',
-      content: map['content'] ?? '',
-      createdAt:
-          DateTime.parse(map['created_at'] ?? DateTime.now().toIso8601String()),
-      type: map['type'] ?? '',
-      username: getUsername(),
-      userIsVerified: getUserIsVerified(),
-      avatarUrl: getAvatarUrl(),
-      PostId: map['post_id'] ?? '',
-      isRead: map['is_read'] ?? false,
-      verificationType: getVerificationType(),
-      openScreen: map['open_screen'],
-      conversationId: map['conversation_id'],
-      commentId: map['comment_id'],
-      followerId: map['follower_id'],
+      id: map['id'] as String? ?? '',
+      senderId: map['sender_id'] as String? ?? '',
+      recipientId: map['recipient_id'] as String? ?? '',
+      content: map['content'] as String? ?? '',
+      createdAt: map['created_at'] != null
+          ? DateTime.parse(map['created_at'] as String)
+          : DateTime.now(),
+      type: map['type'] as String? ?? '',
+      username: sender?['username'] as String? ?? '',
+      fullName: sender?['full_name'] as String? ?? '',
+      userIsVerified: sender?['is_verified'] as bool? ?? false,
+      avatarUrl: sender?['avatar_url'] as String?,
+      postId: map['post_id'] as String?,
+      commentId: map['comment_id'] as String?,
+      parentCommentId: map['parent_comment_id'] as String?,
+      isRead: map['is_read'] as bool? ?? false,
+      verificationType: verificationType,
+      openScreen: map['open_screen'] as String?,
+      conversationId: map['conversation_id'] as String?,
+      followerId: map['follower_id'] as String?,
     );
   }
 
@@ -232,14 +341,16 @@ class NotificationModel extends Equatable {
     DateTime? createdAt,
     String? type,
     String? username,
+    String? fullName,
     bool? userIsVerified,
     String? avatarUrl,
-    String? PostId,
+    String? postId,
+    String? commentId,
+    String? parentCommentId,
     bool? isRead,
     VerificationType? verificationType,
     String? openScreen,
     String? conversationId,
-    String? commentId,
     String? followerId,
   }) {
     return NotificationModel(
@@ -250,14 +361,16 @@ class NotificationModel extends Equatable {
       createdAt: createdAt ?? this.createdAt,
       type: type ?? this.type,
       username: username ?? this.username,
+      fullName: fullName ?? this.fullName,
       userIsVerified: userIsVerified ?? this.userIsVerified,
       avatarUrl: avatarUrl ?? this.avatarUrl,
-      PostId: PostId ?? this.PostId,
+      postId: postId ?? this.postId,
+      commentId: commentId ?? this.commentId,
+      parentCommentId: parentCommentId ?? this.parentCommentId,
       isRead: isRead ?? this.isRead,
       verificationType: verificationType ?? this.verificationType,
       openScreen: openScreen ?? this.openScreen,
       conversationId: conversationId ?? this.conversationId,
-      commentId: commentId ?? this.commentId,
       followerId: followerId ?? this.followerId,
     );
   }
@@ -271,14 +384,16 @@ class NotificationModel extends Equatable {
         createdAt,
         type,
         username,
+        fullName,
         userIsVerified,
         avatarUrl,
-        PostId,
+        postId,
+        commentId,
+        parentCommentId,
         isRead,
         verificationType,
         openScreen,
         conversationId,
-        commentId,
         followerId,
       ];
 }

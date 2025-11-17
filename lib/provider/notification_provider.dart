@@ -1,3 +1,4 @@
+import 'dart:convert';
 import '../security/logging_utility.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -42,25 +43,28 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
   int _page = 0;
   bool _isFetching = false;
   bool _hasMore = true;
+  bool _isDisposed = false; // ✅ Flag برای چک کردن dispose
 
   bool get hasMore => _hasMore;
   bool get isFetching => _isFetching;
 
   /// بارگیری (پایه، رفرش یا اولین بار)
   Future<void> fetchNotifications({bool refresh = false}) async {
-    if (_isFetching) return;
+    if (_isFetching || _isDisposed) return; // ✅ چک کردن dispose
     _isFetching = true;
 
     final userId = _userId ?? supabase.auth.currentUser?.id;
     if (userId == null) {
       logInfo('⚠️ کاربر لاگین نشده، اعلان‌ها بارگیری نمی‌شوند');
-      state = [];
+      if (!_isDisposed) {
+        state = [];
+      }
       _isFetching = false;
       _hasMore = false;
       return;
     }
 
-    if (refresh) {
+    if (refresh && !_isDisposed) {
       _page = 0;
       _hasMore = true;
       state = [];
@@ -80,6 +84,12 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
           .eq('recipient_id', userId)
           .order('created_at', ascending: false)
           .range(from, to);
+
+      // ✅ چک کردن dispose بعد از async operation
+      if (_isDisposed) {
+        logInfo('⚠️ Notifier disposed, skipping state update');
+        return;
+      }
 
       final notifications = (response as List)
           .map((item) => NotificationModel.fromMap(item))
@@ -109,7 +119,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
       }
     } catch (e) {
       print("❌ خطا در واکشی اعلان‌ها: $e");
-      if (refresh) {
+      if (refresh && !_isDisposed) {
         state = [];
         logInfo('🔄 لیست اعلان‌ها پاک شد به دلیل خطا');
       }
@@ -142,6 +152,12 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
             value: userId,
           ),
           callback: (payload) async {
+            // ✅ چک کردن dispose قبل از پردازش
+            if (_isDisposed) {
+              logInfo('⚠️ Notifier disposed, ignoring realtime notification');
+              return;
+            }
+
             try {
               final newData = payload.newRecord;
               logInfo('🔔 اعلان جدید دریافت شد: ${newData['type']}');
@@ -153,6 +169,12 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
                       'username, full_name, avatar_url, is_verified, verification_type')
                   .eq('id', newData['sender_id'])
                   .single();
+
+              // ✅ چک کردن dispose بعد از async operation
+              if (_isDisposed) {
+                logInfo('⚠️ Notifier disposed during realtime processing');
+                return;
+              }
 
               // ترکیب اطلاعات اعلان با پروفایل
               final completeData = {...newData, 'sender': senderData};
@@ -168,6 +190,10 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
               }
             } catch (e) {
               logInfo('❌ خطا در پردازش اعلان ریل تایم: $e');
+
+              // ✅ چک کردن dispose قبل از fallback
+              if (_isDisposed) return;
+
               // در صورت خطا، اعلان ساده را اضافه کن
               try {
                 final notif = NotificationModel.fromMap(payload.newRecord);
@@ -226,12 +252,15 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
   Future<void> _showLocalNotification(NotificationModel notif) async {
     String? title, body;
     final senderUsername = notif.username.isNotEmpty ? notif.username : 'کاربر';
+
     switch (notif.type) {
       case 'like':
+      case 'post_like':
         title = 'لایک جدید';
         body = '$senderUsername پست شما را لایک کرد';
         break;
       case 'comment':
+      case 'post_comment':
         title = 'نظر جدید';
         body = '$senderUsername: ${_filterLinksFromText(notif.content)}';
         break;
@@ -251,10 +280,41 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
         title = 'درخواست پذیرفته شد';
         body = '$senderUsername درخواست دنبال کردن شما را پذیرفت';
         break;
+      case 'message':
+      case 'new_message':
+        title = 'پیام جدید';
+        body = '$senderUsername: ${_filterLinksFromText(notif.content)}';
+        break;
+      case 'reaction':
+      case 'message_reaction':
+        title = 'واکنش جدید';
+        body = '$senderUsername به پیام شما واکنش نشان داد';
+        break;
+      case 'mention':
+        title = 'منشن جدید';
+        body = '$senderUsername شما را منشن کرد';
+        break;
       default:
         title = 'اعلان';
         body = notif.content;
     }
+
+    // ✅ ساخت payload کامل
+    final payloadMap = notif.toPayloadJson();
+    final payloadJson = jsonEncode(payloadMap);
+
+    // 🔍 DEBUG: چاپ اطلاعات کامل
+    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    print('📢 نمایش Local Notification:');
+    print('   Type: ${notif.type}');
+    print('   ID: ${notif.id}');
+    print('   Sender: ${notif.senderId}');
+    print('   PostID: ${notif.postId}');
+    print('   CommentID: ${notif.commentId}');
+    print('   ConversationID: ${notif.conversationId}');
+    print('   Payload JSON: $payloadJson');
+    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
     await flutterLocalNotificationsPlugin.show(
       DateTime.now().millisecondsSinceEpoch % 100000,
       title,
@@ -267,33 +327,48 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
           importance: Importance.high,
           priority: Priority.high,
           icon: '@drawable/ic_notification',
+          enableVibration: true,
+          playSound: true,
+          styleInformation: BigTextStyleInformation(body),
+        ),
+        iOS: const DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
         ),
       ),
-      payload: notif.id.toString(),
+      payload: payloadJson, // ✅ JSON کامل
     );
   }
 
   @override
   void dispose() {
+    _isDisposed = true; // ✅ علامت‌گذاری dispose
     _unsubscribe();
     super.dispose();
   }
 
   Future<void> deleteAllNotifications() async {
+    if (_isDisposed) return; // ✅ چک کردن dispose
     final userId = _userId ?? supabase.auth.currentUser?.id;
     if (userId == null) {
-      state = [];
+      if (!_isDisposed) {
+        state = [];
+      }
       return;
     }
     try {
       await supabase.from('notifications').delete().eq('recipient_id', userId);
-      state = [];
+      if (!_isDisposed) {
+        state = [];
+      }
     } catch (e) {
       print("خطا در حذف اعلان‌ها: $e");
     }
   }
 
   Future<void> markAllAsRead() async {
+    if (_isDisposed) return; // ✅ چک کردن dispose
     final userId = _userId ?? supabase.auth.currentUser?.id;
     if (userId == null) return;
 
@@ -304,19 +379,22 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
           .eq('recipient_id', userId)
           .eq('is_read', false);
 
-      state = [
-        for (final notification in state)
-          if (!notification.isRead)
-            notification.copyWith(isRead: true)
-          else
-            notification
-      ];
+      if (!_isDisposed) {
+        state = [
+          for (final notification in state)
+            if (!notification.isRead)
+              notification.copyWith(isRead: true)
+            else
+              notification
+        ];
+      }
     } catch (e) {
       logInfo('خطا در علامت‌گذاری اعلان‌ها به عنوان خوانده شده: $e');
     }
   }
 
   Future<void> markAsRead(String notificationId) async {
+    if (_isDisposed) return; // ✅ چک کردن dispose
     final userId = _userId ?? supabase.auth.currentUser?.id;
     if (userId == null) return;
 
@@ -327,13 +405,15 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
           .eq('id', notificationId)
           .eq('recipient_id', userId);
 
-      state = [
-        for (final notification in state)
-          if (notification.id == notificationId)
-            notification.copyWith(isRead: true)
-          else
-            notification
-      ];
+      if (!_isDisposed) {
+        state = [
+          for (final notification in state)
+            if (notification.id == notificationId)
+              notification.copyWith(isRead: true)
+            else
+              notification
+        ];
+      }
     } catch (e) {
       logInfo('خطا در خوانده‌شدن اعلان: $e');
     }
@@ -346,9 +426,12 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
 
   /// حذف یک اعلان به صورت تکی (از دیتابیس و استیت)
   Future<void> removeNotification(String notificationId) async {
+    if (_isDisposed) return; // ✅ چک کردن dispose
     try {
       await supabase.from('notifications').delete().eq('id', notificationId);
-      state = state.where((n) => n.id != notificationId).toList();
+      if (!_isDisposed) {
+        state = state.where((n) => n.id != notificationId).toList();
+      }
     } catch (e) {
       logInfo('خطا در حذف اعلان: $e');
     }
@@ -356,6 +439,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
 
   /// حذف اعلان follow_request با شناسه
   Future<void> removeFollowRequestById(String notificationId) async {
+    if (_isDisposed) return; // ✅ چک کردن dispose
     try {
       final notif = state.firstWhere(
         (n) => n.id == notificationId && n.type == 'follow_request',
@@ -363,7 +447,9 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
       );
       if (notif.id.isEmpty) return;
       await supabase.from('notifications').delete().eq('id', notificationId);
-      state = state.where((n) => n.id != notificationId).toList();
+      if (!_isDisposed) {
+        state = state.where((n) => n.id != notificationId).toList();
+      }
     } catch (e) {
       logInfo('خطا در حذف اعلان درخواست دنبال کردن: $e');
     }
@@ -371,6 +457,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
 
   /// اضافه کردن اعلان جدید از FCM Push Notification
   void addNotificationFromPush(RemoteMessage message) {
+    if (_isDisposed) return; // ✅ چک کردن dispose
     try {
       final notification = NotificationModel.fromFCM(message);
 
@@ -389,6 +476,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
 
   /// بررسی وضعیت اتصال و تلاش مجدد در صورت نیاز
   Future<void> checkConnectionAndRetry() async {
+    if (_isDisposed) return; // ✅ چک کردن dispose
     try {
       final userId = _userId ?? supabase.auth.currentUser?.id;
       if (userId == null) return;
@@ -399,6 +487,9 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
           .select('id')
           .eq('recipient_id', userId)
           .limit(1);
+
+      // ✅ چک کردن dispose بعد از async operation
+      if (_isDisposed) return;
 
       // اگر اتصال برقرار است و لیست خالی است، اعلان‌ها را بارگیری کن
       if (state.isEmpty) {

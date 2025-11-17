@@ -53,16 +53,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     _checkProfileCompletion();
     // ساخت یکبار صفحات در initState
+    final currentUser = supabase.auth.currentUser;
+    final userId = currentUser?.id ?? '';
+    final username = currentUser?.userMetadata?['username'] ??
+        currentUser?.userMetadata?['full_name'] ??
+        'کاربر';
+
     _tabs = [
       const PublicPostsScreen(), // صفحه پست‌های عمومی
       const SearchPage(), // صفحه جستجو
       const AddPublicPostScreen(), // صفحه افزودن پست
       const ChatConversationsScreen(), // صفحه چت
       ProfileScreen(
-        userId: supabase.auth.currentUser!.id,
-        username: supabase.auth.currentUser!.userMetadata?['username'] ??
-            supabase.auth.currentUser!.userMetadata?['full_name'] ??
-            'کاربر',
+        userId: userId,
+        username: username,
       ), // صفحه پروفایل
     ];
   }

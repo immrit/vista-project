@@ -19,6 +19,7 @@ import 'ChatScreen.dart';
 import '../../../DB/database_file_utils.dart';
 import '../../../DB/unified_conversation_cache_service.dart';
 import '../../../services/user_profile_service.dart';
+import '../../../services/conversation_prewarmer.dart';
 import '/main.dart'; // برای دسترسی به supabase
 
 // مدل یکپارچه برای نمایش چت‌ها و کانال‌ها در یک لیست
@@ -607,6 +608,16 @@ class _ChatConversationsScreenState
         : unifiedItems;
 
     final hasMoreItems = unifiedItems.length > maxDisplayItems;
+
+    final currentUserId = supabase.auth.currentUser?.id;
+    if (currentUserId != null && enrichedConversations.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ConversationPrewarmer().prewarmRecentConversations(
+          enrichedConversations,
+          currentUserId,
+        );
+      });
+    }
 
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: 8),

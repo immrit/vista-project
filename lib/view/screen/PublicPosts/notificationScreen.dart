@@ -276,7 +276,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                         context,
                         MaterialPageRoute(
                           builder: (context) =>
-                              PostDetailsPage(postId: notification.PostId),
+                              PostDetailsPage(postId: notification.postId ?? ''),
                         ));
                   } else if (notification.type == 'follow' ||
                       notification.type == 'follow_request_accepted') {
@@ -293,7 +293,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                       context,
                       senderId: notification.senderId,
                       username: notification.username,
-                      avatarUrl: notification.avatarUrl,
+                      avatarUrl: notification.avatarUrl ?? '',
                       notificationId: notification.id,
                     );
                   }
@@ -320,7 +320,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                             },
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(24),
-                              child: (notification.avatarUrl.isEmpty)
+                              child: (notification.avatarUrl == null || notification.avatarUrl!.isEmpty)
                                   ? Container(
                                       width: 48,
                                       height: 48,
@@ -329,7 +329,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                                           color: Colors.white, size: 32),
                                     )
                                   : CachedNetworkImage(
-                                      imageUrl: notification.avatarUrl,
+                                      imageUrl: notification.avatarUrl!,
                                       width: 48,
                                       height: 48,
                                       fit: BoxFit.cover,

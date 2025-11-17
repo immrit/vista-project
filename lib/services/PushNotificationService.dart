@@ -7,7 +7,9 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../provider/notification_provider.dart';
+import '../main.dart';
 import 'ChatService.dart';
+import 'notification_navigation_service.dart';
 
 /// Provider برای دسترسی به PushNotificationService
 final pushNotificationServiceProvider = Provider<PushNotificationService>(
@@ -90,16 +92,28 @@ class PushNotificationService {
         _addNotificationToProvider(message);
       });
 
-      // وقتی کاربر روی نوتیفیکیشن در بک‌گراند کلیک می‌کنه
-      FirebaseMessaging.onMessageOpenedApp.listen((message) {
-        handleNotificationNavigation(context, message.data);
+      // ✅ Handler برای زمانی که روی اعلان کلیک میشه (app در background)
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        logInfo('📬 FCM notification opened (background)');
+        logInfo('   Data: ${message.data}');
+
+        final context = navigatorKey.currentContext;
+        if (context != null) {
+          NotificationNavigationService.handleFCMPayload(
+            context: context,
+            data: message.data,
+          );
+        }
       });
 
-      // اگر اپ از حالت بسته با نوتیف باز شد
-      final initialMessage = await _firebaseMessaging.getInitialMessage();
-      if (initialMessage != null) {
-        handleNotificationNavigation(context, initialMessage.data);
-      }
+      // ✅ اگر اپ از حالت بسته با نوتیف باز شد - این در main.dart handle میشه
+      // final initialMessage = await _firebaseMessaging.getInitialMessage();
+      // if (initialMessage != null) {
+      //   NotificationNavigationService.handleFCMPayload(
+      //     context: context,
+      //     data: initialMessage.data,
+      //   );
+      // }
     } catch (e) {
       logInfo('❌ خطا در راه‌اندازی PushNotificationService: $e');
     }
@@ -115,21 +129,35 @@ class PushNotificationService {
       }
 
       final token = await _firebaseMessaging.getToken();
-      if (token != null) {
-        final user = _supabase.auth.currentUser;
-        if (user != null) {
-          await _supabase
-              .from("profiles")
-              .update({"fcm_token": token}).eq("id", user.id);
-          logInfo('✅ FCM Token با موفقیت در سوپابیس ذخیره شد');
-        } else {
-          logInfo('⚠️ کاربر لاگین نشده، FCM Token ذخیره نشد');
-        }
-      } else {
+      if (token == null) {
         logInfo('⚠️ FCM Token دریافت نشد');
+        return;
       }
+
+      final user = _supabase.auth.currentUser;
+      if (user == null) {
+        logInfo('⚠️ کاربر لاگین نشده، FCM Token ذخیره نشد');
+        return;
+      }
+
+      final username = user.userMetadata?['username'] ??
+          user.email?.split('@')[0] ??
+          'user_${user.id}';
+
+      final fullName = user.userMetadata?['full_name'] ?? username;
+
+      // استفاده از upsert به جای update برای اطمینان از ذخیره شدن
+      await _supabase.from("profiles").upsert({
+        'id': user.id,
+        'fcm_token': token,
+        'username': username,
+        'full_name': fullName,
+      });
+      
+      logInfo('✅ FCM Token با موفقیت در سوپابیس ذخیره شد برای کاربر: ${user.id}');
     } catch (e) {
       logInfo('❌ خطا در ذخیره FCM Token: $e');
+      logInfo('Stack trace: ${StackTrace.current}');
     }
   }
 
@@ -241,51 +269,18 @@ class PushNotificationService {
   }
 
   /// هدایت کاربر به صفحات مرتبط بر اساس دیتای ارسالی سرور
+  /// این متد برای backward compatibility نگه داشته شده
+  /// اما بهتر است از NotificationNavigationService استفاده شود
+  @Deprecated('Use NotificationNavigationService.handleFCMPayload instead')
   void handleNotificationNavigation(
     BuildContext context,
     Map<String, dynamic> data,
   ) {
-    // لاگ امن: از چاپ کامل دیتای اعلان خودداری کنید
-    try {
-      final keys = data.keys.take(6).join(',');
-      debugPrint("🔀 [Navigation] هدایت بر اساس اعلان؛ کلیدها: $keys");
-    } catch (_) {}
-    final openScreen = data["open_screen"];
-
-    switch (openScreen) {
-      case "chat":
-        final conversationId = data["conversation_id"];
-        if (conversationId != null && conversationId.toString().isNotEmpty) {
-          Navigator.pushNamed(context, "/chat", arguments: conversationId);
-        }
-        break;
-
-      case "post":
-        final postId = data["post_id"];
-        if (postId != null && postId.toString().isNotEmpty) {
-          Navigator.pushNamed(
-            context,
-            "/post-detail",
-            arguments: {'postId': postId},
-          );
-        }
-        break;
-
-      case "profile":
-        final followerId = data["follower_id"];
-        if (followerId != null && followerId.toString().isNotEmpty) {
-          Navigator.pushNamed(
-            context,
-            "/profile",
-            arguments: {'username': '', 'userId': followerId},
-          );
-        }
-        break;
-
-      default:
-        debugPrint("⚠ اعلان با صفحه‌ی مقصد ناشناخته دریافت شد: $openScreen");
-        break;
-    }
+    // استفاده از سرویس جدید
+    NotificationNavigationService.handleFCMPayload(
+      context: context,
+      data: data,
+    );
   }
 
   /// هندل پاسخ سریع به اعلان چت

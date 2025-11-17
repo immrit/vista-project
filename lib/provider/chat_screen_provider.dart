@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/message_model.dart';
 import '../services/ChatService.dart';
@@ -6,6 +7,7 @@ import '../services/message_retry_service.dart';
 import '../services/message_reaction_service.dart';
 import '../DB/unified_message_cache_service.dart';
 import '../services/optimized_message_deletion_service.dart';
+import '../services/background_message_loader.dart';
 import '../main.dart';
 import 'chat_provider.dart';
 
@@ -70,6 +72,7 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
   StreamSubscription? _realtimeSubscription;
   StreamSubscription? _reactionSubscription; // ✅ Subscription برای reactions
   bool _isFetching = false;
+  bool _isInitializing = false; // ✅ Flag برای جلوگیری از بلاک شدن UI
   bool _isKeyboardAnimating = false; // ✅ جلوگیری از عملیات سنگین در حین انیمیشن کیبورد
   DateTime? _lastInvalidateTime; // ✅ Debounce برای invalidation cache
   static const _pageSize = 30;
@@ -82,100 +85,195 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
   // Mapping از localId به serverId برای بهتر deduplication
   final Map<String, String> _localToServerIdMap = {};
 
+  // ✅ Memory cache برای دسترسی فوری
+  static final Map<String, List<MessageModel>> _memoryCache = {};
+  static final Map<String, DateTime> _cacheTimestamps = {};
+  static const Duration _cacheExpiry = Duration(minutes: 5);
+
+  // ✅ Throttling برای جلوگیری از Frame Drop
+  Timer? _uiUpdateThrottle;
+  DateTime? _lastUpdateTime;
+  static const Duration _minUpdateInterval = Duration(milliseconds: 120);
+
   ChatScreenNotifier(this.params, this._ref) : super(const ChatScreenState()) {
     _initialize();
   }
 
   Future<void> _initialize() async {
-    print(
-        '🚀 Starting ChatProvider initialization for conversation: ${params.conversationId}');
+    if (_isInitializing) return;
+    _isInitializing = true;
 
-    state = state.copyWith(isLoading: true);
+    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    print('🚀 OPTIMIZED CHAT INITIALIZATION → ${params.conversationId}');
+    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    final stopwatch = Stopwatch()..start();
 
-    // بررسی وجود کاربر
+    // ✅ مرحله 1: نمایش placeholder فوری (بدون هیچ عملیات سنگین)
+    state = state.copyWith(isLoading: true, messages: []);
+
     final currentUser = supabase.auth.currentUser;
-    if (currentUser == null) {
-      print('❌ User not authenticated');
-      if (mounted) {
-        state = state.copyWith(
-          isLoading: false,
-          error: 'کاربر وارد نشده است',
-        );
-      }
+    if (currentUser == null || params.conversationId.isEmpty) {
+      _handleInitError('کاربر وارد نشده یا شناسه مکالمه نامعتبر است');
+      stopwatch.stop();
       return;
     }
 
     final userId = currentUser.id;
 
-    // بررسی conversationId
-    if (params.conversationId.isEmpty) {
-      print('❌ ConversationId is empty');
-      if (mounted) {
-        state = state.copyWith(
-          isLoading: false,
-          error: 'شناسه مکالمه نامعتبر است',
-        );
-      }
-      return;
-    }
-
-    print('✅ User authenticated and conversationId valid');
-
     try {
-      // 1. Load from cache first for instant UI
-      print('📦 Loading from cache...');
-      final cachedMessages = await _cacheService.getConversationMessages(
-          params.conversationId, userId);
-      print('✅ Loaded ${cachedMessages.length} messages from cache');
-      if (mounted) {
-        state = state.copyWith(messages: cachedMessages, isLoading: false);
-      }
-
-      // 2. Fetch from server to get latest messages
-      print('🌐 Fetching from server...');
-      await fetchLatestMessages();
-
-      // 3. Listen for real-time updates
-      print('📡 Starting real-time updates...');
-      _listenForRealtimeUpdates();
-      
-      // 4. Listen for real-time reaction updates
-      print('📡 Starting real-time reaction updates...');
-      _listenForReactionUpdates();
-    } catch (e) {
-      print('❌ Error during initialization: $e');
-      if (mounted) {
-        state = state.copyWith(
-          isLoading: false,
-          error: 'خطا در بارگذاری پیام‌ها: $e',
+      // ✅ مرحله 2: بارگذاری سریع از memory cache (بدون I/O)
+      final memoryCached = _getFromMemoryCache(params.conversationId);
+      if (memoryCached != null && memoryCached.isNotEmpty) {
+        final cacheAge = DateTime.now().difference(
+          _cacheTimestamps[params.conversationId] ??
+              DateTime.fromMillisecondsSinceEpoch(0),
         );
+
+        if (cacheAge <= _cacheExpiry) {
+          print('⚡ Memory cache hit (${memoryCached.length} messages, age: ${cacheAge.inSeconds}s)');
+          if (mounted) {
+            state = state.copyWith(
+              messages: memoryCached,
+              isLoading: false,
+            );
+          }
+        } else {
+          print('⚠️ Memory cache expired (${cacheAge.inMinutes}m), clearing entry');
+          _memoryCache.remove(params.conversationId);
+          _cacheTimestamps.remove(params.conversationId);
+        }
+      } else {
+        print('ℹ️ Memory cache miss for ${params.conversationId}');
       }
+
+      // ✅ مرحله 3: راه‌اندازی real-time در frame بعدی
+      _setupRealtimeInBackground();
+
+      // ✅ مرحله 4: بارگذاری از disk cache در background (non-blocking)
+      _scheduleDiskCacheLoad(userId);
+
+      // ✅ مرحله 5: fetch از server در background با تأخیر
+      _scheduleServerFetch(userId);
+    } catch (e, stack) {
+      print('❌ Error during initialization: $e');
+      print(stack);
+      _handleInitError('خطا در بارگذاری پیام‌ها: $e');
+    } finally {
+      _isInitializing = false;
+      stopwatch.stop();
+      print('⏱️ Initialization scheduled in ${stopwatch.elapsedMilliseconds}ms');
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     }
   }
 
-  Future<void> fetchLatestMessages({bool fromKeyboard = false}) async {
-    if (_isFetching || _isKeyboardAnimating) return;
+  // ✅ Memory cache برای دسترسی فوری
+  List<MessageModel>? _getFromMemoryCache(String conversationId) {
+    return _memoryCache[conversationId];
+  }
 
-    // ✅ جلوگیری از عملیات سنگین در حین انیمیشن کیبورد
+  void _updateMemoryCache(String conversationId, List<MessageModel> messages) {
+    _memoryCache[conversationId] = List<MessageModel>.unmodifiable(messages);
+    _cacheTimestamps[conversationId] = DateTime.now();
+
+    // محدود کردن اندازه cache (نگه‌داشتن فقط 3 مکالمه اخیر)
+    if (_memoryCache.length > 3) {
+      final oldestEntry = _cacheTimestamps.entries.reduce(
+        (a, b) => a.value.isBefore(b.value) ? a : b,
+      );
+      _memoryCache.remove(oldestEntry.key);
+      _cacheTimestamps.remove(oldestEntry.key);
+      print('🗑️ Removed oldest memory cache entry: ${oldestEntry.key}');
+    }
+  }
+
+  void _setupRealtimeInBackground() {
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Future.microtask(() {
+        if (!mounted) return;
+        print('📡 Initializing real-time listeners (deferred)');
+        _listenForRealtimeUpdates();
+        _listenForReactionUpdates();
+      });
+    });
+  }
+
+  // ✅ بارگذاری از disk cache در background
+  void _scheduleDiskCacheLoad(String userId) {
+    Future.delayed(const Duration(milliseconds: 200), () async {
+      if (!mounted) return;
+      final stopwatch = Stopwatch()..start();
+      try {
+        final cachedMessages = await BackgroundMessageLoader()
+            .loadMessagesInBackground(
+          conversationId: params.conversationId,
+          userId: userId,
+        );
+        stopwatch.stop();
+
+        print(
+            '💾 Disk cache loaded (${cachedMessages.length} messages) in ${stopwatch.elapsedMilliseconds}ms');
+
+        if (cachedMessages.isNotEmpty && mounted) {
+          _throttledUpdateMessages(cachedMessages, source: 'disk-cache');
+          _updateMemoryCache(params.conversationId, cachedMessages);
+        }
+      } catch (e) {
+        print('⚠️ Disk cache loading error: $e');
+      }
+    });
+  }
+
+  // ✅ Server fetch با تأخیر برای جلوگیری از بلاک UI
+  void _scheduleServerFetch(String userId) {
+    Future.delayed(const Duration(milliseconds: 500), () async {
+      if (!mounted) return;
+      final stopwatch = Stopwatch()..start();
+      try {
+        await fetchLatestMessages();
+        stopwatch.stop();
+        print(
+            '🌐 Server fetch completed in ${stopwatch.elapsedMilliseconds}ms');
+        _updateMemoryCache(params.conversationId, state.messages);
+      } catch (e) {
+        print('⚠️ Server fetch error: $e');
+      }
+    });
+  }
+
+  Future<void> fetchLatestMessages({bool fromKeyboard = false}) async {
+    if (_isFetching) return;
+    
+    // ✅ اگر از کیبورد فراخوانی شده، اولویت بندی کن
     if (fromKeyboard) {
-      _isKeyboardAnimating = true;
-      await Future.delayed(const Duration(milliseconds: 300)); // صبر برای پایان انیمیشن
-      _isKeyboardAnimating = false;
+      print('⌨️ Keyboard-triggered fetch - using low priority');
+      await Future.delayed(const Duration(milliseconds: 500));
     }
 
     _isFetching = true;
 
     try {
-      print(
-          '🔄 Fetching latest messages for conversation: ${params.conversationId}');
+      print('🔄 Fetching latest messages for conversation: ${params.conversationId}');
+      
+      // ✅ استفاده از timeout برای جلوگیری از hang
       final serverMessages = await _chatService
-          .getMessages(params.conversationId, limit: _pageSize);
+          .getMessages(params.conversationId, limit: _pageSize)
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () {
+              print('⏰ Fetch timeout - using cached data');
+              return state.messages;
+            },
+          );
+      
       print('✅ Received ${serverMessages.length} messages from server');
-      if (mounted) {
-        _updateMessages(serverMessages);
+      if (mounted && serverMessages.isNotEmpty) {
+        _throttledUpdateMessages(serverMessages, source: 'server');
+        _updateMemoryCache(params.conversationId, serverMessages);
       }
     } catch (e) {
-      print('❌ Error fetching latest messages: $e');
+      print('❌ Error fetching messages: $e');
+      // نمایش خطا بدون بستن صفحه
       if (mounted) {
         state = state.copyWith(error: e.toString());
       }
@@ -244,7 +342,7 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
           _realtimeDebounceTimer = Timer(const Duration(milliseconds: 150), () {
             print('📨 Received ${messages.length} real-time messages');
             if (mounted) {
-              _updateMessages(messages);
+              _throttledUpdateMessages(messages, source: 'realtime');
             }
           });
         },
@@ -386,6 +484,36 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
     }
 
     return true;
+  }
+
+  void _throttledUpdateMessages(
+    List<MessageModel> newMessages, {
+    required String source,
+  }) {
+    if (newMessages.isEmpty) return;
+
+    final now = DateTime.now();
+    final elapsed = _lastUpdateTime == null
+        ? _minUpdateInterval
+        : now.difference(_lastUpdateTime!);
+
+    if (elapsed < _minUpdateInterval) {
+      final remainingDelay = _minUpdateInterval - elapsed;
+      _uiUpdateThrottle?.cancel();
+      _uiUpdateThrottle = Timer(remainingDelay, () {
+        if (mounted) {
+          _performUpdate(newMessages, source);
+        }
+      });
+    } else {
+      _performUpdate(newMessages, source);
+    }
+  }
+
+  void _performUpdate(List<MessageModel> newMessages, String source) {
+    _lastUpdateTime = DateTime.now();
+    print('🔄 Applying throttled update from $source (${newMessages.length} messages)');
+    _updateMessages(newMessages);
   }
 
   void _updateMessages(List<MessageModel> newMessages,
@@ -819,11 +947,26 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
   void dispose() {
     // ✅ لغو تمام timer ها و subscription ها
     _realtimeDebounceTimer?.cancel();
+    _uiUpdateThrottle?.cancel();
     _realtimeSubscription?.cancel();
     _reactionSubscription?.cancel(); // ✅ لغو reaction subscription
     _retryService.dispose();
     _deletionService.dispose();
+    
+    // پاک کردن از memory cache هنگام dispose (اختیاری - می‌توانید نگه دارید برای navigation سریع‌تر)
+    print('🗑️ Disposing ChatScreenNotifier');
+    
     super.dispose();
+  }
+
+  void _handleInitError(String message) {
+    if (mounted) {
+      state = state.copyWith(
+        isLoading: false,
+        error: message,
+      );
+    }
+    _isInitializing = false;
   }
 }
 
