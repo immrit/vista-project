@@ -29,7 +29,7 @@ class PerformanceMonitor {
       _frameTimes.add(frameDuration);
       if (frameDuration.inMilliseconds > 16) {
         _droppedFrames++;
-        print('⚠️ Frame drop detected: ${frameDuration.inMilliseconds}ms');
+        // Frame drop detection disabled to reduce log noise
       }
     }
 

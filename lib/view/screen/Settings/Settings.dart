@@ -15,6 +15,8 @@ import 'subpages/AboutSettingsPage.dart';
 import 'subpages/ThemeSettingsPage.dart';
 import 'subpages/PrivacySettingsPage.dart';
 import 'subpages/AdvancedSettingsPage.dart';
+import 'subpages/ActiveSessionsScreen.dart';
+import '../../../provider/session_provider.dart';
 
 class Settings extends ConsumerWidget {
   const Settings({super.key});
@@ -95,6 +97,43 @@ class Settings extends ConsumerWidget {
                             context,
                             MaterialPageRoute(
                               builder: (context) => const PrivacySettingsPage(),
+                            ),
+                          );
+                        },
+                      ),
+                      _buildDivider(),
+                      SettingsItem(
+                        icon: Icons.devices,
+                        iconColor: Colors.blue,
+                        title: 'نشست‌های فعال',
+                        subtitle: ref.watch(sessionCountProvider) > 0
+                            ? '${ref.watch(sessionCountProvider)} دستگاه متصل'
+                            : 'مدیریت دستگاه‌های متصل',
+                        trailing: ref.watch(sessionCountProvider) > 1
+                            ? Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.shade100,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  '${ref.watch(sessionCountProvider)}',
+                                  style: TextStyle(
+                                    color: Colors.orange.shade900,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              )
+                            : null,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const ActiveSessionsScreen(),
                             ),
                           );
                         },
@@ -887,6 +926,7 @@ class SettingsItem extends StatelessWidget {
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+  final Widget? trailing;
 
   const SettingsItem({
     super.key,
@@ -895,6 +935,7 @@ class SettingsItem extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.trailing,
   });
 
   @override
@@ -949,7 +990,11 @@ class SettingsItem extends StatelessWidget {
                   ],
                 ),
               ),
-              // فلش - مثل تلگرام
+              // Trailing widget یا فلش - مثل تلگرام
+              if (trailing != null) ...[
+                trailing!,
+                const SizedBox(width: 8),
+              ],
               Icon(
                 Icons.arrow_forward_ios,
                 size: 16,

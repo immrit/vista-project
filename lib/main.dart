@@ -20,6 +20,8 @@ import 'DB/advanced_settings_service.dart';
 import 'DB/database_manager.dart';
 import 'services/voice_cache_service.dart';
 import 'services/network_status_service.dart';
+import 'services/session_manager_service.dart';
+import 'middleware/session_middleware.dart';
 import 'firebase_options.dart';
 import 'provider/theme_provider.dart';
 import 'services/optimized_messaging_system.dart';
@@ -200,6 +202,14 @@ void main() async {
         // اما با حالت offline
         print('🔧 برنامه در حالت آفلاین اجرا می‌شود');
         print('⚠️ برخی ویژگی‌های آنلاین ممکن است کار نکنند');
+      }
+
+      // ✅ Initialize Session Manager
+      try {
+        await SessionManagerService().initialize();
+        print('✅ SessionManagerService initialized');
+      } catch (e) {
+        print('⚠️ SessionManagerService initialization failed: $e');
       }
 
       // ✅ Deferred Initialization Manager - برای به تعویق انداختن عملیات سنگین
@@ -419,6 +429,15 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _linkSubscription?.cancel();
     _profileCheckTimer?.cancel();
+    
+    // ✅ null کردن callback session termination برای جلوگیری از خطا
+    try {
+      final sessionManager = SessionManagerService();
+      sessionManager.onSessionTerminated = null;
+    } catch (e) {
+      print('⚠️ Error clearing session termination callback: $e');
+    }
+    
     super.dispose();
   }
 
@@ -495,6 +514,55 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
     // ✅ شروع session monitoring
     _startSessionMonitoring();
+    
+    // ✅ تنظیم callback برای خاتمه نشست
+    _setupSessionTerminationHandler();
+  }
+  
+  /// تنظیم handler برای خاتمه نشست (فقط در صورت خاتمه توسط کاربر دیگر)
+  void _setupSessionTerminationHandler() {
+    final sessionManager = SessionManagerService();
+    sessionManager.onSessionTerminated = () {
+      // استفاده از postFrameCallback برای اطمینان از اینکه در frame بعدی اجرا می‌شود
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        
+        final context = navigatorKey.currentContext;
+        if (context == null || !context.mounted) return;
+        
+        try {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const AuthScreen()),
+            (route) => false,
+          );
+          
+          // نمایش SnackBar با تأخیر کوتاه برای اطمینان از اینکه navigation کامل شده
+          Future.delayed(const Duration(milliseconds: 300), () {
+            final snackContext = navigatorKey.currentContext;
+            if (snackContext != null && snackContext.mounted) {
+              ScaffoldMessenger.of(snackContext).showSnackBar(
+                SnackBar(
+                  content: const Row(
+                    children: [
+                      Icon(Icons.warning_amber, color: Colors.white),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text('نشست شما توسط دستگاه دیگری خاتمه یافت'),
+                      ),
+                    ],
+                  ),
+                  backgroundColor: Colors.orange[700],
+                  behavior: SnackBarBehavior.floating,
+                  duration: const Duration(seconds: 5),
+                ),
+              );
+            }
+          });
+        } catch (e) {
+          print('⚠️ Error in session termination handler: $e');
+        }
+      });
+    };
   }
 
   @override
@@ -638,6 +706,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     if (session == null) return;
     debugPrint('🔐 Processing user sign-in');
     
+    // ثبت نشست در LoginScreen انجام می‌شود - اینجا ثبت نمی‌کنیم
+    
     // به‌روزرسانی وضعیت آنلاین کاربر
     final chatService = ChatService();
     chatService.updateUserOnlineStatus();
@@ -777,7 +847,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
               initialRoute: '/',
               scaffoldMessengerKey: GlobalKey<ScaffoldMessengerState>(),
               routes: {
-                '/home': (context) => const HomeScreen(),
+                '/home': (context) => const SessionMiddleware(
+                      child: HomeScreen(),
+                    ),
                 '/onboarding': (context) => const Onboarding(),
                 '/auth': (context) => const AuthScreen(),
                 '/reset-password': (context) => const ResetPasswordScreen(),
@@ -791,14 +863,20 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                         Navigator.pushReplacementNamed(context, '/auth');
                       },
                     ),
-                '/editeProfile': (context) => const EditProfile(),
-                '/settings': (context) => const Settings(),
+                '/editeProfile': (context) => const SessionMiddleware(
+                      child: EditProfile(),
+                    ),
+                '/settings': (context) => const SessionMiddleware(
+                      child: Settings(),
+                    ),
                 '/post-detail': (context) {
                   final args = ModalRoute.of(context)?.settings.arguments
                       as Map<String, dynamic>?;
                   final postId = args?['postId'] as String?;
                   if (postId != null) {
-                    return PostDetailsPage(postId: postId);
+                    return SessionMiddleware(
+                      child: PostDetailsPage(postId: postId),
+                    );
                   }
                   return const Scaffold(
                     body: Center(child: Text('پست یافت نشد')),
@@ -809,13 +887,17 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                       as Map<String, dynamic>?;
                   final username = args?['username'] as String?;
                   if (username != null) {
-                    return ProfileScreen(username: username, userId: '');
+                    return SessionMiddleware(
+                      child: ProfileScreen(username: username, userId: ''),
+                    );
                   }
                   return const Scaffold(
                     body: Center(child: Text('پروفایل یافت نشد')),
                   );
                 },
-                '/feed': (context) => const PublicPostsScreen(),
+                '/feed': (context) => const SessionMiddleware(
+                      child: PublicPostsScreen(),
+                    ),
                 '/chat': (context) {
                   print('🔍 ChatScreen route called');
                   final args = ModalRoute.of(context)?.settings.arguments;
@@ -855,11 +937,13 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                     print('   otherUserId: $finalOtherUserId');
                     print('   otherUserName: $otherUserName');
                     
-                    return ChatScreen(
-                      conversationId: conversationId,
-                      otherUserName: otherUserName,
-                      otherUserId: finalOtherUserId,
-                      otherUserAvatar: otherUserAvatar,
+                    return SessionMiddleware(
+                      child: ChatScreen(
+                        conversationId: conversationId,
+                        otherUserName: otherUserName,
+                        otherUserId: finalOtherUserId,
+                        otherUserAvatar: otherUserAvatar,
+                      ),
                     );
                   }
                   

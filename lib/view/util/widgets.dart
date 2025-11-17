@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../screen/Settings/ContactUs.dart';
+import '../screen/auth/auth_screen.dart';
 import '/main.dart';
 import '../../model/CommentModel.dart';
 import '../../model/UserModel.dart';
@@ -19,6 +20,7 @@ import '../../provider/theme_provider.dart';
 import '../screen/PublicPosts/profileScreen.dart';
 import '../../DB/unified_message_cache_service.dart';
 import '../../DB/unified_conversation_cache_service.dart';
+import '../../services/session_manager_service.dart';
 
 class topText extends StatelessWidget {
   const topText({
@@ -413,34 +415,7 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
             'خروج از حساب',
             style: TextStyle(color: dynamicTheme.colorScheme.error),
           ),
-          onTap: () async {
-            try {
-              // پاک کردن کش پیام‌ها و مکالمات
-              try {
-                await UnifiedMessageCacheService().clearAllCache();
-                await UnifiedConversationCacheService()
-                    .clearCache(supabase.auth.currentUser!.id);
-              } catch (e) {
-                developer.log('Error clearing message/conversation cache: $e');
-                // ادامه کار حتی اگر پاک کردن کش با خطا مواجه شود
-              }
-
-              // خروج از حساب
-              await supabase.auth.signOut();
-              Navigator.pushReplacementNamed(context, '/auth');
-            } catch (e) {
-              developer.log('Error during logout: $e');
-              // در صورت خطا، باز هم سعی کن از حساب خارج شو
-              try {
-                await supabase.auth.signOut();
-                Navigator.pushReplacementNamed(context, '/auth');
-              } catch (finalError) {
-                developer.log('Final logout error: $finalError');
-                // آخرین تلاش: بازگشت به صفحه ورود
-                Navigator.pushReplacementNamed(context, '/auth');
-              }
-            }
-          },
+          onTap: () => _showLogoutDialog(context, ref, dynamicTheme),
         ),
       ],
     ),
@@ -1928,4 +1903,109 @@ TextDirection getTextDirection(String text) {
   }
 
   return TextDirection.rtl; // پیش‌فرض RTL
+}
+
+Future<void> _showLogoutDialog(
+    BuildContext context, WidgetRef ref, ThemeData dynamicTheme) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      backgroundColor: dynamicTheme.scaffoldBackgroundColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      title: Row(
+        children: [
+          Icon(Icons.logout, color: Colors.orange[700]),
+          const SizedBox(width: 12),
+          const Text('تایید خروج'),
+        ],
+      ),
+      content: const Text('آیا مطمئن هستید که می‌خواهید از حساب خارج شوید؟'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('انصراف'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, true),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('خروج'),
+        ),
+      ],
+    ),
+  );
+
+  if (confirmed == true && context.mounted) {
+    _showLoadingDialog(context, dynamicTheme);
+
+    try {
+      // پاک کردن کش پیام‌ها و مکالمات
+      try {
+        await UnifiedMessageCacheService().clearAllCache();
+        await UnifiedConversationCacheService()
+            .clearCache(supabase.auth.currentUser!.id);
+      } catch (e) {
+        developer.log('Error clearing message/conversation cache: $e');
+      }
+
+      // خروج از حساب با استفاده از SessionManager
+      final sessionManager = SessionManagerService();
+      await sessionManager.userLogout();
+    } catch (e) {
+      developer.log('Error during logout: $e');
+    }
+
+    if (context.mounted) {
+      Navigator.pop(context); // بستن loading dialog
+      Navigator.pop(context); // بستن drawer
+
+      // هدایت به صفحه لاگین
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const AuthScreen()),
+        (route) => false,
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.white),
+              SizedBox(width: 12),
+              Text('با موفقیت خارج شدید'),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+}
+
+void _showLoadingDialog(BuildContext context, ThemeData dynamicTheme) {
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => Center(
+      child: Card(
+        color: dynamicTheme.scaffoldBackgroundColor,
+        child: const Padding(
+          padding: EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('در حال خروج...'),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }

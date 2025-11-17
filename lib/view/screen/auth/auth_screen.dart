@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../services/advanced_security_service.dart';
+import '../../../services/session_manager_service.dart';
 import 'email_username_auth_screen.dart';
 import 'password_auth_screen.dart';
 import 'registration_screen.dart';
@@ -84,10 +85,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
 
   void _startIntroAnimation() async {
     await Future.delayed(const Duration(milliseconds: 300));
+    if (!mounted) return;
     _fadeController.forward();
     await Future.delayed(const Duration(milliseconds: 200));
+    if (!mounted) return;
     _scaleController.forward();
     await Future.delayed(const Duration(milliseconds: 300));
+    if (!mounted) return;
     _slideController.forward();
   }
 
@@ -313,6 +317,19 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
         // پاک کردن تلاش‌های ناموفق (با userId برای پاک کردن از دیتابیس)
         if (userId != null) {
           await AdvancedSecurityService.clearFailedAttempts(userId: userId);
+        }
+
+        // ثبت نشست جدید - فقط یک بار
+        try {
+          final sessionManager = SessionManagerService();
+          final sessionId = await sessionManager.registerSession();
+          if (sessionId != null) {
+            logInfo('✅ Session registered successfully: $sessionId');
+          } else {
+            logInfo('⚠️ Failed to register session');
+          }
+        } catch (e) {
+          logInfo('⚠️ Failed to register session: $e');
         }
 
         _showSuccessSnackBar('ورود موفقیت‌آمیز');
