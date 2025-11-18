@@ -325,6 +325,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
           final sessionId = await sessionManager.registerSession();
           if (sessionId != null) {
             logInfo('✅ Session registered successfully: $sessionId');
+            // آپدیت موقعیت و IP در پس‌زمینه (غیرمسدودکننده)
+            sessionManager.updateLocationAndIP();
           } else {
             logInfo('⚠️ Failed to register session');
           }

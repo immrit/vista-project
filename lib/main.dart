@@ -704,6 +704,10 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   // ✅ توابع کمکی برای مدیریت sign in/out
   Future<void> _handleUserSignIn(Session? session) async {
     if (session == null) return;
+    
+    // آپدیت موقعیت و IP در پس‌زمینه (غیرمسدودکننده)
+    final sessionManager = SessionManagerService();
+    sessionManager.updateLocationAndIP();
     debugPrint('🔐 Processing user sign-in');
     
     // ثبت نشست در LoginScreen انجام می‌شود - اینجا ثبت نمی‌کنیم

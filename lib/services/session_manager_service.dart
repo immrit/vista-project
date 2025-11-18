@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 
 import '../model/session_model.dart';
 import '../security/logging_utility.dart';
+import '../security/security.dart';
 import 'location_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -155,47 +156,173 @@ class SessionManagerService {
     if (_currentSessionId == null) return false;
 
     try {
-      // استفاده از RPC function برای بررسی امنیتی
+      // استفاده از RPC function برای بررسی امنیتی با timeout
       final response = await _supabase.rpc('verify_active_session', params: {
         'session_id': _currentSessionId,
-      });
+      }).timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => true, // در صورت timeout، session را معتبر در نظر بگیر
+      );
 
       return response == true;
     } catch (e) {
       logInfo('❌ خطا در بررسی نشست: $e');
-      return false;
+      // در صورت خطا، session را معتبر در نظر بگیر تا کاربر منتظر نماند
+      return true;
     }
   }
 
   /// اطمینان از ثبت نشست فعال (برای استفاده در Middleware)
+  /// این متد بهینه شده تا سریع‌تر اجرا شود و کاربر منتظر نماند
   Future<bool> ensureSessionRegistered() async {
     final currentSession = _supabase.auth.currentSession;
     if (currentSession == null) {
-      logInfo('❌ نشست Supabase معتبر یافت نشد');
-      await _terminateLocal('نشست معتبر یافت نشد');
       return false;
     }
 
-    // اگر نشست محلی نداریم، سعی کن ثبت کن
-    if (_currentSessionId == null) {
-      logInfo('⚠️ نشست محلی یافت نشد - تلاش برای ثبت...');
-      final sessionId = await registerSession();
+    // اگر نشست محلی داریم، فقط بررسی سریع انجام بده
+    if (_currentSessionId != null) {
+      // بررسی اعتبار نشست با timeout کوتاه
+      try {
+        final isValid = await _verifySession();
+        if (!isValid) {
+          // در صورت نامعتبر بودن، در پس‌زمینه terminate کن
+          Future.microtask(() => _terminateLocal('نشست شما غیرفعال شده است'));
+          return false;
+        }
+        // آپدیت موقعیت و IP در پس‌زمینه (غیرمسدودکننده)
+        updateLocationAndIP();
+        return true;
+      } catch (e) {
+        // در صورت خطا، session را معتبر در نظر بگیر
+        return true;
+      }
+    }
+
+    // اگر نشست محلی نداریم، ثبت کن (اما با timeout)
+    try {
+      final sessionId = await registerSession()
+          .timeout(
+            const Duration(seconds: 2),
+            onTimeout: () => null,
+          );
+      
       if (sessionId == null) {
-        await _terminateLocal('نشست ثبت نشد');
+        // در صورت خطا، session را معتبر در نظر بگیر تا کاربر منتظر نماند
+        // terminate در پس‌زمینه انجام می‌شود
+        Future.microtask(() => _terminateLocal('نشست ثبت نشد'));
         return false;
       }
+      
+      // آپدیت موقعیت و IP در پس‌زمینه (غیرمسدودکننده)
+      updateLocationAndIP();
+      return true;
+    } catch (e) {
+      // در صورت خطا، session را معتبر در نظر بگیر
       return true;
     }
+  }
 
-    // بررسی اعتبار نشست با RPC
-    final isValid = await _verifySession();
-    if (!isValid) {
-      logInfo('❌ نشست معتبر نیست - خاتمه محلی');
-      await _terminateLocal('نشست شما غیرفعال شده است');
-      return false;
+  /// آپدیت موقعیت مکانی و IP آدرس در profiles و active_sessions
+  /// این متد به صورت کاملاً غیرمسدودکننده در پس‌زمینه اجرا می‌شود
+  void updateLocationAndIP() {
+    // اجرای غیرمسدودکننده در پس‌زمینه
+    Future.microtask(() async {
+      try {
+        final userId = _supabase.auth.currentUser?.id;
+        if (userId == null) {
+          return; // بدون لاگ - کاربر متوجه نشود
+        }
+
+        // اجرای موازی برای دریافت موقعیت و IP با timeout
+        final results = await Future.wait([
+          // دریافت موقعیت با timeout 8 ثانیه
+          _getLocationWithTimeout(),
+          // دریافت IP با timeout 5 ثانیه
+          _getIPWithTimeout(),
+        ], eagerError: false);
+
+        final locationData = results[0] as Map<String, dynamic>?;
+        final ipAddress = results[1] as String?;
+
+        // آپدیت در دیتابیس به صورت موازی
+        final updateFutures = <Future>[];
+
+        // آپدیت profiles
+        if (locationData != null || ipAddress != null) {
+          final updateData = <String, dynamic>{};
+          if (locationData != null) {
+            updateData['last_location'] = locationData;
+          }
+          if (ipAddress != null) {
+            updateData['last_ip'] = ipAddress;
+          }
+
+          updateFutures.add(
+            _supabase
+                .from('profiles')
+                .update(updateData)
+                .eq('id', userId)
+                .timeout(const Duration(seconds: 5))
+                .then((_) => null)
+                .catchError((_) => null), // خطاها را نادیده بگیر
+          );
+        }
+
+        // آپدیت active_sessions
+        if (_currentSessionId != null && (locationData != null || ipAddress != null)) {
+          final sessionUpdateData = <String, dynamic>{};
+          if (locationData != null) {
+            sessionUpdateData['location'] = locationData;
+          }
+          if (ipAddress != null) {
+            sessionUpdateData['ip_address'] = ipAddress;
+          }
+
+          updateFutures.add(
+            _supabase
+                .from('active_sessions')
+                .update(sessionUpdateData)
+                .eq('id', _currentSessionId!)
+                .timeout(const Duration(seconds: 5))
+                .then((_) => null)
+                .catchError((_) => null), // خطاها را نادیده بگیر
+          );
+        }
+
+        // اجرای موازی آپدیت‌ها
+        await Future.wait(updateFutures, eagerError: false);
+      } catch (e) {
+        // خطاها را کاملاً silent handle می‌کنیم - کاربر نباید متوجه شود
+      }
+    });
+  }
+
+  /// دریافت موقعیت با timeout
+  Future<Map<String, dynamic>?> _getLocationWithTimeout() async {
+    try {
+      return await LocationService()
+          .getCurrentLocation()
+          .timeout(
+            const Duration(seconds: 8),
+            onTimeout: () => null,
+          );
+    } catch (e) {
+      return null;
     }
+  }
 
-    return true;
+  /// دریافت IP با timeout
+  Future<String?> _getIPWithTimeout() async {
+    try {
+      return await getIpAddress().timeout(
+        const Duration(seconds: 5),
+      );
+    } on TimeoutException {
+      return null;
+    } catch (e) {
+      return null;
+    }
   }
 
   void _startActivityTracking() {

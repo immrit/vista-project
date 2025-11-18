@@ -4,9 +4,7 @@ import 'package:flutter/material.dart';
 import '/main.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import '../../services/advanced_security_service.dart';
-import '../../services/onboarding_service.dart';
-
-import 'auth/auth_screen.dart';
+import '../../services/session_manager_service.dart';
 import 'auth/biometric_login_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -52,31 +50,65 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _redirect() async {
-    // یک تأخیر کوتاه برای نمایش انیمیشن اسپلش
-    await Future.delayed(const Duration(seconds: 2));
+    // یک تأخیر کوتاه برای نمایش انیمیشن اسپلش (کاهش یافته)
+    await Future.delayed(const Duration(milliseconds: 800));
 
     if (!mounted) return;
 
     try {
-      setState(() {
-        _statusMessage = 'بررسی وضعیت اتصال...';
-      });
-
-      // ✅ بهبود: منتظر بمانید تا session restore شود (به جای تأخیر ثابت 500ms)
-      await _waitForSessionRestoration();
-
+      // بررسی session به صورت موازی با سایر عملیات
       final session = supabase.auth.currentSession;
-      print(
-          '🔍 Current session status: ${session != null ? "Found" : "Not found"}');
 
       if (session == null) {
-        // کاربر لاگین نیست - بررسی امنیت و انتقال به صفحه مناسب
-        logInfo('👤 User not authenticated, redirecting to auth');
-        await _handleUnauthenticatedUser();
-      } else {
-        // کاربر لاگین است - بررسی امنیت و انتقال به صفحه مناسب
-        logInfo('👤 User authenticated, proceeding to home');
-        await _handleAuthenticatedUser();
+        // کاربر لاگین نیست - انتقال سریع به auth
+        if (mounted) {
+          Navigator.of(context).pushReplacementNamed('/auth');
+        }
+        return;
+      }
+
+      // کاربر لاگین است - بررسی و ثبت session به صورت سریع
+      setState(() {
+        _statusMessage = 'در حال آماده‌سازی...';
+      });
+
+      // بررسی و ثبت session به صورت سریع و موازی
+      final sessionManager = SessionManagerService();
+
+      // اجرای موازی: بررسی session و سایر عملیات
+      await Future.wait([
+        // بررسی و ثبت session با timeout کوتاه
+        sessionManager.ensureSessionRegistered().timeout(
+              const Duration(seconds: 2),
+              onTimeout: () => true, // در صورت timeout، ادامه بده
+            ),
+        // بررسی محدودیت حساب (موازی)
+        _checkAccountLockStatus(session.user.id),
+      ], eagerError: false);
+
+      // انتقال به صفحه اصلی
+      if (mounted) {
+        final isBiometricEnabled =
+            await AdvancedSecurityService.isBiometricEnabled().timeout(
+                const Duration(milliseconds: 500),
+                onTimeout: () => false);
+
+        if (isBiometricEnabled) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => BiometricLoginScreen(
+                onSuccess: () {
+                  Navigator.pushReplacementNamed(context, '/home');
+                },
+                onFallback: () {
+                  Navigator.pushReplacementNamed(context, '/auth');
+                },
+              ),
+            ),
+          );
+        } else {
+          Navigator.pushReplacementNamed(context, '/home');
+        }
       }
     } catch (e) {
       logInfo('❌ Error in splash screen: $e');
@@ -87,98 +119,32 @@ class _SplashScreenState extends State<SplashScreen> {
     }
   }
 
-  // ✅ تابع جدید: منتظر بمانید تا session restore شود
-  Future<void> _waitForSessionRestoration({int maxAttempts = 20}) async {
-    print('⏳ Waiting for session restoration from local storage...');
-
-    for (int attempt = 0; attempt < maxAttempts; attempt++) {
-      try {
-        final session = supabase.auth.currentSession;
-        if (session != null) {
-          print('✅ Session restored successfully! User: ${session.user.email}');
-          return;
-        }
-      } catch (e) {
-        // ignore
-      }
-
-      if (attempt < maxAttempts - 1) {
-        await Future.delayed(const Duration(milliseconds: 150));
-      }
-    }
-
-    print('⏳ Session restoration check completed');
-  }
-
-  Future<void> _handleUnauthenticatedUser() async {
+  // بررسی محدودیت حساب به صورت سریع
+  Future<void> _checkAccountLockStatus(String userId) async {
     try {
-      // بررسی امنیت حساب کاربری
-      final isLocked = await AdvancedSecurityService.isAccountLocked();
-      if (isLocked) {
-        final remainingTime =
-            await AdvancedSecurityService.getRemainingLockoutTime();
-        if (remainingTime != null) {
-          _showLockoutMessage(remainingTime);
-          return;
-        }
-      }
+      final isLocked =
+          await AdvancedSecurityService.isAccountLocked(userId: userId)
+              .timeout(const Duration(seconds: 1), onTimeout: () => false);
 
-      // بررسی وضعیت onboarding
-      final isOnboardingCompleted =
-          await OnboardingService.isOnboardingCompleted();
-
-      if (!isOnboardingCompleted) {
-        // نمایش onboarding برای کاربران جدید
-        Navigator.of(context).pushReplacementNamed('/onboarding');
-      } else {
-        // انتقال به صفحه احراز هویت مدرن
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const AuthScreen()),
-        );
-      }
-    } catch (e) {
-      // در صورت خطا، به صفحه ورود جدید منتقل شود
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const AuthScreen()),
-      );
-    }
-  }
-
-  Future<void> _handleAuthenticatedUser() async {
-    try {
-      // بررسی اولیه: آیا Supabase session معتبر است؟
-      final session = supabase.auth.currentSession;
-      if (session == null) {
-        logInfo('⚠️ No Supabase session found, redirecting to auth');
-        await _handleUnauthenticatedUser();
-        return;
-      }
-
-      final userId = session.user.id;
-      logInfo('👤 Checking lock status for user: $userId');
-
-      // ✅ بررسی محدودیت حساب کاربری از دیتابیس
-      setState(() {
-        _statusMessage = 'بررسی وضعیت حساب...';
-      });
-
-      final isLocked = await AdvancedSecurityService.isAccountLocked(userId: userId);
-      if (isLocked) {
-        logInfo('🚫 User account is locked, logging out...');
-        
-        // دریافت اطلاعات قفل
-        final lockInfo = await AdvancedSecurityService.getLockInfo(userId: userId);
-        final lockReason = lockInfo != null 
+      if (isLocked && mounted) {
+        final lockInfo = await AdvancedSecurityService.getLockInfo(
+                userId: userId)
+            .timeout(const Duration(milliseconds: 500), onTimeout: () => null);
+        final lockReason = lockInfo != null
             ? await AdvancedSecurityService.getLockReasonPersian(userId: userId)
+                .timeout(const Duration(milliseconds: 500),
+                    onTimeout: () => null)
             : null;
-        final remainingTime = await AdvancedSecurityService.getRemainingLockoutTime(userId: userId);
+        final remainingTime = await AdvancedSecurityService
+                .getRemainingLockoutTime(userId: userId)
+            .timeout(const Duration(milliseconds: 500), onTimeout: () => null);
 
         // خروج از حساب
         try {
           await supabase.auth.signOut();
           await AdvancedSecurityService.clearAllSecurityData();
         } catch (e) {
-          logInfo('⚠️ Error signing out: $e');
+          // ignore
         }
 
         // نمایش پیام قفل شدن
@@ -189,81 +155,10 @@ class _SplashScreenState extends State<SplashScreen> {
             lockType: lockInfo?['lock_type'] as String?,
           );
         }
-        return;
-      }
-
-      // بررسی امنیت نشست با error handling بهتر
-      bool isSessionValid = false;
-      try {
-        isSessionValid =
-            await AdvancedSecurityService.validateSessionSecurity();
-        logInfo('🔐 Session validation result: $isSessionValid');
-      } catch (e) {
-        logInfo('⚠️ Session validation failed with error: $e');
-        // در صورت خطا در validation، session را معتبر در نظر بگیر
-        // مگر اینکه مشکل جدی باشد
-        isSessionValid = true;
-      }
-
-      if (!isSessionValid) {
-        print(
-            '⚠️ Session validation failed, but keeping user logged in for better UX');
-        // به جای خروج اجباری، کاربر را در سیستم نگه دار
-        // این مشکل را حل می‌کند که کاربران بعد از restart از حساب خارج شوند
-      }
-
-      // بررسی احراز هویت بیومتریک
-      final isBiometricEnabled =
-          await AdvancedSecurityService.isBiometricEnabled();
-      if (isBiometricEnabled) {
-        // انتقال به صفحه احراز هویت بیومتریک
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => BiometricLoginScreen(
-              onSuccess: () {
-                Navigator.pushReplacementNamed(context, '/home');
-              },
-              onFallback: () {
-                Navigator.pushReplacementNamed(context, '/auth');
-              },
-            ),
-          ),
-        );
-      } else {
-        // انتقال مستقیم به صفحه اصلی
-        Navigator.pushReplacementNamed(context, '/home');
       }
     } catch (e) {
-      logInfo('⚠️ Error in _handleAuthenticatedUser: $e');
-      // در صورت خطا، انتقال مستقیم به صفحه اصلی
-      Navigator.pushReplacementNamed(context, '/home');
+      // ignore - خطا را نادیده بگیر
     }
-  }
-
-  void _showLockoutMessage(Duration remainingTime) {
-    final minutes = remainingTime.inMinutes;
-    final seconds = remainingTime.inSeconds % 60;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('حساب کاربری قفل شده'),
-        content: Text(
-          'به دلیل تلاش‌های ناموفق متعدد، حساب کاربری شما قفل شده است.\n\n'
-          'لطفاً $minutes دقیقه و $seconds ثانیه صبر کنید و سپس دوباره تلاش کنید.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _redirect(); // تلاش مجدد
-            },
-            child: const Text('تلاش مجدد'),
-          ),
-        ],
-      ),
-    );
   }
 
   void _showAccountLockedDialog({

@@ -71,14 +71,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ];
   }
 
-  void _checkProfileCompletion() async {
-    final isComplete = await ref
-        .read(profileCompletionProvider.notifier)
-        .checkProfileCompletion();
-    if (!isComplete && mounted) {
-      // انتقال به صفحه ویرایش پروفایل
-      Navigator.pushNamed(context, '/editeProfile');
-    }
+  void _checkProfileCompletion() {
+    // اجرای غیرمسدودکننده در پس‌زمینه
+    Future.microtask(() async {
+      try {
+        final isComplete = await ref
+            .read(profileCompletionProvider.notifier)
+            .checkProfileCompletion()
+            .timeout(const Duration(seconds: 2), onTimeout: () => true);
+        if (!isComplete && mounted) {
+          // انتقال به صفحه ویرایش پروفایل با تأخیر کوتاه
+          await Future.delayed(const Duration(milliseconds: 500));
+          if (mounted) {
+            Navigator.pushNamed(context, '/editeProfile');
+          }
+        }
+      } catch (e) {
+        // خطا را نادیده می‌گیریم - کاربر نباید متوجه شود
+      }
+    });
   }
 
   // هندل کردن تغییر تب

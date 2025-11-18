@@ -7,6 +7,10 @@ import 'package:intl/intl.dart';
 import 'package:Vista/model/session_model.dart';
 import 'package:Vista/provider/session_provider.dart';
 import 'package:Vista/services/session_manager_service.dart';
+import 'package:Vista/DB/unified_message_cache_service.dart';
+import 'package:Vista/DB/unified_conversation_cache_service.dart';
+import 'package:Vista/view/screen/auth/auth_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ActiveSessionsScreen extends ConsumerStatefulWidget {
   const ActiveSessionsScreen({super.key});
@@ -17,34 +21,12 @@ class ActiveSessionsScreen extends ConsumerStatefulWidget {
 }
 
 class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
-  bool _canTerminateAll = false;
-  int _remainingDays = 0;
-  bool _isLoadingPermission = true;
-  Map<String, bool> _canTerminateSession = {};
+  final Map<String, bool> _canTerminateSession = {};
 
   @override
   void initState() {
     super.initState();
     timeago.setLocaleMessages('fa', timeago.FaMessages());
-    _checkTerminatePermission();
-  }
-
-  Future<void> _checkTerminatePermission() async {
-    setState(() {
-      _isLoadingPermission = true;
-    });
-
-    final sessionManager = ref.read(sessionManagerProvider);
-    final canTerminate = await sessionManager.canTerminateOtherSessions();
-    final remainingDays = await sessionManager.getRemainingDaysToTerminate();
-
-    if (mounted) {
-      setState(() {
-        _canTerminateAll = canTerminate;
-        _remainingDays = remainingDays;
-        _isLoadingPermission = false;
-      });
-    }
   }
 
   Future<void> _loadCanTerminateStatus(List<SessionModel> sessions) async {
@@ -70,26 +52,26 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
     final sessionManager = ref.watch(sessionManagerProvider);
     final currentSessionId = sessionManager.currentSessionId;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Directionality(
       textDirection: ui.TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: isDark ? Colors.black : Colors.grey[100],
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5),
         appBar: AppBar(
           title: const Text(
             'نشست‌های فعال',
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+            style: TextStyle(fontWeight: FontWeight.bold),
           ),
-          backgroundColor: Colors.black,
           elevation: 0,
-          iconTheme: const IconThemeData(color: Colors.white),
+          centerTitle: true,
           actions: [
             IconButton(
-              icon: const Icon(Icons.refresh, color: Colors.white),
+              icon: const Icon(Icons.refresh),
               tooltip: 'به‌روزرسانی',
-              onPressed: () async {
+              onPressed: () {
                 ref.invalidate(activeSessionsProvider);
-                await _checkTerminatePermission();
               },
             ),
           ],
@@ -114,16 +96,12 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
             return RefreshIndicator(
               onRefresh: () async {
                 ref.invalidate(activeSessionsProvider);
-                await _checkTerminatePermission();
               },
-              backgroundColor: Colors.cyan,
-              color: Colors.white,
+              backgroundColor: colorScheme.primary,
+              color: colorScheme.onPrimary,
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  if (!_isLoadingPermission)
-                    _buildTerminationStatusCard(isDark),
-                  const SizedBox(height: 16),
                   if (currentSessionId != null)
                     _ActiveSessionCard(
                       session: currentSession,
@@ -147,7 +125,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
-                          color: isDark ? Colors.white70 : Colors.grey[700],
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                         ),
                       ),
                     ),
@@ -164,16 +142,12 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
                           ),
                         )),
                   ],
-                  if (otherSessions.length > 1) ...[
-                    const SizedBox(height: 16),
-                    _buildTerminateAllButton(sessionManager, isDark),
-                  ],
                 ],
               ),
             );
           },
-          loading: () => const Center(
-            child: CircularProgressIndicator(color: Colors.cyan),
+          loading: () => Center(
+            child: CircularProgressIndicator(color: colorScheme.primary),
           ),
           error: (error, stack) => _buildErrorState(error.toString(), isDark),
         ),
@@ -181,64 +155,10 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
     );
   }
 
-  Widget _buildTerminationStatusCard(bool isDark) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _canTerminateAll
-            ? Colors.green.shade900.withOpacity(0.3)
-            : Colors.orange.shade900.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color:
-              _canTerminateAll ? Colors.green.shade700 : Colors.orange.shade700,
-          width: 1.5,
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            _canTerminateAll ? Icons.check_circle : Icons.schedule,
-            color: _canTerminateAll
-                ? Colors.green.shade400
-                : Colors.orange.shade400,
-            size: 28,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _canTerminateAll
-                      ? 'می‌توانید همه نشست‌ها را حذف کنید'
-                      : 'محدودیت امنیتی',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _canTerminateAll
-                      ? 'نشست فعلی شما بیش از 10 روز قدمت دارد'
-                      : 'شما می‌توانید فقط نشست‌های جدیدتر از خود را حذف کنید. برای حذف نشست‌های قدیمی، باید $_remainingDays روز دیگر صبر کنید.',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.white70,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildEmptyState(bool isDark) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -246,14 +166,14 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
           Icon(
             Icons.devices_other,
             size: 80,
-            color: Colors.grey[600],
+            color: colorScheme.onSurface.withOpacity(0.4),
           ),
           const SizedBox(height: 16),
           Text(
             'هیچ نشست فعالی وجود ندارد',
             style: TextStyle(
               fontSize: 18,
-              color: Colors.grey[400],
+              color: colorScheme.onSurface.withOpacity(0.6),
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -263,64 +183,40 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
   }
 
   Widget _buildErrorState(String error, bool isDark) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.error_outline, size: 64, color: Colors.red[400]),
+          Icon(
+            Icons.error_outline,
+            size: 64,
+            color: colorScheme.error,
+          ),
           const SizedBox(height: 16),
-          const Text(
-            'خطا در بارگذاری نشست‌ها',
-            style: TextStyle(color: Colors.white, fontSize: 18),
-          ),
-          const SizedBox(height: 8),
           Text(
-            error,
-            style: const TextStyle(color: Colors.white70, fontSize: 14),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTerminateAllButton(
-    SessionManagerService sessionManager,
-    bool isDark,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.grey[900] : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: _canTerminateAll
-              ? () => _showTerminateAllDialog(context, sessionManager, isDark)
-              : null,
-          icon: Icon(_canTerminateAll ? Icons.logout : Icons.schedule),
-          label: Text(
-            _canTerminateAll
-                ? 'خروج از همه دستگاه‌ها'
-                : 'فقط نشست‌های جدیدتر قابل حذف هستند',
-            style: const TextStyle(
-              fontSize: 16,
+            'خطا در بارگذاری نشست‌ها',
+            style: TextStyle(
+              color: colorScheme.onSurface,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
           ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor:
-                _canTerminateAll ? Colors.red.shade600 : Colors.grey.shade700,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              error,
+              style: TextStyle(
+                color: colorScheme.onSurface.withOpacity(0.7),
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
             ),
-            elevation: 0,
           ),
-        ),
+        ],
       ),
     );
   }
@@ -349,9 +245,10 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
             if (result.success) {
               ref.invalidate(activeSessionsProvider);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('نشست با موفقیت خاتمه یافت'),
+                SnackBar(
+                  content: const Text('نشست با موفقیت خاتمه یافت'),
                   backgroundColor: Colors.green,
+                  behavior: SnackBarBehavior.floating,
                 ),
               );
             } else {
@@ -359,6 +256,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
                 SnackBar(
                   content: Text(result.errorMessage ?? 'خطا در خاتمه نشست'),
                   backgroundColor: Colors.orange,
+                  behavior: SnackBarBehavior.floating,
                   duration: const Duration(seconds: 4),
                 ),
               );
@@ -369,104 +267,6 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
     );
   }
 
-  Future<void> _showTerminateAllDialog(
-    BuildContext context,
-    SessionManagerService sessionManager,
-    bool isDark,
-  ) async {
-    if (!_canTerminateAll) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'شما می‌توانید فقط نشست‌های جدیدتر از خود را حذف کنید. برای حذف همه نشست‌ها، باید $_remainingDays روز دیگر صبر کنید.',
-          ),
-          backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 4),
-        ),
-      );
-      return;
-    }
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: isDark ? Colors.grey[900] : Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: const Text(
-          'تایید خاتمه همه نشست‌ها',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'آیا مطمئن هستید که می‌خواهید همه نشست‌های دیگر (به جز نشست فعلی) را خاتمه دهید؟',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('انصراف'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('خاتمه همه'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true && mounted) {
-      _showLoadingDialog(context, isDark);
-
-      final result = await sessionManager.terminateOtherSessions();
-
-      if (mounted) {
-        Navigator.pop(context); // بستن loading dialog
-
-        if (result.success) {
-          ref.invalidate(activeSessionsProvider);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('خروج از همه دستگاه‌ها با موفقیت انجام شد'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result.errorMessage ?? 'خطا در خروج از دستگاه‌ها'),
-              backgroundColor: Colors.orange,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        }
-      }
-    }
-  }
-
-  void _showLoadingDialog(BuildContext context, bool isDark) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => Center(
-        child: Card(
-          color: isDark ? Colors.grey[900] : Colors.white,
-          child: const Padding(
-            padding: EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('در حال پردازش...'),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _ActiveSessionCard extends StatelessWidget {
@@ -488,10 +288,13 @@ class _ActiveSessionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     final cardColor = isCurrent
-        ? Colors.cyan.shade700
-        : (isDark ? Colors.grey[900] : Colors.white);
+        ? colorScheme.primaryContainer
+        : colorScheme.surface;
 
     return GestureDetector(
       onTap: onTap,
@@ -503,8 +306,8 @@ class _ActiveSessionCard extends StatelessWidget {
           boxShadow: [
             BoxShadow(
               color: isCurrent
-                  ? Colors.cyanAccent.withOpacity(0.3)
-                  : Colors.black.withOpacity(0.2),
+                  ? colorScheme.primary.withOpacity(0.2)
+                  : Colors.black.withOpacity(isDark ? 0.3 : 0.1),
               blurRadius: 8,
               offset: const Offset(0, 3),
             ),
@@ -519,19 +322,25 @@ class _ActiveSessionCard extends StatelessWidget {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: isCurrent ? Colors.cyan.shade900 : Colors.grey[800],
+              color: isCurrent
+                  ? colorScheme.primary
+                  : colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               isCurrent ? Icons.smartphone : Icons.devices_other,
-              color: Colors.white,
+              color: isCurrent
+                  ? colorScheme.onPrimary
+                  : colorScheme.onSurface,
               size: 24,
             ),
           ),
           title: Text(
             isCurrent ? 'این دستگاه' : session.deviceInfo.deviceName,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: isCurrent
+                  ? colorScheme.onPrimaryContainer
+                  : colorScheme.onSurface,
               fontWeight: FontWeight.bold,
               fontSize: 16,
             ),
@@ -543,24 +352,30 @@ class _ActiveSessionCard extends StatelessWidget {
               children: [
                 Text(
                   '${session.deviceInfo.deviceModel} • ${session.platform ?? 'نامشخص'}',
-                  style: const TextStyle(
-                    color: Colors.white70,
+                  style: TextStyle(
+                    color: isCurrent
+                        ? colorScheme.onPrimaryContainer.withOpacity(0.7)
+                        : colorScheme.onSurface.withOpacity(0.7),
                     fontSize: 13,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.access_time,
                       size: 14,
-                      color: Colors.white60,
+                      color: isCurrent
+                          ? colorScheme.onPrimaryContainer.withOpacity(0.6)
+                          : colorScheme.onSurface.withOpacity(0.6),
                     ),
                     const SizedBox(width: 4),
                     Text(
                       _formatLastActivity(session.lastActivity),
-                      style: const TextStyle(
-                        color: Colors.white60,
+                      style: TextStyle(
+                        color: isCurrent
+                            ? colorScheme.onPrimaryContainer.withOpacity(0.6)
+                            : colorScheme.onSurface.withOpacity(0.6),
                         fontSize: 12,
                       ),
                     ),
@@ -576,7 +391,7 @@ class _ActiveSessionCard extends StatelessWidget {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.green.shade700,
+                    color: Colors.green.shade600,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Row(
@@ -599,9 +414,9 @@ class _ActiveSessionCard extends StatelessWidget {
                     ],
                   ),
                 )
-              : const Icon(
+              : Icon(
                   Icons.chevron_left,
-                  color: Colors.white54,
+                  color: colorScheme.onSurface.withOpacity(0.5),
                 ),
         ),
       ),
@@ -635,18 +450,139 @@ class _SessionDetailsBottomSheet extends StatelessWidget {
     return timeago.format(dateTime, locale: 'fa', allowFromNow: true);
   }
 
+  Future<void> _handleLogout(BuildContext context) async {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    // نمایش دیالوگ تایید
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: colorScheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Text(
+          'تایید خروج',
+          style: TextStyle(color: colorScheme.onSurface),
+        ),
+        content: Text(
+          'آیا مطمئن هستید که می‌خواهید از حساب کاربری خود خارج شوید؟',
+          style: TextStyle(color: colorScheme.onSurface.withOpacity(0.7)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('انصراف'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: colorScheme.error,
+              foregroundColor: colorScheme.onError,
+            ),
+            child: const Text('خروج'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    // نمایش loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Center(
+        child: Card(
+          color: colorScheme.surface,
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: colorScheme.primary),
+                const SizedBox(height: 16),
+                Text(
+                  'در حال خروج...',
+                  style: TextStyle(color: colorScheme.onSurface),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      // پاک کردن کش پیام‌ها و مکالمات
+      try {
+        await UnifiedMessageCacheService().clearAllCache();
+        final userId = Supabase.instance.client.auth.currentUser?.id;
+        if (userId != null) {
+          await UnifiedConversationCacheService().clearCache(userId);
+        }
+      } catch (e) {
+        // خطا را نادیده می‌گیریم
+      }
+
+      // خروج از حساب با استفاده از SessionManager
+      await sessionManager.userLogout();
+
+      if (context.mounted) {
+        Navigator.pop(context); // بستن loading dialog
+        Navigator.pop(context); // بستن bottom sheet
+
+        // هدایت به صفحه لاگین
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const AuthScreen()),
+          (route) => false,
+        );
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 12),
+                Text('با موفقیت خارج شدید'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context); // بستن loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در خروج: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? Colors.grey[950] : Colors.white,
+        color: colorScheme.surface,
         borderRadius: const BorderRadius.vertical(
           top: Radius.circular(22),
         ),
       ),
       child: DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        minChildSize: 0.5,
+        initialChildSize: 0.5,
+        minChildSize: 0.4,
         maxChildSize: 0.95,
         expand: false,
         builder: (context, scrollController) {
@@ -663,7 +599,7 @@ class _SessionDetailsBottomSheet extends StatelessWidget {
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: Colors.cyan,
+                      color: colorScheme.onSurface.withOpacity(0.3),
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
@@ -677,13 +613,16 @@ class _SessionDetailsBottomSheet extends StatelessWidget {
                       width: 56,
                       height: 56,
                       decoration: BoxDecoration(
-                        color:
-                            isCurrent ? Colors.cyan.shade700 : Colors.grey[800],
+                        color: isCurrent
+                            ? colorScheme.primary
+                            : colorScheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Icon(
                         isCurrent ? Icons.smartphone : Icons.devices_other,
-                        color: Colors.white,
+                        color: isCurrent
+                            ? colorScheme.onPrimary
+                            : colorScheme.onSurface,
                         size: 28,
                       ),
                     ),
@@ -696,8 +635,8 @@ class _SessionDetailsBottomSheet extends StatelessWidget {
                             isCurrent
                                 ? 'این دستگاه'
                                 : session.deviceInfo.deviceName,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: colorScheme.onSurface,
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
                             ),
@@ -705,8 +644,8 @@ class _SessionDetailsBottomSheet extends StatelessWidget {
                           const SizedBox(height: 4),
                           Text(
                             '${session.deviceInfo.deviceModel} • ${session.platform ?? 'نامشخص'}',
-                            style: const TextStyle(
-                              color: Colors.white70,
+                            style: TextStyle(
+                              color: colorScheme.onSurface.withOpacity(0.7),
                               fontSize: 14,
                             ),
                           ),
@@ -720,7 +659,7 @@ class _SessionDetailsBottomSheet extends StatelessWidget {
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.green.shade700,
+                          color: Colors.green.shade600,
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: const Row(
@@ -747,7 +686,10 @@ class _SessionDetailsBottomSheet extends StatelessWidget {
                 ),
 
                 const SizedBox(height: 24),
-                Divider(color: Colors.white.withOpacity(0.1), height: 1),
+                Divider(
+                  color: colorScheme.onSurface.withOpacity(0.1),
+                  height: 1,
+                ),
                 const SizedBox(height: 24),
 
                 // Info rows
@@ -803,9 +745,11 @@ class _SessionDetailsBottomSheet extends StatelessWidget {
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: canTerminate
-                            ? Colors.red.shade600
-                            : Colors.grey.shade700,
-                        foregroundColor: Colors.white,
+                            ? colorScheme.error
+                            : colorScheme.surfaceContainerHighest,
+                        foregroundColor: canTerminate
+                            ? colorScheme.onError
+                            : colorScheme.onSurface.withOpacity(0.6),
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
@@ -818,18 +762,18 @@ class _SessionDetailsBottomSheet extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.check_circle_outline, size: 20),
+                      onPressed: () => _handleLogout(context),
+                      icon: const Icon(Icons.logout, size: 20),
                       label: const Text(
-                        'نشست فعلی',
+                        'خروج از حساب کاربری',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.cyan,
-                        foregroundColor: Colors.white,
+                        backgroundColor: colorScheme.error,
+                        foregroundColor: colorScheme.onError,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
@@ -862,9 +806,16 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    
     return Row(
       children: [
-        Icon(icon, size: 20, color: Colors.cyan),
+        Icon(
+          icon,
+          size: 20,
+          color: colorScheme.primary,
+        ),
         const SizedBox(width: 12),
         Expanded(
           child: Row(
@@ -872,16 +823,16 @@ class _InfoRow extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: const TextStyle(
-                  color: Colors.white70,
+                style: TextStyle(
+                  color: colorScheme.onSurface.withOpacity(0.7),
                   fontSize: 14,
                 ),
               ),
               Flexible(
                 child: Text(
                   value,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: colorScheme.onSurface,
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                   ),
