@@ -58,7 +58,8 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
     return Directionality(
       textDirection: ui.TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5),
+        backgroundColor:
+            isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5),
         appBar: AppBar(
           title: const Text(
             'نشست‌های فعال',
@@ -125,7 +126,10 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withOpacity(0.7),
                         ),
                       ),
                     ),
@@ -158,7 +162,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
   Widget _buildEmptyState(bool isDark) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -185,38 +189,76 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
   Widget _buildErrorState(String error, bool isDark) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.error_outline,
-            size: 64,
-            color: colorScheme.error,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'خطا در بارگذاری نشست‌ها',
-            style: TextStyle(
-              color: colorScheme.onSurface,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // آیکون خطا با Background زیبا
+            Container(
+              padding: const EdgeInsets.all(28),
+              decoration: BoxDecoration(
+                color: colorScheme.error.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.cloud_off_rounded,
+                size: 72,
+                color: colorScheme.error.withOpacity(0.8),
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Text(
-              error,
+
+            const SizedBox(height: 32),
+
+            // عنوان خطا
+            Text(
+              'خطا در بارگذاری نشست‌ها',
               style: TextStyle(
-                color: colorScheme.onSurface.withOpacity(0.7),
-                fontSize: 14,
+                color: colorScheme.onSurface,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                letterSpacing: -0.5,
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // توضیح ساده و کاربرپسند
+            Text(
+              'متأسفانه نتوانستیم نشست‌های فعال شما را بارگذاری کنیم.\nلطفاً اتصال اینترنت خود را بررسی کنید.',
+              style: TextStyle(
+                color: colorScheme.onSurface.withOpacity(0.6),
+                fontSize: 15,
+                height: 1.6,
               ),
               textAlign: TextAlign.center,
             ),
-          ),
-        ],
+
+            const SizedBox(height: 40),
+
+            // دکمه تلاش مجدد
+            FilledButton.icon(
+              onPressed: () {
+                ref.invalidate(activeSessionsProvider);
+              },
+              icon: const Icon(Icons.refresh_rounded, size: 20),
+              label: const Text('تلاش مجدد'),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 16,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                backgroundColor: colorScheme.primary,
+                foregroundColor: colorScheme.onPrimary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -266,7 +308,6 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
       ),
     );
   }
-
 }
 
 class _ActiveSessionCard extends StatelessWidget {
@@ -291,10 +332,9 @@ class _ActiveSessionCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    final cardColor = isCurrent
-        ? colorScheme.primaryContainer
-        : colorScheme.surface;
+
+    final cardColor =
+        isCurrent ? colorScheme.primaryContainer : colorScheme.surface;
 
     return GestureDetector(
       onTap: onTap,
@@ -329,9 +369,7 @@ class _ActiveSessionCard extends StatelessWidget {
             ),
             child: Icon(
               isCurrent ? Icons.smartphone : Icons.devices_other,
-              color: isCurrent
-                  ? colorScheme.onPrimary
-                  : colorScheme.onSurface,
+              color: isCurrent ? colorScheme.onPrimary : colorScheme.onSurface,
               size: 24,
             ),
           ),
@@ -572,7 +610,7 @@ class _SessionDetailsBottomSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.surface,
@@ -808,7 +846,7 @@ class _InfoRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     return Row(
       children: [
         Icon(

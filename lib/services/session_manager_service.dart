@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -10,7 +12,6 @@ import 'package:uuid/uuid.dart';
 import '../model/session_model.dart';
 import '../security/logging_utility.dart';
 import '../security/security.dart';
-import 'location_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SessionManagerService {
@@ -103,18 +104,18 @@ class SessionManagerService {
       final deviceInfo = await _getDeviceInfo();
       final packageInfo = await PackageInfo.fromPlatform();
 
-      // دریافت موقعیت مکانی (اختیاری - در صورت خطا ادامه می‌دهد)
-      Map<String, dynamic>? locationData;
-      try {
-        locationData = await LocationService().getCurrentLocation();
-      } catch (e) {
-        logInfo('⚠️ Failed to get location: $e');
-      }
+      // ✅ گرفتن IP و Location
+      logInfo('📡 [registerSession] Fetching IP and location...');
+      final ipAddress = await _getIPWithTimeout();
+      final locationData = await _getCurrentLocation();
 
-      logInfo('📝 ثبت نشست جدید...');
+      logInfo('📱 [registerSession] IP Address: $ipAddress');
+      logInfo('🌍 [registerSession] Location Data: $locationData');
+
+      logInfo('📝 [registerSession] ثبت نشست جدید...');
 
       // ثبت در دیتابیس
-      final response = await _supabase.from('active_sessions').insert({
+      final sessionData = {
         'id': sessionId,
         'user_id': userId,
         'session_token': _sessionToken,
@@ -122,11 +123,23 @@ class SessionManagerService {
         'is_active': true,
         'app_version': packageInfo.version,
         'platform': _getPlatformName(),
-        'ip_address': null,
-        'location': locationData,
+        'ip_address': ipAddress,
+        'location': locationData['location'],
+        'location_city': locationData['location_city'],
+        'location_country': locationData['location_country'],
+        'location_region': locationData['location_region'],
         'created_at': DateTime.now().toUtc().toIso8601String(),
         'last_activity': DateTime.now().toUtc().toIso8601String(),
-      }).select().single();
+      };
+
+      logInfo(
+          '📤 [registerSession] Registering session with data: ${json.encode(sessionData)}');
+
+      final response = await _supabase
+          .from('active_sessions')
+          .insert(sessionData)
+          .select()
+          .single();
 
       _currentSessionId = response['id'] as String;
       _sessionToken = response['session_token'] as String;
@@ -134,7 +147,8 @@ class SessionManagerService {
       // ذخیره محلی
       await _saveSession();
 
-      logInfo('✅ نشست جدید ثبت شد: $_currentSessionId');
+      logInfo(
+          '✅ [registerSession] Session registered successfully with location: $_currentSessionId');
 
       // شروع ردیابی و Realtime
       _startActivityTracking();
@@ -143,8 +157,9 @@ class SessionManagerService {
 
       _isRegistering = false;
       return _currentSessionId;
-    } catch (e) {
-      logInfo('❌ خطا در ثبت نشست: $e');
+    } catch (e, stackTrace) {
+      logInfo('❌ [registerSession] خطا در ثبت نشست: $e');
+      logInfo('📚 [registerSession] Stack trace: $stackTrace');
       _currentSessionId = null;
       _sessionToken = null;
       _isRegistering = false;
@@ -201,19 +216,18 @@ class SessionManagerService {
 
     // اگر نشست محلی نداریم، ثبت کن (اما با timeout)
     try {
-      final sessionId = await registerSession()
-          .timeout(
-            const Duration(seconds: 2),
-            onTimeout: () => null,
-          );
-      
+      final sessionId = await registerSession().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => null,
+      );
+
       if (sessionId == null) {
         // در صورت خطا، session را معتبر در نظر بگیر تا کاربر منتظر نماند
         // terminate در پس‌زمینه انجام می‌شود
         Future.microtask(() => _terminateLocal('نشست ثبت نشد'));
         return false;
       }
-      
+
       // آپدیت موقعیت و IP در پس‌زمینه (غیرمسدودکننده)
       updateLocationAndIP();
       return true;
@@ -229,55 +243,100 @@ class SessionManagerService {
     // اجرای غیرمسدودکننده در پس‌زمینه
     Future.microtask(() async {
       try {
-        final userId = _supabase.auth.currentUser?.id;
-        if (userId == null) {
-          return; // بدون لاگ - کاربر متوجه نشود
+        logInfo('🔄 [updateLocationAndIP] Starting...');
+
+        final user = _supabase.auth.currentUser;
+        if (user == null) {
+          logInfo(
+              '❌ [updateLocationAndIP] User is null, cannot update location');
+          return;
         }
 
-        // اجرای موازی برای دریافت موقعیت و IP با timeout
-        final results = await Future.wait([
-          // دریافت موقعیت با timeout 8 ثانیه
-          _getLocationWithTimeout(),
-          // دریافت IP با timeout 5 ثانیه
-          _getIPWithTimeout(),
-        ], eagerError: false);
+        if (_currentSessionId == null) {
+          logInfo(
+              '❌ [updateLocationAndIP] Session not registered (_currentSessionId is null)');
+          return;
+        }
 
-        final locationData = results[0] as Map<String, dynamic>?;
-        final ipAddress = results[1] as String?;
+        if (_sessionToken == null || _sessionToken!.isEmpty) {
+          logInfo('❌ [updateLocationAndIP] Session token is empty!');
+          return;
+        }
+
+        logInfo(
+            '✅ [updateLocationAndIP] User authenticated, fetching IP and location...');
+
+        // گرفتن IP
+        logInfo('📡 [updateLocationAndIP] Fetching IP address...');
+        final ipAddress = await _getIPWithTimeout();
+        logInfo('📱 [updateLocationAndIP] IP Address received: $ipAddress');
+
+        // گرفتن Location
+        logInfo('🌍 [updateLocationAndIP] Fetching location data...');
+        final locationData = await _getCurrentLocation();
+        logInfo(
+            '📍 [updateLocationAndIP] Location Data received: $locationData');
 
         // آپدیت در دیتابیس به صورت موازی
         final updateFutures = <Future>[];
 
         // آپدیت profiles
-        if (locationData != null || ipAddress != null) {
+        if (locationData['location'] != null || ipAddress != null) {
           final updateData = <String, dynamic>{};
-          if (locationData != null) {
-            updateData['last_location'] = locationData;
+          if (locationData['location'] != null) {
+            updateData['last_location'] = locationData['location'];
           }
           if (ipAddress != null) {
             updateData['last_ip'] = ipAddress;
           }
 
+          logInfo(
+              '📤 [updateLocationAndIP] Updating profiles with: $updateData');
+
           updateFutures.add(
             _supabase
                 .from('profiles')
                 .update(updateData)
-                .eq('id', userId)
+                .eq('id', user.id)
                 .timeout(const Duration(seconds: 5))
-                .then((_) => null)
-                .catchError((_) => null), // خطاها را نادیده بگیر
+                .then((_) {
+              logInfo('✅ [updateLocationAndIP] Profiles updated successfully');
+              return null;
+            }).catchError((e) {
+              logInfo('❌ [updateLocationAndIP] Error updating profiles: $e');
+              return null;
+            }),
           );
         }
 
         // آپدیت active_sessions
-        if (_currentSessionId != null && (locationData != null || ipAddress != null)) {
-          final sessionUpdateData = <String, dynamic>{};
-          if (locationData != null) {
-            sessionUpdateData['location'] = locationData;
-          }
+        if (locationData.isNotEmpty || ipAddress != null) {
+          final sessionUpdateData = <String, dynamic>{
+            'last_activity': DateTime.now().toUtc().toIso8601String(),
+          };
+
           if (ipAddress != null) {
             sessionUpdateData['ip_address'] = ipAddress;
           }
+
+          // ✅ اضافه کردن فیلدهای location
+          if (locationData['location_city'] != null) {
+            sessionUpdateData['location_city'] = locationData['location_city'];
+          }
+          if (locationData['location_country'] != null) {
+            sessionUpdateData['location_country'] =
+                locationData['location_country'];
+          }
+          if (locationData['location_region'] != null) {
+            sessionUpdateData['location_region'] =
+                locationData['location_region'];
+          }
+          if (locationData['location'] != null) {
+            sessionUpdateData['location'] = locationData['location'];
+          }
+
+          logInfo(
+              '📤 [updateLocationAndIP] Updating session with: ${json.encode(sessionUpdateData)}');
 
           updateFutures.add(
             _supabase
@@ -285,44 +344,230 @@ class SessionManagerService {
                 .update(sessionUpdateData)
                 .eq('id', _currentSessionId!)
                 .timeout(const Duration(seconds: 5))
-                .then((_) => null)
-                .catchError((_) => null), // خطاها را نادیده بگیر
+                .then((result) {
+              logInfo(
+                  '✅ [updateLocationAndIP] Database update successful! Result: $result');
+              return null;
+            }).catchError((e) {
+              logInfo('❌ [updateLocationAndIP] Error updating session: $e');
+              return null;
+            }),
           );
+        } else {
+          logInfo('⚠️ [updateLocationAndIP] No location or IP data to update');
         }
 
         // اجرای موازی آپدیت‌ها
         await Future.wait(updateFutures, eagerError: false);
-      } catch (e) {
-        // خطاها را کاملاً silent handle می‌کنیم - کاربر نباید متوجه شود
+        logInfo('✅ [updateLocationAndIP] All updates completed');
+      } catch (e, stackTrace) {
+        logInfo('❌ [updateLocationAndIP] Exception: $e');
+        logInfo('📚 [updateLocationAndIP] Stack trace: $stackTrace');
       }
     });
-  }
-
-  /// دریافت موقعیت با timeout
-  Future<Map<String, dynamic>?> _getLocationWithTimeout() async {
-    try {
-      return await LocationService()
-          .getCurrentLocation()
-          .timeout(
-            const Duration(seconds: 8),
-            onTimeout: () => null,
-          );
-    } catch (e) {
-      return null;
-    }
   }
 
   /// دریافت IP با timeout
   Future<String?> _getIPWithTimeout() async {
     try {
-      return await getIpAddress().timeout(
+      logInfo('📡 [_getIPWithTimeout] Fetching IP address...');
+      final ip = await getIpAddress().timeout(
         const Duration(seconds: 5),
+        onTimeout: () {
+          logInfo('⏱️ [_getIPWithTimeout] Request timeout!');
+          throw TimeoutException('IP address fetch timeout');
+        },
       );
+      logInfo('✅ [_getIPWithTimeout] IP address received: $ip');
+      return ip;
     } on TimeoutException {
+      logInfo('⏱️ [_getIPWithTimeout] TimeoutException caught');
       return null;
-    } catch (e) {
+    } catch (e, stackTrace) {
+      logInfo('❌ [_getIPWithTimeout] Exception: $e');
+      logInfo('📚 [_getIPWithTimeout] Stack: $stackTrace');
       return null;
     }
+  }
+
+  /// دریافت موقعیت مکانی از طریق IP API
+  /// ابتدا از ipapi.co استفاده می‌کند، در صورت خطا از ip-api.com استفاده می‌کند
+  Future<Map<String, dynamic>> _getCurrentLocation() async {
+    logInfo('🌍 [_getCurrentLocation] Starting...');
+
+    // تلاش اول: استفاده از ipapi.co
+    try {
+      logInfo('📡 [_getCurrentLocation] Trying ipapi.co...');
+      final result = await _getLocationFromIpApiCo();
+      if (result != null) {
+        logInfo(
+            '✅ [_getCurrentLocation] Successfully got location from ipapi.co');
+        return result;
+      }
+    } catch (e) {
+      logInfo('⚠️ [_getCurrentLocation] ipapi.co failed: $e');
+    }
+
+    // تلاش دوم: استفاده از ip-api.com (fallback)
+    try {
+      logInfo('📡 [_getCurrentLocation] Trying ip-api.com as fallback...');
+      final result = await _getLocationFromIpApiCom();
+      if (result != null) {
+        logInfo(
+            '✅ [_getCurrentLocation] Successfully got location from ip-api.com');
+        return result;
+      }
+    } catch (e) {
+      logInfo('⚠️ [_getCurrentLocation] ip-api.com also failed: $e');
+    }
+
+    logInfo(
+        '❌ [_getCurrentLocation] All location APIs failed, returning empty data');
+    return _getEmptyLocationData();
+  }
+
+  /// دریافت location از ipapi.co
+  Future<Map<String, dynamic>?> _getLocationFromIpApiCo() async {
+    try {
+      final response = await http.get(
+        Uri.parse('https://ipapi.co/json/'),
+        headers: {'Accept': 'application/json'},
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          logInfo('⏱️ [_getLocationFromIpApiCo] Request timeout!');
+          throw TimeoutException('Location API timeout');
+        },
+      );
+
+      logInfo(
+          '📨 [_getLocationFromIpApiCo] Response status: ${response.statusCode}');
+      logInfo('📨 [_getLocationFromIpApiCo] Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+
+        // چک کردن اگر API محدودیت داشت
+        if (data['error'] == true) {
+          logInfo('❌ [_getLocationFromIpApiCo] API Error: ${data['reason']}');
+          return null;
+        }
+
+        final city = data['city']?.toString();
+        final country = data['country_name']?.toString();
+        final region = data['region']?.toString();
+        final latitude = data['latitude']?.toString();
+        final longitude = data['longitude']?.toString();
+
+        logInfo(
+            '✅ [_getLocationFromIpApiCo] Parsed: city=$city, country=$country, region=$region');
+
+        // ساخت location object به صورت JSON
+        Map<String, dynamic>? locationObject;
+        if (city != null ||
+            country != null ||
+            (latitude != null && longitude != null)) {
+          locationObject = {
+            'city': city,
+            'country': country,
+            'latitude': latitude != null ? double.tryParse(latitude) : null,
+            'longitude': longitude != null ? double.tryParse(longitude) : null,
+          };
+        }
+
+        return {
+          'location_city': city,
+          'location_country': country,
+          'location_region': region,
+          'location': locationObject,
+        };
+      } else {
+        logInfo(
+            '❌ [_getLocationFromIpApiCo] Bad status code: ${response.statusCode}');
+        return null;
+      }
+    } catch (e, stackTrace) {
+      logInfo('❌ [_getLocationFromIpApiCo] Exception: $e');
+      logInfo('📚 [_getLocationFromIpApiCo] Stack: $stackTrace');
+      return null;
+    }
+  }
+
+  /// دریافت location از ip-api.com (fallback)
+  Future<Map<String, dynamic>?> _getLocationFromIpApiCom() async {
+    try {
+      final response = await http
+          .get(
+        Uri.parse(
+            'http://ip-api.com/json/?fields=status,message,city,country,regionName,lat,lon'),
+      )
+          .timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          logInfo('⏱️ [_getLocationFromIpApiCom] Request timeout!');
+          throw TimeoutException('Location API timeout');
+        },
+      );
+
+      logInfo(
+          '📨 [_getLocationFromIpApiCom] Response status: ${response.statusCode}');
+      logInfo('📨 [_getLocationFromIpApiCom] Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+
+        if (data['status'] == 'success') {
+          final city = data['city']?.toString();
+          final country = data['country']?.toString();
+          final region = data['regionName']?.toString();
+          final lat = data['lat']?.toString();
+          final lon = data['lon']?.toString();
+
+          logInfo(
+              '✅ [_getLocationFromIpApiCom] Parsed: city=$city, country=$country, region=$region');
+
+          // ساخت location object به صورت JSON
+          Map<String, dynamic>? locationObject;
+          if (city != null || country != null || (lat != null && lon != null)) {
+            locationObject = {
+              'city': city,
+              'country': country,
+              'latitude': lat != null ? double.tryParse(lat) : null,
+              'longitude': lon != null ? double.tryParse(lon) : null,
+            };
+          }
+
+          return {
+            'location_city': city,
+            'location_country': country,
+            'location_region': region,
+            'location': locationObject,
+          };
+        } else {
+          logInfo(
+              '❌ [_getLocationFromIpApiCom] API returned fail: ${data['message']}');
+          return null;
+        }
+      } else {
+        logInfo(
+            '❌ [_getLocationFromIpApiCom] Bad status code: ${response.statusCode}');
+        return null;
+      }
+    } catch (e, stackTrace) {
+      logInfo('❌ [_getLocationFromIpApiCom] Exception: $e');
+      logInfo('📚 [_getLocationFromIpApiCom] Stack: $stackTrace');
+      return null;
+    }
+  }
+
+  /// Helper method برای برگرداندن داده‌های خالی location
+  Map<String, dynamic> _getEmptyLocationData() {
+    return {
+      'location_city': null,
+      'location_country': null,
+      'location_region': null,
+      'location': null,
+    };
   }
 
   void _startActivityTracking() {
@@ -403,7 +648,7 @@ class SessionManagerService {
       const Duration(seconds: 30),
       (_) async {
         if (_isTerminating) return; // اگر در حال terminate است، بررسی نکن
-        
+
         try {
           final stillValid = await ensureSessionRegistered();
           if (!stillValid) {
@@ -551,14 +796,31 @@ class SessionManagerService {
     }
   }
 
-  Stream<List<SessionModel>> watchActiveSessions() {
+  Stream<List<SessionModel>> watchActiveSessions() async* {
     final user = _supabase.auth.currentUser;
-    if (user == null) return Stream.value([]);
+    if (user == null) {
+      yield [];
+      return;
+    }
 
-    return _supabase
-        .from('active_sessions')
-        .stream(primaryKey: ['id'])
-        .map((data) {
+    try {
+      // ابتدا داده‌های اولیه را از getActiveSessions بگیر
+      logInfo('📡 [watchActiveSessions] Loading initial sessions...');
+      final initialSessions = await getActiveSessions();
+      logInfo(
+          '✅ [watchActiveSessions] Loaded ${initialSessions.length} initial sessions');
+      yield initialSessions;
+
+      // سپس stream را subscribe کن با error handling
+      final stream = _supabase
+          .from('active_sessions')
+          .stream(primaryKey: ['id']).handleError((error, stackTrace) {
+        logInfo('❌ [watchActiveSessions] Stream error: $error');
+        logInfo('📚 [watchActiveSessions] Stack: $stackTrace');
+      });
+
+      await for (final data in stream) {
+        try {
           // فیلتر کردن داده‌ها بر اساس user_id و is_active
           final filtered = data.where((json) {
             return json['user_id'] == user.id && json['is_active'] == true;
@@ -566,13 +828,56 @@ class SessionManagerService {
 
           // مرتب‌سازی بر اساس last_activity
           filtered.sort((a, b) {
-            final aTime = DateTime.parse(a['last_activity'] as String);
-            final bTime = DateTime.parse(b['last_activity'] as String);
-            return bTime.compareTo(aTime);
+            try {
+              final aTime = DateTime.parse(a['last_activity'] as String);
+              final bTime = DateTime.parse(b['last_activity'] as String);
+              return bTime.compareTo(aTime);
+            } catch (e) {
+              logInfo('⚠️ [watchActiveSessions] Error parsing date: $e');
+              return 0;
+            }
           });
 
-          return filtered.map((json) => SessionModel.fromJson(json)).toList();
-        });
+          final sessions = filtered
+              .map((json) {
+                try {
+                  return SessionModel.fromJson(json);
+                } catch (e) {
+                  logInfo('⚠️ [watchActiveSessions] Error parsing session: $e');
+                  return null;
+                }
+              })
+              .whereType<SessionModel>()
+              .toList();
+
+          logInfo(
+              '📡 [watchActiveSessions] Stream update: ${sessions.length} sessions');
+          yield sessions;
+        } catch (e) {
+          logInfo('❌ [watchActiveSessions] Error processing stream data: $e');
+          // در صورت خطا، دوباره از getActiveSessions استفاده کن
+          try {
+            final fallbackSessions = await getActiveSessions();
+            yield fallbackSessions;
+          } catch (fallbackError) {
+            logInfo('❌ [watchActiveSessions] Fallback failed: $fallbackError');
+            yield [];
+          }
+        }
+      }
+    } catch (e, stackTrace) {
+      logInfo('❌ [watchActiveSessions] Initial load error: $e');
+      logInfo('📚 [watchActiveSessions] Stack: $stackTrace');
+      // در صورت خطا در بارگذاری اولیه، یک بار دیگر تلاش کن
+      try {
+        final fallbackSessions = await getActiveSessions();
+        yield fallbackSessions;
+      } catch (fallbackError) {
+        logInfo(
+            '❌ [watchActiveSessions] Final fallback failed: $fallbackError');
+        yield [];
+      }
+    }
   }
 
   /// بررسی اینکه آیا نشست فعلی 10 روز قدمت دارد یا نه
@@ -691,8 +996,7 @@ class SessionManagerService {
 
         if (response != null) {
           final createdAt = DateTime.parse(response['created_at'] as String);
-          final daysSinceCreation =
-              DateTime.now().difference(createdAt).inDays;
+          final daysSinceCreation = DateTime.now().difference(createdAt).inDays;
           final remainingDays = 10 - daysSinceCreation;
 
           return TerminateSessionResult(
@@ -772,8 +1076,7 @@ class SessionManagerService {
         try {
           await _supabase
               .from('active_sessions')
-              .update({'is_active': false})
-              .eq('id', _currentSessionId!);
+              .update({'is_active': false}).eq('id', _currentSessionId!);
           logInfo('✅ نشست غیرفعال شد: $_currentSessionId');
         } catch (e) {
           logInfo('⚠️ خطا در غیرفعال کردن نشست: $e');
@@ -818,8 +1121,7 @@ class SessionManagerService {
         final iosInfo = await deviceInfoPlugin.iosInfo;
         return SessionDeviceInfo(
           deviceName: iosInfo.name.isNotEmpty ? iosInfo.name : 'iOS Device',
-          deviceModel:
-              iosInfo.model.isNotEmpty ? iosInfo.model : 'iPhone',
+          deviceModel: iosInfo.model.isNotEmpty ? iosInfo.model : 'iPhone',
           osVersion: 'iOS ${iosInfo.systemVersion}',
           targetPlatform: TargetPlatform.iOS,
           deviceId: iosInfo.identifierForVendor,

@@ -46,6 +46,12 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	
+	<!-- Location Permissions -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>برای ثبت موقعیت مکانی نشست‌های فعال نیاز به دسترسی به موقعیت داریم</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>برای ثبت موقعیت مکانی نشست‌های فعال نیاز به دسترسی به موقعیت داریم</string>
+	
 	<!-- Deep Linking Configuration -->
 	
 	<!-- Associated Domains for Universal Links -->

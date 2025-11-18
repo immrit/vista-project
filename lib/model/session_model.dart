@@ -30,6 +30,51 @@ class SessionModel {
   });
 
   factory SessionModel.fromJson(Map<String, dynamic> json) {
+    // پردازش location: اگر location به صورت JSON object است، از آن استفاده کن
+    // در غیر این صورت، از location_city و location_country استفاده کن
+    SessionLocation? location;
+    
+    if (json['location'] != null) {
+      try {
+        // اگر location به صورت Map است
+        if (json['location'] is Map<String, dynamic>) {
+          location = SessionLocation.fromJson(json['location'] as Map<String, dynamic>);
+        } 
+        // اگر location به صورت string است (مثل "35.6892,51.3890") - برای backward compatibility
+        else if (json['location'] is String) {
+          // از location_city و location_country استفاده کن
+          final city = json['location_city'] as String?;
+          final country = json['location_country'] as String?;
+          if (city != null || country != null) {
+            location = SessionLocation(
+              city: city,
+              country: country,
+            );
+          }
+        }
+      } catch (e) {
+        // در صورت خطا، از location_city و location_country استفاده کن
+        final city = json['location_city'] as String?;
+        final country = json['location_country'] as String?;
+        if (city != null || country != null) {
+          location = SessionLocation(
+            city: city,
+            country: country,
+          );
+        }
+      }
+    } else {
+      // اگر location null است، از location_city و location_country استفاده کن
+      final city = json['location_city'] as String?;
+      final country = json['location_country'] as String?;
+      if (city != null || country != null) {
+        location = SessionLocation(
+          city: city,
+          country: country,
+        );
+      }
+    }
+
     return SessionModel(
       id: json['id'] as String,
       userId: json['user_id'] as String,
@@ -44,9 +89,7 @@ class SessionModel {
       appVersion: json['app_version'] as String?,
       platform: json['platform'] as String?,
       fcmToken: json['fcm_token'] as String?,
-      location: json['location'] != null
-          ? SessionLocation.fromJson(json['location'] as Map<String, dynamic>)
-          : null,
+      location: location,
     );
   }
 
