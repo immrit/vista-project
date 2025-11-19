@@ -4,22 +4,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:photo_manager/photo_manager.dart';
 
-class TelegramGalleryBottomSheet extends StatefulWidget {
+class MediaPickerBottomSheet extends StatefulWidget {
   final Function(File) onImageSelected;
   final Function(List<File>)? onImagesSelected;
 
-  const TelegramGalleryBottomSheet({
+  const MediaPickerBottomSheet({
     super.key,
     required this.onImageSelected,
     this.onImagesSelected,
   });
 
   @override
-  State<TelegramGalleryBottomSheet> createState() =>
-      _TelegramGalleryBottomSheetState();
+  State<MediaPickerBottomSheet> createState() => _MediaPickerBottomSheetState();
 }
 
-class _TelegramGalleryBottomSheetState extends State<TelegramGalleryBottomSheet>
+class _MediaPickerBottomSheetState extends State<MediaPickerBottomSheet>
     with TickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;

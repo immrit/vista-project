@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
-import 'telegram_gallery_bottom_sheet.dart';
+import 'media_picker_bottom_sheet.dart';
 import 'image_preview_bottom_sheet.dart';
 
 class AttachmentBottomSheet extends StatefulWidget {
@@ -82,7 +82,7 @@ class _AttachmentBottomSheetState extends State<AttachmentBottomSheet>
           isScrollControlled: true,
           isDismissible: true,
           enableDrag: true,
-          builder: (context) => TelegramGalleryBottomSheet(
+          builder: (context) => MediaPickerBottomSheet(
             onImageSelected: (file) {
               widget.onImagesSelected([file]);
             },

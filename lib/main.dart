@@ -49,7 +49,7 @@ import 'view/screen/PublicPosts/publicPosts.dart';
 import 'view/screen/PublicPosts/PostDetailPage.dart';
 import 'view/screen/PublicPosts/profileScreen.dart';
 import 'utils/performance_monitor.dart';
-import 'DB/telegram_style_cache_system.dart';
+import 'DB/high_performance_cache_system.dart';
 import 'utils/deferred_initialization_manager.dart';
 import 'services/animation_controller_service.dart';
 import 'services/advanced_haptic_feedback_service.dart';
@@ -222,7 +222,7 @@ void main() async {
 
       // ✅ فوری: فقط چیزهای ضروری
       // 1. Cache System (ضروری برای عملکرد سریع)
-      await TelegramStyleCacheSystem().initialize();
+      await HighPerformanceCacheSystem().initialize();
 
       // 2. Database Manager (ضروری)
       await DatabaseManager().initializeAllDatabases();

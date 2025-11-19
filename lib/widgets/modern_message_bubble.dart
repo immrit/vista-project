@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import '../model/message_model.dart';
 
-/// ✅ Custom Message Bubble Widget - الهام‌گرفته از تلگرام
+/// ✅ Custom Message Bubble Widget - طراحی مدرن با هدف performance بالا
 /// استفاده از LeafRenderObjectWidget برای performance بهتر
-class TelegramStyleMessageBubble extends LeafRenderObjectWidget {
+class ModernMessageBubble extends LeafRenderObjectWidget {
   final MessageModel message;
   final bool isMe;
   final VoidCallback? onTap;
@@ -12,7 +12,7 @@ class TelegramStyleMessageBubble extends LeafRenderObjectWidget {
   final Color? bubbleColor;
   final Color? textColor;
 
-  const TelegramStyleMessageBubble({
+  const ModernMessageBubble({
     super.key,
     required this.message,
     required this.isMe,

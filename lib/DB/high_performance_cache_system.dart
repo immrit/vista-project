@@ -3,13 +3,12 @@ import '../model/message_model.dart';
 import '../utils/lru_cache.dart';
 import 'unified_message_cache_service.dart';
 
-/// ✅ Telegram-style Multi-Layer Cache System
-/// الهام‌گرفته از معماری cache تلگرام Android
-class TelegramStyleCacheSystem {
-  static final TelegramStyleCacheSystem _instance =
-      TelegramStyleCacheSystem._internal();
-  factory TelegramStyleCacheSystem() => _instance;
-  TelegramStyleCacheSystem._internal();
+/// ✅ High-performance multi-layer cache system الهام‌گرفته از معماری‌های پیام‌رسان
+class HighPerformanceCacheSystem {
+  static final HighPerformanceCacheSystem _instance =
+      HighPerformanceCacheSystem._internal();
+  factory HighPerformanceCacheSystem() => _instance;
+  HighPerformanceCacheSystem._internal();
 
   // ✅ LAYER 1: Hot Memory Cache (LRU) - Fastest (<1ms)
   final LRUCache<String, List<MessageModel>> _hotCache = LRUCache(10);
@@ -32,7 +31,7 @@ class TelegramStyleCacheSystem {
   Future<void> initialize() async {
     if (_initialized) return;
 
-    print('🚀 Initializing Telegram-style cache system...');
+    print('🚀 Initializing high-performance cache system...');
 
     // ✅ Initialize disk cache
     await _diskCache.initialize();

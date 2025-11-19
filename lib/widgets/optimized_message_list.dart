@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../model/message_model.dart';
-import 'telegram_style_message_bubble.dart';
+import 'modern_message_bubble.dart';
 
 /// ✅ Optimized Message List - الهام‌گرفته از تلگرام
 /// با Pre-caching و RepaintBoundary برای performance بهتر
@@ -132,7 +132,7 @@ class _MessageItem extends StatelessWidget {
           alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
           child: GestureDetector(
             onTap: onTap,
-            child: TelegramStyleMessageBubble(
+            child: ModernMessageBubble(
               message: message,
               isMe: isMe,
               onTap: onTap,

@@ -274,19 +274,22 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => _SessionDetailsBottomSheet(
+      builder: (sheetContext) => _SessionDetailsBottomSheet(
         session: session,
         isCurrent: isCurrent,
         sessionManager: sessionManager,
         isDark: isDark,
         canTerminate: _canTerminateSession[session.id] ?? false,
         onTerminate: () async {
-          Navigator.pop(context);
+          final navigator = Navigator.of(sheetContext);
+          final messenger = ScaffoldMessenger.of(sheetContext);
+
+          navigator.pop();
           final result = await sessionManager.terminateSession(session.id);
           if (mounted) {
             if (result.success) {
               ref.invalidate(activeSessionsProvider);
-              ScaffoldMessenger.of(context).showSnackBar(
+              messenger.showSnackBar(
                 SnackBar(
                   content: const Text('نشست با موفقیت خاتمه یافت'),
                   backgroundColor: Colors.green,
@@ -294,7 +297,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
                 ),
               );
             } else {
-              ScaffoldMessenger.of(context).showSnackBar(
+              messenger.showSnackBar(
                 SnackBar(
                   content: Text(result.errorMessage ?? 'خطا در خاتمه نشست'),
                   backgroundColor: Colors.orange,
@@ -491,6 +494,8 @@ class _SessionDetailsBottomSheet extends StatelessWidget {
   Future<void> _handleLogout(BuildContext context) async {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
 
     // نمایش دیالوگ تایید
     final confirmed = await showDialog<bool>(
@@ -568,17 +573,16 @@ class _SessionDetailsBottomSheet extends StatelessWidget {
       await sessionManager.userLogout();
 
       if (context.mounted) {
-        Navigator.pop(context); // بستن loading dialog
-        Navigator.pop(context); // بستن bottom sheet
+        navigator.pop(); // بستن loading dialog
+        navigator.pop(); // بستن bottom sheet
 
         // هدایت به صفحه لاگین
-        Navigator.pushAndRemoveUntil(
-          context,
+        navigator.pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => const AuthScreen()),
           (route) => false,
         );
 
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: const Row(
               children: [
@@ -594,8 +598,8 @@ class _SessionDetailsBottomSheet extends StatelessWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        Navigator.pop(context); // بستن loading dialog
-        ScaffoldMessenger.of(context).showSnackBar(
+        navigator.pop(); // بستن loading dialog
+        messenger.showSnackBar(
           SnackBar(
             content: Text('خطا در خروج: ${e.toString()}'),
             backgroundColor: Colors.red,
