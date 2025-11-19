@@ -5,14 +5,22 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../provider/provider.dart';
+import '../../../../provider/settings_providers.dart';
+import '../../../../DB/advanced_settings_service.dart';
+import '../../../../services/auto_lock_service.dart';
 import '../../../../model/messagePrivacyModel.dart';
 import 'BlockedUsersPage.dart';
 
-class PrivacySettingsPage extends ConsumerWidget {
+class PrivacySettingsPage extends ConsumerStatefulWidget {
   const PrivacySettingsPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PrivacySettingsPage> createState() => _PrivacySettingsPageState();
+}
+
+class _PrivacySettingsPageState extends ConsumerState<PrivacySettingsPage> {
+  @override
+  Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -36,9 +44,59 @@ class PrivacySettingsPage extends ConsumerWidget {
 
           const SizedBox(height: 20),
 
+          // بخش امنیت
+          _buildSecuritySection(context, ref),
+
+          const SizedBox(height: 20),
+
           // بخش داده‌ها و حفظ حریم خصوصی
           _buildDataSection(context, ref),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSecuritySection(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final appSettingsAsync = ref.watch(advancedAppSettingsProvider);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16.0),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF252525) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: appSettingsAsync.when(
+        data: (settings) {
+          final security = settings['security'] as Map<String, dynamic>? ?? {};
+
+          return PrivacySwitchItem(
+            icon: Icons.lock_rounded,
+            iconColor: Colors.red,
+            title: 'قفل خودکار',
+            subtitle: security['auto_lock_enabled'] == true 
+                ? '${security['auto_lock_timeout_minutes'] ?? 5} دقیقه' 
+                : 'غیرفعال',
+            value: security['auto_lock_enabled'] as bool? ?? false,
+            onChanged: (bool value) async {
+              final service = AdvancedSettingsService();
+              await service.updateAdvancedAppSettings({
+                'security': {...security, 'auto_lock_enabled': value}
+              });
+              ref.invalidate(advancedAppSettingsProvider);
+              // به‌روزرسانی AutoLockService
+              AutoLockService().refreshSettings();
+            },
+          );
+        },
+        loading: () => const Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+        error: (error, stack) => Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text('خطا: $error'),
+        ),
       ),
     );
   }

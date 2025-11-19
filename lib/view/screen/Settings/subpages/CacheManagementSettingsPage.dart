@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../services/cache_manager.dart';
+import '../../../../provider/settings_providers.dart';
+import '../../../../DB/advanced_settings_service.dart';
 import '../widgets/SettingsListItem.dart';
 
 class CacheManagementSettingsPage extends ConsumerStatefulWidget {
@@ -200,6 +202,11 @@ class _CacheManagementSettingsPageState
 
                 // تنظیمات هوشمند
                 _buildSmartSettingsCard(context, isDark, colorScheme),
+
+                const SizedBox(height: 20),
+
+                // تنظیمات ذخیره‌سازی
+                _buildStorageSettingsCard(context, isDark, colorScheme),
 
                 const SizedBox(height: 20),
 
@@ -503,6 +510,138 @@ class _CacheManagementSettingsPageState
                 setState(() => _cacheStats['video_cache_enabled'] = value);
               },
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStorageSettingsCard(BuildContext context, bool isDark, ColorScheme colorScheme) {
+    final storageAsync = ref.watch(storageSettingsProvider);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16.0),
+      decoration: BoxDecoration(
+        color: isDark ? colorScheme.surface : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.storage_rounded, color: Colors.green, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'تنظیمات ذخیره‌سازی',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+          storageAsync.when(
+            data: (settings) {
+              final cache = settings['cache'] as Map<String, dynamic>? ?? {};
+
+              return Column(
+                children: [
+                  SettingsListItem(
+                    icon: Icons.cleaning_services_rounded,
+                    iconColor: Colors.blue,
+                    title: 'پاکسازی خودکار Cache',
+                    subtitle: 'پاکسازی خودکار فایل‌های قدیمی',
+                    trailing: Switch(
+                      value: cache['auto_clear_cache'] as bool? ?? true,
+                      onChanged: (value) async {
+                        setState(() => _isLoading = true);
+                        final service = AdvancedSettingsService();
+                        await service.updateStorageSettings({
+                          'cache': {...cache, 'auto_clear_cache': value}
+                        });
+                        ref.invalidate(storageSettingsProvider);
+                        ref.invalidate(cacheStatsProvider);
+                        setState(() => _isLoading = false);
+                      },
+                    ),
+                  ),
+                  _buildDivider(),
+                  SettingsListItem(
+                    icon: Icons.storage_rounded,
+                    iconColor: Colors.purple,
+                    title: 'حداکثر حجم Cache',
+                    subtitle: '${cache['max_cache_size_mb'] ?? 500} MB',
+                    onTap: () => _showMaxCacheSizeDialog(context, cache),
+                  ),
+                ],
+              );
+            },
+            loading: () => const Padding(
+              padding: EdgeInsets.all(20.0),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (error, stack) => Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Text('خطا: $error'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showMaxCacheSizeDialog(BuildContext context, Map<String, dynamic> cache) {
+    final controller = TextEditingController(
+      text: (cache['max_cache_size_mb'] as int? ?? 500).toString(),
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('حداکثر حجم Cache (MB)'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'حجم به مگابایت',
+            hintText: '500',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('لغو'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final value = int.tryParse(controller.text);
+              if (value != null && value > 0) {
+                Navigator.pop(context);
+                setState(() => _isLoading = true);
+                final service = AdvancedSettingsService();
+                await service.updateStorageSettings({
+                  'cache': {...cache, 'max_cache_size_mb': value}
+                });
+                ref.invalidate(storageSettingsProvider);
+                ref.invalidate(cacheStatsProvider);
+                setState(() => _isLoading = false);
+              }
+            },
+            child: const Text('ذخیره'),
           ),
         ],
       ),

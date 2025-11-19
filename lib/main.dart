@@ -51,6 +51,11 @@ import 'view/screen/PublicPosts/profileScreen.dart';
 import 'utils/performance_monitor.dart';
 import 'DB/telegram_style_cache_system.dart';
 import 'utils/deferred_initialization_manager.dart';
+import 'services/animation_controller_service.dart';
+import 'services/advanced_haptic_feedback_service.dart';
+import 'services/auto_lock_service.dart';
+import 'provider/settings_providers.dart';
+import 'view/util/themes.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -227,6 +232,15 @@ void main() async {
 
       // 3.5. Advanced Settings Service (ضروری)
       await AdvancedSettingsService().initialize();
+      
+      // 3.6. Initialize Animation Controller Service
+      await AnimationControllerService().loadSettings();
+      
+      // 3.7. Initialize Haptic Feedback Service
+      await AdvancedHapticFeedbackService().initialize();
+      
+      // 3.8. Initialize Auto Lock Service
+      await AutoLockService().initialize();
 
       // 4. Voice Cache Service (ضروری)
       final voiceCacheService = VoiceCacheService();
@@ -588,9 +602,18 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) async {
+    final autoLockService = AutoLockService();
+    
     if (state == AppLifecycleState.detached) {
       // Cache cleanup is now handled by Sembast automatically
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      // App به background رفت - زمان آخرین فعالیت را ثبت کن
+      autoLockService.recordUserActivity();
     } else if (state == AppLifecycleState.resumed) {
+      // App به foreground برگشت - بررسی قفل
+      autoLockService.recordUserActivity();
+      autoLockService.refreshSettings();
+      
       Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted) {
           // App resumed
@@ -842,10 +865,44 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         return Consumer(
           builder: (context, ref, child) {
             final theme = ref.watch(dynamicThemeProvider);
+            
+            // دریافت تنظیمات انیمیشن
+            final performanceAsync = ref.watch(performanceSettingsProvider);
+            final animations = performanceAsync.value?['animations'] as Map<String, dynamic>? ?? {};
+            final animationsEnabled = animations['enabled'] as bool? ?? true;
+            final reduceMotion = animations['reduce_motion'] as bool? ?? false;
+            
+            // دریافت تنظیمات دسترسی‌پذیری برای color blind mode
+            final appSettingsAsync = ref.watch(advancedAppSettingsProvider);
+            final accessibility = appSettingsAsync.value?['accessibility'] as Map<String, dynamic>? ?? {};
+            final colorBlindMode = accessibility['color_blind_mode'] as String? ?? 'none';
+            
+            // اعمال color blind filter
+            final colorBlindFilter = getColorBlindFilter(colorBlindMode);
+            
             return MaterialApp(
               title: 'Vista',
               debugShowCheckedModeBanner: false,
-              theme: theme,
+              theme: theme.copyWith(
+                pageTransitionsTheme: PageTransitionsTheme(
+                  builders: {
+                    TargetPlatform.android: animationsEnabled && !reduceMotion
+                        ? FadeUpwardsPageTransitionsBuilder()
+                        : _NoAnimationPageTransitionsBuilder(),
+                    TargetPlatform.iOS: animationsEnabled && !reduceMotion
+                        ? CupertinoPageTransitionsBuilder()
+                        : _NoAnimationPageTransitionsBuilder(),
+                  },
+                ),
+              ),
+              builder: colorBlindFilter != null
+                  ? (context, child) {
+                      return ColorFiltered(
+                        colorFilter: colorBlindFilter,
+                        child: child!,
+                      );
+                    }
+                  : null,
               navigatorKey: navigatorKey,
               home: SplashScreen(),
               initialRoute: '/',
@@ -967,6 +1024,20 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         );
       },
     );
+  }
+}
+
+/// Page Transitions Builder بدون انیمیشن
+class _NoAnimationPageTransitionsBuilder extends PageTransitionsBuilder {
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    return child;
   }
 }
 

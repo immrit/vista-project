@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../view/util/themes.dart';
 import '../DB/database_manager.dart';
+import 'settings_providers.dart';
 
 // Provider برای مدیریت رنگ انتخاب شده
 final selectedColorProvider =
@@ -23,7 +24,24 @@ final brightnessProvider =
 final dynamicThemeProvider = Provider<ThemeData>((ref) {
   final color = ref.watch(selectedColorProvider);
   final brightness = ref.watch(brightnessProvider);
-  return createTheme(color, brightness);
+  
+  // دریافت تنظیمات دسترسی‌پذیری
+  final appSettingsAsync = ref.watch(advancedAppSettingsProvider);
+  final accessibility = appSettingsAsync.value?['accessibility'] as Map<String, dynamic>? ?? {};
+  
+  final largeText = accessibility['large_text'] as bool? ?? false;
+  final boldText = accessibility['bold_text'] as bool? ?? false;
+  final highContrast = accessibility['high_contrast'] as bool? ?? false;
+  final colorBlindMode = accessibility['color_blind_mode'] as String? ?? 'none';
+  
+  return createTheme(
+    color, 
+    brightness,
+    largeText: largeText,
+    boldText: boldText,
+    highContrast: highContrast,
+    colorBlindMode: colorBlindMode,
+  );
 });
 
 // Notifier برای مدیریت رنگ انتخاب شده

@@ -14,7 +14,6 @@ import 'subpages/ChatSettingsGroupPage.dart';
 import 'subpages/AboutSettingsPage.dart';
 import 'subpages/ThemeSettingsPage.dart';
 import 'subpages/PrivacySettingsPage.dart';
-import 'subpages/AdvancedSettingsPage.dart';
 import 'subpages/ActiveSessionsScreen.dart';
 import '../../../provider/session_provider.dart';
 
@@ -133,7 +132,8 @@ class Settings extends ConsumerWidget {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const ActiveSessionsScreen(),
+                              builder: (context) =>
+                                  const ActiveSessionsScreen(),
                             ),
                           );
                         },
@@ -169,21 +169,6 @@ class Settings extends ConsumerWidget {
                           );
                         },
                       ),
-                      _buildDivider(),
-                      SettingsItem(
-                        icon: Icons.tune_rounded,
-                        iconColor: Colors.indigo,
-                        title: 'تنظیمات پیشرفته',
-                        subtitle: 'عملکرد، ذخیره‌سازی، دسترسی‌پذیری',
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const AdvancedSettingsPage(),
-                            ),
-                          );
-                        },
-                      ),
                       // آیتم تنظیمات آفلاین حذف شد
                     ],
                   ),
@@ -201,19 +186,53 @@ class Settings extends ConsumerWidget {
                   child: Column(
                     children: [
                       SettingsItem(
-                        icon: Icons.store,
-                        iconColor: Colors.amber,
-                        title: 'ویستا وب',
-                        subtitle: 'دسترسی به نسخه وب ویستا',
+                        icon: Icons.verified,
+                        iconColor: Colors.amber[700]!,
+                        title: 'ویستا پریمیوم',
+                        subtitle:
+                            'از کلیه امکانات ویستا و بدون تبلیغ استفاده کنید',
+                        iconWidget: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                Colors.amber[700]!,
+                                Colors.amber[900]!,
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.amber[700]!.withOpacity(0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.verified,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
                         onTap: () async {
                           final session =
                               Supabase.instance.client.auth.currentSession;
                           final accessToken = session?.accessToken;
                           final refreshToken = session?.refreshToken;
                           if (accessToken != null && refreshToken != null) {
-                            // به‌جای ارسال توکن در URL، از یک endpoint امن با POST در WebView یا deep link امضاشده استفاده کنید.
-                            // اینجا صرفاً باز کردن صفحه عمومی بدون افشای توکن‌ها انجام می‌شود.
-                            final url = Uri.parse('https://cafevista.ir');
+                            // ساخت URL با توکن برای لاگین خودکار
+                            final url =
+                                Uri.parse('https://cafevista.ir/settings')
+                                    .replace(
+                              queryParameters: {
+                                'token': accessToken,
+                                'refresh_token': refreshToken,
+                              },
+                            );
                             if (await canLaunchUrl(url)) {
                               await launchUrl(url,
                                   mode: LaunchMode.externalApplication);
@@ -225,10 +244,19 @@ class Settings extends ConsumerWidget {
                               );
                             }
                           } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text('اطلاعات ورود یافت نشد!')),
-                            );
+                            // اگر توکن نداریم، فقط صفحه را باز می‌کنیم
+                            final url =
+                                Uri.parse('https://cafevista.ir/settings');
+                            if (await canLaunchUrl(url)) {
+                              await launchUrl(url,
+                                  mode: LaunchMode.externalApplication);
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text(
+                                        'امکان باز کردن سایت وجود ندارد.')),
+                              );
+                            }
                           }
                         },
                       ),
@@ -927,6 +955,7 @@ class SettingsItem extends StatelessWidget {
   final String subtitle;
   final VoidCallback onTap;
   final Widget? trailing;
+  final Widget? iconWidget;
 
   const SettingsItem({
     super.key,
@@ -936,6 +965,7 @@ class SettingsItem extends StatelessWidget {
     required this.subtitle,
     required this.onTap,
     this.trailing,
+    this.iconWidget,
   });
 
   @override
@@ -952,19 +982,20 @@ class SettingsItem extends StatelessWidget {
           child: Row(
             children: [
               // آیکون مربعی رنگی - دقیقاً مثل تلگرام
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: iconColor,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  icon,
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
+              iconWidget ??
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: iconColor,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      icon,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
               const SizedBox(width: 16),
               // متن و زیرنویس
               Expanded(

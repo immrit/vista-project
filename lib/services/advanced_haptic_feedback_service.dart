@@ -1,4 +1,5 @@
 import '../security/logging_utility.dart';
+import '../DB/advanced_settings_service.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 
@@ -23,6 +24,46 @@ class AdvancedHapticFeedbackService {
   bool _isInitialized = false;
   HapticFeedbackConfig _config = _defaultConfig;
 
+  /// بارگذاری تنظیمات از AdvancedSettingsService
+  Future<void> loadSettings() async {
+    try {
+      final advancedService = AdvancedSettingsService();
+      final appSettings = advancedService.getAdvancedAppSettings();
+      final feedback = appSettings['feedback'] as Map<String, dynamic>? ?? {};
+      
+      final enableHaptic = feedback['enable_haptic_feedback'] as bool? ?? true;
+      final enableSound = feedback['enable_sound_effects'] as bool? ?? true;
+      final hapticIntensityStr = feedback['haptic_intensity'] as String? ?? 'medium';
+      final soundVolume = (feedback['sound_volume'] as num?)?.toDouble() ?? 0.7;
+      
+      HapticIntensity hapticIntensity;
+      switch (hapticIntensityStr) {
+        case 'light':
+          hapticIntensity = HapticIntensity.low;
+          break;
+        case 'strong':
+          hapticIntensity = HapticIntensity.high;
+          break;
+        case 'medium':
+        default:
+          hapticIntensity = HapticIntensity.medium;
+      }
+      
+      _config = HapticFeedbackConfig(
+        enableHapticFeedback: enableHaptic,
+        enableSoundFeedback: enableSound,
+        enableVisualFeedback: _config.enableVisualFeedback,
+        hapticIntensity: hapticIntensity,
+        soundVolume: soundVolume,
+        visualIntensity: _config.visualIntensity,
+      );
+      
+      logInfo('📳 Haptic feedback settings loaded: haptic=$enableHaptic, sound=$enableSound');
+    } catch (e) {
+      logInfo('⚠️ Error loading haptic settings: $e');
+    }
+  }
+
   // Timer برای جلوگیری از spam
   Timer? _lastHapticTimer;
   DateTime? _lastHapticTime;
@@ -32,6 +73,7 @@ class AdvancedHapticFeedbackService {
   Future<void> initialize() async {
     if (_isInitialized) return;
 
+    await loadSettings();
     _isInitialized = true;
     logInfo('📳 Advanced Haptic Feedback Service initialized');
   }

@@ -11,7 +11,14 @@ enum ThemeColor {
 }
 
 // تابع برای ایجاد تم بر اساس رنگ و brightness
-ThemeData createTheme(ThemeColor color, Brightness brightness) {
+ThemeData createTheme(
+  ThemeColor color, 
+  Brightness brightness, {
+  bool largeText = false,
+  bool boldText = false,
+  bool highContrast = false,
+  String colorBlindMode = 'none',
+}) {
   final bool isDark = brightness == Brightness.dark;
 
   // تعیین رنگ اصلی بر اساس انتخاب
@@ -42,6 +49,27 @@ ThemeData createTheme(ThemeColor color, Brightness brightness) {
     background = const Color(0xFF1E1E1E);
     surface = const Color(0xFF252525);
 
+    // تعیین colorScheme بر اساس کنتراست
+    final colorScheme = highContrast 
+        ? ColorScheme.dark(
+            primary: primaryColor,
+            secondary: Colors.white,
+            surface: surface,
+            onPrimary: Colors.white,
+            onSecondary: Colors.white,
+            onSurface: Colors.white,
+            error: Colors.red[400]!,
+            brightness: Brightness.dark,
+          )
+        : ColorScheme.dark(
+            primary: primaryColor,
+            secondary: surface,
+            surface: surface,
+            onPrimary: Colors.white,
+            onSecondary: Colors.white,
+            onSurface: Colors.white,
+          );
+    
     return ThemeData(
       brightness: Brightness.dark,
       primaryColor: primaryColor,
@@ -53,14 +81,7 @@ ThemeData createTheme(ThemeColor color, Brightness brightness) {
         elevation: 0,
         systemOverlayStyle: SystemUiOverlayStyle.light,
       ),
-      colorScheme: ColorScheme.dark(
-        primary: primaryColor,
-        secondary: surface,
-        surface: surface,
-        onPrimary: Colors.white,
-        onSecondary: Colors.white,
-        onSurface: Colors.white,
-      ),
+      colorScheme: colorScheme,
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: surface,
         selectedItemColor: primaryColor,
@@ -73,6 +94,11 @@ ThemeData createTheme(ThemeColor color, Brightness brightness) {
       cardColor: surface,
       dividerColor: const Color(0xFF323232),
       fontFamily: 'Vazir',
+      textTheme: _buildTextTheme(
+        isDark: true,
+        largeText: largeText,
+        boldText: boldText,
+      ),
     );
   } else {
     // تم روشن
@@ -83,6 +109,27 @@ ThemeData createTheme(ThemeColor color, Brightness brightness) {
             ? Colors.grey[50]!
             : _getColorShade(color, 50));
 
+    // تعیین colorScheme بر اساس کنتراست
+    final colorScheme = highContrast
+        ? ColorScheme.light(
+            primary: primaryColor,
+            secondary: Colors.black,
+            surface: surface,
+            onPrimary: Colors.white,
+            onSecondary: color == ThemeColor.white ? Colors.black : primaryColor,
+            onSurface: Colors.black87,
+            error: Colors.red[700]!,
+            brightness: Brightness.light,
+          )
+        : ColorScheme.light(
+            primary: primaryColor,
+            secondary: surface,
+            surface: surface,
+            onPrimary: Colors.white,
+            onSecondary: color == ThemeColor.white ? Colors.black : primaryColor,
+            onSurface: Colors.black87,
+          );
+    
     return ThemeData(
       brightness: Brightness.light,
       primaryColor: primaryColor,
@@ -104,14 +151,7 @@ ThemeData createTheme(ThemeColor color, Brightness brightness) {
             ? SystemUiOverlayStyle.dark
             : SystemUiOverlayStyle.light,
       ),
-      colorScheme: ColorScheme.light(
-        primary: primaryColor,
-        secondary: surface,
-        surface: surface,
-        onPrimary: Colors.white,
-        onSecondary: color == ThemeColor.white ? Colors.black : primaryColor,
-        onSurface: Colors.black87,
-      ),
+      colorScheme: colorScheme,
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         selectedItemColor: primaryColor,
         unselectedItemColor: Colors.grey,
@@ -123,6 +163,11 @@ ThemeData createTheme(ThemeColor color, Brightness brightness) {
       cardColor: Colors.white,
       dividerColor: Colors.grey[300],
       fontFamily: 'Vazir',
+      textTheme: _buildTextTheme(
+        isDark: false,
+        largeText: largeText,
+        boldText: boldText,
+      ),
     );
   }
 }
@@ -141,6 +186,127 @@ Color _getColorShade(ThemeColor color, int shade) {
     case ThemeColor.white:
       return Colors.grey[shade]!;
   }
+}
+
+// تابع برای اعمال color blind filter
+ColorFilter? getColorBlindFilter(String colorBlindMode) {
+  switch (colorBlindMode) {
+    case 'protanopia':
+      // Protanopia: قرمز-سبز (قرمز نمی‌بینند)
+      return const ColorFilter.matrix([
+        0.567, 0.433, 0.0, 0.0, 0.0,
+        0.558, 0.442, 0.0, 0.0, 0.0,
+        0.0, 0.242, 0.758, 0.0, 0.0,
+        0.0, 0.0, 0.0, 1.0, 0.0,
+      ]);
+    case 'deuteranopia':
+      // Deuteranopia: قرمز-سبز (سبز نمی‌بینند)
+      return const ColorFilter.matrix([
+        0.625, 0.375, 0.0, 0.0, 0.0,
+        0.7, 0.3, 0.0, 0.0, 0.0,
+        0.0, 0.3, 0.7, 0.0, 0.0,
+        0.0, 0.0, 0.0, 1.0, 0.0,
+      ]);
+    case 'tritanopia':
+      // Tritanopia: آبی-زرد (آبی نمی‌بینند)
+      return const ColorFilter.matrix([
+        0.95, 0.05, 0.0, 0.0, 0.0,
+        0.0, 0.433, 0.567, 0.0, 0.0,
+        0.0, 0.475, 0.525, 0.0, 0.0,
+        0.0, 0.0, 0.0, 1.0, 0.0,
+      ]);
+    case 'none':
+    default:
+      return null;
+  }
+}
+
+// تابع کمکی برای ساخت TextTheme با تنظیمات دسترسی‌پذیری
+TextTheme _buildTextTheme({
+  required bool isDark,
+  required bool largeText,
+  required bool boldText,
+}) {
+  final baseSize = largeText ? 1.2 : 1.0;
+  final fontWeight = boldText ? FontWeight.bold : FontWeight.normal;
+  
+  return TextTheme(
+    displayLarge: TextStyle(
+      fontSize: 57 * baseSize,
+      fontWeight: fontWeight,
+      color: isDark ? Colors.white : Colors.black87,
+    ),
+    displayMedium: TextStyle(
+      fontSize: 45 * baseSize,
+      fontWeight: fontWeight,
+      color: isDark ? Colors.white : Colors.black87,
+    ),
+    displaySmall: TextStyle(
+      fontSize: 36 * baseSize,
+      fontWeight: fontWeight,
+      color: isDark ? Colors.white : Colors.black87,
+    ),
+    headlineLarge: TextStyle(
+      fontSize: 32 * baseSize,
+      fontWeight: fontWeight,
+      color: isDark ? Colors.white : Colors.black87,
+    ),
+    headlineMedium: TextStyle(
+      fontSize: 28 * baseSize,
+      fontWeight: fontWeight,
+      color: isDark ? Colors.white : Colors.black87,
+    ),
+    headlineSmall: TextStyle(
+      fontSize: 24 * baseSize,
+      fontWeight: fontWeight,
+      color: isDark ? Colors.white : Colors.black87,
+    ),
+    titleLarge: TextStyle(
+      fontSize: 22 * baseSize,
+      fontWeight: fontWeight,
+      color: isDark ? Colors.white : Colors.black87,
+    ),
+    titleMedium: TextStyle(
+      fontSize: 16 * baseSize,
+      fontWeight: fontWeight,
+      color: isDark ? Colors.white : Colors.black87,
+    ),
+    titleSmall: TextStyle(
+      fontSize: 14 * baseSize,
+      fontWeight: fontWeight,
+      color: isDark ? Colors.white : Colors.black87,
+    ),
+    bodyLarge: TextStyle(
+      fontSize: 16 * baseSize,
+      fontWeight: fontWeight,
+      color: isDark ? Colors.white : Colors.black87,
+    ),
+    bodyMedium: TextStyle(
+      fontSize: 14 * baseSize,
+      fontWeight: fontWeight,
+      color: isDark ? Colors.white : Colors.black87,
+    ),
+    bodySmall: TextStyle(
+      fontSize: 12 * baseSize,
+      fontWeight: fontWeight,
+      color: isDark ? Colors.grey[400] : Colors.grey[600],
+    ),
+    labelLarge: TextStyle(
+      fontSize: 14 * baseSize,
+      fontWeight: fontWeight,
+      color: isDark ? Colors.white : Colors.black87,
+    ),
+    labelMedium: TextStyle(
+      fontSize: 12 * baseSize,
+      fontWeight: fontWeight,
+      color: isDark ? Colors.white : Colors.black87,
+    ),
+    labelSmall: TextStyle(
+      fontSize: 11 * baseSize,
+      fontWeight: fontWeight,
+      color: isDark ? Colors.grey[400] : Colors.grey[600],
+    ),
+  );
 }
 
 // تم‌های پیش‌فرض برای سازگاری با کد قبلی

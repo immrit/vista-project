@@ -1,4 +1,5 @@
 import '../security/logging_utility.dart';
+import '../DB/advanced_settings_service.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,9 +12,30 @@ class AnimationControllerService {
 
   bool _animationsEnabled = true;
   bool _batterySaverMode = false;
+  String _animationSpeed = 'normal'; // slow, normal, fast
+  bool _reduceMotion = false;
 
   /// بررسی آیا انیمیشن‌ها فعال هستند
-  bool get animationsEnabled => _animationsEnabled && !_batterySaverMode;
+  bool get animationsEnabled {
+    // اول از AdvancedSettingsService چک کن
+    try {
+      final advancedService = AdvancedSettingsService();
+      final perfSettings = advancedService.getPerformanceSettings();
+      final animations = perfSettings['animations'] as Map<String, dynamic>? ?? {};
+      final enabled = animations['enabled'] as bool? ?? true;
+      final reduceMotion = animations['reduce_motion'] as bool? ?? false;
+      
+      if (!enabled || reduceMotion) {
+        return false;
+      }
+      
+      // اگر battery saver فعال باشد، انیمیشن‌ها غیرفعال می‌شوند
+      return _animationsEnabled && !_batterySaverMode;
+    } catch (e) {
+      logInfo('⚠️ Error reading animation settings: $e');
+      return _animationsEnabled && !_batterySaverMode;
+    }
+  }
 
   /// بررسی آیا حالت کم‌مصرف فعال است
   bool get batterySaverMode => _batterySaverMode;
@@ -43,15 +65,30 @@ class AnimationControllerService {
     logInfo('🎬 Animations ${enabled ? 'enabled' : 'disabled'}');
   }
 
-  /// بارگذاری تنظیمات از SharedPreferences
+  /// بارگذاری تنظیمات از SharedPreferences و AdvancedSettingsService
   Future<void> loadSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       _animationsEnabled = prefs.getBool('animations_enabled') ?? true;
       _batterySaverMode = prefs.getBool('battery_saver_mode') ?? false;
 
+      // بارگذاری از AdvancedSettingsService
+      try {
+        final advancedService = AdvancedSettingsService();
+        final perfSettings = advancedService.getPerformanceSettings();
+        final animations = perfSettings['animations'] as Map<String, dynamic>? ?? {};
+        
+        _animationsEnabled = animations['enabled'] as bool? ?? true;
+        _animationSpeed = animations['speed'] as String? ?? 'normal';
+        _reduceMotion = animations['reduce_motion'] as bool? ?? false;
+        
+        logInfo('📱 Animation settings loaded from AdvancedSettings: enabled=$_animationsEnabled, speed=$_animationSpeed, reduceMotion=$_reduceMotion');
+      } catch (e) {
+        logInfo('⚠️ Error loading from AdvancedSettings, using defaults: $e');
+      }
+
       print(
-          '📱 Animation settings loaded: enabled=$_animationsEnabled, battery_saver=$_batterySaverMode');
+          '📱 Animation settings loaded: enabled=$_animationsEnabled, battery_saver=$_batterySaverMode, speed=$_animationSpeed');
     } catch (e) {
       logInfo('❌ Error loading animation settings: $e');
     }
@@ -68,11 +105,20 @@ class AnimationControllerService {
     }
   }
 
-  /// دریافت مدت زمان انیمیشن (صفر در حالت کم‌مصرف)
+  /// دریافت مدت زمان انیمیشن (بر اساس تنظیمات)
   Duration get animationDuration {
-    return animationsEnabled
-        ? const Duration(milliseconds: 300)
-        : Duration.zero;
+    if (!animationsEnabled) return Duration.zero;
+    
+    // بر اساس سرعت انیمیشن
+    switch (_animationSpeed) {
+      case 'slow':
+        return const Duration(milliseconds: 500);
+      case 'fast':
+        return const Duration(milliseconds: 150);
+      case 'normal':
+      default:
+        return const Duration(milliseconds: 300);
+    }
   }
 
   /// دریافت منحنی انیمیشن

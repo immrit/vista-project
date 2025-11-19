@@ -3,12 +3,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../util/themes.dart';
 import '../../../../provider/theme_provider.dart';
+import '../../../../provider/settings_providers.dart';
+import '../../../../DB/advanced_settings_service.dart';
+import '../../../../services/animation_controller_service.dart';
+import '../widgets/SettingsListItem.dart';
 
-class ThemeSettingsPage extends ConsumerWidget {
+class ThemeSettingsPage extends ConsumerStatefulWidget {
   const ThemeSettingsPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ThemeSettingsPage> createState() => _ThemeSettingsPageState();
+}
+
+class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
+  @override
+  Widget build(BuildContext context) {
     final selectedColor = ref.watch(selectedColorProvider);
     final brightness = ref.watch(brightnessProvider);
     final currentTheme = ref.watch(dynamicThemeProvider);
@@ -284,7 +293,427 @@ class ThemeSettingsPage extends ConsumerWidget {
               ),
             ),
           ),
+
+          const SizedBox(height: 20),
+
+          // تنظیمات عملکرد و انیمیشن
+          _buildPerformanceSettingsCard(context, isDark, colorScheme),
+
+          const SizedBox(height: 20),
+
+          // تنظیمات دسترسی‌پذیری
+          _buildAccessibilitySettingsCard(context, isDark, colorScheme),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPerformanceSettingsCard(BuildContext context, bool isDark, ColorScheme colorScheme) {
+    final performanceAsync = ref.watch(performanceSettingsProvider);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16.0),
+      decoration: BoxDecoration(
+        color: isDark ? colorScheme.surface : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.speed_rounded, color: Colors.purple, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'تنظیمات عملکرد',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+          performanceAsync.when(
+            data: (settings) {
+              final animations = settings['animations'] as Map<String, dynamic>? ?? {};
+              final rendering = settings['rendering'] as Map<String, dynamic>? ?? {};
+
+              return Column(
+                children: [
+                  SettingsListItem(
+                    icon: Icons.animation_rounded,
+                    iconColor: Colors.blue,
+                    title: 'انیمیشن‌ها',
+                    subtitle: 'فعال/غیرفعال کردن انیمیشن‌ها',
+                    trailing: Switch(
+                      value: animations['enabled'] as bool? ?? true,
+                      onChanged: (value) async {
+                        final service = AdvancedSettingsService();
+                        await service.updatePerformanceSettings({
+                          'animations': {...animations, 'enabled': value}
+                        });
+                        ref.invalidate(performanceSettingsProvider);
+                        // به‌روزرسانی AnimationControllerService
+                        await AnimationControllerService().loadSettings();
+                      },
+                    ),
+                  ),
+                  _buildDivider(),
+                  SettingsListItem(
+                    icon: Icons.speed_rounded,
+                    iconColor: Colors.orange,
+                    title: 'سرعت انیمیشن',
+                    subtitle: animations['speed'] == 'slow' ? 'کند' : animations['speed'] == 'fast' ? 'سریع' : 'عادی',
+                    onTap: () => _showAnimationSpeedDialog(context, animations),
+                  ),
+                  _buildDivider(),
+                  SettingsListItem(
+                    icon: Icons.accessibility_new_rounded,
+                    iconColor: Colors.green,
+                    title: 'کاهش حرکت',
+                    subtitle: 'برای کاربران حساس به حرکت',
+                    trailing: Switch(
+                      value: animations['reduce_motion'] as bool? ?? false,
+                      onChanged: (value) async {
+                        final service = AdvancedSettingsService();
+                        await service.updatePerformanceSettings({
+                          'animations': {...animations, 'reduce_motion': value}
+                        });
+                        ref.invalidate(performanceSettingsProvider);
+                        // به‌روزرسانی AnimationControllerService
+                        await AnimationControllerService().loadSettings();
+                      },
+                    ),
+                  ),
+                  _buildDivider(),
+                  SettingsListItem(
+                    icon: Icons.memory_rounded,
+                    iconColor: Colors.teal,
+                    title: 'GPU Acceleration',
+                    subtitle: 'افزایش سرعت رندرینگ',
+                    trailing: Switch(
+                      value: rendering['enable_gpu_acceleration'] as bool? ?? true,
+                      onChanged: (value) async {
+                        final service = AdvancedSettingsService();
+                        await service.updatePerformanceSettings({
+                          'rendering': {...rendering, 'enable_gpu_acceleration': value}
+                        });
+                        ref.invalidate(performanceSettingsProvider);
+                      },
+                    ),
+                  ),
+                ],
+              );
+            },
+            loading: () => const Padding(
+              padding: EdgeInsets.all(20.0),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (error, stack) => Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Text('خطا: $error'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAccessibilitySettingsCard(BuildContext context, bool isDark, ColorScheme colorScheme) {
+    final appSettingsAsync = ref.watch(advancedAppSettingsProvider);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16.0),
+      decoration: BoxDecoration(
+        color: isDark ? colorScheme.surface : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.indigo.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.accessibility_new_rounded, color: Colors.indigo, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'دسترسی‌پذیری',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+          appSettingsAsync.when(
+            data: (settings) {
+              final accessibility = settings['accessibility'] as Map<String, dynamic>? ?? {};
+
+              return Column(
+                children: [
+                  SettingsListItem(
+                    icon: Icons.text_fields_rounded,
+                    iconColor: Colors.blue,
+                    title: 'متن بزرگ',
+                    subtitle: 'افزایش اندازه متن',
+                    trailing: Switch(
+                      value: accessibility['large_text'] as bool? ?? false,
+                      onChanged: (value) async {
+                        final service = AdvancedSettingsService();
+                        await service.updateAdvancedAppSettings({
+                          'accessibility': {...accessibility, 'large_text': value}
+                        });
+                        ref.invalidate(advancedAppSettingsProvider);
+                        // Force rebuild theme
+                        ref.invalidate(dynamicThemeProvider);
+                      },
+                    ),
+                  ),
+                  _buildDivider(),
+                  SettingsListItem(
+                    icon: Icons.format_bold_rounded,
+                    iconColor: Colors.purple,
+                    title: 'متن پررنگ',
+                    subtitle: 'افزایش ضخامت متن',
+                    trailing: Switch(
+                      value: accessibility['bold_text'] as bool? ?? false,
+                      onChanged: (value) async {
+                        final service = AdvancedSettingsService();
+                        await service.updateAdvancedAppSettings({
+                          'accessibility': {...accessibility, 'bold_text': value}
+                        });
+                        ref.invalidate(advancedAppSettingsProvider);
+                        // Force rebuild theme
+                        ref.invalidate(dynamicThemeProvider);
+                      },
+                    ),
+                  ),
+                  _buildDivider(),
+                  SettingsListItem(
+                    icon: Icons.contrast_rounded,
+                    iconColor: Colors.orange,
+                    title: 'کنتراست بالا',
+                    subtitle: 'افزایش کنتراست رنگ‌ها',
+                    trailing: Switch(
+                      value: accessibility['high_contrast'] as bool? ?? false,
+                      onChanged: (value) async {
+                        final service = AdvancedSettingsService();
+                        await service.updateAdvancedAppSettings({
+                          'accessibility': {...accessibility, 'high_contrast': value}
+                        });
+                        ref.invalidate(advancedAppSettingsProvider);
+                        // Force rebuild theme
+                        ref.invalidate(dynamicThemeProvider);
+                      },
+                    ),
+                  ),
+                  _buildDivider(),
+                  SettingsListItem(
+                    icon: Icons.color_lens_rounded,
+                    iconColor: Colors.teal,
+                    title: 'حالت رنگ‌کوری',
+                    subtitle: _getColorBlindModeText(accessibility['color_blind_mode'] as String? ?? 'none'),
+                    onTap: () => _showColorBlindModeDialog(context, accessibility),
+                  ),
+                ],
+              );
+            },
+            loading: () => const Padding(
+              padding: EdgeInsets.all(20.0),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (error, stack) => Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Text('خطا: $error'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDivider() {
+    return Builder(
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return Container(
+          margin: const EdgeInsets.only(left: 68.0),
+          height: 0.5,
+          color: isDark ? Colors.grey[700] : Colors.grey[200],
+        );
+      },
+    );
+  }
+
+  void _showAnimationSpeedDialog(BuildContext context, Map<String, dynamic> animations) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('سرعت انیمیشن'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RadioListTile<String>(
+              title: const Text('کند'),
+              value: 'slow',
+              groupValue: animations['speed'] as String? ?? 'normal',
+              onChanged: (value) async {
+                Navigator.pop(context);
+                final service = AdvancedSettingsService();
+                await service.updatePerformanceSettings({
+                  'animations': {...animations, 'speed': value}
+                });
+                ref.invalidate(performanceSettingsProvider);
+                // به‌روزرسانی AnimationControllerService
+                await AnimationControllerService().loadSettings();
+              },
+            ),
+            RadioListTile<String>(
+              title: const Text('عادی'),
+              value: 'normal',
+              groupValue: animations['speed'] as String? ?? 'normal',
+              onChanged: (value) async {
+                Navigator.pop(context);
+                final service = AdvancedSettingsService();
+                await service.updatePerformanceSettings({
+                  'animations': {...animations, 'speed': value}
+                });
+                ref.invalidate(performanceSettingsProvider);
+                // به‌روزرسانی AnimationControllerService
+                await AnimationControllerService().loadSettings();
+              },
+            ),
+            RadioListTile<String>(
+              title: const Text('سریع'),
+              value: 'fast',
+              groupValue: animations['speed'] as String? ?? 'normal',
+              onChanged: (value) async {
+                Navigator.pop(context);
+                final service = AdvancedSettingsService();
+                await service.updatePerformanceSettings({
+                  'animations': {...animations, 'speed': value}
+                });
+                ref.invalidate(performanceSettingsProvider);
+                // به‌روزرسانی AnimationControllerService
+                await AnimationControllerService().loadSettings();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getColorBlindModeText(String mode) {
+    switch (mode) {
+      case 'protanopia':
+        return 'Protanopia (قرمز-سبز)';
+      case 'deuteranopia':
+        return 'Deuteranopia (قرمز-سبز)';
+      case 'tritanopia':
+        return 'Tritanopia (آبی-زرد)';
+      default:
+        return 'غیرفعال';
+    }
+  }
+
+  void _showColorBlindModeDialog(BuildContext context, Map<String, dynamic> accessibility) {
+    final currentMode = accessibility['color_blind_mode'] as String? ?? 'none';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('حالت رنگ‌کوری'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RadioListTile<String>(
+              title: const Text('غیرفعال'),
+              value: 'none',
+              groupValue: currentMode,
+              onChanged: (value) async {
+                Navigator.pop(context);
+                final service = AdvancedSettingsService();
+                await service.updateAdvancedAppSettings({
+                  'accessibility': {...accessibility, 'color_blind_mode': value}
+                });
+                ref.invalidate(advancedAppSettingsProvider);
+                // Force rebuild theme
+                ref.invalidate(dynamicThemeProvider);
+              },
+            ),
+            RadioListTile<String>(
+              title: const Text('Protanopia (قرمز-سبز)'),
+              value: 'protanopia',
+              groupValue: currentMode,
+              onChanged: (value) async {
+                Navigator.pop(context);
+                final service = AdvancedSettingsService();
+                await service.updateAdvancedAppSettings({
+                  'accessibility': {...accessibility, 'color_blind_mode': value}
+                });
+                ref.invalidate(advancedAppSettingsProvider);
+                // Force rebuild theme
+                ref.invalidate(dynamicThemeProvider);
+              },
+            ),
+            RadioListTile<String>(
+              title: const Text('Deuteranopia (قرمز-سبز)'),
+              value: 'deuteranopia',
+              groupValue: currentMode,
+              onChanged: (value) async {
+                Navigator.pop(context);
+                final service = AdvancedSettingsService();
+                await service.updateAdvancedAppSettings({
+                  'accessibility': {...accessibility, 'color_blind_mode': value}
+                });
+                ref.invalidate(advancedAppSettingsProvider);
+                // Force rebuild theme
+                ref.invalidate(dynamicThemeProvider);
+              },
+            ),
+            RadioListTile<String>(
+              title: const Text('Tritanopia (آبی-زرد)'),
+              value: 'tritanopia',
+              groupValue: currentMode,
+              onChanged: (value) async {
+                Navigator.pop(context);
+                final service = AdvancedSettingsService();
+                await service.updateAdvancedAppSettings({
+                  'accessibility': {...accessibility, 'color_blind_mode': value}
+                });
+                ref.invalidate(advancedAppSettingsProvider);
+                // Force rebuild theme
+                ref.invalidate(dynamicThemeProvider);
+              },
+            ),
+          ],
+        ),
       ),
     );
   }

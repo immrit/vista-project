@@ -4,13 +4,21 @@ import 'dart:math' as math;
 
 import '../../chat/ArchivedConversationsScreen.dart';
 import '../../../../provider/provider.dart';
+import '../../../../provider/settings_providers.dart';
+import '../../../../DB/advanced_settings_service.dart';
+import '../../../../services/advanced_haptic_feedback_service.dart';
 import '../widgets/SettingsListItem.dart';
 
-class ChatSettingsGroupPage extends ConsumerWidget {
+class ChatSettingsGroupPage extends ConsumerStatefulWidget {
   const ChatSettingsGroupPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ChatSettingsGroupPage> createState() => _ChatSettingsGroupPageState();
+}
+
+class _ChatSettingsGroupPageState extends ConsumerState<ChatSettingsGroupPage> {
+  @override
+  Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -106,6 +114,82 @@ class ChatSettingsGroupPage extends ConsumerWidget {
                   },
                 ),
               ],
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // تنظیمات اپلیکیشن
+          _buildAppSettingsCard(context, isDark, colorScheme),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAppSettingsCard(BuildContext context, bool isDark, ColorScheme colorScheme) {
+    final appSettingsAsync = ref.watch(advancedAppSettingsProvider);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16.0),
+      decoration: BoxDecoration(
+        color: isDark ? colorScheme.surface : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          appSettingsAsync.when(
+            data: (settings) {
+              final feedback = settings['feedback'] as Map<String, dynamic>? ?? {};
+
+              return Column(
+                children: [
+                  SettingsListItem(
+                    icon: Icons.volume_up_rounded,
+                    iconColor: Colors.blue,
+                    title: 'صداهای سیستم',
+                    subtitle: 'فعال/غیرفعال کردن صداها',
+                    trailing: Switch(
+                      value: feedback['enable_sound_effects'] as bool? ?? true,
+                      onChanged: (value) async {
+                        final service = AdvancedSettingsService();
+                        await service.updateAdvancedAppSettings({
+                          'feedback': {...feedback, 'enable_sound_effects': value}
+                        });
+                        ref.invalidate(advancedAppSettingsProvider);
+                        // به‌روزرسانی تنظیمات haptic feedback service
+                        await AdvancedHapticFeedbackService().loadSettings();
+                      },
+                    ),
+                  ),
+                  _buildDivider(),
+                  SettingsListItem(
+                    icon: Icons.vibration_rounded,
+                    iconColor: Colors.orange,
+                    title: 'بازخورد لمسی',
+                    subtitle: 'لرزش هنگام لمس',
+                    trailing: Switch(
+                      value: feedback['enable_haptic_feedback'] as bool? ?? true,
+                      onChanged: (value) async {
+                        final service = AdvancedSettingsService();
+                        await service.updateAdvancedAppSettings({
+                          'feedback': {...feedback, 'enable_haptic_feedback': value}
+                        });
+                        ref.invalidate(advancedAppSettingsProvider);
+                        // به‌روزرسانی تنظیمات haptic feedback service
+                        await AdvancedHapticFeedbackService().loadSettings();
+                      },
+                    ),
+                  ),
+                ],
+              );
+            },
+            loading: () => const Padding(
+              padding: EdgeInsets.all(20.0),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (error, stack) => Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Text('خطا: $error'),
             ),
           ),
         ],
