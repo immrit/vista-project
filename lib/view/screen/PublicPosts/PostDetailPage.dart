@@ -37,7 +37,11 @@ final postDetailProvider =
           ),
           likes!posts_likes_post_id_fkey (user_id),
           comments!posts_comments_post_id_fkey (id)
-        ''').eq('id', postId).single();
+        ''').eq('id', postId).maybeSingle();
+
+    if (response == null) {
+      return null; // پست یافت نشد
+    }
 
     // محاسبه مقادیر مشتق‌شده برای مدل پست
     final profile = response['profiles'] as Map<String, dynamic>? ?? {};

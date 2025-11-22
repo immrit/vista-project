@@ -54,7 +54,7 @@ class AutoLockService {
         _checkAndLock(timeout);
       });
 
-      logInfo('🔒 Auto lock timer started: ${timeoutMinutes} minutes');
+      logInfo('🔒 Auto lock timer started: $timeoutMinutes minutes');
     } catch (e) {
       logInfo('⚠️ Error starting auto lock timer: $e');
     }
@@ -115,5 +115,9 @@ class AutoLockService {
     logInfo('🧹 Auto Lock Service disposed');
   }
 }
+
+
+
+
 
 

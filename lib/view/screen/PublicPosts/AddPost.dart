@@ -887,7 +887,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
             CircleAvatar(
               radius: 20,
               backgroundImage: userData.when(
-                data: (data) => data['avatar_url'] != null
+                data: (data) => data!['avatar_url'] != null
                     ? NetworkImage(data['avatar_url'])
                     : const AssetImage(
                             'lib/view/util/images/default-avatar.jpg')
@@ -913,7 +913,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                         _buildVerificationBadge(data),
 
                         Text(
-                          data['username'] ?? 'بدون نام',
+                          data!['username'] ?? 'بدون نام',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             color: textColor,

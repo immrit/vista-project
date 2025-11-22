@@ -26,6 +26,7 @@ import '../model/CommentModel.dart';
 import '../model/UserModel.dart';
 import '../view/util/themes.dart';
 import '../services/user_friendly_error_handler.dart';
+import 'session_provider.dart';
 // Import security provider
 
 // Export security providers
@@ -429,6 +430,25 @@ class PublicPostsNotifier
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return;
 
+    // ✅ بررسی امنیتی: بررسی اینکه نشست هنوز معتبر است
+    try {
+      final sessionManager = ref.read(sessionManagerProvider);
+      final isSessionValid = await sessionManager.isSessionStillValid();
+      if (!isSessionValid) {
+        debugPrint('❌ Session is no longer valid, cannot perform like operation');
+        throw Exception('نشست شما منقضی شده است. لطفاً دوباره وارد شوید.');
+      }
+    } catch (e) {
+      debugPrint('❌ Error checking session validity: $e');
+      // اگر خطای network است، ادامه بده
+      final errorString = e.toString().toLowerCase();
+      if (!errorString.contains('network') && 
+          !errorString.contains('timeout') &&
+          !errorString.contains('connection')) {
+        rethrow;
+      }
+    }
+
     try {
       // 1. آپدیت Optimistic در UI قبل از درخواست به سرور
       final currentPosts =
@@ -755,7 +775,11 @@ class SupabaseService {
           .from('posts')
           .select('image_url, music_url  , video_url  ')
           .eq('id', postId)
-          .single();
+          .maybeSingle();
+
+      if (post == null) {
+        throw Exception('پست یافت نشد');
+      }
 
       final mediaUrls = [
         post['image_url'],
@@ -1020,7 +1044,11 @@ class ProfileService {
           .from('profiles') // نام جدول پروفایل
           .select('*')
           .eq('id', user.id)
-          .single();
+          .maybeSingle();
+
+      if (response == null) {
+        return null;
+      }
 
       return UserModel.fromMap(response);
     } catch (e) {
@@ -1036,7 +1064,11 @@ class ProfileService {
           .from('profiles')
           .select('*')
           .eq('id', userId)
-          .single();
+          .maybeSingle();
+
+      if (response == null) {
+        return null;
+      }
 
       return UserModel.fromMap(response);
     } catch (e) {
@@ -1155,7 +1187,11 @@ class CommentService {
             is_verified,
             verification_type
           )
-        ''').single();
+        ''').maybeSingle();
+
+      if (response == null) {
+        throw Exception('خطا در ایجاد کامنت - پاسخ خالی است');
+      }
 
       return CommentModel.fromMap(response);
     } catch (e) {
@@ -1382,7 +1418,11 @@ class CommentNotifier extends StateNotifier<AsyncValue<void>> {
         .from('posts')
         .select('user_id')
         .eq('id', postId)
-        .single();
+        .maybeSingle();
+
+    if (response == null) {
+      throw Exception('پست یافت نشد');
+    }
 
     return response['user_id'] as String;
   }
@@ -1515,7 +1555,11 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
             account_type,
             role,
             is_private
-          ''').eq('id', userId).single();
+          ''').eq('id', userId).maybeSingle();
+
+      if (profileResponse == null) {
+        throw Exception('پروفایل کاربر یافت نشد');
+      }
 
       // محاسبه تعداد دنبال‌کنندگان
       final followersResponse = await supabase
@@ -2535,7 +2579,11 @@ final viewsCountProvider =
       .from('story_views')
       .select('view_count')
       .eq('story_id', storyId)
-      .single();
+      .maybeSingle();
+
+  if (response == null) {
+    return 0; // اگر view وجود نداشت، 0 برمی‌گردانیم
+  }
 
   return response['view_count'] as int;
 });
@@ -2555,10 +2603,14 @@ final hasNewNotificationProvider = FutureProvider<bool>((ref) async {
   return response.isNotEmpty;
 });
 
-final currentUserProvider = FutureProvider<Map<String, dynamic>>((ref) async {
-  final userId = supabase.auth.currentUser!.id;
+final currentUserProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
+  final userId = supabase.auth.currentUser?.id;
+  if (userId == null) {
+    return null;
+  }
+
   final response =
-      await supabase.from('profiles').select().eq('id', userId).single();
+      await supabase.from('profiles').select().eq('id', userId).maybeSingle();
   return response;
 });
 

@@ -6,6 +6,7 @@ import 'package:loading_animation_widget/loading_animation_widget.dart';
 import '../../services/advanced_security_service.dart';
 import '../../services/session_manager_service.dart';
 import 'auth/biometric_login_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -56,16 +57,67 @@ class _SplashScreenState extends State<SplashScreen> {
     if (!mounted) return;
 
     try {
-      // بررسی session به صورت موازی با سایر عملیات
-      final session = supabase.auth.currentSession;
+      // ✅ منتظر بمانید تا session restore شود (مهم!)
+      setState(() {
+        _statusMessage = 'در حال آماده سازی...';
+      });
+
+      // صبر کردن برای restore شدن session (حداکثر 5 ثانیه)
+      Session? session;
+      bool sessionFound = false;
+
+      for (int i = 0; i < 25; i++) {
+        session = supabase.auth.currentSession;
+        if (session != null) {
+          sessionFound = true;
+          print('✅ Session found after ${i * 200}ms: ${session.user.email}');
+
+          // بررسی expire شدن و refresh در صورت نیاز
+          final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+          final expiresAt = session.expiresAt ?? 0;
+
+          if (expiresAt < now) {
+            print('⚠️ Session expired, attempting refresh...');
+            try {
+              final refreshed = await supabase.auth.refreshSession();
+              if (refreshed.session != null) {
+                session = refreshed.session;
+                print('✅ Session refreshed successfully');
+              }
+            } catch (e) {
+              print('⚠️ Session refresh failed: $e');
+              // ادامه می‌دهیم با session موجود
+            }
+          }
+
+          break;
+        }
+        await Future.delayed(const Duration(milliseconds: 200));
+      }
+
+      // بررسی session بعد از صبر کردن
+      if (!sessionFound) {
+        // یک بار دیگر چک کن (ممکن است در همین لحظه restore شده باشد)
+        session = supabase.auth.currentSession;
+        if (session == null) {
+          print('ℹ️ No session found after waiting, redirecting to auth');
+          // کاربر لاگین نیست - انتقال به auth
+          if (mounted) {
+            Navigator.of(context).pushReplacementNamed('/auth');
+          }
+          return;
+        }
+      }
 
       if (session == null) {
-        // کاربر لاگین نیست - انتقال سریع به auth
+        print('ℹ️ Session is null, redirecting to auth');
         if (mounted) {
           Navigator.of(context).pushReplacementNamed('/auth');
         }
         return;
       }
+
+      print('✅ Session restored: ${session.user.email}');
 
       // کاربر لاگین است - بررسی و ثبت session به صورت سریع
       setState(() {
@@ -112,9 +164,39 @@ class _SplashScreenState extends State<SplashScreen> {
       }
     } catch (e) {
       logInfo('❌ Error in splash screen: $e');
-      // در صورت خطا، به صفحه ورود منتقل شود
-      if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/auth');
+
+      // بررسی نوع خطا
+      final errorString = e.toString().toLowerCase();
+      final isNetworkError = errorString.contains('network') ||
+          errorString.contains('timeout') ||
+          errorString.contains('connection') ||
+          errorString.contains('socket') ||
+          errorString.contains('failed host lookup');
+
+      // اگر خطای network است و session معتبر است، به صفحه اصلی برو
+      if (isNetworkError) {
+        final session = supabase.auth.currentSession;
+        if (session != null) {
+          logInfo('⚠️ Network error but session is valid, continuing to home');
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, '/home');
+          }
+          return;
+        }
+      }
+
+      // فقط در صورت خطای واقعی یا عدم وجود session، به صفحه ورود منتقل شود
+      final finalSession = supabase.auth.currentSession;
+      if (finalSession == null) {
+        if (mounted) {
+          Navigator.of(context).pushReplacementNamed('/auth');
+        }
+      } else {
+        // اگر session معتبر است، به صفحه اصلی برو
+        logInfo('✅ Session is valid despite error, continuing to home');
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/home');
+        }
       }
     }
   }

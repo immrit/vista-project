@@ -20,6 +20,7 @@ import 'uploadImageChatService.dart';
 import 'uploadAudioChatService.dart';
 import 'profile_service.dart';
 import 'current_chat_tracker.dart';
+import 'session_manager_service.dart';
 
 class ChatService {
   final SupabaseClient _supabase = supabase;
@@ -27,6 +28,7 @@ class ChatService {
       UnifiedConversationCacheService();
   final UnifiedMessageCacheService _messageCache = UnifiedMessageCacheService();
   final ProfileService _profileService = ProfileService();
+  final SessionManagerService _sessionManagerService = SessionManagerService();
 
   // حذف فایل پیوست چت از استوریج (بر اساس نوع)
   Future<void> _tryDeleteChatAttachment(
@@ -67,6 +69,123 @@ class ChatService {
   // اضافه شد: قفل درحال انجام برای جلوگیری از ساخت مکالمه تکراری بین دو کاربر (روی کلاینت)
   // کلید بر اساس جفت مرتب‌شده از userId ها ساخته می‌شود
   static final Map<String, Future<String>> _pendingConversationFutures = {};
+
+  Completer<void>? _sessionRefreshCompleter;
+
+  Future<void> _ensureValidSupabaseSession() async {
+    try {
+      final auth = _supabase.auth;
+      Session? session = auth.currentSession;
+
+      if (session == null || auth.currentUser == null) {
+        // قبل از signOut، یک بار دیگر تلاش کن
+        logInfo('⚠️ No authenticated Supabase session detected, attempting to restore...');
+        try {
+          // تلاش برای restore session
+          await Future.delayed(Duration(milliseconds: 500));
+          session = auth.currentSession;
+          
+          if (session == null || auth.currentUser == null) {
+            logInfo('❌ Session could not be restored');
+            await auth.signOut();
+            throw AppException(
+              userFriendlyMessage: 'نشست کاربر منقضی شده است. لطفاً دوباره وارد شوید.',
+              technicalMessage: 'Supabase session missing before PostgREST call',
+            );
+          } else {
+            logInfo('✅ Session restored successfully');
+          }
+        } catch (e) {
+          if (e is AppException) rethrow;
+          logInfo('❌ Error restoring session: $e');
+          await auth.signOut();
+          throw AppException(
+            userFriendlyMessage: 'نشست کاربر منقضی شده است. لطفاً دوباره وارد شوید.',
+            technicalMessage: 'Supabase session missing before PostgREST call',
+          );
+        }
+      }
+
+      final expiresAt = session.expiresAt;
+      if (expiresAt != null) {
+        final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+        final secondsLeft = expiresAt - now;
+        // اگر کمتر از 2 دقیقه مانده باشد، refresh کن
+        if (secondsLeft <= 120) {
+          logInfo(
+              '⏳ Session expires in $secondsLeft seconds. Triggering refresh...');
+          await _refreshSupabaseSession(auth);
+        }
+      }
+
+      // ✅ بررسی امنیتی: بررسی اینکه نشست هنوز معتبر و active است
+      final isSessionValid = await _sessionManagerService.isSessionStillValid();
+      if (!isSessionValid) {
+        logInfo('🔴 Session is no longer valid, signing out...');
+        await auth.signOut();
+        throw AppException(
+          userFriendlyMessage: 'نشست شما منقضی شده است. لطفاً دوباره وارد شوید.',
+          technicalMessage: 'Session is no longer active',
+        );
+      }
+
+      final ensured = await _sessionManagerService.ensureSessionRegistered();
+      if (!ensured) {
+        logInfo('⚠️ SessionManager could not ensure an active session');
+        throw AppException(
+          userFriendlyMessage: 'نشست کاربر ثبت نشده است. لطفاً دوباره وارد شوید.',
+          technicalMessage: 'SessionManager.ensureSessionRegistered returned false',
+        );
+      }
+    } on AppException {
+      rethrow;
+    } catch (e, s) {
+      logInfo('❌ Unexpected error while ensuring Supabase session: $e\n$s');
+      throw AppException(
+        userFriendlyMessage: 'خطا در بررسی نشست کاربر. لطفاً دوباره تلاش کنید.',
+        technicalMessage: 'ensureSession failure: $e',
+      );
+    }
+  }
+
+  Future<void> _refreshSupabaseSession(GoTrueClient auth) async {
+    if (_sessionRefreshCompleter != null) {
+      return _sessionRefreshCompleter!.future;
+    }
+
+    final completer = Completer<void>();
+    _sessionRefreshCompleter = completer;
+
+    try {
+      // تلاش برای refresh با retry logic
+      bool refreshSuccess = false;
+      int retryCount = 0;
+      const maxRetries = 3;
+      Exception? lastError;
+      
+      while (retryCount < maxRetries && !refreshSuccess) {
+        try {
+          await auth.refreshSession();
+          refreshSuccess = true;
+          completer.complete();
+        } catch (e, s) {
+          lastError = e is Exception ? e : Exception(e.toString());
+          retryCount++;
+          
+          if (retryCount < maxRetries) {
+            logInfo('⚠️ Session refresh failed, retrying... ($retryCount/$maxRetries): $e');
+            await Future.delayed(Duration(seconds: retryCount));
+          } else {
+            logInfo('❌ Session refresh failed after $maxRetries attempts: $e');
+            completer.completeError(lastError, s);
+            rethrow;
+          }
+        }
+      }
+    } finally {
+      _sessionRefreshCompleter = null;
+    }
+  }
 
   // تولید کلید یکتا برای جفت کاربرها بدون توجه به ترتیب
   static String _pairKey(String a, String b) {
@@ -454,6 +573,8 @@ class ChatService {
     String? replyToSenderName,
     String? localId,
   }) async {
+    await _ensureValidSupabaseSession();
+
     if (_supabase.auth.currentUser == null) {
       throw AppException(
         userFriendlyMessage: 'کاربر وارد نشده است',

@@ -2,6 +2,7 @@ import '../../security/logging_utility.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'dart:async';
+import '../../services/session_manager_service.dart';
 
 const String defaultAvatarUrl = 'lib/view/util/images/default-avatar.jpg';
 
@@ -15,6 +16,8 @@ class SupabaseHttpClient extends http.BaseClient {
   final http.Client _inner = http.Client();
   final Duration _timeout = const Duration(seconds: 30);
   final int _maxRetries = 3;
+  static const String _sessionIdHeader = 'x-session-id';
+  static const String _sessionTokenHeader = 'x-session-token';
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
@@ -25,6 +28,7 @@ class SupabaseHttpClient extends http.BaseClient {
       try {
         // ایجاد request جدید برای هر تلاش (برای جلوگیری از خطای finalize)
         final newRequest = _createNewRequest(request);
+        _attachSessionHeaders(newRequest);
 
         // تنظیم timeout برای request
         final response =
@@ -93,6 +97,24 @@ class SupabaseHttpClient extends http.BaseClient {
 
     // برای سایر انواع request، request اصلی را برگردان
     return originalRequest;
+  }
+
+  void _attachSessionHeaders(http.BaseRequest request) {
+    try {
+      final sessionManager = SessionManagerService();
+      final sessionId = sessionManager.currentSessionId;
+      final sessionToken = sessionManager.currentSessionToken;
+
+      if (sessionId != null && sessionId.isNotEmpty) {
+        request.headers[_sessionIdHeader] = sessionId;
+      }
+
+      if (sessionToken != null && sessionToken.isNotEmpty) {
+        request.headers[_sessionTokenHeader] = sessionToken;
+      }
+    } catch (e) {
+      logInfo('⚠️ Failed to attach session headers: $e');
+    }
   }
 
   @override
@@ -198,12 +220,46 @@ Future<void> initializeSupabaseWithFailover() async {
       
       if (expiresAt < now) {
         print('⚠️ Session expired, refreshing...');
-        try {
-          await Supabase.instance.client.auth.refreshSession();
-          print('✅ Session refreshed successfully');
-        } catch (e) {
-          print('❌ Session refresh failed: $e');
-          await Supabase.instance.client.auth.signOut();
+        
+        // تلاش برای refresh با retry logic
+        bool refreshSuccess = false;
+        int retryCount = 0;
+        const maxRetries = 3;
+        
+        while (retryCount < maxRetries && !refreshSuccess) {
+          try {
+            await Supabase.instance.client.auth.refreshSession();
+            print('✅ Session refreshed successfully');
+            refreshSuccess = true;
+          } catch (e) {
+            retryCount++;
+            if (retryCount < maxRetries) {
+              print('⚠️ Session refresh failed, retrying... ($retryCount/$maxRetries): $e');
+              await Future.delayed(Duration(seconds: retryCount));
+            } else {
+              print('❌ Session refresh failed after $maxRetries attempts: $e');
+              
+              // بررسی نوع خطا
+              final errorString = e.toString().toLowerCase();
+              final isNetworkError = errorString.contains('network') ||
+                  errorString.contains('timeout') ||
+                  errorString.contains('connection') ||
+                  errorString.contains('socket') ||
+                  errorString.contains('failed host lookup');
+              
+              // فقط اگر خطای واقعی auth است (نه network error) و session واقعاً منقضی شده، signOut کن
+              if (!isNetworkError) {
+                final finalSession = Supabase.instance.client.auth.currentSession;
+                if (finalSession == null || (finalSession.expiresAt ?? 0) < now) {
+                  await Supabase.instance.client.auth.signOut();
+                } else {
+                  print('⚠️ Refresh failed but session still exists, keeping it active');
+                }
+              } else {
+                print('⚠️ Network error during refresh, keeping session active');
+              }
+            }
+          }
         }
       }
     } else {
@@ -283,12 +339,46 @@ Future<void> initializeSupabaseWithFailover() async {
         
         if (expiresAt < now) {
           print('⚠️ Session expired, refreshing...');
-          try {
-            await Supabase.instance.client.auth.refreshSession();
-            print('✅ Session refreshed successfully');
-          } catch (e) {
-            print('❌ Session refresh failed: $e');
-            await Supabase.instance.client.auth.signOut();
+          
+          // تلاش برای refresh با retry logic
+          bool refreshSuccess = false;
+          int retryCount = 0;
+          const maxRetries = 3;
+          
+          while (retryCount < maxRetries && !refreshSuccess) {
+            try {
+              await Supabase.instance.client.auth.refreshSession();
+              print('✅ Session refreshed successfully');
+              refreshSuccess = true;
+            } catch (e) {
+              retryCount++;
+              if (retryCount < maxRetries) {
+                print('⚠️ Session refresh failed, retrying... ($retryCount/$maxRetries): $e');
+                await Future.delayed(Duration(seconds: retryCount));
+              } else {
+                print('❌ Session refresh failed after $maxRetries attempts: $e');
+                
+                // بررسی نوع خطا
+                final errorString = e.toString().toLowerCase();
+                final isNetworkError = errorString.contains('network') ||
+                    errorString.contains('timeout') ||
+                    errorString.contains('connection') ||
+                    errorString.contains('socket') ||
+                    errorString.contains('failed host lookup');
+                
+                // فقط اگر خطای واقعی auth است (نه network error) و session واقعاً منقضی شده، signOut کن
+                if (!isNetworkError) {
+                  final finalSession = Supabase.instance.client.auth.currentSession;
+                  if (finalSession == null || (finalSession.expiresAt ?? 0) < now) {
+                    await Supabase.instance.client.auth.signOut();
+                  } else {
+                    print('⚠️ Refresh failed but session still exists, keeping it active');
+                  }
+                } else {
+                  print('⚠️ Network error during refresh, keeping session active');
+                }
+              }
+            }
           }
         }
       } else {
@@ -299,10 +389,28 @@ Future<void> initializeSupabaseWithFailover() async {
       print('⏳ Waiting for session restoration (Direct URL)...');
       await _waitForSessionRestore();
 
-      await Supabase.instance.client.from('profiles').select().limit(1).timeout(
-            const Duration(seconds: 10), // افزایش timeout برای شبکه‌های کند
-            onTimeout: () => throw TimeoutException('Ping timeout'),
-          );
+      // تلاش برای ping با retry و graceful handling
+      try {
+        await Supabase.instance.client.from('profiles').select().limit(1).timeout(
+              const Duration(seconds: 10), // افزایش timeout برای شبکه‌های کند
+              onTimeout: () => throw TimeoutException('Ping timeout'),
+            );
+      } catch (e) {
+        // اگر ping ناموفق بود، session را حفظ می‌کنیم (ممکن است مشکل network باشد)
+        final errorString = e.toString().toLowerCase();
+        final isNetworkError = errorString.contains('network') ||
+            errorString.contains('timeout') ||
+            errorString.contains('connection') ||
+            errorString.contains('socket');
+        
+        if (isNetworkError) {
+          logInfo('⚠️ Network error during ping, but keeping session active: $e');
+          // با قطع اینترنت، session را حفظ می‌کنیم
+        } else {
+          logInfo('⚠️ Ping failed but session may still be valid: $e');
+        }
+        // حتی با خطا، ادامه می‌دهیم تا session حفظ شود
+      }
 
       // ✅ اضافه شده: پس از initialize موفق، session بازیابی شده را لاگ کنید
       _logSessionStatus();
@@ -363,11 +471,27 @@ Future<void> _waitForSessionRestore(
         
         if (expiresAt < now) {
           print('⚠️ Restored session expired, refreshing...');
-          try {
-            await Supabase.instance.client.auth.refreshSession();
-            print('✅ Session refreshed successfully');
-          } catch (e) {
-            print('❌ Session refresh failed: $e');
+          
+          // تلاش برای refresh با retry logic
+          bool refreshSuccess = false;
+          int retryCount = 0;
+          const maxRetries = 3;
+          
+          while (retryCount < maxRetries && !refreshSuccess) {
+            try {
+              await Supabase.instance.client.auth.refreshSession();
+              print('✅ Session refreshed successfully');
+              refreshSuccess = true;
+            } catch (e) {
+              retryCount++;
+              if (retryCount < maxRetries) {
+                print('⚠️ Session refresh failed, retrying... ($retryCount/$maxRetries): $e');
+                await Future.delayed(Duration(seconds: retryCount));
+              } else {
+                print('❌ Session refresh failed after $maxRetries attempts: $e');
+                // در اینجا signOut نمی‌کنیم چون ممکن است مشکل موقتی باشد
+              }
+            }
           }
         }
         

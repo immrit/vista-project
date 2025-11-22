@@ -1,6 +1,7 @@
 import '../../../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'dart:async';
 import '../../../main.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
@@ -77,38 +78,84 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen>
 
     setState(() => _isLoading = true);
 
-    try {
-      logInfo('📧 ارسال کد بازیابی به ایمیل: ${_emailController.text.trim()}');
-      await supabase.auth.resetPasswordForEmail(
-        _emailController.text.trim(),
-        redirectTo: 'vista://auth/reset-password',
-      );
-      logInfo('✅ کد بازیابی با موفقیت ارسال شد');
+    const int maxRetries = 3;
+    int attempt = 0;
+    Duration delay = const Duration(seconds: 2);
 
-      setState(() => _isEmailSent = true);
-      _showSuccessSnackBar('کد بازیابی به ایمیل شما ارسال شد');
+    while (attempt < maxRetries) {
+      try {
+        attempt++;
+        logInfo('📧 تلاش ${attempt}/$maxRetries: ارسال کد بازیابی به ایمیل: ${_emailController.text.trim()}');
+        
+        // استفاده از timeout بیشتر برای این درخواست خاص
+        await supabase.auth.resetPasswordForEmail(
+          _emailController.text.trim(),
+          redirectTo: 'vista://auth/reset-password',
+        ).timeout(
+          const Duration(seconds: 45), // افزایش timeout به 45 ثانیه
+          onTimeout: () {
+            throw TimeoutException('درخواست ارسال ایمیل timeout شد. لطفاً دوباره تلاش کنید');
+          },
+        );
+        
+        logInfo('✅ کد بازیابی با موفقیت ارسال شد');
 
-      // هدایت به صفحه وارد کردن کد بعد از ۲ ثانیه
-      logInfo('⏰ هدایت به صفحه کد بعد از ۲ ثانیه...');
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) {
-          logInfo('🚀 هدایت به صفحه وارد کردن کد');
-          Navigator.pushNamed(
-            context,
-            '/reset-password-code',
-            arguments: {'email': _emailController.text.trim()},
-          );
+        setState(() => _isEmailSent = true);
+        _showSuccessSnackBar('کد بازیابی به ایمیل شما ارسال شد');
+
+        // هدایت به صفحه وارد کردن کد بعد از ۲ ثانیه
+        logInfo('⏰ هدایت به صفحه کد بعد از ۲ ثانیه...');
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            logInfo('🚀 هدایت به صفحه وارد کردن کد');
+            Navigator.pushNamed(
+              context,
+              '/reset-password-code',
+              arguments: {'email': _emailController.text.trim()},
+            );
+          }
+        });
+        return; // خروج موفق از تابع
+      } catch (error) {
+        logInfo('🚨 خطای ارسال ایمیل (تلاش $attempt/$maxRetries): $error');
+        logInfo('🚨 نوع خطا: ${error.runtimeType}');
+        logInfo('🚨 جزئیات خطا: ${error.toString()}');
+        
+        // بررسی اینکه آیا خطا قابل retry است یا نه
+        final errorString = error.toString().toLowerCase();
+        final isRetryable = errorString.contains('timeout') ||
+            errorString.contains('504') ||
+            errorString.contains('502') ||
+            errorString.contains('503') ||
+            errorString.contains('network') ||
+            errorString.contains('connection') ||
+            (error is TimeoutException);
+        
+        if (attempt >= maxRetries || !isRetryable) {
+          // اگر تمام تلاش‌ها تمام شد یا خطا قابل retry نیست
+          String errorMessage = 'خطا در ارسال ایمیل. لطفاً دوباره تلاش کنید';
+          
+          if (errorString.contains('timeout') || errorString.contains('504')) {
+            errorMessage = 'ارسال ایمیل timeout شد. لطفاً اتصال اینترنت خود را بررسی کنید و دوباره تلاش کنید';
+          } else if (errorString.contains('network') || errorString.contains('connection')) {
+            errorMessage = 'مشکل در اتصال به اینترنت. لطفاً اتصال خود را بررسی کنید';
+          } else if (errorString.contains('email') && errorString.contains('not found')) {
+            errorMessage = 'ایمیل وارد شده در سیستم ثبت نشده است';
+          }
+          
+          _showErrorSnackBar(errorMessage);
+          break;
         }
-      });
-    } catch (error) {
-      logInfo('🚨 خطای ارسال ایمیل: $error');
-      logInfo('🚨 نوع خطا: ${error.runtimeType}');
-      logInfo('🚨 جزئیات خطا: ${error.toString()}');
-      _showErrorSnackBar('خطا در ارسال ایمیل. لطفاً دوباره تلاش کنید');
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
+        
+        // اگر خطا قابل retry است، منتظر بمان و دوباره تلاش کن
+        logInfo('⏳ منتظر ${delay.inSeconds} ثانیه قبل از تلاش مجدد...');
+        await Future.delayed(delay);
+        delay = Duration(seconds: delay.inSeconds * 2); // exponential backoff
       }
+    }
+    
+    if (mounted) {
+      setState(() => _isLoading = false);
     }
   }
 

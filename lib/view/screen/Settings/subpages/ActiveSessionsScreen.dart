@@ -22,11 +22,58 @@ class ActiveSessionsScreen extends ConsumerStatefulWidget {
 
 class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
   final Map<String, bool> _canTerminateSession = {};
+  String? _resolvedCurrentSessionId;
+  bool _isResolvingSession = false;
 
   @override
   void initState() {
     super.initState();
     timeago.setLocaleMessages('fa', timeago.FaMessages());
+  }
+
+  /// ✅ پیدا کردن نشست فعلی از session token یا device ID
+  Future<void> _resolveCurrentSession(
+    List<SessionModel> sessions,
+    SessionManagerService sessionManager,
+    String? currentSessionId,
+  ) async {
+    if (_isResolvingSession) return;
+    
+    // اگر currentSessionId معتبر است و در لیست sessions وجود دارد
+    if (currentSessionId != null && 
+        sessions.any((s) => s.id == currentSessionId)) {
+      _resolvedCurrentSessionId = currentSessionId;
+      return;
+    }
+
+    _isResolvingSession = true;
+
+    try {
+      // تلاش برای پیدا کردن نشست فعلی از session token
+      final foundSessionId = await sessionManager.findCurrentSessionId();
+      if (foundSessionId != null && 
+          sessions.any((s) => s.id == foundSessionId)) {
+        _resolvedCurrentSessionId = foundSessionId;
+        if (mounted) {
+          setState(() {});
+        }
+      } else {
+        // اگر پیدا نشد، از اولین نشست استفاده کن
+        _resolvedCurrentSessionId = sessions.isNotEmpty ? sessions.first.id : null;
+        if (mounted) {
+          setState(() {});
+        }
+      }
+    } catch (e) {
+      print('⚠️ Error finding current session: $e');
+      // در صورت خطا، از اولین نشست استفاده کن
+      _resolvedCurrentSessionId = sessions.isNotEmpty ? sessions.first.id : null;
+      if (mounted) {
+        setState(() {});
+      }
+    } finally {
+      _isResolvingSession = false;
+    }
   }
 
   Future<void> _loadCanTerminateStatus(List<SessionModel> sessions) async {
@@ -83,13 +130,34 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
               return _buildEmptyState(isDark);
             }
 
+            // ✅ پیدا کردن نشست فعلی (یک بار در background)
+            final actualCurrentSessionId = _resolvedCurrentSessionId ?? currentSessionId;
+            
+            // اگر هنوز resolve نشده، در background resolve کن
+            if (_resolvedCurrentSessionId == null || 
+                !sessions.any((s) => s.id == _resolvedCurrentSessionId)) {
+              _resolveCurrentSession(sessions, sessionManager, currentSessionId);
+            }
+
             // جدا کردن نشست فعلی از بقیه
-            final currentSession = sessions.firstWhere(
-              (s) => s.id == currentSessionId,
-              orElse: () => sessions.first,
-            );
-            final otherSessions =
-                sessions.where((s) => s.id != currentSessionId).toList();
+            SessionModel? currentSession;
+            if (actualCurrentSessionId != null) {
+              try {
+                currentSession = sessions.firstWhere(
+                  (s) => s.id == actualCurrentSessionId,
+                );
+              } catch (e) {
+                // اگر پیدا نشد، از اولین نشست استفاده کن
+                currentSession = sessions.isNotEmpty ? sessions.first : null;
+              }
+            } else {
+              // اگر نشست فعلی پیدا نشد، از اولین نشست استفاده کن
+              currentSession = sessions.isNotEmpty ? sessions.first : null;
+            }
+
+            final otherSessions = currentSession != null
+                ? sessions.where((s) => s.id != currentSession!.id).toList()
+                : sessions;
 
             // بارگذاری وضعیت terminate برای هر نشست
             _loadCanTerminateStatus(sessions);
@@ -103,19 +171,20 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  if (currentSessionId != null)
+                  if (currentSession != null) ...[
                     _ActiveSessionCard(
-                      session: currentSession,
+                      session: currentSession!,
                       isCurrent: true,
                       sessionManager: sessionManager,
                       onTap: () => _showSessionDetailsBottomSheet(
                         context,
-                        currentSession,
+                        currentSession!,
                         true,
                         sessionManager,
                         isDark,
                       ),
                     ),
+                  ],
                   if (otherSessions.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     Padding(
@@ -336,8 +405,11 @@ class _ActiveSessionCard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final cardColor =
-        isCurrent ? colorScheme.primaryContainer : colorScheme.surface;
+    final cardColor = isCurrent
+        ? (isDark
+            ? colorScheme.primary.withOpacity(0.2)
+            : colorScheme.primaryContainer)
+        : colorScheme.surface;
 
     return GestureDetector(
       onTap: onTap,
@@ -380,7 +452,9 @@ class _ActiveSessionCard extends StatelessWidget {
             isCurrent ? 'این دستگاه' : session.deviceInfo.deviceName,
             style: TextStyle(
               color: isCurrent
-                  ? colorScheme.onPrimaryContainer
+                  ? (isDark
+                      ? colorScheme.onSurface
+                      : colorScheme.onPrimaryContainer)
                   : colorScheme.onSurface,
               fontWeight: FontWeight.bold,
               fontSize: 16,
@@ -395,7 +469,9 @@ class _ActiveSessionCard extends StatelessWidget {
                   '${session.deviceInfo.deviceModel} • ${session.platform ?? 'نامشخص'}',
                   style: TextStyle(
                     color: isCurrent
-                        ? colorScheme.onPrimaryContainer.withOpacity(0.7)
+                        ? (isDark
+                            ? colorScheme.onSurface.withOpacity(0.7)
+                            : colorScheme.onPrimaryContainer.withOpacity(0.7))
                         : colorScheme.onSurface.withOpacity(0.7),
                     fontSize: 13,
                   ),
@@ -407,7 +483,9 @@ class _ActiveSessionCard extends StatelessWidget {
                       Icons.access_time,
                       size: 14,
                       color: isCurrent
-                          ? colorScheme.onPrimaryContainer.withOpacity(0.6)
+                          ? (isDark
+                              ? colorScheme.onSurface.withOpacity(0.6)
+                              : colorScheme.onPrimaryContainer.withOpacity(0.6))
                           : colorScheme.onSurface.withOpacity(0.6),
                     ),
                     const SizedBox(width: 4),
@@ -415,7 +493,10 @@ class _ActiveSessionCard extends StatelessWidget {
                       _formatLastActivity(session.lastActivity),
                       style: TextStyle(
                         color: isCurrent
-                            ? colorScheme.onPrimaryContainer.withOpacity(0.6)
+                            ? (isDark
+                                ? colorScheme.onSurface.withOpacity(0.6)
+                                : colorScheme.onPrimaryContainer
+                                    .withOpacity(0.6))
                             : colorScheme.onSurface.withOpacity(0.6),
                         fontSize: 12,
                       ),

@@ -505,10 +505,20 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       } catch (e) {
         print('❌ Error handling auth state change: $e');
         
-        // فقط در صورت خطای critical، کاربر رو sign out کنید
-        if (e.toString().contains('AuthRetryableFetchException') ||
-            e.toString().contains('JwtException') ||
-            e.toString().contains('Invalid Refresh Token')) {
+        // فقط در صورت خطای واقعی auth (نه network errors)، کاربر رو sign out کنید
+        final errorString = e.toString().toLowerCase();
+        final isNetworkError = errorString.contains('network') ||
+            errorString.contains('timeout') ||
+            errorString.contains('connection') ||
+            errorString.contains('socket') ||
+            errorString.contains('failed host lookup') ||
+            errorString.contains('retryable');
+        
+        // فقط برای خطاهای واقعی auth که refresh token invalid است
+        if (!isNetworkError && 
+            (errorString.contains('invalid refresh token') ||
+             errorString.contains('jwt expired') ||
+             errorString.contains('token revoked'))) {
           print('🔴 Critical auth error - signing out user');
           
           if (mounted && navigatorKey.currentContext != null) {
@@ -522,6 +532,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
           }
           
           await supabase.auth.signOut();
+        } else if (isNetworkError) {
+          print('⚠️ Network error detected, keeping session active');
+          // با قطع اینترنت، session را حفظ می‌کنیم
         }
       }
     });
@@ -836,20 +849,62 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
           final timeUntilExpiry = expiresAt - now;
           print('⏰ Session check - Expires in: ${timeUntilExpiry}s');
           
-          // اگر کمتر از 10 دقیقه مونده، refresh کن
-          if (timeUntilExpiry < 600) { // 10 minutes
+          // اگر کمتر از 15 دقیقه مونده، refresh کن (زودتر refresh می‌کنیم)
+          if (timeUntilExpiry < 900) { // 15 minutes
             print('🔄 Session expiring soon, refreshing...');
-            final response = await supabase.auth.refreshSession();
             
-            if (response.session != null) {
-              print('✅ Session refreshed successfully');
-            } else {
-              print('❌ Session refresh failed');
-              await supabase.auth.signOut();
+            // تلاش برای refresh با retry logic
+            bool refreshSuccess = false;
+            int retryCount = 0;
+            const maxRetries = 3;
+            
+            while (retryCount < maxRetries && !refreshSuccess) {
+              try {
+                final response = await supabase.auth.refreshSession();
+                
+                if (response.session != null) {
+                  print('✅ Session refreshed successfully');
+                  refreshSuccess = true;
+                } else {
+                  retryCount++;
+                  if (retryCount < maxRetries) {
+                    print('⚠️ Session refresh failed, retrying... ($retryCount/$maxRetries)');
+                    await Future.delayed(Duration(seconds: retryCount * 2)); // exponential backoff
+                  }
+                }
+              } catch (e) {
+                retryCount++;
+                print('⚠️ Session refresh error: $e, retrying... ($retryCount/$maxRetries)');
+                if (retryCount < maxRetries) {
+                  await Future.delayed(Duration(seconds: retryCount * 2));
+                }
+              }
+            }
+            
+            // فقط اگر همه تلاش‌ها ناموفق بود و session واقعاً منقضی شده، signOut کن
+            if (!refreshSuccess) {
+              final finalSession = supabase.auth.currentSession;
+              if (finalSession == null) {
+                print('❌ No session after refresh attempts');
+                return; // session قبلاً منقضی شده، نیازی به signOut نیست
+              }
+              
+              final finalNow = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+              final finalExpiresAt = finalSession.expiresAt ?? 0;
+              final finalTimeUntilExpiry = finalExpiresAt - finalNow;
+              
+              // فقط اگر کمتر از 2 دقیقه مانده باشد، signOut کن
+              if (finalTimeUntilExpiry < 120) {
+                print('❌ Session expired and refresh failed, signing out...');
+                await supabase.auth.signOut();
+              } else {
+                print('⚠️ Refresh failed but session still valid, will retry later');
+              }
             }
           }
         } catch (e) {
           print('❌ Session check error: $e');
+          // در صورت خطا، کاربر را signOut نکن - ممکن است مشکل موقتی باشد
         }
       },
     );
