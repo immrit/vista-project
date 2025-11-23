@@ -38,9 +38,9 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
     String? currentSessionId,
   ) async {
     if (_isResolvingSession) return;
-    
+
     // اگر currentSessionId معتبر است و در لیست sessions وجود دارد
-    if (currentSessionId != null && 
+    if (currentSessionId != null &&
         sessions.any((s) => s.id == currentSessionId)) {
       _resolvedCurrentSessionId = currentSessionId;
       return;
@@ -51,7 +51,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
     try {
       // تلاش برای پیدا کردن نشست فعلی از session token
       final foundSessionId = await sessionManager.findCurrentSessionId();
-      if (foundSessionId != null && 
+      if (foundSessionId != null &&
           sessions.any((s) => s.id == foundSessionId)) {
         _resolvedCurrentSessionId = foundSessionId;
         if (mounted) {
@@ -59,7 +59,8 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
         }
       } else {
         // اگر پیدا نشد، از اولین نشست استفاده کن
-        _resolvedCurrentSessionId = sessions.isNotEmpty ? sessions.first.id : null;
+        _resolvedCurrentSessionId =
+            sessions.isNotEmpty ? sessions.first.id : null;
         if (mounted) {
           setState(() {});
         }
@@ -67,7 +68,8 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
     } catch (e) {
       print('⚠️ Error finding current session: $e');
       // در صورت خطا، از اولین نشست استفاده کن
-      _resolvedCurrentSessionId = sessions.isNotEmpty ? sessions.first.id : null;
+      _resolvedCurrentSessionId =
+          sessions.isNotEmpty ? sessions.first.id : null;
       if (mounted) {
         setState(() {});
       }
@@ -131,12 +133,14 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
             }
 
             // ✅ پیدا کردن نشست فعلی (یک بار در background)
-            final actualCurrentSessionId = _resolvedCurrentSessionId ?? currentSessionId;
-            
+            final actualCurrentSessionId =
+                _resolvedCurrentSessionId ?? currentSessionId;
+
             // اگر هنوز resolve نشده، در background resolve کن
-            if (_resolvedCurrentSessionId == null || 
+            if (_resolvedCurrentSessionId == null ||
                 !sessions.any((s) => s.id == _resolvedCurrentSessionId)) {
-              _resolveCurrentSession(sessions, sessionManager, currentSessionId);
+              _resolveCurrentSession(
+                  sessions, sessionManager, currentSessionId);
             }
 
             // جدا کردن نشست فعلی از بقیه
@@ -173,7 +177,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
                 children: [
                   if (currentSession != null) ...[
                     _ActiveSessionCard(
-                      session: currentSession!,
+                      session: currentSession,
                       isCurrent: true,
                       sessionManager: sessionManager,
                       onTap: () => _showSessionDetailsBottomSheet(

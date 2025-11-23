@@ -4,8 +4,9 @@ import '../model/session_model.dart';
 import '../services/session_manager_service.dart';
 
 // Provider برای SessionManagerService
+// استفاده از singleton instance برای اطمینان از یکسان بودن instance
 final sessionManagerProvider = Provider<SessionManagerService>((ref) {
-  return SessionManagerService();
+  return SessionManagerService.instance;
 });
 
 // Provider برای لیست نشست‌های فعال

@@ -85,7 +85,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen>
     while (attempt < maxRetries) {
       try {
         attempt++;
-        logInfo('📧 تلاش ${attempt}/$maxRetries: ارسال کد بازیابی به ایمیل: ${_emailController.text.trim()}');
+        logInfo('📧 تلاش $attempt/$maxRetries: ارسال کد بازیابی به ایمیل: ${_emailController.text.trim()}');
         
         // استفاده از timeout بیشتر برای این درخواست خاص
         await supabase.auth.resetPasswordForEmail(
