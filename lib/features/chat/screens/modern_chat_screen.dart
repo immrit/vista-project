@@ -48,6 +48,10 @@ import '../services/chat_attachment_service.dart';
 import '../widgets/block_report_bottom_sheet.dart';
 import '../services/user_moderation_service.dart';
 import '../services/voice_duration_service.dart';
+import '../services/message_reactions_service.dart';
+import '../models/message_reaction.dart' as reaction_models;
+import '../widgets/message_reactions_widget.dart'
+    show MessageReactionsWidget, ReactionPickerSheet;
 import '../../../view/screen/PublicPosts/profileScreen.dart';
 
 // ✅ Phase 4: Final Integration
@@ -137,6 +141,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   String? _reactionPickerMessageId;
   Offset? _reactionPickerPosition;
 
+  // Reactions cache - Map<messageId, List<reaction_models.MessageReaction>>
+  final Map<String, List<reaction_models.MessageReaction>> _messageReactions =
+      {};
+  final MessageReactionsService _reactionsService = MessageReactionsService();
+  StreamSubscription? _reactionsSubscription;
+
   // ═══════════════════════════════════════════════════════════════════════════
   // 🎬 LIFECYCLE
   // ═══════════════════════════════════════════════════════════════════════════
@@ -197,6 +207,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       debugPrint('Error stopping typing in dispose: $e');
     }
 
+    _reactionsSubscription?.cancel();
     _scrollEndTimer?.cancel();
     _appBarAnimController.dispose();
     _scrollController.removeListener(_onScroll);
@@ -1071,6 +1082,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           return _buildEmptyState(theme);
         }
 
+        // بارگذاری واکنش‌ها از دیتابیس
+        _loadReactionsForMessages(messages);
+        _setupReactionsStream(messages);
+
         // محاسبه تعداد پیام‌های خوانده نشده
         _calculateUnreadCount(messages);
 
@@ -1210,7 +1225,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                               ? () => _scrollToMessageById(
                                   message.replyToMessageId!, messages)
                               : null,
-                          reactions: _parseReactions(message.reactions),
+                          reactions: _convertToOldReactionFormat(
+                              _messageReactions[message.id] ?? []),
                           onTap: () => _onMessageTap(message),
                           onLongPress: () => _onMessageLongPress(message),
                           onDoubleTap: () => _onMessageDoubleTap(message),
@@ -1225,6 +1241,27 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                     ),
                   ],
                 ),
+
+                // Reactions Widget (زیر پیام)
+                if ((_messageReactions[message.id] ?? []).isNotEmpty)
+                  Padding(
+                    padding: EdgeInsets.only(
+                      top: 4,
+                      left: isMe ? 0 : 12,
+                      right: isMe ? 12 : 0,
+                    ),
+                    child: MessageReactionsWidget(
+                      messageId: message.id,
+                      reactions: _messageReactions[message.id] ?? [],
+                      isMine: isMe,
+                      onReactionTap: () {
+                        ReactionPickerSheet.show(
+                          context,
+                          messageId: message.id,
+                        );
+                      },
+                    ),
+                  ),
 
                 // Date Divider (بعد از پیام چون لیست reverse هست)
                 if (showDateDivider) DateDivider(date: message.createdAt),
@@ -1290,16 +1327,68 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     return MessageStatus.pending;
   }
 
-  List<MessageReaction> _parseReactions(Map<String, dynamic>? reactions) {
-    if (reactions == null || reactions.isEmpty) return [];
+  /// بارگذاری واکنش‌ها برای پیام‌های فعلی
+  Future<void> _loadReactionsForMessages(List<MessageModel> messages) async {
+    if (messages.isEmpty) return;
 
-    return reactions.entries.map((entry) {
-      final users = entry.value as List? ?? [];
+    try {
+      final messageIds = messages.map((m) => m.id).toList();
+      final reactionsMap =
+          await _reactionsService.getMultipleMessageReactions(messageIds);
+
+      if (mounted) {
+        setState(() {
+          _messageReactions.clear();
+          _messageReactions.addAll(reactionsMap);
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading reactions: $e');
+    }
+  }
+
+  /// راه‌اندازی real-time stream برای واکنش‌ها
+  void _setupReactionsStream(List<MessageModel> messages) {
+    _reactionsSubscription?.cancel();
+
+    if (messages.isEmpty) return;
+
+    // فقط برای 20 پیام آخر stream ایجاد می‌کنیم (برای بهینه‌سازی)
+    final recentMessages = messages.take(20).toList();
+    final messageIds = recentMessages.map((m) => m.id).toList();
+
+    // برای هر پیام یک stream ایجاد می‌کنیم
+    for (final messageId in messageIds) {
+      _reactionsSubscription = _reactionsService
+          .watchMessageReactions(messageId)
+          .listen((reactions) {
+        if (mounted) {
+          setState(() {
+            _messageReactions[messageId] = reactions;
+          });
+        }
+      });
+    }
+  }
+
+  /// تبدیل reaction_models.MessageReaction به فرمت قدیمی برای AnimatedMessageBubble
+  List<MessageReaction> _convertToOldReactionFormat(
+      List<reaction_models.MessageReaction> reactions) {
+    if (reactions.isEmpty) return [];
+
+    // گروه‌بندی بر اساس emoji
+    final Map<String, List<reaction_models.MessageReaction>> grouped = {};
+    for (final reaction in reactions) {
+      grouped.putIfAbsent(reaction.emoji, () => []).add(reaction);
+    }
+
+    return grouped.entries.map((entry) {
+      final userIds = entry.value.map((r) => r.userId).toList();
       return MessageReaction(
         emoji: entry.key,
-        count: users.length,
-        userIds: users.map((e) => e.toString()).toList(),
-        isMyReaction: users.contains(_currentUserId),
+        count: entry.value.length,
+        userIds: userIds,
+        isMyReaction: userIds.contains(_currentUserId),
       );
     }).toList();
   }

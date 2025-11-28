@@ -23,6 +23,7 @@ import 'services/network_status_service.dart';
 import 'services/network_state_service.dart';
 import 'services/retry_queue_service.dart';
 import 'services/session_manager_service.dart';
+import 'services/session_manager_service_v2.dart';
 import 'middleware/session_middleware.dart';
 import 'firebase_options.dart';
 import 'provider/theme_provider.dart';
@@ -212,12 +213,12 @@ void main() async {
         print('⚠️ برخی ویژگی‌های آنلاین ممکن است کار نکنند');
       }
 
-      // ✅ Initialize Session Manager
+      // ✅ Initialize Session Manager V2
       try {
-        await SessionManagerService().initialize();
-        print('✅ SessionManagerService initialized');
+        await SessionManagerServiceV2().initialize();
+        print('✅ SessionManagerServiceV2 initialized');
       } catch (e) {
-        print('⚠️ SessionManagerService initialization failed: $e');
+        print('⚠️ SessionManagerServiceV2 initialization failed: $e');
       }
 
       // ✅ Deferred Initialization Manager - برای به تعویق انداختن عملیات سنگین
@@ -455,7 +456,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     
     // ✅ null کردن callback session termination برای جلوگیری از خطا
     try {
-      final sessionManager = SessionManagerService();
+      final sessionManager = SessionManagerServiceV2();
       sessionManager.onSessionTerminated = null;
     } catch (e) {
       print('⚠️ Error clearing session termination callback: $e');
@@ -557,7 +558,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   
   /// تنظیم handler برای خاتمه نشست (فقط در صورت خاتمه توسط کاربر دیگر)
   void _setupSessionTerminationHandler() {
-    final sessionManager = SessionManagerService();
+    final sessionManager = SessionManagerServiceV2();
     sessionManager.onSessionTerminated = () {
       // استفاده از postFrameCallback برای اطمینان از اینکه در frame بعدی اجرا می‌شود
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -625,7 +626,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final autoLockService = AutoLockService();
-    final sessionManager = SessionManagerService();
+    final sessionManager = SessionManagerServiceV2();
     
     if (state == AppLifecycleState.detached) {
       // Cache cleanup is now handled by Sembast automatically
@@ -635,7 +636,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       // App به background رفت - زمان آخرین فعالیت را ثبت کن
       autoLockService.recordUserActivity();
       
-      // ✅ اطلاع‌رسانی به SessionManager که اپ به پس‌زمینه رفت (غیرمسدودکننده)
+      // ✅ اطلاع‌رسانی به SessionManager V2 که اپ به پس‌زمینه رفت (غیرمسدودکننده)
       sessionManager.onAppPaused().catchError((e) {
         print('⚠️ Error in session pause handling: $e');
       });
@@ -644,7 +645,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       autoLockService.recordUserActivity();
       autoLockService.refreshSettings();
       
-      // ✅ اطلاع‌رسانی به SessionManager که اپ برگشت (غیرمسدودکننده)
+      // ✅ اطلاع‌رسانی به SessionManager V2 که اپ برگشت (غیرمسدودکننده)
       sessionManager.onAppResumed().catchError((e) {
         print('⚠️ Error in session resume handling: $e');
       });
@@ -764,7 +765,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     if (session == null) return;
     
     // آپدیت موقعیت و IP در پس‌زمینه (غیرمسدودکننده)
-    final sessionManager = SessionManagerService();
+    final sessionManager = SessionManagerServiceV2();
     sessionManager.updateLocationAndIP();
     debugPrint('🔐 Processing user sign-in');
     

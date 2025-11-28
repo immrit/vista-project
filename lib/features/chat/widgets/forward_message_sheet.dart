@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../services/message_actions_service.dart';
+import '../services/message_forward_service.dart';
 import '../theme/chat_theme.dart';
 
 /// مدل مکالمه ساده برای نمایش
@@ -78,55 +78,101 @@ class _ForwardMessageSheetState extends ConsumerState<ForwardMessageSheet> {
   Future<void> _loadConversations() async {
     try {
       final userId = Supabase.instance.client.auth.currentUser?.id;
-      if (userId == null) return;
+      if (userId == null) {
+        if (mounted) {
+          setState(() {
+            _error = 'کاربر احراز هویت نشده';
+            _isLoading = false;
+          });
+        }
+        return;
+      }
 
+      // دریافت مکالمات کاربر
       final response = await Supabase.instance.client
           .from('conversation_participants')
-          .select('''
-            conversation_id,
-            conversations (
-              id,
-              is_group,
-              group_name,
-              group_avatar
-            )
-          ''')
+          .select('conversation_id')
           .eq('user_id', userId);
+
+      if (response.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _conversations = [];
+            _filteredConversations = [];
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+
+      final conversationIds = (response as List)
+          .map((e) => e['conversation_id'] as String?)
+          .whereType<String>()
+          .toList();
 
       final List<ConversationItem> items = [];
 
-      for (final row in response as List) {
-        final conv = row['conversations'];
-        if (conv == null) continue;
-
-        final isGroup = conv['is_group'] ?? false;
-
-        if (isGroup) {
-          items.add(ConversationItem(
-            id: conv['id'],
-            name: conv['group_name'] ?? 'گروه',
-            avatarUrl: conv['group_avatar'],
-            isGroup: true,
-          ));
-        } else {
-          // برای چت خصوصی، نام طرف مقابل رو بگیر
-          final otherUserResponse = await Supabase.instance.client
-              .from('conversation_participants')
-              .select('user_id, profiles(full_name, avatar_url)')
-              .eq('conversation_id', conv['id'])
-              .neq('user_id', userId)
-              .limit(1)
+      // برای هر مکالمه، اطلاعات رو بگیر
+      for (final convId in conversationIds) {
+        try {
+          // دریافت اطلاعات مکالمه
+          final convData = await Supabase.instance.client
+              .from('conversations')
+              .select('id, type, name, image')
+              .eq('id', convId)
               .maybeSingle();
 
-          if (otherUserResponse != null) {
-            final profile = otherUserResponse['profiles'];
+          if (convData == null) continue;
+
+          final convIdValue = convData['id'] as String?;
+          if (convIdValue == null) continue;
+
+          final convType = convData['type'] as String?;
+          final isGroup = convType == 'group' || convType == 'channel';
+
+          if (isGroup) {
+            // مکالمه گروهی
             items.add(ConversationItem(
-              id: conv['id'],
-              name: profile?['full_name'] ?? 'کاربر',
-              avatarUrl: profile?['avatar_url'],
-              isGroup: false,
+              id: convIdValue,
+              name: (convData['name'] as String?) ?? 'گروه',
+              avatarUrl: convData['image'] as String?,
+              isGroup: true,
             ));
+          } else {
+            // مکالمه خصوصی - پیدا کردن طرف مقابل
+            final otherUserResponse = await Supabase.instance.client
+                .from('conversation_participants')
+                .select('user_id')
+                .eq('conversation_id', convId)
+                .neq('user_id', userId)
+                .limit(1)
+                .maybeSingle();
+
+            if (otherUserResponse != null) {
+              final otherUserId = otherUserResponse['user_id'] as String?;
+              
+              if (otherUserId != null) {
+                // دریافت پروفایل کاربر
+                final profileResponse = await Supabase.instance.client
+                    .from('profiles')
+                    .select('full_name, avatar_url')
+                    .eq('id', otherUserId)
+                    .maybeSingle();
+
+                if (profileResponse != null) {
+                  items.add(ConversationItem(
+                    id: convIdValue,
+                    name: (profileResponse['full_name'] as String?) ?? 'کاربر',
+                    avatarUrl: profileResponse['avatar_url'] as String?,
+                    isGroup: false,
+                  ));
+                }
+              }
+            }
           }
+        } catch (e) {
+          debugPrint('❌ Error loading conversation $convId: $e');
+          continue;
         }
       }
 
@@ -138,9 +184,10 @@ class _ForwardMessageSheetState extends ConsumerState<ForwardMessageSheet> {
         });
       }
     } catch (e) {
+      debugPrint('❌ Error loading conversations: $e');
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = 'خطا در بارگذاری مکالمات';
           _isLoading = false;
         });
       }
@@ -173,7 +220,9 @@ class _ForwardMessageSheetState extends ConsumerState<ForwardMessageSheet> {
     setState(() => _isForwarding = true);
 
     try {
-      final result = await ref.read(messageActionsProvider).forwardMultiple(
+      // استفاده از سرویس فوروارد که قبلاً نوشتیم
+      final service = ref.read(messageForwardServiceProvider);
+      final result = await service.forwardMultiple(
         messageIds: widget.messageIds,
         targetConversationIds: _selectedIds.toList(),
       );
@@ -193,7 +242,7 @@ class _ForwardMessageSheetState extends ConsumerState<ForwardMessageSheet> {
           );
         } else {
           setState(() {
-            _error = result.error;
+            _error = result.error ?? 'خطا در فوروارد پیام';
             _isForwarding = false;
           });
         }
@@ -401,7 +450,9 @@ class _ForwardMessageSheetState extends ConsumerState<ForwardMessageSheet> {
                                       : null,
                                   child: conv.avatarUrl == null
                                       ? Text(
-                                          conv.name[0].toUpperCase(),
+                                          conv.name.isNotEmpty
+                                              ? conv.name[0].toUpperCase()
+                                              : '?',
                                           style: TextStyle(
                                             color: theme.sendButtonColor,
                                             fontWeight: FontWeight.w600,
@@ -468,4 +519,9 @@ class _ForwardMessageSheetState extends ConsumerState<ForwardMessageSheet> {
     );
   }
 }
+
+// Provider برای سرویس فوروارد
+final messageForwardServiceProvider = Provider((ref) {
+  return MessageForwardService();
+});
 
