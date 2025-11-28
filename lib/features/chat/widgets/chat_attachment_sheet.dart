@@ -257,11 +257,20 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
     }
   }
 
-  void _showLocation() {
+  Future<void> _showLocation() async {
     Navigator.pop(context);
-    // TODO: Location picker
+    // Location picker will be handled in ModernChatScreen
     widget.onSelected(const AttachmentSelection(
       type: ChatAttachmentType.location,
+      files: [],
+    ));
+  }
+  
+  Future<void> _showContact() async {
+    Navigator.pop(context);
+    // Contact picker will be handled in ModernChatScreen
+    widget.onSelected(const AttachmentSelection(
+      type: ChatAttachmentType.contact,
       files: [],
     ));
   }
@@ -500,12 +509,10 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
                 onTap: _showLocation,
               ),
               _buildBigOption(
-                icon: Icons.music_note_rounded,
-                label: 'موزیک',
-                color: Colors.pink,
-                onTap: () {
-                  // TODO: Music picker
-                },
+                icon: Icons.contacts_rounded,
+                label: 'مخاطب',
+                color: Colors.orange,
+                onTap: _showContact,
               ),
             ],
           ),

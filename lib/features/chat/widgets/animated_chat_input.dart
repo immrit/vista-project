@@ -14,6 +14,7 @@
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/chat_theme.dart';
@@ -564,6 +565,8 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   }
 
   Widget _buildTextField(ChatTheme theme) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Focus(
       onFocusChange: (focused) {
         setState(() => _isFocused = focused);
@@ -571,41 +574,70 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         decoration: BoxDecoration(
-          color:
-              _isFocused ? theme.backgroundColor : theme.inputBackgroundColor,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: _isFocused
-                ? theme.sendButtonColor.withOpacity(0.5)
-                : theme.inputBorderColor,
-            width: _isFocused ? 1.5 : 1,
-          ),
+          boxShadow: _isFocused
+              ? [
+                  BoxShadow(
+                    color: theme.sendButtonColor.withOpacity(0.2),
+                    blurRadius: 12,
+                    spreadRadius: 0,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : [],
         ),
-        child: TextField(
-          controller: widget.controller,
-          focusNode: widget.focusNode,
-          enabled: widget.enabled,
-          maxLines: 5,
-          minLines: 1,
-          textInputAction: TextInputAction.newline,
-          style: TextStyle(
-            color: theme.textColor,
-            fontSize: 15,
-          ),
-          decoration: InputDecoration(
-            hintText: widget.hint ?? 'پیام خود را بنویسید...',
-            hintStyle: TextStyle(
-              color: theme.inputHintColor,
-              fontSize: 15,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Container(
+              decoration: BoxDecoration(
+                // Glass Effect - شفافیت با backdrop blur
+                color: _isFocused
+                    ? (isDark
+                        ? const Color(0xFF1A1A1A).withOpacity(0.7)
+                        : Colors.white.withOpacity(0.8))
+                    : (isDark
+                        ? const Color(0xFF1A1A1A).withOpacity(0.5)
+                        : Colors.white.withOpacity(0.6)),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: _isFocused
+                      ? theme.sendButtonColor.withOpacity(0.4)
+                      : (isDark
+                          ? Colors.white.withOpacity(0.1)
+                          : Colors.black.withOpacity(0.1)),
+                  width: _isFocused ? 1.5 : 1,
+                ),
+              ),
+              child: TextField(
+                controller: widget.controller,
+                focusNode: widget.focusNode,
+                enabled: widget.enabled,
+                maxLines: 5,
+                minLines: 1,
+                textInputAction: TextInputAction.newline,
+                style: TextStyle(
+                  color: theme.textColor,
+                  fontSize: 15,
+                ),
+                decoration: InputDecoration(
+                  hintText: widget.hint ?? 'پیام خود را بنویسید...',
+                  hintStyle: TextStyle(
+                    color: theme.inputHintColor.withOpacity(0.7),
+                    fontSize: 15,
+                  ),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  isDense: true,
+                ),
+                textDirection: TextDirection.rtl,
+              ),
             ),
-            border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 10,
-            ),
-            isDense: true,
           ),
-          textDirection: TextDirection.rtl,
         ),
       ),
     );

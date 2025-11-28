@@ -50,6 +50,15 @@ import '../services/user_moderation_service.dart';
 import '../services/voice_duration_service.dart';
 import '../../../view/screen/PublicPosts/profileScreen.dart';
 
+// ✅ Phase 4: Final Integration
+import '../widgets/location_message_widgets.dart';
+import '../widgets/contact_card_widgets.dart';
+import '../screens/document_preview_screen.dart';
+import '../screens/message_info_screen.dart';
+import '../screens/telegram_chat_details_screen.dart';
+// TODO: Use CompleteDeletionService for delete with undo
+// import '../services/complete_deletion_service.dart';
+
 /// پارامترهای صفحه چت
 class ChatScreenArgs {
   final String conversationId;
@@ -117,6 +126,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // Services
   final _moderationService = UserModerationService();
   final _voiceService = VoiceDurationService();
+  // TODO: Use CompleteDeletionService for delete with undo
+  // final _completeDeletionService = CompleteDeletionService();
 
   // Block status
   bool _isOtherUserBlocked = false;
@@ -175,10 +186,16 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   @override
-  @override
   void dispose() {
-    // توقف تایپ هنگام خروج
-    ref.read(typingActionsProvider).stopTyping(widget.args.conversationId);
+    // توقف تایپ هنگام خروج - با try-catch برای جلوگیری از خطا
+    try {
+      if (mounted) {
+        ref.read(typingActionsProvider).stopTyping(widget.args.conversationId);
+      }
+    } catch (e) {
+      // Ignore errors after dispose
+      debugPrint('Error stopping typing in dispose: $e');
+    }
 
     _scrollEndTimer?.cancel();
     _appBarAnimController.dispose();
@@ -196,23 +213,30 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   Timer? _scrollEndTimer;
 
   void _onScroll() {
+    // ✅ FIX: بررسی mounted قبل از هر کاری
+    if (!mounted) return;
+
     // Pagination - چون لیست reverse است
     final isNearTop = _scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200;
 
     if (isNearTop != _isNearTop) {
-      setState(() => _isNearTop = isNearTop);
-      if (_isNearTop) _loadMoreMessages();
+      if (mounted) {
+        setState(() => _isNearTop = isNearTop);
+        if (_isNearTop) _loadMoreMessages();
+      }
     }
 
     // دکمه Scroll to Bottom
     final showScrollButton = _scrollController.position.pixels > 300;
     if (showScrollButton != _showScrollToBottom) {
-      setState(() => _showScrollToBottom = showScrollButton);
+      if (mounted) {
+        setState(() => _showScrollToBottom = showScrollButton);
+      }
     }
 
     // Floating date - شروع اسکرول
-    if (!_isScrolling) {
+    if (!_isScrolling && mounted) {
       setState(() => _isScrolling = true);
     }
 
@@ -221,31 +245,88 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _scrollEndTimer = Timer(const Duration(milliseconds: 150), () {
       if (mounted) {
         setState(() => _isScrolling = false);
+
+        // ✅ FIX: بعد از توقف اسکرول، اگر در پایین لیست هستیم، تاریخ را به‌روز کن
+        if (mounted && _scrollController.hasClients) {
+          final offset = _scrollController.offset;
+          if (offset < 100) {
+            // در پایین لیست هستیم - تاریخ را به اولین پیام (جدیدترین) تنظیم کن
+            _updateDateForBottom();
+          }
+        }
       }
     });
 
     // آپدیت تاریخ قابل مشاهده
-    _updateVisibleDate();
+    if (mounted) {
+      _updateVisibleDate();
+    }
   }
 
   void _updateVisibleDate() {
-    final messagesAsync =
-        ref.read(messagesStreamProvider(widget.args.conversationId));
-    messagesAsync.whenData((messages) {
-      if (messages.isEmpty) return;
+    if (!mounted || !_scrollController.hasClients) return;
 
-      // تخمین ایندکس پیام قابل مشاهده
-      final scrollOffset = _scrollController.offset;
-      final itemHeight = 70.0; // تقریبی
-      var visibleIndex = (scrollOffset / itemHeight).floor();
-      visibleIndex = visibleIndex.clamp(0, messages.length - 1);
+    // ✅ FIX: بررسی mounted قبل از استفاده از ref
+    if (!mounted) return;
 
-      final newDate = messages[visibleIndex].createdAt;
-      if (_currentVisibleDate == null ||
-          !_isSameDay(_currentVisibleDate!, newDate)) {
-        setState(() => _currentVisibleDate = newDate);
-      }
-    });
+    try {
+      final messagesAsync =
+          ref.read(messagesStreamProvider(widget.args.conversationId));
+      messagesAsync.whenData((messages) {
+        if (!mounted) return;
+
+        // ✅ FIX: اگر پیامی وجود ندارد، floating date را پاک کن
+        if (messages.isEmpty) {
+          if (_currentVisibleDate != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() {
+                  _currentVisibleDate = null;
+                });
+              }
+            });
+          }
+          return;
+        }
+
+        // تخمین ایندکس پیام قابل مشاهده
+        final scrollOffset = _scrollController.offset;
+        final itemHeight = 70.0; // تقریبی
+        var visibleIndex = (scrollOffset / itemHeight).floor();
+        visibleIndex = visibleIndex.clamp(0, messages.length - 1);
+
+        // ✅ FIX: بررسی معتبر بودن index
+        if (visibleIndex >= 0 && visibleIndex < messages.length) {
+          final newDate = messages[visibleIndex].createdAt;
+
+          // ✅ فقط اگر تاریخ متفاوت بود update کن
+          if (_currentVisibleDate == null ||
+              !_isSameDay(_currentVisibleDate!, newDate)) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() {
+                  _currentVisibleDate = newDate;
+                });
+              }
+            });
+          }
+        } else {
+          // ✅ FIX: index نامعتبر است - floating date را پاک کن
+          if (_currentVisibleDate != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() {
+                  _currentVisibleDate = null;
+                });
+              }
+            });
+          }
+        }
+      });
+    } catch (e) {
+      // Ignore errors if widget is disposed
+      debugPrint('Error in _updateVisibleDate: $e');
+    }
   }
 
   bool _isSameDay(DateTime a, DateTime b) {
@@ -286,21 +367,35 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   void _loadMoreMessages() {
-    final messagesAsync = ref.read(
-      messagesStreamProvider(widget.args.conversationId),
-    );
+    // ✅ FIX: بررسی mounted قبل از استفاده از ref
+    if (!mounted) return;
 
-    messagesAsync.whenData((messages) {
-      if (messages.isEmpty) return;
+    try {
+      final messagesAsync = ref.read(
+        messagesStreamProvider(widget.args.conversationId),
+      );
 
-      final oldestMessage = messages.last;
-      ref
-          .read(paginationStateProvider(widget.args.conversationId).notifier)
-          .loadMore(oldestMessage.createdAt);
-    });
+      messagesAsync.whenData((messages) {
+        if (!mounted) return;
+        if (messages.isEmpty) return;
+
+        final oldestMessage = messages.last;
+        if (mounted) {
+          ref
+              .read(
+                  paginationStateProvider(widget.args.conversationId).notifier)
+              .loadMore(oldestMessage.createdAt);
+        }
+      });
+    } catch (e) {
+      // Ignore errors if widget is disposed
+      debugPrint('Error in _loadMoreMessages: $e');
+    }
   }
 
   void _scrollToBottom() {
+    if (!mounted) return;
+
     _scrollController
         .animateTo(
       0,
@@ -309,33 +404,65 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     )
         .then((_) {
       // بعد از اسکرول به پایین، تاریخ اولین پیام (جدیدترین) را بگیر
-      _updateDateForBottom();
+      if (mounted) {
+        _updateDateForBottom();
+      }
     });
   }
 
   /// آپدیت تاریخ وقتی در پایین لیست هستیم
   void _updateDateForBottom() {
-    final messagesAsync =
-        ref.read(messagesStreamProvider(widget.args.conversationId));
-    messagesAsync.whenData((messages) {
-      if (messages.isEmpty) return;
-      // اولین پیام (جدیدترین) چون لیست reverse است
-      final newestMessage = messages.first;
-      final newDate = newestMessage.createdAt;
-      if (_currentVisibleDate == null ||
-          !_isSameDay(_currentVisibleDate!, newDate)) {
-        setState(() {
-          _currentVisibleDate = newDate;
-          _isScrolling = true; // نمایش تاریخ
-        });
-        // بعد از 2 ثانیه مخفی کن
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            setState(() => _isScrolling = false);
+    if (!mounted) return;
+
+    // ✅ FIX: بررسی mounted قبل از استفاده از ref
+    try {
+      final messagesAsync =
+          ref.read(messagesStreamProvider(widget.args.conversationId));
+      messagesAsync.whenData((messages) {
+        if (!mounted) return;
+
+        // ✅ FIX: اگر پیامی وجود ندارد، floating date را پاک کن
+        if (messages.isEmpty) {
+          if (_currentVisibleDate != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() {
+                  _currentVisibleDate = null;
+                  _isScrolling = false;
+                });
+              }
+            });
           }
-        });
-      }
-    });
+          return;
+        }
+
+        // اولین پیام (جدیدترین) چون لیست reverse است
+        final newestMessage = messages.first;
+        final newDate = newestMessage.createdAt;
+
+        // ✅ فقط اگر تاریخ متفاوت بود update کن
+        if (_currentVisibleDate == null ||
+            !_isSameDay(_currentVisibleDate!, newDate)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {
+                _currentVisibleDate = newDate;
+                _isScrolling = true; // نمایش تاریخ
+              });
+              // بعد از 2 ثانیه مخفی کن
+              Future.delayed(const Duration(seconds: 2), () {
+                if (mounted) {
+                  setState(() => _isScrolling = false);
+                }
+              });
+            }
+          });
+        }
+      });
+    } catch (e) {
+      // Ignore errors if widget is disposed
+      debugPrint('Error in _updateDateForBottom: $e');
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -575,19 +702,29 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   Future<void> _copySelectedMessages() async {
-    // گرفتن متن پیام‌های انتخاب شده
-    final messagesAsync =
-        ref.read(messagesStreamProvider(widget.args.conversationId));
-    messagesAsync.whenData((messages) {
-      final selectedMessages = messages
-          .where((m) => _selectedMessageIds.contains(m.id))
-          .map((m) => m.content)
-          .join('\n\n');
+    if (!mounted) return;
 
-      Clipboard.setData(ClipboardData(text: selectedMessages));
-      _showSuccessSnackBar('${_selectedMessageIds.length} پیام کپی شد');
-      _exitSelectionMode();
-    });
+    try {
+      // گرفتن متن پیام‌های انتخاب شده
+      final messagesAsync =
+          ref.read(messagesStreamProvider(widget.args.conversationId));
+      messagesAsync.whenData((messages) {
+        if (!mounted) return;
+
+        final selectedMessages = messages
+            .where((m) => _selectedMessageIds.contains(m.id))
+            .map((m) => m.content)
+            .join('\n\n');
+
+        Clipboard.setData(ClipboardData(text: selectedMessages));
+        if (mounted) {
+          _showSuccessSnackBar('${_selectedMessageIds.length} پیام کپی شد');
+          _exitSelectionMode();
+        }
+      });
+    } catch (e) {
+      debugPrint('Error in _copySelectedMessages: $e');
+    }
   }
 
   Future<void> _deleteSelectedMessages() async {
@@ -616,10 +753,17 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     // حذف پیام‌ها
     int successCount = 0;
     for (final messageId in _selectedMessageIds) {
-      final result =
-          await ref.read(chatActionsProvider.notifier).deleteMessage(messageId);
-      if (result.isSuccess) {
-        successCount++;
+      if (!mounted) break;
+
+      try {
+        final result = await ref
+            .read(chatActionsProvider.notifier)
+            .deleteMessage(messageId);
+        if (result.isSuccess) {
+          successCount++;
+        }
+      } catch (e) {
+        debugPrint('Error deleting message: $e');
       }
     }
 
@@ -672,6 +816,17 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               ),
             ),
             PopupMenuItem(
+              value: 'details',
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline_rounded,
+                      color: theme.iconColor, size: 20),
+                  const SizedBox(width: 12),
+                  const Text('جزئیات چت'),
+                ],
+              ),
+            ),
+            PopupMenuItem(
               value: 'block',
               child: Row(
                 children: [
@@ -718,7 +873,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     return InkWell(
       onTap: () {
-        // TODO: باز کردن پروفایل کاربر
+        _navigateToChatDetails();
       },
       borderRadius: BorderRadius.circular(8),
       child: Padding(
@@ -844,6 +999,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       case 'search':
         setState(() => _isSearchMode = true);
         break;
+      case 'details':
+        _navigateToChatDetails();
+        break;
       case 'profile':
         _navigateToProfile();
         break;
@@ -916,20 +1074,38 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         // محاسبه تعداد پیام‌های خوانده نشده
         _calculateUnreadCount(messages);
 
-        // اگر در پایین لیست هستیم (offset = 0 یا نزدیک به 0)، تاریخ را آپدیت کن
+        // ✅ FIX: اگر در پایین لیست هستیم (offset = 0 یا نزدیک به 0)، تاریخ را آپدیت کن
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scrollController.hasClients) {
-            final offset = _scrollController.offset;
-            // اگر در پایین لیست هستیم (offset < 100)
-            if (offset < 100 && messages.isNotEmpty) {
-              final newestMessage = messages.first;
-              final newDate = newestMessage.createdAt;
-              if (_currentVisibleDate == null ||
-                  !_isSameDay(_currentVisibleDate!, newDate)) {
-                setState(() {
-                  _currentVisibleDate = newDate;
-                });
-              }
+          if (!mounted || !_scrollController.hasClients) return;
+
+          final offset = _scrollController.offset;
+
+          // اگر در پایین لیست هستیم (offset < 100) و پیامی وجود دارد
+          if (offset < 100 && messages.isNotEmpty) {
+            final newestMessage = messages.first;
+            final newDate = newestMessage.createdAt;
+
+            // ✅ فقط اگر تاریخ متفاوت بود update کن
+            if (_currentVisibleDate == null ||
+                !_isSameDay(_currentVisibleDate!, newDate)) {
+              setState(() {
+                _currentVisibleDate = newDate;
+                // اگر اسکرول نمی‌کنیم، تاریخ را نمایش نده (بعد از 2 ثانیه محو می‌شود)
+                if (!_isScrolling) {
+                  _isScrolling = true;
+                  Future.delayed(const Duration(seconds: 2), () {
+                    if (mounted) {
+                      setState(() => _isScrolling = false);
+                    }
+                  });
+                }
+              });
+            }
+          } else if (offset >= 100) {
+            // ✅ اگر در بالا هستیم و اسکرول نمی‌کنیم، تاریخ را به‌روز کن
+            // (این کار در _updateVisibleDate انجام می‌شود)
+            if (!_isScrolling) {
+              _updateVisibleDate();
             }
           }
         });
@@ -1297,6 +1473,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   /// Handle ضبط صدا
   Future<void> _handleVoiceRecorded(File audioFile, int duration) async {
+    if (!mounted) return;
+
     final attachmentService = ChatAttachmentService();
 
     // محاسبه دقیق مدت زمان
@@ -1310,6 +1488,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       duration: finalDuration ?? 0,
     );
 
+    if (!mounted) return;
+
     if (result.success && result.url != null) {
       final params = SendMessageParams(
         conversationId: widget.args.conversationId,
@@ -1320,27 +1500,47 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         duration: finalDuration,
       );
 
-      await ref.read(chatActionsProvider.notifier).sendMessage(params);
-      _scrollToBottom();
+      try {
+        await ref.read(chatActionsProvider.notifier).sendMessage(params);
+        if (mounted) {
+          _scrollToBottom();
+        }
+      } catch (e) {
+        debugPrint('Error sending voice message: $e');
+        if (mounted) {
+          _showErrorSnackBar('خطا در ارسال پیام صوتی');
+        }
+      }
     } else {
-      _showErrorSnackBar(result.error ?? 'خطا در ارسال پیام صوتی');
+      if (mounted) {
+        _showErrorSnackBar(result.error ?? 'خطا در ارسال پیام صوتی');
+      }
     }
   }
 
   void _onTextChanged(String text) {
+    if (!mounted) return;
     if (text.isNotEmpty) {
-      ref.read(typingActionsProvider).startTyping(widget.args.conversationId);
+      try {
+        ref.read(typingActionsProvider).startTyping(widget.args.conversationId);
+      } catch (e) {
+        debugPrint('Error starting typing: $e');
+      }
     }
   }
 
   Future<void> _sendMessage() async {
+    if (!mounted) return;
+
     final content = _messageController.text.trim();
     if (content.isEmpty) return;
 
     _messageController.clear();
 
     final replyTo = _replyToMessage;
-    setState(() => _replyToMessage = null);
+    if (mounted) {
+      setState(() => _replyToMessage = null);
+    }
 
     try {
       final params = SendMessageParams(
@@ -1353,8 +1553,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             : widget.args.otherUserName,
       );
 
+      if (!mounted) return;
+
       final result =
           await ref.read(chatActionsProvider.notifier).sendMessage(params);
+
+      if (!mounted) return;
 
       if (result.isSuccess) {
         // Scroll to bottom after sending
@@ -1363,7 +1567,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         _showErrorSnackBar(result.error ?? 'خطا در ارسال پیام');
       }
     } catch (e) {
-      _showErrorSnackBar('خطا در ارسال پیام');
+      debugPrint('Error sending message: $e');
+      if (mounted) {
+        _showErrorSnackBar('خطا در ارسال پیام');
+      }
     }
   }
 
@@ -1376,11 +1583,64 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   Future<void> _handleAttachmentSelected(AttachmentSelection selection) async {
+    if (!mounted) return;
+
+    // Handle Location
+    if (selection.type == ChatAttachmentType.location) {
+      final locationData = await LocationPickerSheet.show(context);
+      if (locationData != null && mounted) {
+        // Store location data as JSON in content
+        final locationJson = locationData.toJson();
+        final params = SendMessageParams(
+          conversationId: widget.args.conversationId,
+          content: locationJson.toString(), // Store as JSON string
+          attachmentType: 'location',
+        );
+
+        try {
+          await ref.read(chatActionsProvider.notifier).sendMessage(params);
+          if (mounted) {
+            _scrollToBottom();
+          }
+        } catch (e) {
+          debugPrint('Error sending location: $e');
+        }
+      }
+      return;
+    }
+
+    // Handle Contact
+    if (selection.type == ChatAttachmentType.contact) {
+      final contactData = await ContactPickerSheet.show(context);
+      if (contactData != null && mounted) {
+        // Store contact data as JSON in content
+        final contactJson = contactData.toJson();
+        final params = SendMessageParams(
+          conversationId: widget.args.conversationId,
+          content: contactJson.toString(), // Store as JSON string
+          attachmentType: 'contact',
+        );
+
+        try {
+          await ref.read(chatActionsProvider.notifier).sendMessage(params);
+          if (mounted) {
+            _scrollToBottom();
+          }
+        } catch (e) {
+          debugPrint('Error sending contact: $e');
+        }
+      }
+      return;
+    }
+
+    // Handle Files
     if (selection.files.isEmpty) return;
 
     final attachmentService = ChatAttachmentService();
 
     for (final file in selection.files) {
+      if (!mounted) break;
+
       String? url;
       String attachmentType = 'file';
 
@@ -1398,7 +1658,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         attachmentType = extension;
       }
 
-      if (url != null && url.isNotEmpty) {
+      if (url != null && url.isNotEmpty && mounted) {
         // ارسال پیام با attachment
         final params = SendMessageParams(
           conversationId: widget.args.conversationId,
@@ -1408,8 +1668,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           attachmentFileName: file.path.split('/').last,
         );
 
-        await ref.read(chatActionsProvider.notifier).sendMessage(params);
-        _scrollToBottom();
+        try {
+          await ref.read(chatActionsProvider.notifier).sendMessage(params);
+          if (mounted) {
+            _scrollToBottom();
+          }
+        } catch (e) {
+          debugPrint('Error sending attachment: $e');
+        }
       }
     }
   }
@@ -1457,8 +1723,57 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     if (_isSelectionMode) {
       _toggleMessageSelection(message.id);
     } else {
-      // TODO: نمایش جزئیات پیام (مثلاً seen by)
+      // نمایش جزئیات پیام یا Document Preview
+      if (message.attachmentType == 'document' &&
+          message.attachmentUrl != null) {
+        _showDocumentPreview(message);
+      } else if (message.attachmentType == 'location') {
+        // Location already opens in maps via LocationMessageBubble
+      } else {
+        _showMessageInfo(message);
+      }
     }
+  }
+
+  /// Navigate to Chat Details Screen
+  void _navigateToChatDetails() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => TelegramChatDetailsScreen(
+          conversationId: widget.args.conversationId,
+          otherUserId: widget.args.otherUserId,
+          otherUserName: widget.args.otherUserName,
+          otherUserAvatar: widget.args.otherUserAvatar,
+        ),
+      ),
+    );
+  }
+
+  /// Show Document Preview
+  void _showDocumentPreview(MessageModel message) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => DocumentPreviewScreen(
+          documentUrl: message.attachmentUrl!,
+          documentName: message.attachmentFileName ?? 'document',
+          documentType: message.attachmentType ?? 'file',
+        ),
+      ),
+    );
+  }
+
+  /// Show Message Info
+  void _showMessageInfo(MessageModel message) {
+    if (_currentUserId == null) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => MessageInfoScreen(
+          message: message,
+          currentUserId: _currentUserId!,
+        ),
+      ),
+    );
   }
 
   void _onMessageLongPress(MessageModel message) {
@@ -1477,12 +1792,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   void _onAddReaction(MessageModel message, String emoji) {
+    if (!mounted) return;
+
     HapticFeedback.lightImpact();
-    ref.read(chatActionsProvider.notifier).toggleReaction(
-          messageId: message.id,
-          conversationId: widget.args.conversationId,
-          emoji: emoji,
-        );
+    try {
+      ref.read(chatActionsProvider.notifier).toggleReaction(
+            messageId: message.id,
+            conversationId: widget.args.conversationId,
+            emoji: emoji,
+          );
+    } catch (e) {
+      debugPrint('Error toggling reaction: $e');
+    }
   }
 
   void _showMessageOptions(MessageModel message) {
