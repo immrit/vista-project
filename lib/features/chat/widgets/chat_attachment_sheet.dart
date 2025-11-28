@@ -14,9 +14,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../theme/chat_theme.dart';
+import 'document_upload_sheet.dart';
 
 /// نوع پیوست
 enum ChatAttachmentType {
@@ -243,27 +243,17 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
   Future<void> _pickFile() async {
     Navigator.pop(context);
 
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: [
-        'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
-        'txt', 'zip', 'rar', 'mp3', 'wav', 'apk',
-      ],
-      allowMultiple: true,
+    // استفاده از DocumentUploadSheet برای UI بهتر
+    final result = await DocumentUploadSheet.show(
+      context: context,
     );
 
-    if (result != null && result.files.isNotEmpty) {
-      final files = result.files
-          .where((f) => f.path != null)
-          .map((f) => File(f.path!))
-          .toList();
-
-      if (files.isNotEmpty) {
-        widget.onSelected(AttachmentSelection(
-          type: ChatAttachmentType.file,
-          files: files,
-        ));
-      }
+    if (result != null) {
+      widget.onSelected(AttachmentSelection(
+        type: ChatAttachmentType.file,
+        files: [result.file],
+        caption: result.caption.isNotEmpty ? result.caption : null,
+      ));
     }
   }
 

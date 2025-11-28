@@ -23,14 +23,15 @@ import '../providers/chat_providers.dart';
 
 // ✅ Theme & Widgets
 import '../theme/chat_theme.dart';
-import '../widgets/chat_background.dart';
+import '../widgets/enhanced_chat_background.dart';
+import '../widgets/telegram_reaction_picker.dart';
+import '../widgets/retry_indicator_widget.dart' show TelegramConnectionBanner;
 import '../widgets/animated_message_bubble.dart';
 import '../widgets/animated_chat_input.dart';
 import '../widgets/animated_typing_indicator.dart';
 import '../widgets/date_divider.dart';
 
-// ✅ Retry Queue
-import '../../../widgets/pending_messages_indicator.dart';
+// ✅ Providers
 import '../../../provider/chat_provider.dart'
     show userOnlineStatusStreamProvider;
 import '../../../provider/typing_provider.dart' show typingUsersProvider;
@@ -44,6 +45,10 @@ import '../widgets/floating_date_header.dart';
 import '../widgets/unread_messages_divider.dart';
 import '../widgets/online_status_indicator.dart';
 import '../services/chat_attachment_service.dart';
+import '../widgets/block_report_bottom_sheet.dart';
+import '../services/user_moderation_service.dart';
+import '../services/voice_duration_service.dart';
+import '../../../view/screen/PublicPosts/profileScreen.dart';
 
 /// پارامترهای صفحه چت
 class ChatScreenArgs {
@@ -109,6 +114,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   String? _lastReadMessageId;
   int _unreadCount = 0;
 
+  // Services
+  final _moderationService = UserModerationService();
+  final _voiceService = VoiceDurationService();
+
+  // Block status
+  bool _isOtherUserBlocked = false;
+  bool _isCurrentUserBlocked = false;
+
+  // Reaction picker
+  String? _reactionPickerMessageId;
+  Offset? _reactionPickerPosition;
+
   // ═══════════════════════════════════════════════════════════════════════════
   // 🎬 LIFECYCLE
   // ═══════════════════════════════════════════════════════════════════════════
@@ -119,6 +136,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _setupAnimations();
     _scrollController.addListener(_onScroll);
     _loadCurrentUser();
+    _checkBlockStatus();
   }
 
   void _setupAnimations() {
@@ -142,6 +160,17 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       debugPrint('⚠️ Warning: currentUserId is null!');
     } else {
       debugPrint('✅ Current user ID loaded: $_currentUserId');
+    }
+  }
+
+  Future<void> _checkBlockStatus() async {
+    final status =
+        await _moderationService.getBlockStatus(widget.args.otherUserId);
+    if (mounted) {
+      setState(() {
+        _isOtherUserBlocked = status.isBlocked;
+        _isCurrentUserBlocked = status.isBlockedBy;
+      });
     }
   }
 
@@ -272,11 +301,41 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   void _scrollToBottom() {
-    _scrollController.animateTo(
+    _scrollController
+        .animateTo(
       0,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOutCubic,
-    );
+    )
+        .then((_) {
+      // بعد از اسکرول به پایین، تاریخ اولین پیام (جدیدترین) را بگیر
+      _updateDateForBottom();
+    });
+  }
+
+  /// آپدیت تاریخ وقتی در پایین لیست هستیم
+  void _updateDateForBottom() {
+    final messagesAsync =
+        ref.read(messagesStreamProvider(widget.args.conversationId));
+    messagesAsync.whenData((messages) {
+      if (messages.isEmpty) return;
+      // اولین پیام (جدیدترین) چون لیست reverse است
+      final newestMessage = messages.first;
+      final newDate = newestMessage.createdAt;
+      if (_currentVisibleDate == null ||
+          !_isSameDay(_currentVisibleDate!, newDate)) {
+        setState(() {
+          _currentVisibleDate = newDate;
+          _isScrolling = true; // نمایش تاریخ
+        });
+        // بعد از 2 ثانیه مخفی کن
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            setState(() => _isScrolling = false);
+          }
+        });
+      }
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -293,63 +352,94 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       paginationStateProvider(widget.args.conversationId),
     );
 
-    return ChatBackground(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        extendBodyBehindAppBar: true,
-        appBar: _isSearchMode ? null : _buildAppBar(theme),
-        body: SafeArea(
-          top: false,
-          child: Column(
-            children: [
-              // Search bar یا Spacer برای AppBar
-              if (_isSearchMode)
-                SafeArea(
-                  bottom: false,
-                  child: MessageSearchBar(
-                    conversationId: widget.args.conversationId,
-                    onClose: () => setState(() {
-                      _isSearchMode = false;
-                      _highlightedMessageId = null;
-                    }),
-                    onResultSelected: (messageId) {
-                      setState(() => _highlightedMessageId = messageId);
-                      _scrollToMessage(messageId);
+    return Stack(
+      children: [
+        // Main Screen
+        EnhancedChatBackground(
+          enablePattern: true,
+          enableBlur: theme.isDark,
+          blurIntensity: 3.0,
+          child: Scaffold(
+            backgroundColor: Colors.transparent,
+            extendBodyBehindAppBar: true,
+            appBar: _isSearchMode ? null : _buildAppBar(theme),
+            body: SafeArea(
+              top: false,
+              child: Column(
+                children: [
+                  // Search bar یا Spacer برای AppBar
+                  if (_isSearchMode)
+                    SafeArea(
+                      bottom: false,
+                      child: MessageSearchBar(
+                        conversationId: widget.args.conversationId,
+                        onClose: () => setState(() {
+                          _isSearchMode = false;
+                          _highlightedMessageId = null;
+                        }),
+                        onResultSelected: (messageId) {
+                          setState(() => _highlightedMessageId = messageId);
+                          _scrollToMessage(messageId);
+                        },
+                      ),
+                    )
+                  else
+                    SizedBox(
+                        height: MediaQuery.of(context).padding.top +
+                            kToolbarHeight),
+
+                  // بنر مسدودیت
+                  if (_isCurrentUserBlocked || _isOtherUserBlocked)
+                    _buildBlockedBanner(theme),
+
+                  // بنر اتصال
+                  TelegramConnectionBanner(
+                    isConnected: true, // TODO: اتصال به network state
+                    onRetry: () {
+                      // TODO: retry connection
                     },
                   ),
-                )
-              else
-                SizedBox(
-                    height:
-                        MediaQuery.of(context).padding.top + kToolbarHeight),
 
-              // بنرهای وضعیت
-              _buildStatusBanners(),
+                  // لیست پیام‌ها
+                  Expanded(
+                    child: Stack(
+                      children: [
+                        // پیام‌ها با تاریخ شناور
+                        FloatingDateHeader(
+                          currentDate: _currentVisibleDate,
+                          isScrolling: _isScrolling,
+                          child: _buildMessageList(
+                              messagesAsync, paginationState, theme),
+                        ),
 
-              // لیست پیام‌ها
-              Expanded(
-                child: Stack(
-                  children: [
-                    // پیام‌ها با تاریخ شناور
-                    FloatingDateHeader(
-                      currentDate: _currentVisibleDate,
-                      isScrolling: _isScrolling,
-                      child: _buildMessageList(
-                          messagesAsync, paginationState, theme),
+                        // دکمه Scroll to Bottom
+                        if (_showScrollToBottom)
+                          _buildScrollToBottomButton(theme),
+                      ],
                     ),
+                  ),
 
-                    // دکمه Scroll to Bottom
-                    if (_showScrollToBottom) _buildScrollToBottomButton(theme),
-                  ],
-                ),
+                  // Input area
+                  if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
+                    AnimatedPadding(
+                      duration: Duration.zero,
+                      padding: EdgeInsets.only(
+                        bottom: MediaQuery.of(context).viewInsets.bottom,
+                      ),
+                      child: _buildInputArea(theme),
+                    ),
+                ],
               ),
-
-              // Input area
-              _buildInputArea(theme),
-            ],
+            ),
           ),
         ),
-      ),
+
+        // Reaction Picker Overlay
+        if (_reactionPickerMessageId != null &&
+            _reactionPickerPosition != null &&
+            !_isSelectionMode)
+          _buildReactionPickerOverlay(),
+      ],
     );
   }
 
@@ -582,6 +672,26 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               ),
             ),
             PopupMenuItem(
+              value: 'block',
+              child: Row(
+                children: [
+                  Icon(Icons.block_rounded, color: Colors.red, size: 20),
+                  const SizedBox(width: 12),
+                  Text('مسدود کردن', style: TextStyle(color: Colors.red)),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'report',
+              child: Row(
+                children: [
+                  Icon(Icons.flag_rounded, color: Colors.orange, size: 20),
+                  const SizedBox(width: 12),
+                  Text('گزارش', style: TextStyle(color: Colors.orange)),
+                ],
+              ),
+            ),
+            PopupMenuItem(
               value: 'clear',
               child: Row(
                 children: [
@@ -734,6 +844,15 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       case 'search':
         setState(() => _isSearchMode = true);
         break;
+      case 'profile':
+        _navigateToProfile();
+        break;
+      case 'block':
+        _showBlockDialog();
+        break;
+      case 'report':
+        _showReportDialog();
+        break;
       case 'clear':
         _showClearChatDialog();
         break;
@@ -779,10 +898,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // 📢 STATUS BANNERS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  Widget _buildStatusBanners() {
-    return PendingMessagesBanner(conversationId: widget.args.conversationId);
-  }
-
   // ═══════════════════════════════════════════════════════════════════════════
   // 💬 MESSAGE LIST
   // ═══════════════════════════════════════════════════════════════════════════
@@ -800,6 +915,24 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
         // محاسبه تعداد پیام‌های خوانده نشده
         _calculateUnreadCount(messages);
+
+        // اگر در پایین لیست هستیم (offset = 0 یا نزدیک به 0)، تاریخ را آپدیت کن
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            final offset = _scrollController.offset;
+            // اگر در پایین لیست هستیم (offset < 100)
+            if (offset < 100 && messages.isNotEmpty) {
+              final newestMessage = messages.first;
+              final newDate = newestMessage.createdAt;
+              if (_currentVisibleDate == null ||
+                  !_isSameDay(_currentVisibleDate!, newDate)) {
+                setState(() {
+                  _currentVisibleDate = newDate;
+                });
+              }
+            }
+          }
+        });
 
         return ListView.builder(
           controller: _scrollController,
@@ -1166,10 +1299,15 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   Future<void> _handleVoiceRecorded(File audioFile, int duration) async {
     final attachmentService = ChatAttachmentService();
 
+    // محاسبه دقیق مدت زمان
+    final durationResult = await _voiceService.getAudioDuration(audioFile);
+    final finalDuration =
+        durationResult.success ? durationResult.durationInSeconds : duration;
+
     final result = await attachmentService.uploadVoiceMessage(
       audioFile: audioFile,
       conversationId: widget.args.conversationId,
-      duration: duration,
+      duration: finalDuration ?? 0,
     );
 
     if (result.success && result.url != null) {
@@ -1179,7 +1317,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         attachmentUrl: result.url,
         attachmentType: 'voice',
         attachmentFileName: result.fileName,
-        duration: duration,
+        duration: finalDuration,
       );
 
       await ref.read(chatActionsProvider.notifier).sendMessage(params);
@@ -1554,4 +1692,131 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       ),
     );
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🚫 BLOCK & REPORT
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildBlockedBanner(ChatTheme theme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      color: Colors.red.withOpacity(0.8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.block, color: Colors.white, size: 20),
+          const SizedBox(width: 8),
+          Text(
+            _isCurrentUserBlocked
+                ? 'شما توسط ${widget.args.otherUserName} مسدود شده‌اید'
+                : 'شما ${widget.args.otherUserName} را مسدود کرده‌اید',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showBlockDialog() async {
+    final result = await BlockReportBottomSheet.show(
+      context: context,
+      userId: widget.args.otherUserId,
+      userName: widget.args.otherUserName,
+      isCurrentlyBlocked: _isOtherUserBlocked,
+      type: _isOtherUserBlocked ? ModerationType.unblock : ModerationType.block,
+    );
+
+    if (result == true) {
+      await _checkBlockStatus();
+    }
+  }
+
+  Future<void> _showReportDialog() async {
+    final result = await BlockReportBottomSheet.show(
+      context: context,
+      userId: widget.args.otherUserId,
+      userName: widget.args.otherUserName,
+      type: ModerationType.report,
+    );
+
+    if (result == true) {
+      // گزارش ارسال شد
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🎭 REACTION PICKER
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildReactionPickerOverlay() {
+    return Positioned.fill(
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _reactionPickerMessageId = null;
+            _reactionPickerPosition = null;
+          });
+        },
+        behavior: HitTestBehavior.translucent,
+        child: Stack(
+          children: [
+            // Backdrop
+            Container(
+              color: Colors.black.withOpacity(0.2),
+            ),
+            // Reaction Picker
+            TelegramReactionPicker(
+              position: _reactionPickerPosition!,
+              showAbove: _reactionPickerPosition!.dy > 200,
+              onReactionSelected: (emoji) async {
+                if (_reactionPickerMessageId != null) {
+                  await ref.read(chatActionsProvider.notifier).toggleReaction(
+                        messageId: _reactionPickerMessageId!,
+                        conversationId: widget.args.conversationId,
+                        emoji: emoji,
+                      );
+                }
+                setState(() {
+                  _reactionPickerMessageId = null;
+                  _reactionPickerPosition = null;
+                });
+              },
+              onClose: () {
+                setState(() {
+                  _reactionPickerMessageId = null;
+                  _reactionPickerPosition = null;
+                });
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 👤 PROFILE NAVIGATION
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  void _navigateToProfile() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ProfileScreen(
+          userId: widget.args.otherUserId,
+          username: widget.args.otherUserName,
+        ),
+      ),
+    );
+  }
+}
+
+// Helper function for date divider
+bool shouldShowDateDivider(DateTime current, DateTime? previous) {
+  if (previous == null) return true;
+  return current.year != previous.year ||
+      current.month != previous.month ||
+      current.day != previous.day;
 }

@@ -74,9 +74,11 @@ class _FloatingDateHeaderState extends State<FloatingDateHeader>
   void didUpdateWidget(FloatingDateHeader oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // تاریخ جدید
+    // تاریخ جدید - اگر تاریخ تغییر کرد، نمایش بده
     if (widget.currentDate != null && widget.currentDate != _displayedDate) {
       _displayedDate = widget.currentDate;
+      // اگر تاریخ تغییر کرد، نمایش بده (مخصوصاً وقتی پیام جدید ارسال می‌شه)
+      _showDate();
     }
 
     // شروع اسکرول - نمایش

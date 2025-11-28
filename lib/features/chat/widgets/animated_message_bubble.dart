@@ -22,6 +22,7 @@ import 'voice_message_bubble.dart';
 import 'media_message_bubble.dart';
 import 'file_message_bubble.dart';
 import 'link_preview_bubble.dart';
+import 'retry_indicator_widget.dart';
 
 /// نوع محتوای پیام
 enum MessageContentType {
@@ -663,47 +664,32 @@ class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
   }
 
   Widget _buildStatusIcon(ChatTheme theme) {
-    IconData icon;
-    Color color;
-    
-    switch (widget.status) {
-      case MessageStatus.pending:
-        return SizedBox(
-          width: 12,
-          height: 12,
-          child: CircularProgressIndicator(
-            strokeWidth: 1.5,
-            color: theme.myBubbleTextColor.withOpacity(0.7),
-          ),
-        );
-      case MessageStatus.sent:
-        icon = Icons.check;
-        color = theme.myBubbleTextColor.withOpacity(0.7);
-        break;
-      case MessageStatus.delivered:
-        icon = Icons.done_all;
-        color = theme.myBubbleTextColor.withOpacity(0.7);
-        break;
-      case MessageStatus.read:
-        icon = Icons.done_all;
-        color = theme.sentColor;
-        break;
-      case MessageStatus.failed:
-        icon = Icons.error_outline;
-        color = theme.errorColor;
-        break;
-    }
-
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 300),
-      builder: (context, value, child) {
-        return Transform.scale(
-          scale: value,
-          child: Icon(icon, size: 14, color: color),
-        );
-      },
+    // استفاده از TelegramRetryIndicator برای UI بهتر
+    return TelegramRetryIndicator(
+      status: _convertToMessageSendStatus(widget.status),
+      isMe: widget.isMe,
+      onRetry: widget.status == MessageStatus.failed
+          ? () {
+              // TODO: Retry logic
+            }
+          : null,
     );
+  }
+
+  /// تبدیل MessageStatus به MessageSendStatus
+  MessageSendStatus _convertToMessageSendStatus(MessageStatus status) {
+    switch (status) {
+      case MessageStatus.pending:
+        return MessageSendStatus.pending;
+      case MessageStatus.sent:
+        return MessageSendStatus.sent;
+      case MessageStatus.delivered:
+        return MessageSendStatus.delivered;
+      case MessageStatus.read:
+        return MessageSendStatus.read;
+      case MessageStatus.failed:
+        return MessageSendStatus.failed;
+    }
   }
 
   Widget _buildReactions(ChatTheme theme) {

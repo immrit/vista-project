@@ -1392,7 +1392,7 @@ class _ChatConversationsScreenState
           MaterialPageRoute(
             builder: (context) => ModernChatScreen(
               args: ChatScreenArgs(
-                conversationId: item.id,
+              conversationId: item.id,
                 otherUserName: conversation.otherUserName ?? 'VISTA USER',
                 otherUserAvatar: conversation.otherUserAvatar,
                 otherUserId: conversation.otherUserId ?? '',

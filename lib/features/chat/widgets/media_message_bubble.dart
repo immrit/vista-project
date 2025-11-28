@@ -58,8 +58,8 @@ class _MediaMessageBubbleState extends State<MediaMessageBubble>
   // 🎮 STATE
   // ═══════════════════════════════════════════════════════════════════════════
 
-  bool _isDownloading = false;
-  double _downloadProgress = 0.0;
+  final bool _isDownloading = false;
+  final double _downloadProgress = 0.0;
   late AnimationController _pulseController;
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -80,7 +80,6 @@ class _MediaMessageBubbleState extends State<MediaMessageBubble>
     _pulseController.dispose();
     super.dispose();
   }
-
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 🔨 BUILD
@@ -187,7 +186,9 @@ class _MediaMessageBubbleState extends State<MediaMessageBubble>
       animation: _pulseController,
       builder: (context, child) {
         return Container(
-          color: (widget.isMe ? theme.myBubbleGradient?.colors.first : theme.otherBubbleColor)
+          color: (widget.isMe
+                  ? theme.myBubbleGradient?.colors.first
+                  : theme.otherBubbleColor)
               ?.withOpacity(0.3 + (_pulseController.value * 0.2)),
           child: Center(
             child: Icon(
@@ -373,7 +374,9 @@ class _MediaMessageBubbleState extends State<MediaMessageBubble>
       child: Text(
         widget.caption!,
         style: TextStyle(
-          color: widget.isMe ? theme.myBubbleTextColor : theme.otherBubbleTextColor,
+          color: widget.isMe
+              ? theme.myBubbleTextColor
+              : theme.otherBubbleTextColor,
           fontSize: 14,
         ),
       ),
@@ -502,4 +505,3 @@ class _FullScreenMediaState extends State<_FullScreenMedia> {
     );
   }
 }
-
