@@ -566,7 +566,8 @@ class _OptimizedMessageWidgetState extends State<OptimizedMessageWidget>
       icon = Icon(Icons.schedule_rounded, size: iconSize, color: Colors.grey);
     } else if (!widget.message.isSent) {
       // پیام ارسال نشده
-      icon = Icon(Icons.error_outline_rounded, size: iconSize, color: Colors.red);
+      icon =
+          Icon(Icons.error_outline_rounded, size: iconSize, color: Colors.red);
     } else if (widget.message.isSeen) {
       // پیام خوانده شده (double tick blue)
       icon = Icon(Icons.done_all_rounded, size: iconSize, color: Colors.blue);

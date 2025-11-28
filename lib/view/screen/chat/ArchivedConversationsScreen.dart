@@ -6,7 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../model/conversation_model.dart';
 import '../../../provider/chat_provider.dart';
 import '../../util/const.dart';
-import 'ChatScreen.dart';
+// ✅ استفاده از صفحه چت جدید
+import '../../../features/chat/screens/modern_chat_screen.dart';
 import 'ChatConversationsScreen.dart'; // برای استفاده از UnifiedChatItem
 
 class ArchivedConversationsScreen extends ConsumerWidget {
@@ -78,21 +79,19 @@ class ArchivedConversationsScreen extends ConsumerWidget {
                 color: Colors.transparent,
                 child: InkWell(
                   onTap: () {
+                    // ✅ Navigate to NEW Modern Chat Screen
                     if (item.source is ConversationModel) {
+                      final conversation = item.source as ConversationModel;
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => ChatScreen(
-                            otherUserName: (item.source as ConversationModel)
-                                    .otherUserName ??
-                                'در حال بارگذاری...',
-                            otherUserAvatar: (item.source as ConversationModel)
-                                    .otherUserAvatar ??
-                                defaultAvatarUrl,
-                            conversationId: item.id,
-                            otherUserId: (item.source as ConversationModel)
-                                    .otherUserId ??
-                                '',
+                          builder: (context) => ModernChatScreen(
+                            args: ChatScreenArgs(
+                              conversationId: item.id,
+                              otherUserName: conversation.otherUserName ?? 'در حال بارگذاری...',
+                              otherUserAvatar: conversation.otherUserAvatar,
+                              otherUserId: conversation.otherUserId ?? '',
+                            ),
                           ),
                         ),
                       );

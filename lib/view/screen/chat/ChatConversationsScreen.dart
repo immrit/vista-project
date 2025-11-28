@@ -15,11 +15,14 @@ import '../../util/const.dart';
 import 'ArchivedConversationsScreen.dart';
 // import 'ChatSettingsScreen.dart'; // اضافه کردن ایمپورت صفحه جدید
 import '../../../services/ChatService.dart';
-import 'ChatScreen.dart';
+// ✅ استفاده از صفحه چت جدید
+import '../../../features/chat/screens/modern_chat_screen.dart';
 import '../../../DB/database_file_utils.dart';
 import '../../../DB/unified_conversation_cache_service.dart';
 import '../../../services/user_profile_service.dart';
 import '../../../services/conversation_prewarmer.dart';
+// ✅ نشانگر وضعیت شبکه
+import '../../../widgets/animated_network_indicator.dart';
 import '/main.dart'; // برای دسترسی به supabase
 
 // مدل یکپارچه برای نمایش چت‌ها و کانال‌ها در یک لیست
@@ -374,9 +377,10 @@ class _ChatConversationsScreenState
       ),
       title: Row(
         children: [
-          Text(
-            'پیام‌ها',
-            style: theme.appBarTheme.titleTextStyle?.copyWith(
+          // ✅ عنوان با نمایش وضعیت شبکه (مثل تلگرام)
+          NetworkAwareTitle(
+            title: 'پیام‌ها',
+            titleStyle: theme.appBarTheme.titleTextStyle?.copyWith(
                   fontSize: 22,
                   fontWeight: FontWeight.w700,
                 ) ??
@@ -1380,19 +1384,19 @@ class _ChatConversationsScreenState
     if (item.isChannel) {
       // Navigate to Channel Screen
     } else {
-      // Navigate to Chat Screen
+      // ✅ Navigate to NEW Modern Chat Screen
       if (item.source is ConversationModel) {
+        final conversation = item.source as ConversationModel;
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => ChatScreen(
-              otherUserName:
-                  (item.source as ConversationModel).otherUserName ?? '',
-              otherUserAvatar:
-                  (item.source as ConversationModel).otherUserAvatar ??
-                      defaultAvatarUrl,
-              conversationId: item.id,
-              otherUserId: (item.source as ConversationModel).otherUserId ?? '',
+            builder: (context) => ModernChatScreen(
+              args: ChatScreenArgs(
+                conversationId: item.id,
+                otherUserName: conversation.otherUserName ?? 'VISTA USER',
+                otherUserAvatar: conversation.otherUserAvatar,
+                otherUserId: conversation.otherUserId ?? '',
+              ),
             ),
           ),
         );

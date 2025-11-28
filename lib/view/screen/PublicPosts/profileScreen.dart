@@ -20,7 +20,8 @@ import '../../util/const.dart';
 import '../../util/widgets.dart';
 import '../../widgets/CustomVideoPlayer.dart';
 import '../../widgets/ReelsScreen.dart';
-import '../chat/ChatScreen.dart';
+// ✅ استفاده از صفحه چت جدید
+import '../../../features/chat/screens/modern_chat_screen.dart';
 import '../ouathUser/editeProfile.dart';
 import '../searchPage.dart';
 import '/model/publicPostModel.dart';
@@ -1029,13 +1030,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         }
 
         logInfo('🎯 انتقال به صفحه چت با ID: $existingConversationId');
+        // ✅ Navigate to NEW Modern Chat Screen
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (context) => ChatScreen(
-              conversationId: existingConversationId!,
-              otherUserId: otherUserId,
-              otherUserName: otherUsername,
-              otherUserAvatar: avatarUrl,
+            builder: (context) => ModernChatScreen(
+              args: ChatScreenArgs(
+                conversationId: existingConversationId!,
+                otherUserName: otherUsername,
+                otherUserAvatar: avatarUrl,
+                otherUserId: otherUserId,
+              ),
             ),
           ),
         );

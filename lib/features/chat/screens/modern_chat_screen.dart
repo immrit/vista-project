@@ -1,0 +1,1557 @@
+// lib/features/chat/screens/modern_chat_screen.dart
+//
+// صفحه چت مدرن با انیمیشن‌های حرفه‌ای
+//
+// ویژگی‌ها:
+// ✅ انیمیشن‌های روان و حرفه‌ای
+// ✅ هماهنگ با تم (دارک/لایت)
+// ✅ بک‌گراند والپیپر
+// ✅ Pagination با Infinite Scroll
+// ✅ Message Reactions
+// ✅ Network Status Banner
+// ✅ Pending Messages Indicator
+//
+
+import 'dart:async';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../model/message_model.dart';
+import '../providers/chat_providers.dart';
+
+// ✅ Theme & Widgets
+import '../theme/chat_theme.dart';
+import '../widgets/chat_background.dart';
+import '../widgets/animated_message_bubble.dart';
+import '../widgets/animated_chat_input.dart';
+import '../widgets/animated_typing_indicator.dart';
+import '../widgets/date_divider.dart';
+
+// ✅ Retry Queue
+import '../../../widgets/pending_messages_indicator.dart';
+import '../../../provider/chat_provider.dart'
+    show userOnlineStatusStreamProvider;
+import '../../../provider/typing_provider.dart' show typingUsersProvider;
+
+// ✅ New Features
+import '../widgets/chat_attachment_sheet.dart';
+import '../widgets/message_search_bar.dart';
+import '../widgets/edit_message_dialog.dart';
+import '../widgets/forward_message_sheet.dart';
+import '../widgets/floating_date_header.dart';
+import '../widgets/unread_messages_divider.dart';
+import '../widgets/online_status_indicator.dart';
+import '../services/chat_attachment_service.dart';
+
+/// پارامترهای صفحه چت
+class ChatScreenArgs {
+  final String conversationId;
+  final String otherUserName;
+  final String? otherUserAvatar;
+  final String otherUserId;
+
+  const ChatScreenArgs({
+    required this.conversationId,
+    required this.otherUserName,
+    this.otherUserAvatar,
+    required this.otherUserId,
+  });
+}
+
+/// صفحه چت مدرن
+class ModernChatScreen extends ConsumerStatefulWidget {
+  final ChatScreenArgs args;
+
+  const ModernChatScreen({super.key, required this.args});
+
+  @override
+  ConsumerState<ModernChatScreen> createState() => _ModernChatScreenState();
+}
+
+class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
+    with TickerProviderStateMixin {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🎮 CONTROLLERS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  final _messageController = TextEditingController();
+  final _scrollController = ScrollController();
+  final _focusNode = FocusNode();
+
+  // انیمیشن‌ها
+  late AnimationController _appBarAnimController;
+  late Animation<double> _appBarAnimation;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📦 STATE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  MessageModel? _replyToMessage;
+  bool _isNearTop = false;
+  bool _showScrollToBottom = false;
+  String? _currentUserId;
+
+  // Search
+  bool _isSearchMode = false;
+  String? _highlightedMessageId;
+
+  // Selection mode
+  bool _isSelectionMode = false;
+  final Set<String> _selectedMessageIds = {};
+
+  // Floating date
+  bool _isScrolling = false;
+  DateTime? _currentVisibleDate;
+
+  // Unread messages
+  String? _lastReadMessageId;
+  int _unreadCount = 0;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🎬 LIFECYCLE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @override
+  void initState() {
+    super.initState();
+    _setupAnimations();
+    _scrollController.addListener(_onScroll);
+    _loadCurrentUser();
+  }
+
+  void _setupAnimations() {
+    _appBarAnimController = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+
+    _appBarAnimation = CurvedAnimation(
+      parent: _appBarAnimController,
+      curve: Curves.easeOutCubic,
+    );
+
+    _appBarAnimController.forward();
+  }
+
+  void _loadCurrentUser() {
+    // ✅ گرفتن userId از Supabase
+    _currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    if (_currentUserId == null) {
+      debugPrint('⚠️ Warning: currentUserId is null!');
+    } else {
+      debugPrint('✅ Current user ID loaded: $_currentUserId');
+    }
+  }
+
+  @override
+  @override
+  void dispose() {
+    // توقف تایپ هنگام خروج
+    ref.read(typingActionsProvider).stopTyping(widget.args.conversationId);
+
+    _scrollEndTimer?.cancel();
+    _appBarAnimController.dispose();
+    _scrollController.removeListener(_onScroll);
+    _messageController.dispose();
+    _scrollController.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📜 SCROLL
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Timer? _scrollEndTimer;
+
+  void _onScroll() {
+    // Pagination - چون لیست reverse است
+    final isNearTop = _scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200;
+
+    if (isNearTop != _isNearTop) {
+      setState(() => _isNearTop = isNearTop);
+      if (_isNearTop) _loadMoreMessages();
+    }
+
+    // دکمه Scroll to Bottom
+    final showScrollButton = _scrollController.position.pixels > 300;
+    if (showScrollButton != _showScrollToBottom) {
+      setState(() => _showScrollToBottom = showScrollButton);
+    }
+
+    // Floating date - شروع اسکرول
+    if (!_isScrolling) {
+      setState(() => _isScrolling = true);
+    }
+
+    // ریست تایمر پایان اسکرول
+    _scrollEndTimer?.cancel();
+    _scrollEndTimer = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) {
+        setState(() => _isScrolling = false);
+      }
+    });
+
+    // آپدیت تاریخ قابل مشاهده
+    _updateVisibleDate();
+  }
+
+  void _updateVisibleDate() {
+    final messagesAsync =
+        ref.read(messagesStreamProvider(widget.args.conversationId));
+    messagesAsync.whenData((messages) {
+      if (messages.isEmpty) return;
+
+      // تخمین ایندکس پیام قابل مشاهده
+      final scrollOffset = _scrollController.offset;
+      final itemHeight = 70.0; // تقریبی
+      var visibleIndex = (scrollOffset / itemHeight).floor();
+      visibleIndex = visibleIndex.clamp(0, messages.length - 1);
+
+      final newDate = messages[visibleIndex].createdAt;
+      if (_currentVisibleDate == null ||
+          !_isSameDay(_currentVisibleDate!, newDate)) {
+        setState(() => _currentVisibleDate = newDate);
+      }
+    });
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  /// بررسی نمایش unread divider
+  bool _shouldShowUnreadDivider(
+      MessageModel message, int index, List<MessageModel> messages) {
+    // اگه آخرین پیام خونده شده تنظیم نشده، نشون نده
+    if (_lastReadMessageId == null) return false;
+
+    // اگه این پیام همون آخرین پیام خونده شده هست
+    if (message.id == _lastReadMessageId) {
+      // و پیام بعدی (قدیمی‌تر) وجود داره
+      if (index < messages.length - 1) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// محاسبه تعداد پیام‌های خوانده نشده
+  void _calculateUnreadCount(List<MessageModel> messages) {
+    if (_lastReadMessageId == null) {
+      _unreadCount = 0;
+      return;
+    }
+
+    final lastReadIndex =
+        messages.indexWhere((m) => m.id == _lastReadMessageId);
+    if (lastReadIndex == -1) {
+      _unreadCount = 0;
+    } else {
+      // چون لیست reverse هست، پیام‌های جدیدتر index کمتر دارن
+      _unreadCount = lastReadIndex;
+    }
+  }
+
+  void _loadMoreMessages() {
+    final messagesAsync = ref.read(
+      messagesStreamProvider(widget.args.conversationId),
+    );
+
+    messagesAsync.whenData((messages) {
+      if (messages.isEmpty) return;
+
+      final oldestMessage = messages.last;
+      ref
+          .read(paginationStateProvider(widget.args.conversationId).notifier)
+          .loadMore(oldestMessage.createdAt);
+    });
+  }
+
+  void _scrollToBottom() {
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🔨 BUILD
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.chatTheme;
+    final messagesAsync = ref.watch(
+      messagesStreamProvider(widget.args.conversationId),
+    );
+    final paginationState = ref.watch(
+      paginationStateProvider(widget.args.conversationId),
+    );
+
+    return ChatBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        extendBodyBehindAppBar: true,
+        appBar: _isSearchMode ? null : _buildAppBar(theme),
+        body: SafeArea(
+          top: false,
+          child: Column(
+            children: [
+              // Search bar یا Spacer برای AppBar
+              if (_isSearchMode)
+                SafeArea(
+                  bottom: false,
+                  child: MessageSearchBar(
+                    conversationId: widget.args.conversationId,
+                    onClose: () => setState(() {
+                      _isSearchMode = false;
+                      _highlightedMessageId = null;
+                    }),
+                    onResultSelected: (messageId) {
+                      setState(() => _highlightedMessageId = messageId);
+                      _scrollToMessage(messageId);
+                    },
+                  ),
+                )
+              else
+                SizedBox(
+                    height:
+                        MediaQuery.of(context).padding.top + kToolbarHeight),
+
+              // بنرهای وضعیت
+              _buildStatusBanners(),
+
+              // لیست پیام‌ها
+              Expanded(
+                child: Stack(
+                  children: [
+                    // پیام‌ها با تاریخ شناور
+                    FloatingDateHeader(
+                      currentDate: _currentVisibleDate,
+                      isScrolling: _isScrolling,
+                      child: _buildMessageList(
+                          messagesAsync, paginationState, theme),
+                    ),
+
+                    // دکمه Scroll to Bottom
+                    if (_showScrollToBottom) _buildScrollToBottomButton(theme),
+                  ],
+                ),
+              ),
+
+              // Input area
+              _buildInputArea(theme),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Scroll به پیام خاص
+  void _scrollToMessage(String messageId) {
+    setState(() => _highlightedMessageId = messageId);
+
+    // پاک کردن highlight بعد از چند ثانیه
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted && _highlightedMessageId == messageId) {
+        setState(() => _highlightedMessageId = null);
+      }
+    });
+  }
+
+  /// Scroll به پیام با استفاده از ID
+  void _scrollToMessageById(String messageId, List<MessageModel> messages) {
+    // پیدا کردن ایندکس پیام
+    final index = messages.indexWhere((m) => m.id == messageId);
+
+    if (index == -1) {
+      _showErrorSnackBar('پیام یافت نشد');
+      return;
+    }
+
+    // Scroll به پیام
+    // چون لیست reverse هست، باید از scrollController استفاده کنیم
+    final itemExtent = 80.0; // تقریبی ارتفاع هر پیام
+    final scrollPosition = index * itemExtent;
+
+    _scrollController.animateTo(
+      scrollPosition,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+    );
+
+    // Highlight پیام
+    setState(() => _highlightedMessageId = messageId);
+
+    // پاک کردن highlight بعد از چند ثانیه
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted && _highlightedMessageId == messageId) {
+        setState(() => _highlightedMessageId = null);
+      }
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🎨 APP BAR
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  PreferredSizeWidget _buildSelectionAppBar(ChatTheme theme) {
+    return AppBar(
+      elevation: 0,
+      backgroundColor: theme.sendButtonColor,
+      systemOverlayStyle: SystemUiOverlayStyle.light,
+      leading: IconButton(
+        icon: const Icon(Icons.close_rounded, color: Colors.white),
+        onPressed: _exitSelectionMode,
+      ),
+      title: Text(
+        '${_selectedMessageIds.length} انتخاب شده',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      actions: [
+        // فوروارد
+        IconButton(
+          icon: const Icon(Icons.forward_rounded, color: Colors.white),
+          onPressed:
+              _selectedMessageIds.isEmpty ? null : _forwardSelectedMessages,
+          tooltip: 'فوروارد',
+        ),
+        // کپی
+        IconButton(
+          icon: const Icon(Icons.copy_rounded, color: Colors.white),
+          onPressed: _selectedMessageIds.isEmpty ? null : _copySelectedMessages,
+          tooltip: 'کپی',
+        ),
+        // حذف
+        IconButton(
+          icon: const Icon(Icons.delete_outline_rounded, color: Colors.white),
+          onPressed:
+              _selectedMessageIds.isEmpty ? null : _deleteSelectedMessages,
+          tooltip: 'حذف',
+        ),
+      ],
+    );
+  }
+
+  void _enterSelectionMode(String messageId) {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _isSelectionMode = true;
+      _selectedMessageIds.add(messageId);
+    });
+  }
+
+  void _exitSelectionMode() {
+    setState(() {
+      _isSelectionMode = false;
+      _selectedMessageIds.clear();
+    });
+  }
+
+  void _toggleMessageSelection(String messageId) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (_selectedMessageIds.contains(messageId)) {
+        _selectedMessageIds.remove(messageId);
+        if (_selectedMessageIds.isEmpty) {
+          _isSelectionMode = false;
+        }
+      } else {
+        _selectedMessageIds.add(messageId);
+      }
+    });
+  }
+
+  Future<void> _forwardSelectedMessages() async {
+    final result = await ForwardMessageSheet.show(
+      context,
+      messageIds: _selectedMessageIds.toList(),
+    );
+
+    if (result == true) {
+      _showSuccessSnackBar('پیام‌ها فوروارد شدند');
+      _exitSelectionMode();
+    }
+  }
+
+  Future<void> _copySelectedMessages() async {
+    // گرفتن متن پیام‌های انتخاب شده
+    final messagesAsync =
+        ref.read(messagesStreamProvider(widget.args.conversationId));
+    messagesAsync.whenData((messages) {
+      final selectedMessages = messages
+          .where((m) => _selectedMessageIds.contains(m.id))
+          .map((m) => m.content)
+          .join('\n\n');
+
+      Clipboard.setData(ClipboardData(text: selectedMessages));
+      _showSuccessSnackBar('${_selectedMessageIds.length} پیام کپی شد');
+      _exitSelectionMode();
+    });
+  }
+
+  Future<void> _deleteSelectedMessages() async {
+    // تایید حذف
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('حذف پیام‌ها'),
+        content: Text('آیا از حذف ${_selectedMessageIds.length} پیام مطمئنید؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('انصراف'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    // حذف پیام‌ها
+    int successCount = 0;
+    for (final messageId in _selectedMessageIds) {
+      final result =
+          await ref.read(chatActionsProvider.notifier).deleteMessage(messageId);
+      if (result.isSuccess) {
+        successCount++;
+      }
+    }
+
+    if (successCount > 0) {
+      _showSuccessSnackBar('$successCount پیام حذف شد');
+    }
+
+    _exitSelectionMode();
+  }
+
+  PreferredSizeWidget _buildAppBar(ChatTheme theme) {
+    // Selection mode AppBar
+    if (_isSelectionMode) {
+      return _buildSelectionAppBar(theme);
+    }
+
+    return AppBar(
+      elevation: 0,
+      backgroundColor: theme.appBarColor,
+      surfaceTintColor: Colors.transparent,
+      systemOverlayStyle:
+          theme.isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+      leading: IconButton(
+        icon: Icon(
+          Icons.arrow_back_ios_new_rounded,
+          color: theme.textColor,
+          size: 20,
+        ),
+        onPressed: () => Navigator.of(context).pop(),
+      ),
+      titleSpacing: 0,
+      title: FadeTransition(
+        opacity: _appBarAnimation,
+        child: _buildAppBarTitle(theme),
+      ),
+      actions: [
+        // منوی بیشتر
+        PopupMenuButton<String>(
+          icon: Icon(Icons.more_vert, color: theme.iconColor),
+          onSelected: _handleMenuAction,
+          itemBuilder: (context) => [
+            PopupMenuItem(
+              value: 'search',
+              child: Row(
+                children: [
+                  Icon(Icons.search, color: theme.iconColor, size: 20),
+                  const SizedBox(width: 12),
+                  const Text('جستجو'),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'clear',
+              child: Row(
+                children: [
+                  Icon(Icons.delete_outline, color: theme.errorColor, size: 20),
+                  const SizedBox(width: 12),
+                  Text('پاک کردن چت',
+                      style: TextStyle(color: theme.errorColor)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAppBarTitle(ChatTheme theme) {
+    final isOnlineAsync = ref.watch(
+      userOnlineStatusStreamProvider(widget.args.otherUserId),
+    );
+    final typingUsersAsync = ref.watch(
+      typingUsersProvider(widget.args.conversationId),
+    );
+
+    return InkWell(
+      onTap: () {
+        // TODO: باز کردن پروفایل کاربر
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        child: Row(
+          children: [
+            // آواتار با انیمیشن
+            Hero(
+              tag: 'avatar_${widget.args.otherUserId}',
+              child: _buildAvatar(theme),
+            ),
+
+            const SizedBox(width: 12),
+
+            // نام و وضعیت
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.args.otherUserName,
+                    style: TextStyle(
+                      color: theme.textColor,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+
+                  // وضعیت تایپ یا آنلاین
+                  typingUsersAsync.when(
+                    data: (typingUsers) {
+                      if (typingUsers.isNotEmpty) {
+                        return InlineTypingIndicator(
+                          userName: typingUsers.first,
+                        );
+                      }
+                      return _buildOnlineStatus(isOnlineAsync, theme);
+                    },
+                    loading: () => _buildOnlineStatus(isOnlineAsync, theme),
+                    error: (_, __) => _buildOnlineStatus(isOnlineAsync, theme),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAvatar(ChatTheme theme) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            theme.sendButtonColor.withOpacity(0.8),
+            theme.sendButtonColor,
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: theme.sendButtonColor.withOpacity(0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: widget.args.otherUserAvatar != null
+          ? ClipOval(
+              child: Image.network(
+                widget.args.otherUserAvatar!,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _buildAvatarText(theme),
+              ),
+            )
+          : _buildAvatarText(theme),
+    );
+  }
+
+  Widget _buildAvatarText(ChatTheme theme) {
+    return Center(
+      child: Text(
+        widget.args.otherUserName[0].toUpperCase(),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOnlineStatus(AsyncValue<bool> isOnlineAsync, ChatTheme theme) {
+    return isOnlineAsync.when(
+      data: (isOnline) => FullOnlineStatus(
+        status: isOnline ? UserStatus.online : UserStatus.offline,
+        lastSeen: isOnline
+            ? null
+            : DateTime.now().subtract(const Duration(minutes: 5)),
+      ),
+      loading: () => Text(
+        'در حال بررسی...',
+        style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
+      ),
+      error: (_, __) => Text(
+        'نامشخص',
+        style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
+      ),
+    );
+  }
+
+  void _handleMenuAction(String action) {
+    switch (action) {
+      case 'search':
+        setState(() => _isSearchMode = true);
+        break;
+      case 'clear':
+        _showClearChatDialog();
+        break;
+    }
+  }
+
+  void _showClearChatDialog() {
+    final theme = context.chatTheme;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: theme.backgroundColor,
+        title: Text(
+          'پاک کردن چت',
+          style: TextStyle(color: theme.textColor),
+        ),
+        content: Text(
+          'آیا مطمئن هستید؟ این عمل قابل بازگشت نیست.',
+          style: TextStyle(color: theme.secondaryTextColor),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('انصراف'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // TODO: پاک کردن چت
+            },
+            child: Text(
+              'پاک کردن',
+              style: TextStyle(color: theme.errorColor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📢 STATUS BANNERS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildStatusBanners() {
+    return PendingMessagesBanner(conversationId: widget.args.conversationId);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 💬 MESSAGE LIST
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildMessageList(
+    AsyncValue<List<MessageModel>> messagesAsync,
+    PaginationState paginationState,
+    ChatTheme theme,
+  ) {
+    return messagesAsync.when(
+      data: (messages) {
+        if (messages.isEmpty) {
+          return _buildEmptyState(theme);
+        }
+
+        // محاسبه تعداد پیام‌های خوانده نشده
+        _calculateUnreadCount(messages);
+
+        return ListView.builder(
+          controller: _scrollController,
+          reverse: true,
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          itemCount: messages.length + (paginationState.isLoadingMore ? 1 : 0),
+          itemBuilder: (context, index) {
+            // Loading indicator در بالا
+            if (paginationState.isLoadingMore && index == messages.length) {
+              return _buildLoadingIndicator(theme);
+            }
+
+            final message = messages[index];
+            final isMe = message.senderId == _currentUserId;
+
+            // گروه‌بندی پیام‌ها
+            final (isFirstInGroup, isLastInGroup) = _getMessageGroupPosition(
+              messages,
+              index,
+            );
+
+            // Date Divider - چون لیست reverse هست، پیام قبلی یعنی پیام جدیدتر
+            final previousMessage = index > 0 ? messages[index - 1] : null;
+            final showDateDivider = shouldShowDateDivider(
+              message.createdAt,
+              previousMessage?.createdAt,
+            );
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // حباب پیام
+                Row(
+                  mainAxisAlignment:
+                      isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+                  children: [
+                    // Selection checkbox
+                    if (_isSelectionMode)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: AnimatedScale(
+                          scale: _isSelectionMode ? 1.0 : 0.0,
+                          duration: const Duration(milliseconds: 200),
+                          child: GestureDetector(
+                            onTap: () => _toggleMessageSelection(message.id),
+                            child: Container(
+                              width: 24,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: _selectedMessageIds.contains(message.id)
+                                    ? context.chatTheme.sendButtonColor
+                                    : Colors.transparent,
+                                border: Border.all(
+                                  color: _selectedMessageIds
+                                          .contains(message.id)
+                                      ? context.chatTheme.sendButtonColor
+                                      : context.chatTheme.secondaryTextColor,
+                                  width: 2,
+                                ),
+                              ),
+                              child: _selectedMessageIds.contains(message.id)
+                                  ? const Icon(
+                                      Icons.check,
+                                      color: Colors.white,
+                                      size: 16,
+                                    )
+                                  : null,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                    // پیام
+                    Flexible(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 500),
+                        decoration: BoxDecoration(
+                          color: _highlightedMessageId == message.id
+                              ? context.chatTheme.sendButtonColor
+                                  .withOpacity(0.2)
+                              : _selectedMessageIds.contains(message.id)
+                                  ? context.chatTheme.sendButtonColor
+                                      .withOpacity(0.1)
+                                  : Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: AnimatedMessageBubble(
+                          key: ValueKey(message.id),
+                          messageId: message.id,
+                          content: message.content,
+                          isMe: isMe,
+                          time: message.createdAt,
+                          status: _getMessageStatus(message),
+                          replyToContent: message.replyToContent,
+                          replyToSenderName: message.replyToSenderName,
+                          replyToMessageId: message.replyToMessageId,
+                          onReplyTap: message.replyToMessageId != null
+                              ? () => _scrollToMessageById(
+                                  message.replyToMessageId!, messages)
+                              : null,
+                          reactions: _parseReactions(message.reactions),
+                          onTap: () => _onMessageTap(message),
+                          onLongPress: () => _onMessageLongPress(message),
+                          onDoubleTap: () => _onMessageDoubleTap(message),
+                          onAddReaction: (emoji) =>
+                              _onAddReaction(message, emoji),
+                          animate: index < 10,
+                          index: index,
+                          isFirstInGroup: isFirstInGroup,
+                          isLastInGroup: isLastInGroup,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Date Divider (بعد از پیام چون لیست reverse هست)
+                if (showDateDivider) DateDivider(date: message.createdAt),
+
+                // Unread Divider
+                if (_shouldShowUnreadDivider(message, index, messages))
+                  UnreadMessagesDivider(
+                    unreadCount: _unreadCount,
+                    onTap: _scrollToBottom,
+                  ),
+              ],
+            );
+          },
+        );
+      },
+      loading: () => _buildLoadingState(theme),
+      error: (error, stack) => _buildErrorState(error.toString(), theme),
+    );
+  }
+
+  /// تشخیص موقعیت پیام در گروه
+  ///
+  /// پیام‌های متوالی از یک فرستنده گروه‌بندی میشن
+  /// Returns: (isFirstInGroup, isLastInGroup)
+  (bool, bool) _getMessageGroupPosition(
+      List<MessageModel> messages, int index) {
+    final currentMessage = messages[index];
+
+    // چون لیست reverse است:
+    // - index کمتر = پیام جدیدتر (پایین صفحه)
+    // - index بیشتر = پیام قدیمی‌تر (بالای صفحه)
+
+    // بررسی پیام قبلی (جدیدتر - پایین‌تر)
+    final hasPrevious = index > 0;
+    final previousMessage = hasPrevious ? messages[index - 1] : null;
+    final isFirstInGroup = !hasPrevious ||
+        previousMessage!.senderId != currentMessage.senderId ||
+        _isTimeDifferenceSignificant(
+            currentMessage.createdAt, previousMessage.createdAt);
+
+    // بررسی پیام بعدی (قدیمی‌تر - بالاتر)
+    final hasNext = index < messages.length - 1;
+    final nextMessage = hasNext ? messages[index + 1] : null;
+    final isLastInGroup = !hasNext ||
+        nextMessage!.senderId != currentMessage.senderId ||
+        _isTimeDifferenceSignificant(
+            nextMessage.createdAt, currentMessage.createdAt);
+
+    return (isFirstInGroup, isLastInGroup);
+  }
+
+  /// آیا فاصله زمانی بین دو پیام بیش از 5 دقیقه است؟
+  bool _isTimeDifferenceSignificant(DateTime time1, DateTime time2) {
+    return time1.difference(time2).abs() > const Duration(minutes: 5);
+  }
+
+  MessageStatus _getMessageStatus(MessageModel message) {
+    if (message.isPending) return MessageStatus.pending;
+    if (message.isFailed == true) return MessageStatus.failed;
+    if (message.isSeen) return MessageStatus.read;
+    if (message.isDelivered) return MessageStatus.delivered;
+    if (message.isSent) return MessageStatus.sent;
+    return MessageStatus.pending;
+  }
+
+  List<MessageReaction> _parseReactions(Map<String, dynamic>? reactions) {
+    if (reactions == null || reactions.isEmpty) return [];
+
+    return reactions.entries.map((entry) {
+      final users = entry.value as List? ?? [];
+      return MessageReaction(
+        emoji: entry.key,
+        count: users.length,
+        userIds: users.map((e) => e.toString()).toList(),
+        isMyReaction: users.contains(_currentUserId),
+      );
+    }).toList();
+  }
+
+  Widget _buildLoadingIndicator(ChatTheme theme) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Center(
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: theme.sendButtonColor,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(ChatTheme theme) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.chat_bubble_outline_rounded,
+            size: 64,
+            color: theme.secondaryTextColor.withOpacity(0.5),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'شروع گفتگو با ${widget.args.otherUserName}',
+            style: TextStyle(
+              color: theme.secondaryTextColor,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'اولین پیام رو ارسال کنید!',
+            style: TextStyle(
+              color: theme.secondaryTextColor.withOpacity(0.7),
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoadingState(ChatTheme theme) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 40,
+            height: 40,
+            child: CircularProgressIndicator(
+              strokeWidth: 3,
+              color: theme.sendButtonColor,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'در حال بارگذاری...',
+            style: TextStyle(
+              color: theme.secondaryTextColor,
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState(String error, ChatTheme theme) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline_rounded,
+              size: 48,
+              color: theme.errorColor,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'خطا در بارگذاری پیام‌ها',
+              style: TextStyle(
+                color: theme.textColor,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              error,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: theme.secondaryTextColor,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () {
+                ref.invalidate(
+                    messagesStreamProvider(widget.args.conversationId));
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('تلاش مجدد'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.sendButtonColor,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScrollToBottomButton(ChatTheme theme) {
+    return Positioned(
+      right: 16,
+      bottom: 16,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: 1.0),
+        duration: const Duration(milliseconds: 200),
+        builder: (context, value, child) {
+          return Transform.scale(
+            scale: value,
+            child: child,
+          );
+        },
+        child: FloatingActionButton.small(
+          onPressed: _scrollToBottom,
+          backgroundColor: theme.backgroundColor,
+          foregroundColor: theme.iconColor,
+          elevation: 4,
+          child: const Icon(Icons.keyboard_arrow_down_rounded),
+        ),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🖊️ INPUT AREA
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildInputArea(ChatTheme theme) {
+    return AnimatedChatInput(
+      controller: _messageController,
+      focusNode: _focusNode,
+      onSend: _sendMessage,
+      onAttachment: _handleAttachment,
+      onVoice: _handleVoice,
+      onChanged: _onTextChanged,
+      replyToContent: _replyToMessage?.content,
+      replyToSenderName: _replyToMessage?.senderId == _currentUserId
+          ? 'شما'
+          : widget.args.otherUserName,
+      onCancelReply: () => setState(() => _replyToMessage = null),
+      onVoiceRecorded: _handleVoiceRecorded,
+    );
+  }
+
+  /// Handle ضبط صدا
+  Future<void> _handleVoiceRecorded(File audioFile, int duration) async {
+    final attachmentService = ChatAttachmentService();
+
+    final result = await attachmentService.uploadVoiceMessage(
+      audioFile: audioFile,
+      conversationId: widget.args.conversationId,
+      duration: duration,
+    );
+
+    if (result.success && result.url != null) {
+      final params = SendMessageParams(
+        conversationId: widget.args.conversationId,
+        content: '',
+        attachmentUrl: result.url,
+        attachmentType: 'voice',
+        attachmentFileName: result.fileName,
+        duration: duration,
+      );
+
+      await ref.read(chatActionsProvider.notifier).sendMessage(params);
+      _scrollToBottom();
+    } else {
+      _showErrorSnackBar(result.error ?? 'خطا در ارسال پیام صوتی');
+    }
+  }
+
+  void _onTextChanged(String text) {
+    if (text.isNotEmpty) {
+      ref.read(typingActionsProvider).startTyping(widget.args.conversationId);
+    }
+  }
+
+  Future<void> _sendMessage() async {
+    final content = _messageController.text.trim();
+    if (content.isEmpty) return;
+
+    _messageController.clear();
+
+    final replyTo = _replyToMessage;
+    setState(() => _replyToMessage = null);
+
+    try {
+      final params = SendMessageParams(
+        conversationId: widget.args.conversationId,
+        content: content,
+        replyToMessageId: replyTo?.id,
+        replyToContent: replyTo?.content,
+        replyToSenderName: replyTo?.senderId == _currentUserId
+            ? 'شما'
+            : widget.args.otherUserName,
+      );
+
+      final result =
+          await ref.read(chatActionsProvider.notifier).sendMessage(params);
+
+      if (result.isSuccess) {
+        // Scroll to bottom after sending
+        _scrollToBottom();
+      } else {
+        _showErrorSnackBar(result.error ?? 'خطا در ارسال پیام');
+      }
+    } catch (e) {
+      _showErrorSnackBar('خطا در ارسال پیام');
+    }
+  }
+
+  void _handleAttachment() {
+    HapticFeedback.lightImpact();
+    ChatAttachmentSheet.show(
+      context,
+      onSelected: _handleAttachmentSelected,
+    );
+  }
+
+  Future<void> _handleAttachmentSelected(AttachmentSelection selection) async {
+    if (selection.files.isEmpty) return;
+
+    final attachmentService = ChatAttachmentService();
+
+    for (final file in selection.files) {
+      String? url;
+      String attachmentType = 'file';
+
+      // تعیین نوع و آپلود فایل
+      final extension = file.path.split('.').last.toLowerCase();
+
+      if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension)) {
+        url = await _uploadWithProgress(file, 'image', attachmentService);
+        attachmentType = 'image';
+      } else if (['mp4', 'mov', 'avi', 'mkv'].contains(extension)) {
+        url = await _uploadWithProgress(file, 'video', attachmentService);
+        attachmentType = 'video';
+      } else {
+        url = await _uploadWithProgress(file, 'file', attachmentService);
+        attachmentType = extension;
+      }
+
+      if (url != null && url.isNotEmpty) {
+        // ارسال پیام با attachment
+        final params = SendMessageParams(
+          conversationId: widget.args.conversationId,
+          content: selection.caption ?? '',
+          attachmentUrl: url,
+          attachmentType: attachmentType,
+          attachmentFileName: file.path.split('/').last,
+        );
+
+        await ref.read(chatActionsProvider.notifier).sendMessage(params);
+        _scrollToBottom();
+      }
+    }
+  }
+
+  /// آپلود فایل با progress
+  Future<String?> _uploadWithProgress(
+    File file,
+    String type,
+    ChatAttachmentService service,
+  ) async {
+    try {
+      switch (type) {
+        case 'image':
+          final result = await service.pickImageFromGallery(
+            conversationId: widget.args.conversationId,
+          );
+          return result.url;
+        case 'video':
+          final result = await service.pickVideoFromGallery(
+            conversationId: widget.args.conversationId,
+          );
+          return result.url;
+        default:
+          final result = await service.pickFile(
+            conversationId: widget.args.conversationId,
+          );
+          return result.url;
+      }
+    } catch (e) {
+      _showErrorSnackBar('خطا در آپلود فایل');
+      return null;
+    }
+  }
+
+  void _handleVoice() {
+    HapticFeedback.mediumImpact();
+    // TODO: ضبط صدا
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 👆 MESSAGE INTERACTIONS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  void _onMessageTap(MessageModel message) {
+    if (_isSelectionMode) {
+      _toggleMessageSelection(message.id);
+    } else {
+      // TODO: نمایش جزئیات پیام (مثلاً seen by)
+    }
+  }
+
+  void _onMessageLongPress(MessageModel message) {
+    HapticFeedback.mediumImpact();
+    if (_isSelectionMode) {
+      _toggleMessageSelection(message.id);
+    } else {
+      // نمایش منوی گزینه‌ها
+      _showMessageOptions(message);
+    }
+  }
+
+  void _onMessageDoubleTap(MessageModel message) {
+    // لایک سریع
+    _onAddReaction(message, '❤️');
+  }
+
+  void _onAddReaction(MessageModel message, String emoji) {
+    HapticFeedback.lightImpact();
+    ref.read(chatActionsProvider.notifier).toggleReaction(
+          messageId: message.id,
+          conversationId: widget.args.conversationId,
+          emoji: emoji,
+        );
+  }
+
+  void _showMessageOptions(MessageModel message) {
+    final theme = context.chatTheme;
+    final isMe = message.senderId == _currentUserId;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: theme.backgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: theme.dividerColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+
+              // Quick Reactions
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: ['❤️', '👍', '😂', '😮', '😢', '🙏']
+                      .map((emoji) => _buildQuickReaction(emoji, message))
+                      .toList(),
+                ),
+              ),
+
+              const Divider(),
+
+              // Options
+              _buildOptionTile(
+                icon: Icons.reply_rounded,
+                label: 'پاسخ',
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() => _replyToMessage = message);
+                  _focusNode.requestFocus();
+                },
+              ),
+              _buildOptionTile(
+                icon: Icons.copy_rounded,
+                label: 'کپی',
+                onTap: () {
+                  Navigator.pop(context);
+                  Clipboard.setData(ClipboardData(text: message.content));
+                  _showSuccessSnackBar('کپی شد');
+                },
+              ),
+              _buildOptionTile(
+                icon: Icons.forward_rounded,
+                label: 'فوروارد',
+                onTap: () {
+                  Navigator.pop(context);
+                  _forwardMessage(message);
+                },
+              ),
+              _buildOptionTile(
+                icon: Icons.check_circle_outline_rounded,
+                label: 'انتخاب',
+                onTap: () {
+                  Navigator.pop(context);
+                  _enterSelectionMode(message.id);
+                },
+              ),
+              if (isMe) ...[
+                _buildOptionTile(
+                  icon: Icons.edit_rounded,
+                  label: 'ویرایش',
+                  onTap: () {
+                    Navigator.pop(context);
+                    _editMessage(message);
+                  },
+                ),
+                _buildOptionTile(
+                  icon: Icons.delete_outline_rounded,
+                  label: 'حذف',
+                  color: theme.errorColor,
+                  onTap: () {
+                    Navigator.pop(context);
+                    _deleteMessage(message);
+                  },
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickReaction(String emoji, MessageModel message) {
+    return InkWell(
+      onTap: () {
+        Navigator.pop(context);
+        _onAddReaction(message, emoji);
+      },
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: context.chatTheme.dividerColor.withOpacity(0.3),
+          shape: BoxShape.circle,
+        ),
+        child: Text(emoji, style: const TextStyle(fontSize: 24)),
+      ),
+    );
+  }
+
+  Widget _buildOptionTile({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    Color? color,
+  }) {
+    final theme = context.chatTheme;
+    final tileColor = color ?? theme.textColor;
+
+    return ListTile(
+      leading: Icon(icon, color: tileColor),
+      title: Text(
+        label,
+        style: TextStyle(color: tileColor),
+      ),
+      onTap: onTap,
+    );
+  }
+
+  Future<void> _deleteMessage(MessageModel message) async {
+    try {
+      final result = await ref
+          .read(chatActionsProvider.notifier)
+          .deleteMessage(message.id);
+      if (result.isSuccess) {
+        _showSuccessSnackBar('پیام حذف شد');
+      } else {
+        _showErrorSnackBar(result.error ?? 'خطا در حذف پیام');
+      }
+    } catch (e) {
+      _showErrorSnackBar('خطا در حذف پیام');
+    }
+  }
+
+  /// ویرایش پیام
+  Future<void> _editMessage(MessageModel message) async {
+    final result = await EditMessageDialog.show(
+      context,
+      messageId: message.id,
+      currentContent: message.content,
+    );
+
+    if (result == true) {
+      _showSuccessSnackBar('پیام ویرایش شد');
+      // Refresh messages
+      ref.invalidate(messagesStreamProvider(widget.args.conversationId));
+    }
+  }
+
+  /// فوروارد پیام
+  Future<void> _forwardMessage(MessageModel message) async {
+    final result = await ForwardMessageSheet.show(
+      context,
+      messageIds: [message.id],
+    );
+
+    if (result == true) {
+      _showSuccessSnackBar('پیام فوروارد شد');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📢 SNACKBARS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  void _showSuccessSnackBar(String message) {
+    final theme = context.chatTheme;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: theme.sentColor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  void _showErrorSnackBar(String message) {
+    final theme = context.chatTheme;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: theme.errorColor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+}

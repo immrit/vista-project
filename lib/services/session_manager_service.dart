@@ -36,12 +36,195 @@ class SessionManagerService {
   bool _isInitialized = false;
   bool _isRegistering = false; // جلوگیری از ثبت همزمان
   bool _isTerminating = false; // جلوگیری از terminate همزمان
+  bool _isInBackground = false; // ✅ وضعیت پس‌زمینه
+  DateTime? _lastPausedTime; // ✅ زمان آخرین رفتن به پس‌زمینه
+  int _consecutiveFailures = 0; // ✅ تعداد خطاهای متوالی
+  static const int _maxConsecutiveFailures = 10; // ✅ افزایش به 10 برای جلوگیری از logout ناگهانی
 
   Function()? onSessionTerminated;
 
   String? get currentSessionId => _currentSessionId;
   bool get isSessionActive => _currentSessionId != null;
   String? get currentSessionToken => _sessionToken;
+  bool get isInBackground => _isInBackground;
+
+  /// ✅ وقتی برنامه به پس‌زمینه میره - فراخوانی از main.dart
+  Future<void> onAppPaused() async {
+    // ✅ جلوگیری از race condition - اگر در حال resume هستیم، صبر نکن
+    if (!_isInBackground) {
+      _isInBackground = true;
+      _lastPausedTime = DateTime.now();
+    }
+    
+    logInfo('⏸️ App paused - saving session state');
+    
+    // ذخیره session به صورت محلی (سریع و مطمئن)
+    await _saveSession();
+    
+    // آپدیت last_activity در پس‌زمینه (غیرمسدودکننده)
+    // ✅ این کار باید سریع شروع بشه ولی منتظر نتیجه نباشیم
+    if (_currentSessionId != null) {
+      _updateLastActivityNonBlocking();
+    }
+  }
+  
+  /// ✅ آپدیت last_activity به صورت غیرمسدودکننده
+  void _updateLastActivityNonBlocking() {
+    Future.microtask(() async {
+      try {
+        await _supabase
+            .from('active_sessions')
+            .update({
+              'last_activity': DateTime.now().toUtc().toIso8601String(),
+            })
+            .eq('id', _currentSessionId!)
+            .eq('is_active', true)
+            .timeout(const Duration(seconds: 2));
+        logInfo('✅ Session last_activity updated before pause');
+      } catch (e) {
+        logInfo('⚠️ Could not update last_activity before pause: $e');
+      }
+    });
+  }
+
+  /// ✅ وقتی برنامه از پس‌زمینه برمیگرده - فراخوانی از main.dart
+  Future<void> onAppResumed() async {
+    final wasPaused = _isInBackground;
+    _isInBackground = false;
+    
+    final pauseDuration = _lastPausedTime != null 
+        ? DateTime.now().difference(_lastPausedTime!) 
+        : Duration.zero;
+    _lastPausedTime = null;
+    
+    // ✅ اگر اصلاً در پس‌زمینه نبودیم، کاری نکن
+    if (!wasPaused) {
+      logInfo('▶️ App resumed but was not paused, skipping');
+      return;
+    }
+    
+    logInfo('▶️ App resumed after ${pauseDuration.inMinutes} minutes');
+    
+    // ✅ اگر نشست نداریم، کاری نکن
+    if (_currentSessionId == null) {
+      logInfo('⚠️ No session to verify on resume');
+      return;
+    }
+    
+    // Reset consecutive failures
+    _consecutiveFailures = 0;
+    
+    // Restart timers immediately
+    _restartTimersIfNeeded();
+    
+    // اگر کمتر از 30 دقیقه در پس‌زمینه بود، فقط activity را آپدیت کن
+    if (pauseDuration.inMinutes < 30) {
+      // آپدیت last_activity
+      await _updateActivity();
+      return;
+    }
+    
+    // اگر بیش از 30 دقیقه در پس‌زمینه بود، verify کن
+    logInfo('⏰ App was in background for more than 30 minutes, verifying session...');
+    
+    try {
+      final isValid = await _verifySessionWithRetry();
+      if (!isValid) {
+        logInfo('⚠️ Session verification failed after long pause, trying to recover...');
+        // ✅ به جای terminate، سعی کن re-register کنی (این متد خودش findCurrentSessionId را صدا میزنه)
+        await _tryReRegisterSession();
+      } else {
+        await _updateActivity();
+      }
+    } catch (e) {
+      logInfo('⚠️ Error verifying session after resume: $e');
+      // در صورت خطا، terminate نکن - فقط activity را آپدیت کن
+      await _updateActivity();
+    }
+  }
+
+  /// ✅ Restart timers if they're not running
+  void _restartTimersIfNeeded() {
+    if (_currentSessionId == null) {
+      logInfo('⚠️ Cannot restart timers - no session ID');
+      return;
+    }
+    
+    if (_activityTimer == null || !_activityTimer!.isActive) {
+      logInfo('🔄 Restarting activity timer...');
+      _startActivityTracking();
+    }
+    if (_sessionMonitorTimer == null || !_sessionMonitorTimer!.isActive) {
+      logInfo('🔄 Restarting session monitor timer...');
+      _startSessionMonitoring();
+    }
+    
+    // ✅ همیشه Realtime listener رو بازسازی کن چون ممکنه در پس‌زمینه قطع شده باشه
+    logInfo('🔄 Refreshing Realtime listener...');
+    _setupRealtimeListener();
+  }
+
+  /// ✅ تلاش برای re-register نشست
+  Future<void> _tryReRegisterSession() async {
+    logInfo('🔄 Trying to re-register session...');
+    
+    final supabaseSession = _supabase.auth.currentSession;
+    if (supabaseSession == null) {
+      logInfo('⚠️ No Supabase session, cannot re-register');
+      return;
+    }
+    
+    // ✅ اگر در حال ثبت هستیم، صبر نکن
+    if (_isRegistering) {
+      logInfo('⚠️ Session registration already in progress');
+      return;
+    }
+    
+    // سعی کن نشست موجود رو پیدا کنی
+    try {
+      final existingSession = await findCurrentSessionId();
+      if (existingSession != null) {
+        _currentSessionId = existingSession;
+        await _updateActivity();
+        _restartTimersIfNeeded();
+        logInfo('✅ Found and restored existing session: $existingSession');
+        return;
+      }
+    } catch (e) {
+      logInfo('⚠️ Error finding existing session: $e');
+    }
+    
+    // اگر نشست پیدا نشد، یکی جدید ثبت کن
+    logInfo('🆕 Registering new session...');
+    try {
+      await registerSession();
+    } catch (e) {
+      logInfo('❌ Error registering new session: $e');
+    }
+  }
+
+  /// ✅ Verify session با retry logic
+  Future<bool> _verifySessionWithRetry() async {
+    int retries = 0;
+    const maxRetries = 3;
+    
+    while (retries < maxRetries) {
+      try {
+        final result = await _verifySession();
+        return result;
+      } catch (e) {
+        retries++;
+        if (retries < maxRetries) {
+          logInfo('⚠️ Session verification attempt $retries failed, retrying...');
+          await Future.delayed(Duration(milliseconds: 500 * retries));
+        }
+      }
+    }
+    
+    // در صورت fail شدن همه retries، session رو معتبر در نظر بگیر
+    logInfo('⚠️ All verification attempts failed, assuming session is valid');
+    return true;
+  }
 
   /// ✅ بررسی اینکه session ID در دیتابیس وجود دارد
   Future<bool> _verifySessionIdExists(String sessionId) async {
@@ -334,33 +517,43 @@ class SessionManagerService {
   Future<bool> _verifySession() async {
     if (_currentSessionId == null) return false;
 
+    // ✅ اگر در پس‌زمینه هستیم، session رو معتبر در نظر بگیر
+    if (_isInBackground) {
+      logInfo('📱 App is in background, assuming session is valid');
+      return true;
+    }
+
     try {
-      // بررسی اولیه: اگر Supabase session معتبر است، local session را هم معتبر در نظر بگیر
+      // ✅ بررسی اولیه: اگر Supabase session معتبر است، local session را هم معتبر در نظر بگیر
+      // این مهم‌ترین چک هست - اگه Supabase session داریم، نباید logout کنیم
       final supabaseSession = _supabase.auth.currentSession;
       if (supabaseSession != null) {
         final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
         final expiresAt = supabaseSession.expiresAt ?? 0;
-        // اگر Supabase session معتبر است (حداقل 5 دقیقه باقی مانده)، local session را هم معتبر در نظر بگیر
-        if (expiresAt - now > 300) {
-          logInfo(
-              '✅ Supabase session is valid, assuming local session is valid');
+        // اگر Supabase session معتبر است (حداقل 1 دقیقه باقی مانده)، local session را هم معتبر در نظر بگیر
+        if (expiresAt - now > 60) {
+          logInfo('✅ Supabase session is valid (${(expiresAt - now) ~/ 60} min left), keeping local session valid');
+          _consecutiveFailures = 0;
           return true;
+        } else {
+          // ✅ سعی کن refresh کنی
+          logInfo('⚠️ Supabase session expiring soon, trying to refresh...');
+          try {
+            final response = await _supabase.auth.refreshSession();
+            if (response.session != null) {
+              logInfo('✅ Session refreshed successfully');
+              _consecutiveFailures = 0;
+              return true;
+            }
+          } catch (refreshError) {
+            logInfo('⚠️ Could not refresh session: $refreshError');
+            // ادامه بده و بررسی‌های دیگر رو انجام بده
+          }
         }
       }
 
-      // استفاده از RPC function برای بررسی امنیتی با timeout بیشتر
-      final response = await _supabase.rpc('verify_active_session', params: {
-        'session_id': _currentSessionId,
-      }).timeout(
-        const Duration(seconds: 5), // افزایش timeout برای شبکه‌های کند
-        onTimeout: () {
-          logInfo(
-              '⚠️ Session verification timeout, assuming valid (network may be slow)');
-          return true; // در صورت timeout، session را معتبر در نظر بگیر
-        },
-      );
-
-      return response == true;
+      // ✅ Fallback به بررسی مستقیم - بدون RPC که ممکنه وجود نداشته باشه
+      return await _checkSessionActive();
     } catch (e) {
       final errorString = e.toString().toLowerCase();
       final isNetworkError = errorString.contains('network') ||
@@ -370,14 +563,14 @@ class SessionManagerService {
           errorString.contains('failed host lookup');
 
       if (isNetworkError) {
-        logInfo(
-            '⚠️ Network error during session verification, assuming valid: $e');
-        // با قطع اینترنت، session را معتبر در نظر بگیر
+        logInfo('⚠️ Network error during session verification, assuming valid: $e');
+        // ✅ با قطع اینترنت، session را معتبر در نظر بگیر
         return true;
       }
 
       logInfo('❌ خطا در بررسی نشست: $e');
-      // در صورت خطای دیگر، session را معتبر در نظر بگیر تا کاربر منتظر نماند
+      // ✅ در صورت خطای دیگر هم، session را معتبر در نظر بگیر
+      // تا کاربر بدون دلیل logout نشه
       return true;
     }
   }
@@ -803,15 +996,23 @@ class SessionManagerService {
     if (_currentSessionId == null) return;
 
     try {
+      final now = DateTime.now().toUtc();
+      // ✅ آپدیت هم last_activity و هم expires_at برای جلوگیری از منقضی شدن
       await _supabase
           .from('active_sessions')
           .update({
-            'last_activity': DateTime.now().toUtc().toIso8601String(),
+            'last_activity': now.toIso8601String(),
+            // ✅ تمدید expires_at به 30 روز بعد
+            'expires_at': now.add(const Duration(days: 30)).toIso8601String(),
           })
           .eq('id', _currentSessionId!)
           .eq('is_active', true);
+      
+      // Reset consecutive failures on successful activity update
+      _consecutiveFailures = 0;
     } catch (e) {
       logInfo('❌ خطا در به‌روزرسانی فعالیت: $e');
+      // ❌ نباید consecutive failures رو زیاد کنیم چون فقط activity update هست
     }
   }
 
@@ -886,22 +1087,45 @@ class SessionManagerService {
     }
   }
 
-  /// شروع Monitoring دوره‌ای نشست (هر 30 ثانیه)
+  /// شروع Monitoring دوره‌ای نشست (هر 60 ثانیه - افزایش از 30 ثانیه)
   void _startSessionMonitoring() {
     _sessionMonitorTimer?.cancel();
     _sessionMonitorTimer = Timer.periodic(
-      const Duration(seconds: 30),
+      const Duration(seconds: 60), // ✅ افزایش از 30 به 60 ثانیه
       (_) async {
         if (_isTerminating) return; // اگر در حال terminate است، بررسی نکن
+        if (_isInBackground) return; // ✅ اگر در پس‌زمینه است، بررسی نکن
 
         try {
           // ✅ بررسی امنیتی: بررسی اینکه نشست هنوز active است
           if (_currentSessionId != null) {
             final sessionCheck = await _checkSessionActive();
             if (!sessionCheck) {
+              // ✅ قبل از terminate، یکبار دیگر تلاش کن
+              logInfo('⚠️ Session check failed, trying to recover...');
+              
+              final foundSession = await findCurrentSessionId();
+              if (foundSession != null) {
+                logInfo('✅ Session recovered: $foundSession');
+                _currentSessionId = foundSession;
+                _consecutiveFailures = 0;
+                return;
+              }
+              
+              // ✅ اگر Supabase session هنوز معتبر است، terminate نکن
+              final supabaseSession = _supabase.auth.currentSession;
+              if (supabaseSession != null) {
+                logInfo('⚠️ Local session invalid but Supabase session exists, trying to re-register...');
+                await _tryReRegisterSession();
+                return;
+              }
+              
               logInfo('🔴 Session is no longer active, terminating...');
               await _handleSessionTermination();
               return;
+            } else {
+              // ✅ Reset failures on success
+              _consecutiveFailures = 0;
             }
           }
 
@@ -919,10 +1143,12 @@ class SessionManagerService {
 
           final stillValid = await ensureSessionRegistered();
           if (!stillValid) {
-            // فقط اگر Supabase session هم منقضی شده باشد، تایمر را متوقف کن
+            // ✅ قبل از terminate، یکبار دیگر تلاش کن
             final finalSession = _supabase.auth.currentSession;
             if (finalSession == null) {
+              logInfo('⚠️ No Supabase session, stopping monitoring');
               _sessionMonitorTimer?.cancel();
+              _sessionMonitorTimer = null;
             }
             // در غیر این صورت (مثلاً network error)، تایمر را ادامه بده
           }
@@ -930,7 +1156,8 @@ class SessionManagerService {
           final errorString = e.toString().toLowerCase();
           final isNetworkError = errorString.contains('network') ||
               errorString.contains('timeout') ||
-              errorString.contains('connection');
+              errorString.contains('connection') ||
+              errorString.contains('socket');
 
           if (isNetworkError) {
             logInfo(
@@ -948,22 +1175,85 @@ class SessionManagerService {
   Future<bool> _checkSessionActive() async {
     if (_currentSessionId == null) return false;
 
+    // ✅ اگر در پس‌زمینه هستیم، session رو معتبر در نظر بگیر
+    if (_isInBackground) {
+      logInfo('📱 App is in background, assuming session is active');
+      return true;
+    }
+
     try {
       final response = await _supabase
           .from('active_sessions')
-          .select('is_active, user_id')
+          .select('is_active, user_id, expires_at')
           .eq('id', _currentSessionId!)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(const Duration(seconds: 10));
 
       if (response == null) {
         logInfo('⚠️ Session not found in database');
-        return false;
+        _consecutiveFailures++;
+        
+        // ✅ فقط بعد از چند بار خطا، false برگردون
+        if (_consecutiveFailures >= _maxConsecutiveFailures) {
+          logInfo('🔴 Too many consecutive failures ($_consecutiveFailures), session may be invalid');
+          return false;
+        }
+        
+        // ✅ سعی کن نشست رو از token پیدا کنی
+        final foundSession = await findCurrentSessionId();
+        if (foundSession != null) {
+          _consecutiveFailures = 0;
+          return true;
+        }
+        
+        return true; // با خطای موقت، session رو معتبر نگه دار
       }
+
+      // ✅ Reset consecutive failures on success
+      _consecutiveFailures = 0;
 
       final isActive = response['is_active'] as bool? ?? false;
       if (!isActive) {
         logInfo('🔴 Session is marked as inactive in database');
         return false;
+      }
+
+      // ✅ بررسی expires_at - اگه منقضی شده، سعی کن تمدید کنی
+      final expiresAtStr = response['expires_at'] as String?;
+      if (expiresAtStr != null) {
+        try {
+          final expiresAt = DateTime.parse(expiresAtStr);
+          if (DateTime.now().toUtc().isAfter(expiresAt)) {
+            logInfo('⚠️ Session expired, trying to extend...');
+            // ✅ سعی کن تمدید کنی بجای باطل کردن
+            try {
+              final now = DateTime.now().toUtc();
+              await _supabase
+                  .from('active_sessions')
+                  .update({
+                    'expires_at': now.add(const Duration(days: 30)).toIso8601String(),
+                    'last_activity': now.toIso8601String(),
+                  })
+                  .eq('id', _currentSessionId!)
+                  .eq('is_active', true);
+              logInfo('✅ Session extended successfully');
+              return true; // Session تمدید شد
+            } catch (extendError) {
+              logInfo('❌ Could not extend session: $extendError');
+              // ✅ فقط اگه Supabase session هم نداریم، logout کن
+              final supabaseSession = _supabase.auth.currentSession;
+              if (supabaseSession == null) {
+                logInfo('🔴 Both local and Supabase sessions expired');
+                return false;
+              }
+              // ✅ اگه Supabase session داریم، معتبر نگه دار
+              logInfo('⚠️ Keeping session valid due to Supabase session');
+              return true;
+            }
+          }
+        } catch (e) {
+          logInfo('⚠️ Error parsing expires_at: $e');
+        }
       }
 
       // ✅ بررسی امنیتی: مطمئن شویم نشست متعلق به کاربر فعلی است
@@ -979,7 +1269,27 @@ class SessionManagerService {
       return true;
     } catch (e) {
       logInfo('⚠️ Error checking session active status: $e');
-      // در صورت خطا، session را معتبر در نظر بگیر (برای جلوگیری از signOut ناخواسته)
+      _consecutiveFailures++;
+      
+      // ✅ با خطاهای network، session رو معتبر نگه دار
+      final errorString = e.toString().toLowerCase();
+      final isNetworkError = errorString.contains('network') ||
+          errorString.contains('timeout') ||
+          errorString.contains('connection') ||
+          errorString.contains('socket') ||
+          errorString.contains('failed host lookup');
+      
+      if (isNetworkError) {
+        logInfo('📡 Network error, keeping session active');
+        return true;
+      }
+      
+      // در صورت خطای دیگر، فقط بعد از چند بار خطا terminate کن
+      if (_consecutiveFailures >= _maxConsecutiveFailures) {
+        logInfo('🔴 Too many consecutive failures, session may be invalid');
+        return false;
+      }
+      
       return true;
     }
   }
@@ -1004,19 +1314,53 @@ class SessionManagerService {
       return;
     }
 
+    // ✅ آخرین بررسی قبل از terminate - اگه Supabase session داریم، terminate نکن
+    final supabaseSession = _supabase.auth.currentSession;
+    if (supabaseSession != null) {
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final expiresAt = supabaseSession.expiresAt ?? 0;
+      if (expiresAt - now > 60) {
+        logInfo('⚠️ Supabase session still valid, cancelling termination');
+        // سعی کن session رو دوباره ثبت کنی
+        await _tryReRegisterSession();
+        return;
+      }
+    }
+
     _isTerminating = true;
     logInfo('🔴 خاتمه نشست فعلی...');
 
     // متوقف کردن تایمرها و کانال‌ها
     _activityTimer?.cancel();
+    _activityTimer = null;
     _sessionMonitorTimer?.cancel();
+    _sessionMonitorTimer = null;
     _sessionChannel?.unsubscribe();
+    _sessionChannel = null;
 
+    // ✅ ابتدا نشست را در دیتابیس غیرفعال کن
+    if (_currentSessionId != null) {
+      try {
+        await _supabase
+            .from('active_sessions')
+            .update({'is_active': false})
+            .eq('id', _currentSessionId!)
+            .timeout(const Duration(seconds: 5));
+        logInfo('✅ نشست در دیتابیس غیرفعال شد: $_currentSessionId');
+      } catch (e) {
+        logInfo('⚠️ خطا در غیرفعال کردن نشست در دیتابیس: $e');
+        // ادامه بده حتی اگر خطا داد - local cleanup مهم‌تر است
+      }
+    }
+
+    final sessionIdForLog = _currentSessionId;
+    
     // پاک کردن داده‌های محلی
     await _clearSavedSession();
 
     _currentSessionId = null;
     _sessionToken = null;
+    _consecutiveFailures = 0;
 
     // خروج از Supabase
     try {
@@ -1036,6 +1380,7 @@ class SessionManagerService {
     }
 
     _isTerminating = false;
+    logInfo('✅ Session termination completed for: $sessionIdForLog');
   }
 
   /// خاتمه محلی نشست (بدون خروج از Supabase)
@@ -1047,14 +1392,32 @@ class SessionManagerService {
 
     // متوقف کردن تایمرها و کانال‌ها
     _activityTimer?.cancel();
+    _activityTimer = null;
     _sessionMonitorTimer?.cancel();
+    _sessionMonitorTimer = null;
     _sessionChannel?.unsubscribe();
+    _sessionChannel = null;
+
+    // ✅ ابتدا نشست را در دیتابیس غیرفعال کن
+    if (_currentSessionId != null) {
+      try {
+        await _supabase
+            .from('active_sessions')
+            .update({'is_active': false})
+            .eq('id', _currentSessionId!)
+            .timeout(const Duration(seconds: 5));
+        logInfo('✅ نشست در دیتابیس غیرفعال شد: $_currentSessionId');
+      } catch (e) {
+        logInfo('⚠️ خطا در غیرفعال کردن نشست در دیتابیس: $e');
+      }
+    }
 
     // پاک کردن داده‌های محلی
     await _clearSavedSession();
 
     _currentSessionId = null;
     _sessionToken = null;
+    _consecutiveFailures = 0;
 
     // خروج از Supabase
     try {
@@ -1659,7 +2022,9 @@ class SessionManagerService {
         try {
           await _supabase
               .from('active_sessions')
-              .update({'is_active': false}).eq('id', _currentSessionId!);
+              .update({'is_active': false})
+              .eq('id', _currentSessionId!)
+              .timeout(const Duration(seconds: 5));
           logInfo('✅ نشست غیرفعال شد: $_currentSessionId');
         } catch (e) {
           logInfo('⚠️ خطا در غیرفعال کردن نشست: $e');
@@ -1671,10 +2036,17 @@ class SessionManagerService {
 
       // متوقف کردن تایمرها
       _activityTimer?.cancel();
+      _activityTimer = null;
+      _sessionMonitorTimer?.cancel();
+      _sessionMonitorTimer = null;
       _sessionChannel?.unsubscribe();
+      _sessionChannel = null;
 
       _currentSessionId = null;
       _sessionToken = null;
+      _consecutiveFailures = 0;
+      _isInBackground = false;
+      _lastPausedTime = null;
 
       // خروج از Supabase
       await _supabase.auth.signOut();
@@ -1757,9 +2129,15 @@ class SessionManagerService {
 
   void dispose() {
     _activityTimer?.cancel();
+    _activityTimer = null;
     _sessionMonitorTimer?.cancel();
+    _sessionMonitorTimer = null;
     _sessionChannel?.unsubscribe();
+    _sessionChannel = null;
     onSessionTerminated = null;
+    _consecutiveFailures = 0;
+    _isInBackground = false;
+    _lastPausedTime = null;
   }
 }
 

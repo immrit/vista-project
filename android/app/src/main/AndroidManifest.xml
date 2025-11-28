@@ -22,7 +22,7 @@
     <uses-permission android:name="android.permission.CAMERA" />
 
     <!-- مجوزهای موقعیت مکانی -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- فقط از ACCESS_COARSE_LOCATION استفاده می‌شود برای نمایش شهر در نشست‌های فعال -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
 

@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 // ایمپورت‌های مربوط به پروژه شما
 import '../../../main.dart';
 import '../../../provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'subpages/AccountSettingsPage.dart';
 import 'subpages/StorageAndMemorySettingsPage.dart';
 import 'subpages/ChatSettingsGroupPage.dart';
@@ -16,6 +14,7 @@ import 'subpages/ThemeSettingsPage.dart';
 import 'subpages/PrivacySettingsPage.dart';
 import 'subpages/ActiveSessionsScreen.dart';
 import '../../../provider/session_provider.dart';
+import 'vistaStore/pricing_page.dart';
 
 class Settings extends ConsumerWidget {
   const Settings({super.key});
@@ -218,46 +217,13 @@ class Settings extends ConsumerWidget {
                             size: 20,
                           ),
                         ),
-                        onTap: () async {
-                          final session =
-                              Supabase.instance.client.auth.currentSession;
-                          final accessToken = session?.accessToken;
-                          final refreshToken = session?.refreshToken;
-                          if (accessToken != null && refreshToken != null) {
-                            // ساخت URL با توکن برای لاگین خودکار
-                            final url =
-                                Uri.parse('https://cafevista.ir/settings')
-                                    .replace(
-                              queryParameters: {
-                                'token': accessToken,
-                                'refresh_token': refreshToken,
-                              },
-                            );
-                            if (await canLaunchUrl(url)) {
-                              await launchUrl(url,
-                                  mode: LaunchMode.externalApplication);
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content: Text(
-                                        'امکان باز کردن سایت وجود ندارد.')),
-                              );
-                            }
-                          } else {
-                            // اگر توکن نداریم، فقط صفحه را باز می‌کنیم
-                            final url =
-                                Uri.parse('https://cafevista.ir/settings');
-                            if (await canLaunchUrl(url)) {
-                              await launchUrl(url,
-                                  mode: LaunchMode.externalApplication);
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content: Text(
-                                        'امکان باز کردن سایت وجود ندارد.')),
-                              );
-                            }
-                          }
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const PricingPage(),
+                            ),
+                          );
                         },
                       ),
                       _buildDivider(),

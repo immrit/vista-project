@@ -1,0 +1,325 @@
+// lib/features/chat/theme/chat_theme.dart
+//
+// سیستم تم چت - هماهنگ با تم اصلی برنامه
+//
+// ویژگی‌ها:
+// ✅ هماهنگی کامل با دارک/لایت مود
+// ✅ رنگ‌های سفارشی برای حباب‌های پیام
+// ✅ گرادینت‌ها و shadow های حرفه‌ای
+// ✅ انیمیشن‌های روان
+//
+
+import 'package:flutter/material.dart';
+
+/// تم چت
+class ChatTheme {
+  final bool isDark;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🎨 رنگ‌های اصلی
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  /// رنگ پس‌زمینه صفحه
+  final Color backgroundColor;
+  
+  /// رنگ AppBar
+  final Color appBarColor;
+  
+  /// رنگ متن اصلی
+  final Color textColor;
+  
+  /// رنگ متن ثانویه
+  final Color secondaryTextColor;
+  
+  /// رنگ تقسیم‌کننده
+  final Color dividerColor;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 💬 رنگ‌های حباب پیام
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  /// رنگ حباب پیام من
+  final Color myBubbleColor;
+  
+  /// گرادینت حباب پیام من
+  final Gradient? myBubbleGradient;
+  
+  /// رنگ متن پیام من
+  final Color myBubbleTextColor;
+  
+  /// رنگ حباب پیام دیگران
+  final Color otherBubbleColor;
+  
+  /// رنگ متن پیام دیگران
+  final Color otherBubbleTextColor;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🎯 رنگ‌های وضعیت
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  /// رنگ آنلاین
+  final Color onlineColor;
+  
+  /// رنگ آفلاین
+  final Color offlineColor;
+  
+  /// رنگ در حال تایپ
+  final Color typingColor;
+  
+  /// رنگ pending
+  final Color pendingColor;
+  
+  /// رنگ ارسال شده
+  final Color sentColor;
+  
+  /// رنگ خطا
+  final Color errorColor;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📝 رنگ‌های Input
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  /// رنگ پس‌زمینه input
+  final Color inputBackgroundColor;
+  
+  /// رنگ border input
+  final Color inputBorderColor;
+  
+  /// رنگ hint text
+  final Color inputHintColor;
+  
+  /// رنگ دکمه ارسال
+  final Color sendButtonColor;
+  
+  /// رنگ آیکون‌ها
+  final Color iconColor;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🎭 Shadow ها
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  /// سایه حباب پیام من
+  final BoxShadow? myBubbleShadow;
+  
+  /// سایه حباب پیام دیگران
+  final BoxShadow? otherBubbleShadow;
+  
+  /// سایه input
+  final BoxShadow? inputShadow;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📐 فواصل و اندازه‌ها
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  /// شعاع گوشه حباب
+  final double bubbleRadius;
+  
+  /// پدینگ داخلی حباب
+  final EdgeInsets bubblePadding;
+  
+  /// فاصله بین پیام‌ها
+  final double messageSpacing;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ⏱️ مدت زمان انیمیشن‌ها
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  /// مدت انیمیشن ظاهر شدن پیام
+  final Duration messageAppearDuration;
+  
+  /// مدت انیمیشن تایپینگ
+  final Duration typingAnimationDuration;
+  
+  /// مدت انیمیشن فید
+  final Duration fadeDuration;
+
+  const ChatTheme({
+    required this.isDark,
+    required this.backgroundColor,
+    required this.appBarColor,
+    required this.textColor,
+    required this.secondaryTextColor,
+    required this.dividerColor,
+    required this.myBubbleColor,
+    this.myBubbleGradient,
+    required this.myBubbleTextColor,
+    required this.otherBubbleColor,
+    required this.otherBubbleTextColor,
+    required this.onlineColor,
+    required this.offlineColor,
+    required this.typingColor,
+    required this.pendingColor,
+    required this.sentColor,
+    required this.errorColor,
+    required this.inputBackgroundColor,
+    required this.inputBorderColor,
+    required this.inputHintColor,
+    required this.sendButtonColor,
+    required this.iconColor,
+    this.myBubbleShadow,
+    this.otherBubbleShadow,
+    this.inputShadow,
+    this.bubbleRadius = 18,
+    this.bubblePadding = const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    this.messageSpacing = 4,
+    this.messageAppearDuration = const Duration(milliseconds: 300),
+    this.typingAnimationDuration = const Duration(milliseconds: 600),
+    this.fadeDuration = const Duration(milliseconds: 200),
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🏭 Factory - تم روشن
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  factory ChatTheme.light({Color? primaryColor}) {
+    final primary = primaryColor ?? const Color(0xFF6366F1); // Indigo
+    
+    return ChatTheme(
+      isDark: false,
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBarColor: Colors.white.withOpacity(0.95),
+      textColor: const Color(0xFF1E293B),
+      secondaryTextColor: const Color(0xFF64748B),
+      dividerColor: const Color(0xFFE2E8F0),
+      
+      // حباب پیام من - گرادینت زیبا
+      myBubbleColor: primary,
+      myBubbleGradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          primary,
+          primary.withBlue((primary.blue + 30).clamp(0, 255)),
+        ],
+      ),
+      myBubbleTextColor: Colors.white,
+      
+      // حباب پیام دیگران
+      otherBubbleColor: Colors.white,
+      otherBubbleTextColor: const Color(0xFF1E293B),
+      
+      // وضعیت‌ها
+      onlineColor: const Color(0xFF22C55E),
+      offlineColor: const Color(0xFF94A3B8),
+      typingColor: const Color(0xFF3B82F6),
+      pendingColor: const Color(0xFFF59E0B),
+      sentColor: const Color(0xFF22C55E),
+      errorColor: const Color(0xFFEF4444),
+      
+      // Input
+      inputBackgroundColor: Colors.white,
+      inputBorderColor: const Color(0xFFE2E8F0),
+      inputHintColor: const Color(0xFF94A3B8),
+      sendButtonColor: primary,
+      iconColor: const Color(0xFF64748B),
+      
+      // سایه‌ها
+      myBubbleShadow: BoxShadow(
+        color: primary.withOpacity(0.25),
+        blurRadius: 8,
+        offset: const Offset(0, 2),
+      ),
+      otherBubbleShadow: BoxShadow(
+        color: Colors.black.withOpacity(0.06),
+        blurRadius: 8,
+        offset: const Offset(0, 2),
+      ),
+      inputShadow: BoxShadow(
+        color: Colors.black.withOpacity(0.05),
+        blurRadius: 10,
+        offset: const Offset(0, -2),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🏭 Factory - تم تاریک
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  factory ChatTheme.dark({Color? primaryColor}) {
+    final primary = primaryColor ?? const Color(0xFF818CF8); // Lighter Indigo
+    
+    return ChatTheme(
+      isDark: true,
+      backgroundColor: const Color(0xFF0F172A),
+      appBarColor: const Color(0xFF1E293B).withOpacity(0.95),
+      textColor: const Color(0xFFF1F5F9),
+      secondaryTextColor: const Color(0xFF94A3B8),
+      dividerColor: const Color(0xFF334155),
+      
+      // حباب پیام من - گرادینت بنفش زیبا
+      myBubbleColor: primary,
+      myBubbleGradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          primary,
+          primary.withBlue((primary.blue - 20).clamp(0, 255)),
+        ],
+      ),
+      myBubbleTextColor: Colors.white,
+      
+      // حباب پیام دیگران - مثل تلگرام
+      // رنگ آبی-خاکستری نرم که تو چشم نزنه
+      otherBubbleColor: const Color(0xFF1E2A36), // آبی تیره ملایم مثل تلگرام
+      otherBubbleTextColor: const Color(0xFFE8ECF0), // سفید مایل به خاکستری
+      
+      // وضعیت‌ها
+      onlineColor: const Color(0xFF4ADE80),
+      offlineColor: const Color(0xFF64748B),
+      typingColor: const Color(0xFF60A5FA),
+      pendingColor: const Color(0xFFFBBF24),
+      sentColor: const Color(0xFF4ADE80),
+      errorColor: const Color(0xFFF87171),
+      
+      // Input
+      inputBackgroundColor: const Color(0xFF1E293B),
+      inputBorderColor: const Color(0xFF334155),
+      inputHintColor: const Color(0xFF64748B),
+      sendButtonColor: primary,
+      iconColor: const Color(0xFF94A3B8),
+      
+      // سایه‌ها
+      myBubbleShadow: BoxShadow(
+        color: primary.withOpacity(0.2),
+        blurRadius: 10,
+        offset: const Offset(0, 2),
+      ),
+      otherBubbleShadow: BoxShadow(
+        color: Colors.black.withOpacity(0.3),
+        blurRadius: 8,
+        offset: const Offset(0, 2),
+      ),
+      inputShadow: BoxShadow(
+        color: Colors.black.withOpacity(0.2),
+        blurRadius: 12,
+        offset: const Offset(0, -2),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🏭 Factory - از تم Flutter
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  factory ChatTheme.fromTheme(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    final primaryColor = theme.primaryColor;
+    
+    if (isDark) {
+      return ChatTheme.dark(primaryColor: primaryColor);
+    } else {
+      return ChatTheme.light(primaryColor: primaryColor);
+    }
+  }
+}
+
+/// Extension برای دسترسی راحت به تم چت
+extension ChatThemeExtension on BuildContext {
+  /// دریافت تم چت از تم فعلی
+  ChatTheme get chatTheme => ChatTheme.fromTheme(Theme.of(this));
+  
+  /// آیا دارک مود هست؟
+  bool get isDarkMode => Theme.of(this).brightness == Brightness.dark;
+}
+

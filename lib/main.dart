@@ -20,6 +20,8 @@ import 'DB/advanced_settings_service.dart';
 import 'DB/database_manager.dart';
 import 'services/voice_cache_service.dart';
 import 'services/network_status_service.dart';
+import 'services/network_state_service.dart';
+import 'services/retry_queue_service.dart';
 import 'services/session_manager_service.dart';
 import 'middleware/session_middleware.dart';
 import 'firebase_options.dart';
@@ -33,7 +35,8 @@ import 'services/ChatService.dart';
 import 'services/deep_link_service.dart' as new_deep_link;
 import 'services/PushNotificationService.dart';
 import 'services/notification_navigation_service.dart';
-import 'view/screen/chat/ChatScreen.dart';
+// ✅ استفاده از صفحه چت جدید (ChatScreen قدیمی دیگه استفاده نمیشه)
+import 'features/chat/screens/modern_chat_screen.dart';
 import 'view/screen/Settings/Settings.dart';
 import 'view/screen/homeScreen.dart';
 import 'view/screen/ouathUser/editeProfile.dart';
@@ -241,6 +244,12 @@ void main() async {
       
       // 3.8. Initialize Auto Lock Service
       await AutoLockService().initialize();
+      
+      // 3.9. Initialize Network State Service (✅ جدید)
+      await NetworkStateService().initialize();
+      
+      // 3.10. Initialize Retry Queue Service (✅ جدید)
+      await RetryQueueService().initialize();
 
       // 4. Voice Cache Service (ضروری)
       final voiceCacheService = VoiceCacheService();
@@ -614,18 +623,31 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) async {
+  void didChangeAppLifecycleState(AppLifecycleState state) {
     final autoLockService = AutoLockService();
+    final sessionManager = SessionManagerService();
     
     if (state == AppLifecycleState.detached) {
       // Cache cleanup is now handled by Sembast automatically
+      // ✅ تلاش برای ذخیره نشست قبل از خاتمه کامل اپ
+      sessionManager.onAppPaused();
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       // App به background رفت - زمان آخرین فعالیت را ثبت کن
       autoLockService.recordUserActivity();
+      
+      // ✅ اطلاع‌رسانی به SessionManager که اپ به پس‌زمینه رفت (غیرمسدودکننده)
+      sessionManager.onAppPaused().catchError((e) {
+        print('⚠️ Error in session pause handling: $e');
+      });
     } else if (state == AppLifecycleState.resumed) {
       // App به foreground برگشت - بررسی قفل
       autoLockService.recordUserActivity();
       autoLockService.refreshSettings();
+      
+      // ✅ اطلاع‌رسانی به SessionManager که اپ برگشت (غیرمسدودکننده)
+      sessionManager.onAppResumed().catchError((e) {
+        print('⚠️ Error in session resume handling: $e');
+      });
       
       Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted) {
@@ -1053,12 +1075,15 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                     print('   otherUserId: $finalOtherUserId');
                     print('   otherUserName: $otherUserName');
                     
+                    // ✅ استفاده از صفحه چت مدرن
                     return SessionMiddleware(
-                      child: ChatScreen(
-                        conversationId: conversationId,
-                        otherUserName: otherUserName,
-                        otherUserId: finalOtherUserId,
-                        otherUserAvatar: otherUserAvatar,
+                      child: ModernChatScreen(
+                        args: ChatScreenArgs(
+                          conversationId: conversationId,
+                          otherUserName: otherUserName,
+                          otherUserAvatar: otherUserAvatar,
+                          otherUserId: finalOtherUserId,
+                        ),
                       ),
                     );
                   }

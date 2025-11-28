@@ -36,7 +36,8 @@ class MessageBubble extends ConsumerStatefulWidget {
   final bool isSelectionMode; // آیا در حالت selection mode هستیم؟
   final Function(String messageId, Offset position)?
       onShowReactionPicker; // callback برای نمایش reaction picker
-  final VoidCallback? onReactionSelected; // callback برای خاموش کردن selection mode بعد از انتخاب reaction
+  final VoidCallback?
+      onReactionSelected; // callback برای خاموش کردن selection mode بعد از انتخاب reaction
 
   const MessageBubble({
     super.key,
@@ -185,7 +186,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
 
           // ✅ استفاده از ReactionManager برای نمایش overlay
           final isFromMe = widget.currentUserId == widget.message.senderId;
-          
+
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
               ReactionManager().showReactionPanel(
@@ -197,7 +198,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                 ref: ref,
                 onDismiss: () {
                   // بستن selector قدیمی در صورت وجود
-                  ref.read(reactionSelectorProvider(widget.message.id).notifier).state = false;
+                  ref
+                      .read(
+                          reactionSelectorProvider(widget.message.id).notifier)
+                      .state = false;
                 },
                 onReactionSelected: widget.onReactionSelected,
               );
@@ -229,7 +233,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
               false;
         }
         // بستن overlay reaction panel
-        if (ReactionManager().isShowing && 
+        if (ReactionManager().isShowing &&
             ReactionManager().activeMessageId == widget.message.id) {
           ReactionManager().hideReactionPanel();
         }
@@ -371,7 +375,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                                 widget.currentUserId != null &&
                                 widget.conversationId != null)
                               _buildInlineReactions(isMe, theme),
-                            
+
                             Text(
                               TimeUtils.formatTime(widget.message.createdAt),
                               textAlign: TextAlign.right,
@@ -393,7 +397,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     if (widget.message.reactions.isNotEmpty &&
                         widget.currentUserId != null &&
                         widget.conversationId != null &&
-                        widget.message.reactions.values.any((list) => list.length > 1))
+                        widget.message.reactions.values
+                            .any((list) => list.length > 1))
                       ReactionDisplay(
                         reactions: widget.message.reactions,
                         currentUserId: widget.currentUserId!,
