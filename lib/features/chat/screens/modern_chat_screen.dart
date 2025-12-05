@@ -1120,12 +1120,15 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           }
         });
 
-        return ListView.builder(
+        return CustomScrollView(
           controller: _scrollController,
           reverse: true,
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          itemCount: messages.length + (paginationState.isLoadingMore ? 1 : 0),
-          itemBuilder: (context, index) {
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            const SliverPadding(padding: EdgeInsets.only(bottom: 10)),
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
             // Loading indicator در بالا
             if (paginationState.isLoadingMore && index == messages.length) {
               return _buildLoadingIndicator(theme);
@@ -1277,7 +1280,16 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   ),
               ],
             );
-          },
+                },
+                childCount: messages.length + (paginationState.isLoadingMore ? 1 : 0),
+                addAutomaticKeepAlives: false,
+                addRepaintBoundaries: true,
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: paginationState.isLoadingMore ? _buildLoadingIndicator(theme) : const SizedBox(height: 20),
+            ),
+          ],
         );
       },
       loading: () => _buildLoadingState(theme),

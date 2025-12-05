@@ -39,13 +39,13 @@ class AnimatedMessageBubble extends StatefulWidget {
   final String content;
   final bool isMe;
   final DateTime time;
-  
+
   // نوع محتوا
   final MessageContentType contentType;
-  
+
   // وضعیت پیام
   final MessageStatus status;
-  
+
   // Attachment (برای voice, image, video, file)
   final String? attachmentUrl;
   final String? attachmentFileName;
@@ -53,41 +53,41 @@ class AnimatedMessageBubble extends StatefulWidget {
   final int? attachmentSize; // سایز فایل
   final List<double>? waveformData; // برای voice
   final String? thumbnailUrl; // برای video
-  
+
   // Link Preview
   final LinkPreviewData? linkPreview;
-  
+
   // Reply
   final String? replyToContent;
   final String? replyToSenderName;
   final String? replyToMessageId;
   final VoidCallback? onReplyTap;
-  
+
   // Edit
   final bool isEdited;
-  
+
   // Forward
   final bool isForwarded;
   final String? forwardedFromName;
-  
+
   // Reactions
   final List<MessageReaction> reactions;
   final VoidCallback? onReactionTap;
   final Function(String emoji)? onAddReaction;
-  
+
   // Callbacks
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final VoidCallback? onDoubleTap;
-  
+
   // انیمیشن
   final bool animate;
   final int index;
-  
+
   // فاصله از پیام قبلی (برای گروه‌بندی)
   final bool isFirstInGroup;
   final bool isLastInGroup;
-  
+
   // Highlight (برای جستجو)
   final String? highlightQuery;
 
@@ -132,12 +132,11 @@ class AnimatedMessageBubble extends StatefulWidget {
 
 class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
     with SingleTickerProviderStateMixin {
-  
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _slideAnimation;
   late Animation<double> _fadeAnimation;
-  
+
   bool _isPressed = false;
 
   @override
@@ -210,9 +209,8 @@ class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
             opacity: _fadeAnimation.value,
             child: Transform.scale(
               scale: _scaleAnimation.value,
-              alignment: widget.isMe 
-                  ? Alignment.centerRight 
-                  : Alignment.centerLeft,
+              alignment:
+                  widget.isMe ? Alignment.centerRight : Alignment.centerLeft,
               child: child,
             ),
           ),
@@ -225,20 +223,20 @@ class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
   Widget _buildBubble(ChatTheme theme) {
     // فاصله متفاوت بر اساس گروه‌بندی
     final verticalPadding = widget.isLastInGroup ? 6.0 : 2.0;
-    
+
     return Padding(
       padding: EdgeInsets.only(
         top: widget.isFirstInGroup ? 4 : 1,
         bottom: verticalPadding,
       ),
       child: Row(
-        mainAxisAlignment: widget.isMe 
-            ? MainAxisAlignment.end  // پیام من → راست
+        mainAxisAlignment: widget.isMe
+            ? MainAxisAlignment.end // پیام من → راست
             : MainAxisAlignment.start, // پیام دیگران → چپ
         children: [
           // فاصله سمت چپ برای پیام من
           if (widget.isMe) const SizedBox(width: 60),
-          
+
           // حباب پیام
           Flexible(
             child: Container(
@@ -280,15 +278,14 @@ class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
                       child: _buildBubbleContent(theme),
                     ),
                   ),
-                  
+
                   // Reactions
-                  if (widget.reactions.isNotEmpty)
-                    _buildReactions(theme),
+                  if (widget.reactions.isNotEmpty) _buildReactions(theme),
                 ],
               ),
             ),
           ),
-          
+
           // فاصله سمت راست برای پیام دیگران
           if (!widget.isMe) const SizedBox(width: 60),
         ],
@@ -301,12 +298,20 @@ class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
     final topRadius = Radius.circular(theme.bubbleRadius);
     final bottomRadius = Radius.circular(theme.bubbleRadius);
     final smallRadius = const Radius.circular(6);
-    
+
     final borderRadius = BorderRadius.only(
-      topLeft: widget.isMe ? topRadius : (widget.isFirstInGroup ? topRadius : smallRadius),
-      topRight: widget.isMe ? (widget.isFirstInGroup ? topRadius : smallRadius) : topRadius,
-      bottomLeft: widget.isMe ? bottomRadius : (widget.isLastInGroup ? smallRadius : smallRadius),
-      bottomRight: widget.isMe ? (widget.isLastInGroup ? smallRadius : smallRadius) : bottomRadius,
+      topLeft: widget.isMe
+          ? topRadius
+          : (widget.isFirstInGroup ? topRadius : smallRadius),
+      topRight: widget.isMe
+          ? (widget.isFirstInGroup ? topRadius : smallRadius)
+          : topRadius,
+      bottomLeft: widget.isMe
+          ? bottomRadius
+          : (widget.isLastInGroup ? smallRadius : smallRadius),
+      bottomRight: widget.isMe
+          ? (widget.isLastInGroup ? smallRadius : smallRadius)
+          : bottomRadius,
     );
 
     final bubbleDecoration = BoxDecoration(
@@ -332,13 +337,13 @@ class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
           children: [
             // Forwarded header
             if (widget.isForwarded) _buildForwardedHeader(theme),
-            
+
             // Reply preview
             if (widget.replyToContent != null) _buildReplyPreview(theme),
-            
+
             // محتوای بر اساس نوع
             _buildContentByType(theme),
-            
+
             // زمان و وضعیت (فقط برای text و link)
             if (widget.contentType == MessageContentType.text ||
                 widget.contentType == MessageContentType.link)
@@ -351,30 +356,30 @@ class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
       ),
     );
   }
-  
+
   /// ساخت محتوا بر اساس نوع پیام
   Widget _buildContentByType(ChatTheme theme) {
     switch (widget.contentType) {
       case MessageContentType.voice:
         return _buildVoiceContent(theme);
-      
+
       case MessageContentType.image:
         return _buildImageContent(theme);
-      
+
       case MessageContentType.video:
         return _buildVideoContent(theme);
-      
+
       case MessageContentType.file:
         return _buildFileContent(theme);
-      
+
       case MessageContentType.link:
         return _buildLinkContent(theme);
-      
+
       case MessageContentType.text:
         return _buildTextContent(theme);
     }
   }
-  
+
   /// محتوای متنی
   Widget _buildTextContent(ChatTheme theme) {
     return Padding(
@@ -384,7 +389,8 @@ class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
         mainAxisSize: MainAxisSize.min,
         children: [
           // متن با هایلایت
-          if (widget.highlightQuery != null && widget.highlightQuery!.isNotEmpty)
+          if (widget.highlightQuery != null &&
+              widget.highlightQuery!.isNotEmpty)
             _buildHighlightedText(theme)
           else
             Text(
@@ -401,27 +407,27 @@ class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
       ),
     );
   }
-  
+
   /// متن با هایلایت جستجو
   Widget _buildHighlightedText(ChatTheme theme) {
     final query = widget.highlightQuery!.toLowerCase();
     final text = widget.content;
     final lowerText = text.toLowerCase();
-    
+
     final List<TextSpan> spans = [];
     int start = 0;
-    
+
     while (true) {
       final index = lowerText.indexOf(query, start);
       if (index == -1) {
         spans.add(TextSpan(text: text.substring(start)));
         break;
       }
-      
+
       if (index > start) {
         spans.add(TextSpan(text: text.substring(start, index)));
       }
-      
+
       spans.add(TextSpan(
         text: text.substring(index, index + query.length),
         style: TextStyle(
@@ -429,10 +435,10 @@ class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
           fontWeight: FontWeight.w600,
         ),
       ));
-      
+
       start = index + query.length;
     }
-    
+
     return RichText(
       text: TextSpan(
         style: TextStyle(
@@ -446,10 +452,11 @@ class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
       ),
     );
   }
-  
+
   /// محتوای صوتی (Voice Message)
   Widget _buildVoiceContent(ChatTheme theme) {
     return VoiceMessageBubble(
+      messageId: widget.messageId,
       audioUrl: widget.attachmentUrl ?? '',
       durationSeconds: widget.attachmentDuration,
       waveformData: widget.waveformData,
@@ -457,7 +464,7 @@ class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
       time: widget.time,
     );
   }
-  
+
   /// محتوای تصویری
   Widget _buildImageContent(ChatTheme theme) {
     return MediaMessageBubble(
@@ -468,7 +475,7 @@ class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
       caption: widget.content.isNotEmpty ? widget.content : null,
     );
   }
-  
+
   /// محتوای ویدیویی
   Widget _buildVideoContent(ChatTheme theme) {
     return MediaMessageBubble(
@@ -481,7 +488,7 @@ class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
       caption: widget.content.isNotEmpty ? widget.content : null,
     );
   }
-  
+
   /// محتوای فایل
   Widget _buildFileContent(ChatTheme theme) {
     return FileMessageBubble(
@@ -492,7 +499,7 @@ class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
       time: widget.time,
     );
   }
-  
+
   /// محتوای لینک با پیش‌نمایش
   Widget _buildLinkContent(ChatTheme theme) {
     return Padding(
@@ -505,7 +512,7 @@ class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
       ),
     );
   }
-  
+
   /// هدر Forwarded
   Widget _buildForwardedHeader(ChatTheme theme) {
     return Container(
@@ -641,7 +648,7 @@ class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
           ),
           const SizedBox(width: 4),
         ],
-        
+
         // زمان
         Text(
           _formatTime(widget.time),
@@ -653,7 +660,7 @@ class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
             fontSize: 11,
           ),
         ),
-        
+
         // وضعیت ارسال
         if (widget.isMe) ...[
           const SizedBox(width: 4),
@@ -780,4 +787,3 @@ class MessageReaction {
     this.isMyReaction = false,
   });
 }
-

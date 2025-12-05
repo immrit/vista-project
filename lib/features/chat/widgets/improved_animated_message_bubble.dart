@@ -166,69 +166,74 @@ class _ImprovedAnimatedMessageBubbleState
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
 
-    return FadeTransition(
-      opacity: _fadeAnimation,
-      child: SlideTransition(
-        position: _slideAnimation,
-        child: ScaleTransition(
-          scale: _scaleAnimation,
-          child: GestureDetector(
-            onTap: () {
-              // Toggle نمایش زمان
-              setState(() => _showTime = !_showTime);
-              HapticFeedback.selectionClick();
-              widget.onTap?.call();
-            },
-            onLongPress: () {
-              HapticFeedback.mediumImpact();
-              widget.onLongPress?.call();
-            },
-            onDoubleTap: widget.onDoubleTap,
-            child: Padding(
-              padding: EdgeInsets.only(
-                left: widget.isMe ? 60 : 12,
-                right: widget.isMe ? 12 : 60,
-                bottom: widget.isLastInGroup ? 8 : 2,
-                top: widget.isFirstInGroup ? 8 : 2,
-              ),
-              child: Column(
-                crossAxisAlignment: widget.isMe
-                    ? CrossAxisAlignment.end
-                    : CrossAxisAlignment.start,
-                children: [
-                  // حباب اصلی پیام
-                  Row(
-                    mainAxisAlignment: widget.isMe
-                        ? MainAxisAlignment.end
-                        : MainAxisAlignment.start,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      // زمان سمت چپ (برای پیام‌های دیگران)
-                      if (!widget.isMe && _showTime)
-                        _buildFixedTimeLabel(theme, isLeft: true),
+    // Wrap the whole interactive bubble in a RepaintBoundary to reduce
+    // unnecessary repaints when the list is scrolling. This keeps the
+    // existing animation structure intact but isolates renders.
+    return RepaintBoundary(
+      child: FadeTransition(
+        opacity: _fadeAnimation,
+        child: SlideTransition(
+          position: _slideAnimation,
+          child: ScaleTransition(
+            scale: _scaleAnimation,
+            child: GestureDetector(
+              onTap: () {
+                // Toggle نمایش زمان
+                setState(() => _showTime = !_showTime);
+                HapticFeedback.selectionClick();
+                widget.onTap?.call();
+              },
+              onLongPress: () {
+                HapticFeedback.mediumImpact();
+                widget.onLongPress?.call();
+              },
+              onDoubleTap: widget.onDoubleTap,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: widget.isMe ? 60 : 12,
+                  right: widget.isMe ? 12 : 60,
+                  bottom: widget.isLastInGroup ? 8 : 2,
+                  top: widget.isFirstInGroup ? 8 : 2,
+                ),
+                child: Column(
+                  crossAxisAlignment: widget.isMe
+                      ? CrossAxisAlignment.end
+                      : CrossAxisAlignment.start,
+                  children: [
+                    // حباب اصلی پیام
+                    Row(
+                      mainAxisAlignment: widget.isMe
+                          ? MainAxisAlignment.end
+                          : MainAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        // زمان سمت چپ (برای پیام‌های دیگران)
+                        if (!widget.isMe && _showTime)
+                          _buildFixedTimeLabel(theme, isLeft: true),
 
-                      // محتوای پیام
-                      Flexible(
-                        child: _buildMessageBubble(theme),
-                      ),
+                        // محتوای پیام
+                        Flexible(
+                          child: _buildMessageBubble(theme),
+                        ),
 
-                      // زمان سمت راست (برای پیام‌های خودم)
-                      if (widget.isMe && _showTime)
-                        _buildFixedTimeLabel(theme, isLeft: false),
-                    ],
-                  ),
-
-                  // زمان پایین پیام (همیشه نمایش داده می‌شود - نسخه کوتاه)
-                  if (widget.isLastInGroup)
-                    Padding(
-                      padding: EdgeInsets.only(
-                        top: 4,
-                        left: widget.isMe ? 0 : 48,
-                        right: widget.isMe ? 48 : 0,
-                      ),
-                      child: _buildBottomTimeLabel(theme),
+                        // زمان سمت راست (برای پیام‌های خودم)
+                        if (widget.isMe && _showTime)
+                          _buildFixedTimeLabel(theme, isLeft: false),
+                      ],
                     ),
-                ],
+
+                    // زمان پایین پیام (همیشه نمایش داده می‌شود - نسخه کوتاه)
+                    if (widget.isLastInGroup)
+                      Padding(
+                        padding: EdgeInsets.only(
+                          top: 4,
+                          left: widget.isMe ? 0 : 48,
+                          right: widget.isMe ? 48 : 0,
+                        ),
+                        child: _buildBottomTimeLabel(theme),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),

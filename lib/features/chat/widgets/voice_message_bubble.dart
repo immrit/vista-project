@@ -16,30 +16,28 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:just_audio/just_audio.dart';
 import 'package:http/http.dart' as http;
+import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import '../theme/chat_theme.dart';
 
 /// ویجت پیام صوتی شبیه تلگرام
 class VoiceMessageBubble extends StatefulWidget {
+  final String messageId;
   final String audioUrl;
   final int? durationSeconds;
   final List<double>? waveformData;
   final bool isMe;
   final DateTime time;
-  final bool isPlaying;
-  final VoidCallback? onPlayPause;
 
   const VoiceMessageBubble({
     super.key,
+    required this.messageId,
     required this.audioUrl,
     this.durationSeconds,
     this.waveformData,
     required this.isMe,
     required this.time,
-    this.isPlaying = false,
-    this.onPlayPause,
   });
 
   @override
@@ -336,7 +334,8 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      _formatDuration(_isPlaying ? _currentPosition : _totalDuration),
+                      _formatDuration(
+                          _isPlaying ? _currentPosition : _totalDuration),
                       style: TextStyle(
                         fontSize: 11,
                         color: widget.isMe
@@ -465,10 +464,10 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
         ? _currentPosition.inMilliseconds / _totalDuration.inMilliseconds
         : 0.0;
 
-    final activeColor =
-        widget.isMe ? Colors.white : theme.sendButtonColor;
-    final inactiveColor =
-        widget.isMe ? Colors.white.withOpacity(0.4) : theme.sendButtonColor.withOpacity(0.3);
+    final activeColor = widget.isMe ? Colors.white : theme.sendButtonColor;
+    final inactiveColor = widget.isMe
+        ? Colors.white.withOpacity(0.4)
+        : theme.sendButtonColor.withOpacity(0.3);
 
     return GestureDetector(
       onTapDown: (details) {
@@ -602,4 +601,3 @@ class WaveformPainter extends CustomPainter {
         oldDelegate.animationValue != animationValue;
   }
 }
-

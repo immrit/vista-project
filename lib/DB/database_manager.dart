@@ -13,6 +13,7 @@ class DatabaseManager {
   // Database instances
   Database? _settingsDatabase;
   Database? _recentSearchesDatabase;
+  Database? _chatDatabase;
 
   // Initialization flags
   bool _isInitializing = false;
@@ -126,9 +127,41 @@ class DatabaseManager {
         _initializationStatus['recent_searches'] = false;
       }
 
+      if (_chatDatabase != null) {
+        await _chatDatabase!.close();
+        _chatDatabase = null;
+        _initializationStatus['chat'] = false;
+      }
+
       logInfo('✅ All databases closed successfully');
     } catch (e) {
       logInfo('❌ Error closing databases: $e');
+    }
+  }
+
+  /// Get or create chat database
+  Future<Database> getChatDatabase() async {
+    if (_chatDatabase != null) return _chatDatabase!;
+
+    try {
+      String dbPath = 'chat_v1.db';
+      if (!kIsWeb) {
+        final appDir = await getApplicationDocumentsDirectory();
+        dbPath = '${appDir.path}/chat_v1.db';
+      }
+
+      _chatDatabase = await databaseFactoryIo.openDatabase(
+        dbPath,
+        version: 1,
+        mode: DatabaseMode.create,
+      );
+
+      _initializationStatus['chat'] = true;
+      logInfo('✅ Chat database initialized successfully');
+      return _chatDatabase!;
+    } catch (e) {
+      logInfo('❌ Failed to initialize chat database: $e');
+      rethrow;
     }
   }
 

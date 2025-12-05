@@ -79,6 +79,7 @@ dependencies:
   sembast: ^3.7.0
   supabase_flutter: ^2.9.1
   qr_flutter: ^4.1.0
+  record: ^5.1.0  # برای ضبط صدا
   timeago: ^3.7.0
   timeline_tile: ^2.0.0
   timelines_plus: ^1.0.6

@@ -16,6 +16,13 @@ import '../repositories/chat_repository.dart';
 import '../repositories/chat_repository_impl.dart';
 import '../services/chat_cache_service.dart';
 import '../services/typing_indicator_service.dart';
+import '../data/datasources/chat_local_datasource.dart';
+import '../../../../DB/database_manager.dart';
+
+// DatabaseManager provider
+final databaseManagerProvider = Provider<DatabaseManager>((ref) {
+  return DatabaseManager();
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔧 CORE PROVIDERS (پایه سیستم)
@@ -26,12 +33,25 @@ final chatCacheServiceProvider = Provider<ChatCacheService>((ref) {
   return ChatCacheService();
 });
 
+/// Local datasource backed by Sembast
+final chatLocalDataSourceProvider = Provider<ChatLocalDataSource>((ref) {
+  final dbManager = ref.watch(databaseManagerProvider);
+  return ChatLocalDataSource(dbManager);
+});
+
 /// Provider برای Repository (Singleton)
 /// 
 /// این Provider قلب سیستم چت هست
 final chatRepositoryProvider = Provider<ChatRepository>((ref) {
-  final cache = ref.watch(chatCacheServiceProvider);
-  final repository = ChatRepositoryImpl(cache: cache);
+  final local = ref.watch(chatLocalDataSourceProvider);
+  final supabase = ref.watch(supabaseClientProvider);
+  final currentUserId = supabase.auth.currentUser?.id;
+
+  final repository = ChatRepositoryImpl(
+    localDataSource: local,
+    supabase: supabase,
+    currentUserId: currentUserId,
+  );
 
   // Cleanup وقتی Provider dispose میشه
   ref.onDispose(() {

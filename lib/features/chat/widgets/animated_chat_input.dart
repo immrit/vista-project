@@ -18,7 +18,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/chat_theme.dart';
-import '../services/chat_attachment_service.dart';
+import '../services/voice_recorder_service.dart';
 import 'chat_emoji_picker.dart';
 
 class AnimatedChatInput extends StatefulWidget {
@@ -73,13 +73,14 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   late Animation<Offset> _replySlide;
   late Animation<double> _replyFade;
 
-  // Voice recording
-  final _attachmentService = ChatAttachmentService();
+  // Voice recording - با استفاده از VoiceRecorderService
+  final _voiceRecorder = VoiceRecorderService();
   bool _isRecording = false;
   bool _isRecordingLocked = false;
   int _recordingDuration = 0;
   List<double> _waveformData = [];
   Timer? _durationTimer;
+  StreamSubscription<double>? _amplitudeSub;
 
   // Emoji
   bool _showEmojiPicker = false;
@@ -176,6 +177,8 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     _sendButtonController.dispose();
     _replyController.dispose();
     _durationTimer?.cancel();
+    _amplitudeSub?.cancel();
+    _voiceRecorder.dispose();
     super.dispose();
   }
 
@@ -186,27 +189,26 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   Future<void> _startRecording() async {
     HapticFeedback.mediumImpact();
 
-    final success = await _attachmentService.startVoiceRecording(
-      onRecordingStateChanged: (isRecording) {
-        if (!isRecording && mounted) {
-          _handleRecordingEnd();
-        }
-      },
-      onDurationChanged: (duration) {
-        if (mounted) {
-          setState(() => _recordingDuration = duration);
-        }
-      },
-      onWaveformDataChanged: (data) {
-        if (mounted) {
-          setState(() => _waveformData = data);
-        }
-      },
-    );
+    // شروع ضبط با سرویس
+    await _voiceRecorder.startRecording();
 
-    if (success && mounted) {
+    if (mounted) {
       setState(() => _isRecording = true);
 
+      // گوش دادن به تغییرات دامنه صدا
+      _amplitudeSub = _voiceRecorder.amplitudeStream.listen((amp) {
+        if (mounted && _isRecording) {
+          setState(() {
+            _waveformData.add(amp);
+            // نگه داشتن آخر 40 مقدار برای display
+            if (_waveformData.length > 40) {
+              _waveformData.removeAt(0);
+            }
+          });
+        }
+      });
+
+      // تایمر برای شمارش زمان
       _durationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
         if (mounted && _isRecording) {
           setState(() => _recordingDuration++);
@@ -217,8 +219,10 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
 
   Future<void> _stopRecording() async {
     _durationTimer?.cancel();
+    _amplitudeSub?.cancel();
 
-    final file = await _attachmentService.stopVoiceRecording();
+    // توقف ضبط و دریافت فایل
+    final file = await _voiceRecorder.stopRecording();
 
     if (file != null && mounted) {
       widget.onVoiceRecorded?.call(file, _recordingDuration);
@@ -230,11 +234,10 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   Future<void> _cancelRecording() async {
     HapticFeedback.lightImpact();
     _durationTimer?.cancel();
-    await _attachmentService.cancelVoiceRecording();
-    _resetRecording();
-  }
-
-  void _handleRecordingEnd() {
+    _amplitudeSub?.cancel();
+    
+    // لغو ضبط (حذف فایل)
+    await _voiceRecorder.cancelRecording();
     _resetRecording();
   }
 
