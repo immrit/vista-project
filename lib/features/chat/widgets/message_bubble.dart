@@ -32,6 +32,7 @@ class ModernMessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final currentUserId = supabase.auth.currentUser?.id;
     final isMine = message.senderId == currentUserId;
+    final isLightMode = Theme.of(context).brightness == Brightness.light;
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -59,7 +60,7 @@ class ModernMessageBubble extends StatelessWidget {
                 ),
                 decoration: BoxDecoration(
                   color: isMine
-                      ? Theme.of(context).primaryColor
+                      ? (isLightMode ? const Color(0xFFF5F5F5) : Theme.of(context).primaryColor)
                       : Colors.grey.shade200,
                   borderRadius: BorderRadius.only(
                     topLeft: const Radius.circular(16),
@@ -69,9 +70,9 @@ class ModernMessageBubble extends StatelessWidget {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
+                      color: Colors.black.withOpacity(0.02),
+                      blurRadius: 2,
+                      offset: const Offset(0, 1),
                     ),
                   ],
                 ),
@@ -91,7 +92,9 @@ class ModernMessageBubble extends StatelessWidget {
                       Text(
                         message.content,
                         style: TextStyle(
-                          color: isMine ? Colors.white : Colors.black87,
+                          color: isMine 
+                              ? (isLightMode ? Colors.black87 : Colors.white)
+                              : Colors.black87,
                           fontSize: 15,
                           height: 1.3,
                         ),

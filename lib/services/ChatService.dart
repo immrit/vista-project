@@ -79,18 +79,21 @@ class ChatService {
 
       if (session == null || auth.currentUser == null) {
         // قبل از signOut، یک بار دیگر تلاش کن
-        logInfo('⚠️ No authenticated Supabase session detected, attempting to restore...');
+        logInfo(
+            '⚠️ No authenticated Supabase session detected, attempting to restore...');
         try {
           // تلاش برای restore session
           await Future.delayed(Duration(milliseconds: 500));
           session = auth.currentSession;
-          
+
           if (session == null || auth.currentUser == null) {
             logInfo('❌ Session could not be restored');
             await auth.signOut();
             throw AppException(
-              userFriendlyMessage: 'نشست کاربر منقضی شده است. لطفاً دوباره وارد شوید.',
-              technicalMessage: 'Supabase session missing before PostgREST call',
+              userFriendlyMessage:
+                  'نشست کاربر منقضی شده است. لطفاً دوباره وارد شوید.',
+              technicalMessage:
+                  'Supabase session missing before PostgREST call',
             );
           } else {
             logInfo('✅ Session restored successfully');
@@ -100,7 +103,8 @@ class ChatService {
           logInfo('❌ Error restoring session: $e');
           await auth.signOut();
           throw AppException(
-            userFriendlyMessage: 'نشست کاربر منقضی شده است. لطفاً دوباره وارد شوید.',
+            userFriendlyMessage:
+                'نشست کاربر منقضی شده است. لطفاً دوباره وارد شوید.',
             technicalMessage: 'Supabase session missing before PostgREST call',
           );
         }
@@ -124,7 +128,8 @@ class ChatService {
         logInfo('🔴 Session is no longer valid, signing out...');
         await auth.signOut();
         throw AppException(
-          userFriendlyMessage: 'نشست شما منقضی شده است. لطفاً دوباره وارد شوید.',
+          userFriendlyMessage:
+              'نشست شما منقضی شده است. لطفاً دوباره وارد شوید.',
           technicalMessage: 'Session is no longer active',
         );
       }
@@ -133,8 +138,10 @@ class ChatService {
       if (!ensured) {
         logInfo('⚠️ SessionManager could not ensure an active session');
         throw AppException(
-          userFriendlyMessage: 'نشست کاربر ثبت نشده است. لطفاً دوباره وارد شوید.',
-          technicalMessage: 'SessionManager.ensureSessionRegistered returned false',
+          userFriendlyMessage:
+              'نشست کاربر ثبت نشده است. لطفاً دوباره وارد شوید.',
+          technicalMessage:
+              'SessionManager.ensureSessionRegistered returned false',
         );
       }
     } on AppException {
@@ -162,7 +169,7 @@ class ChatService {
       int retryCount = 0;
       const maxRetries = 3;
       Exception? lastError;
-      
+
       while (retryCount < maxRetries && !refreshSuccess) {
         try {
           await auth.refreshSession();
@@ -171,9 +178,10 @@ class ChatService {
         } catch (e, s) {
           lastError = e is Exception ? e : Exception(e.toString());
           retryCount++;
-          
+
           if (retryCount < maxRetries) {
-            logInfo('⚠️ Session refresh failed, retrying... ($retryCount/$maxRetries): $e');
+            logInfo(
+                '⚠️ Session refresh failed, retrying... ($retryCount/$maxRetries): $e');
             await Future.delayed(Duration(seconds: retryCount));
           } else {
             logInfo('❌ Session refresh failed after $maxRetries attempts: $e');
@@ -1694,17 +1702,19 @@ class ChatService {
             // اصلاح replyToSenderName اگر null یا 'کاربر' است
             if (message.replyToMessageId != null &&
                 (message.replyToSenderName == null ||
-                 message.replyToSenderName!.isEmpty ||
-                 message.replyToSenderName == 'کاربر')) {
+                    message.replyToSenderName!.isEmpty ||
+                    message.replyToSenderName == 'کاربر')) {
               // جستجو در filteredMessages برای پیدا کردن پیام ریپلای شده
               final repliedMessageJson = filteredMessages.firstWhere(
                 (msg) => msg['id'] == message.replyToMessageId,
                 orElse: () => <String, dynamic>{},
               );
-              
+
               if (repliedMessageJson.isNotEmpty) {
-                final repliedSenderId = repliedMessageJson['sender_id'] as String?;
-                if (repliedSenderId != null && senderNameMap.containsKey(repliedSenderId)) {
+                final repliedSenderId =
+                    repliedMessageJson['sender_id'] as String?;
+                if (repliedSenderId != null &&
+                    senderNameMap.containsKey(repliedSenderId)) {
                   message = message.copyWith(
                     replyToSenderName: senderNameMap[repliedSenderId],
                   );
@@ -1733,7 +1743,8 @@ class ChatService {
               final reaction = MessageReaction.fromJson(reactionJson);
               messageReactions[reaction.messageId] ??= {};
               messageReactions[reaction.messageId]![reaction.emoji] ??= [];
-              messageReactions[reaction.messageId]![reaction.emoji]!.add(reaction.userId);
+              messageReactions[reaction.messageId]![reaction.emoji]!
+                  .add(reaction.userId);
             }
 
             // اضافه کردن reactions به پیام‌ها
@@ -1821,17 +1832,19 @@ class ChatService {
               // اصلاح replyToSenderName اگر null یا 'کاربر' است
               if (message.replyToMessageId != null &&
                   (message.replyToSenderName == null ||
-                   message.replyToSenderName!.isEmpty ||
-                   message.replyToSenderName == 'کاربر')) {
+                      message.replyToSenderName!.isEmpty ||
+                      message.replyToSenderName == 'کاربر')) {
                 // جستجو در data برای پیدا کردن پیام ریپلای شده
                 final repliedMessageJson = data.firstWhere(
                   (msg) => msg['id'] == message.replyToMessageId,
                   orElse: () => <String, dynamic>{},
                 );
-                
+
                 if (repliedMessageJson.isNotEmpty) {
-                  final repliedSenderId = repliedMessageJson['sender_id'] as String?;
-                  if (repliedSenderId != null && senderNameMap.containsKey(repliedSenderId)) {
+                  final repliedSenderId =
+                      repliedMessageJson['sender_id'] as String?;
+                  if (repliedSenderId != null &&
+                      senderNameMap.containsKey(repliedSenderId)) {
                     message = message.copyWith(
                       replyToSenderName: senderNameMap[repliedSenderId],
                     );

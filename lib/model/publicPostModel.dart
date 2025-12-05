@@ -1,8 +1,8 @@
 import 'dart:convert';
-import 'package:equatable/equatable.dart';
+// Equatable removed: model is mutable in this codebase
 import 'ProfileModel.dart'; // واردکردن ProfileModel برای استفاده از VerificationType
 
-class PublicPostModel extends Equatable {
+class PublicPostModel {
   final String id;
   final String userId;
   final String fullName;
@@ -266,31 +266,10 @@ class PublicPostModel extends Equatable {
     )''';
   }
 
-  @override
-  List<Object?> get props => [
-        id,
-        userId,
-        fullName,
-        content,
-        imageUrl,
-        videoUrl, // افزودن ویدیو به props
-        createdAt,
-        username,
-        avatarUrl,
-        profiles,
-        likeCount,
-        isLiked,
-        isVerified,
-        verificationType,
-        commentCount,
-        hashtags,
-        musicUrl,
-        title,
-        moderatorId,
-        moderatorUsername,
-        moderatedAt,
-        moderationReason,
-      ];
+  // Note: equality/props from Equatable intentionally removed because
+  // PublicPostModel instances are mutated in multiple places across the
+  // codebase. If you need value equality later, consider providing a
+  // comparator or reintroducing an immutable model.
 
   // متدهای کمکی
   bool get hasBlueBadge =>

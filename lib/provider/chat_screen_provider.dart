@@ -73,7 +73,8 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
   StreamSubscription? _reactionSubscription; // ✅ Subscription برای reactions
   bool _isFetching = false;
   bool _isInitializing = false; // ✅ Flag برای جلوگیری از بلاک شدن UI
-  bool _isKeyboardAnimating = false; // ✅ جلوگیری از عملیات سنگین در حین انیمیشن کیبورد
+  bool _isKeyboardAnimating =
+      false; // ✅ جلوگیری از عملیات سنگین در حین انیمیشن کیبورد
   DateTime? _lastInvalidateTime; // ✅ Debounce برای invalidation cache
   static const _pageSize = 30;
   int _retryCount = 0;
@@ -130,7 +131,8 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
         );
 
         if (cacheAge <= _cacheExpiry) {
-          print('⚡ Memory cache hit (${memoryCached.length} messages, age: ${cacheAge.inSeconds}s)');
+          print(
+              '⚡ Memory cache hit (${memoryCached.length} messages, age: ${cacheAge.inSeconds}s)');
           if (mounted) {
             state = state.copyWith(
               messages: memoryCached,
@@ -138,7 +140,8 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
             );
           }
         } else {
-          print('⚠️ Memory cache expired (${cacheAge.inMinutes}m), clearing entry');
+          print(
+              '⚠️ Memory cache expired (${cacheAge.inMinutes}m), clearing entry');
           _memoryCache.remove(params.conversationId);
           _cacheTimestamps.remove(params.conversationId);
         }
@@ -161,7 +164,8 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
     } finally {
       _isInitializing = false;
       stopwatch.stop();
-      print('⏱️ Initialization scheduled in ${stopwatch.elapsedMilliseconds}ms');
+      print(
+          '⏱️ Initialization scheduled in ${stopwatch.elapsedMilliseconds}ms');
       print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     }
   }
@@ -204,8 +208,8 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
       if (!mounted) return;
       final stopwatch = Stopwatch()..start();
       try {
-        final cachedMessages = await BackgroundMessageLoader()
-            .loadMessagesInBackground(
+        final cachedMessages =
+            await BackgroundMessageLoader().loadMessagesInBackground(
           conversationId: params.conversationId,
           userId: userId,
         );
@@ -243,7 +247,7 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
 
   Future<void> fetchLatestMessages({bool fromKeyboard = false}) async {
     if (_isFetching) return;
-    
+
     // ✅ اگر از کیبورد فراخوانی شده، اولویت بندی کن
     if (fromKeyboard) {
       print('⌨️ Keyboard-triggered fetch - using low priority');
@@ -253,19 +257,20 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
     _isFetching = true;
 
     try {
-      print('🔄 Fetching latest messages for conversation: ${params.conversationId}');
-      
+      print(
+          '🔄 Fetching latest messages for conversation: ${params.conversationId}');
+
       // ✅ استفاده از timeout برای جلوگیری از hang
       final serverMessages = await _chatService
           .getMessages(params.conversationId, limit: _pageSize)
           .timeout(
-            const Duration(seconds: 10),
-            onTimeout: () {
-              print('⏰ Fetch timeout - using cached data');
-              return state.messages;
-            },
-          );
-      
+        const Duration(seconds: 10),
+        onTimeout: () {
+          print('⏰ Fetch timeout - using cached data');
+          return state.messages;
+        },
+      );
+
       print('✅ Received ${serverMessages.length} messages from server');
       if (mounted && serverMessages.isNotEmpty) {
         _throttledUpdateMessages(serverMessages, source: 'server');
@@ -283,12 +288,18 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
   }
 
   Future<void> fetchMoreMessages({bool fromKeyboard = false}) async {
-    if (state.isLoading || !state.hasMore || _isFetching || _isKeyboardAnimating) return;
+    if (state.isLoading ||
+        !state.hasMore ||
+        _isFetching ||
+        _isKeyboardAnimating) {
+      return;
+    }
 
     // ✅ جلوگیری از عملیات سنگین در حین انیمیشن کیبورد
     if (fromKeyboard) {
       _isKeyboardAnimating = true;
-      await Future.delayed(const Duration(milliseconds: 300)); // صبر برای پایان انیمیشن
+      await Future.delayed(
+          const Duration(milliseconds: 300)); // صبر برای پایان انیمیشن
       _isKeyboardAnimating = false;
     }
 
@@ -408,7 +419,8 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
       return;
     }
 
-    print('📡 Setting up reaction subscription for conversation: ${params.conversationId}');
+    print(
+        '📡 Setting up reaction subscription for conversation: ${params.conversationId}');
 
     try {
       final reactionService = MessageReactionService();
@@ -443,7 +455,8 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
             // ✅ مقایسه دقیق‌تر reactions
             if (!_areReactionsEqual(newReactions, message.reactions)) {
               hasChanges = true;
-              currentMessages[message.id] = message.copyWith(reactions: newReactions);
+              currentMessages[message.id] =
+                  message.copyWith(reactions: newReactions);
               print('📝 Updated reactions for message: ${message.id}');
             }
           }
@@ -512,7 +525,8 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
 
   void _performUpdate(List<MessageModel> newMessages, String source) {
     _lastUpdateTime = DateTime.now();
-    print('🔄 Applying throttled update from $source (${newMessages.length} messages)');
+    print(
+        '🔄 Applying throttled update from $source (${newMessages.length} messages)');
     _updateMessages(newMessages);
   }
 
@@ -552,8 +566,11 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
       if (existingMessage == null ||
           msg.createdAt.isAfter(existingMessage.createdAt)) {
         // ✅ حفظ reaction‌های موجود اگر پیام جدید reaction ندارد
-        if (msg.reactions.isEmpty && existingMessage != null && existingMessage.reactions.isNotEmpty) {
-          currentMessages[msg.id] = msg.copyWith(reactions: existingMessage.reactions);
+        if (msg.reactions.isEmpty &&
+            existingMessage != null &&
+            existingMessage.reactions.isNotEmpty) {
+          currentMessages[msg.id] =
+              msg.copyWith(reactions: existingMessage.reactions);
           print('📝 Added/Updated message: ${msg.id} (preserved reactions)');
         } else {
           currentMessages[msg.id] = msg;
@@ -561,8 +578,10 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
         }
       } else {
         // ✅ اگر پیام موجود است و جدیدتر نیست، reaction‌های جدید را اعمال کن
-        if (msg.reactions.isNotEmpty && existingMessage.reactions != msg.reactions) {
-          currentMessages[msg.id] = existingMessage.copyWith(reactions: msg.reactions);
+        if (msg.reactions.isNotEmpty &&
+            existingMessage.reactions != msg.reactions) {
+          currentMessages[msg.id] =
+              existingMessage.copyWith(reactions: msg.reactions);
           print('📝 Updated reactions for message: ${msg.id}');
         } else {
           print('⏭️ Skipped duplicate message: ${msg.id}');
@@ -920,15 +939,15 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
 
     final currentMessages =
         Map.fromEntries(state.messages.map((m) => MapEntry(m.id, m)));
-    
+
     if (currentMessages.containsKey(updatedMessage.id)) {
       currentMessages[updatedMessage.id] = updatedMessage;
-      
+
       final sortedMessages = currentMessages.values.toList()
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      
+
       state = state.copyWith(messages: sortedMessages);
-      
+
       // به‌روزرسانی کش
       scheduleMicrotask(() async {
         try {
@@ -952,10 +971,10 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
     _reactionSubscription?.cancel(); // ✅ لغو reaction subscription
     _retryService.dispose();
     _deletionService.dispose();
-    
+
     // پاک کردن از memory cache هنگام dispose (اختیاری - می‌توانید نگه دارید برای navigation سریع‌تر)
     print('🗑️ Disposing ChatScreenNotifier');
-    
+
     super.dispose();
   }
 

@@ -310,8 +310,8 @@ class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
     );
 
     final bubbleDecoration = BoxDecoration(
-      gradient: widget.isMe ? theme.myBubbleGradient : null,
-      color: widget.isMe ? null : theme.otherBubbleColor,
+      gradient: null, // غیرفعال کردن gradient برای رنگ یکنواخت
+      color: widget.isMe ? theme.myBubbleColor : theme.otherBubbleColor,
       borderRadius: borderRadius,
       boxShadow: [
         if (widget.isMe && theme.myBubbleShadow != null)
@@ -708,8 +708,8 @@ class _AnimatedMessageBubbleState extends State<AnimatedMessageBubble>
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 4,
+                color: Colors.black.withOpacity(0.02),
+                blurRadius: 2,
                 offset: const Offset(0, 1),
               ),
             ],

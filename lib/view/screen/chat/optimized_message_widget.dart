@@ -53,6 +53,7 @@ class _OptimizedMessageWidgetState extends State<OptimizedMessageWidget>
   late final bool _isAudioAttachment;
   late final bool _isImageOnly;
   late final bool _isTemp;
+  late final bool _isLightMode;
   late final Color _bubbleColor;
   late final Color _textColor;
   late final Color _timeColor;
@@ -106,7 +107,8 @@ class _OptimizedMessageWidgetState extends State<OptimizedMessageWidget>
     final message = widget.message;
     final context = this.context;
     final theme = Theme.of(context);
-    final isLightMode = theme.brightness == Brightness.light;
+    _isLightMode = theme.brightness == Brightness.light;
+    final isLightMode = _isLightMode;
 
     _isImageAttachment = message.attachmentUrl != null &&
         message.attachmentUrl!.isNotEmpty &&
@@ -119,16 +121,20 @@ class _OptimizedMessageWidgetState extends State<OptimizedMessageWidget>
     _isImageOnly = _isImageAttachment && message.content.isEmpty;
     _isTemp = !message.isSent && message.id.startsWith('temp_');
 
-    // Colors
+    // Colors - رنگ‌های جدید: سبز فیروزه‌ای برای پیام‌های فرستنده
     _bubbleColor = widget.isMe
-        ? (isLightMode ? const Color(0xFF323232) : const Color(0xFF2A2A2A))
-        : (isLightMode ? Colors.white : Colors.grey.shade800);
+        ? (isLightMode 
+            ? const Color(0xFFF5F5F5)  // خاکستری روشن برای تم روشن
+            : const Color(0xFF00897B)) // سبز فیروزه‌ای تیره‌تر برای تم تاریک
+        : (isLightMode 
+            ? Colors.white              // سفید برای گیرنده در تم روشن
+            : const Color(0xFF2A2A2A)); // خاکستری تیره برای گیرنده در تم تاریک
 
     _textColor = widget.isMe
-        ? Colors.white
+        ? (isLightMode ? Colors.black87 : Colors.white)
         : (isLightMode ? Colors.black87 : Colors.white);
     _timeColor = widget.isMe
-        ? Colors.white70
+        ? (isLightMode ? Colors.black54 : Colors.white70)
         : (isLightMode ? Colors.black54 : Colors.white70);
 
     // Border radius
@@ -289,12 +295,14 @@ class _OptimizedMessageWidgetState extends State<OptimizedMessageWidget>
         right: math.max(8, widget.fontSize * 0.5),
       ),
       decoration: BoxDecoration(
-        color: widget.isMe ? _bubbleColor.withOpacity(0.8) : Colors.grey[100],
+        color: widget.isMe ? _bubbleColor : Colors.grey[100],
         borderRadius:
             BorderRadius.circular(math.max(12, widget.fontSize * 0.7)),
         border: Border.all(
           color:
-              widget.isMe ? Colors.white.withOpacity(0.2) : Colors.grey[300]!,
+              widget.isMe 
+                  ? (_isLightMode ? Colors.black.withOpacity(0.1) : Colors.white.withOpacity(0.2))
+                  : Colors.grey[300]!,
           width: 1,
         ),
       ),
@@ -305,14 +313,18 @@ class _OptimizedMessageWidgetState extends State<OptimizedMessageWidget>
             children: [
               Icon(Icons.reply,
                   size: 14,
-                  color: widget.isMe ? Colors.white70 : Colors.black45),
+                  color: widget.isMe 
+                      ? (_isLightMode ? Colors.black54 : Colors.white70)
+                      : Colors.black45),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   widget.message.replyToSenderName ?? 'کاربر',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: widget.isMe ? Colors.white : Colors.black87,
+                    color: widget.isMe 
+                        ? (_isLightMode ? Colors.black87 : Colors.white)
+                        : Colors.black87,
                     fontSize: 12,
                   ),
                   overflow: TextOverflow.ellipsis,
@@ -324,7 +336,9 @@ class _OptimizedMessageWidgetState extends State<OptimizedMessageWidget>
           Text(
             _filterLinksFromText(widget.message.replyToContent ?? ''),
             style: TextStyle(
-              color: widget.isMe ? Colors.white70 : Colors.black87,
+              color: widget.isMe 
+                  ? (_isLightMode ? Colors.black54 : Colors.white70)
+                  : Colors.black87,
               fontSize: 12,
             ),
             maxLines: 2,

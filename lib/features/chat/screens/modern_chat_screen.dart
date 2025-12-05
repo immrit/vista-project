@@ -13,6 +13,7 @@
 //
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -26,10 +27,13 @@ import '../theme/chat_theme.dart';
 import '../widgets/enhanced_chat_background.dart';
 import '../widgets/telegram_reaction_picker.dart';
 import '../widgets/retry_indicator_widget.dart' show TelegramConnectionBanner;
-import '../widgets/animated_message_bubble.dart';
+import '../widgets/improved_animated_message_bubble.dart';
 import '../widgets/animated_chat_input.dart';
 import '../widgets/animated_typing_indicator.dart';
-import '../widgets/date_divider.dart';
+import '../widgets/improved_date_divider.dart';
+import '../widgets/improved_floating_date_header.dart';
+import '../widgets/enhanced_post_message_bubble.dart';
+import '../../../utils/compat_extensions.dart';
 
 // ✅ Providers
 import '../../../provider/chat_provider.dart'
@@ -41,7 +45,6 @@ import '../widgets/chat_attachment_sheet.dart';
 import '../widgets/message_search_bar.dart';
 import '../widgets/edit_message_dialog.dart';
 import '../widgets/forward_message_sheet.dart';
-import '../widgets/floating_date_header.dart';
 import '../widgets/unread_messages_divider.dart';
 import '../widgets/online_status_indicator.dart';
 import '../services/chat_attachment_service.dart';
@@ -499,75 +502,65 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           blurIntensity: 3.0,
           child: Scaffold(
             backgroundColor: Colors.transparent,
-            extendBodyBehindAppBar: true,
+            extendBodyBehindAppBar: false,
             appBar: _isSearchMode ? null : _buildAppBar(theme),
-            body: SafeArea(
-              top: false,
-              child: Column(
-                children: [
-                  // Search bar یا Spacer برای AppBar
-                  if (_isSearchMode)
-                    SafeArea(
-                      bottom: false,
-                      child: MessageSearchBar(
-                        conversationId: widget.args.conversationId,
-                        onClose: () => setState(() {
-                          _isSearchMode = false;
-                          _highlightedMessageId = null;
-                        }),
-                        onResultSelected: (messageId) {
-                          setState(() => _highlightedMessageId = messageId);
-                          _scrollToMessage(messageId);
-                        },
-                      ),
-                    )
-                  else
-                    SizedBox(
-                        height: MediaQuery.of(context).padding.top +
-                            kToolbarHeight),
-
-                  // بنر مسدودیت
-                  if (_isCurrentUserBlocked || _isOtherUserBlocked)
-                    _buildBlockedBanner(theme),
-
-                  // بنر اتصال
-                  TelegramConnectionBanner(
-                    isConnected: true, // TODO: اتصال به network state
-                    onRetry: () {
-                      // TODO: retry connection
+            body: Column(
+              children: [
+                // Search bar
+                if (_isSearchMode)
+                  MessageSearchBar(
+                    conversationId: widget.args.conversationId,
+                    onClose: () => setState(() {
+                      _isSearchMode = false;
+                      _highlightedMessageId = null;
+                    }),
+                    onResultSelected: (messageId) {
+                      setState(() => _highlightedMessageId = messageId);
+                      _scrollToMessage(messageId);
                     },
                   ),
 
-                  // لیست پیام‌ها
-                  Expanded(
-                    child: Stack(
-                      children: [
-                        // پیام‌ها با تاریخ شناور
-                        FloatingDateHeader(
-                          currentDate: _currentVisibleDate,
-                          isScrolling: _isScrolling,
-                          child: _buildMessageList(
-                              messagesAsync, paginationState, theme),
-                        ),
+                // بنر مسدودیت
+                if (_isCurrentUserBlocked || _isOtherUserBlocked)
+                  _buildBlockedBanner(theme),
 
-                        // دکمه Scroll to Bottom
-                        if (_showScrollToBottom)
-                          _buildScrollToBottomButton(theme),
-                      ],
-                    ),
-                  ),
+                // بنر اتصال
+                TelegramConnectionBanner(
+                  isConnected: true, // TODO: اتصال به network state
+                  onRetry: () {
+                    // TODO: retry connection
+                  },
+                ),
 
-                  // Input area
-                  if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
-                    AnimatedPadding(
-                      duration: Duration.zero,
-                      padding: EdgeInsets.only(
-                        bottom: MediaQuery.of(context).viewInsets.bottom,
+                // لیست پیام‌ها
+                Expanded(
+                  child: Stack(
+                    children: [
+                      // پیام‌ها با تاریخ شناور
+                      ImprovedFloatingDateHeader(
+                        currentDate: _currentVisibleDate,
+                        isScrolling: _isScrolling,
+                        child: _buildMessageList(
+                            messagesAsync, paginationState, theme),
                       ),
-                      child: _buildInputArea(theme),
+
+                      // دکمه Scroll to Bottom
+                      if (_showScrollToBottom)
+                        _buildScrollToBottomButton(theme),
+                    ],
+                  ),
+                ),
+
+                // Input area
+                if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
+                  AnimatedPadding(
+                    duration: Duration.zero,
+                    padding: EdgeInsets.only(
+                      bottom: MediaQuery.of(context).viewInsets.bottom,
                     ),
-                ],
-              ),
+                    child: _buildInputArea(theme),
+                  ),
+              ],
             ),
           ),
         ),
@@ -639,7 +632,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         onPressed: _exitSelectionMode,
       ),
       title: Text(
-        '${_selectedMessageIds.length} انتخاب شده',
+        '${_selectedMessageIds.length} انتخاب شده'.toPersianDigit(),
         style: const TextStyle(
           color: Colors.white,
           fontSize: 18,
@@ -729,7 +722,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
         Clipboard.setData(ClipboardData(text: selectedMessages));
         if (mounted) {
-          _showSuccessSnackBar('${_selectedMessageIds.length} پیام کپی شد');
+          _showSuccessSnackBar(
+              '${_selectedMessageIds.length} پیام کپی شد'.toPersianDigit());
           _exitSelectionMode();
         }
       });
@@ -744,7 +738,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('حذف پیام‌ها'),
-        content: Text('آیا از حذف ${_selectedMessageIds.length} پیام مطمئنید؟'),
+        content: Text('آیا از حذف ${_selectedMessageIds.length} پیام مطمئنید؟'
+            .toPersianDigit()),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -779,7 +774,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
 
     if (successCount > 0) {
-      _showSuccessSnackBar('$successCount پیام حذف شد');
+      _showSuccessSnackBar('$successCount پیام حذف شد'.toPersianDigit());
     }
 
     _exitSelectionMode();
@@ -1145,12 +1140,17 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               index,
             );
 
-            // Date Divider - چون لیست reverse هست، پیام قبلی یعنی پیام جدیدتر
-            final previousMessage = index > 0 ? messages[index - 1] : null;
-            final showDateDivider = shouldShowDateDivider(
-              message.createdAt,
-              previousMessage?.createdAt,
-            );
+            // Date Divider - چون لیست reverse هست:
+            // - index 0 = جدیدترین پیام (پایین صفحه) - نباید Date Divider بعدش باشه
+            // - index آخر = قدیمی‌ترین پیام (بالای صفحه) - می‌تونه Date Divider بعدش باشه
+            // Date Divider باید بین دو پیام نمایش داده بشه، نه بعد از آخرین پیام
+            final hasNextMessage = index < messages.length - 1;
+            final nextMessage = hasNextMessage ? messages[index + 1] : null;
+            final showDateDivider = hasNextMessage &&
+                shouldShowDateDivider(
+                  message.createdAt,
+                  nextMessage?.createdAt,
+                );
 
             return Column(
               mainAxisSize: MainAxisSize.min,
@@ -1211,32 +1211,34 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                   : Colors.transparent,
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: AnimatedMessageBubble(
-                          key: ValueKey(message.id),
-                          messageId: message.id,
-                          content: message.content,
-                          isMe: isMe,
-                          time: message.createdAt,
-                          status: _getMessageStatus(message),
-                          replyToContent: message.replyToContent,
-                          replyToSenderName: message.replyToSenderName,
-                          replyToMessageId: message.replyToMessageId,
-                          onReplyTap: message.replyToMessageId != null
-                              ? () => _scrollToMessageById(
-                                  message.replyToMessageId!, messages)
-                              : null,
-                          reactions: _convertToOldReactionFormat(
-                              _messageReactions[message.id] ?? []),
-                          onTap: () => _onMessageTap(message),
-                          onLongPress: () => _onMessageLongPress(message),
-                          onDoubleTap: () => _onMessageDoubleTap(message),
-                          onAddReaction: (emoji) =>
-                              _onAddReaction(message, emoji),
-                          animate: index < 10,
-                          index: index,
-                          isFirstInGroup: isFirstInGroup,
-                          isLastInGroup: isLastInGroup,
-                        ),
+                        child: message.attachmentType == 'post'
+                            ? _buildPostMessageBubble(message, isMe)
+                            : ImprovedAnimatedMessageBubble(
+                                key: ValueKey(message.id),
+                                messageId: message.id,
+                                content: message.content,
+                                isMe: isMe,
+                                time: message.createdAt,
+                                status: _getMessageStatus(message),
+                                replyToContent: message.replyToContent,
+                                replyToSenderName: message.replyToSenderName,
+                                replyToMessageId: message.replyToMessageId,
+                                onReplyTap: message.replyToMessageId != null
+                                    ? () => _scrollToMessageById(
+                                        message.replyToMessageId!, messages)
+                                    : null,
+                                reactions: _convertToOldReactionFormat(
+                                    _messageReactions[message.id] ?? []),
+                                onTap: () => _onMessageTap(message),
+                                onLongPress: () => _onMessageLongPress(message),
+                                onDoubleTap: () => _onMessageDoubleTap(message),
+                                onAddReaction: (emoji) =>
+                                    _onAddReaction(message, emoji),
+                                animate: index < 10,
+                                index: index,
+                                isFirstInGroup: isFirstInGroup,
+                                isLastInGroup: isLastInGroup,
+                              ),
                       ),
                     ),
                   ],
@@ -1264,7 +1266,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   ),
 
                 // Date Divider (بعد از پیام چون لیست reverse هست)
-                if (showDateDivider) DateDivider(date: message.createdAt),
+                if (showDateDivider)
+                  ImprovedDateDivider(date: message.createdAt),
 
                 // Unread Divider
                 if (_shouldShowUnreadDivider(message, index, messages))
@@ -2221,12 +2224,92 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       ),
     );
   }
-}
 
-// Helper function for date divider
-bool shouldShowDateDivider(DateTime current, DateTime? previous) {
-  if (previous == null) return true;
-  return current.year != previous.year ||
-      current.month != previous.month ||
-      current.day != previous.day;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📱 POST MESSAGE BUBBLE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// ساخت ویجت پست برای پیام‌های پست
+  Widget _buildPostMessageBubble(MessageModel message, bool isMe) {
+    try {
+      // Parse اطلاعات پست از content (JSON)
+      final postData = message.content.isNotEmpty
+          ? (message.content.startsWith('{')
+              ? jsonDecode(message.content) as Map<String, dynamic>
+              : null)
+          : null;
+
+      if (postData == null) {
+        // اگر parse نشد، از ImprovedAnimatedMessageBubble استفاده کن
+        return ImprovedAnimatedMessageBubble(
+          key: ValueKey(message.id),
+          messageId: message.id,
+          content: message.content,
+          isMe: isMe,
+          time: message.createdAt,
+          status: _getMessageStatus(message),
+          animate: false,
+          index: 0,
+          isFirstInGroup: true,
+          isLastInGroup: true,
+        );
+      }
+
+      // Extract اطلاعات پست
+      final postId = postData['postId'] as String? ?? message.id;
+      final authorName = postData['authorName'] as String? ??
+          (isMe ? 'شما' : widget.args.otherUserName);
+      final authorAvatar = postData['authorAvatar'] as String?;
+      final authorUsername = postData['authorUsername'] as String?;
+      final postContent = postData['content'] as String? ?? '';
+      final mediaUrls = postData['mediaUrls'] != null
+          ? List<String>.from(postData['mediaUrls'] as List)
+          : null;
+      final likesCount = postData['likesCount'] as int? ?? 0;
+      final commentsCount = postData['commentsCount'] as int? ?? 0;
+      final postCreatedAt = postData['createdAt'] != null
+          ? DateTime.parse(postData['createdAt'] as String)
+          : message.createdAt;
+
+      return EnhancedPostMessageBubble(
+        postId: postId,
+        authorName: authorName,
+        authorAvatar: authorAvatar,
+        authorUsername: authorUsername,
+        content: postContent,
+        mediaUrls: mediaUrls,
+        likesCount: likesCount,
+        commentsCount: commentsCount,
+        createdAt: postCreatedAt,
+        sentAt: message.createdAt,
+        isMine: isMe,
+        onTap: () => _onMessageTap(message),
+        onShare: () async {
+          final result = await ForwardMessageSheet.show(
+            context,
+            messageIds: [message.id],
+          );
+          if (result == true) {
+            _showSuccessSnackBar('پست ارسال شد');
+          }
+        },
+        onLongPress: () => _onMessageLongPress(message),
+      );
+    } catch (e) {
+      debugPrint('Error parsing post message: $e');
+      // در صورت خطا، از ImprovedAnimatedMessageBubble استفاده کن
+      return ImprovedAnimatedMessageBubble(
+        key: ValueKey(message.id),
+        messageId: message.id,
+        content: message.content,
+        isMe: isMe,
+        time: message.createdAt,
+        status: _getMessageStatus(message),
+        animate: false,
+        index: 0,
+        isFirstInGroup: true,
+        isLastInGroup: true,
+      );
+    }
+  }
 }

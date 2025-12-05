@@ -183,16 +183,9 @@ class ChatTheme {
       dividerColor: const Color(0xFFE2E8F0),
       
       // حباب پیام من - گرادینت زیبا
-      myBubbleColor: primary,
-      myBubbleGradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          primary,
-          primary.withBlue((primary.blue + 30).clamp(0, 255)),
-        ],
-      ),
-      myBubbleTextColor: Colors.white,
+      myBubbleColor: const Color(0xFFF5F5F5),
+      myBubbleGradient: null, // غیرفعال کردن گرادینت برای رنگ یکنواخت
+      myBubbleTextColor: Colors.black87, // تغییر رنگ متن به مشکی برای خوانایی بهتر
       
       // حباب پیام دیگران
       otherBubbleColor: Colors.white,
@@ -215,14 +208,14 @@ class ChatTheme {
       
       // سایه‌ها
       myBubbleShadow: BoxShadow(
-        color: primary.withOpacity(0.25),
-        blurRadius: 8,
-        offset: const Offset(0, 2),
+        color: primary.withOpacity(0.08),
+        blurRadius: 3,
+        offset: const Offset(0, 1),
       ),
       otherBubbleShadow: BoxShadow(
-        color: Colors.black.withOpacity(0.06),
-        blurRadius: 8,
-        offset: const Offset(0, 2),
+        color: Colors.black.withOpacity(0.03),
+        blurRadius: 3,
+        offset: const Offset(0, 1),
       ),
       inputShadow: BoxShadow(
         color: Colors.black.withOpacity(0.05),
@@ -247,22 +240,14 @@ class ChatTheme {
       secondaryTextColor: const Color(0xFF94A3B8),
       dividerColor: const Color(0xFF334155),
       
-      // حباب پیام من - گرادینت بنفش زیبا
-      myBubbleColor: primary,
-      myBubbleGradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          primary,
-          primary.withBlue((primary.blue - 20).clamp(0, 255)),
-        ],
-      ),
+      // حباب پیام من
+      myBubbleColor: const Color(0xFF1E1E1E),
+      myBubbleGradient: null, // غیرفعال کردن gradient
       myBubbleTextColor: Colors.white,
       
-      // حباب پیام دیگران - مثل تلگرام
-      // رنگ آبی-خاکستری نرم که تو چشم نزنه
-      otherBubbleColor: const Color(0xFF1E2A36), // آبی تیره ملایم مثل تلگرام
-      otherBubbleTextColor: const Color(0xFFE8ECF0), // سفید مایل به خاکستری
+      // حباب پیام دیگران
+      otherBubbleColor: const Color(0xFF1E1E1E),
+      otherBubbleTextColor: Colors.white,
       
       // وضعیت‌ها
       onlineColor: const Color(0xFF4ADE80),
@@ -281,14 +266,14 @@ class ChatTheme {
       
       // سایه‌ها
       myBubbleShadow: BoxShadow(
-        color: primary.withOpacity(0.2),
-        blurRadius: 10,
-        offset: const Offset(0, 2),
+        color: primary.withOpacity(0.1),
+        blurRadius: 4,
+        offset: const Offset(0, 1),
       ),
       otherBubbleShadow: BoxShadow(
-        color: Colors.black.withOpacity(0.3),
-        blurRadius: 8,
-        offset: const Offset(0, 2),
+        color: Colors.black.withOpacity(0.15),
+        blurRadius: 4,
+        offset: const Offset(0, 1),
       ),
       inputShadow: BoxShadow(
         color: Colors.black.withOpacity(0.2),

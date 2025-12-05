@@ -457,11 +457,14 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
                     maxLines: 5,
                     keyboardType: TextInputType.multiline,
                     textInputAction: TextInputAction.newline,
+                    // ✅ بهینه‌سازی‌های performance برای کیبورد:
                     enableInteractiveSelection: true,
-                    enableSuggestions: true,
-                    autocorrect: true,
-                    smartDashesType: SmartDashesType.enabled,
-                    smartQuotesType: SmartQuotesType.enabled,
+                    enableSuggestions: false, // غیرفعال برای عملکرد بهتر
+                    autocorrect: false, // غیرفعال برای عملکرد بهتر
+                    smartDashesType: SmartDashesType.disabled,
+                    smartQuotesType: SmartQuotesType.disabled,
+                    // ✅ کاهش rebuilds
+                    buildCounter: null,
                     onTap: () {
                       if (!_isKeyboardReady) {
                         print('⌨️ Keyboard not ready yet - delaying');

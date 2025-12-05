@@ -132,7 +132,11 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       if (result != null) {
         if (kIsWeb) {
           // ------------- نسخه وب: بدون برش، مستقیم به پیش‌نمایش -------------
-          final videoBytes = result.files.single.bytes!;
+          final videoBytes = result.files.single.bytes;
+          if (videoBytes == null) {
+            _showError('خطا در خواندن فایل ویدیو');
+            return;
+          }
           final videoName = result.files.single.name;
 
           setState(() {
@@ -176,7 +180,12 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
           _showUserBadgeInfo(currentUser);
         } else {
           // ------------- نسخه موبایل (اندروید): استفاده از video_trimmer -------------
-          final originalFile = File(result.files.single.path!);
+          final filePath = result.files.single.path;
+          if (filePath == null) {
+            _showError('خطا در دریافت مسیر فایل ویدیو');
+            return;
+          }
+          final originalFile = File(filePath);
 
           if (mounted) {
             final String? trimmedPath = await Navigator.push<String?>(
@@ -407,10 +416,15 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     );
 
     if (result != null) {
-      setState(() {
-        _selectedMusic = File(result.files.single.path!);
-        _musicFileName = result.files.single.name;
-      });
+      final filePath = result.files.single.path;
+      if (filePath != null) {
+        setState(() {
+          _selectedMusic = File(filePath);
+          _musicFileName = result.files.single.name;
+        });
+      } else {
+        _showError('خطا در دریافت مسیر فایل موزیک');
+      }
     }
   }
 
@@ -617,9 +631,16 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
             await PostImageUploadService.uploadMusicFile(_selectedMusic!);
       }
 
+      // بررسی احراز هویت کاربر
+      final currentUser = supabase.auth.currentUser;
+      if (currentUser == null) {
+        _showSnackBar('لطفاً ابتدا وارد حساب کاربری خود شوید');
+        return;
+      }
+
       // ایجاد پست
       final postData = {
-        'user_id': supabase.auth.currentUser!.id,
+        'user_id': currentUser.id,
         'content': content,
         if (imageUrl != null) 'image_url': imageUrl,
         if (videoUrl != null) 'video_url': videoUrl,
@@ -887,7 +908,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
             CircleAvatar(
               radius: 20,
               backgroundImage: userData.when(
-                data: (data) => data!['avatar_url'] != null
+                data: (data) => data != null && data['avatar_url'] != null
                     ? NetworkImage(data['avatar_url'])
                     : const AssetImage(
                             'lib/view/util/images/default-avatar.jpg')
@@ -913,7 +934,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                         _buildVerificationBadge(data),
 
                         Text(
-                          data!['username'] ?? 'بدون نام',
+                          data?['username'] ?? 'بدون نام',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             color: textColor,

@@ -1,4 +1,73 @@
+// lib/model/message_model.dart
+import 'dart:convert';
 import 'message_reaction_ui.dart';
+
+/// مدل داده‌های پست اشتراک‌گذاری شده
+class SharedPostData {
+  final String postId;
+  final String postContent;
+  final String? postImageUrl;
+  final String? postVideoUrl;
+  final String postAuthorName;
+  final String postAuthorUsername;
+  final String? postAuthorAvatar;
+  final DateTime postCreatedAt;
+  final int likeCount;
+  final int commentCount;
+  final bool isVerified;
+  final String verificationType;
+
+  const SharedPostData({
+    required this.postId,
+    required this.postContent,
+    this.postImageUrl,
+    this.postVideoUrl,
+    required this.postAuthorName,
+    required this.postAuthorUsername,
+    this.postAuthorAvatar,
+    required this.postCreatedAt,
+    this.likeCount = 0,
+    this.commentCount = 0,
+    this.isVerified = false,
+    this.verificationType = 'none',
+  });
+
+  factory SharedPostData.fromJson(Map<String, dynamic> json) {
+    return SharedPostData(
+      postId: json['post_id'] ?? '',
+      postContent: json['post_content'] ?? '',
+      postImageUrl: json['post_image_url'],
+      postVideoUrl: json['post_video_url'],
+      postAuthorName: json['post_author_name'] ?? '',
+      postAuthorUsername: json['post_author_username'] ?? '',
+      postAuthorAvatar: json['post_author_avatar'],
+      postCreatedAt: json['post_created_at'] != null
+          ? DateTime.parse(json['post_created_at'])
+          : DateTime.now(),
+      likeCount: json['like_count'] ?? 0,
+      commentCount: json['comment_count'] ?? 0,
+      isVerified: json['is_verified'] ?? false,
+      verificationType: json['verification_type'] ?? 'none',
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'post_id': postId,
+      'post_content': postContent,
+      'post_image_url': postImageUrl,
+      'post_video_url': postVideoUrl,
+      'post_author_name': postAuthorName,
+      'post_author_username': postAuthorUsername,
+      'post_author_avatar': postAuthorAvatar,
+      'post_created_at': postCreatedAt.toIso8601String(),
+      'like_count': likeCount,
+      'comment_count': commentCount,
+      'is_verified': isVerified,
+      'verification_type': verificationType,
+    };
+  }
+}
 
 class MessageModel {
   final String id;
@@ -23,7 +92,7 @@ class MessageModel {
   final bool isPending;
   final bool? isFailed;
   final String? localId;
-  final int retryCount; // اضافه کنید
+  final int retryCount;
   final String? errorMessage; // پیام خطای ارسال برای نمایش به کاربر
   final DateTime? lastRetryTime; // آخرین زمان تلاش مجدد
 
@@ -32,6 +101,10 @@ class MessageModel {
 
   // ری‌اکشن‌های پیام - Map از emoji به لیست userId ها
   final Map<String, List<String>> reactions;
+
+  // فیلدهای جدید برای پشتیبانی از Shared Post
+  final String? messageType; // 'text', 'image', 'video', 'voice', 'sharedPost'
+  final SharedPostData? sharedPostData; // داده‌های پست اشتراک‌گذاری شده
 
   // تبدیل reactions به UI model
   List<MessageReactionUI> getReactionsList(String currentUserId) {
@@ -47,12 +120,16 @@ class MessageModel {
 
   bool hasReactions() => reactions.isNotEmpty;
 
+  /// بررسی اینکه آیا پیام یک پست اشتراک‌گذاری شده است
+  bool get isSharedPost =>
+      messageType == 'sharedPost' && sharedPostData != null;
+
   MessageModel({
     required this.id,
     required this.conversationId,
     required this.senderId,
     required this.content,
-    required this.createdAt, // Add this parameter
+    required this.createdAt,
     this.attachmentUrl,
     this.attachmentType,
     this.attachmentFileName,
@@ -70,11 +147,13 @@ class MessageModel {
     this.isPending = false,
     this.isFailed,
     this.localId,
-    this.retryCount = 0, // مقدار پیش‌فرض
+    this.retryCount = 0,
     this.errorMessage,
     this.lastRetryTime,
     this.typingUsers,
     this.reactions = const {},
+    this.messageType,
+    this.sharedPostData,
   });
 
   factory MessageModel.empty() {
@@ -124,13 +203,33 @@ class MessageModel {
     return {};
   }
 
+  // پارس کردن shared post data از JSON
+  static SharedPostData? _parseSharedPostData(dynamic sharedPostJson) {
+    if (sharedPostJson == null) return null;
+
+    try {
+      Map<String, dynamic> data;
+
+      if (sharedPostJson is String) {
+        // اگر به صورت JSON string ذخیره شده باشد
+        data = json.decode(sharedPostJson);
+      } else if (sharedPostJson is Map<String, dynamic>) {
+        data = sharedPostJson;
+      } else {
+        return null;
+      }
+
+      return SharedPostData.fromJson(data);
+    } catch (e) {
+      print('خطا در پارس کردن shared post data: $e');
+      return null;
+    }
+  }
+
   factory MessageModel.fromJson(Map<String, dynamic> json,
       {required String currentUserId}) {
-    String conversationId = json['conversation_id'] ??
-        json['conversations_id'] ??
-        ''; // Check this too!
-
-    // Note: waveform_data is no longer used in messages
+    String conversationId =
+        json['conversation_id'] ?? json['conversations_id'] ?? '';
 
     return MessageModel(
       id: json['id'],
@@ -145,6 +244,7 @@ class MessageModel {
       attachmentUrl: json['attachment_url'],
       attachmentType: json['attachment_type'],
       attachmentFileName: json['attachment_file_name'] as String?,
+      duration: json['duration'] as int?,
       senderName: json['sender_name'],
       senderAvatar: json['sender_avatar'],
       isMe: json['sender_id'] == currentUserId,
@@ -154,6 +254,7 @@ class MessageModel {
       localId: json['local_id'] as String?,
       retryCount: json['retry_count'] as int? ?? 0,
       isPending: json['is_pending'] as bool? ?? false,
+      isFailed: json['is_failed'] as bool?,
       errorMessage: json['error_message'] as String?,
       lastRetryTime: json['last_retry_time'] != null
           ? DateTime.parse(json['last_retry_time'] as String)
@@ -162,6 +263,8 @@ class MessageModel {
           ? Map<String, DateTime>.from(json['typing_users'])
           : null,
       reactions: _parseReactions(json['reactions']),
+      messageType: json['message_type'] as String?,
+      sharedPostData: _parseSharedPostData(json['shared_post_data']),
     );
   }
 
@@ -180,16 +283,18 @@ class MessageModel {
     String? senderName,
     String? senderAvatar,
     DateTime? createdAt,
-    isRead = false,
-    isSent = true,
+    bool isRead = false,
+    bool isSent = true,
     int retryCount = 0,
+    String? messageType,
+    SharedPostData? sharedPostData,
   }) {
     return MessageModel(
       id: tempId,
       conversationId: conversationId,
       senderId: senderId,
       content: content,
-      createdAt: DateTime.now(),
+      createdAt: createdAt ?? DateTime.now(),
       attachmentUrl: attachmentUrl,
       attachmentType: attachmentType,
       attachmentFileName: attachmentFileName,
@@ -205,6 +310,8 @@ class MessageModel {
       replyToContent: replyToContent,
       replyToSenderName: replyToSenderName,
       retryCount: retryCount,
+      messageType: messageType,
+      sharedPostData: sharedPostData,
     );
   }
 
@@ -217,6 +324,7 @@ class MessageModel {
     String? attachmentUrl,
     String? attachmentType,
     String? attachmentFileName,
+    int? duration,
     bool? isRead,
     bool? isSent,
     bool? isDelivered,
@@ -230,11 +338,13 @@ class MessageModel {
     bool? isPending,
     bool? isFailed,
     String? localId,
-    int? retryCount, // اضافه کنید
+    int? retryCount,
     String? errorMessage,
     DateTime? lastRetryTime,
     Map<String, DateTime>? typingUsers,
     Map<String, List<String>>? reactions,
+    String? messageType,
+    SharedPostData? sharedPostData,
   }) {
     return MessageModel(
       id: id ?? this.id,
@@ -245,6 +355,7 @@ class MessageModel {
       attachmentUrl: attachmentUrl ?? this.attachmentUrl,
       attachmentType: attachmentType ?? this.attachmentType,
       attachmentFileName: attachmentFileName ?? this.attachmentFileName,
+      duration: duration ?? this.duration,
       isRead: isRead ?? this.isRead,
       isSent: isSent ?? this.isSent,
       isDelivered: isDelivered ?? this.isDelivered,
@@ -263,6 +374,8 @@ class MessageModel {
       lastRetryTime: lastRetryTime ?? this.lastRetryTime,
       typingUsers: typingUsers ?? this.typingUsers,
       reactions: reactions ?? this.reactions,
+      messageType: messageType ?? this.messageType,
+      sharedPostData: sharedPostData ?? this.sharedPostData,
     );
   }
 
@@ -276,6 +389,7 @@ class MessageModel {
       'attachment_url': attachmentUrl,
       'attachment_type': attachmentType,
       'attachment_file_name': attachmentFileName,
+      'duration': duration,
       'is_read': isRead,
       'is_sent': isSent,
       'is_delivered': isDelivered,
@@ -286,12 +400,16 @@ class MessageModel {
       'reply_to_content': replyToContent,
       'reply_to_sender_name': replyToSenderName,
       'is_pending': isPending,
+      'is_failed': isFailed,
       'local_id': localId,
       'retry_count': retryCount,
       'error_message': errorMessage,
       'last_retry_time': lastRetryTime?.toIso8601String(),
       'typing_users': typingUsers,
       'reactions': reactions,
+      'message_type': messageType,
+      'shared_post_data':
+          sharedPostData != null ? json.encode(sharedPostData!.toJson()) : null,
     };
   }
 }

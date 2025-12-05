@@ -106,25 +106,31 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
 
   void _nextStep() {
     if (_currentStep < 1) {
+      if (!mounted) return;
       setState(() {
         _currentStep++;
       });
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOutCubic,
-      );
+      if (_pageController.hasClients) {
+        _pageController.nextPage(
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOutCubic,
+        );
+      }
     }
   }
 
   void _previousStep() {
     if (_currentStep > 0) {
+      if (!mounted) return;
       setState(() {
         _currentStep--;
       });
-      _pageController.previousPage(
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOutCubic,
-      );
+      if (_pageController.hasClients) {
+        _pageController.previousPage(
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOutCubic,
+        );
+      }
     }
   }
 
@@ -134,6 +140,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
       return;
     }
 
+    if (!mounted) return;
     setState(() => _isLoading = true);
 
     try {
@@ -156,9 +163,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
             .maybeSingle();
       }
 
-      setState(() {
-        _userExists = userProfile != null;
-      });
+      if (mounted) {
+        setState(() {
+          _userExists = userProfile != null;
+        });
+      }
 
       if (_userExists) {
         // ✅ بررسی محدودیت حساب کاربری قبل از ادامه
@@ -180,24 +189,28 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
             final lockType = lockInfo?['lock_type'] as String?;
 
             // نمایش دیالوگ محدودیت
-            _showAccountLockedDialog(
-              remainingTime: remainingTime,
-              lockReason: lockReason,
-              lockType: lockType,
-            );
+            if (mounted) {
+              _showAccountLockedDialog(
+                remainingTime: remainingTime,
+                lockReason: lockReason,
+                lockType: lockType,
+              );
+            }
             return; // جلوگیری از ادامه به مرحله بعد
           }
         }
 
-        _showSuccessSnackBar('کاربر یافت شد');
-        _nextStep();
+        if (mounted) {
+          _showSuccessSnackBar('کاربر یافت شد');
+          _nextStep();
+        }
       } else {
-        _showUserNotFoundDialog();
+        if (mounted) _showUserNotFoundDialog();
       }
     } catch (e) {
       _showErrorSnackBar('خطا در بررسی کاربر: ${e.toString()}');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -257,6 +270,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
       }
     }
 
+    if (!mounted) return;
     setState(() => _isLoading = true);
 
     // تعریف متغیرها در scope خارجی برای استفاده در catch block
@@ -423,11 +437,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
         _showErrorSnackBar('خطا در ورود: ${e.toString()}');
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   void _showErrorSnackBar(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -440,6 +455,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
   }
 
   void _showSuccessSnackBar(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -483,6 +499,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
   }
 
   void _showUserNotFoundDialog() {
+    if (!mounted) return;
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -526,6 +543,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
     final minutes = remainingTime.inMinutes;
     final seconds = remainingTime.inSeconds % 60;
 
+    if (!mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -569,6 +587,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
       message += 'لطفاً با پشتیبانی تماس بگیرید.';
     }
 
+    if (!mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false,

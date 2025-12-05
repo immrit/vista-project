@@ -163,7 +163,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     final isLightMode = theme.brightness == Brightness.light;
 
     final outgoingBubbleColor =
-        isLightMode ? const Color(0xFFE9F5FF) : const Color(0xFF3A3A3A);
+        isLightMode ? const Color(0xFFF5F5F5) : const Color(0xFF3A3A3A);
     final incomingBubbleColor =
         isLightMode ? Colors.white : const Color(0xFF2C2C2C);
     final bool isImageOnly = widget.message.attachmentType == 'image' &&
@@ -332,9 +332,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                           ? null
                           : [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.04),
-                                blurRadius: 5,
-                                offset: const Offset(0, 2),
+                                color: Colors.black.withOpacity(0.02),
+                                blurRadius: 2,
+                                offset: const Offset(0, 1),
                               ),
                               if (widget.isHighlighted || widget.isSelected)
                                 BoxShadow(
@@ -1436,6 +1436,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   }
 
   Widget _buildStatusIcon(MessageModel message) {
+    final theme = Theme.of(context);
+    final isLightMode = theme.brightness == Brightness.light;
+    
     if (message.isPending) {
       // Rotating schedule icon برای pending
       return RotationTransition(
@@ -1443,18 +1446,33 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         child: Icon(
           Icons.schedule,
           size: 14,
-          color: Colors.grey.shade500,
+          color: isLightMode ? Colors.grey.shade600 : Colors.grey.shade400,
         ),
       );
     } else if (!message.isSent) {
       // برای پیام‌های ناموفق، دکمه retry نمایش داده می‌شود
       return _buildFailedMessageStatus(message);
     } else if (!message.isDelivered) {
-      return _buildStatusBadge(Icons.done, Colors.grey.shade400, 16);
+      // تیک تک - ارسال شده
+      return _buildStatusBadge(
+        Icons.done, 
+        isLightMode ? Colors.grey.shade700 : Colors.grey.shade300, 
+        16
+      );
     } else if (!message.isSeen) {
-      return _buildStatusBadge(Icons.done_all, Colors.grey.shade400, 16);
+      // تیک دوتایی - تحویل داده شده
+      return _buildStatusBadge(
+        Icons.done_all, 
+        isLightMode ? Colors.grey.shade700 : Colors.grey.shade300, 
+        16
+      );
     } else {
-      return _buildStatusBadge(Icons.done_all, Colors.blue, 16);
+      // تیک دوتایی آبی - خوانده شده
+      return _buildStatusBadge(
+        Icons.done_all, 
+        isLightMode ? Colors.blue.shade700 : Colors.blue.shade400, 
+        16
+      );
     }
   }
 

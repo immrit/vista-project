@@ -187,9 +187,9 @@ class _MediaMessageBubbleState extends State<MediaMessageBubble>
       builder: (context, child) {
         return Container(
           color: (widget.isMe
-                  ? theme.myBubbleGradient?.colors.first
+                  ? theme.myBubbleColor
                   : theme.otherBubbleColor)
-              ?.withOpacity(0.3 + (_pulseController.value * 0.2)),
+              .withOpacity(0.3 + (_pulseController.value * 0.2)),
           child: Center(
             child: Icon(
               widget.mediaType == MediaType.video
@@ -365,7 +365,7 @@ class _MediaMessageBubbleState extends State<MediaMessageBubble>
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: widget.isMe
-            ? theme.myBubbleGradient?.colors.last
+            ? theme.myBubbleColor
             : theme.otherBubbleColor,
         borderRadius: const BorderRadius.vertical(
           bottom: Radius.circular(12),

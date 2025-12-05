@@ -10,7 +10,6 @@
 //
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../../../model/message_model.dart';
@@ -67,7 +66,8 @@ class MessageInfoScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildMessagePreview(BuildContext context, ThemeData theme, bool isDark) {
+  Widget _buildMessagePreview(
+      BuildContext context, ThemeData theme, bool isDark) {
     final isMe = message.senderId == currentUserId;
 
     return Container(
@@ -118,9 +118,8 @@ class MessageInfoScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isMe
-                  ? theme.primaryColor.withOpacity(0.1)
-                  : theme.cardColor,
+              color:
+                  isMe ? theme.primaryColor.withOpacity(0.1) : theme.cardColor,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: theme.dividerColor.withOpacity(0.3),
@@ -191,7 +190,8 @@ class MessageInfoScreen extends StatelessWidget {
               context: context,
               icon: Icons.done_all_rounded,
               label: 'تحویل داده شده',
-              time: message.createdAt.add(const Duration(seconds: 1)), // TODO: Use deliveredAt when available
+              time: message.createdAt.add(const Duration(
+                  seconds: 1)), // TODO: Use deliveredAt when available
               color: Colors.green,
             ),
 
@@ -201,7 +201,8 @@ class MessageInfoScreen extends StatelessWidget {
               context: context,
               icon: Icons.visibility_rounded,
               label: 'خوانده شده',
-              time: message.createdAt.add(const Duration(seconds: 2)), // TODO: Use seenAt when available
+              time: message.createdAt.add(const Duration(
+                  seconds: 2)), // TODO: Use seenAt when available
               color: Colors.purple,
               isLast: true,
             ),
@@ -484,8 +485,7 @@ class MessageInfoScreen extends StatelessWidget {
     final jalali = Jalali.fromDateTime(dateTime);
     final hour = dateTime.hour.toString().padLeft(2, '0');
     final minute = dateTime.minute.toString().padLeft(2, '0');
-    
+
     return '${jalali.formatter.wN} ${jalali.day} ${jalali.formatter.mN} ${jalali.year} - $hour:$minute';
   }
 }
-

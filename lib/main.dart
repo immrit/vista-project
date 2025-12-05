@@ -22,7 +22,6 @@ import 'services/voice_cache_service.dart';
 import 'services/network_status_service.dart';
 import 'services/network_state_service.dart';
 import 'services/retry_queue_service.dart';
-import 'services/session_manager_service.dart';
 import 'services/session_manager_service_v2.dart';
 import 'middleware/session_middleware.dart';
 import 'firebase_options.dart';
@@ -197,7 +196,8 @@ void main() async {
           final currentSession = Supabase.instance.client.auth.currentSession;
           if (currentSession != null) {
             print('🔐 Active session detected: ${currentSession.user.email}');
-            print('📅 Expires at: ${DateTime.fromMillisecondsSinceEpoch((currentSession.expiresAt ?? 0) * 1000)}');
+            print(
+                '📅 Expires at: ${DateTime.fromMillisecondsSinceEpoch((currentSession.expiresAt ?? 0) * 1000)}');
           } else {
             print('ℹ️ No active session - user needs to login');
           }
@@ -236,19 +236,19 @@ void main() async {
 
       // 3.5. Advanced Settings Service (ضروری)
       await AdvancedSettingsService().initialize();
-      
+
       // 3.6. Initialize Animation Controller Service
       await AnimationControllerService().loadSettings();
-      
+
       // 3.7. Initialize Haptic Feedback Service
       await AdvancedHapticFeedbackService().initialize();
-      
+
       // 3.8. Initialize Auto Lock Service
       await AutoLockService().initialize();
-      
+
       // 3.9. Initialize Network State Service (✅ جدید)
       await NetworkStateService().initialize();
-      
+
       // 3.10. Initialize Retry Queue Service (✅ جدید)
       await RetryQueueService().initialize();
 
@@ -440,7 +440,8 @@ class MyApp extends ConsumerStatefulWidget {
 class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   late final AppLinks _appLinks;
   StreamSubscription? _linkSubscription;
-  StreamSubscription<AuthState>? _authSubscription; // ✅ برای مدیریت subscription
+  StreamSubscription<AuthState>?
+      _authSubscription; // ✅ برای مدیریت subscription
   bool _isLoading = false;
   bool _appInitialized = false;
   Timer? _profileCheckTimer;
@@ -453,7 +454,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _linkSubscription?.cancel();
     _profileCheckTimer?.cancel();
-    
+
     // ✅ null کردن callback session termination برای جلوگیری از خطا
     try {
       final sessionManager = SessionManagerServiceV2();
@@ -461,7 +462,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     } catch (e) {
       print('⚠️ Error clearing session termination callback: $e');
     }
-    
+
     super.dispose();
   }
 
@@ -479,7 +480,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       final event = data.event;
       final session = data.session;
       print('🔔 Auth event: $event');
-      
+
       try {
         switch (event) {
           case AuthChangeEvent.initialSession:
@@ -514,7 +515,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         }
       } catch (e) {
         print('❌ Error handling auth state change: $e');
-        
+
         // فقط در صورت خطای واقعی auth (نه network errors)، کاربر رو sign out کنید
         final errorString = e.toString().toLowerCase();
         final isNetworkError = errorString.contains('network') ||
@@ -523,24 +524,25 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
             errorString.contains('socket') ||
             errorString.contains('failed host lookup') ||
             errorString.contains('retryable');
-        
+
         // فقط برای خطاهای واقعی auth که refresh token invalid است
-        if (!isNetworkError && 
+        if (!isNetworkError &&
             (errorString.contains('invalid refresh token') ||
-             errorString.contains('jwt expired') ||
-             errorString.contains('token revoked'))) {
+                errorString.contains('jwt expired') ||
+                errorString.contains('token revoked'))) {
           print('🔴 Critical auth error - signing out user');
-          
+
           if (mounted && navigatorKey.currentContext != null) {
             ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
               const SnackBar(
-                content: Text('جلسه کاری شما منقضی شده است. لطفاً دوباره وارد شوید.'),
+                content: Text(
+                    'جلسه کاری شما منقضی شده است. لطفاً دوباره وارد شوید.'),
                 backgroundColor: Colors.red,
                 duration: Duration(seconds: 5),
               ),
             );
           }
-          
+
           await supabase.auth.signOut();
         } else if (isNetworkError) {
           print('⚠️ Network error detected, keeping session active');
@@ -551,11 +553,11 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
     // ✅ شروع session monitoring
     _startSessionMonitoring();
-    
+
     // ✅ تنظیم callback برای خاتمه نشست
     _setupSessionTerminationHandler();
   }
-  
+
   /// تنظیم handler برای خاتمه نشست (فقط در صورت خاتمه توسط کاربر دیگر)
   void _setupSessionTerminationHandler() {
     final sessionManager = SessionManagerServiceV2();
@@ -563,16 +565,16 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       // استفاده از postFrameCallback برای اطمینان از اینکه در frame بعدی اجرا می‌شود
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        
+
         final context = navigatorKey.currentContext;
         if (context == null || !context.mounted) return;
-        
+
         try {
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (context) => const AuthScreen()),
             (route) => false,
           );
-          
+
           // نمایش SnackBar با تأخیر کوتاه برای اطمینان از اینکه navigation کامل شده
           Future.delayed(const Duration(milliseconds: 300), () {
             final snackContext = navigatorKey.currentContext;
@@ -627,15 +629,16 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final autoLockService = AutoLockService();
     final sessionManager = SessionManagerServiceV2();
-    
+
     if (state == AppLifecycleState.detached) {
       // Cache cleanup is now handled by Sembast automatically
       // ✅ تلاش برای ذخیره نشست قبل از خاتمه کامل اپ
       sessionManager.onAppPaused();
-    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
       // App به background رفت - زمان آخرین فعالیت را ثبت کن
       autoLockService.recordUserActivity();
-      
+
       // ✅ اطلاع‌رسانی به SessionManager V2 که اپ به پس‌زمینه رفت (غیرمسدودکننده)
       sessionManager.onAppPaused().catchError((e) {
         print('⚠️ Error in session pause handling: $e');
@@ -644,12 +647,12 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       // App به foreground برگشت - بررسی قفل
       autoLockService.recordUserActivity();
       autoLockService.refreshSettings();
-      
+
       // ✅ اطلاع‌رسانی به SessionManager V2 که اپ برگشت (غیرمسدودکننده)
       sessionManager.onAppResumed().catchError((e) {
         print('⚠️ Error in session resume handling: $e');
       });
-      
+
       Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted) {
           // App resumed
@@ -752,7 +755,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         'username': username,
         'full_name': fullName,
       });
-      
+
       print('✅ FCM Token با موفقیت در سوپابیس ذخیره شد برای کاربر: $userId');
     } catch (e) {
       print('❌ خطا در ذخیره FCM Token: $e');
@@ -763,18 +766,18 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   // ✅ توابع کمکی برای مدیریت sign in/out
   Future<void> _handleUserSignIn(Session? session) async {
     if (session == null) return;
-    
+
     // آپدیت موقعیت و IP در پس‌زمینه (غیرمسدودکننده)
     final sessionManager = SessionManagerServiceV2();
     sessionManager.updateLocationAndIP();
     debugPrint('🔐 Processing user sign-in');
-    
+
     // ثبت نشست در LoginScreen انجام می‌شود - اینجا ثبت نمی‌کنیم
-    
+
     // به‌روزرسانی وضعیت آنلاین کاربر
     final chatService = ChatService();
     chatService.updateUserOnlineStatus();
-    
+
     // کش کردن پروفایل و پست‌ها
     try {
       final uid = session.user.id;
@@ -782,14 +785,14 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     } catch (e) {
       print('⚠️ Prefetch profile/posts on sign-in failed: $e');
     }
-    
+
     // تنظیم FCM Token
     await _setupFCMTokenForUser();
   }
 
   Future<void> _handleUserSignOut() async {
     debugPrint('🚪 Processing user sign-out');
-    
+
     // پاک کردن cache‌ها
     try {
       // ProfileCacheService به صورت خودکار cache را مدیریت می‌کند
@@ -798,7 +801,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     } catch (e) {
       print('⚠️ Error clearing caches: $e');
     }
-    
+
     // هدایت به صفحه ورود
     if (mounted && navigatorKey.currentContext != null) {
       Navigator.of(navigatorKey.currentContext!).pushNamedAndRemoveUntil(
@@ -850,14 +853,16 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       (timer) async {
         try {
           final session = supabase.auth.currentSession;
-          
+
           if (session == null) {
             print('⚠️ No active session found during check');
             // هدایت به صفحه ورود فقط اگر کاربر در صفحه اصلی باشد
-            final currentRoute = ModalRoute.of(navigatorKey.currentContext!)?.settings.name;
+            final currentRoute =
+                ModalRoute.of(navigatorKey.currentContext!)?.settings.name;
             if (currentRoute != '/auth' && currentRoute != '/onboarding') {
               if (mounted) {
-                Navigator.of(navigatorKey.currentContext!).pushNamedAndRemoveUntil(
+                Navigator.of(navigatorKey.currentContext!)
+                    .pushNamedAndRemoveUntil(
                   '/auth',
                   (route) => false,
                 );
@@ -865,45 +870,49 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
             }
             return;
           }
-          
+
           // بررسی expire شدن token
           final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
           final expiresAt = session.expiresAt ?? 0;
           final timeUntilExpiry = expiresAt - now;
           print('⏰ Session check - Expires in: ${timeUntilExpiry}s');
-          
+
           // اگر کمتر از 15 دقیقه مونده، refresh کن (زودتر refresh می‌کنیم)
-          if (timeUntilExpiry < 900) { // 15 minutes
+          if (timeUntilExpiry < 900) {
+            // 15 minutes
             print('🔄 Session expiring soon, refreshing...');
-            
+
             // تلاش برای refresh با retry logic
             bool refreshSuccess = false;
             int retryCount = 0;
             const maxRetries = 3;
-            
+
             while (retryCount < maxRetries && !refreshSuccess) {
               try {
                 final response = await supabase.auth.refreshSession();
-                
+
                 if (response.session != null) {
                   print('✅ Session refreshed successfully');
                   refreshSuccess = true;
                 } else {
                   retryCount++;
                   if (retryCount < maxRetries) {
-                    print('⚠️ Session refresh failed, retrying... ($retryCount/$maxRetries)');
-                    await Future.delayed(Duration(seconds: retryCount * 2)); // exponential backoff
+                    print(
+                        '⚠️ Session refresh failed, retrying... ($retryCount/$maxRetries)');
+                    await Future.delayed(Duration(
+                        seconds: retryCount * 2)); // exponential backoff
                   }
                 }
               } catch (e) {
                 retryCount++;
-                print('⚠️ Session refresh error: $e, retrying... ($retryCount/$maxRetries)');
+                print(
+                    '⚠️ Session refresh error: $e, retrying... ($retryCount/$maxRetries)');
                 if (retryCount < maxRetries) {
                   await Future.delayed(Duration(seconds: retryCount * 2));
                 }
               }
             }
-            
+
             // فقط اگر همه تلاش‌ها ناموفق بود و session واقعاً منقضی شده، signOut کن
             if (!refreshSuccess) {
               final finalSession = supabase.auth.currentSession;
@@ -911,17 +920,18 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                 print('❌ No session after refresh attempts');
                 return; // session قبلاً منقضی شده، نیازی به signOut نیست
               }
-              
+
               final finalNow = DateTime.now().millisecondsSinceEpoch ~/ 1000;
               final finalExpiresAt = finalSession.expiresAt ?? 0;
               final finalTimeUntilExpiry = finalExpiresAt - finalNow;
-              
+
               // فقط اگر کمتر از 2 دقیقه مانده باشد، signOut کن
               if (finalTimeUntilExpiry < 120) {
                 print('❌ Session expired and refresh failed, signing out...');
                 await supabase.auth.signOut();
               } else {
-                print('⚠️ Refresh failed but session still valid, will retry later');
+                print(
+                    '⚠️ Refresh failed but session still valid, will retry later');
               }
             }
           }
@@ -943,21 +953,26 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         return Consumer(
           builder: (context, ref, child) {
             final theme = ref.watch(dynamicThemeProvider);
-            
+
             // دریافت تنظیمات انیمیشن
             final performanceAsync = ref.watch(performanceSettingsProvider);
-            final animations = performanceAsync.value?['animations'] as Map<String, dynamic>? ?? {};
+            final animations = performanceAsync.value?['animations']
+                    as Map<String, dynamic>? ??
+                {};
             final animationsEnabled = animations['enabled'] as bool? ?? true;
             final reduceMotion = animations['reduce_motion'] as bool? ?? false;
-            
+
             // دریافت تنظیمات دسترسی‌پذیری برای color blind mode
             final appSettingsAsync = ref.watch(advancedAppSettingsProvider);
-            final accessibility = appSettingsAsync.value?['accessibility'] as Map<String, dynamic>? ?? {};
-            final colorBlindMode = accessibility['color_blind_mode'] as String? ?? 'none';
-            
+            final accessibility = appSettingsAsync.value?['accessibility']
+                    as Map<String, dynamic>? ??
+                {};
+            final colorBlindMode =
+                accessibility['color_blind_mode'] as String? ?? 'none';
+
             // اعمال color blind filter
             final colorBlindFilter = getColorBlindFilter(colorBlindMode);
-            
+
             return MaterialApp(
               title: 'Vista',
               debugShowCheckedModeBanner: false,
@@ -1042,13 +1057,13 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                   final args = ModalRoute.of(context)?.settings.arguments;
                   print('   Args type: ${args.runtimeType}');
                   print('   Args: $args');
-                  
+
                   // پشتیبانی از هر دو حالت: String مستقیم یا Map
                   String? conversationId;
                   String? otherUserId;
                   String? username;
                   String? avatarUrl;
-                  
+
                   if (args is String) {
                     conversationId = args;
                     print('   Using String argument: $conversationId');
@@ -1057,25 +1072,26 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                     otherUserId = args['otherUserId'] as String?;
                     username = args['username'] as String?;
                     avatarUrl = args['avatarUrl'] as String?;
-                    print('   Using Map argument: conversationId=$conversationId, otherUserId=$otherUserId');
+                    print(
+                        '   Using Map argument: conversationId=$conversationId, otherUserId=$otherUserId');
                   }
-                  
+
                   if (conversationId != null && conversationId.isNotEmpty) {
                     final conversation = UnifiedConversationCacheService()
                         .getConversationSync(conversationId);
-                    final otherUserName = username ?? 
-                        conversation?.otherUserName ?? 
+                    final otherUserName = username ??
+                        conversation?.otherUserName ??
                         'در حال بارگذاری...';
-                    final finalOtherUserId = otherUserId ?? 
-                        conversation?.otherUserId ?? '';
-                    final otherUserAvatar = avatarUrl ?? 
-                        conversation?.otherUserAvatar;
-                    
+                    final finalOtherUserId =
+                        otherUserId ?? conversation?.otherUserId ?? '';
+                    final otherUserAvatar =
+                        avatarUrl ?? conversation?.otherUserAvatar;
+
                     print('✅ Opening ChatScreen:');
                     print('   conversationId: $conversationId');
                     print('   otherUserId: $finalOtherUserId');
                     print('   otherUserName: $otherUserName');
-                    
+
                     // ✅ استفاده از صفحه چت مدرن
                     return SessionMiddleware(
                       child: ModernChatScreen(
@@ -1088,7 +1104,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                       ),
                     );
                   }
-                  
+
                   print('❌ ConversationId is null or empty');
                   return Scaffold(
                     body: Center(
