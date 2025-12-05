@@ -699,3 +699,4 @@ class _MediaTile extends StatelessWidget {
     );
   }
 }
+
