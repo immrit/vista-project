@@ -7,12 +7,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:Vista/features/chat/services/voice_recorder_service.dart';
 
 void main() {
+  // Ensure Flutter bindings are initialized for platform channels used by `record`
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('Phase 3 - Voice Services Integration Tests', () {
-    
     test('VoiceRecorderService is singleton', () {
       final recorder1 = VoiceRecorderService();
       final recorder2 = VoiceRecorderService();
-      
+
       expect(identical(recorder1, recorder2), true);
     });
 
@@ -25,7 +27,7 @@ void main() {
       final recorder = VoiceRecorderService();
       final stream1 = recorder.amplitudeStream;
       final stream2 = recorder.amplitudeStream;
-      
+
       // Broadcast stream میتواند چندین listener داشته باشد
       expect(stream1, isNotNull);
       expect(stream2, isNotNull);

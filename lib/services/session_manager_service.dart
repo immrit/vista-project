@@ -2115,6 +2115,51 @@ class SessionManagerService {
     return 'unknown';
   }
 
+  /// ✅ فراخوانی خودکار وقتی اینترنت وصل می‌شود
+  /// این متد هوشمندانه چک می‌کند که نشست قبلاً ثبت شده یا نه:
+  /// - اگر نشست ثبت نشده (چون کاربر آفلاین وارد شده)، آن را ثبت می‌کند
+  /// - اگر نشست ثبت شده، فقط IP و Location را آپدیت می‌کند
+  Future<void> onNetworkRestored() async {
+    logInfo('📶 Network restored! Syncing session data...');
+
+    final currentSession = _supabase.auth.currentSession;
+    if (currentSession == null) {
+      logInfo('⚠️ No Supabase session, skipping network restoration sync');
+      return;
+    }
+
+    // ۱. اگر نشست کلاً ثبت نشده (چون کاربر آفلاین وارد شده)
+    if (_currentSessionId == null) {
+      logInfo(
+          '⚠️ Session was not registered due to offline start. Registering now...');
+      try {
+        final sessionId = await registerSession();
+        if (sessionId != null) {
+          logInfo(
+              '✅ Session successfully registered after network restore: $sessionId');
+        } else {
+          logInfo('⚠️ Session registration failed even after network restore');
+        }
+      } catch (e) {
+        logInfo('❌ Error registering session after network restore: $e');
+      }
+    }
+    // ۲. اگر نشست هست، فقط اطلاعات IP و Location را بروز کن
+    else {
+      logInfo('🔄 Session exists. Updating IP and Location...');
+      try {
+        // آپدیت IP و Location به صورت غیرمسدودکننده
+        updateLocationAndIP();
+
+        // یک Heartbeat هم می‌فرستیم که تاریخ انقضا تمدید شود
+        await _updateActivity();
+        logInfo('✅ Session data synced after network restore');
+      } catch (e) {
+        logInfo('⚠️ Error syncing session data after network restore: $e');
+      }
+    }
+  }
+
   void dispose() {
     _activityTimer?.cancel();
     _activityTimer = null;

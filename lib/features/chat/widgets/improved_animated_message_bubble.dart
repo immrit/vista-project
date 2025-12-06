@@ -507,4 +507,3 @@ class _ImprovedAnimatedMessageBubbleState
     );
   }
 }
-

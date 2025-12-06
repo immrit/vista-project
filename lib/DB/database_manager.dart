@@ -2,6 +2,7 @@ import '../security/logging_utility.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 import 'package:sembast/sembast_io.dart';
 
 /// Centralized database manager to prevent SQLite synchronization conflicts
@@ -142,14 +143,14 @@ class DatabaseManager {
   /// Get or create chat database
   Future<Database> getChatDatabase() async {
     if (_chatDatabase != null) return _chatDatabase!;
+    // Compute dbPath here so it's available in both try and catch scopes.
+    String dbPath = 'chat_v1.db';
+    if (!kIsWeb) {
+      final appDir = await getApplicationDocumentsDirectory();
+      dbPath = '${appDir.path}/chat_v1.db';
+    }
 
     try {
-      String dbPath = 'chat_v1.db';
-      if (!kIsWeb) {
-        final appDir = await getApplicationDocumentsDirectory();
-        dbPath = '${appDir.path}/chat_v1.db';
-      }
-
       _chatDatabase = await databaseFactoryIo.openDatabase(
         dbPath,
         version: 1,
@@ -160,6 +161,40 @@ class DatabaseManager {
       logInfo('✅ Chat database initialized successfully');
       return _chatDatabase!;
     } catch (e) {
+      // Handle corrupted database file (sembast uses JSON); if the DB file
+      // is corrupted we'll get a FormatException when reading/parsing it.
+      if (e is FormatException) {
+        logInfo('⚠️ Chat DB format error: $e');
+
+        try {
+          if (!kIsWeb) {
+            final file = File(dbPath);
+            if (await file.exists()) {
+              final backupPath =
+                  '${file.path}.corrupt.${DateTime.now().toIso8601String().replaceAll(':', '-')}';
+              // ignore: avoid_print
+              await file.rename(backupPath);
+              logInfo('⚠️ Renamed corrupted chat DB to $backupPath');
+            }
+
+            // Try creating a fresh database after backing up the corrupted one
+            _chatDatabase = await databaseFactoryIo.openDatabase(
+              dbPath,
+              version: 1,
+              mode: DatabaseMode.create,
+            );
+
+            _initializationStatus['chat'] = true;
+            logInfo(
+                '✅ Chat database re-created after recovering from corruption');
+            return _chatDatabase!;
+          }
+        } catch (inner) {
+          logInfo('❌ Failed to recover chat DB: $inner');
+          rethrow;
+        }
+      }
+
       logInfo('❌ Failed to initialize chat database: $e');
       rethrow;
     }

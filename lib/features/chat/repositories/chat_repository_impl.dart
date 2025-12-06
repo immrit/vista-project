@@ -24,7 +24,8 @@ class ChatRepositoryImpl implements ChatRepository {
         _supabase = supabase,
         _injectedCurrentUserId = currentUserId;
 
-  String? get _currentUserId => _injectedCurrentUserId ?? _supabase.auth.currentUser?.id;
+  String? get _currentUserId =>
+      _injectedCurrentUserId ?? _supabase.auth.currentUser?.id;
 
   // CONVERSATIONS
   @override
@@ -36,12 +37,14 @@ class ChatRepositoryImpl implements ChatRepository {
       // Fetch from server and store locally
       final response = await _supabase
           .from('conversations')
-          .select('*, conversation_participants!inner(*, profiles(username, avatar_url))')
+          .select(
+              '*, conversation_participants!inner(*, profiles(username, avatar_url))')
           .order('updated_at', ascending: false)
           .limit(50);
 
       final conversations = (response as List)
-          .map((json) => ConversationModel.fromJson(json, currentUserId: userId))
+          .map(
+              (json) => ConversationModel.fromJson(json, currentUserId: userId))
           .toList();
 
       await _localDataSource.saveConversations(conversations);
@@ -78,12 +81,14 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<ChatResult<List<MessageModel>>> getMessages(String conversationId, {int limit = 50, String? beforeMessageId}) async {
+  Future<ChatResult<List<MessageModel>>> getMessages(String conversationId,
+      {int limit = 50, String? beforeMessageId}) async {
     final userId = _currentUserId;
     if (userId == null) return ChatResult.failure('کاربر وارد نشده');
 
     await _syncMessages(conversationId);
-    final msgs = await _localDataSource.watchMessages(conversationId, userId).first;
+    final msgs =
+        await _localDataSource.watchMessages(conversationId, userId).first;
     return ChatResult.success(msgs.take(limit).toList());
   }
 
@@ -121,22 +126,28 @@ class ChatRepositoryImpl implements ChatRepository {
     try {
       await _localDataSource.saveMessage(tempMessage);
 
-      final response = await _supabase.from('messages').insert({
-        'conversation_id': conversationId,
-        'sender_id': userId,
-        'content': content,
-        'attachment_url': attachmentUrl,
-        'attachment_type': attachmentType,
-        'created_at': DateTime.now().toUtc().toIso8601String(),
-      }).select().single();
+      final response = await _supabase
+          .from('messages')
+          .insert({
+            'conversation_id': conversationId,
+            'sender_id': userId,
+            'content': content,
+            'attachment_url': attachmentUrl,
+            'attachment_type': attachmentType,
+            'created_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .select()
+          .single();
 
-      final serverMessage = MessageModel.fromJson(response, currentUserId: userId);
+      final serverMessage =
+          MessageModel.fromJson(response, currentUserId: userId);
       await _localDataSource.deleteMessage(tempId);
       await _localDataSource.saveMessage(serverMessage);
 
       return ChatResult.success(serverMessage);
     } catch (e) {
-      final failedMessage = tempMessage.copyWith(isPending: false, isFailed: true);
+      final failedMessage =
+          tempMessage.copyWith(isPending: false, isFailed: true);
       await _localDataSource.saveMessage(failedMessage);
       return ChatResult.failure(e.toString());
     }
@@ -153,7 +164,8 @@ class ChatRepositoryImpl implements ChatRepository {
           .limit(50);
 
       final messages = (response as List)
-          .map((json) => MessageModel.fromJson(json, currentUserId: _currentUserId ?? ''))
+          .map((json) =>
+              MessageModel.fromJson(json, currentUserId: _currentUserId ?? ''))
           .toList();
 
       await _localDataSource.saveMessages(messages);
@@ -166,12 +178,14 @@ class ChatRepositoryImpl implements ChatRepository {
     try {
       final response = await _supabase
           .from('conversations')
-          .select('*, conversation_participants!inner(*, profiles(username, avatar_url))')
+          .select(
+              '*, conversation_participants!inner(*, profiles(username, avatar_url))')
           .order('updated_at', ascending: false)
           .limit(50);
 
       final conversations = (response as List)
-          .map((json) => ConversationModel.fromJson(json, currentUserId: _currentUserId ?? ''))
+          .map((json) => ConversationModel.fromJson(json,
+              currentUserId: _currentUserId ?? ''))
           .toList();
 
       await _localDataSource.saveConversations(conversations);
@@ -182,32 +196,65 @@ class ChatRepositoryImpl implements ChatRepository {
 
   // Remaining interface methods (minimal implementations)
   @override
-  Future<ChatResult<ConversationModel>> createConversation(String otherUserId) async {
+  Future<ChatResult<ConversationModel>> createConversation(
+      String otherUserId) async {
     final userId = _currentUserId;
     if (userId == null) return ChatResult.failure('کاربر وارد نشده');
 
     try {
       // Try to find existing or create new conversation
-      final existing = await _supabase.from('conversation_participants').select('conversation_id').eq('user_id', userId);
-      final otherParticipations = await _supabase.from('conversation_participants').select('conversation_id').eq('user_id', otherUserId);
+      final existing = await _supabase
+          .from('conversation_participants')
+          .select('conversation_id')
+          .eq('user_id', userId);
+      final otherParticipations = await _supabase
+          .from('conversation_participants')
+          .select('conversation_id')
+          .eq('user_id', otherUserId);
 
-      final myConvIds = (existing as List).map((e) => e['conversation_id'] as String).toSet();
-      final otherConvIds = (otherParticipations as List).map((e) => e['conversation_id'] as String).toSet();
+      final myConvIds =
+          (existing as List).map((e) => e['conversation_id'] as String).toSet();
+      final otherConvIds = (otherParticipations as List)
+          .map((e) => e['conversation_id'] as String)
+          .toSet();
       final common = myConvIds.intersection(otherConvIds);
       if (common.isNotEmpty) {
-        final existingConv = await _supabase.from('conversations').select('*, conversation_participants!inner(*, profiles(username, avatar_url))').eq('id', common.first).single();
-        return ChatResult.success(ConversationModel.fromJson(existingConv, currentUserId: userId));
+        final existingConv = await _supabase
+            .from('conversations')
+            .select(
+                '*, conversation_participants!inner(*, profiles(username, avatar_url))')
+            .eq('id', common.first)
+            .single();
+        return ChatResult.success(
+            ConversationModel.fromJson(existingConv, currentUserId: userId));
       }
 
       final now = DateTime.now().toUtc().toIso8601String();
-      final newConversation = await _supabase.from('conversations').insert({'created_at': now, 'updated_at': now}).select().single();
+      final newConversation = await _supabase
+          .from('conversations')
+          .insert({'created_at': now, 'updated_at': now})
+          .select()
+          .single();
       final conversationId = newConversation['id'] as String;
       await _supabase.from('conversation_participants').insert([
-        {'conversation_id': conversationId, 'user_id': userId, 'created_at': now},
-        {'conversation_id': conversationId, 'user_id': otherUserId, 'created_at': now},
+        {
+          'conversation_id': conversationId,
+          'user_id': userId,
+          'created_at': now
+        },
+        {
+          'conversation_id': conversationId,
+          'user_id': otherUserId,
+          'created_at': now
+        },
       ]);
 
-      final full = await _supabase.from('conversations').select('*, conversation_participants!inner(*, profiles(username, avatar_url))').eq('id', conversationId).single();
+      final full = await _supabase
+          .from('conversations')
+          .select(
+              '*, conversation_participants!inner(*, profiles(username, avatar_url))')
+          .eq('id', conversationId)
+          .single();
       final conv = ConversationModel.fromJson(full, currentUserId: userId);
       await _syncConversations();
       return ChatResult.success(conv);
@@ -227,7 +274,8 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<ChatResult<void>> toggleArchiveConversation(String conversationId) async {
+  Future<ChatResult<void>> toggleArchiveConversation(
+      String conversationId) async {
     return ChatResult.failure('Not implemented');
   }
 
@@ -242,9 +290,13 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<ChatResult<void>> clearConversation(String conversationId, {bool forEveryone = false}) async {
+  Future<ChatResult<void>> clearConversation(String conversationId,
+      {bool forEveryone = false}) async {
     try {
-      await _supabase.from('messages').delete().eq('conversation_id', conversationId);
+      await _supabase
+          .from('messages')
+          .delete()
+          .eq('conversation_id', conversationId);
       return ChatResult.success(null);
     } catch (e) {
       return ChatResult.failure(e.toString());
@@ -252,7 +304,8 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<ChatResult<void>> deleteMessage(String messageId, {bool forEveryone = false}) async {
+  Future<ChatResult<void>> deleteMessage(String messageId,
+      {bool forEveryone = false}) async {
     try {
       await _supabase.from('messages').delete().eq('id', messageId);
       await _localDataSource.deleteMessage(messageId);
@@ -263,9 +316,12 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<ChatResult<void>> editMessage(String messageId, String newContent) async {
+  Future<ChatResult<void>> editMessage(
+      String messageId, String newContent) async {
     try {
-      await _supabase.from('messages').update({'content': newContent}).eq('id', messageId);
+      await _supabase
+          .from('messages')
+          .update({'content': newContent}).eq('id', messageId);
       return ChatResult.success(null);
     } catch (e) {
       return ChatResult.failure(e.toString());
@@ -273,11 +329,20 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<ChatResult<List<MessageModel>>> searchMessages(String conversationId, String query) async {
+  Future<ChatResult<List<MessageModel>>> searchMessages(
+      String conversationId, String query) async {
     try {
-      final response = await _supabase.from('messages').select('*').eq('conversation_id', conversationId).ilike('content', '%$query%').order('created_at', ascending: false).limit(50);
+      final response = await _supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .ilike('content', '%$query%')
+          .order('created_at', ascending: false)
+          .limit(50);
       final userId = _currentUserId ?? '';
-      final messages = (response as List).map((j) => MessageModel.fromJson(j, currentUserId: userId)).toList();
+      final messages = (response as List)
+          .map((j) => MessageModel.fromJson(j, currentUserId: userId))
+          .toList();
       return ChatResult.success(messages);
     } catch (e) {
       return ChatResult.failure(e.toString());
@@ -285,11 +350,22 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<ChatResult<List<MessageModel>>> loadMoreMessages({required String conversationId, required DateTime oldestMessageDate, int limit = 50}) async {
+  Future<ChatResult<List<MessageModel>>> loadMoreMessages(
+      {required String conversationId,
+      required DateTime oldestMessageDate,
+      int limit = 50}) async {
     try {
-      final response = await _supabase.from('messages').select('*').eq('conversation_id', conversationId).lt('created_at', oldestMessageDate.toUtc().toIso8601String()).order('created_at', ascending: false).limit(limit);
+      final response = await _supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .lt('created_at', oldestMessageDate.toUtc().toIso8601String())
+          .order('created_at', ascending: false)
+          .limit(limit);
       final userId = _currentUserId ?? '';
-      final messages = (response as List).map((j) => MessageModel.fromJson(j, currentUserId: userId)).toList();
+      final messages = (response as List)
+          .map((j) => MessageModel.fromJson(j, currentUserId: userId))
+          .toList();
       await _localDataSource.saveMessages(messages);
       return ChatResult.success(messages);
     } catch (e) {
@@ -298,7 +374,10 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<ChatResult<void>> toggleReaction({required String messageId, required String conversationId, required String emoji}) async {
+  Future<ChatResult<void>> toggleReaction(
+      {required String messageId,
+      required String conversationId,
+      required String emoji}) async {
     return ChatResult.failure('Not implemented');
   }
 
@@ -313,7 +392,10 @@ class ChatRepositoryImpl implements ChatRepository {
     if (userId == null) return;
     try {
       final channel = _supabase.channel('typing:$conversationId');
-      await channel.sendBroadcastMessage(event: 'typing', payload: {'user_id': userId, 'timestamp': DateTime.now().toIso8601String()});
+      await channel.sendBroadcastMessage(event: 'typing', payload: {
+        'user_id': userId,
+        'timestamp': DateTime.now().toIso8601String()
+      });
     } catch (e) {
       print('typing error: $e');
     }
@@ -355,4 +437,3 @@ class ChatRepositoryImpl implements ChatRepository {
     // not implemented
   }
 }
-

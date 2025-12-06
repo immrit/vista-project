@@ -20,7 +20,8 @@ class ChatLocalDataSource {
 
   /// استریم پیام‌های یک مکالمه (بدون درگیری با شبکه)
   /// این متد قلب تپنده چت است. هر تغییری در دیتابیس فوراً اینجا دیده می‌شود.
-  Stream<List<MessageModel>> watchMessages(String conversationId, String currentUserId) async* {
+  Stream<List<MessageModel>> watchMessages(
+      String conversationId, String currentUserId) async* {
     final db = await _dbManager.getChatDatabase();
 
     // فیلتر کردن پیام‌های مربوط به این چت و مرتب‌سازی
@@ -32,7 +33,8 @@ class ChatLocalDataSource {
     yield* _messageStore.query(finder: finder).onSnapshots(db).map((snapshots) {
       return snapshots.map((snapshot) {
         // تبدیل رکورد دیتابیس به مدل
-        return MessageModel.fromJson(snapshot.value, currentUserId: currentUserId);
+        return MessageModel.fromJson(snapshot.value,
+            currentUserId: currentUserId);
       }).toList();
     });
   }
@@ -74,16 +76,21 @@ class ChatLocalDataSource {
   // 📂 CONVERSATIONS OPERATIONS
   // ═══════════════════════════════════════════════════════════════════
 
-  Stream<List<ConversationModel>> watchConversations(String currentUserId) async* {
+  Stream<List<ConversationModel>> watchConversations(
+      String currentUserId) async* {
     final db = await _dbManager.getChatDatabase();
 
     final finder = Finder(
       sortOrders: [SortOrder('updated_at', false)],
     );
 
-    yield* _conversationStore.query(finder: finder).onSnapshots(db).map((snapshots) {
+    yield* _conversationStore
+        .query(finder: finder)
+        .onSnapshots(db)
+        .map((snapshots) {
       return snapshots.map((snapshot) {
-        return ConversationModel.fromJson(snapshot.value, currentUserId: currentUserId);
+        return ConversationModel.fromJson(snapshot.value,
+            currentUserId: currentUserId);
       }).toList();
     });
   }
@@ -100,7 +107,9 @@ class ChatLocalDataSource {
 
   Future<void> saveConversation(ConversationModel conversation) async {
     final db = await _dbManager.getChatDatabase();
-    await _conversationStore.record(conversation.id).put(db, conversation.toJson());
+    await _conversationStore
+        .record(conversation.id)
+        .put(db, conversation.toJson());
   }
 
   Future<void> deleteConversation(String conversationId) async {

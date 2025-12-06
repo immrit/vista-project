@@ -159,7 +159,8 @@ class VoicePlayerService {
 
     if (_currentState.totalDuration.inMilliseconds > 0) {
       final position = Duration(
-        milliseconds: (_currentState.totalDuration.inMilliseconds * percent).toInt(),
+        milliseconds:
+            (_currentState.totalDuration.inMilliseconds * percent).toInt(),
       );
       await _audioPlayer.seek(position);
     }

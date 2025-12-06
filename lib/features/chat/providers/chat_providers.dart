@@ -1,7 +1,7 @@
 // lib/features/chat/providers/chat_providers.dart
 //
 // Provider های جدید و ساده برای سیستم چت
-// 
+//
 // این فایل:
 // ✅ یه منبع واحد برای تمام Provider های چت
 // ✅ Clean و قابل فهم
@@ -40,7 +40,7 @@ final chatLocalDataSourceProvider = Provider<ChatLocalDataSource>((ref) {
 });
 
 /// Provider برای Repository (Singleton)
-/// 
+///
 /// این Provider قلب سیستم چت هست
 final chatRepositoryProvider = Provider<ChatRepository>((ref) {
   final local = ref.watch(chatLocalDataSourceProvider);
@@ -66,7 +66,7 @@ final chatRepositoryProvider = Provider<ChatRepository>((ref) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Stream لیست مکالمات (Real-time)
-/// 
+///
 /// استفاده:
 /// ```dart
 /// final conversationsAsync = ref.watch(conversationsStreamProvider);
@@ -100,7 +100,7 @@ final getConversationsProvider =
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Stream پیام‌های یک مکالمه (Real-time)
-/// 
+///
 /// استفاده:
 /// ```dart
 /// final messagesAsync = ref.watch(messagesStreamProvider(conversationId));
@@ -154,7 +154,7 @@ class SendMessageParams {
 }
 
 /// Controller برای عملیات چت
-/// 
+///
 /// این Notifier امکان اجرای عملیات‌های مختلف رو میده
 class ChatActionsNotifier extends AutoDisposeNotifier<void> {
   @override
@@ -292,7 +292,7 @@ class TypingParams {
 }
 
 /// Stream وضعیت تایپ کردن طرف مقابل
-/// 
+///
 /// استفاده:
 /// ```dart
 /// final isTyping = ref.watch(typingStatusProvider(
@@ -309,7 +309,7 @@ final typingStatusProvider =
 });
 
 /// UseCase برای شروع و توقف تایپ
-/// 
+///
 /// استفاده:
 /// ```dart
 /// ref.read(typingActionsProvider).startTyping(conversationId);
@@ -404,12 +404,12 @@ class PaginationState {
 }
 
 /// Notifier برای مدیریت Pagination
-/// 
+///
 /// استفاده:
 /// ```dart
 /// // گرفتن state
 /// final paginationState = ref.watch(paginationStateProvider(conversationId));
-/// 
+///
 /// // بارگذاری بیشتر
 /// ref.read(paginationStateProvider(conversationId).notifier).loadMore(oldestDate);
 /// ```
@@ -425,7 +425,8 @@ class PaginationNotifier extends FamilyNotifier<PaginationState, String> {
   Future<void> loadMore(DateTime oldestMessageDate) async {
     // جلوگیری از درخواست همزمان
     if (state.isLoadingMore || !state.hasMoreMessages) {
-      print('⏸️ [Pagination] Skipping: isLoadingMore=${state.isLoadingMore}, hasMore=${state.hasMoreMessages}');
+      print(
+          '⏸️ [Pagination] Skipping: isLoadingMore=${state.isLoadingMore}, hasMore=${state.hasMoreMessages}');
       return;
     }
 
@@ -531,4 +532,3 @@ final unpinnedConversationsProvider =
     (conversations) => conversations.where((c) => !c.isPinned).toList(),
   );
 });
-

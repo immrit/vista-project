@@ -24,7 +24,9 @@ class VoiceRecorderService {
 
   VoiceRecorderService._internal();
 
-  final AudioRecorder _audioRecorder = AudioRecorder();
+  // Lazily create the AudioRecorder to avoid platform channel calls during
+  // test construction (which cause MissingPluginException in unit tests).
+  AudioRecorder? _audioRecorder;
 
   // استریم برای نمایش ویژوالایزر هنگام ضبط
   final StreamController<double> _amplitudeController =
@@ -63,7 +65,8 @@ class VoiceRecorderService {
           sampleRate: 44100,
         );
 
-        await _audioRecorder.start(config, path: _currentPath!);
+        _audioRecorder ??= AudioRecorder();
+        await _audioRecorder!.start(config, path: _currentPath!);
         _isRecording = true;
 
         // شروع دریافت دامنه صدا برای ویژوالایزر
@@ -83,7 +86,7 @@ class VoiceRecorderService {
     _isRecording = false;
 
     try {
-      final path = await _audioRecorder.stop();
+      final path = await _audioRecorder?.stop();
       if (path != null) {
         return File(path);
       }
@@ -98,7 +101,7 @@ class VoiceRecorderService {
     _stopAmplitudeTimer();
     _isRecording = false;
 
-    await _audioRecorder.stop();
+    await _audioRecorder?.stop();
     if (_currentPath != null) {
       final file = File(_currentPath!);
       if (await file.exists()) {
@@ -115,7 +118,8 @@ class VoiceRecorderService {
         Timer.periodic(const Duration(milliseconds: 100), (timer) async {
       if (_isRecording) {
         try {
-          final amplitude = await _audioRecorder.getAmplitude();
+          final amplitude = await _audioRecorder?.getAmplitude();
+          if (amplitude == null) return;
           // نرمال‌سازی مقدار بین 0 تا 1
           final normalized = (amplitude.current + 160) / 160;
           _amplitudeController.add(normalized.clamp(0.0, 1.0));
@@ -132,7 +136,7 @@ class VoiceRecorderService {
   }
 
   void dispose() {
-    _audioRecorder.dispose();
+    _audioRecorder?.dispose();
     _amplitudeController.close();
     _stopAmplitudeTimer();
   }

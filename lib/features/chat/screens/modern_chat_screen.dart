@@ -20,6 +20,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../model/message_model.dart';
+import '../../../utils/compat_extensions.dart';
 import '../providers/chat_providers.dart';
 
 // ✅ Theme & Widgets
@@ -30,10 +31,10 @@ import '../widgets/retry_indicator_widget.dart' show TelegramConnectionBanner;
 import '../widgets/improved_animated_message_bubble.dart';
 import '../widgets/animated_chat_input.dart';
 import '../widgets/animated_typing_indicator.dart';
-import '../widgets/improved_date_divider.dart';
-import '../widgets/improved_floating_date_header.dart';
+
 import '../widgets/enhanced_post_message_bubble.dart';
-import '../../../utils/compat_extensions.dart';
+import '../widgets/date_divider.dart' as date_divider;
+import '../widgets/swipe_to_reply_wrapper.dart';
 
 // ✅ Providers
 import '../../../provider/chat_provider.dart'
@@ -46,6 +47,7 @@ import '../widgets/message_search_bar.dart';
 import '../widgets/edit_message_dialog.dart';
 import '../widgets/forward_message_sheet.dart';
 import '../widgets/unread_messages_divider.dart';
+import '../widgets/floating_date_header.dart';
 import '../widgets/online_status_indicator.dart';
 import '../services/chat_attachment_service.dart';
 import '../widgets/block_report_bottom_sheet.dart';
@@ -537,7 +539,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   child: Stack(
                     children: [
                       // پیام‌ها با تاریخ شناور
-                      ImprovedFloatingDateHeader(
+                      FloatingDateHeader(
                         currentDate: _currentVisibleDate,
                         isScrolling: _isScrolling,
                         child: _buildMessageList(
@@ -1129,165 +1131,259 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
-            // Loading indicator در بالا
-            if (paginationState.isLoadingMore && index == messages.length) {
-              return _buildLoadingIndicator(theme);
-            }
+                  // Loading indicator در بالا
+                  if (paginationState.isLoadingMore &&
+                      index == messages.length) {
+                    return _buildLoadingIndicator(theme);
+                  }
 
-            final message = messages[index];
-            final isMe = message.senderId == _currentUserId;
+                  final message = messages[index];
+                  final isMe = message.senderId == _currentUserId;
 
-            // گروه‌بندی پیام‌ها
-            final (isFirstInGroup, isLastInGroup) = _getMessageGroupPosition(
-              messages,
-              index,
-            );
+                  // گروه‌بندی پیام‌ها
+                  final (isFirstInGroup, isLastInGroup) =
+                      _getMessageGroupPosition(
+                    messages,
+                    index,
+                  );
 
-            // Date Divider - چون لیست reverse هست:
-            // - index 0 = جدیدترین پیام (پایین صفحه) - نباید Date Divider بعدش باشه
-            // - index آخر = قدیمی‌ترین پیام (بالای صفحه) - می‌تونه Date Divider بعدش باشه
-            // Date Divider باید بین دو پیام نمایش داده بشه، نه بعد از آخرین پیام
-            final hasNextMessage = index < messages.length - 1;
-            final nextMessage = hasNextMessage ? messages[index + 1] : null;
-            final showDateDivider = hasNextMessage &&
-                shouldShowDateDivider(
-                  message.createdAt,
-                  nextMessage?.createdAt,
-                );
+                  // Date Divider - چون لیست reverse هست:
+                  // - index 0 = جدیدترین پیام (پایین صفحه) - نباید Date Divider بعدش باشه
+                  // - index آخر = قدیمی‌ترین پیام (بالای صفحه) - می‌تونه Date Divider بعدش باشه
+                  // Date Divider باید بین دو پیام نمایش داده بشه، نه بعد از آخرین پیام
+                  final hasNextMessage = index < messages.length - 1;
+                  final nextMessage =
+                      hasNextMessage ? messages[index + 1] : null;
+                  final showDateDivider = hasNextMessage &&
+                      date_divider.shouldShowDateDivider(
+                        message.createdAt,
+                        nextMessage?.createdAt,
+                      );
 
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // حباب پیام
-                Row(
-                  mainAxisAlignment:
-                      isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-                  children: [
-                    // Selection checkbox
-                    if (_isSelectionMode)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: AnimatedScale(
-                          scale: _isSelectionMode ? 1.0 : 0.0,
-                          duration: const Duration(milliseconds: 200),
-                          child: GestureDetector(
-                            onTap: () => _toggleMessageSelection(message.id),
-                            child: Container(
-                              width: 24,
-                              height: 24,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: _selectedMessageIds.contains(message.id)
-                                    ? context.chatTheme.sendButtonColor
-                                    : Colors.transparent,
-                                border: Border.all(
-                                  color: _selectedMessageIds
-                                          .contains(message.id)
-                                      ? context.chatTheme.sendButtonColor
-                                      : context.chatTheme.secondaryTextColor,
-                                  width: 2,
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // حباب پیام
+                      Row(
+                        mainAxisAlignment: isMe
+                            ? MainAxisAlignment.end
+                            : MainAxisAlignment.start,
+                        children: [
+                          // Selection checkbox
+                          if (_isSelectionMode)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: AnimatedScale(
+                                scale: _isSelectionMode ? 1.0 : 0.0,
+                                duration: const Duration(milliseconds: 200),
+                                child: GestureDetector(
+                                  onTap: () =>
+                                      _toggleMessageSelection(message.id),
+                                  child: Container(
+                                    width: 24,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: _selectedMessageIds
+                                              .contains(message.id)
+                                          ? context.chatTheme.sendButtonColor
+                                          : Colors.transparent,
+                                      border: Border.all(
+                                        color: _selectedMessageIds
+                                                .contains(message.id)
+                                            ? context.chatTheme.sendButtonColor
+                                            : context
+                                                .chatTheme.secondaryTextColor,
+                                        width: 2,
+                                      ),
+                                    ),
+                                    child:
+                                        _selectedMessageIds.contains(message.id)
+                                            ? const Icon(
+                                                Icons.check,
+                                                color: Colors.white,
+                                                size: 16,
+                                              )
+                                            : null,
+                                  ),
                                 ),
                               ),
-                              child: _selectedMessageIds.contains(message.id)
-                                  ? const Icon(
-                                      Icons.check,
-                                      color: Colors.white,
-                                      size: 16,
-                                    )
-                                  : null,
                             ),
+
+                          // پیام
+                          Flexible(
+                            child: (!_isSelectionMode)
+                                ? SwipeToReplyWrapper(
+                                    isMe: isMe,
+                                    onReply: () {
+                                      setState(() {
+                                        _replyToMessage = message;
+                                      });
+                                      _focusNode.requestFocus();
+                                    },
+                                    child: AnimatedContainer(
+                                      duration:
+                                          const Duration(milliseconds: 500),
+                                      decoration: BoxDecoration(
+                                        color: _highlightedMessageId ==
+                                                message.id
+                                            ? context.chatTheme.sendButtonColor
+                                                .withOpacity(0.2)
+                                            : _selectedMessageIds
+                                                    .contains(message.id)
+                                                ? context
+                                                    .chatTheme.sendButtonColor
+                                                    .withOpacity(0.1)
+                                                : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: message.attachmentType == 'post'
+                                          ? _buildPostMessageBubble(
+                                              message, isMe)
+                                          : ImprovedAnimatedMessageBubble(
+                                              key: ValueKey(message.id),
+                                              messageId: message.id,
+                                              content: message.content,
+                                              isMe: isMe,
+                                              time: message.createdAt,
+                                              status:
+                                                  _getMessageStatus(message),
+                                              replyToContent:
+                                                  message.replyToContent,
+                                              replyToSenderName:
+                                                  message.replyToSenderName,
+                                              replyToMessageId:
+                                                  message.replyToMessageId,
+                                              onReplyTap: message
+                                                          .replyToMessageId !=
+                                                      null
+                                                  ? () => _scrollToMessageById(
+                                                      message.replyToMessageId!,
+                                                      messages)
+                                                  : null,
+                                              reactions:
+                                                  _convertToOldReactionFormat(
+                                                      _messageReactions[
+                                                              message.id] ??
+                                                          []),
+                                              onTap: () =>
+                                                  _onMessageTap(message),
+                                              onLongPress: () =>
+                                                  _onMessageLongPress(message),
+                                              onDoubleTap: () =>
+                                                  _onMessageDoubleTap(message),
+                                              onAddReaction: (emoji) =>
+                                                  _onAddReaction(
+                                                      message, emoji),
+                                              animate: index < 5 && !_isNearTop,
+                                              index: index,
+                                              isFirstInGroup: isFirstInGroup,
+                                              isLastInGroup: isLastInGroup,
+                                            ),
+                                    ),
+                                  )
+                                : AnimatedContainer(
+                                    duration: const Duration(milliseconds: 500),
+                                    decoration: BoxDecoration(
+                                      color: _highlightedMessageId == message.id
+                                          ? context.chatTheme.sendButtonColor
+                                              .withOpacity(0.2)
+                                          : _selectedMessageIds
+                                                  .contains(message.id)
+                                              ? context
+                                                  .chatTheme.sendButtonColor
+                                                  .withOpacity(0.1)
+                                              : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: message.attachmentType == 'post'
+                                        ? _buildPostMessageBubble(message, isMe)
+                                        : ImprovedAnimatedMessageBubble(
+                                            key: ValueKey(message.id),
+                                            messageId: message.id,
+                                            content: message.content,
+                                            isMe: isMe,
+                                            time: message.createdAt,
+                                            status: _getMessageStatus(message),
+                                            replyToContent:
+                                                message.replyToContent,
+                                            replyToSenderName:
+                                                message.replyToSenderName,
+                                            replyToMessageId:
+                                                message.replyToMessageId,
+                                            onReplyTap: message
+                                                        .replyToMessageId !=
+                                                    null
+                                                ? () => _scrollToMessageById(
+                                                    message.replyToMessageId!,
+                                                    messages)
+                                                : null,
+                                            reactions:
+                                                _convertToOldReactionFormat(
+                                                    _messageReactions[
+                                                            message.id] ??
+                                                        []),
+                                            onTap: () => _onMessageTap(message),
+                                            onLongPress: () =>
+                                                _onMessageLongPress(message),
+                                            onDoubleTap: () =>
+                                                _onMessageDoubleTap(message),
+                                            onAddReaction: (emoji) =>
+                                                _onAddReaction(message, emoji),
+                                            animate: index < 5 && !_isNearTop,
+                                            index: index,
+                                            isFirstInGroup: isFirstInGroup,
+                                            isLastInGroup: isLastInGroup,
+                                          ),
+                                  ),
+                          )
+                        ],
+                      ),
+
+                      // Reactions Widget (زیر پیام)
+                      if ((_messageReactions[message.id] ?? []).isNotEmpty)
+                        Padding(
+                          padding: EdgeInsets.only(
+                            top: 4,
+                            left: isMe ? 0 : 12,
+                            right: isMe ? 12 : 0,
+                          ),
+                          child: MessageReactionsWidget(
+                            messageId: message.id,
+                            reactions: _messageReactions[message.id] ?? [],
+                            isMine: isMe,
+                            onReactionTap: () {
+                              ReactionPickerSheet.show(
+                                context,
+                                messageId: message.id,
+                              );
+                            },
                           ),
                         ),
-                      ),
 
-                    // پیام
-                    Flexible(
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 500),
-                        decoration: BoxDecoration(
-                          color: _highlightedMessageId == message.id
-                              ? context.chatTheme.sendButtonColor
-                                  .withOpacity(0.2)
-                              : _selectedMessageIds.contains(message.id)
-                                  ? context.chatTheme.sendButtonColor
-                                      .withOpacity(0.1)
-                                  : Colors.transparent,
-                          borderRadius: BorderRadius.circular(12),
+                      // Date Divider (بعد از پیام چون لیست reverse هست)
+                      if (showDateDivider)
+                        date_divider.DateDivider(date: message.createdAt),
+
+                      // Unread Divider
+                      if (_shouldShowUnreadDivider(message, index, messages))
+                        UnreadMessagesDivider(
+                          unreadCount: _unreadCount,
+                          onTap: _scrollToBottom,
                         ),
-                        child: message.attachmentType == 'post'
-                            ? _buildPostMessageBubble(message, isMe)
-                            : ImprovedAnimatedMessageBubble(
-                                key: ValueKey(message.id),
-                                messageId: message.id,
-                                content: message.content,
-                                isMe: isMe,
-                                time: message.createdAt,
-                                status: _getMessageStatus(message),
-                                replyToContent: message.replyToContent,
-                                replyToSenderName: message.replyToSenderName,
-                                replyToMessageId: message.replyToMessageId,
-                                onReplyTap: message.replyToMessageId != null
-                                    ? () => _scrollToMessageById(
-                                        message.replyToMessageId!, messages)
-                                    : null,
-                                reactions: _convertToOldReactionFormat(
-                                    _messageReactions[message.id] ?? []),
-                                onTap: () => _onMessageTap(message),
-                                onLongPress: () => _onMessageLongPress(message),
-                                onDoubleTap: () => _onMessageDoubleTap(message),
-                                onAddReaction: (emoji) =>
-                                    _onAddReaction(message, emoji),
-                                animate: index < 10,
-                                index: index,
-                                isFirstInGroup: isFirstInGroup,
-                                isLastInGroup: isLastInGroup,
-                              ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                // Reactions Widget (زیر پیام)
-                if ((_messageReactions[message.id] ?? []).isNotEmpty)
-                  Padding(
-                    padding: EdgeInsets.only(
-                      top: 4,
-                      left: isMe ? 0 : 12,
-                      right: isMe ? 12 : 0,
-                    ),
-                    child: MessageReactionsWidget(
-                      messageId: message.id,
-                      reactions: _messageReactions[message.id] ?? [],
-                      isMine: isMe,
-                      onReactionTap: () {
-                        ReactionPickerSheet.show(
-                          context,
-                          messageId: message.id,
-                        );
-                      },
-                    ),
-                  ),
-
-                // Date Divider (بعد از پیام چون لیست reverse هست)
-                if (showDateDivider)
-                  ImprovedDateDivider(date: message.createdAt),
-
-                // Unread Divider
-                if (_shouldShowUnreadDivider(message, index, messages))
-                  UnreadMessagesDivider(
-                    unreadCount: _unreadCount,
-                    onTap: _scrollToBottom,
-                  ),
-              ],
-            );
+                    ],
+                  );
                 },
-                childCount: messages.length + (paginationState.isLoadingMore ? 1 : 0),
+                childCount:
+                    messages.length + (paginationState.isLoadingMore ? 1 : 0),
                 addAutomaticKeepAlives: false,
                 addRepaintBoundaries: true,
               ),
             ),
             SliverToBoxAdapter(
-              child: paginationState.isLoadingMore ? _buildLoadingIndicator(theme) : const SizedBox(height: 20),
+              child: paginationState.isLoadingMore
+                  ? _buildLoadingIndicator(theme)
+                  : const SizedBox(height: 20),
             ),
           ],
         );

@@ -515,8 +515,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         }
       } catch (e) {
         print('❌ Error handling auth state change: $e');
-
-        // فقط در صورت خطای واقعی auth (نه network errors)، کاربر رو sign out کنید
+        // Only sign the user out for fatal auth errors. Ignore transient
+        // network/timeouts to avoid forcing logout when offline.
         final errorString = e.toString().toLowerCase();
         final isNetworkError = errorString.contains('network') ||
             errorString.contains('timeout') ||
@@ -525,12 +525,13 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
             errorString.contains('failed host lookup') ||
             errorString.contains('retryable');
 
-        // فقط برای خطاهای واقعی auth که refresh token invalid است
-        if (!isNetworkError &&
+        // Only treat clearly revoked/invalid refresh token as fatal.
+        final isFatalAuthError = !isNetworkError &&
             (errorString.contains('invalid refresh token') ||
-                errorString.contains('jwt expired') ||
-                errorString.contains('token revoked'))) {
-          print('🔴 Critical auth error - signing out user');
+                errorString.contains('token revoked'));
+
+        if (isFatalAuthError) {
+          print('🔴 Fatal Auth Error: Signing out...');
 
           if (mounted && navigatorKey.currentContext != null) {
             ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
@@ -546,13 +547,19 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
           await supabase.auth.signOut();
         } else if (isNetworkError) {
           print('⚠️ Network error detected, keeping session active');
-          // با قطع اینترنت، session را حفظ می‌کنیم
+          // Keep session active when transient network errors occur
+        } else {
+          print('🛡️ Ignored non-fatal auth error to keep user logged in');
         }
       }
     });
 
     // ✅ شروع session monitoring
     _startSessionMonitoring();
+
+    // ✅ گوش دادن به تغییرات شبکه برای آپدیت نشست
+    // به محض اینکه وضعیت شبکه از "قطع" به "وصل" تغییر کرد، اطلاعات نشست را آپدیت کن
+    _setupNetworkStateListener();
 
     // ✅ تنظیم callback برای خاتمه نشست
     _setupSessionTerminationHandler();
@@ -855,92 +862,55 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
           final session = supabase.auth.currentSession;
 
           if (session == null) {
-            print('⚠️ No active session found during check');
-            // هدایت به صفحه ورود فقط اگر کاربر در صفحه اصلی باشد
-            final currentRoute =
-                ModalRoute.of(navigatorKey.currentContext!)?.settings.name;
-            if (currentRoute != '/auth' && currentRoute != '/onboarding') {
-              if (mounted) {
-                Navigator.of(navigatorKey.currentContext!)
-                    .pushNamedAndRemoveUntil(
-                  '/auth',
-                  (route) => false,
-                );
-              }
-            }
+            // If there's no session, do nothing. Middleware or other
+            // handlers can act as needed.
             return;
           }
 
-          // بررسی expire شدن token
+          // Check token expiry
           final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
           final expiresAt = session.expiresAt ?? 0;
           final timeUntilExpiry = expiresAt - now;
-          print('⏰ Session check - Expires in: ${timeUntilExpiry}s');
 
-          // اگر کمتر از 15 دقیقه مونده، refresh کن (زودتر refresh می‌کنیم)
-          if (timeUntilExpiry < 900) {
-            // 15 minutes
-            print('🔄 Session expiring soon, refreshing...');
-
-            // تلاش برای refresh با retry logic
-            bool refreshSuccess = false;
-            int retryCount = 0;
-            const maxRetries = 3;
-
-            while (retryCount < maxRetries && !refreshSuccess) {
-              try {
-                final response = await supabase.auth.refreshSession();
-
-                if (response.session != null) {
-                  print('✅ Session refreshed successfully');
-                  refreshSuccess = true;
-                } else {
-                  retryCount++;
-                  if (retryCount < maxRetries) {
-                    print(
-                        '⚠️ Session refresh failed, retrying... ($retryCount/$maxRetries)');
-                    await Future.delayed(Duration(
-                        seconds: retryCount * 2)); // exponential backoff
-                  }
-                }
-              } catch (e) {
-                retryCount++;
-                print(
-                    '⚠️ Session refresh error: $e, retrying... ($retryCount/$maxRetries)');
-                if (retryCount < maxRetries) {
-                  await Future.delayed(Duration(seconds: retryCount * 2));
-                }
-              }
-            }
-
-            // فقط اگر همه تلاش‌ها ناموفق بود و session واقعاً منقضی شده، signOut کن
-            if (!refreshSuccess) {
-              final finalSession = supabase.auth.currentSession;
-              if (finalSession == null) {
-                print('❌ No session after refresh attempts');
-                return; // session قبلاً منقضی شده، نیازی به signOut نیست
-              }
-
-              final finalNow = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-              final finalExpiresAt = finalSession.expiresAt ?? 0;
-              final finalTimeUntilExpiry = finalExpiresAt - finalNow;
-
-              // فقط اگر کمتر از 2 دقیقه مانده باشد، signOut کن
-              if (finalTimeUntilExpiry < 120) {
-                print('❌ Session expired and refresh failed, signing out...');
-                await supabase.auth.signOut();
-              } else {
-                print(
-                    '⚠️ Refresh failed but session still valid, will retry later');
-              }
+          // If less than 20 minutes remain, try a background refresh
+          if (timeUntilExpiry < 1200) {
+            print('🔄 Session refreshing in background...');
+            try {
+              await supabase.auth.refreshSession();
+            } catch (e) {
+              // If refresh fails (likely offline), do NOT sign out the user.
+              print('⚠️ Refresh failed (Offline?), keeping session active: $e');
             }
           }
         } catch (e) {
-          print('❌ Session check error: $e');
-          // در صورت خطا، کاربر را signOut نکن - ممکن است مشکل موقتی باشد
+          print('❌ Session check error (Ignored): $e');
         }
       },
     );
+  }
+
+  // ✅ گوش‌دادن به تغییرات وضعیت شبکه برای آپدیت نشست
+  void _setupNetworkStateListener() {
+    try {
+      NetworkStateService().stateStream.listen((networkState) {
+        if (networkState.isConnected) {
+          print('✅ Network connected! Syncing session data...');
+
+          // یک تاخیر کوتاه می‌دهیم تا اتصال پایدار شود
+          Future.delayed(const Duration(seconds: 2), () {
+            try {
+              SessionManagerServiceV2().onNetworkRestored();
+            } catch (e) {
+              print('⚠️ Error calling onNetworkRestored: $e');
+            }
+          });
+        } else {
+          print('📡 Network disconnected');
+        }
+      });
+    } catch (e) {
+      print('⚠️ Error setting up network state listener: $e');
+    }
   }
 
   @override

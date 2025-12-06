@@ -16,10 +16,8 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
-import 'package:just_audio/just_audio.dart';
-import 'package:path_provider/path_provider.dart';
 import '../theme/chat_theme.dart';
+import '../../../services/voice_player_service.dart';
 
 /// ویجت پیام صوتی شبیه تلگرام
 class VoiceMessageBubble extends StatefulWidget {
@@ -50,16 +48,18 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
   // 🎮 CONTROLLERS & STATE
   // ═══════════════════════════════════════════════════════════════════════════
 
-  late AudioPlayer _audioPlayer;
+  // Use centralized VoicePlayerService instead of per-widget AudioPlayer
+  late final VoicePlayerService _playerService;
   late AnimationController _playButtonController;
   late AnimationController _waveformController;
   late AnimationController _progressController;
 
   // State
-  bool _isInitialized = false;
+  final bool _isInitialized = false;
   bool _isDownloading = false;
   bool _isPlaying = false;
-  double _downloadProgress = 0.0;
+  final double _downloadProgress =
+      0.0; // retained for UI compatibility when showing progress
   Duration _totalDuration = Duration.zero;
   Duration _currentPosition = Duration.zero;
   double _playbackSpeed = 1.0;
@@ -77,10 +77,10 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
   @override
   void initState() {
     super.initState();
-    _audioPlayer = AudioPlayer();
+    _playerService = VoicePlayerService();
     _initializeAnimations();
     _initializeWaveform();
-    _setupAudioListeners();
+    _subscribeToPlayerService();
 
     if (widget.durationSeconds != null) {
       _totalDuration = Duration(seconds: widget.durationSeconds!);
@@ -144,44 +144,40 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
     return List.generate(_waveformBars, (_) => 0.2 + random.nextDouble() * 0.8);
   }
 
-  void _setupAudioListeners() {
-    _audioPlayer.durationStream.listen((duration) {
-      if (mounted && duration != null) {
-        setState(() => _totalDuration = duration);
-      }
-    });
+  StreamSubscription<VoicePlayerState>? _playerSub;
 
-    _audioPlayer.positionStream.listen((position) {
-      if (mounted) {
-        setState(() => _currentPosition = position);
-      }
-    });
+  void _subscribeToPlayerService() {
+    _playerSub = _playerService.playerStateStream.listen((state) {
+      if (!mounted) return;
 
-    _audioPlayer.playerStateStream.listen((state) {
-      if (mounted) {
-        final isPlaying = state.playing;
-        if (isPlaying != _isPlaying) {
-          setState(() => _isPlaying = isPlaying);
-          if (isPlaying) {
-            _playButtonController.forward();
-            _waveformController.repeat();
-          } else {
-            _playButtonController.reverse();
-            _waveformController.stop();
-          }
-        }
+      final relevant = state.voiceId == widget.messageId;
 
-        if (state.processingState == ProcessingState.completed) {
-          _audioPlayer.seek(Duration.zero);
-          _audioPlayer.pause();
-        }
+      // Update play/position/duration/initialized based on current state
+      setState(() {
+        _isPlaying = relevant && state.isPlaying;
+        _currentPosition = relevant ? state.position : Duration.zero;
+        _totalDuration = relevant
+            ? state.duration
+            : (widget.durationSeconds != null
+                ? Duration(seconds: widget.durationSeconds!)
+                : Duration.zero);
+        // if the service is preparing this voice id, consider it initialized/loading
+        _isDownloading = relevant && state.isLoading;
+      });
+
+      if (_isPlaying) {
+        _playButtonController.forward();
+        _waveformController.repeat();
+      } else {
+        _playButtonController.reverse();
+        _waveformController.stop();
       }
     });
   }
 
   @override
   void dispose() {
-    _audioPlayer.dispose();
+    _playerSub?.cancel();
     _playButtonController.dispose();
     _waveformController.dispose();
     _progressController.dispose();
@@ -200,86 +196,20 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
   // 🔊 AUDIO CONTROL
   // ═══════════════════════════════════════════════════════════════════════════
 
-  Future<void> _downloadAudio() async {
-    if (_isDownloading) return;
-
-    setState(() {
-      _isDownloading = true;
-      _downloadProgress = 0.0;
-      _error = null;
-    });
-
-    try {
-      final uri = Uri.parse(widget.audioUrl);
-      final request = http.Request('GET', uri);
-      final response = await http.Client().send(request);
-
-      if (response.statusCode != 200) {
-        throw Exception('خطا در دانلود');
-      }
-
-      final totalBytes = response.contentLength ?? 0;
-      int downloadedBytes = 0;
-
-      final tempDir = await getTemporaryDirectory();
-      final fileName = 'voice_${DateTime.now().millisecondsSinceEpoch}.ogg';
-      final file = File('${tempDir.path}/$fileName');
-      final sink = file.openWrite();
-
-      await for (final chunk in response.stream) {
-        sink.add(chunk);
-        downloadedBytes += chunk.length;
-
-        if (totalBytes > 0 && mounted) {
-          setState(() {
-            _downloadProgress = downloadedBytes / totalBytes;
-          });
-        }
-      }
-
-      await sink.close();
-
-      if (mounted) {
-        _localFilePath = file.path;
-        await _audioPlayer.setFilePath(file.path);
-
-        setState(() {
-          _isDownloading = false;
-          _isInitialized = true;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isDownloading = false;
-          _error = e.toString();
-        });
-      }
-    }
-  }
+  // Download handled by centralized service; keep method for compatibility if needed
 
   Future<void> _togglePlayPause() async {
     HapticFeedback.lightImpact();
-
-    if (!_isInitialized) {
-      await _downloadAudio();
-      if (!_isInitialized) return;
-    }
-
-    if (_isPlaying) {
-      await _audioPlayer.pause();
-    } else {
-      await _audioPlayer.play();
-    }
+    await _playerService.playOrPause(widget.messageId, widget.audioUrl);
   }
 
   void _seekToPosition(double progress) {
-    if (!_isInitialized) return;
+    if (_totalDuration.inMilliseconds == 0) return;
 
     final position = Duration(
       milliseconds: (_totalDuration.inMilliseconds * progress).round(),
     );
-    _audioPlayer.seek(position);
+    _playerService.seek(position);
     HapticFeedback.selectionClick();
   }
 
@@ -295,8 +225,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
         _playbackSpeed = 1.0;
       }
     });
-
-    _audioPlayer.setSpeed(_playbackSpeed);
+    _playerService.setSpeed(_playbackSpeed);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

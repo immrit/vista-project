@@ -235,7 +235,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     HapticFeedback.lightImpact();
     _durationTimer?.cancel();
     _amplitudeSub?.cancel();
-    
+
     // لغو ضبط (حذف فایل)
     await _voiceRecorder.cancelRecording();
     _resetRecording();
@@ -569,7 +569,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
 
   Widget _buildTextField(ChatTheme theme) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Focus(
       onFocusChange: (focused) {
         setState(() => _isFocused = focused);
