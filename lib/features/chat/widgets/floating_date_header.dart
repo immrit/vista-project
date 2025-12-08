@@ -75,6 +75,14 @@ class _FloatingDateHeaderState extends State<FloatingDateHeader>
     super.didUpdateWidget(oldWidget);
 
     // تاریخ جدید - اگر تاریخ تغییر کرد، نمایش بده
+    // If parent cleared the date, hide and clear displayed date to avoid
+    // lingering "Today" when there are no messages.
+    if (widget.currentDate == null && _displayedDate != null) {
+      _displayedDate = null;
+      _hideDate();
+      return;
+    }
+
     if (widget.currentDate != null && widget.currentDate != _displayedDate) {
       _displayedDate = widget.currentDate;
       // اگر تاریخ تغییر کرد، نمایش بده (مخصوصاً وقتی پیام جدید ارسال می‌شه)

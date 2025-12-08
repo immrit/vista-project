@@ -7,7 +7,7 @@ import '../model/message_model.dart';
 import '../model/conversation_model.dart';
 import '../DB/unified_message_cache_service.dart';
 import '../DB/unified_conversation_cache_service.dart';
-import 'ChatService.dart';
+import 'ChatService_LEGACY.dart';
 
 /// سیستم همگام‌سازی کش - روان و هوشمند
 class CacheSyncService {

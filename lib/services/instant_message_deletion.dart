@@ -2,7 +2,7 @@ import '../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/message_model.dart';
-import '../services/ChatService.dart';
+import '../services/ChatService_LEGACY.dart';
 import '../services/improved_error_handler.dart';
 import '../provider/chat_provider.dart';
 import '../provider/advanced_chat_providers.dart';

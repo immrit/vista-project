@@ -78,13 +78,15 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   void initState() {
     super.initState();
     _retryAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 1000),
+      // Reduce duration so retry/entry animations feel snappier
+      duration: const Duration(milliseconds: 400),
       vsync: this,
     );
 
     // Animation controller برای status icon
     _statusAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 1200),
+      // Shorten the status icon rotation to make send -> sent transitions feel faster
+      duration: const Duration(milliseconds: 600),
       vsync: this,
     );
 
@@ -276,7 +278,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         });
       },
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+        // Reduce the container animation duration for snappier UI
+        duration: const Duration(milliseconds: 100),
         transform: Matrix4.translationValues(
           _isReplying ? (isMe ? -20 : 20) : 0,
           0,
@@ -1349,9 +1352,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     final theme = Theme.of(context);
     final isLightMode = theme.brightness == Brightness.light;
 
+    Widget icon;
     if (message.isPending) {
       // Rotating schedule icon برای pending
-      return RotationTransition(
+      icon = RotationTransition(
         turns: _statusIconRotation,
         child: Icon(
           Icons.schedule,
@@ -1361,20 +1365,27 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       );
     } else if (!message.isSent) {
       // برای پیام‌های ناموفق، دکمه retry نمایش داده می‌شود
-      return _buildFailedMessageStatus(message);
+      icon = _buildFailedMessageStatus(message);
     } else if (!message.isDelivered) {
       // تیک تک - ارسال شده
-      return _buildStatusBadge(Icons.done,
+      icon = _buildStatusBadge(Icons.done,
           isLightMode ? Colors.grey.shade700 : Colors.grey.shade300, 16);
     } else if (!message.isSeen) {
       // تیک دوتایی - تحویل داده شده
-      return _buildStatusBadge(Icons.done_all,
+      icon = _buildStatusBadge(Icons.done_all,
           isLightMode ? Colors.grey.shade700 : Colors.grey.shade300, 16);
     } else {
       // تیک دوتایی آبی - خوانده شده
-      return _buildStatusBadge(Icons.done_all,
+      icon = _buildStatusBadge(Icons.done_all,
           isLightMode ? Colors.blue.shade700 : Colors.blue.shade400, 16);
     }
+
+    // Wrap in fixed size to avoid layout jumps when icon changes
+    return SizedBox(
+      width: 18,
+      height: 18,
+      child: Center(child: icon),
+    );
   }
 
   Widget _buildStatusBadge(IconData icon, Color color, double size) {

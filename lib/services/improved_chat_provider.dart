@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/message_model.dart';
 import '../services/cache_sync_service.dart';
-import '../services/ChatService.dart';
+import '../services/ChatService_LEGACY.dart';
 import '../main.dart';
 
 /// Provider بهبود یافته برای مدیریت چت با سیستم sync تلگرامی

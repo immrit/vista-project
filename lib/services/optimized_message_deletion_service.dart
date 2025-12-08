@@ -1,6 +1,6 @@
 import 'dart:async';
 import '../security/logging_utility.dart';
-import 'ChatService.dart';
+import 'ChatService_LEGACY.dart';
 import '../DB/advanced_cache_system.dart';
 
 /// حالت‌های حذف پیام

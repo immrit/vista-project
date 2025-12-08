@@ -2021,12 +2021,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _buildFloatingDateChip() {
+    // Don't show floating date when there are no messages to avoid
+    // displaying "Today" or occupying space when the list is empty.
+    final messages = ref.read(chatScreenProvider(_providerParams)).messages;
+    if (messages.isEmpty) return const SizedBox.shrink();
+
     return AnimatedOpacity(
       opacity: _floatingDate != null ? 1.0 : 0.0,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 220),
       curve: Curves.easeIn,
       child: Container(
-        margin: const EdgeInsets.only(top: 16.0),
+        margin: const EdgeInsets.only(top: 12.0),
         child: FloatingDateChip(date: _floatingDate ?? DateTime.now()),
       ),
     );

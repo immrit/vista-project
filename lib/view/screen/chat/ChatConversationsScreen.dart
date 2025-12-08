@@ -14,7 +14,7 @@ import '../../../provider/chat_provider.dart';
 import '../../util/const.dart';
 import 'ArchivedConversationsScreen.dart';
 // import 'ChatSettingsScreen.dart'; // اضافه کردن ایمپورت صفحه جدید
-import '../../../services/ChatService.dart';
+import '../../../services/ChatService_LEGACY.dart';
 // ✅ استفاده از صفحه چت جدید
 import '../../../features/chat/screens/modern_chat_screen.dart';
 import '../../../DB/database_file_utils.dart';

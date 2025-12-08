@@ -7,7 +7,7 @@ import '../model/conversation_model.dart';
 import '../DB/advanced_cache_system.dart';
 import '../DB/unified_message_cache_service.dart';
 import '../services/user_profile_service.dart';
-import '../services/ChatService.dart';
+import '../services/ChatService_LEGACY.dart';
 import '../main.dart';
 
 /// Advanced chat providers using the new cache system

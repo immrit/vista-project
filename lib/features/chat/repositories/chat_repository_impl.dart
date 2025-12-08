@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../model/message_model.dart';
 import '../../../model/conversation_model.dart';
 import '../data/datasources/chat_local_datasource.dart';
+import '../services/storage_service.dart';
 import 'chat_repository.dart';
 import '../../../../DB/unified_conversation_cache_service.dart';
 
@@ -17,6 +18,7 @@ class ChatRepositoryImpl implements ChatRepository {
   final SupabaseClient _supabase;
   final String? _injectedCurrentUserId;
   final RealtimeChannel _messagesChannel;
+  late final StorageService _storageService;
 
   ChatRepositoryImpl({
     required ChatLocalDataSource localDataSource,
@@ -30,12 +32,32 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   void _init() {
+    // Initialize storage service for cloud file management
+    _storageService = StorageService(_supabase);
+    
     // Start listening to realtime changes immediately
     initializeRealtime();
   }
 
   String? get _currentUserId =>
       _injectedCurrentUserId ?? _supabase.auth.currentUser?.id;
+
+  /// بررسی اعتبار جلسه کاری
+  /// تضمین می‌کند که توکن منقضی نشده است
+  Future<void> _ensureAuth() async {
+    final session = _supabase.auth.currentSession;
+    if (session == null || session.isExpired) {
+      // تلاش برای رفرش توکن
+      try {
+        final response = await _supabase.auth.refreshSession();
+        if (response.session == null) {
+          throw Exception('Session expired - please login again');
+        }
+      } catch (e) {
+        throw Exception('User not authenticated. Please login again.');
+      }
+    }
+  }
 
   // CONVERSATIONS
   @override
@@ -185,6 +207,13 @@ class ChatRepositoryImpl implements ChatRepository {
   }) async {
     final userId = _currentUserId;
     if (userId == null) return ChatResult.failure('کاربر وارد نشده است');
+
+    // ✅ بررسی اعتبار جلسه کاری
+    try {
+      await _ensureAuth();
+    } catch (e) {
+      return ChatResult.failure(e.toString());
+    }
 
     final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
     final now = DateTime.now();
@@ -416,8 +445,52 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<ChatResult<void>> deleteMessage(String messageId,
       {bool forEveryone = false}) async {
     try {
-      await _supabase.from('messages').delete().eq('id', messageId);
+      await _ensureAuth();
+      
+      final userId = _currentUserId;
+      if (userId == null) return ChatResult.failure('کاربر وارد نشده است');
+
+      // ابتدا پیام را بگیر تا ببین آیا فایل ضمیمه دارد یا نه
+      final messageData = await _supabase
+          .from('messages')
+          .select('id, attachment_url, attachment_type')
+          .eq('id', messageId)
+          .single();
+
+      final attachmentUrl = messageData['attachment_url'] as String?;
+      final attachmentType = messageData['attachment_type'] as String?;
+
+      if (forEveryone) {
+        // ✅ حذف دوطرفه - پیام و فایل ضمیمه‌اش را حذف کن
+        
+        if (attachmentUrl != null && attachmentUrl.isNotEmpty) {
+          // ✅ حذف فایل از Cloud Storage (Arvan/Supabase)
+          // از StorageService استفاده می‌کنیم برای حذف متمرکز
+          await _storageService.deleteFile(attachmentUrl, attachmentType);
+          print('✅ Attachment deleted from cloud for message: $messageId');
+        }
+        
+        // حذف پیام از دیتابیس
+        await _supabase.from('messages').delete().eq('id', messageId);
+        print('✅ Message deleted from database for everyone: $messageId');
+      } else {
+        // حذف برای خودم - پیام را فقط برای این کاربر مخفی کن
+        // فایل را پاک نمی‌کنیم چون شاید طرف مقابل بخواهد ببیند
+        await _supabase.from('hidden_messages').insert({
+          'message_id': messageId,
+          'user_id': userId,
+          'hidden_at': DateTime.now().toUtc().toIso8601String(),
+        }).onError((error, stackTrace) {
+          // اگر رکورد قبلاً وجود دارد، خطای duplicate key رخ می‌دهد
+          // این طبیعی است و مشکلی ندارد
+          print('Note: Message may already be hidden or error: $error');
+        });
+        print('✅ Message hidden for user: $userId, messageId: $messageId');
+      }
+
+      // حذف از محلی (Sembast)
       await _localDataSource.deleteMessage(messageId);
+      
       return ChatResult.success(null);
     } catch (e) {
       return ChatResult.failure(e.toString());

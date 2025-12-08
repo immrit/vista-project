@@ -60,7 +60,9 @@ class ModernMessageBubble extends StatelessWidget {
                 ),
                 decoration: BoxDecoration(
                   color: isMine
-                      ? (isLightMode ? const Color(0xFFF5F5F5) : Theme.of(context).primaryColor)
+                      ? (isLightMode
+                          ? const Color(0xFFF5F5F5)
+                          : Theme.of(context).primaryColor)
                       : Colors.grey.shade200,
                   borderRadius: BorderRadius.only(
                     topLeft: const Radius.circular(16),
@@ -92,7 +94,7 @@ class ModernMessageBubble extends StatelessWidget {
                       Text(
                         message.content,
                         style: TextStyle(
-                          color: isMine 
+                          color: isMine
                               ? (isLightMode ? Colors.black87 : Colors.white)
                               : Colors.black87,
                           fontSize: 15,

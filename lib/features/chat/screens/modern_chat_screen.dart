@@ -1158,6 +1158,15 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             .toList();
 
         if (messages.isEmpty) {
+          // ✅ فیکس: اگر لیست خالی است، تاریخ شناور را فوراً حذف کن
+          if (_currentVisibleDate != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() => _currentVisibleDate = null);
+              }
+            });
+          }
+
           return _buildEmptyState(theme);
         }
 

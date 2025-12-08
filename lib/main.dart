@@ -26,12 +26,10 @@ import 'services/session_manager_service_v2.dart';
 import 'middleware/session_middleware.dart';
 import 'firebase_options.dart';
 import 'provider/theme_provider.dart';
-import 'services/optimized_messaging_system.dart';
-import 'services/cache_cleanup_service.dart';
 import 'services/memory_leak_detector.dart';
 import 'services/cache_manager.dart';
 
-import 'services/ChatService.dart';
+import 'services/ChatService_LEGACY.dart';
 import 'services/deep_link_service.dart' as new_deep_link;
 import 'services/PushNotificationService.dart';
 import 'services/notification_navigation_service.dart';
@@ -52,7 +50,6 @@ import 'view/screen/PublicPosts/publicPosts.dart';
 import 'view/screen/PublicPosts/PostDetailPage.dart';
 import 'view/screen/PublicPosts/profileScreen.dart';
 import 'utils/performance_monitor.dart';
-import 'DB/high_performance_cache_system.dart';
 import 'utils/deferred_initialization_manager.dart';
 import 'services/animation_controller_service.dart';
 import 'services/advanced_haptic_feedback_service.dart';
@@ -225,8 +222,7 @@ void main() async {
       final deferredManager = DeferredInitializationManager();
 
       // ✅ فوری: فقط چیزهای ضروری
-      // 1. Cache System (ضروری برای عملکرد سریع)
-      await HighPerformanceCacheSystem().initialize();
+      // 1. ❌ حذف شده: HighPerformanceCacheSystem (کش اضافی - Repository می‌سازد)
 
       // 2. Database Manager (ضروری)
       await DatabaseManager().initializeAllDatabases();
@@ -262,20 +258,8 @@ void main() async {
         await AdvancedSecurityService.initialize();
       });
 
-      deferredManager.defer(() async {
-        // 🚀 مقداردهی اولیه سیستم پیام‌رسانی بهینه‌سازی شده
-        await _initializeOptimizedChatSystem();
-      });
-
-      deferredManager.defer(() async {
-        // 🚀 سیستم پیام‌رسانی بهینه‌شده
-        await _initializeOptimizedMessaging();
-      });
-
-      deferredManager.defer(() async {
-        // 🧹 غیرفعالسازی cache systems اضافی
-        await _disableRedundantCacheSystems();
-      });
+      // ❌ حذف شده: _initializeOptimizedChatSystem و _initializeOptimizedMessaging
+      // Repository و Riverpod بر عهده این کار‌ها هستند
 
       deferredManager.defer(() async {
         // 📦 مقداردهی اولیه UnifiedCacheManager
@@ -1108,39 +1092,6 @@ class _NoAnimationPageTransitionsBuilder extends PageTransitionsBuilder {
   }
 }
 
-/// Initialize optimized messaging system (replaces 14 cache systems)
-Future<OptimizedMessagingSystem> _initializeOptimizedMessaging() async {
-  print('🚀 Initializing Optimized Messaging System...');
-
-  try {
-    final messaging = OptimizedMessagingSystem();
-    await messaging.initialize();
-
-    print('✅ Optimized Messaging System initialized successfully');
-    print('📊 Performance boost: ~85% memory reduction, ~60% CPU reduction');
-
-    return messaging;
-  } catch (e) {
-    print('❌ Error initializing optimized messaging: $e');
-    rethrow;
-  }
-}
-
-/// Disable redundant cache systems for better performance
-Future<void> _disableRedundantCacheSystems() async {
-  print('🧹 Disabling redundant cache systems...');
-
-  try {
-    final cleanup = CacheCleanupService();
-    await cleanup.disableRedundantCacheSystems();
-
-    print('✅ Cache cleanup completed');
-    print('🎯 Using only: MessageCacheService + OptimizedMessagingSystem');
-  } catch (e) {
-    print('⚠️ Warning: Could not disable all redundant systems: $e');
-  }
-}
-
 /// Initialize memory leak detection system
 void _initializeMemoryLeakDetection() {
   print('🔍 Initializing Memory Leak Detection...');
@@ -1153,22 +1104,5 @@ void _initializeMemoryLeakDetection() {
     print('📊 Monitoring: Objects, Subscriptions, Timers');
   } catch (e) {
     print('⚠️ Warning: Could not start memory leak detection: $e');
-  }
-}
-
-/// Initialize optimized chat system
-Future<void> _initializeOptimizedChatSystem() async {
-  print('🚀 Initializing Optimized Chat System...');
-
-  try {
-    final chatService = ChatService();
-    await chatService.initializeOptimizedMessaging();
-
-    print('✅ Optimized Chat System initialized successfully');
-    print(
-      '📊 Features: Real-time updates, Offline support, Instant message display',
-    );
-  } catch (e) {
-    print('⚠️ Warning: Could not initialize optimized chat system: $e');
   }
 }

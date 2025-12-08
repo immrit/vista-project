@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/message_model.dart';
-import '../services/ChatService.dart';
+import '../services/ChatService_LEGACY.dart';
 import '../services/message_retry_service.dart';
 import '../services/message_reaction_service.dart';
 import '../DB/unified_message_cache_service.dart';

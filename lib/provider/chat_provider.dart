@@ -10,7 +10,7 @@ import '../services/user_profile_service.dart';
 import '../main.dart';
 import '../model/conversation_model.dart';
 import '../model/message_model.dart';
-import '../services/ChatService.dart';
+import '../services/ChatService_LEGACY.dart';
 import '../services/profile_service.dart';
 import '../services/message_reaction_service.dart';
 import 'chat_screen_provider.dart';

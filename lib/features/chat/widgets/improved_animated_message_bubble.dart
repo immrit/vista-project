@@ -158,8 +158,9 @@ class _ImprovedAnimatedMessageBubbleState
   }
 
   void _setupAnimations() {
+    // Faster animation for snappier optimistic message insertion
     _controller = AnimationController(
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 200),
       vsync: this,
     );
 
@@ -168,15 +169,17 @@ class _ImprovedAnimatedMessageBubbleState
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _controller,
-      curve: const Interval(0.0, 0.5, curve: Curves.easeOut),
+      // Fade completes earlier to make the bubble visible quickly
+      curve: const Interval(0.0, 0.4, curve: Curves.easeOut),
     ));
 
     _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 1.5),
+      begin: const Offset(0, 0.9),
       end: Offset.zero,
     ).animate(CurvedAnimation(
       parent: _controller,
-      curve: const Interval(0.0, 0.8, curve: Curves.easeOutCubic),
+      // Slightly shorter slide interval to speed entry
+      curve: const Interval(0.0, 0.7, curve: Curves.easeOutCubic),
     ));
 
     _scaleAnimation = Tween<double>(
@@ -184,7 +187,8 @@ class _ImprovedAnimatedMessageBubbleState
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _controller,
-      curve: const Interval(0.0, 0.8, curve: Curves.easeOutBack),
+      // Use easeOutBack for a quick, pleasant pop
+      curve: const Interval(0.0, 0.7, curve: Curves.easeOutBack),
     ));
   }
 

@@ -8,7 +8,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../provider/notification_provider.dart';
 import '../main.dart';
-import 'ChatService.dart';
+import 'ChatService_LEGACY.dart';
 import 'notification_navigation_service.dart';
 
 /// Provider برای دسترسی به PushNotificationService
