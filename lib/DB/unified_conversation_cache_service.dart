@@ -103,6 +103,15 @@ class UnifiedConversationCacheService {
     await _advancedCache.removeConversation(conversationId);
   }
 
+  /// Cache a message (Optimistic update)
+  Future<void> cacheMessage(dynamic message) async {
+    // Dynamic to avoid circular imports or model conflicts if models are different
+    // But ideally should be MessageModel
+    if (message.runtimeType.toString().contains('MessageModel')) {
+      await _advancedCache.cacheMessage(message);
+    }
+  }
+
   /// Get unified service instance for initialization
   UnifiedConversationCacheService get unifiedService => this;
 }

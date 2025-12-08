@@ -848,96 +848,6 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     );
   }
 
-  // این متد دیگر استفاده نمی‌شود - از AdvancedFileManager استفاده می‌کنیم
-  /*
-  Future<File?> _ensureDownloadedWithProgress(String url) async {
-    try {
-      debugPrint('🔄 Starting download: $url');
-
-      final dir = await _getVistaFolder();
-      final fileName = _extractFileName(url);
-      final filePath = '${dir.path}/$fileName';
-      final file = File(filePath);
-
-      debugPrint('📁 Vista folder: ${dir.path}');
-      debugPrint('📄 File name: $fileName');
-      debugPrint('📄 File path: $filePath');
-
-      if (!await file.exists()) {
-        debugPrint('⬇️ File does not exist, starting download...');
-
-        // Try original URL first
-        var request = http.Request('GET', Uri.parse(url));
-        var streamedResponse = await request.send();
-
-        // If 404, try with proper URL encoding
-        if (streamedResponse.statusCode == 404) {
-          debugPrint('🔄 404 error, trying with proper URL encoding...');
-          final uri = Uri.parse(url);
-          final encodedPath = uri.path.split('/').map((segment) {
-            return Uri.encodeComponent(segment);
-          }).join('/');
-          final encodedUrl = '${uri.scheme}://${uri.host}${encodedPath}';
-          debugPrint('🔄 Encoded URL: $encodedUrl');
-
-          request = http.Request('GET', Uri.parse(encodedUrl));
-          streamedResponse = await request.send();
-        }
-
-        debugPrint('📡 Response status: ${streamedResponse.statusCode}');
-        debugPrint('📏 Content length: ${streamedResponse.contentLength}');
-
-        if (streamedResponse.statusCode == 200) {
-          final contentLength = streamedResponse.contentLength;
-          final bytes = <int>[];
-          double downloadedBytes = 0;
-
-          await for (final chunk in streamedResponse.stream) {
-            bytes.addAll(chunk);
-            downloadedBytes += chunk.length;
-
-            if (contentLength != null && mounted) {
-              final progress = downloadedBytes / contentLength;
-              debugPrint(
-                  '📊 Progress: ${(progress * 100).toInt()}% ($downloadedBytes/$contentLength)');
-              setState(() {
-                _downloadProgress[url] = progress;
-              });
-            }
-          }
-
-          debugPrint('💾 Writing ${bytes.length} bytes to file...');
-          try {
-            await file.writeAsBytes(bytes);
-            debugPrint('✅ File saved successfully to: ${file.path}');
-
-            // Verify file was written
-            if (await file.exists()) {
-              final fileSize = await file.length();
-              debugPrint('📏 File size: $fileSize bytes');
-            } else {
-              debugPrint('❌ File does not exist after writing!');
-            }
-          } catch (writeError) {
-            debugPrint('❌ Error writing file: $writeError');
-            throw writeError;
-          }
-        } else {
-          debugPrint(
-              '❌ Download failed with status: ${streamedResponse.statusCode}');
-          return null;
-        }
-      } else {
-        debugPrint('✅ File already exists');
-      }
-      return file;
-    } catch (e) {
-      debugPrint('❌ Download error: $e');
-      return null;
-    }
-  }
-  */
-
   Future<void> _openLocal(File file) async {
     try {
       debugPrint('🔓 Opening file: ${file.path}');
@@ -1438,7 +1348,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   Widget _buildStatusIcon(MessageModel message) {
     final theme = Theme.of(context);
     final isLightMode = theme.brightness == Brightness.light;
-    
+
     if (message.isPending) {
       // Rotating schedule icon برای pending
       return RotationTransition(
@@ -1454,25 +1364,16 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       return _buildFailedMessageStatus(message);
     } else if (!message.isDelivered) {
       // تیک تک - ارسال شده
-      return _buildStatusBadge(
-        Icons.done, 
-        isLightMode ? Colors.grey.shade700 : Colors.grey.shade300, 
-        16
-      );
+      return _buildStatusBadge(Icons.done,
+          isLightMode ? Colors.grey.shade700 : Colors.grey.shade300, 16);
     } else if (!message.isSeen) {
       // تیک دوتایی - تحویل داده شده
-      return _buildStatusBadge(
-        Icons.done_all, 
-        isLightMode ? Colors.grey.shade700 : Colors.grey.shade300, 
-        16
-      );
+      return _buildStatusBadge(Icons.done_all,
+          isLightMode ? Colors.grey.shade700 : Colors.grey.shade300, 16);
     } else {
       // تیک دوتایی آبی - خوانده شده
-      return _buildStatusBadge(
-        Icons.done_all, 
-        isLightMode ? Colors.blue.shade700 : Colors.blue.shade400, 
-        16
-      );
+      return _buildStatusBadge(Icons.done_all,
+          isLightMode ? Colors.blue.shade700 : Colors.blue.shade400, 16);
     }
   }
 

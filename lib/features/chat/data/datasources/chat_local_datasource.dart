@@ -112,6 +112,18 @@ class ChatLocalDataSource {
         .put(db, conversation.toJson());
   }
 
+  Future<ConversationModel?> getConversation(
+      String conversationId, String currentUserId) async {
+    final db = await _dbManager.getChatDatabase();
+    final snapshot =
+        await _conversationStore.record(conversationId).getSnapshot(db);
+    if (snapshot != null) {
+      return ConversationModel.fromJson(snapshot.value,
+          currentUserId: currentUserId);
+    }
+    return null;
+  }
+
   Future<void> deleteConversation(String conversationId) async {
     final db = await _dbManager.getChatDatabase();
     await _conversationStore.record(conversationId).delete(db);

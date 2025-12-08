@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/chat_theme.dart';
 import '../../../utils/compat_extensions.dart';
+import 'voice_message_bubble.dart';
 
 /// وضعیت پیام
 enum MessageStatus {
@@ -68,6 +69,10 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
   final String? attachmentFileName;
   final int? duration; // برای voice messages
 
+  // Forwarding
+  final bool isForwarded;
+  final String? forwardedFrom;
+
   const ImprovedAnimatedMessageBubble({
     super.key,
     required this.messageId,
@@ -92,6 +97,8 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
     this.attachmentType,
     this.attachmentFileName,
     this.duration,
+    this.isForwarded = false,
+    this.forwardedFrom,
   });
 
   @override
@@ -102,6 +109,8 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
 class _ImprovedAnimatedMessageBubbleState
     extends State<ImprovedAnimatedMessageBubble>
     with SingleTickerProviderStateMixin {
+  static final Set<String> _shownMessages = {};
+
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
@@ -114,20 +123,43 @@ class _ImprovedAnimatedMessageBubbleState
     super.initState();
     _setupAnimations();
 
-    if (widget.animate) {
-      Future.delayed(Duration(milliseconds: widget.index * 50), () {
+    final uniqueId = widget.messageId;
+
+    bool shouldAnimate = widget.animate;
+
+    if (shouldAnimate) {
+      if (widget.isMe) {
+        if (widget.status != MessageStatus.pending) {
+          shouldAnimate = false;
+        }
+      } else {
+        if (_shownMessages.contains(uniqueId)) {
+          shouldAnimate = false;
+        }
+      }
+
+      final isRecent = DateTime.now().difference(widget.time).inSeconds < 60;
+      if (!isRecent) {
+        shouldAnimate = false;
+      }
+    }
+
+    if (shouldAnimate) {
+      _shownMessages.add(uniqueId);
+      Future.delayed(Duration(milliseconds: widget.index * 30), () {
         if (mounted) {
           _controller.forward();
         }
       });
     } else {
       _controller.value = 1.0;
+      _shownMessages.add(uniqueId);
     }
   }
 
   void _setupAnimations() {
     _controller = AnimationController(
-      duration: const Duration(milliseconds: 400),
+      duration: const Duration(milliseconds: 600),
       vsync: this,
     );
 
@@ -136,23 +168,23 @@ class _ImprovedAnimatedMessageBubbleState
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _controller,
-      curve: Curves.easeOut,
+      curve: const Interval(0.0, 0.5, curve: Curves.easeOut),
     ));
 
     _slideAnimation = Tween<Offset>(
-      begin: Offset(widget.isMe ? 0.3 : -0.3, 0),
+      begin: const Offset(0, 1.5),
       end: Offset.zero,
     ).animate(CurvedAnimation(
       parent: _controller,
-      curve: Curves.easeOutCubic,
+      curve: const Interval(0.0, 0.8, curve: Curves.easeOutCubic),
     ));
 
     _scaleAnimation = Tween<double>(
-      begin: 0.8,
+      begin: 0.0,
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _controller,
-      curve: Curves.easeOutBack,
+      curve: const Interval(0.0, 0.8, curve: Curves.easeOutBack),
     ));
   }
 
@@ -166,9 +198,6 @@ class _ImprovedAnimatedMessageBubbleState
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
 
-    // Wrap the whole interactive bubble in a RepaintBoundary to reduce
-    // unnecessary repaints when the list is scrolling. This keeps the
-    // existing animation structure intact but isolates renders.
     return RepaintBoundary(
       child: FadeTransition(
         opacity: _fadeAnimation,
@@ -178,7 +207,6 @@ class _ImprovedAnimatedMessageBubbleState
             scale: _scaleAnimation,
             child: GestureDetector(
               onTap: () {
-                // Toggle نمایش زمان
                 setState(() => _showTime = !_showTime);
                 HapticFeedback.selectionClick();
                 widget.onTap?.call();
@@ -200,29 +228,21 @@ class _ImprovedAnimatedMessageBubbleState
                       ? CrossAxisAlignment.end
                       : CrossAxisAlignment.start,
                   children: [
-                    // حباب اصلی پیام
                     Row(
                       mainAxisAlignment: widget.isMe
                           ? MainAxisAlignment.end
                           : MainAxisAlignment.start,
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        // زمان سمت چپ (برای پیام‌های دیگران)
                         if (!widget.isMe && _showTime)
                           _buildFixedTimeLabel(theme, isLeft: true),
-
-                        // محتوای پیام
                         Flexible(
                           child: _buildMessageBubble(theme),
                         ),
-
-                        // زمان سمت راست (برای پیام‌های خودم)
                         if (widget.isMe && _showTime)
                           _buildFixedTimeLabel(theme, isLeft: false),
                       ],
                     ),
-
-                    // زمان پایین پیام (همیشه نمایش داده می‌شود - نسخه کوتاه)
                     if (widget.isLastInGroup)
                       Padding(
                         padding: EdgeInsets.only(
@@ -242,7 +262,6 @@ class _ImprovedAnimatedMessageBubbleState
     );
   }
 
-  /// حباب پیام اصلی
   Widget _buildMessageBubble(ChatTheme theme) {
     return Container(
       decoration: BoxDecoration(
@@ -259,20 +278,52 @@ class _ImprovedAnimatedMessageBubbleState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Reply (اگر وجود داشت)
+          if (widget.isForwarded) _buildForwardHeader(theme),
           if (widget.replyToContent != null) _buildReplySection(theme),
-
-          // محتوای اصلی
           _buildContent(theme),
-
-          // Reactions (اگر وجود داشت)
           if (widget.reactions.isNotEmpty) _buildReactionsSection(theme),
         ],
       ),
     );
   }
 
-  /// محاسبه BorderRadius بر اساس موقعیت در گروه
+  Widget _buildForwardHeader(ChatTheme theme) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+      padding: const EdgeInsets.only(left: 4),
+      decoration: BoxDecoration(
+        border: Border(
+          left: BorderSide(
+            color: theme.sendButtonColor.withOpacity(0.5),
+            width: 2,
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Forwarded from',
+            style: TextStyle(
+              fontSize: 10,
+              fontStyle: FontStyle.italic,
+              color: theme.sendButtonColor.withOpacity(0.7),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            widget.forwardedFrom ?? 'Unknown',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: theme.textColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   BorderRadius _getBorderRadius() {
     const radius = Radius.circular(18);
     const smallRadius = Radius.circular(4);
@@ -294,7 +345,6 @@ class _ImprovedAnimatedMessageBubbleState
     }
   }
 
-  /// بخش Reply
   Widget _buildReplySection(ChatTheme theme) {
     return GestureDetector(
       onTap: widget.onReplyTap,
@@ -342,14 +392,25 @@ class _ImprovedAnimatedMessageBubbleState
     );
   }
 
-  /// محتوای اصلی پیام
   Widget _buildContent(ChatTheme theme) {
+    if ((widget.attachmentType == 'audio' ||
+            widget.attachmentType == 'voice') &&
+        widget.attachmentUrl != null &&
+        widget.attachmentUrl!.isNotEmpty) {
+      return VoiceMessageBubble(
+        messageId: widget.messageId,
+        audioUrl: widget.attachmentUrl!,
+        durationSeconds: widget.duration,
+        isMe: widget.isMe,
+        time: widget.time,
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // متن پیام
           if (widget.content.isNotEmpty)
             Text(
               widget.content,
@@ -361,11 +422,7 @@ class _ImprovedAnimatedMessageBubbleState
                 height: 1.4,
               ),
             ),
-
-          // فاصله بین متن و وضعیت
           if (widget.content.isNotEmpty) const SizedBox(height: 4),
-
-          // وضعیت و زمان درون حباب (فقط برای پیام‌های خودم)
           if (widget.isMe)
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -387,7 +444,6 @@ class _ImprovedAnimatedMessageBubbleState
     );
   }
 
-  /// آیکون وضعیت پیام
   Widget _buildStatusIcon(ChatTheme theme) {
     IconData icon;
     Color color = theme.myBubbleTextColor.withOpacity(0.7);
@@ -415,7 +471,6 @@ class _ImprovedAnimatedMessageBubbleState
     return Icon(icon, size: 14, color: color);
   }
 
-  /// بخش Reactions
   Widget _buildReactionsSection(ChatTheme theme) {
     return Padding(
       padding: const EdgeInsets.only(left: 8, right: 8, bottom: 4),
@@ -450,8 +505,8 @@ class _ImprovedAnimatedMessageBubbleState
                       style: TextStyle(
                         fontSize: 10,
                         color: widget.isMe
-                            ? theme.myBubbleTextColor
-                            : theme.otherBubbleTextColor,
+                            ? theme.myBubbleTextColor.withOpacity(0.7)
+                            : theme.otherBubbleTextColor.withOpacity(0.7),
                       ),
                     ),
                   ],
@@ -464,7 +519,6 @@ class _ImprovedAnimatedMessageBubbleState
     );
   }
 
-  /// نمایش زمان ثابت کنار پیام (وقتی tap می‌شود)
   Widget _buildFixedTimeLabel(ChatTheme theme, {required bool isLeft}) {
     return AnimatedOpacity(
       opacity: _showTime ? 1.0 : 0.0,
@@ -496,7 +550,6 @@ class _ImprovedAnimatedMessageBubbleState
     );
   }
 
-  /// نمایش زمان پایین پیام (همیشه نمایش داده می‌شود)
   Widget _buildBottomTimeLabel(ChatTheme theme) {
     return Text(
       widget.time.toFixedTimeLabel(),

@@ -1,10 +1,10 @@
 import '../../security/logging_utility.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '/main.dart';
+
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import '../../services/advanced_security_service.dart';
-import '../../services/session_manager_service.dart';
+import '../../services/session_manager_service_v2.dart';
 import 'auth/biometric_login_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -51,247 +51,81 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _redirect() async {
-    // یک تأخیر کوتاه برای نمایش انیمیشن اسپلش (کاهش یافته)
-    await Future.delayed(const Duration(milliseconds: 800));
-
-    if (!mounted) return;
-
     try {
-      // ✅ منتظر بمانید تا session restore شود (مهم!)
-      setState(() {
-        _statusMessage = 'در حال آماده سازی...';
-      });
+      // ✅ Offline-First: Check SessionManagerV2 directly
+      // Since it's initialized in main.dart, it already has the local session loaded.
+      final sessionManager = SessionManagerServiceV2.instance;
 
-      // صبر کردن برای restore شدن session (حداکثر 5 ثانیه)
-      Session? session;
-      bool sessionFound = false;
-
-      for (int i = 0; i < 25; i++) {
-        session = supabase.auth.currentSession;
-        if (session != null) {
-          sessionFound = true;
-          print('✅ Session found after ${i * 200}ms: ${session.user.email}');
-
-          // بررسی expire شدن و refresh در صورت نیاز
-          final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-          final expiresAt = session.expiresAt ?? 0;
-
-          if (expiresAt < now) {
-            print('⚠️ Session expired, attempting refresh...');
-            try {
-              final refreshed = await supabase.auth.refreshSession();
-              if (refreshed.session != null) {
-                session = refreshed.session;
-                print('✅ Session refreshed successfully');
-              }
-            } catch (e) {
-              print('⚠️ Session refresh failed: $e');
-              // ادامه می‌دهیم با session موجود
-            }
-          }
-
-          break;
-        }
-        await Future.delayed(const Duration(milliseconds: 200));
-      }
-
-      // بررسی session بعد از صبر کردن
-      if (!sessionFound) {
-        // یک بار دیگر چک کن (ممکن است در همین لحظه restore شده باشد)
-        session = supabase.auth.currentSession;
-        if (session == null) {
-          print('ℹ️ No session found after waiting, redirecting to auth');
-          // کاربر لاگین نیست - انتقال به auth
-          if (mounted) {
-            Navigator.of(context).pushReplacementNamed('/auth');
-          }
-          return;
-        }
-      }
-
-      if (session == null) {
-        print('ℹ️ Session is null, redirecting to auth');
+      // اگر session معتبر داریم (محلی یا ریموت)، مستقیم برو داخل
+      if (sessionManager.currentSessionId != null) {
+        logInfo('🚀 Offline-First: Local session found, skipping wait.');
+        // سریع برو به صفحه اصلی
         if (mounted) {
-          Navigator.of(context).pushReplacementNamed('/auth');
+          _navigateToHome();
         }
         return;
       }
 
-      print('✅ Session restored: ${session.user.email}');
+      // اگر session نداریم، شاید Supabase در حال restore باشد (برای اولین نصب یا clear data)
+      // یک صبر کوتاه (غیرمسدودکننده برای حس بهتر)
+      logInfo('⏳ No local session, waiting briefly for Supabase restore...');
 
-      // کاربر لاگین است - بررسی و ثبت session به صورت سریع
-      setState(() {
-        _statusMessage = 'در حال آماده‌سازی...';
-      });
-
-      // بررسی و ثبت session به صورت سریع و موازی
-      final sessionManager = SessionManagerService();
-
-      // اجرای موازی: بررسی session و سایر عملیات
-      await Future.wait([
-        // بررسی و ثبت session با timeout کوتاه
-        sessionManager.ensureSessionRegistered().timeout(
-              const Duration(seconds: 2),
-              onTimeout: () => true, // در صورت timeout، ادامه بده
-            ),
-        // بررسی محدودیت حساب (موازی)
-        _checkAccountLockStatus(session.user.id),
-      ], eagerError: false);
-
-      // انتقال به صفحه اصلی
-      if (mounted) {
-        final isBiometricEnabled =
-            await AdvancedSecurityService.isBiometricEnabled().timeout(
-                const Duration(milliseconds: 500),
-                onTimeout: () => false);
-
-        if (isBiometricEnabled) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) => BiometricLoginScreen(
-                onSuccess: () {
-                  Navigator.pushReplacementNamed(context, '/home');
-                },
-                onFallback: () {
-                  Navigator.pushReplacementNamed(context, '/auth');
-                },
-              ),
-            ),
-          );
-        } else {
-          Navigator.pushReplacementNamed(context, '/home');
+      // تلاش کوتاه برای دیدن اینکه آیا Supabase خودش چیزی پیدا می‌کند
+      // مثلاً اگر deep link باشد یا ...
+      int attempts = 0;
+      while (attempts < 5) {
+        // حدود 1 ثانیه
+        if (Supabase.instance.client.auth.currentSession != null) {
+          logInfo('✅ Supabase session restored during splash wait');
+          if (mounted) _navigateToHome();
+          return;
         }
+        await Future.delayed(const Duration(milliseconds: 200));
+        attempts++;
+      }
+
+      // اگر هنوز هیچ خبری نیست، برو لاگین
+      logInfo('ℹ️ No session found, redirecting to auth');
+      if (mounted) {
+        Navigator.of(context).pushReplacementNamed('/auth');
       }
     } catch (e) {
       logInfo('❌ Error in splash screen: $e');
-
-      // بررسی نوع خطا
-      final errorString = e.toString().toLowerCase();
-      final isNetworkError = errorString.contains('network') ||
-          errorString.contains('timeout') ||
-          errorString.contains('connection') ||
-          errorString.contains('socket') ||
-          errorString.contains('failed host lookup');
-
-      // اگر خطای network است و session معتبر است، به صفحه اصلی برو
-      if (isNetworkError) {
-        final session = supabase.auth.currentSession;
-        if (session != null) {
-          logInfo('⚠️ Network error but session is valid, continuing to home');
-          if (mounted) {
-            Navigator.pushReplacementNamed(context, '/home');
-          }
-          return;
-        }
+      // در بدترین حالت، برو لاگین
+      if (mounted) {
+        Navigator.of(context).pushReplacementNamed('/auth');
       }
+    }
+  }
 
-      // فقط در صورت خطای واقعی یا عدم وجود session، به صفحه ورود منتقل شود
-      final finalSession = supabase.auth.currentSession;
-      if (finalSession == null) {
-        if (mounted) {
-          Navigator.of(context).pushReplacementNamed('/auth');
-        }
-      } else {
-        // اگر session معتبر است، به صفحه اصلی برو
-        logInfo('✅ Session is valid despite error, continuing to home');
-        if (mounted) {
-          Navigator.pushReplacementNamed(context, '/home');
-        }
-      }
+  Future<void> _navigateToHome() async {
+    // بررسی سریع بیومتریک (اگر فعال باشد)
+    final isBiometricEnabled =
+        await AdvancedSecurityService.isBiometricEnabled()
+            .timeout(const Duration(milliseconds: 300), // timeout خیلی کوتاه
+                onTimeout: () => false);
+
+    if (!mounted) return;
+
+    if (isBiometricEnabled) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => BiometricLoginScreen(
+            onSuccess: () {
+              Navigator.pushReplacementNamed(context, '/home');
+            },
+            onFallback: () {
+              Navigator.pushReplacementNamed(context, '/auth');
+            },
+          ),
+        ),
+      );
+    } else {
+      Navigator.pushReplacementNamed(context, '/home');
     }
   }
 
   // بررسی محدودیت حساب به صورت سریع
-  Future<void> _checkAccountLockStatus(String userId) async {
-    try {
-      final isLocked =
-          await AdvancedSecurityService.isAccountLocked(userId: userId)
-              .timeout(const Duration(seconds: 1), onTimeout: () => false);
-
-      if (isLocked && mounted) {
-        final lockInfo = await AdvancedSecurityService.getLockInfo(
-                userId: userId)
-            .timeout(const Duration(milliseconds: 500), onTimeout: () => null);
-        final lockReason = lockInfo != null
-            ? await AdvancedSecurityService.getLockReasonPersian(userId: userId)
-                .timeout(const Duration(milliseconds: 500),
-                    onTimeout: () => null)
-            : null;
-        final remainingTime = await AdvancedSecurityService
-                .getRemainingLockoutTime(userId: userId)
-            .timeout(const Duration(milliseconds: 500), onTimeout: () => null);
-
-        // خروج از حساب
-        try {
-          await supabase.auth.signOut();
-          await AdvancedSecurityService.clearAllSecurityData();
-        } catch (e) {
-          // ignore
-        }
-
-        // نمایش پیام قفل شدن
-        if (mounted) {
-          _showAccountLockedDialog(
-            remainingTime: remainingTime,
-            lockReason: lockReason,
-            lockType: lockInfo?['lock_type'] as String?,
-          );
-        }
-      }
-    } catch (e) {
-      // ignore - خطا را نادیده بگیر
-    }
-  }
-
-  void _showAccountLockedDialog({
-    Duration? remainingTime,
-    String? lockReason,
-    String? lockType,
-  }) {
-    String message = 'حساب کاربری شما محدود شده است.\n\n';
-
-    if (lockReason != null) {
-      message += 'علت: $lockReason\n\n';
-    }
-
-    if (lockType == 'permanent') {
-      message += 'این محدودیت دائمی است. لطفاً با پشتیبانی تماس بگیرید.';
-    } else if (remainingTime != null) {
-      final minutes = remainingTime.inMinutes;
-      final seconds = remainingTime.inSeconds % 60;
-      message += 'زمان باقی‌مانده: $minutes دقیقه و $seconds ثانیه\n\n'
-          'لطفاً بعد از اتمام زمان، دوباره تلاش کنید.';
-    } else {
-      message += 'لطفاً با پشتیبانی تماس بگیرید.';
-    }
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('⚠️ دسترسی محدود شده'),
-        content: Text(message),
-        actions: [
-          if (lockType != 'permanent' && remainingTime != null)
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _redirect(); // تلاش مجدد بعد از اتمام زمان
-              },
-              child: const Text('تلاش مجدد'),
-            ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              // انتقال به صفحه ورود
-              Navigator.of(context).pushReplacementNamed('/auth');
-            },
-            child: const Text('متوجه شدم'),
-          ),
-        ],
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {

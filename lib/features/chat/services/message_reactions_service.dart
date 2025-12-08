@@ -20,6 +20,9 @@ class MessageReactionsService {
     required String messageId,
     required String emoji,
   }) async {
+    // 🔴 امکان واکنش به پیام‌های موقت وجود ندارد
+    if (messageId.startsWith('temp_')) return null;
+
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) throw Exception('کاربر احراز هویت نشده');
@@ -72,6 +75,8 @@ class MessageReactionsService {
 
   /// دریافت تمام واکنش‌های یک پیام
   Future<List<MessageReaction>> getMessageReactions(String messageId) async {
+    if (messageId.startsWith('temp_')) return [];
+
     try {
       final response = await _supabase
           .from('message_reactions')
@@ -94,11 +99,17 @@ class MessageReactionsService {
   ) async {
     if (messageIds.isEmpty) return {};
 
+    // 🔴 فیلتر کردن IDهای موقت (که با temp_ شروع می‌شوند)
+    // دیتابیس UUID انتظار دارد و ارسال رشته temp_ باعث کرش می‌شود
+    final validIds = messageIds.where((id) => !id.startsWith('temp_')).toList();
+
+    if (validIds.isEmpty) return {};
+
     try {
       final response = await _supabase
           .from('message_reactions')
           .select()
-          .inFilter('message_id', messageIds)
+          .inFilter('message_id', validIds)
           .order('created_at', ascending: true);
 
       final Map<String, List<MessageReaction>> grouped = {};
@@ -117,20 +128,23 @@ class MessageReactionsService {
 
   /// Stream برای دریافت real-time واکنش‌های یک پیام
   Stream<List<MessageReaction>> watchMessageReactions(String messageId) {
+    if (messageId.startsWith('temp_')) return Stream.value([]);
+
     return _supabase
         .from('message_reactions')
         .stream(primaryKey: ['id'])
         .eq('message_id', messageId)
         .order('created_at')
-        .map((data) => data
-            .map((json) => MessageReaction.fromJson(json))
-            .toList());
+        .map((data) =>
+            data.map((json) => MessageReaction.fromJson(json)).toList());
   }
 
   /// حذف تمام واکنش‌های کاربر از یک پیام
   Future<void> removeAllUserReactions({
     required String messageId,
   }) async {
+    if (messageId.startsWith('temp_')) return;
+
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) return;
@@ -147,6 +161,8 @@ class MessageReactionsService {
 
   /// حذف تمام واکنش‌های یک پیام (وقتی پیام حذف میشه)
   Future<void> deleteAllMessageReactions(String messageId) async {
+    if (messageId.startsWith('temp_')) return;
+
     try {
       await _supabase
           .from('message_reactions')
@@ -178,4 +194,3 @@ class MessageReactionsService {
     }
   }
 }
-

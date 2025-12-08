@@ -96,6 +96,12 @@ class MessageModel {
   final String? errorMessage; // پیام خطای ارسال برای نمایش به کاربر
   final DateTime? lastRetryTime; // آخرین زمان تلاش مجدد
 
+  // فیلدهای فوروارد
+  final bool isForwarded;
+  final String? originalSenderId;
+  final String? forwardedFromSenderName;
+  final String? originalMessageId;
+
   // Typing indicators برای نشان دادن کاربران در حال تایپ
   final Map<String, DateTime>? typingUsers;
 
@@ -123,38 +129,6 @@ class MessageModel {
   /// بررسی اینکه آیا پیام یک پست اشتراک‌گذاری شده است
   bool get isSharedPost =>
       messageType == 'sharedPost' && sharedPostData != null;
-
-  MessageModel({
-    required this.id,
-    required this.conversationId,
-    required this.senderId,
-    required this.content,
-    required this.createdAt,
-    this.attachmentUrl,
-    this.attachmentType,
-    this.attachmentFileName,
-    this.duration,
-    this.isRead = false,
-    this.isSent = true,
-    this.isDelivered = false,
-    this.isSeen = false,
-    this.senderName,
-    this.senderAvatar,
-    required this.isMe,
-    this.replyToMessageId,
-    this.replyToContent,
-    this.replyToSenderName,
-    this.isPending = false,
-    this.isFailed,
-    this.localId,
-    this.retryCount = 0,
-    this.errorMessage,
-    this.lastRetryTime,
-    this.typingUsers,
-    this.reactions = const {},
-    this.messageType,
-    this.sharedPostData,
-  });
 
   factory MessageModel.empty() {
     return MessageModel(
@@ -226,6 +200,42 @@ class MessageModel {
     }
   }
 
+  MessageModel({
+    required this.id,
+    required this.conversationId,
+    required this.senderId,
+    required this.content,
+    required this.createdAt,
+    this.attachmentUrl,
+    this.attachmentType,
+    this.attachmentFileName,
+    this.duration,
+    this.isRead = false,
+    this.isSent = true,
+    this.isDelivered = false,
+    this.isSeen = false,
+    this.senderName,
+    this.senderAvatar,
+    required this.isMe,
+    this.replyToMessageId,
+    this.replyToContent,
+    this.replyToSenderName,
+    this.isPending = false,
+    this.isFailed,
+    this.localId,
+    this.retryCount = 0,
+    this.errorMessage,
+    this.lastRetryTime,
+    this.isForwarded = false,
+    this.originalSenderId,
+    this.forwardedFromSenderName,
+    this.originalMessageId,
+    this.typingUsers,
+    this.reactions = const {},
+    this.messageType,
+    this.sharedPostData,
+  });
+
   factory MessageModel.fromJson(Map<String, dynamic> json,
       {required String currentUserId}) {
     String conversationId =
@@ -259,6 +269,10 @@ class MessageModel {
       lastRetryTime: json['last_retry_time'] != null
           ? DateTime.parse(json['last_retry_time'] as String)
           : null,
+      isForwarded: json['is_forwarded'] as bool? ?? false,
+      originalSenderId: json['original_sender_id'] as String?,
+      forwardedFromSenderName: json['forwarded_from_sender_name'] as String?,
+      originalMessageId: json['original_message_id'] as String?,
       typingUsers: json['typing_users'] != null
           ? Map<String, DateTime>.from(json['typing_users'])
           : null,
@@ -345,6 +359,10 @@ class MessageModel {
     Map<String, List<String>>? reactions,
     String? messageType,
     SharedPostData? sharedPostData,
+    bool? isForwarded,
+    String? originalSenderId,
+    String? forwardedFromSenderName,
+    String? originalMessageId,
   }) {
     return MessageModel(
       id: id ?? this.id,
@@ -376,6 +394,11 @@ class MessageModel {
       reactions: reactions ?? this.reactions,
       messageType: messageType ?? this.messageType,
       sharedPostData: sharedPostData ?? this.sharedPostData,
+      isForwarded: isForwarded ?? this.isForwarded,
+      originalSenderId: originalSenderId ?? this.originalSenderId,
+      forwardedFromSenderName:
+          forwardedFromSenderName ?? this.forwardedFromSenderName,
+      originalMessageId: originalMessageId ?? this.originalMessageId,
     );
   }
 
@@ -410,6 +433,10 @@ class MessageModel {
       'message_type': messageType,
       'shared_post_data':
           sharedPostData != null ? json.encode(sharedPostData!.toJson()) : null,
+      'is_forwarded': isForwarded,
+      'original_sender_id': originalSenderId,
+      'forwarded_from_sender_name': forwardedFromSenderName,
+      'original_message_id': originalMessageId,
     };
   }
 }

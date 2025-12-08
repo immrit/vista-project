@@ -30,6 +30,7 @@ import 'ChatDetailsScreen.dart';
 import 'ChatMessageSearchScreen.dart';
 import '../../../view/util/time_utils.dart';
 import '../../../services/toast_service.dart';
+import '../../../services/typing_service.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String conversationId;
@@ -85,7 +86,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isOtherUserBlocked = false;
   bool _isCurrentUserBlocked = false;
   bool _isCacheEmpty = false;
-  final bool _isOtherUserTyping = false; // typing indicator state
+  bool _isOtherUserTyping = false; // typing indicator state
+  StreamSubscription<Set<String>>?
+      _typingSubscription; // typing service subscription
 
   // Performance optimization
   Timer? _scrollDebounceTimer;
@@ -120,6 +123,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     // بازنشانی تعداد پیام‌های خوانده‌نشده وقتی کاربر وارد مکالمه می‌شود
     _resetUnreadCount();
 
+    // اتصال به سرویس تایپینگ برای نمایش نشانگر "در حال تایپ..."
+    _setupTypingListener();
+
     // اسکرول به آخرین پیام بعد از بارگذاری اولیه
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final messages = ref.read(chatScreenProvider(_providerParams)).messages;
@@ -150,11 +156,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  /// راه‌اندازی گوش‌دهنده برای نشانگر تایپ کردن
+  void _setupTypingListener() {
+    final typingService = TypingService();
+    _typingSubscription = typingService
+        .getTypingStream(widget.conversationId)
+        .listen((typingUsers) {
+      if (mounted) {
+        final isOtherTyping = typingUsers.contains(widget.otherUserId);
+        if (_isOtherUserTyping != isOtherTyping) {
+          setState(() {
+            _isOtherUserTyping = isOtherTyping;
+          });
+        }
+      }
+    });
+  }
+
   // Message selection methods
   void _toggleMessageSelection(String messageId) {
     final wasInSelectionMode = _isSelectionMode;
     final previousCount = _selectedMessageIds.length;
-    
+
     setState(() {
       if (_selectedMessageIds.contains(messageId)) {
         _selectedMessageIds.remove(messageId);
@@ -165,9 +188,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _selectedMessageIds.add(messageId);
         _isSelectionMode = true;
       }
-      
+
       // اگر قبلاً در selection mode بودیم و حالا پیام دوم یا بیشتر انتخاب شد، reaction picker را ببند
-      if (wasInSelectionMode && _isSelectionMode && _selectedMessageIds.length > previousCount && _selectedMessageIds.length > 1) {
+      if (wasInSelectionMode &&
+          _isSelectionMode &&
+          _selectedMessageIds.length > previousCount &&
+          _selectedMessageIds.length > 1) {
         _hideReactionPicker();
       }
     });
@@ -729,6 +755,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _floatingDateDebounceTimer?.cancel();
     _typingTimer?.cancel();
     _autoScrollTimer?.cancel();
+    _typingSubscription?.cancel(); // پاکسازی اشتراک سرویس تایپ
     _fileCaptionController.dispose();
 
     // پاک کردن وضعیت مکالمه باز
@@ -1848,14 +1875,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                               .contains(correctedMessage.id),
                                           previousMessage: prevMessage,
                                           nextMessage: nextMessage,
-                                          currentUserId: supabase.auth.currentUser?.id,
+                                          currentUserId:
+                                              supabase.auth.currentUser?.id,
                                           conversationId: widget.conversationId,
                                           isSelectionMode: _isSelectionMode,
-                                          onShowReactionPicker: _showReactionPicker,
+                                          onShowReactionPicker:
+                                              _showReactionPicker,
                                           onLongPress: (msg) {
                                             // اگر در selection mode هستیم و این پیام قبلاً select نشده، فقط select کن
                                             // اگر در selection mode نیستیم، select کن و reaction picker نمایش بده (در MessageBubble)
-                                            _toggleMessageSelection(correctedMessage.id);
+                                            _toggleMessageSelection(
+                                                correctedMessage.id);
                                           },
                                           onTap: _isSelectionMode
                                               ? (messageId) {
@@ -1922,7 +1952,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
         // ✅ Reaction Picker Overlay - نمایش در سطح بالاتر برای جلوگیری از overflow
         // فقط نمایش بده اگر در selection mode نیستیم (یعنی اولین long press)
-        if (_reactionPickerMessageId != null && 
+        if (_reactionPickerMessageId != null &&
             _reactionPickerPosition != null &&
             !_isSelectionMode)
           Builder(
@@ -1931,7 +1961,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               final screenSize = MediaQuery.of(context).size;
               final pickerWidth = 250.0; // عرض تقریبی picker
               final pickerHeight = 60.0; // ارتفاع تقریبی picker
-              
+
               // محاسبه موقعیت افقی (مرکز picker در مرکز حباب پیام)
               double left = _reactionPickerPosition!.dx - (pickerWidth / 2);
               // اطمینان از اینکه picker از صفحه خارج نشود
@@ -1939,14 +1969,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               if (left + pickerWidth > screenSize.width - 10) {
                 left = screenSize.width - pickerWidth - 10;
               }
-              
+
               // محاسبه موقعیت عمودی (بالای حباب پیام)
               double top = _reactionPickerPosition!.dy - pickerHeight - 10;
               // اگر فضای کافی بالای حباب نیست، زیر حباب نمایش بده
               if (top < 10) {
                 top = _reactionPickerPosition!.dy + 50; // زیر حباب
               }
-              
+
               return Positioned.fill(
                 child: GestureDetector(
                   onTap: () => _hideReactionPicker(), // بستن با کلیک خارج
@@ -1964,11 +1994,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             onReactionSelected: (emoji) async {
                               if (_reactionPickerMessageId != null) {
                                 // ارسال reaction به سرور
-                                await ref.read(messageNotifierProvider.notifier).toggleReaction(
-                                  messageId: _reactionPickerMessageId!,
-                                  conversationId: widget.conversationId,
-                                  emoji: emoji,
-                                );
+                                await ref
+                                    .read(messageNotifierProvider.notifier)
+                                    .toggleReaction(
+                                      messageId: _reactionPickerMessageId!,
+                                      conversationId: widget.conversationId,
+                                      emoji: emoji,
+                                    );
                               }
                               _hideReactionPicker();
                             },

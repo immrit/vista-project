@@ -6,6 +6,7 @@ import '../../../model/message_model.dart';
 import '../../../model/conversation_model.dart';
 import '../data/datasources/chat_local_datasource.dart';
 import 'chat_repository.dart';
+import '../../../../DB/unified_conversation_cache_service.dart';
 
 /// A local-first ChatRepository implementation.
 ///
@@ -15,6 +16,7 @@ class ChatRepositoryImpl implements ChatRepository {
   final ChatLocalDataSource _localDataSource;
   final SupabaseClient _supabase;
   final String? _injectedCurrentUserId;
+  final RealtimeChannel _messagesChannel;
 
   ChatRepositoryImpl({
     required ChatLocalDataSource localDataSource,
@@ -22,7 +24,15 @@ class ChatRepositoryImpl implements ChatRepository {
     String? currentUserId,
   })  : _localDataSource = localDataSource,
         _supabase = supabase,
-        _injectedCurrentUserId = currentUserId;
+        _injectedCurrentUserId = currentUserId,
+        _messagesChannel = supabase.channel('public:messages') {
+    _init();
+  }
+
+  void _init() {
+    // Start listening to realtime changes immediately
+    initializeRealtime();
+  }
 
   String? get _currentUserId =>
       _injectedCurrentUserId ?? _supabase.auth.currentUser?.id;
@@ -60,12 +70,81 @@ class ChatRepositoryImpl implements ChatRepository {
     }
   }
 
+  /// This ensures that even if you are not in a chat, the conversation list updates
+  /// immediately when a new message arrives.
+  void initializeRealtime() {
+    _messagesChannel
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'messages',
+          callback: (payload) async {
+            final userId = _currentUserId;
+            if (userId == null) return;
+
+            final newMessage =
+                MessageModel.fromJson(payload.newRecord, currentUserId: userId);
+
+            // 1. Save Message to Local DB
+            await _localDataSource.saveMessage(newMessage);
+
+            // 2. Update Conversation Metadata (Unread Count, Last Message)
+            final conversationId = newMessage.conversationId;
+            final existingConv =
+                await _localDataSource.getConversation(conversationId, userId);
+
+            if (existingConv != null) {
+              // Calculate new unread count
+              final newUnreadCount = newMessage.senderId != userId
+                  ? existingConv.unreadCount + 1
+                  : existingConv.unreadCount;
+
+              final updatedConv = existingConv.copyWith(
+                lastMessage: newMessage.content,
+                updatedAt: newMessage.createdAt,
+                unreadCount: newUnreadCount,
+                hasUnreadMessages: newUnreadCount > 0,
+              );
+              await _localDataSource.saveConversation(updatedConv);
+            } else {
+              // If conversation doesn't exist locally, fetch it
+              _fetchAndSaveConversation(conversationId);
+            }
+          },
+        )
+        .subscribe();
+  }
+
+  Future<void> _fetchAndSaveConversation(String conversationId) async {
+    try {
+      final userId = _currentUserId;
+      if (userId == null) return;
+
+      final response = await _supabase
+          .from('conversations')
+          .select(
+              '*, conversation_participants!inner(*, profiles(username, avatar_url))')
+          .eq('id', conversationId)
+          .single();
+
+      final conv = ConversationModel.fromJson(response, currentUserId: userId);
+      await _localDataSource.saveConversation(conv);
+    } catch (e) {
+      print('Error fetching new conversation: $e');
+    }
+  }
+
   @override
   Stream<List<ConversationModel>> watchConversations() async* {
     final userId = _currentUserId;
-    if (userId == null) return;
+    print('DEBUG: watchConversations called. userId: $userId');
+    if (userId == null) {
+      print('DEBUG: userId is null, returning empty stream.');
+      return;
+    }
 
     // Kick off background sync, but immediately return local stream
+    print('DEBUG: Triggering _syncConversations');
     _syncConversations();
     yield* _localDataSource.watchConversations(userId);
   }
@@ -126,6 +205,22 @@ class ChatRepositoryImpl implements ChatRepository {
     try {
       await _localDataSource.saveMessage(tempMessage);
 
+      // ✅ Trigger UI Update immediately via Unified Cache (Optimistic)
+      // This bridges the gap between Sembast (Storage) and AdvancedCacheSystem (UI)
+      await UnifiedConversationCacheService().cacheMessage(tempMessage);
+
+      // ✅ Update Conversation Metadata (Optimistic)
+      final existingConv =
+          await _localDataSource.getConversation(conversationId, userId);
+      if (existingConv != null) {
+        final updatedConv = existingConv.copyWith(
+          lastMessage: tempMessage.content,
+          updatedAt: now,
+          unreadCount: 0, // Sending a message implies we read the chat
+        );
+        await _localDataSource.saveConversation(updatedConv);
+      }
+
       final response = await _supabase
           .from('messages')
           .insert({
@@ -134,6 +229,8 @@ class ChatRepositoryImpl implements ChatRepository {
             'content': content,
             'attachment_url': attachmentUrl,
             'attachment_type': attachmentType,
+            'is_sent': true,
+            'is_pending': false,
             'created_at': DateTime.now().toUtc().toIso8601String(),
           })
           .select()
@@ -143,6 +240,18 @@ class ChatRepositoryImpl implements ChatRepository {
           MessageModel.fromJson(response, currentUserId: userId);
       await _localDataSource.deleteMessage(tempId);
       await _localDataSource.saveMessage(serverMessage);
+
+      // ✅ Update UI with confirmed message
+      await UnifiedConversationCacheService().cacheMessage(serverMessage);
+
+      // ✅ Update Conversation Metadata (Confirmed)
+      if (existingConv != null) {
+        final updatedConv = existingConv.copyWith(
+          lastMessage: serverMessage.content,
+          updatedAt: serverMessage.createdAt,
+        );
+        await _localDataSource.saveConversation(updatedConv);
+      }
 
       return ChatResult.success(serverMessage);
     } catch (e) {

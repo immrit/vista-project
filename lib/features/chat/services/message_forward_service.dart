@@ -10,7 +10,8 @@ import 'package:uuid/uuid.dart';
 class MessageForwardResult {
   final bool isSuccess;
   final String? error;
-  final Map<String, String>? forwardedMessageIds; // conversationId -> newMessageId
+  final Map<String, String>?
+      forwardedMessageIds; // conversationId -> newMessageId
 
   const MessageForwardResult({
     required this.isSuccess,
@@ -64,9 +65,7 @@ class MessageForwardService {
       }
 
       // دریافت اطلاعات پیام‌های اصلی
-      final messagesResponse = await _supabase
-          .from('messages')
-          .select('''
+      final messagesResponse = await _supabase.from('messages').select('''
             id,
             conversation_id,
             sender_id,
@@ -75,11 +74,13 @@ class MessageForwardService {
             attachment_type,
             attachment_file_name,
             reply_to_message_id,
+            reply_to_message_id,
+            profiles:sender_id(full_name),
             is_forwarded,
             original_sender_id,
-            original_message_id
-          ''')
-          .inFilter('id', messageIds);
+            original_message_id,
+            forwarded_from_sender_name
+          ''').inFilter('id', messageIds);
 
       if (messagesResponse.isEmpty) {
         return MessageForwardResult.failure('پیام‌ها یافت نشد');
@@ -100,16 +101,28 @@ class MessageForwardService {
         for (final messageData in messagesResponse as List) {
           final newMessageId = _uuid.v4();
 
-          // اطلاعات فوروارد
-          final originalSenderId = messageData['is_forwarded'] == true
+          // منطق فوروارد زنجیره‌ای:
+          // اگر پیام خودش فوروارد شده است، باید اطلاعات اصلی (Original) را حفظ کنیم.
+          // اگر پیام فوروارد شده نیست، صاحب فعلی پیام (Sender) به عنوان Original در نظر گرفته می‌شود.
+
+          final isAlreadyForwarded = messageData['is_forwarded'] == true;
+
+          final String? originalSenderId = isAlreadyForwarded
               ? messageData['original_sender_id']
               : messageData['sender_id'];
 
-          final originalMessageId = messageData['is_forwarded'] == true
+          final String? originalMessageId = isAlreadyForwarded
               ? messageData['original_message_id']
               : messageData['id'];
 
-          // ساخت پیام جدید
+          // نام فرستنده اصلی برای نمایش در هدر
+          final String? forwardFromName = isAlreadyForwarded
+              ? messageData['forwarded_from_sender_name']
+              : (messageData['profiles'] != null
+                  ? messageData['profiles']['full_name']
+                  : null);
+
+          // ساخت پیام جدید که لینک به اطلاعات اصلی دارد
           final newMessage = {
             'id': newMessageId,
             'conversation_id': targetConvId,
@@ -118,11 +131,17 @@ class MessageForwardService {
             'attachment_url': messageData['attachment_url'],
             'attachment_type': messageData['attachment_type'],
             'attachment_file_name': messageData['attachment_file_name'],
+            'reply_to_message_id': null, // پیام فوروارد شده reply ندارد
+
+            // اطلاعات فوروارد
             'is_forwarded': true,
             'original_sender_id': originalSenderId,
             'original_message_id': originalMessageId,
-            'reply_to_message_id': null, // پیام فوروارد شده reply ندارد
+            'forwarded_from_sender_name': forwardFromName,
+
             'created_at': DateTime.now().toIso8601String(),
+            'is_sent': true,
+            'is_delivered': false,
           };
 
           // Insert پیام
@@ -197,13 +216,10 @@ class MessageForwardService {
     String messageId,
   ) async {
     try {
-      await _supabase
-          .from('conversations')
-          .update({
-            'last_message_id': messageId,
-            'last_message_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', conversationId);
+      await _supabase.from('conversations').update({
+        'last_message_id': messageId,
+        'last_message_at': DateTime.now().toIso8601String(),
+      }).eq('id', conversationId);
     } catch (e) {
       debugPrint('❌ Error updating conversation: $e');
     }
@@ -246,4 +262,3 @@ class MessageForwardService {
     }
   }
 }
-

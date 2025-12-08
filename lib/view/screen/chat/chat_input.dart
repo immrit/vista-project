@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
@@ -514,208 +515,282 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
   }
 
   Widget _buildRecordingUI() {
-    return Row(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor =
+        isDark ? const Color(0xFF5DADEC) : const Color(0xFF3390EC);
+
+    return Container(
       key: ValueKey(_isLocked ? 'locked_view' : 'recording_view'),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Row(
+        children: [
+          // دکمه حذف با انیمیشن (فقط در حالت قفل شده)
+          if (_isLocked)
+            _buildAnimatedDeleteButton()
+          else
+            // نقطه قرمز ضربان‌دار + تایمر
+            _buildPulsingRecordIndicator(),
+
+          const SizedBox(width: 12),
+
+          // ناحیه اصلی
+          Expanded(
+            child: _isLocked ? _buildLockedWaveform() : _buildSlideToCancel(),
+          ),
+
+          const SizedBox(width: 8),
+
+          // دکمه‌های سمت راست
+          _isLocked
+              ? _buildSendVoiceButton(primaryColor)
+              : _buildLockAndStopButtons(primaryColor),
+        ],
+      ),
+    );
+  }
+
+  /// نقطه قرمز ضربان‌دار با تایمر
+  Widget _buildPulsingRecordIndicator() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        // آیکون میکروفون یا حذف
-        if (_isLocked)
-          IconButton(
-              icon:
-                  const Icon(Icons.delete_outline, color: Colors.red, size: 28),
-              onPressed: _cancelRecording)
-        else
-          const Icon(Icons.mic, color: Colors.red, size: 28),
+        // نقطه قرمز ضربان‌دار
+        TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.5, end: 1.0),
+          duration: const Duration(milliseconds: 600),
+          builder: (context, value, child) {
+            return AnimatedBuilder(
+              animation: _micIconAnimationController,
+              builder: (context, child) {
+                final pulse = 0.8 + (_micIconAnimationController.value * 0.4);
+                return Container(
+                  width: 12 * pulse,
+                  height: 12 * pulse,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.red,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.red.withOpacity(0.5 * pulse),
+                        blurRadius: 8 * pulse,
+                        spreadRadius: 2 * pulse,
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        ),
+        const SizedBox(width: 10),
+        // تایمر
+        Text(
+          _formatDuration(_recordingDuration),
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+            color: Colors.red.shade700,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        ),
+      ],
+    );
+  }
 
-        const SizedBox(width: 8),
+  /// دکمه حذف با انیمیشن
+  Widget _buildAnimatedDeleteButton() {
+    return GestureDetector(
+      onTap: _cancelRecording,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.red.withOpacity(0.1),
+        ),
+        child: const Icon(
+          Icons.delete_rounded,
+          color: Colors.red,
+          size: 24,
+        ),
+      ),
+    );
+  }
 
-        // نمایش مدت زمان و وضعیت
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(_formatDuration(_recordingDuration),
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-            if (_isPaused)
-              Text(
-                'مکث',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.orange,
-                  fontWeight: FontWeight.w500,
-                ),
+  /// Waveform در حالت قفل شده
+  Widget _buildLockedWaveform() {
+    return Container(
+      height: 40,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.dark
+            ? Colors.white.withOpacity(0.05)
+            : Colors.black.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          // تایمر
+          Text(
+            _formatDuration(_recordingDuration),
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: Colors.red.shade600,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Waveform
+          Expanded(
+            child: AudioWaveforms(
+              size: Size(double.infinity, 32),
+              recorderController: _recorderController,
+              waveStyle: WaveStyle(
+                waveColor: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white70
+                    : const Color(0xFF3390EC),
+                extendWaveform: true,
+                showMiddleLine: false,
+                spacing: 4,
+                waveThickness: 3,
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Slide to cancel با انیمیشن شورون
+  Widget _buildSlideToCancel() {
+    return GestureDetector(
+      onPanUpdate: (details) {
+        if (details.delta.dx < -15) {
+          _cancelRecording();
+        }
+      },
+      child: SizedBox(
+        height: 40,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // شورون‌های متحرک
+            _buildAnimatedChevrons(),
+            const SizedBox(width: 8),
+            // متن
+            Text(
+              "برای لغو بکشید",
+              style: TextStyle(
+                fontSize: 14,
+                color: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.color
+                    ?.withOpacity(0.5),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
+      ),
+    );
+  }
 
-        const SizedBox(width: 16),
-
-        // ناحیه اصلی - waveform یا slide to cancel
-        Expanded(
-          child: _isLocked
-              ? AudioWaveforms(
-                  size: Size(MediaQuery.of(context).size.width, 40),
-                  recorderController: _recorderController,
-                  waveStyle: WaveStyle(
-                      waveColor: Theme.of(context).colorScheme.onSurface,
-                      showDurationLabel: false),
-                )
-              : GestureDetector(
-                  onPanUpdate: (details) {
-                    // تشخیص حرکت به چپ برای لغو
-                    final deltaX = details.delta.dx;
-                    if (deltaX < -20) {
-                      // حرکت به چپ - لغو ضبط
-                      _cancelRecording();
-                    }
-                  },
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: Colors.red.withValues(alpha: 0.3),
-                        width: 1,
-                      ),
-                    ),
-                    child: FadeTransition(
-                      opacity: _slideCancelAnimationController,
-                      child: SlideTransition(
-                        position: _slideCancelAnimation,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: const [
-                            Icon(Icons.arrow_back_ios,
-                                size: 16, color: Colors.red),
-                            SizedBox(width: 4),
-                            Text("Slide to cancel",
-                                style: TextStyle(
-                                  color: Colors.red,
-                                  fontWeight: FontWeight.w500,
-                                )),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-        ),
-
-        // دکمه‌های عملیات
-        if (_isLocked) ...[
-          const SizedBox(width: 8),
-          // دکمه ارسال
-          InkWell(
-            onTap: _stopRecordingAndSend,
-            borderRadius: BorderRadius.circular(24),
-            child: Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [
-                    Theme.of(context).brightness == Brightness.dark
-                        ? const Color(0xFF4CAF50) // سبز در تم تاریک
-                        : const Color(0xFF2196F3), // آبی در تم روشن
-                    (Theme.of(context).brightness == Brightness.dark
-                            ? const Color(0xFF4CAF50)
-                            : const Color(0xFF2196F3))
-                        .withValues(alpha: 0.8),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: (Theme.of(context).brightness == Brightness.dark
-                            ? const Color(0xFF4CAF50)
-                            : const Color(0xFF2196F3))
-                        .withValues(alpha: 0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+  /// شورون‌های متحرک سبک تلگرام
+  Widget _buildAnimatedChevrons() {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 1000),
+      builder: (context, value, child) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (index) {
+            final delay = index * 0.2;
+            final animValue = ((value + delay) % 1.0);
+            final opacity = (1.0 - animValue).clamp(0.2, 0.8);
+            return Padding(
+              padding: const EdgeInsets.only(right: 2),
+              child: Icon(
+                Icons.chevron_left,
+                size: 16,
+                color: Colors.grey.withOpacity(opacity),
               ),
-              child: const Icon(
-                Icons.send_rounded,
-                color: Colors.white,
-                size: 24,
-              ),
+            );
+          }),
+        );
+      },
+    );
+  }
+
+  /// دکمه‌های قفل و توقف
+  Widget _buildLockAndStopButtons(Color primaryColor) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // آیکون قفل با نشانگر کشیدن به بالا
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.keyboard_arrow_up,
+              size: 16,
+              color: Colors.grey.withOpacity(0.6),
             ),
-          ),
-        ] else ...[
-          const SizedBox(width: 8),
-          // دکمه مکث/ادامه
-          InkWell(
-            onTap: _isPaused ? _resumeRecording : _pauseRecording,
-            borderRadius: BorderRadius.circular(24),
-            child: Container(
-              width: 40,
-              height: 40,
+            Container(
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [
-                    _isPaused ? Colors.green : Colors.orange,
-                    (_isPaused ? Colors.green : Colors.orange)
-                        .withValues(alpha: 0.8),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+                color: Colors.grey.withOpacity(0.1),
+                border: Border.all(
+                  color: Colors.grey.withOpacity(0.3),
+                  width: 1.5,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: (_isPaused ? Colors.green : Colors.orange)
-                        .withValues(alpha: 0.3),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
               ),
               child: Icon(
-                _isPaused ? Icons.play_arrow : Icons.pause,
-                color: Colors.white,
-                size: 20,
+                _isLocked ? Icons.lock : Icons.lock_open_outlined,
+                size: 18,
+                color: Colors.grey.shade600,
               ),
             ),
-          ),
-          const SizedBox(width: 8),
-          // دکمه توقف (همیشه نمایش داده می‌شود)
-          InkWell(
-            onTap: _stopRecordingAndSend,
-            borderRadius: BorderRadius.circular(24),
-            child: Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.green,
-                    Colors.green.withValues(alpha: 0.8),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.green.withValues(alpha: 0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.stop_rounded,
-                color: Colors.white,
-                size: 24,
-              ),
-            ),
-          ),
-        ]
+          ],
+        ),
       ],
+    );
+  }
+
+  /// دکمه ارسال صدا
+  Widget _buildSendVoiceButton(Color primaryColor) {
+    return GestureDetector(
+      onTap: _stopRecordingAndSend,
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: [
+              primaryColor,
+              primaryColor.withOpacity(0.8),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: primaryColor.withOpacity(0.4),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.send_rounded,
+          color: Colors.white,
+          size: 22,
+        ),
+      ),
     );
   }
 

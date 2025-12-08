@@ -48,6 +48,8 @@ class SessionManagerServiceV2 {
   DateTime? _lastActivityUpdate;
   int _healthCheckFailures = 0;
 
+  bool _isTerminating = false;
+
   // ✅ Configuration
   static const int _maxHealthCheckFailures = 15; // 15 بار خطا = 15 دقیقه
   static const Duration _activityUpdateInterval =
@@ -96,11 +98,13 @@ class SessionManagerServiceV2 {
 
     // 🛑 اصلاح مهم: اگر کلاً نشست نداریم (کاربر در صفحه لاگین است)، کاری نکن!
     if (supabaseSession == null) {
-      logInfo('ℹ️ No active session on resume (User might be at login screen). Skipping checks.');
+      logInfo(
+          'ℹ️ No active session on resume (User might be at login screen). Skipping checks.');
 
       // اگر دیتای لوکال داشتیم ولی سشن سوپابیس نبود، اون موقع باید پاکسازی کنیم
       if (_currentSessionId != null) {
-        logInfo('⚠️ Local session exists but Supabase session is null. Cleaning up...');
+        logInfo(
+            '⚠️ Local session exists but Supabase session is null. Cleaning up...');
         await _handleSessionTermination();
       }
       return;
@@ -137,7 +141,23 @@ class SessionManagerServiceV2 {
       // بارگذاری session محلی
       await _loadSavedSession();
 
-      // ✅ اگر Supabase session معتبر است، local session هم معتبر است
+      // ✅ Offline-First: به محض اینکه توکن محلی داریم، آن را معتبر فرض می‌کنیم
+      // بررسی اعتبار واقعی در پس‌زمینه (Health Check) انجام می‌شود
+      if (_currentSessionId != null || _sessionToken != null) {
+        logInfo(
+            '🚀 Offline Mode: Local session found, trusting it immediately');
+        _startActivityTracking();
+        _startHealthCheck();
+        _setupRealtimeListener();
+        _isInitialized = true;
+
+        // تلاش نامحسوس برای همگام‌سازی با Supabase
+        _restoreSupabaseSessionInBackground();
+        return;
+      }
+
+      // اگر هیچ توکنی نداریم، وضعیت Supabase را چک می‌کنیم
+
       final supabaseSession = _supabase.auth.currentSession;
       if (supabaseSession != null) {
         final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -176,10 +196,28 @@ class SessionManagerServiceV2 {
       }
 
       _isInitialized = true;
-      logInfo('✅ Session Manager V2 initialized');
+      logInfo('✅ Session Manager V2 initialized (No stored session)');
     } catch (e) {
       logInfo('❌ Error initializing Session Manager: $e');
     }
+  }
+
+  /// تلاش برای بازیابی نشست Supabase در پس‌زمینه (بدون بلاک کردن UI)
+  Future<void> _restoreSupabaseSessionInBackground() async {
+    // اگر Supabase خودش session دارد که عالیست
+    if (_supabase.auth.currentSession != null) return;
+
+    // اگر نه، صبر می‌کنیم شاید recover شود
+    Future.delayed(const Duration(seconds: 1), () async {
+      final session = _supabase.auth.currentSession;
+      if (session == null) {
+        logInfo(
+            '⚠️ Local token exists but Supabase has no session. Attempting manual recover or ignoring...');
+        // در معماری جدید، ما به توکن محلی خودمان اعتماد داریم
+        // اگر Supabase نتواند recover کند (مثلاً آفلاین هستیم)، مشکلی نیست
+        // فقط زمانی که سرور صریحاً 401 بدهد، لاگ‌اوت می‌کنیم (در health check)
+      }
+    });
   }
 
   /// ═══════════════════════════════════════════════════════════
@@ -296,6 +334,7 @@ class SessionManagerServiceV2 {
   }
 
   /// بررسی session در database با retry logic
+  /// بررسی session در database با retry logic
   Future<bool> _checkSessionInDatabase() async {
     if (_currentSessionId == null) return false;
 
@@ -309,71 +348,48 @@ class SessionManagerServiceV2 {
             .select('is_active, expires_at')
             .eq('id', _currentSessionId!)
             .maybeSingle()
-            .timeout(const Duration(seconds: 10));
+            .timeout(const Duration(seconds: 5)); // کاهش timeout
 
         if (response == null) {
-          logInfo('⚠️ Session not found in database');
-          _healthCheckFailures++;
-
-          if (_healthCheckFailures >= _maxHealthCheckFailures) {
-            return false;
-          }
-          return true; // با خطای موقت، معتبر نگه دار
-        }
-
-        _healthCheckFailures = 0;
-
-        final isActive = response['is_active'] as bool? ?? false;
-        if (!isActive) {
-          logInfo('🔴 Session marked inactive');
+          // اگر session در دیتابیس نیست، یعنی نامعتبر است
           return false;
         }
 
-        // بررسی expire
+        final isActive = response['is_active'] as bool? ?? false;
         final expiresAtStr = response['expires_at'] as String?;
         if (expiresAtStr != null) {
           final expiresAt = DateTime.parse(expiresAtStr);
-          if (DateTime.now().toUtc().isAfter(expiresAt)) {
-            logInfo('⏰ Session expired in database');
-            // سعی کن تمدید کنی
-            await _extendSessionExpiry();
-            return true;
+          if (expiresAt.isBefore(DateTime.now().toUtc())) {
+            return false;
           }
         }
 
-        return true;
+        return isActive;
       } catch (e) {
-        retries++;
+        // بررسی نوع خطا
         final errorString = e.toString().toLowerCase();
         final isNetworkError = errorString.contains('network') ||
             errorString.contains('timeout') ||
             errorString.contains('connection') ||
-            errorString.contains('socket');
+            errorString.contains('socket') ||
+            errorString.contains('failed host lookup');
 
         if (isNetworkError) {
           logInfo(
-              '⚠️ Network error during check (attempt $retries/$maxRetries)');
-
-          if (retries < maxRetries) {
-            await Future.delayed(Duration(seconds: retries * 2));
-            continue;
-          }
-
-          // با network error، session را معتبر نگه دار
+              '⚠️ Network error checking session DB ($retries/$maxRetries), trusting local session: $e');
+          // در صورت خطای شبکه، session محلی را معتبر فرض می‌کنیم
           return true;
         }
 
-        logInfo('⚠️ Error checking session: $e');
-        _healthCheckFailures++;
-
-        if (_healthCheckFailures >= _maxHealthCheckFailures) {
-          return false;
+        retries++;
+        if (retries < maxRetries) {
+          await Future.delayed(Duration(milliseconds: 500 * retries));
         }
-        return true;
       }
     }
 
-    return true; // در صورت fail شدن همه retries، معتبر نگه دار
+    // اگر همه‌ی تلاش‌ها با خطای غیر-شبکه شکست خورد (که بعید است اینجا برسیم چون network error هندل شد)
+    return false;
   }
 
   /// ═══════════════════════════════════════════════════════════
@@ -569,6 +585,9 @@ class SessionManagerServiceV2 {
   /// ═══════════════════════════════════════════════════════════
 
   Future<void> _handleSessionTermination() async {
+    if (_isTerminating) return;
+    _isTerminating = true;
+
     logInfo('🔴 Handling session termination...');
 
     // متوقف کردن همه چیز
@@ -607,6 +626,7 @@ class SessionManagerServiceV2 {
     // callback
     onSessionTerminated?.call();
 
+    _isTerminating = false;
     logInfo('✅ Session termination complete');
   }
 
@@ -700,8 +720,39 @@ class SessionManagerServiceV2 {
       if (isValid) return true;
     }
 
-    final sessionId = await registerSession();
-    return sessionId != null;
+    // اگر session id نداریم یا verify نشد، تلاش برای ثبت
+    try {
+      // تلاش برای ثبت با timeout کوتاه
+      final sessionId = await registerSession().timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {
+          logInfo(
+              '⚠️ Session registration timed out (likely offline), proceeding anyway');
+          return null;
+        },
+      );
+
+      if (sessionId == null) {
+        // ثبت نشد (شاید آفلاین هستیم). چون کاربر Supabase session معتبر دارد (چک شده در خط اول)
+        // اجازه می‌دهیم وارد شود و در پس‌زمینه تلاش می‌کنیم
+        _registerSessionInBackground();
+        return true;
+      }
+
+      return true;
+    } catch (e) {
+      logInfo('⚠️ Error ensuring session registered: $e');
+      // خطا را نادیده می‌گیریم تا کاربر وارد شود
+      return true;
+    }
+  }
+
+  void _registerSessionInBackground() {
+    Future.delayed(const Duration(seconds: 10), () async {
+      if (_supabase.auth.currentSession != null && _currentSessionId == null) {
+        await registerSession();
+      }
+    });
   }
 
   void updateLocationAndIP() {

@@ -74,7 +74,8 @@ class MessageActionsService {
 
       // بررسی مالکیت
       if (senderId != userId) {
-        return const ActionResult.failure('شما نمی‌توانید این پیام را ویرایش کنید');
+        return const ActionResult.failure(
+            'شما نمی‌توانید این پیام را ویرایش کنید');
       }
 
       // بررسی محدودیت زمانی
@@ -126,7 +127,7 @@ class MessageActionsService {
       // دریافت پیام اصلی
       final originalMessage = await _supabase
           .from('messages')
-          .select()
+          .select('*, profiles:sender_id(full_name)')
           .eq('id', messageId)
           .single();
 
@@ -141,9 +142,14 @@ class MessageActionsService {
             'attachment_url': originalMessage['attachment_url'],
             'attachment_type': originalMessage['attachment_type'],
             'attachment_file_name': originalMessage['attachment_file_name'],
-            'forwarded_from': messageId,
-            'forwarded_from_sender_name': originalMessage['sender_name'],
+            'original_message_id': messageId,
+            'original_sender_id': originalMessage['sender_id'],
+            'forwarded_from_sender_name': originalMessage['profiles'] != null
+                ? originalMessage['profiles']['full_name']
+                : null,
             'is_forwarded': true,
+            'is_sent': true,
+            'is_delivered': false,
           });
           successCount++;
         } catch (e) {
@@ -192,6 +198,150 @@ class MessageActionsService {
       return ActionResult.success(totalSuccess);
     } catch (e) {
       return ActionResult.failure('خطا در فوروارد پیام‌ها: $e');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🗑️ DELETE MESSAGE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// حذف پیام (Delete for Me یا Delete for Everyone)
+  ///
+  /// - [forEveryone] = true: حذف کامل از دیتابیس (فقط برای پیام‌های خودم)
+  /// - [forEveryone] = false: مخفی کردن پیام برای این کاربر
+  Future<ActionResult<void>> deleteMessage({
+    required String messageId,
+    required String conversationId,
+    bool forEveryone = false,
+  }) async {
+    try {
+      final userId = _currentUserId;
+      if (userId == null) {
+        return const ActionResult.failure('کاربر وارد نشده است');
+      }
+
+      if (forEveryone) {
+        // Delete for Everyone: فقط صاحب پیام می‌تواند
+        return await _deleteForEveryone(messageId: messageId, userId: userId);
+      } else {
+        // Delete for Me: مخفی کردن پیام
+        return await _deleteForMe(
+          messageId: messageId,
+          conversationId: conversationId,
+          userId: userId,
+        );
+      }
+    } catch (e) {
+      print('❌ Error deleting message: $e');
+      return ActionResult.failure('خطا در حذف پیام: $e');
+    }
+  }
+
+  /// حذف برای همه (Hard Delete)
+  Future<ActionResult<void>> _deleteForEveryone({
+    required String messageId,
+    required String userId,
+  }) async {
+    try {
+      // بررسی مالکیت پیام
+      final message = await _supabase
+          .from('messages')
+          .select('sender_id')
+          .eq('id', messageId)
+          .maybeSingle();
+
+      if (message == null) {
+        return const ActionResult.failure('پیام یافت نشد');
+      }
+
+      if (message['sender_id'] != userId) {
+        return const ActionResult.failure(
+          'شما فقط می‌توانید پیام‌های خودتان را برای همه حذف کنید',
+        );
+      }
+
+      // حذف پیام از دیتابیس
+      await _supabase.from('messages').delete().eq('id', messageId);
+
+      print('✅ Message deleted for everyone: $messageId');
+      return const ActionResult.success();
+    } catch (e) {
+      print('❌ Error deleting for everyone: $e');
+      return ActionResult.failure('خطا در حذف پیام برای همه: $e');
+    }
+  }
+
+  /// حذف برای من (Soft Delete / Hide)
+  Future<ActionResult<void>> _deleteForMe({
+    required String messageId,
+    required String conversationId,
+    required String userId,
+  }) async {
+    try {
+      // درج در جدول hidden_messages
+      await _supabase.from('hidden_messages').upsert({
+        'message_id': messageId,
+        'user_id': userId,
+        'conversation_id': conversationId,
+        'hidden_at': DateTime.now().toUtc().toIso8601String(),
+      });
+
+      print('✅ Message hidden for user: $messageId');
+      return const ActionResult.success();
+    } catch (e) {
+      print('❌ Error hiding message: $e');
+      return ActionResult.failure('خطا در مخفی کردن پیام: $e');
+    }
+  }
+
+  /// دریافت لیست پیام‌های مخفی شده برای یک مکالمه
+  Future<Set<String>> getHiddenMessageIds(String conversationId) async {
+    try {
+      final userId = _currentUserId;
+      if (userId == null) return {};
+
+      final response = await _supabase
+          .from('hidden_messages')
+          .select('message_id')
+          .eq('user_id', userId)
+          .eq('conversation_id', conversationId);
+
+      return (response as List)
+          .map((item) => item['message_id'] as String)
+          .toSet();
+    } catch (e) {
+      print('❌ Error getting hidden messages: $e');
+      return {};
+    }
+  }
+
+  /// حذف چند پیام
+  Future<ActionResult<int>> deleteMultipleMessages({
+    required List<String> messageIds,
+    required String conversationId,
+    bool forEveryone = false,
+  }) async {
+    try {
+      int successCount = 0;
+
+      for (final messageId in messageIds) {
+        final result = await deleteMessage(
+          messageId: messageId,
+          conversationId: conversationId,
+          forEveryone: forEveryone,
+        );
+        if (result.isSuccess) {
+          successCount++;
+        }
+      }
+
+      if (successCount == 0) {
+        return const ActionResult.failure('هیچ پیامی حذف نشد');
+      }
+
+      return ActionResult.success(successCount);
+    } catch (e) {
+      return ActionResult.failure('خطا در حذف پیام‌ها: $e');
     }
   }
 
@@ -310,4 +460,3 @@ class MessageActionsHandler {
   Future<ActionResult<void>> unpin(String messageId) =>
       _service.unpinMessage(messageId);
 }
-

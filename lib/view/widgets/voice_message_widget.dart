@@ -2,6 +2,7 @@ import '../../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audio_waveforms/audio_waveforms.dart';
@@ -9,6 +10,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
+import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../provider/voice_settings_provider.dart';
 import '../../provider/provider.dart';
 import '../../services/voice_cache_service.dart';
@@ -68,38 +70,45 @@ class _VoiceMessageWidgetState extends ConsumerState<VoiceMessageWidget> {
   bool _hasCheckedAutoDownload = false;
 
   /// بررسی اینکه آیا باید وویس خودکار دانلود شود
-  void _checkAutoDownload() {
+  Future<void> _checkAutoDownload() async {
     if (_hasCheckedAutoDownload || _isDownloaded || _isDownloading) return;
 
     _hasCheckedAutoDownload = true;
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        final autoDownloadSettings = ref.read(autoDownloadProvider);
-        final voiceSettings = ref.read(voiceSettingsProvider);
+    if (!mounted) return;
 
-        // بررسی تنظیمات دانلود خودکار رسانه
-        bool shouldAutoDownload = false;
-        switch (autoDownloadSettings.voices) {
-          case 'always':
-            shouldAutoDownload = true;
-            break;
-          case 'wifi':
-            // TODO: بررسی وضعیت Wi-Fi
-            shouldAutoDownload = true; // موقتاً true
-            break;
-          case 'never':
-            shouldAutoDownload = false;
-            break;
-        }
+    final autoDownloadSettings = ref.read(autoDownloadProvider);
+    final voiceSettings = ref.read(voiceSettingsProvider);
 
-        // همچنین بررسی تنظیمات وویس
-        if (shouldAutoDownload && voiceSettings.shouldAutoDownload()) {
-          logInfo('🔄 Auto-downloading voice: ${widget.audioUrl}');
-          _downloadAndInitializePlayer();
+    // بررسی تنظیمات دانلود خودکار رسانه
+    bool shouldAutoDownload = false;
+    switch (autoDownloadSettings.voices) {
+      case 'always':
+        shouldAutoDownload = true;
+        break;
+      case 'wifi':
+        // بررسی واقعی وضعیت Wi-Fi با connectivity_plus
+        try {
+          final connectivityResult = await Connectivity().checkConnectivity();
+          shouldAutoDownload = connectivityResult == ConnectivityResult.wifi;
+          if (!shouldAutoDownload) {
+            logInfo('📶 Not on WiFi - skipping auto-download for voice');
+          }
+        } catch (e) {
+          logInfo('⚠️ Error checking WiFi status: $e');
+          shouldAutoDownload = false;
         }
-      }
-    });
+        break;
+      case 'never':
+        shouldAutoDownload = false;
+        break;
+    }
+
+    // همچنین بررسی تنظیمات وویس
+    if (shouldAutoDownload && voiceSettings.shouldAutoDownload()) {
+      logInfo('🔄 Auto-downloading voice: ${widget.audioUrl}');
+      _downloadAndInitializePlayer();
+    }
   }
 
   void _setupAudioPlayer() {
@@ -451,7 +460,7 @@ class _VoiceMessageWidgetState extends ConsumerState<VoiceMessageWidget> {
 
           const SizedBox(width: 8),
 
-          // waveform مدرن
+          // waveform مدرن سبک تلگرام
           Expanded(
             child: GestureDetector(
               onTapDown: (details) {
@@ -460,63 +469,29 @@ class _VoiceMessageWidgetState extends ConsumerState<VoiceMessageWidget> {
                 final progress = localPosition.dx / box.size.width;
                 _seekTo(progress);
               },
+              onHorizontalDragUpdate: (details) {
+                final box = context.findRenderObject() as RenderBox;
+                final localPosition = box.globalToLocal(details.globalPosition);
+                final progress =
+                    (localPosition.dx / box.size.width).clamp(0.0, 1.0);
+                _seekTo(progress);
+              },
               child: SizedBox(
-                height: 24,
-                child: Stack(
-                  children: [
-                    // Background progress bar
-                    Container(
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: (widget.isMe
-                                ? Colors.white
-                                : (isDark
-                                    ? Colors.white
-                                    : Colors.grey.shade800))
-                            .withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    // Download progress indicator
-                    if (_isDownloading)
-                      Container(
-                        height: 4,
-                        width: _downloadProgress *
-                            MediaQuery.of(context).size.width *
-                            0.4,
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    // Playback progress indicator
-                    if (!_isDownloading && _totalDuration.inMilliseconds > 0)
-                      Container(
-                        height: 4,
-                        width: (MediaQuery.of(context).size.width * 0.4) *
-                            (_currentPosition.inMilliseconds /
-                                    _totalDuration.inMilliseconds)
-                                .clamp(0.0, 1.0),
-                        decoration: BoxDecoration(
-                          color: widget.isMe
-                              ? Colors.white
-                              : (isDark
-                                  ? Colors.white
-                                  : const Color(0xFF10B981)),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                  ],
-                ),
+                height: 32,
+                child: _isDownloading
+                    ? _buildDownloadProgressBar(isDark)
+                    : _buildWaveformBars(isDark),
               ),
             ),
           ),
 
           const SizedBox(width: 8),
 
-          // تایم کد
+          // تایم کد - نمایش زمان باقی‌مانده هنگام پخش
           Text(
-            _formatDuration(_totalDuration),
+            _isPlaying && _totalDuration.inMilliseconds > 0
+                ? _formatDuration(_totalDuration - _currentPosition)
+                : _formatDuration(_totalDuration),
             style: TextStyle(
               fontSize: 12,
               color: widget.isMe
@@ -526,6 +501,111 @@ class _VoiceMessageWidgetState extends ConsumerState<VoiceMessageWidget> {
           ),
         ],
       ),
+    );
+  }
+
+  /// ساخت نوار پیشرفت دانلود
+  Widget _buildDownloadProgressBar(bool isDark) {
+    return Stack(
+      alignment: Alignment.centerLeft,
+      children: [
+        // پس‌زمینه
+        Container(
+          height: 4,
+          decoration: BoxDecoration(
+            color: (widget.isMe ? Colors.white : Colors.grey.shade800)
+                .withOpacity(0.3),
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        // پیشرفت دانلود
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 100),
+          height: 4,
+          width: _downloadProgress * (MediaQuery.of(context).size.width * 0.4),
+          decoration: BoxDecoration(
+            color: Colors.red,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        // درصد دانلود
+        Center(
+          child: Text(
+            '${(_downloadProgress * 100).toInt()}%',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: widget.isMe ? Colors.white70 : Colors.grey.shade600,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// ساخت موج صوتی سبک تلگرام با میله‌های متحرک
+  Widget _buildWaveformBars(bool isDark) {
+    // تعداد میله‌های waveform
+    const int barCount = 40;
+
+    // محاسبه پیشرفت پخش
+    final double playProgress = _totalDuration.inMilliseconds > 0
+        ? (_currentPosition.inMilliseconds / _totalDuration.inMilliseconds)
+            .clamp(0.0, 1.0)
+        : 0.0;
+
+    // رنگ‌های میله‌ها
+    final Color activeColor = widget.isMe
+        ? Colors.white
+        : (isDark ? Colors.white : const Color(0xFF10B981));
+    final Color inactiveColor = activeColor.withOpacity(0.3);
+
+    // استفاده از waveformData اگر موجود است، در غیر این صورت تولید تصادفی
+    List<double> waveHeights;
+    if (widget.waveformData != null &&
+        widget.waveformData!.length >= barCount) {
+      // نرمال‌سازی داده‌های waveform
+      final maxVal = widget.waveformData!.reduce((a, b) => a > b ? a : b);
+      waveHeights = widget.waveformData!
+          .take(barCount)
+          .map((v) => maxVal > 0 ? (v / maxVal).clamp(0.2, 1.0) : 0.5)
+          .toList();
+    } else {
+      // تولید الگوی موج صوتی طبیعی‌تر با استفاده از seed ثابت
+      final seed = widget.audioUrl.hashCode;
+      final random = math.Random(seed);
+      waveHeights = List.generate(barCount, (i) {
+        // ایجاد الگوی موج‌دار طبیعی
+        final baseHeight = 0.3 + random.nextDouble() * 0.5;
+        final wave = math.sin(i * 0.3) * 0.15;
+        return (baseHeight + wave).clamp(0.15, 1.0);
+      });
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth;
+        final barWidth = (availableWidth / barCount) * 0.6;
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: List.generate(barCount, (index) {
+            final isActive = index / barCount <= playProgress;
+            final height = waveHeights[index] * 28; // حداکثر ارتفاع 28
+
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 50),
+              width: barWidth,
+              height: height.clamp(4.0, 28.0),
+              decoration: BoxDecoration(
+                color: isActive ? activeColor : inactiveColor,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            );
+          }),
+        );
+      },
     );
   }
 
