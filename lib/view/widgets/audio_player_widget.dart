@@ -134,9 +134,15 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor = widget.isMe
-        ? Colors.white
-        : (isDark ? Colors.white : Colors.grey.shade800);
+    final primaryColor = Theme.of(context).primaryColor;
+    
+    // رنگ با کنتراست مناسب برای هر دو تم
+    final Color textColor;
+    if (widget.isMe) {
+      textColor = isDark ? Colors.white : primaryColor;
+    } else {
+      textColor = isDark ? Colors.white : Colors.grey.shade800;
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),

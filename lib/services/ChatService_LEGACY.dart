@@ -328,10 +328,10 @@ class ChatService {
               hasUnreadMessages = lastMessageTime.isAfter(lastReadTime);
             }
 
-            // دریافت آخرین پیام غیر مخفی
+            // دریافت آخرین پیام غیر مخفی با اطلاعات کامل
             final lastMessageQuery = await _supabase
                 .from('messages')
-                .select()
+                .select('content, created_at, attachment_type, attachment_url, is_forwarded, sender_id')
                 .eq('conversation_id', conversationId)
                 .not(
                   'id',
@@ -348,10 +348,58 @@ class ChatService {
                 .limit(1)
                 .maybeSingle();
 
+            // ✅ متغیرهای نوع پیام
+            String? lastMessageType;
+            bool isLastMessageFromMe = false;
+            String? lastMessageSenderId;
+
             if (lastMessageQuery != null) {
               json['last_message'] = lastMessageQuery['content'] as String?;
               json['last_message_time'] = lastMessageQuery['created_at'];
               json['updated_at'] = lastMessageQuery['created_at'];
+              
+              // ✅ تعیین نوع پیام
+              lastMessageSenderId = lastMessageQuery['sender_id'] as String?;
+              isLastMessageFromMe = lastMessageSenderId == userId;
+              
+              final attachType = lastMessageQuery['attachment_type'] as String?;
+              final attachUrl = lastMessageQuery['attachment_url'] as String?;
+              final isForwarded = lastMessageQuery['is_forwarded'] as bool? ?? false;
+              final content = lastMessageQuery['content'] as String?;
+              
+              // ✅ تعیین نوع پیام بر اساس فیلدهای موجود
+              if (isForwarded) {
+                lastMessageType = 'forward';
+              } else if (content != null && _isSharedPostContent(content)) {
+                // اگر محتوا JSON است و شامل post_id است، یعنی پست اشتراک‌گذاری شده
+                lastMessageType = 'post';
+              } else if (attachType != null && attachType.isNotEmpty) {
+                // تبدیل نوع فایل پیوست به نوع پیام
+                final lowerAttachType = attachType.toLowerCase();
+                if (lowerAttachType.contains('audio') || lowerAttachType.contains('voice') || lowerAttachType == 'voice') {
+                  lastMessageType = 'voice';
+                } else if (lowerAttachType.contains('image') || lowerAttachType.contains('photo')) {
+                  lastMessageType = 'image';
+                } else if (lowerAttachType.contains('video')) {
+                  lastMessageType = 'video';
+                } else {
+                  lastMessageType = 'file';
+                }
+              } else if (attachUrl != null && attachUrl.isNotEmpty) {
+                // اگر attachment_url داریم ولی type نداریم، از URL تشخیص بده
+                final lowerUrl = attachUrl.toLowerCase();
+                if (lowerUrl.contains('.mp3') || lowerUrl.contains('.wav') || lowerUrl.contains('.ogg') || lowerUrl.contains('.m4a')) {
+                  lastMessageType = 'voice';
+                } else if (lowerUrl.contains('.jpg') || lowerUrl.contains('.jpeg') || lowerUrl.contains('.png') || lowerUrl.contains('.gif') || lowerUrl.contains('.webp')) {
+                  lastMessageType = 'image';
+                } else if (lowerUrl.contains('.mp4') || lowerUrl.contains('.mov') || lowerUrl.contains('.avi') || lowerUrl.contains('.webm')) {
+                  lastMessageType = 'video';
+                } else {
+                  lastMessageType = 'file';
+                }
+              } else {
+                lastMessageType = 'text';
+              }
             }
 
             final conversation = ConversationModel.fromJson(
@@ -374,6 +422,10 @@ class ChatService {
                   false,
               isMuted: currentUserIsMuted,
               isArchived: currentUserIsArchived,
+              // ✅ فیلدهای جدید نوع پیام
+              lastMessageType: lastMessageType,
+              isLastMessageFromMe: isLastMessageFromMe,
+              lastMessageSenderId: lastMessageSenderId,
             );
 
             // ذخیره در کش
@@ -414,6 +466,30 @@ class ChatService {
   // Request throttling
   final Map<String, DateTime> _lastRequestTime = {};
   static const Duration _requestThrottleDuration = Duration(milliseconds: 500);
+
+  /// چک کن آیا محتوا یک پست اشتراک‌گذاری شده است
+  bool _isSharedPostContent(String? content) {
+    if (content == null || content.isEmpty) return false;
+    
+    try {
+      // اگر محتوا با { شروع میشه، احتمالاً JSON است
+      final trimmed = content.trim();
+      if (trimmed.startsWith('{') && trimmed.contains('post_id')) {
+        return true;
+      }
+      // یا اگر شامل کلمات کلیدی پست است
+      if (trimmed.contains('"post_id"') || 
+          trimmed.contains("'post_id'") ||
+          trimmed.contains('post_id')) {
+        return true;
+      }
+    } catch (e) {
+      // اگر parse نشد، پست نیست
+      return false;
+    }
+    
+    return false;
+  }
 
   /// Throttle requests to prevent excessive server calls
   bool _shouldThrottleRequest(String requestKey) {
@@ -1433,10 +1509,10 @@ class ChatService {
       }
     }
 
-    // دریافت آخرین پیام غیر مخفی (برای last_message and last_message_time)
+    // دریافت آخرین پیام غیر مخفی با اطلاعات کامل
     final lastMessageQuery = await _supabase
         .from('messages')
-        .select('content, created_at')
+        .select('content, created_at, attachment_type, attachment_url, is_forwarded, sender_id')
         .eq('conversation_id', conversationId)
         .not(
           'id',
@@ -1453,6 +1529,11 @@ class ChatService {
         .limit(1)
         .maybeSingle();
 
+    // ✅ متغیرهای نوع پیام
+    String? lastMessageType;
+    bool isLastMessageFromMe = false;
+    String? lastMessageSenderId;
+
     if (lastMessageQuery != null) {
       String? lastContent = lastMessageQuery['content'] as String?;
       updatedConversationData['last_message'] = lastContent;
@@ -1460,6 +1541,48 @@ class ChatService {
           lastMessageQuery['created_at'] as String?;
       updatedConversationData['updated_at'] =
           lastMessageQuery['created_at'] as String?;
+      
+      // ✅ تعیین نوع پیام
+      lastMessageSenderId = lastMessageQuery['sender_id'] as String?;
+      isLastMessageFromMe = lastMessageSenderId == userId;
+      
+      final attachType = lastMessageQuery['attachment_type'] as String?;
+      final attachUrl = lastMessageQuery['attachment_url'] as String?;
+      final isForwarded = lastMessageQuery['is_forwarded'] as bool? ?? false;
+      final content = lastMessageQuery['content'] as String?;
+      
+      // ✅ تعیین نوع پیام بر اساس فیلدهای موجود
+      if (isForwarded) {
+        lastMessageType = 'forward';
+      } else if (content != null && _isSharedPostContent(content)) {
+        // اگر محتوا JSON است و شامل post_id است، یعنی پست اشتراک‌گذاری شده
+        lastMessageType = 'post';
+      } else if (attachType != null && attachType.isNotEmpty) {
+        final lowerAttachType = attachType.toLowerCase();
+        if (lowerAttachType.contains('audio') || lowerAttachType.contains('voice') || lowerAttachType == 'voice') {
+          lastMessageType = 'voice';
+        } else if (lowerAttachType.contains('image') || lowerAttachType.contains('photo')) {
+          lastMessageType = 'image';
+        } else if (lowerAttachType.contains('video')) {
+          lastMessageType = 'video';
+        } else {
+          lastMessageType = 'file';
+        }
+      } else if (attachUrl != null && attachUrl.isNotEmpty) {
+        // اگر attachment_url داریم ولی type نداریم، از URL تشخیص بده
+        final lowerUrl = attachUrl.toLowerCase();
+        if (lowerUrl.contains('.mp3') || lowerUrl.contains('.wav') || lowerUrl.contains('.ogg') || lowerUrl.contains('.m4a')) {
+          lastMessageType = 'voice';
+        } else if (lowerUrl.contains('.jpg') || lowerUrl.contains('.jpeg') || lowerUrl.contains('.png') || lowerUrl.contains('.gif') || lowerUrl.contains('.webp')) {
+          lastMessageType = 'image';
+        } else if (lowerUrl.contains('.mp4') || lowerUrl.contains('.mov') || lowerUrl.contains('.avi') || lowerUrl.contains('.webm')) {
+          lastMessageType = 'video';
+        } else {
+          lastMessageType = 'file';
+        }
+      } else {
+        lastMessageType = 'text';
+      }
     }
 
     // خواندن تعداد پیام‌های خوانده‌نشده از دیتابیس
@@ -1485,7 +1608,11 @@ class ChatService {
           false,
       isMuted: currentUserIsMuted,
       isArchived: currentUserIsArchived,
-    ); // اضافه کردن isArchived
+      // ✅ فیلدهای جدید نوع پیام
+      lastMessageType: lastMessageType,
+      isLastMessageFromMe: isLastMessageFromMe,
+      lastMessageSenderId: lastMessageSenderId,
+    );
   }
 
   // حذف تمام پیام‌های یک مکالمه

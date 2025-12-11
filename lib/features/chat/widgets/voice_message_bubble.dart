@@ -283,10 +283,12 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: (widget.isMe
-                                    ? Colors.white
-                                    : theme.sendButtonColor)
-                                .withOpacity(0.2),
+                            // رنگ پس‌زمینه با کنتراست مناسب
+                            color: widget.isMe
+                                ? (theme.isDark
+                                    ? Colors.white.withOpacity(0.2)
+                                    : theme.sendButtonColor.withOpacity(0.15))
+                                : theme.sendButtonColor.withOpacity(0.15),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
@@ -295,7 +297,9 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
                               color: widget.isMe
-                                  ? theme.myBubbleTextColor
+                                  ? (theme.isDark
+                                      ? Colors.white
+                                      : theme.sendButtonColor)
                                   : theme.sendButtonColor,
                             ),
                           ),
@@ -312,11 +316,25 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
   }
 
   Widget _buildPlayButton(ChatTheme theme) {
-    final buttonColor = widget.isMe
-        ? Colors.white.withOpacity(0.2)
-        : theme.sendButtonColor.withOpacity(0.1);
+    // رنگ‌های متفاوت برای تم روشن و تاریک با کنتراست بهتر
+    final Color buttonColor;
+    final Color iconColor;
 
-    final iconColor = widget.isMe ? Colors.white : theme.sendButtonColor;
+    if (widget.isMe) {
+      // پیام‌های من
+      if (theme.isDark) {
+        buttonColor = Colors.white.withOpacity(0.15);
+        iconColor = Colors.white;
+      } else {
+        // تم روشن: از رنگ تیره‌تر استفاده میکنیم
+        buttonColor = theme.sendButtonColor.withOpacity(0.15);
+        iconColor = theme.sendButtonColor;
+      }
+    } else {
+      // پیام‌های دیگران
+      buttonColor = theme.sendButtonColor.withOpacity(0.15);
+      iconColor = theme.sendButtonColor;
+    }
 
     return GestureDetector(
       onTap: _togglePlayPause,
@@ -393,10 +411,23 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
         ? _currentPosition.inMilliseconds / _totalDuration.inMilliseconds
         : 0.0;
 
-    final activeColor = widget.isMe ? Colors.white : theme.sendButtonColor;
-    final inactiveColor = widget.isMe
-        ? Colors.white.withOpacity(0.4)
-        : theme.sendButtonColor.withOpacity(0.3);
+    // رنگ‌های waveform با کنتراست بهتر برای تم روشن و تاریک
+    final Color activeColor;
+    final Color inactiveColor;
+
+    if (widget.isMe) {
+      if (theme.isDark) {
+        activeColor = Colors.white;
+        inactiveColor = Colors.white.withOpacity(0.4);
+      } else {
+        // تم روشن: از رنگ اصلی استفاده میکنیم برای خوانایی بهتر
+        activeColor = theme.sendButtonColor;
+        inactiveColor = theme.sendButtonColor.withOpacity(0.35);
+      }
+    } else {
+      activeColor = theme.sendButtonColor;
+      inactiveColor = theme.sendButtonColor.withOpacity(0.35);
+    }
 
     return GestureDetector(
       onTapDown: (details) {

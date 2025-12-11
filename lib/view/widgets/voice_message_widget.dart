@@ -494,8 +494,9 @@ class _VoiceMessageWidgetState extends ConsumerState<VoiceMessageWidget> {
                 : _formatDuration(_totalDuration),
             style: TextStyle(
               fontSize: 12,
+              // رنگ با کنتراست مناسب
               color: widget.isMe
-                  ? Colors.white
+                  ? (isDark ? Colors.white : Theme.of(context).primaryColor)
                   : (isDark ? Colors.white : Colors.grey.shade800),
             ),
           ),
@@ -506,6 +507,12 @@ class _VoiceMessageWidgetState extends ConsumerState<VoiceMessageWidget> {
 
   /// ساخت نوار پیشرفت دانلود
   Widget _buildDownloadProgressBar(bool isDark) {
+    final primaryColor = Theme.of(context).primaryColor;
+    // رنگ با کنتراست مناسب
+    final barColor = widget.isMe
+        ? (isDark ? Colors.white : primaryColor)
+        : Colors.grey.shade800;
+
     return Stack(
       alignment: Alignment.centerLeft,
       children: [
@@ -513,8 +520,7 @@ class _VoiceMessageWidgetState extends ConsumerState<VoiceMessageWidget> {
         Container(
           height: 4,
           decoration: BoxDecoration(
-            color: (widget.isMe ? Colors.white : Colors.grey.shade800)
-                .withOpacity(0.3),
+            color: barColor.withOpacity(0.3),
             borderRadius: BorderRadius.circular(2),
           ),
         ),
@@ -535,7 +541,9 @@ class _VoiceMessageWidgetState extends ConsumerState<VoiceMessageWidget> {
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.bold,
-              color: widget.isMe ? Colors.white70 : Colors.grey.shade600,
+              color: widget.isMe
+                  ? (isDark ? Colors.white70 : primaryColor.withOpacity(0.7))
+                  : Colors.grey.shade600,
             ),
           ),
         ),
@@ -554,11 +562,12 @@ class _VoiceMessageWidgetState extends ConsumerState<VoiceMessageWidget> {
             .clamp(0.0, 1.0)
         : 0.0;
 
-    // رنگ‌های میله‌ها
+    // رنگ‌های میله‌ها با کنتراست مناسب
+    final primaryColor = Theme.of(context).primaryColor;
     final Color activeColor = widget.isMe
-        ? Colors.white
+        ? (isDark ? Colors.white : primaryColor)
         : (isDark ? Colors.white : const Color(0xFF10B981));
-    final Color inactiveColor = activeColor.withOpacity(0.3);
+    final Color inactiveColor = activeColor.withOpacity(0.35);
 
     // استفاده از waveformData اگر موجود است، در غیر این صورت تولید تصادفی
     List<double> waveHeights;

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -5,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../model/publicPostModel.dart';
 import '../../model/ProfileModel.dart';
 import '../../provider/chat_provider.dart';
+import '../../provider/optimized_conversations_provider.dart';
 import '../../services/user_friendly_error_handler.dart';
 
 class UserSelectionBottomSheet extends ConsumerStatefulWidget {
@@ -197,28 +199,38 @@ class _UserSelectionBottomSheetState
   }
 
   Widget _buildUsersGrid(ThemeData theme) {
-    final conversationsAsync = ref.watch(enrichedConversationsStreamProvider);
+    // ✅ استفاده از provider بهینه‌شده
+    final state = ref.watch(optimizedConversationsProvider);
 
-    return conversationsAsync.when(
-      loading: () => _buildLoadingState(theme),
-      error: (error, stack) => _buildErrorState(theme, error.toString()),
-      data: (conversations) {
-        final filteredConversations = conversations.where((conversation) {
-          if (_searchQuery.isEmpty) return true;
-          final searchLower = _searchQuery.toLowerCase();
-          return conversation.otherUserName
-                  ?.toLowerCase()
-                  .contains(searchLower) ==
-              true;
-        }).toList();
+    // Loading state
+    if (state.status == ConversationsStatus.loading ||
+        state.status == ConversationsStatus.initial) {
+      if (state.conversations.isEmpty) {
+        return _buildLoadingState(theme);
+      }
+    }
 
-        if (filteredConversations.isEmpty) {
-          return _buildEmptyState(theme);
-        }
+    // Error state
+    if (state.status == ConversationsStatus.error &&
+        state.conversations.isEmpty) {
+      return _buildErrorState(theme, state.errorMessage ?? 'خطای نامشخص');
+    }
 
-        return _buildInstagramStyleGrid(theme, filteredConversations);
-      },
-    );
+    // Filter conversations
+    final filteredConversations = state.conversations.where((conversation) {
+      if (_searchQuery.isEmpty) return true;
+      final searchLower = _searchQuery.toLowerCase();
+      return conversation.otherUserName
+              ?.toLowerCase()
+              .contains(searchLower) ==
+          true;
+    }).toList();
+
+    if (filteredConversations.isEmpty) {
+      return _buildEmptyState(theme);
+    }
+
+    return _buildInstagramStyleGrid(theme, filteredConversations);
   }
 
   Widget _buildInstagramStyleGrid(
@@ -520,29 +532,14 @@ class _UserSelectionBottomSheetState
           final conversationId =
               await chatService.createOrGetConversation(userId);
 
-          // ایجاد محتوای پیام برای پست
-          final postContent = _createPostMessageContent(widget.post);
+          // ایجاد محتوای پیام برای پست به صورت JSON
+          final postContent = _createPostJsonContent(widget.post);
 
-          // ارسال پیام - برای پست‌های ویدیویی، اگر videoUrl خالی هست، از imageUrl (thumbnail) استفاده می‌کنیم
-          final attachmentUrl = widget.post.hasVideo
-              ? (widget.post.videoUrl ?? widget.post.imageUrl)
-              : widget.post.imageUrl;
-
-          // اگر هیچ پیوستی نداریم، اجازه بده فقط متن ارسال شود
-          final finalAttachmentUrl =
-              (attachmentUrl != null && attachmentUrl.isNotEmpty)
-                  ? attachmentUrl
-                  : null;
-          final attachmentType =
-              (widget.post.hasVideo && finalAttachmentUrl != null)
-                  ? 'video'
-                  : (finalAttachmentUrl != null ? 'image' : null);
-
+          // ارسال پیام با attachmentType: 'post' برای نمایش به صورت کارت پست
           await ref.read(messageNotifierProvider.notifier).sendMessage(
                 conversationId: conversationId,
                 content: postContent,
-                attachmentUrl: finalAttachmentUrl,
-                attachmentType: attachmentType,
+                attachmentType: 'post',
               );
 
           successCount++;
@@ -615,57 +612,48 @@ class _UserSelectionBottomSheetState
     );
   }
 
-  String _createPostMessageContent(PublicPostModel post) {
-    final buffer = StringBuffer();
-
-    // عنوان پست
-    buffer.writeln('📝 پست از ${post.username}');
-
-    // آواتار کاربر
-    if (post.avatarUrl.isNotEmpty) {
-      buffer.writeln('🖼️ آواتار: ${post.avatarUrl}');
+  /// ایجاد محتوای JSON برای پست (نمایش به صورت کارت پست در چت)
+  String _createPostJsonContent(PublicPostModel post) {
+    // ساخت لیست URL های مدیا
+    final List<String> mediaUrls = [];
+    if (post.imageUrl != null && post.imageUrl!.isNotEmpty) {
+      mediaUrls.add(post.imageUrl!);
+    }
+    if (post.videoUrl != null && post.videoUrl!.isNotEmpty) {
+      mediaUrls.add(post.videoUrl!);
     }
 
-    // اطلاعات تایید کاربر
-    if (post.verificationType != VerificationType.none) {
-      String verificationText = '';
-      switch (post.verificationType) {
-        case VerificationType.blueTick:
-          verificationText = 'blueTick';
-          break;
-        case VerificationType.goldTick:
-          verificationText = 'goldTick';
-          break;
-        case VerificationType.blackTick:
-          verificationText = 'blackTick';
-          break;
-        default:
-          verificationText = 'none';
-      }
-      buffer.writeln('✅ تایید: $verificationText');
+    // تعیین نوع تأیید
+    String verificationTypeStr = 'none';
+    switch (post.verificationType) {
+      case VerificationType.blueTick:
+        verificationTypeStr = 'blueTick';
+        break;
+      case VerificationType.goldTick:
+        verificationTypeStr = 'goldTick';
+        break;
+      case VerificationType.blackTick:
+        verificationTypeStr = 'blackTick';
+        break;
+      default:
+        verificationTypeStr = 'none';
     }
 
-    buffer.writeln();
+    final postData = {
+      'postId': post.id,
+      'authorName': post.fullName.isNotEmpty ? post.fullName : post.username,
+      'authorAvatar': post.avatarUrl,
+      'authorUsername': post.username,
+      'content': post.content,
+      'mediaUrls': mediaUrls,
+      'likesCount': post.likeCount,
+      'commentsCount': post.commentCount,
+      'createdAt': post.createdAt.toIso8601String(),
+      'verificationType': verificationTypeStr,
+      'hashtags': post.hashtags,
+    };
 
-    // محتوای پست
-    buffer.writeln(post.content);
-    buffer.writeln();
-
-    // اطلاعات اضافی
-    if (post.hasImage) {
-      buffer.writeln('🖼️ تصویر ضمیمه شده');
-    } else if (post.hasVideo) {
-      buffer.writeln('🎥 ویدیو ضمیمه شده');
-    }
-
-    if (post.hashtags.isNotEmpty) {
-      buffer.writeln('🏷️ ${post.hashtags.join(' ')}');
-    }
-
-    buffer.writeln();
-    buffer.writeln('🔗 مشاهده در Vista: https://cafevista.ir/post/${post.id}');
-
-    return buffer.toString();
+    return jsonEncode(postData);
   }
 }
 

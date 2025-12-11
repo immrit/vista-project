@@ -1706,6 +1706,30 @@ class ConversationRefreshNotifier extends StateNotifier<AsyncValue<void>> {
 
 // --- اضافه کنید: StateNotifier برای پیام‌های هر مکالمه ---
 class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
+  /// چک کن آیا محتوا یک پست اشتراک‌گذاری شده است
+  bool _isSharedPostContent(String? content) {
+    if (content == null || content.isEmpty) return false;
+
+    try {
+      // اگر محتوا با { شروع میشه، احتمالاً JSON است
+      final trimmed = content.trim();
+      if (trimmed.startsWith('{') && trimmed.contains('post_id')) {
+        return true;
+      }
+      // یا اگر شامل کلمات کلیدی پست است
+      if (trimmed.contains('"post_id"') ||
+          trimmed.contains("'post_id'") ||
+          trimmed.contains('post_id')) {
+        return true;
+      }
+    } catch (e) {
+      // اگر parse نشد، پست نیست
+      return false;
+    }
+
+    return false;
+  }
+
   final String conversationId;
   final UnifiedMessageCacheService _cacheService = UnifiedMessageCacheService();
   final UnifiedConversationCacheService _conversationCache =
@@ -2103,10 +2127,66 @@ final conversationMessagesProvider = StateNotifierProvider.family
                       conversationId, userId);
                   if (conversation != null &&
                       latest.createdAt.isAfter(conversation.updatedAt)) {
+                    // ✅ تعیین نوع آخرین پیام
+                    String? lastMessageType;
+                    if (latest.isForwarded) {
+                      lastMessageType = 'forward';
+                    } else if (latest.sharedPostData != null) {
+                      // اگر sharedPostData وجود داره، یعنی پست اشتراک‌گذاری شده
+                      lastMessageType = 'post';
+                    } else if (notifier._isSharedPostContent(latest.content)) {
+                      // اگر محتوا JSON است و شامل post_id است، یعنی پست اشتراک‌گذاری شده
+                      lastMessageType = 'post';
+                    } else if (latest.attachmentType != null &&
+                        latest.attachmentType!.isNotEmpty) {
+                      final attachType = latest.attachmentType!.toLowerCase();
+                      if (attachType.contains('audio') ||
+                          attachType.contains('voice') ||
+                          attachType == 'voice') {
+                        lastMessageType = 'voice';
+                      } else if (attachType.contains('image') ||
+                          attachType.contains('photo')) {
+                        lastMessageType = 'image';
+                      } else if (attachType.contains('video')) {
+                        lastMessageType = 'video';
+                      } else {
+                        lastMessageType = 'file';
+                      }
+                    } else if (latest.attachmentUrl != null &&
+                        latest.attachmentUrl!.isNotEmpty) {
+                      // اگر attachment_url داریم ولی type نداریم، از URL تشخیص بده
+                      final lowerUrl = latest.attachmentUrl!.toLowerCase();
+                      if (lowerUrl.contains('.mp3') ||
+                          lowerUrl.contains('.wav') ||
+                          lowerUrl.contains('.ogg') ||
+                          lowerUrl.contains('.m4a')) {
+                        lastMessageType = 'voice';
+                      } else if (lowerUrl.contains('.jpg') ||
+                          lowerUrl.contains('.jpeg') ||
+                          lowerUrl.contains('.png') ||
+                          lowerUrl.contains('.gif') ||
+                          lowerUrl.contains('.webp')) {
+                        lastMessageType = 'image';
+                      } else if (lowerUrl.contains('.mp4') ||
+                          lowerUrl.contains('.mov') ||
+                          lowerUrl.contains('.avi') ||
+                          lowerUrl.contains('.webm')) {
+                        lastMessageType = 'video';
+                      } else {
+                        lastMessageType = 'file';
+                      }
+                    } else {
+                      lastMessageType = 'text';
+                    }
+
                     final updatedConversation = conversation.copyWith(
                       lastMessage: latest.content,
                       lastMessageTime: latest.createdAt,
                       updatedAt: latest.createdAt,
+                      // ✅ فیلدهای جدید نوع پیام
+                      lastMessageType: lastMessageType,
+                      isLastMessageFromMe: latest.senderId == userId,
+                      lastMessageSenderId: latest.senderId,
                     );
                     await conversationCache.updateConversation(
                         updatedConversation, userId);

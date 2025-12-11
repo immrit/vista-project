@@ -1,4 +1,3 @@
-import '../../security/logging_utility.dart';
 import 'package:Vista/view/screen/chat/ChatConversationsScreen.dart'
     show ChatConversationsScreen;
 import 'package:flutter/material.dart';
@@ -11,27 +10,13 @@ import 'PublicPosts/profileScreen.dart';
 import 'PublicPosts/publicPosts.dart';
 import 'searchPage.dart';
 import '../../provider/chat_provider.dart';
+import '../../provider/optimized_conversations_provider.dart';
 import '../util/responsive_constants.dart';
 
-// استریم تعداد *مکالمه‌های* خوانده‌نشده
-final unreadConversationsCountProvider = StreamProvider<int>((ref) {
-  final userId = supabase.auth.currentUser?.id;
-  if (userId == null) return const Stream.empty();
-
-  // به استریم مکالمات گوش می‌دهیم
-  // تغییر به cachedConversationsStreamProvider برای واکنش سریع‌تر به تغییرات کش
-  return ref.watch(cachedConversationsStreamProvider).when(
-        data: (conversations) {
-          // مکالماتی را که پیام خوانده‌نشده دارند، فیلتر و شمارش می‌کنیم
-          final count = conversations.where((c) => (c.unreadCount) > 0).length;
-          return Stream.value(count);
-        },
-        loading: () => Stream.value(0), // در حال بارگذاری، تعداد صفر است
-        error: (error, stackTrace) {
-          logInfo('Error in unreadConversationsCountProvider: $error');
-          return Stream.value(0); // در صورت خطا، تعداد صفر است
-        },
-      );
+// ✅ Provider تعداد مکالمه‌های خوانده‌نشده (با استفاده از provider بهینه‌شده)
+final unreadConversationsCountProvider = Provider<int>((ref) {
+  // استفاده از provider بهینه‌شده
+  return ref.watch(totalUnreadCountProvider);
 });
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -132,10 +117,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // فعال کردن Provider سراسری نوتیفیکیشن چت (در پس‌زمینه)
     ref.watch(globalChatNotificationProvider);
 
-    // استریم تعداد *مکالمه‌های* خوانده‌نشده
-    final unreadConversationsCountAsync = ref.watch(
-      unreadConversationsCountProvider,
-    );
+    // ✅ تعداد مکالمه‌های خوانده‌نشده (با provider بهینه‌شده)
+    final unreadCount = ref.watch(unreadConversationsCountProvider);
 
     return WillPopScope(
       onWillPop: _onWillPop,
@@ -215,12 +198,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               icon: _buildMessageBadge(
                 'lib/view/util/images/bottomnavigation/email-outline.png',
                 false,
-                unreadConversationsCountAsync,
+                unreadCount,
               ),
               selectedIcon: _buildMessageBadge(
                 'lib/view/util/images/bottomnavigation/email.png',
                 true,
-                unreadConversationsCountAsync,
+                unreadCount,
               ),
               label: '',
             ),
@@ -248,55 +231,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  // تابع برای نمایش بج تعداد مکالمه‌های خوانده‌نشده
+  // ✅ تابع بهینه‌شده برای نمایش بج تعداد مکالمه‌های خوانده‌نشده
   Widget _buildMessageBadge(
     String iconPath,
     bool isSelected,
-    AsyncValue<int> unreadConversationsCountAsync,
+    int count,
   ) {
-    return unreadConversationsCountAsync.when(
-      data: (count) {
-        return badges.Badge(
-          showBadge: count > 0,
-          badgeContent: Text(
-            count > 9 ? '۹+' : count.toString(),
-            style: AppTextStyles.labelTiny.copyWith(color: Colors.white),
-          ),
-          badgeStyle: badges.BadgeStyle(
-            badgeColor: Colors.red,
-            padding: EdgeInsets.all(count > 9 ? 4 : 5), // پدینگ بج
-          ),
-          position: badges.BadgePosition.topEnd(top: -12, end: -12),
-          child: Image.asset(
-            iconPath,
-            width: 24,
-            height: 24,
-            color: isSelected
-                ? Theme.of(context).primaryColor
-                : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-          ),
-        );
-      },
-      loading: () => Image.asset(
+    return badges.Badge(
+      showBadge: count > 0,
+      badgeContent: Text(
+        count > 9 ? '۹+' : count.toString(),
+        style: AppTextStyles.labelTiny.copyWith(color: Colors.white),
+      ),
+      badgeStyle: badges.BadgeStyle(
+        badgeColor: Colors.red,
+        padding: EdgeInsets.all(count > 9 ? 4 : 5),
+      ),
+      position: badges.BadgePosition.topEnd(top: -12, end: -12),
+      child: Image.asset(
         iconPath,
         width: 24,
         height: 24,
         color: isSelected
-            ? (Theme.of(context).brightness == Brightness.dark
-                ? Colors.white
-                : Colors.black)
+            ? Theme.of(context).primaryColor
             : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-      ), // نمایش آیکون بدون بج در حال لود
-      error: (err, stack) => Image.asset(
-        iconPath,
-        width: 24,
-        height: 24,
-        color: isSelected
-            ? (Theme.of(context).brightness == Brightness.dark
-                ? Colors.white
-                : Colors.black)
-            : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-      ), // نمایش آیکون بدون بج در صورت خطا
+      ),
     );
   }
 }

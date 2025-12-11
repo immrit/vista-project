@@ -46,6 +46,7 @@ import 'view/screen/onboarding/Onboarding.dart';
 import 'services/advanced_security_service.dart';
 import 'services/wallpaper_cache_service.dart';
 import 'services/profile_service.dart';
+import 'services/user_presence_service.dart';
 import 'view/screen/PublicPosts/publicPosts.dart';
 import 'view/screen/PublicPosts/PostDetailPage.dart';
 import 'view/screen/PublicPosts/profileScreen.dart';
@@ -297,6 +298,9 @@ void main() async {
 
       // 🚀 مقداردهی اولیه ProfileService جدید با real-time updates
       ProfileService().startRealtimeUpdates();
+
+      // 🟢 مقداردهی اولیه UserPresenceService - Real-time وضعیت آنلاین
+      await UserPresenceService().initialize();
 
       // 🔍 راه‌اندازی memory leak detection
       _initializeMemoryLeakDetection();

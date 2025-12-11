@@ -1,22 +1,30 @@
-// f:\vista\lib\view\screen\chat\archived_conversations_screen.dart
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../model/conversation_model.dart';
 import '../../../provider/chat_provider.dart';
-import '../../util/const.dart';
-// ✅ استفاده از صفحه چت جدید
+import '../../../provider/optimized_conversations_provider.dart';
 import '../../../features/chat/screens/modern_chat_screen.dart';
-import 'ChatConversationsScreen.dart'; // برای استفاده از UnifiedChatItem
 
+/// صفحه نمایش گفتگوهای بایگانی شده
 class ArchivedConversationsScreen extends ConsumerWidget {
   const ArchivedConversationsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final conversationsAsync = ref.watch(cachedConversationsStreamProvider);
+
+    // ✅ استفاده از provider بهینه‌شده
+    final state = ref.watch(optimizedConversationsProvider);
+
+    // فیلتر کردن مکالمات بایگانی شده
+    final archivedConversations =
+        state.conversations.where((conv) => conv.isArchived).toList()
+          ..sort((a, b) {
+            final aTime = a.lastMessageTime ?? a.updatedAt;
+            final bTime = b.lastMessageTime ?? b.updatedAt;
+            return bTime.compareTo(aTime);
+          });
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -29,100 +37,260 @@ class ArchivedConversationsScreen extends ConsumerWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
       ),
-      body: conversationsAsync.when(
-        loading: () =>
-            Center(child: CircularProgressIndicator(color: theme.primaryColor)),
-        error: (error, stack) => Center(child: Text('خطا: $error')),
-        data: (allConversations) {
-          final archivedConversations = allConversations
-              .where((conv) => conv.isArchived)
-              .map(UnifiedChatItem.fromConversation)
-              .toList();
+      body: _buildBody(context, ref, theme, state, archivedConversations),
+    );
+  }
 
-          if (archivedConversations.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.archive_outlined,
-                      size: 64, color: theme.hintColor.withValues(alpha: 0.5)),
-                  const SizedBox(height: 16),
-                  Text(
-                    'هیچ گفتگوی بایگانی شده‌ای وجود ندارد.',
-                    style: TextStyle(fontSize: 16, color: theme.hintColor),
-                  ),
-                ],
-              ),
-            );
-          }
+  Widget _buildBody(
+    BuildContext context,
+    WidgetRef ref,
+    ThemeData theme,
+    ConversationsState state,
+    List<ConversationModel> archivedConversations,
+  ) {
+    // Loading state
+    if (state.status == ConversationsStatus.loading ||
+        state.status == ConversationsStatus.initial) {
+      return Center(
+        child: CircularProgressIndicator(color: theme.primaryColor),
+      );
+    }
 
-          // مرتب‌سازی بر اساس آخرین فعالیت
-          archivedConversations.sort((a, b) {
-            final aTime = a.lastActivity ?? DateTime(1970);
-            final bTime = b.lastActivity ?? DateTime(1970);
-            return bTime.compareTo(aTime);
-          });
-
-          return ListView.separated(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: archivedConversations.length,
-            separatorBuilder: (context, index) => Divider(
-              height: 1,
-              thickness: 0.5,
-              indent: 82,
-              endIndent: 16,
-              color: theme.dividerColor.withValues(alpha: 0.3),
+    // Error state
+    if (state.status == ConversationsStatus.error &&
+        archivedConversations.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline_rounded,
+              size: 64,
+              color: theme.colorScheme.error.withValues(alpha: 0.5),
             ),
-            itemBuilder: (context, index) {
-              final item = archivedConversations[index];
-              return Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () {
-                    // ✅ Navigate to NEW Modern Chat Screen
-                    if (item.source is ConversationModel) {
-                      final conversation = item.source as ConversationModel;
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => ModernChatScreen(
-                            args: ChatScreenArgs(
-                              conversationId: item.id,
-                              otherUserName: conversation.otherUserName ?? 'در حال بارگذاری...',
-                              otherUserAvatar: conversation.otherUserAvatar,
-                              otherUserId: conversation.otherUserId ?? '',
-                            ),
-                          ),
-                        ),
-                      );
-                    }
-                  },
-                  onLongPress: () {
-                    // اینجا می‌تونی گزینه‌هایی مثل "خروج از بایگانی" رو نمایش بدی
-                    _showArchivedItemOptions(context, ref, item, theme);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    child: Row(
-                      children: [
-                        _buildAvatar(theme, item),
-                        const SizedBox(width: 12),
-                        Expanded(child: _buildContent(theme, item)),
-                        _buildTrailing(theme, item),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
+            const SizedBox(height: 16),
+            Text(
+              'خطا در بارگذاری',
+              style: TextStyle(fontSize: 16, color: theme.hintColor),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton.icon(
+              onPressed: () =>
+                  ref.read(optimizedConversationsProvider.notifier).refresh(),
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('تلاش مجدد'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Empty state
+    if (archivedConversations.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: theme.primaryColor.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.archive_outlined,
+                size: 48,
+                color: theme.primaryColor.withValues(alpha: 0.7),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'هیچ گفتگوی بایگانی شده‌ای وجود ندارد',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: theme.hintColor,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'گفتگوهایی که بایگانی می‌کنید اینجا نمایش داده می‌شوند',
+              style: TextStyle(
+                fontSize: 14,
+                color: theme.hintColor.withValues(alpha: 0.7),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // List of archived conversations
+    return RefreshIndicator(
+      onRefresh: () =>
+          ref.read(optimizedConversationsProvider.notifier).refresh(),
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        itemCount: archivedConversations.length,
+        separatorBuilder: (context, index) => Divider(
+          height: 1,
+          thickness: 0.5,
+          indent: 82,
+          endIndent: 16,
+          color: theme.dividerColor.withValues(alpha: 0.3),
+        ),
+        itemBuilder: (context, index) {
+          final conversation = archivedConversations[index];
+          return _ArchivedConversationItem(
+            conversation: conversation,
+            onTap: () => _navigateToChat(context, conversation),
+            onUnarchive: () =>
+                _unarchiveConversation(context, ref, conversation),
+            onDelete: () => _showDeleteConfirmation(context, ref, conversation),
           );
         },
       ),
     );
   }
 
-  Widget _buildAvatar(ThemeData theme, UnifiedChatItem item) {
+  void _navigateToChat(BuildContext context, ConversationModel conversation) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ModernChatScreen(
+          args: ChatScreenArgs(
+            conversationId: conversation.id,
+            otherUserName: conversation.otherUserName ?? 'VISTA USER',
+            otherUserAvatar: conversation.otherUserAvatar,
+            otherUserId: conversation.otherUserId ?? '',
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _unarchiveConversation(
+    BuildContext context,
+    WidgetRef ref,
+    ConversationModel conversation,
+  ) {
+    ref
+        .read(messageNotifierProvider.notifier)
+        .toggleArchiveConversation(conversation.id);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('گفتگو از بایگانی خارج شد')),
+    );
+  }
+
+  void _showDeleteConfirmation(
+    BuildContext context,
+    WidgetRef ref,
+    ConversationModel conversation,
+  ) {
+    final theme = Theme.of(context);
+    final displayName = conversation.otherUserName ?? 'VISTA USER';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.delete_forever_outlined, color: theme.colorScheme.error),
+            const SizedBox(width: 8),
+            const Text('حذف برای همیشه'),
+          ],
+        ),
+        content: Text(
+          'آیا از حذف گفتگو با "$displayName" مطمئن هستید؟\nاین عمل قابل بازگشت نیست.',
+          style: TextStyle(color: theme.textTheme.bodyMedium?.color),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('انصراف', style: TextStyle(color: theme.hintColor)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _deleteConversation(context, ref, conversation);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: theme.colorScheme.error,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteConversation(
+    BuildContext context,
+    WidgetRef ref,
+    ConversationModel conversation,
+  ) async {
+    try {
+      await ref
+          .read(messageNotifierProvider.notifier)
+          .deleteConversation(conversation.id);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('گفتگو با موفقیت حذف شد')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در حذف گفتگو: $e')),
+        );
+      }
+    }
+  }
+}
+
+/// ویجت آیتم مکالمه بایگانی شده
+class _ArchivedConversationItem extends StatelessWidget {
+  final ConversationModel conversation;
+  final VoidCallback onTap;
+  final VoidCallback onUnarchive;
+  final VoidCallback onDelete;
+
+  const _ArchivedConversationItem({
+    required this.conversation,
+    required this.onTap,
+    required this.onUnarchive,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: () => _showOptions(context, theme),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              _buildAvatar(theme),
+              const SizedBox(width: 12),
+              Expanded(child: _buildContent(theme)),
+              _buildTrailing(theme),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAvatar(ThemeData theme) {
+    final displayName = _getDisplayName();
+
     return Stack(
       children: [
         Container(
@@ -136,84 +304,78 @@ class ArchivedConversationsScreen extends ConsumerWidget {
             ),
           ),
           child: ClipOval(
-            child: _buildAvatarImage(theme, item),
+            child: conversation.otherUserAvatar?.isNotEmpty == true
+                ? Image.network(
+                    conversation.otherUserAvatar!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        _buildDefaultAvatar(theme, displayName),
+                  )
+                : _buildDefaultAvatar(theme, displayName),
           ),
         ),
-        if (item.isPinned) _buildPinnedIndicator(theme),
+        // Archive indicator
+        Positioned(
+          right: 0,
+          bottom: 0,
+          child: Container(
+            width: 18,
+            height: 18,
+            decoration: BoxDecoration(
+              color: theme.hintColor,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: theme.scaffoldBackgroundColor,
+                width: 2,
+              ),
+            ),
+            child: const Icon(
+              Icons.archive_rounded,
+              size: 10,
+              color: Colors.white,
+            ),
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildAvatarImage(ThemeData theme, UnifiedChatItem item) {
-    if (item.avatarUrl?.isNotEmpty == true) {
-      return CachedNetworkImage(
-        imageUrl: item.avatarUrl!,
-        fit: BoxFit.cover,
-        placeholder: (context, url) => _buildDefaultAvatar(theme, item),
-        errorWidget: (context, url, error) => _buildDefaultAvatar(theme, item),
-      );
-    }
-    return _buildDefaultAvatar(theme, item);
-  }
-
-  Widget _buildDefaultAvatar(ThemeData theme, UnifiedChatItem item) {
-    return Image.asset(
-      defaultAvatarUrl,
-      fit: BoxFit.cover,
-      errorBuilder: (context, error, stackTrace) {
-        return Container(
-          color: theme.colorScheme.secondary.withValues(alpha: 0.1),
-          child: Icon(
-            Icons.person_rounded,
-            color: theme.colorScheme.secondary,
-            size: 28,
+  Widget _buildDefaultAvatar(ThemeData theme, String displayName) {
+    return Container(
+      color: theme.primaryColor.withValues(alpha: 0.1),
+      child: Center(
+        child: Text(
+          displayName.isNotEmpty ? displayName[0].toUpperCase() : 'U',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: theme.primaryColor,
           ),
-        );
-      },
-    );
-  }
-
-  Widget _buildPinnedIndicator(ThemeData theme) {
-    return Positioned(
-      left: 2,
-      top: 2,
-      child: Container(
-        width: 18,
-        height: 18,
-        decoration: BoxDecoration(
-          color: Colors.amber,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: theme.scaffoldBackgroundColor,
-            width: 2,
-          ),
-        ),
-        child: const Icon(
-          Icons.push_pin_rounded,
-          size: 10,
-          color: Colors.white,
         ),
       ),
     );
   }
 
-  Widget _buildContent(ThemeData theme, UnifiedChatItem item) {
+  Widget _buildContent(ThemeData theme) {
+    final displayName = _getDisplayName();
+    final lastMessage = _getLastMessage();
+    final hasUnread = conversation.unreadCount > 0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            if (item.isMuted) ...[
-              Icon(Icons.volume_off_rounded, size: 16, color: theme.hintColor),
+            if (conversation.isMuted) ...[
+              Icon(Icons.volume_off_rounded, size: 14, color: theme.hintColor),
               const SizedBox(width: 4),
             ],
             Expanded(
               child: Text(
-                item.title,
+                displayName,
                 style: TextStyle(
-                  fontSize: 16,
-                  fontWeight:
-                      item.unreadCount > 0 ? FontWeight.w600 : FontWeight.w500,
+                  fontSize: 15,
+                  fontWeight: hasUnread ? FontWeight.w600 : FontWeight.w500,
                   color: theme.textTheme.titleMedium?.color,
                 ),
                 maxLines: 1,
@@ -223,79 +385,94 @@ class ArchivedConversationsScreen extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 4),
-        if (item.subtitle?.isNotEmpty ?? false)
-          Text(
-            item.subtitle!,
-            style: TextStyle(
-              fontSize: 14,
-              color: item.unreadCount > 0
-                  ? theme.textTheme.bodyMedium?.color
-                  : theme.hintColor,
-              fontWeight:
-                  item.unreadCount > 0 ? FontWeight.w500 : FontWeight.normal,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+        Text(
+          lastMessage,
+          style: TextStyle(
+            fontSize: 13,
+            color:
+                hasUnread ? theme.textTheme.bodyMedium?.color : theme.hintColor,
+            fontWeight: hasUnread ? FontWeight.w500 : FontWeight.normal,
           ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
       ],
     );
   }
 
-  Widget _buildTrailing(ThemeData theme, UnifiedChatItem item) {
+  Widget _buildTrailing(ThemeData theme) {
+    final hasUnread = conversation.unreadCount > 0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (item.lastActivity != null)
+        if (conversation.lastMessageTime != null)
           Text(
-            _formatTime(item.lastActivity!),
+            _formatTime(conversation.lastMessageTime!),
             style: TextStyle(
               fontSize: 12,
-              color:
-                  item.unreadCount > 0 ? theme.primaryColor : theme.hintColor,
-              fontWeight:
-                  item.unreadCount > 0 ? FontWeight.w600 : FontWeight.normal,
+              color: hasUnread ? theme.primaryColor : theme.hintColor,
+              fontWeight: hasUnread ? FontWeight.w500 : FontWeight.normal,
             ),
           ),
         const SizedBox(height: 4),
-        if (item.unreadCount > 0)
+        if (hasUnread)
           Container(
+            constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
               color: theme.primaryColor,
               borderRadius: BorderRadius.circular(10),
             ),
-            constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-            child: Text(
-              item.unreadCount > 99 ? '99+' : item.unreadCount.toString(),
-              style: const TextStyle(
+            child: Center(
+              child: Text(
+                conversation.unreadCount > 99
+                    ? '99+'
+                    : conversation.unreadCount.toString(),
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 11,
-                  fontWeight: FontWeight.w600),
-              textAlign: TextAlign.center,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ),
       ],
     );
+  }
+
+  String _getDisplayName() {
+    final name = conversation.otherUserName ?? '';
+    if (name.isEmpty || name == 'کاربر' || name == 'کاربر ناشناس') {
+      return 'VISTA USER';
+    }
+    return name;
+  }
+
+  String _getLastMessage() {
+    final message =
+        conversation.formattedLastMessage ?? conversation.lastMessage;
+    if (message == null || message.isEmpty) {
+      return 'پیام جدیدی ارسال کنید';
+    }
+    return message;
   }
 
   String _formatTime(DateTime time) {
     final now = DateTime.now();
     final difference = now.difference(time);
 
-    if (difference.inDays > 6) return '${time.day}/${time.month}';
+    if (difference.inDays > 6) {
+      return '${time.day}/${time.month}';
+    }
     if (difference.inDays > 0) {
-      return difference.inDays == 1 ? 'دیروز' : '${difference.inDays} روز پیش';
+      return difference.inDays == 1 ? 'دیروز' : '${difference.inDays} روز';
     }
-    if (difference.inHours > 0) {
-      return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-    }
-    if (difference.inMinutes > 0) return '${difference.inMinutes} دقیقه پیش';
-    return 'اکنون';
+    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
   }
 
-  void _showArchivedItemOptions(BuildContext context, WidgetRef ref,
-      UnifiedChatItem item, ThemeData theme) {
+  void _showOptions(BuildContext context, ThemeData theme) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -309,8 +486,8 @@ class ArchivedConversationsScreen extends ConsumerWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Handle
               Container(
-                // Sheet Handle
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
@@ -320,43 +497,87 @@ class ArchivedConversationsScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 20),
               Text(
-                item.title,
+                _getDisplayName(),
                 style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: theme.textTheme.titleLarge?.color),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: theme.textTheme.titleLarge?.color,
+                ),
               ),
               const SizedBox(height: 20),
-              ListTile(
-                leading:
-                    Icon(Icons.unarchive_outlined, color: theme.primaryColor),
-                title: Text('خروج از بایگانی',
-                    style: TextStyle(color: theme.textTheme.bodyLarge?.color)),
+              // Unarchive option
+              _buildOptionTile(
+                theme,
+                icon: Icons.unarchive_rounded,
+                title: 'خروج از بایگانی',
                 onTap: () {
                   Navigator.pop(context);
-                  ref
-                      .read(messageNotifierProvider.notifier)
-                      .toggleArchiveConversation(item.id);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('گفتگو از بایگانی خارج شد')),
-                  );
+                  onUnarchive();
                 },
               ),
-              ListTile(
-                leading: Icon(Icons.delete_forever_outlined,
-                    color: theme.colorScheme.error),
-                title: Text('حذف برای همیشه',
-                    style: TextStyle(color: theme.colorScheme.error)),
+              // Delete option
+              _buildOptionTile(
+                theme,
+                icon: Icons.delete_forever_rounded,
+                title: 'حذف برای همیشه',
+                isDestructive: true,
                 onTap: () {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('حذف برای همیشه (هنوز پیاده‌سازی نشده)')),
-                  );
+                  onDelete();
                 },
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOptionTile(
+    ThemeData theme, {
+    required IconData icon,
+    required String title,
+    bool isDestructive = false,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: theme.dividerColor.withValues(alpha: 0.1),
+          width: 1,
+        ),
+      ),
+      child: ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: isDestructive
+                ? theme.colorScheme.error.withValues(alpha: 0.1)
+                : theme.primaryColor.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            color: isDestructive ? theme.colorScheme.error : theme.primaryColor,
+            size: 20,
+          ),
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: isDestructive
+                ? theme.colorScheme.error
+                : theme.textTheme.titleMedium?.color,
+          ),
+        ),
+        onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
         ),
       ),
     );

@@ -8,6 +8,8 @@ import 'package:flutter/services.dart';
 import '../theme/chat_theme.dart';
 import '../../../utils/compat_extensions.dart';
 import 'voice_message_bubble.dart';
+import 'telegram_message_status.dart';
+import '../../../services/telegram_read_receipt_service.dart';
 
 /// وضعیت پیام
 enum MessageStatus {
@@ -116,8 +118,6 @@ class _ImprovedAnimatedMessageBubbleState
   late Animation<Offset> _slideAnimation;
   late Animation<double> _scaleAnimation;
 
-  bool _showTime = false; // نمایش زمان ثابت
-
   @override
   void initState() {
     super.initState();
@@ -211,7 +211,6 @@ class _ImprovedAnimatedMessageBubbleState
             scale: _scaleAnimation,
             child: GestureDetector(
               onTap: () {
-                setState(() => _showTime = !_showTime);
                 HapticFeedback.selectionClick();
                 widget.onTap?.call();
               },
@@ -238,24 +237,11 @@ class _ImprovedAnimatedMessageBubbleState
                           : MainAxisAlignment.start,
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        if (!widget.isMe && _showTime)
-                          _buildFixedTimeLabel(theme, isLeft: true),
                         Flexible(
                           child: _buildMessageBubble(theme),
                         ),
-                        if (widget.isMe && _showTime)
-                          _buildFixedTimeLabel(theme, isLeft: false),
                       ],
                     ),
-                    if (widget.isLastInGroup)
-                      Padding(
-                        padding: EdgeInsets.only(
-                          top: 4,
-                          left: widget.isMe ? 0 : 48,
-                          right: widget.isMe ? 48 : 0,
-                        ),
-                        child: _buildBottomTimeLabel(theme),
-                      ),
                   ],
                 ),
               ),
@@ -397,82 +383,123 @@ class _ImprovedAnimatedMessageBubbleState
   }
 
   Widget _buildContent(ChatTheme theme) {
+    // Voice message
     if ((widget.attachmentType == 'audio' ||
             widget.attachmentType == 'voice') &&
         widget.attachmentUrl != null &&
         widget.attachmentUrl!.isNotEmpty) {
-      return VoiceMessageBubble(
-        messageId: widget.messageId,
-        audioUrl: widget.attachmentUrl!,
-        durationSeconds: widget.duration,
-        isMe: widget.isMe,
-        time: widget.time,
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Column(
+      return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          if (widget.content.isNotEmpty)
-            Text(
-              widget.content,
-              style: TextStyle(
-                color: widget.isMe
-                    ? theme.myBubbleTextColor
-                    : theme.otherBubbleTextColor,
-                fontSize: 15,
-                height: 1.4,
-              ),
-            ),
-          if (widget.content.isNotEmpty) const SizedBox(height: 4),
-          if (widget.isMe)
-            Row(
-              mainAxisSize: MainAxisSize.min,
+          VoiceMessageBubble(
+            messageId: widget.messageId,
+            audioUrl: widget.attachmentUrl!,
+            durationSeconds: widget.duration,
+            isMe: widget.isMe,
+            time: widget.time,
+          ),
+          // زمان و تیک داخل حباب
+          Padding(
+            padding: const EdgeInsets.only(left: 12, right: 12, bottom: 6),
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisSize: MainAxisSize.max,
               children: [
                 Text(
                   widget.time.toFixedTimeLabel(),
                   style: TextStyle(
-                    color: theme.myBubbleTextColor.withOpacity(0.7),
+                    color: widget.isMe
+                        ? theme.myBubbleTextColor.withOpacity(0.7)
+                        : theme.otherBubbleTextColor.withOpacity(0.6),
                     fontSize: 11,
                   ),
                 ),
+                if (widget.isMe) ...[
+                  const SizedBox(width: 4),
+                  _buildStatusIcon(theme),
+                ],
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Text message - با ساعت inline در پایین سمت چپ
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          // محتوای متنی
+          Flexible(
+            child: widget.content.isNotEmpty
+                ? Text(
+                    widget.content,
+                    style: TextStyle(
+                      color: widget.isMe
+                          ? theme.myBubbleTextColor
+                          : theme.otherBubbleTextColor,
+                      fontSize: 15,
+                      height: 1.4,
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+          const SizedBox(width: 8),
+          // زمان و تیک
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                widget.time.toFixedTimeLabel(),
+                style: TextStyle(
+                  color: widget.isMe
+                      ? theme.myBubbleTextColor.withOpacity(0.7)
+                      : theme.otherBubbleTextColor.withOpacity(0.6),
+                  fontSize: 11,
+                ),
+              ),
+              if (widget.isMe) ...[
                 const SizedBox(width: 4),
                 _buildStatusIcon(theme),
               ],
-            ),
+            ],
+          ),
         ],
       ),
     );
   }
 
   Widget _buildStatusIcon(ChatTheme theme) {
-    IconData icon;
-    Color color = theme.myBubbleTextColor.withOpacity(0.7);
+    // ✅ استفاده از ویجت تیک حرفه‌ای تلگرام
+    final deliveryStatus = _convertToDeliveryStatus(widget.status);
+    
+    return TelegramMessageStatus(
+      status: deliveryStatus,
+      size: 16,
+      customColor: deliveryStatus == MessageDeliveryStatus.read
+          ? MessageStatusColors.read
+          : theme.myBubbleTextColor.withOpacity(0.7),
+    );
+  }
 
-    switch (widget.status) {
+  /// تبدیل MessageStatus به MessageDeliveryStatus
+  MessageDeliveryStatus _convertToDeliveryStatus(MessageStatus status) {
+    switch (status) {
       case MessageStatus.pending:
-        icon = Icons.access_time_rounded;
-        break;
+        return MessageDeliveryStatus.pending;
       case MessageStatus.sent:
-        icon = Icons.check_rounded;
-        break;
+        return MessageDeliveryStatus.sent;
       case MessageStatus.delivered:
-        icon = Icons.done_all_rounded;
-        break;
+        return MessageDeliveryStatus.delivered;
       case MessageStatus.read:
-        icon = Icons.done_all_rounded;
-        color = theme.sendButtonColor;
-        break;
+        return MessageDeliveryStatus.read;
       case MessageStatus.failed:
-        icon = Icons.error_outline_rounded;
-        color = theme.errorColor;
-        break;
+        return MessageDeliveryStatus.failed;
     }
-
-    return Icon(icon, size: 14, color: color);
   }
 
   Widget _buildReactionsSection(ChatTheme theme) {
@@ -523,44 +550,4 @@ class _ImprovedAnimatedMessageBubbleState
     );
   }
 
-  Widget _buildFixedTimeLabel(ChatTheme theme, {required bool isLeft}) {
-    return AnimatedOpacity(
-      opacity: _showTime ? 1.0 : 0.0,
-      duration: const Duration(milliseconds: 200),
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: isLeft ? 0 : 8,
-          right: isLeft ? 8 : 0,
-          bottom: 8,
-        ),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: theme.isDark
-                ? Colors.white.withOpacity(0.1)
-                : Colors.black.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            widget.time.toFullDateTimeLabel(),
-            style: TextStyle(
-              color: theme.secondaryTextColor,
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBottomTimeLabel(ChatTheme theme) {
-    return Text(
-      widget.time.toFixedTimeLabel(),
-      style: TextStyle(
-        color: theme.secondaryTextColor.withOpacity(0.7),
-        fontSize: 10,
-      ),
-    );
-  }
 }

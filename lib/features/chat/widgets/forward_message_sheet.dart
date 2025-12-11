@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../../../provider/chat_provider.dart'; // از Provider قدیمی استفاده می‌کنیم که enrichedConversationsStreamProvider داره
+import '../../../provider/optimized_conversations_provider.dart';
 import '../services/message_forward_service.dart';
 import '../../../services/user_friendly_error_handler.dart';
 
@@ -164,29 +164,38 @@ class _ForwardMessageSheetState extends ConsumerState<ForwardMessageSheet>
   }
 
   Widget _buildUsersGrid(ThemeData theme) {
-    // استفاده از Provider قدیمی که Enriched است
-    final conversationsAsync = ref.watch(enrichedConversationsStreamProvider);
+    // ✅ استفاده از provider بهینه‌شده
+    final state = ref.watch(optimizedConversationsProvider);
 
-    return conversationsAsync.when(
-      loading: () => _buildLoadingState(theme),
-      error: (error, stack) => _buildErrorState(theme, error.toString()),
-      data: (conversations) {
-        final filteredConversations = conversations.where((conversation) {
-          if (_searchQuery.isEmpty) return true;
-          final searchLower = _searchQuery.toLowerCase();
-          return conversation.otherUserName
-                  ?.toLowerCase()
-                  .contains(searchLower) ==
-              true;
-        }).toList();
+    // Loading state
+    if (state.status == ConversationsStatus.loading ||
+        state.status == ConversationsStatus.initial) {
+      if (state.conversations.isEmpty) {
+        return _buildLoadingState(theme);
+      }
+    }
 
-        if (filteredConversations.isEmpty) {
-          return _buildEmptyState(theme);
-        }
+    // Error state
+    if (state.status == ConversationsStatus.error &&
+        state.conversations.isEmpty) {
+      return _buildErrorState(theme, state.errorMessage ?? 'خطای نامشخص');
+    }
 
-        return _buildInstagramStyleGrid(theme, filteredConversations);
-      },
-    );
+    // Filter conversations
+    final filteredConversations = state.conversations.where((conversation) {
+      if (_searchQuery.isEmpty) return true;
+      final searchLower = _searchQuery.toLowerCase();
+      return conversation.otherUserName
+              ?.toLowerCase()
+              .contains(searchLower) ==
+          true;
+    }).toList();
+
+    if (filteredConversations.isEmpty) {
+      return _buildEmptyState(theme);
+    }
+
+    return _buildInstagramStyleGrid(theme, filteredConversations);
   }
 
   Widget _buildInstagramStyleGrid(
@@ -378,7 +387,7 @@ class _ForwardMessageSheetState extends ConsumerState<ForwardMessageSheet>
           const SizedBox(height: 16),
           ElevatedButton.icon(
             onPressed: () {
-              ref.invalidate(enrichedConversationsStreamProvider);
+              ref.read(optimizedConversationsProvider.notifier).refresh();
             },
             icon: const Icon(Icons.refresh),
             label: const Text('تلاش مجدد'),

@@ -32,16 +32,15 @@ import '../widgets/telegram_reaction_picker.dart';
 import '../widgets/retry_indicator_widget.dart' show TelegramConnectionBanner;
 import '../widgets/improved_animated_message_bubble.dart';
 import '../widgets/animated_chat_input.dart';
-import '../widgets/animated_typing_indicator.dart';
-
-import '../widgets/enhanced_post_message_bubble.dart';
+import '../widgets/instagram_style_post_card.dart';
 import '../widgets/date_divider.dart' as date_divider;
 import '../widgets/swipe_to_reply_wrapper.dart';
 
 // ✅ Providers
-import '../../../provider/chat_provider.dart'
-    show userOnlineStatusStreamProvider;
 import '../../../provider/typing_provider.dart' show typingUsersProvider;
+import '../../../provider/presence_provider.dart';
+import '../../../provider/optimized_conversations_provider.dart';
+import '../../../services/telegram_read_receipt_service.dart';
 
 // ✅ New Features
 import '../widgets/chat_attachment_sheet.dart';
@@ -51,23 +50,22 @@ import '../widgets/forward_message_sheet.dart';
 import '../widgets/delete_message_dialog.dart';
 import '../widgets/unread_messages_divider.dart';
 import '../widgets/floating_date_header.dart';
-import '../widgets/online_status_indicator.dart';
+import '../widgets/telegram_online_status.dart';
 import '../services/chat_attachment_service.dart';
 import '../widgets/block_report_bottom_sheet.dart';
 import '../services/user_moderation_service.dart';
 import '../services/voice_duration_service.dart';
 import '../services/message_reactions_service.dart';
 import '../models/message_reaction.dart' as reaction_models;
-import '../widgets/message_reactions_widget.dart'
-    show MessageReactionsWidget, ReactionPickerSheet;
 import '../../../view/screen/PublicPosts/profileScreen.dart';
+import '../../../view/screen/PublicPosts/PostDetailPage.dart';
 
 // ✅ Phase 4: Final Integration
 import '../widgets/location_message_widgets.dart';
 import '../widgets/contact_card_widgets.dart';
 import '../screens/document_preview_screen.dart';
 import '../screens/message_info_screen.dart';
-import '../screens/telegram_chat_details_screen.dart';
+import '../screens/telegram_profile_screen.dart';
 // TODO: Use CompleteDeletionService for delete with undo
 // import '../services/complete_deletion_service.dart';
 import '../services/message_actions_service.dart';
@@ -181,6 +179,69 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _checkBlockStatus();
     _fetchUserProfileIfNeeded();
     _loadHiddenMessages();
+
+    // ✅ شروع گوش دادن به Read Receipts
+    _initReadReceipts();
+  }
+
+  /// راه‌اندازی سرویس Read Receipt
+  void _initReadReceipts() {
+    final readReceiptService = TelegramReadReceiptService();
+    readReceiptService.startListening(widget.args.conversationId);
+
+    // ✅ تنظیم callback برای آپدیت لیست مکالمات
+    readReceiptService.onLastMessageStatusChanged = (conversationId, status) {
+      if (mounted) {
+        ref
+            .read(optimizedConversationsProvider.notifier)
+            .updateLastMessageDeliveryStatus(
+              conversationId: conversationId,
+              status: status,
+            );
+      }
+    };
+
+    // ✅ ثبت آخرین پیام مکالمه برای sync تیک‌ها
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _registerLastMessage();
+    });
+
+    // علامت‌گذاری همه پیام‌ها به عنوان خوانده شده وقتی وارد چت می‌شویم
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _markAllMessagesAsRead();
+    });
+  }
+
+  /// ثبت آخرین پیام برای sync وضعیت تیک در لیست مکالمات
+  void _registerLastMessage() {
+    if (!mounted) return;
+
+    final messagesAsync =
+        ref.read(messagesStreamProvider(widget.args.conversationId));
+    messagesAsync.whenData((messages) {
+      if (messages.isEmpty) return;
+
+      // پیدا کردن آخرین پیام من (برای نمایش تیک)
+      final myLastMessage = messages.firstWhere(
+        (m) => m.senderId == _currentUserId,
+        orElse: () => messages.first,
+      );
+
+      TelegramReadReceiptService().setLastMessageId(
+        widget.args.conversationId,
+        myLastMessage.id,
+      );
+    });
+  }
+
+  /// علامت‌گذاری همه پیام‌ها به عنوان خوانده شده
+  Future<void> _markAllMessagesAsRead() async {
+    try {
+      final readReceiptService = TelegramReadReceiptService();
+      await readReceiptService.markAllAsRead(widget.args.conversationId);
+    } catch (e) {
+      debugPrint('❌ Error marking messages as read: $e');
+    }
   }
 
   /// اگر نام کاربر نامعتبر باشد، پروفایل را از کش/سرور دریافت می‌کند
@@ -266,6 +327,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     } catch (e) {
       // Ignore errors after dispose
       debugPrint('Error stopping typing in dispose: $e');
+    }
+
+    // ✅ توقف گوش دادن به Read Receipts
+    try {
+      TelegramReadReceiptService().stopListening(widget.args.conversationId);
+    } catch (e) {
+      debugPrint('Error stopping read receipt listener: $e');
     }
 
     for (final sub in _reactionsSubscriptions.values) {
@@ -950,11 +1018,15 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   Widget _buildAppBarTitle(ChatTheme theme) {
-    final isOnlineAsync = ref.watch(
-      userOnlineStatusStreamProvider(widget.args.otherUserId),
-    );
+    // دریافت وضعیت تایپ
     final typingUsersAsync = ref.watch(
       typingUsersProvider(widget.args.conversationId),
+    );
+
+    // تعیین وضعیت تایپ
+    final isTyping = typingUsersAsync.maybeWhen(
+      data: (users) => users.isNotEmpty,
+      orElse: () => false,
     );
 
     return InkWell(
@@ -966,10 +1038,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
         child: Row(
           children: [
-            // آواتار با انیمیشن
+            // آواتار با نقطه آنلاین
             Hero(
               tag: 'avatar_${widget.args.otherUserId}',
-              child: _buildAvatar(theme),
+              child: _buildAvatarWithOnlineIndicator(theme),
             ),
 
             const SizedBox(width: 12),
@@ -992,18 +1064,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   ),
                   const SizedBox(height: 2),
 
-                  // وضعیت تایپ یا آنلاین
-                  typingUsersAsync.when(
-                    data: (typingUsers) {
-                      if (typingUsers.isNotEmpty) {
-                        return InlineTypingIndicator(
-                          userName: typingUsers.first,
-                        );
-                      }
-                      return _buildOnlineStatus(isOnlineAsync, theme);
-                    },
-                    loading: () => _buildOnlineStatus(isOnlineAsync, theme),
-                    error: (_, __) => _buildOnlineStatus(isOnlineAsync, theme),
+                  // ✅ وضعیت آنلاین به سبک تلگرام - Real-time
+                  TelegramOnlineStatus(
+                    userId: widget.args.otherUserId,
+                    isTyping: isTyping,
+                    textStyle: TextStyle(
+                      color: theme.secondaryTextColor,
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
@@ -1011,6 +1079,50 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           ],
         ),
       ),
+    );
+  }
+
+  /// آواتار با نشانگر آنلاین
+  Widget _buildAvatarWithOnlineIndicator(ChatTheme theme) {
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: Stack(
+        children: [
+          // آواتار اصلی
+          _buildAvatar(theme),
+          // نقطه آنلاین
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: _buildOnlineDot(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// نقطه آنلاین برای آواتار - ✅ بهینه با Consumer
+  Widget _buildOnlineDot() {
+    return Consumer(
+      builder: (context, ref, _) {
+        final presenceAsync = ref.watch(
+          userPresenceStreamProvider(widget.args.otherUserId),
+        );
+
+        return presenceAsync.maybeWhen(
+          data: (state) {
+            if (!state.isOnline) return const SizedBox.shrink();
+
+            return OnlineStatusDot(
+              status: state.status,
+              size: 14,
+              borderColor: Theme.of(context).scaffoldBackgroundColor,
+            );
+          },
+          orElse: () => const SizedBox.shrink(),
+        );
+      },
     );
   }
 
@@ -1057,25 +1169,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           fontSize: 18,
           fontWeight: FontWeight.w600,
         ),
-      ),
-    );
-  }
-
-  Widget _buildOnlineStatus(AsyncValue<bool> isOnlineAsync, ChatTheme theme) {
-    return isOnlineAsync.when(
-      data: (isOnline) => FullOnlineStatus(
-        status: isOnline ? UserStatus.online : UserStatus.offline,
-        lastSeen: isOnline
-            ? null
-            : DateTime.now().subtract(const Duration(minutes: 5)),
-      ),
-      loading: () => Text(
-        'در حال بررسی...',
-        style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
-      ),
-      error: (_, __) => Text(
-        'نامشخص',
-        style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
       ),
     );
   }
@@ -1244,9 +1337,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   // - اگر تاریخ فرق داشت، divider نشون بده
                   // - divider باید بالای پیام فعلی باشه (قبل از پیام در Column)
                   // - برای قدیمی‌ترین پیام هم divider نشون بده (وقتی nextMessage null هست)
-                  final nextMessage = index < messages.length - 1
-                      ? messages[index + 1]
-                      : null;
+                  final nextMessage =
+                      index < messages.length - 1 ? messages[index + 1] : null;
                   final showDateDivider = date_divider.shouldShowDateDivider(
                     message.createdAt,
                     nextMessage?.createdAt,
@@ -1470,27 +1562,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                             )
                           ],
                         ),
-
-                        // Reactions Widget (زیر پیام)
-                        if ((_messageReactions[message.id] ?? []).isNotEmpty)
-                          Padding(
-                            padding: EdgeInsets.only(
-                              top: 4,
-                              left: isMe ? 0 : 12,
-                              right: isMe ? 12 : 0,
-                            ),
-                            child: MessageReactionsWidget(
-                              messageId: message.id,
-                              reactions: _messageReactions[message.id] ?? [],
-                              isMine: isMe,
-                              onReactionTap: () {
-                                ReactionPickerSheet.show(
-                                  context,
-                                  messageId: message.id,
-                                );
-                              },
-                            ),
-                          ),
 
                         // Unread Divider
                         if (_shouldShowUnreadDivider(message, index, messages))
@@ -1901,6 +1972,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       if (result.isSuccess) {
         // Scroll to bottom after sending
         _scrollToBottom();
+
+        // ✅ آپدیت آخرین پیام برای sync تیک در لیست مکالمات
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _registerLastMessage();
+        });
       } else {
         _showErrorSnackBar(result.error ?? 'خطا در ارسال پیام');
       }
@@ -2074,10 +2150,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   /// Navigate to Chat Details Screen
-  void _navigateToChatDetails() {
-    Navigator.of(context).push(
+  void _navigateToChatDetails() async {
+    final result = await Navigator.of(context).push<String?>(
       MaterialPageRoute(
-        builder: (context) => TelegramChatDetailsScreen(
+        builder: (context) => TelegramProfileScreen(
           conversationId: widget.args.conversationId,
           otherUserId: widget.args.otherUserId,
           otherUserName: widget.args.otherUserName,
@@ -2085,6 +2161,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         ),
       ),
     );
+
+    // اگر از جستجو برگشت و messageId داشت، به آن پیام اسکرول کن
+    if (result != null && mounted) {
+      _scrollToMessage(result);
+    }
   }
 
   /// Show Document Preview
@@ -2561,8 +2642,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       final postCreatedAt = postData['createdAt'] != null
           ? DateTime.parse(postData['createdAt'] as String)
           : message.createdAt;
+      final verificationType = postData['verificationType'] as String?;
+      final hashtags = postData['hashtags'] != null
+          ? List<String>.from(postData['hashtags'] as List)
+          : null;
 
-      return EnhancedPostMessageBubble(
+      // استفاده از کارت پست به سبک اینستاگرام
+      return InstagramStylePostCard(
         postId: postId,
         authorName: authorName,
         authorAvatar: authorAvatar,
@@ -2574,7 +2660,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         createdAt: postCreatedAt,
         sentAt: message.createdAt,
         isMine: isMe,
-        onTap: () => _onMessageTap(message),
+        verificationType: verificationType,
+        hashtags: hashtags,
+        onTap: () => _navigateToPostScreen(postId),
         onShare: () async {
           final result = await ForwardMessageSheet.show(
             context,
@@ -2604,5 +2692,20 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         forwardedFrom: message.forwardedFromSenderName,
       );
     }
+  }
+
+  /// Navigate to post screen
+  void _navigateToPostScreen(String postId) {
+    if (postId.isEmpty) {
+      _showErrorSnackBar('شناسه پست یافت نشد');
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PostDetailsPage(postId: postId),
+      ),
+    );
   }
 }

@@ -1,4 +1,6 @@
 import '../security/logging_utility.dart';
+import '../services/telegram_read_receipt_service.dart';
+
 class ConversationModel {
   final String id;
   final DateTime createdAt;
@@ -16,6 +18,12 @@ class ConversationModel {
   final bool isPinned;
   final bool isMuted; // اضافه کردن فیلد isMuted
   final bool isArchived; // فیلد جدید برای وضعیت بایگانی
+  final String?
+      lastMessageType; // نوع آخرین پیام: text, voice, image, video, post, file, sticker
+  final bool isLastMessageFromMe; // آیا آخرین پیام از من است؟
+  final String? lastMessageSenderId; // شناسه فرستنده آخرین پیام
+  final MessageDeliveryStatus
+      lastMessageDeliveryStatus; // وضعیت تحویل آخرین پیام
 
   ConversationModel({
     required this.id,
@@ -32,6 +40,11 @@ class ConversationModel {
     this.isPinned = false,
     this.isMuted = false, // مقدار پیش‌فرض برای isMuted
     this.isArchived = false, // مقدار پیش‌فرض برای بایگانی
+    this.lastMessageType, // نوع آخرین پیام
+    this.isLastMessageFromMe = false, // آیا آخرین پیام از من است
+    this.lastMessageSenderId, // شناسه فرستنده آخرین پیام
+    this.lastMessageDeliveryStatus =
+        MessageDeliveryStatus.sent, // وضعیت تحویل آخرین پیام
   });
 
   factory ConversationModel.fromJson(Map<String, dynamic> json,
@@ -104,12 +117,46 @@ class ConversationModel {
         isPinned: json['is_pinned'] ?? false,
         isMuted: json['is_muted'] ?? false,
         isArchived: json['is_archived'] ?? false,
+        lastMessageType: json['last_message_type'] as String?,
+        isLastMessageFromMe: json['is_last_message_from_me'] ?? false,
+        lastMessageSenderId: json['last_message_sender_id'] as String?,
+        lastMessageDeliveryStatus: _parseDeliveryStatus(json),
       );
     } catch (e) {
       logInfo('❌ خطا در تبدیل JSON به ConversationModel: $e');
       logInfo('📄 JSON داده: $json');
       rethrow;
     }
+  }
+
+  /// پارس کردن وضعیت تحویل از JSON
+  static MessageDeliveryStatus _parseDeliveryStatus(Map<String, dynamic> json) {
+    // اول بررسی فیلد مستقیم
+    final statusStr = json['last_message_delivery_status'] as String?;
+    if (statusStr != null) {
+      switch (statusStr) {
+        case 'pending':
+          return MessageDeliveryStatus.pending;
+        case 'sent':
+          return MessageDeliveryStatus.sent;
+        case 'delivered':
+          return MessageDeliveryStatus.delivered;
+        case 'read':
+          return MessageDeliveryStatus.read;
+        case 'failed':
+          return MessageDeliveryStatus.failed;
+      }
+    }
+
+    // بررسی فیلدهای is_sent، is_delivered، is_seen از آخرین پیام
+    final isSeen = json['last_message_is_seen'] as bool? ?? false;
+    final isDelivered = json['last_message_is_delivered'] as bool? ?? false;
+    final isSent = json['last_message_is_sent'] as bool? ?? true;
+
+    if (isSeen) return MessageDeliveryStatus.read;
+    if (isDelivered) return MessageDeliveryStatus.delivered;
+    if (isSent) return MessageDeliveryStatus.sent;
+    return MessageDeliveryStatus.pending;
   }
 
   Map<String, dynamic> toJson() {
@@ -126,8 +173,12 @@ class ConversationModel {
       'hasUnreadMessages': hasUnreadMessages,
       'unreadCount': unreadCount,
       'is_pinned': isPinned,
-      'is_muted': isMuted, // اضافه کردن isMuted به JSON
-      'is_archived': isArchived, // اضافه کردن وضعیت بایگانی به JSON
+      'is_muted': isMuted,
+      'is_archived': isArchived,
+      'last_message_type': lastMessageType,
+      'is_last_message_from_me': isLastMessageFromMe,
+      'last_message_sender_id': lastMessageSenderId,
+      'last_message_delivery_status': lastMessageDeliveryStatus.name,
     };
   }
 
@@ -144,8 +195,12 @@ class ConversationModel {
     bool? hasUnreadMessages,
     int? unreadCount,
     bool? isPinned,
-    bool? isMuted, // اضافه کردن پارامتر isMuted
+    bool? isMuted,
     bool? isArchived,
+    String? lastMessageType,
+    bool? isLastMessageFromMe,
+    String? lastMessageSenderId,
+    MessageDeliveryStatus? lastMessageDeliveryStatus,
   }) {
     return ConversationModel(
       id: id ?? this.id,
@@ -160,13 +215,23 @@ class ConversationModel {
       hasUnreadMessages: hasUnreadMessages ?? this.hasUnreadMessages,
       unreadCount: unreadCount ?? this.unreadCount,
       isPinned: isPinned ?? this.isPinned,
-      isMuted: isMuted ?? this.isMuted, // استفاده از isMuted
+      isMuted: isMuted ?? this.isMuted,
       isArchived: isArchived ?? this.isArchived,
+      lastMessageType: lastMessageType ?? this.lastMessageType,
+      isLastMessageFromMe: isLastMessageFromMe ?? this.isLastMessageFromMe,
+      lastMessageSenderId: lastMessageSenderId ?? this.lastMessageSenderId,
+      lastMessageDeliveryStatus:
+          lastMessageDeliveryStatus ?? this.lastMessageDeliveryStatus,
     );
   }
 
-  /// Format last message for display (handle encrypted messages)
+  /// Format last message for display (handle encrypted messages and message types)
   String? get formattedLastMessage {
+    // اول نوع پیام رو چک کن
+    if (lastMessageType != null && lastMessageType != 'text') {
+      return _getMessageTypePreview(lastMessageType!);
+    }
+
     if (lastMessage == null || lastMessage!.isEmpty) return null;
 
     // Check if message is encrypted
@@ -175,6 +240,45 @@ class ConversationModel {
     }
 
     return lastMessage;
+  }
+
+  /// نمایش پیش‌نمایش بر اساس نوع پیام
+  String _getMessageTypePreview(String type) {
+    switch (type.toLowerCase()) {
+      case 'voice':
+      case 'audio':
+        return '🎤 پیام صوتی';
+      case 'image':
+      case 'photo':
+        return '📷 تصویر';
+      case 'video':
+        return '🎬 ویدیو';
+      case 'post':
+      case 'shared_post':
+        return '📮 پست';
+      case 'file':
+      case 'document':
+        return '📎 فایل';
+      case 'sticker':
+        return '😀 استیکر';
+      case 'gif':
+        return '🎞️ گیف';
+      case 'location':
+        return '📍 موقعیت مکانی';
+      case 'contact':
+        return '👤 مخاطب';
+      case 'poll':
+        return '📊 نظرسنجی';
+      case 'link':
+        return '🔗 لینک';
+      case 'reply':
+        // اگر reply بود، متن اصلی رو نمایش بده
+        return lastMessage ?? '↩️ پاسخ';
+      case 'forward':
+        return '↗️ فوروارد شده';
+      default:
+        return lastMessage ?? 'پیام';
+    }
   }
 
   static ConversationModel empty() {
@@ -188,10 +292,14 @@ class ConversationModel {
       lastMessage: null,
       lastMessageTime: null,
       hasUnreadMessages: false,
-      unreadCount: 0, // اضافه کردن مقدار پیش‌فرض
+      unreadCount: 0,
       isPinned: false,
-      isMuted: false, // مقدار پیش‌فرض برای isMuted
+      isMuted: false,
       isArchived: false,
+      lastMessageType: null,
+      isLastMessageFromMe: false,
+      lastMessageSenderId: null,
+      lastMessageDeliveryStatus: MessageDeliveryStatus.sent,
     );
   }
 }
