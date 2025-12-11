@@ -563,7 +563,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           blurIntensity: 3.0,
           child: Scaffold(
             backgroundColor: Colors.transparent,
-            extendBodyBehindAppBar: false,
+            // ✅ فعال کردن اسکرول پیام‌ها از پشت app bar
+            extendBodyBehindAppBar: true,
             appBar: _isSearchMode ? null : _buildAppBar(theme),
             body: Column(
               children: [
@@ -1238,18 +1239,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                     index,
                   );
 
-                  // Date Divider - چون لیست reverse هست:
-                  // - index 0 = جدیدترین پیام (پایین صفحه) - نباید Date Divider بعدش باشه
-                  // - index آخر = قدیمی‌ترین پیام (بالای صفحه) - می‌تونه Date Divider بعدش باشه
-                  // Date Divider باید بین دو پیام نمایش داده بشه، نه بعد از آخرین پیام
-                  final hasNextMessage = index < messages.length - 1;
-                  final nextMessage =
-                      hasNextMessage ? messages[index + 1] : null;
-                  final showDateDivider = hasNextMessage &&
-                      date_divider.shouldShowDateDivider(
-                        message.createdAt,
-                        nextMessage?.createdAt,
-                      );
+                  // Date Divider - منطق صحیح برای لیست reverse:
+                  // - مقایسه با پیام قدیمی‌تر (index + 1)
+                  // - اگر تاریخ فرق داشت، divider نشون بده
+                  // - divider باید بالای پیام فعلی باشه (قبل از پیام در Column)
+                  // - برای قدیمی‌ترین پیام هم divider نشون بده (وقتی nextMessage null هست)
+                  final nextMessage = index < messages.length - 1
+                      ? messages[index + 1]
+                      : null;
+                  final showDateDivider = date_divider.shouldShowDateDivider(
+                    message.createdAt,
+                    nextMessage?.createdAt,
+                  );
 
                   // ایجاد کنترلر انیمیشن برای این پیام
                   _deleteAnimationControllers.putIfAbsent(
@@ -1262,6 +1263,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        // Date Divider (بالای پیام - قبل از محتوای پیام در Column)
+                        if (showDateDivider)
+                          date_divider.DateDivider(date: message.createdAt),
+
                         // حباب پیام
                         Row(
                           mainAxisAlignment: isMe
@@ -1486,10 +1491,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                               },
                             ),
                           ),
-
-                        // Date Divider (بعد از پیام چون لیست reverse هست)
-                        if (showDateDivider)
-                          date_divider.DateDivider(date: message.createdAt),
 
                         // Unread Divider
                         if (_shouldShowUnreadDivider(message, index, messages))

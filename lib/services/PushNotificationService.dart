@@ -153,8 +153,9 @@ class PushNotificationService {
         'username': username,
         'full_name': fullName,
       });
-      
-      logInfo('✅ FCM Token با موفقیت در سوپابیس ذخیره شد برای کاربر: ${user.id}');
+
+      logInfo(
+          '✅ FCM Token با موفقیت در سوپابیس ذخیره شد برای کاربر: ${user.id}');
     } catch (e) {
       logInfo('❌ خطا در ذخیره FCM Token: $e');
       logInfo('Stack trace: ${StackTrace.current}');
@@ -314,7 +315,8 @@ class PushNotificationService {
       // استفاده از ref.read برای دسترسی به notificationsProvider
       final notifier = ref.read(notificationsProvider.notifier);
       notifier.addNotificationFromPush(message);
-      logInfo('✅ اعلان با موفقیت به provider اضافه شد: ${message.data['type']}');
+      logInfo(
+          '✅ اعلان با موفقیت به provider اضافه شد: ${message.data['type']}');
     } catch (e) {
       logInfo('❌ خطا در اضافه کردن اعلان به provider: $e');
       logInfo('Stack trace: ${StackTrace.current}');

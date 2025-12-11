@@ -197,7 +197,8 @@ class UnifiedMessagesNotifier extends StateNotifier<UnifiedMessagesState> {
     final channel = supabase
         .channel('messages:$conversationId')
         .onPostgresChanges(
-          event: PostgresChangeEvent.insert, // فقط insert گوش دهیم، update/delete کمتر اتفاق می‌افتد
+          event: PostgresChangeEvent
+              .insert, // فقط insert گوش دهیم، update/delete کمتر اتفاق می‌افتد
           schema: 'public',
           table: 'messages',
           filter: PostgresChangeFilter(
@@ -213,7 +214,8 @@ class UnifiedMessagesNotifier extends StateNotifier<UnifiedMessagesState> {
               // Handle real-time message updates with debouncing
               final currentUserId = supabase.auth.currentUser?.id;
               if (currentUserId != null) {
-                final newMessage = MessageModel.fromJson(payload.newRecord, currentUserId: currentUserId);
+                final newMessage = MessageModel.fromJson(payload.newRecord,
+                    currentUserId: currentUserId);
                 addMessage(newMessage);
               }
             });
@@ -221,7 +223,8 @@ class UnifiedMessagesNotifier extends StateNotifier<UnifiedMessagesState> {
         )
         .subscribe((status, [error]) {
       if (status == RealtimeSubscribeStatus.subscribed) {
-        logInfo('Optimized real-time messages subscription active for $conversationId');
+        logInfo(
+            'Optimized real-time messages subscription active for $conversationId');
       } else if (status == RealtimeSubscribeStatus.closed) {
         debounceTimer?.cancel();
       }

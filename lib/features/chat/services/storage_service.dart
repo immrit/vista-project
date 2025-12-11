@@ -61,7 +61,8 @@ class StorageService {
   /// حذف چندین فایل بدسته
   ///
   /// بازگشت: تعداد فایل‌های موفقی حذف‌شده
-  Future<int> deleteMultipleFiles(List<String> fileUrls, String? fileType) async {
+  Future<int> deleteMultipleFiles(
+      List<String> fileUrls, String? fileType) async {
     int deletedCount = 0;
 
     for (final url in fileUrls) {

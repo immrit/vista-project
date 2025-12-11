@@ -1008,13 +1008,10 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
       if (messageIndex != -1) {
         final message = currentMessages[messageIndex];
         final currentUserId = supabase.auth.currentUser!.id;
-        
+
         // ✅ کپی عمیق از reactions
-        final newReactions = Map<String, List<String>>.from(
-          message.reactions.map(
-            (key, value) => MapEntry(key, List<String>.from(value))
-          )
-        );
+        final newReactions = Map<String, List<String>>.from(message.reactions
+            .map((key, value) => MapEntry(key, List<String>.from(value))));
 
         // بررسی وجود reaction کاربر
         bool hasReacted = newReactions[emoji]?.contains(currentUserId) ?? false;
@@ -1031,7 +1028,7 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
             value.remove(currentUserId);
           });
           newReactions.removeWhere((key, value) => value.isEmpty);
-          
+
           // اضافه کردن reaction جدید
           if (newReactions.containsKey(emoji)) {
             newReactions[emoji]!.add(currentUserId);
@@ -1042,7 +1039,7 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
 
         // ✅ آپدیت فوری UI
         final updatedMessage = message.copyWith(reactions: newReactions);
-        
+
         // ✅ به‌روزرسانی conversationMessagesProvider
         ref
             .read(conversationMessagesProvider(conversationId).notifier)
@@ -1054,12 +1051,13 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
           // پیدا کردن otherUserId از conversation
           final currentUserId = supabase.auth.currentUser!.id;
           String? otherUserId;
-          
+
           if (message.senderId == currentUserId) {
             // پیام از خود کاربر است، باید otherUserId را از conversation پیدا کنیم
             try {
               // استفاده از conversationProvider برای پیدا کردن otherUserId
-              final conversationAsync = ref.read(conversationProvider(conversationId).future);
+              final conversationAsync =
+                  ref.read(conversationProvider(conversationId).future);
               conversationAsync.then((conversation) {
                 if (conversation != null && conversation.otherUserId != null) {
                   try {
@@ -1109,7 +1107,8 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
         // ✅ ارسال به سرور
         final reactionService = MessageReactionService();
         try {
-          logInfo('📤 ارسال reaction به سرور: messageId=$messageId, emoji=$emoji');
+          logInfo(
+              '📤 ارسال reaction به سرور: messageId=$messageId, emoji=$emoji');
           await reactionService.toggleReaction(
             messageId: messageId,
             conversationId: conversationId,
@@ -1955,19 +1954,19 @@ bool _areReactionsEqual(
   Map<String, List<String>> b,
 ) {
   if (a.length != b.length) return false;
-  
+
   for (final key in a.keys) {
     if (!b.containsKey(key)) return false;
-    
+
     final listA = List<String>.from(a[key]!)..sort();
     final listB = List<String>.from(b[key]!)..sort();
-    
+
     if (listA.length != listB.length) return false;
     for (int i = 0; i < listA.length; i++) {
       if (listA[i] != listB[i]) return false;
     }
   }
-  
+
   return true;
 }
 
@@ -2145,10 +2144,10 @@ final conversationMessagesProvider = StateNotifierProvider.family
           // آپدیت پیام‌هایی که reactions آنها تغییر کرده
           final currentState = notifier.state;
           bool hasChanges = false;
-          
+
           final updatedMessages = currentState.map((message) {
             final newReactions = messageReactions[message.id] ?? {};
-            
+
             // ✅ مقایسه دقیق‌تر reactions
             if (!_areReactionsEqual(newReactions, message.reactions)) {
               hasChanges = true;

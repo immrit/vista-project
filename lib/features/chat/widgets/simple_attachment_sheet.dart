@@ -18,11 +18,11 @@ class SimpleAttachmentSheet extends StatelessWidget {
   final VoidCallback onFileTap;
 
   const SimpleAttachmentSheet({
-    Key? key,
+    super.key,
     required this.onGalleryTap,
     required this.onCameraTap,
     required this.onFileTap,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

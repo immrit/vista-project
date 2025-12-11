@@ -34,7 +34,7 @@ class ChatRepositoryImpl implements ChatRepository {
   void _init() {
     // Initialize storage service for cloud file management
     _storageService = StorageService(_supabase);
-    
+
     // Start listening to realtime changes immediately
     initializeRealtime();
   }
@@ -446,7 +446,7 @@ class ChatRepositoryImpl implements ChatRepository {
       {bool forEveryone = false}) async {
     try {
       await _ensureAuth();
-      
+
       final userId = _currentUserId;
       if (userId == null) return ChatResult.failure('کاربر وارد نشده است');
 
@@ -462,14 +462,14 @@ class ChatRepositoryImpl implements ChatRepository {
 
       if (forEveryone) {
         // ✅ حذف دوطرفه - پیام و فایل ضمیمه‌اش را حذف کن
-        
+
         if (attachmentUrl != null && attachmentUrl.isNotEmpty) {
           // ✅ حذف فایل از Cloud Storage (Arvan/Supabase)
           // از StorageService استفاده می‌کنیم برای حذف متمرکز
           await _storageService.deleteFile(attachmentUrl, attachmentType);
           print('✅ Attachment deleted from cloud for message: $messageId');
         }
-        
+
         // حذف پیام از دیتابیس
         await _supabase.from('messages').delete().eq('id', messageId);
         print('✅ Message deleted from database for everyone: $messageId');
@@ -490,7 +490,7 @@ class ChatRepositoryImpl implements ChatRepository {
 
       // حذف از محلی (Sembast)
       await _localDataSource.deleteMessage(messageId);
-      
+
       return ChatResult.success(null);
     } catch (e) {
       return ChatResult.failure(e.toString());

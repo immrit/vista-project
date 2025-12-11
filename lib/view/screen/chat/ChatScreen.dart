@@ -1479,6 +1479,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           backgroundColor: Colors.transparent,
           // ✅ بهینه‌سازی: غیرفعال کردن resizeToAvoidBottomInset برای کنترل دستی کیبورد
           resizeToAvoidBottomInset: false,
+          // ✅ فعال کردن اسکرول پیام‌ها از پشت app bar
+          extendBodyBehindAppBar: true,
           appBar: AppBar(
             elevation: 1,
             backgroundColor: Theme.of(context).brightness == Brightness.dark
