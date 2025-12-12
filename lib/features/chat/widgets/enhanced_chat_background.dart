@@ -11,89 +11,56 @@
 //
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:ui';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../../../services/wallpaper_cache_service.dart';
+import '../../../provider/settings_providers.dart';
 
 /// Enhanced Chat Background با الهام از تلگرام
-class EnhancedChatBackground extends StatefulWidget {
+/// این ویجت به صورت خودکار تنظیمات بلور را از provider می‌خواند
+/// و در هر دو تم روشن و تاریک (به جز تم مشکی مطلق) بلور را اعمال می‌کند
+class EnhancedChatBackground extends ConsumerStatefulWidget {
   final Widget child;
   final bool enablePattern;
-  final bool enableBlur;
+
+  /// اگر null باشد، از تنظیمات کاربر استفاده می‌شود
+  /// اگر مقدار مشخص شود، آن مقدار استفاده می‌شود (برای override)
+  final bool? forceEnableBlur;
   final double blurIntensity;
 
   const EnhancedChatBackground({
     super.key,
     required this.child,
     this.enablePattern = true,
-    this.enableBlur = false,
+    this.forceEnableBlur,
     this.blurIntensity = 3.0,
   });
 
   @override
-  State<EnhancedChatBackground> createState() => _EnhancedChatBackgroundState();
+  ConsumerState<EnhancedChatBackground> createState() =>
+      _EnhancedChatBackgroundState();
 }
 
-class _EnhancedChatBackgroundState extends State<EnhancedChatBackground>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _fadeAnimation;
-
-  bool _wallpaperLoaded = false;
-  String? _wallpaperUrl;
-  bool _hasLoadedWallpaper = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _setupAnimation();
-  }
-
-  void _setupAnimation() {
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 600),
-      vsync: this,
-    );
-
-    _fadeAnimation = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOut,
-    );
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // بارگذاری والپیپر فقط یکبار بعد از آماده شدن context
-    if (!_hasLoadedWallpaper) {
-      _hasLoadedWallpaper = true;
-      _loadWallpaper();
-    }
-  }
-
-  Future<void> _loadWallpaper() async {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final url = WallpaperCacheService.getWallpaperUrl(isDark);
-
-    if (mounted) {
-      setState(() {
-        _wallpaperUrl = url;
-        _wallpaperLoaded = true;
-      });
-
-      _controller.forward();
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
+class _EnhancedChatBackgroundState
+    extends ConsumerState<EnhancedChatBackground> {
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    // تشخیص تم مشکی مطلق (AMOLED/Pure Black)
+    // در تم مشکی مطلق، scaffoldBackgroundColor معمولاً 0xFF000000 است
+    final isPitchBlack = theme.scaffoldBackgroundColor.value == 0xFF000000;
+
+    // خواندن تنظیمات کاربر از provider
+    final userSettingEnabled = ref.watch(chatBlurBackgroundProvider);
+
+    // منطق نهایی اعمال بلور:
+    // 1. اگر forceEnableBlur داده شده، از آن استفاده کن، وگرنه از تنظیمات کاربر
+    // 2. حتماً نباید تم مشکی مطلق باشد (برای حفظ سیاهی مطلق در AMOLED)
+    // ✅ حذف شرط isDark - بلور در هر دو تم روشن و تاریک اعمال می‌شود
+    final shouldApplyBlur =
+        (widget.forceEnableBlur ?? userSettingEnabled) && !isPitchBlack;
 
     return Stack(
       fit: StackFit.expand,
@@ -112,18 +79,7 @@ class _EnhancedChatBackgroundState extends State<EnhancedChatBackground>
         ),
 
         // 3️⃣ Network Wallpaper با Fade Animation (مثل تلگرام)
-        if (_wallpaperLoaded && _wallpaperUrl != null)
-          FadeTransition(
-            opacity: _fadeAnimation,
-            child: CachedNetworkImage(
-              imageUrl: _wallpaperUrl!,
-              fit: BoxFit.cover,
-              fadeInDuration: const Duration(milliseconds: 300),
-              fadeOutDuration: const Duration(milliseconds: 200),
-              placeholder: (_, __) => const SizedBox.shrink(),
-              errorWidget: (_, __, ___) => const SizedBox.shrink(),
-            ),
-          ),
+        // حذف شد - فقط از تصویر محلی استفاده می‌کنیم
 
         // 4️⃣ Pattern Overlay (مثل تلگرام - نقش‌های ظریف)
         if (widget.enablePattern)
@@ -132,8 +88,9 @@ class _EnhancedChatBackgroundState extends State<EnhancedChatBackground>
             child: _buildDefaultPattern(isDark),
           ),
 
-        // 5️⃣ Blur Effect (فقط در dark mode مثل تلگرام)
-        if (widget.enableBlur && isDark)
+        // 5️⃣ Blur Effect (با رعایت شرط‌ها: تنظیمات + نه تم مشکی)
+        // ✅ بلور در هر دو تم روشن و تاریک اعمال می‌شود
+        if (shouldApplyBlur)
           ClipRect(
             child: BackdropFilter(
               filter: ImageFilter.blur(
@@ -141,7 +98,10 @@ class _EnhancedChatBackgroundState extends State<EnhancedChatBackground>
                 sigmaY: widget.blurIntensity,
               ),
               child: Container(
-                color: Colors.black.withOpacity(0.1),
+                // رنگ لایه رویی بلور - متناسب با تم
+                color: isDark
+                    ? Colors.black.withOpacity(0.1)
+                    : Colors.white.withOpacity(0.1),
               ),
             ),
           ),
@@ -159,9 +119,10 @@ class _EnhancedChatBackgroundState extends State<EnhancedChatBackground>
                       Colors.black.withOpacity(0.15),
                     ]
                   : [
-                      Colors.white.withOpacity(0.1),
+                      Colors.white
+                          .withOpacity(0.2), // کمی شفافیت بیشتر برای تم روشن
                       Colors.white.withOpacity(0.0),
-                      Colors.white.withOpacity(0.1),
+                      Colors.white.withOpacity(0.2),
                     ],
               stops: const [0.0, 0.5, 1.0],
             ),

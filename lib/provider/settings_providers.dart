@@ -1,5 +1,6 @@
 import '../security/logging_utility.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../DB/settings_cache_service.dart';
 import '../DB/advanced_settings_service.dart';
 import '../main.dart';
@@ -326,6 +327,69 @@ final currentCacheSizeProvider = Provider<int>((ref) {
   return service.getCurrentCacheSize();
 });
 
+// ===== Chat Blur Background Settings Provider =====
 
+/// Notifier برای کنترل وضعیت بلور پس‌زمینه چت
+/// این تنظیم فقط برای تم تاریک (dark) کار می‌کند و در تم مشکی (black) غیرفعال است
+class ChatBlurBackgroundNotifier extends StateNotifier<bool> {
+  static const String _blurBackgroundKey = 'chat_blur_background_enabled';
+  SharedPreferences? _prefs;
+  bool _isInitialized = false;
 
+  // مقدار پیش‌فرض: غیرفعال (false) - کاربر باید خودش فعال کند
+  ChatBlurBackgroundNotifier() : super(false) {
+    _initPrefs();
+  }
+
+  Future<void> _initPrefs() async {
+    try {
+      _prefs = await SharedPreferences.getInstance();
+      _loadBlurSetting();
+      _isInitialized = true;
+    } catch (e) {
+      logInfo('❌ خطا در مقداردهی اولیه SharedPreferences برای تنظیمات بلور: $e');
+    }
+  }
+
+  void _loadBlurSetting() {
+    if (_prefs == null) return;
+    try {
+      // مقدار پیش‌فرض false - بلور غیرفعال است مگر اینکه کاربر فعالش کند
+      final savedValue = _prefs!.getBool(_blurBackgroundKey) ?? false;
+      state = savedValue;
+      logInfo('✅ تنظیم بلور بارگذاری شد: $savedValue');
+    } catch (e) {
+      logInfo('❌ خطا در بارگذاری تنظیم بلور: $e');
+    }
+  }
+
+  Future<void> setBlurEnabled(bool enabled) async {
+    state = enabled;
+    logInfo('🔄 تغییر وضعیت بلور به: $enabled');
+    
+    if (_prefs == null) {
+      // اگر prefs آماده نیست، منتظر بمان
+      await _initPrefs();
+    }
+    
+    try {
+      await _prefs?.setBool(_blurBackgroundKey, enabled);
+      logInfo('✅ تنظیم بلور ذخیره شد: $enabled');
+    } catch (e) {
+      logInfo('❌ خطا در ذخیره تنظیم بلور: $e');
+    }
+  }
+
+  void toggle() {
+    setBlurEnabled(!state);
+  }
+  
+  /// بررسی آماده بودن provider
+  bool get isInitialized => _isInitialized;
+}
+
+/// Provider برای کنترل وضعیت بلور پس‌زمینه چت
+final chatBlurBackgroundProvider = StateNotifierProvider<ChatBlurBackgroundNotifier, bool>((ref) {
+  return ChatBlurBackgroundNotifier();
+});
 

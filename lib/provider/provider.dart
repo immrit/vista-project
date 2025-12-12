@@ -26,6 +26,7 @@ import '../model/CommentModel.dart';
 import '../model/UserModel.dart';
 import '../view/util/themes.dart';
 import '../services/user_friendly_error_handler.dart';
+import '../services/auth_navigation_service.dart';
 import 'session_provider.dart';
 // Import security provider
 
@@ -435,14 +436,15 @@ class PublicPostsNotifier
       final sessionManager = ref.read(sessionManagerProvider);
       final isSessionValid = await sessionManager.isSessionStillValid();
       if (!isSessionValid) {
-        debugPrint('❌ Session is no longer valid, cannot perform like operation');
+        debugPrint(
+            '❌ Session is no longer valid, cannot perform like operation');
         throw Exception('نشست شما منقضی شده است. لطفاً دوباره وارد شوید.');
       }
     } catch (e) {
       debugPrint('❌ Error checking session validity: $e');
       // اگر خطای network است، ادامه بده
       final errorString = e.toString().toLowerCase();
-      if (!errorString.contains('network') && 
+      if (!errorString.contains('network') &&
           !errorString.contains('timeout') &&
           !errorString.contains('connection')) {
         rethrow;
@@ -1508,7 +1510,22 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
   Future<void> fetchProfile(String userId) async {
     try {
       final supabase = Supabase.instance.client;
+
+      // ✅ بررسی کامل نشست با تلاش برای recovery
+      final isAuthenticated = await AuthNavigationService.ensureAuthenticated(
+        message: 'برای مشاهده پروفایل ابتدا وارد شوید',
+      );
+
+      if (!isAuthenticated) {
+        print('⚠️ ProfileNotifier: نشست معتبر نیست');
+        return;
+      }
+
       final currentUserId = supabase.auth.currentUser?.id;
+      if (currentUserId == null) {
+        print('⚠️ ProfileNotifier: کاربر یافت نشد بعد از verify');
+        return;
+      }
 
       // ابتدا سعی کن از کش استفاده کن
       if (_profileCache.shouldUseCache(userId)) {
@@ -1667,6 +1684,12 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
       );
     } catch (e) {
       print('خطا در دریافت پروفایل: $e');
+
+      // ✅ بررسی کامل خطاهای auth با verify نشست
+      final wasAuthError = await AuthNavigationService.handleAuthErrorAsync(e);
+      if (wasAuthError) {
+        return;
+      }
 
       // در صورت خطا، سعی کن از کش استفاده کن
       try {

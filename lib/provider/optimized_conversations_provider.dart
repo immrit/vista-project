@@ -483,7 +483,7 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
 
     try {
       // 1️⃣ دریافت مکالمه از کش
-      final conversation = await _cacheService.getConversation(conversationId, _userId!);
+      final conversation = await _cacheService.getConversation(conversationId, _userId);
       
       if (conversation == null) {
         logInfo('⚠️ Conversation not found in cache: $conversationId');
@@ -523,7 +523,7 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
       );
 
       // 4️⃣ ذخیره در کش (آفلاین - فوری)
-      await _cacheService.updateConversation(updatedConversation, _userId!);
+      await _cacheService.updateConversation(updatedConversation, _userId);
 
       // 5️⃣ به‌روزرسانی state برای UI (بدون نیاز به سرور)
       final currentConversations = List<ConversationModel>.from(state.conversations);
@@ -574,7 +574,7 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
       currentConversations[index] = updatedConversation;
 
       // ذخیره در کش
-      await _cacheService.updateConversation(updatedConversation, _userId!);
+      await _cacheService.updateConversation(updatedConversation, _userId);
 
       // به‌روزرسانی state
       if (!_disposed) {
@@ -594,7 +594,7 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
     if (_userId == null || _disposed) return;
 
     try {
-      final conversation = await _cacheService.getConversation(conversationId, _userId!);
+      final conversation = await _cacheService.getConversation(conversationId, _userId);
       
       if (conversation == null || conversation.unreadCount == 0) return;
 
@@ -603,7 +603,7 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
         hasUnreadMessages: false,
       );
 
-      await _cacheService.updateConversation(updatedConversation, _userId!);
+      await _cacheService.updateConversation(updatedConversation, _userId);
 
       // به‌روزرسانی state
       final currentConversations = List<ConversationModel>.from(state.conversations);

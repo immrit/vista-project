@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../../../main.dart';
+import '../../../provider/provider.dart';
+import '../../../provider/settings_providers.dart';
 import '../../../model/message_model.dart';
 import '../../../provider/chat_screen_provider.dart';
 import '../../../provider/chat_provider.dart' as chat_provider;
@@ -31,6 +34,7 @@ import 'ChatMessageSearchScreen.dart';
 import '../../../view/util/time_utils.dart';
 import '../../../services/toast_service.dart';
 import '../../../services/typing_service.dart';
+import '../../../widgets/universal_delete_animation.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String conversationId;
@@ -96,6 +100,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Timer? _typingTimer; // timer for typing indicator
   bool _isNearBottom = true; // track if user is near bottom for auto-scroll
   Timer? _autoScrollTimer;
+
+  // Delete animation state
+  final Set<String> _deletingMessageIds = {};
+  final Map<String, UniversalDeleteAnimationController>
+      _deleteAnimationControllers = {};
 
   @override
   void initState() {
@@ -395,15 +404,43 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _deleteMessage(String messageId, bool forEveryone) async {
     try {
+      // ✅ شروع انیمیشن حذف
+      setState(() {
+        _deletingMessageIds.add(messageId);
+      });
+
+      // اجرای انیمیشن پودر شدن
+      final controller = _deleteAnimationControllers[messageId];
+      if (controller != null) {
+        await controller.startDeleteAnimation();
+        // صبر کوتاه برای اتمام انیمیشن
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+
+      // حذف واقعی پیام
       await ref
           .read(chatScreenProvider(_providerParams).notifier)
           .deleteMessage(messageId, forEveryone: forEveryone);
+
+      // پاکسازی state
+      if (mounted) {
+        setState(() {
+          _deletingMessageIds.remove(messageId);
+          _deleteAnimationControllers.remove(messageId);
+        });
+      }
 
       ToastService.showSuccessToast(
         context,
         forEveryone ? 'پیام برای همه حذف شد' : 'پیام برای شما حذف شد',
       );
     } catch (e) {
+      // در صورت خطا، state را پاکسازی کن
+      if (mounted) {
+        setState(() {
+          _deletingMessageIds.remove(messageId);
+        });
+      }
       ToastService.showErrorToast(
           context, 'خطا در حذف پیام. لطفاً دوباره تلاش کنید.');
     }
@@ -551,9 +588,39 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void _deleteSelectedMessages(bool forEveryone) async {
     try {
       final chatService = ref.read(chat_provider.chatServiceProvider);
+      final messageIdsToDelete = Set<String>.from(_selectedMessageIds);
 
-      for (final messageId in _selectedMessageIds) {
+      // ✅ شروع انیمیشن حذف برای همه پیام‌های انتخاب شده
+      setState(() {
+        _deletingMessageIds.addAll(messageIdsToDelete);
+      });
+
+      // اجرای انیمیشن‌ها به صورت موازی
+      await Future.wait(
+        messageIdsToDelete.map((messageId) async {
+          final controller = _deleteAnimationControllers[messageId];
+          if (controller != null) {
+            await controller.startDeleteAnimation();
+          }
+        }),
+      );
+
+      // صبر کوتاه برای اتمام انیمیشن‌ها
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // حذف واقعی پیام‌ها
+      for (final messageId in messageIdsToDelete) {
         await chatService.deleteMessage(messageId, forEveryone: forEveryone);
+      }
+
+      // پاکسازی state
+      if (mounted) {
+        setState(() {
+          for (final messageId in messageIdsToDelete) {
+            _deletingMessageIds.remove(messageId);
+            _deleteAnimationControllers.remove(messageId);
+          }
+        });
       }
 
       ToastService.showSuccessToast(
@@ -571,6 +638,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       // Refresh the current chat screen
       ref.invalidate(chatScreenProvider(_providerParams));
     } catch (e) {
+      // در صورت خطا، state را پاکسازی کن
+      if (mounted) {
+        setState(() {
+          _deletingMessageIds.clear();
+        });
+      }
       ToastService.showErrorToast(context, 'خطا در حذف پیام‌ها');
     }
   }
@@ -1436,6 +1509,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
     final chatState = ref.read(chatScreenProvider(_providerParams));
 
+    // دریافت تنظیم بلور پس‌زمینه
+    final isBlurEnabled = ref.watch(chatBlurBackgroundProvider);
+    final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
+
+    // تشخیص تم مشکی مطلق (AMOLED)
+    final isPitchBlack =
+        Theme.of(context).scaffoldBackgroundColor.value == 0xFF000000;
+
+    // محاسبه نهایی - بلور در هر دو تم روشن و تاریک (به جز تم مشکی مطلق)
+    final shouldShowBlur = isBlurEnabled && !isPitchBlack;
+
     return Stack(
       children: [
         // Chat Wallpaper Background
@@ -1443,47 +1527,40 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // Local asset as immediate fallback
+              // استفاده از تصویر محلی به عنوان پس‌زمینه اصلی
               Image.asset(
-                WallpaperCacheService.getLocalWallpaperAsset(
-                  Theme.of(context).brightness == Brightness.dark,
-                ),
+                WallpaperCacheService.getLocalWallpaperAsset(isDarkTheme),
                 fit: BoxFit.cover,
                 gaplessPlayback: true,
               ),
-              // Network wallpaper with fallback
-              FutureBuilder<String>(
-                future: Future.value(
-                  WallpaperCacheService.getWallpaperUrl(
-                    Theme.of(context).brightness == Brightness.dark,
+              // افکت بلور - در هر دو تم روشن و تاریک (به جز تم مشکی مطلق)
+              if (shouldShowBlur)
+                ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(
+                      sigmaX: 5.0,
+                      sigmaY: 5.0,
+                    ),
+                    child: Container(
+                      // رنگ لایه رویی بلور - متناسب با تم
+                      color: isDarkTheme
+                          ? Colors.black.withOpacity(0.2)
+                          : Colors.white.withOpacity(0.2),
+                    ),
                   ),
                 ),
-                builder: (context, snapshot) {
-                  if (snapshot.hasData) {
-                    return CachedNetworkImage(
-                      imageUrl: snapshot.data!,
-                      fit: BoxFit.cover,
-                      placeholder: (context, url) => const SizedBox.shrink(),
-                      errorWidget: (context, url, error) =>
-                          const SizedBox.shrink(),
-                    );
-                  }
-                  return const SizedBox.shrink();
-                },
-              ),
             ],
           ),
         ),
         // Main chat interface
         Scaffold(
           backgroundColor: Colors.transparent,
-          // ✅ بهینه‌سازی: غیرفعال کردن resizeToAvoidBottomInset برای کنترل دستی کیبورد
-          resizeToAvoidBottomInset: false,
+          resizeToAvoidBottomInset: true,
           // ✅ فعال کردن اسکرول پیام‌ها از پشت app bar
           extendBodyBehindAppBar: true,
           appBar: AppBar(
             elevation: 1,
-            backgroundColor: Theme.of(context).brightness == Brightness.dark
+            backgroundColor: isDarkTheme
                 ? const Color(0xFF1A1A1A).withValues(alpha: 0.9)
                 : Colors.white.withValues(alpha: 0.9),
             titleSpacing: 0,
@@ -1857,7 +1934,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                     prevMessage?.senderId,
                                   );
 
-                                  // ✅ ساخت پیام بدون انیمیشن برای عملکرد بهتر
+                                  // ✅ ایجاد کنترلر انیمیشن حذف برای این پیام
+                                  _deleteAnimationControllers.putIfAbsent(
+                                    correctedMessage.id,
+                                    () => UniversalDeleteAnimationController(),
+                                  );
+
+                                  // ✅ ساخت پیام با انیمیشن حذف پودری
                                   final messageWidget = Column(
                                     children: [
                                       if (showDateDivider)
@@ -1917,10 +2000,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                     ],
                                   );
 
-                                  return messageWidget; // بدون هیچ انیمیشنی
+                                  // ✅ پیچیدن پیام با انیمیشن حذف پودری
+                                  return UniversalDeleteAnimation(
+                                    controller: _deleteAnimationControllers[
+                                        correctedMessage.id],
+                                    child: messageWidget,
+                                  );
                                 },
                               ),
-                    _buildFloatingDateChip(),
+                    // ✅ حباب تاریخ شناور حذف شد - به Stack بیرونی منتقل شد
                   ],
                 ),
               ),
@@ -1940,18 +2028,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 if (_showFileCaptionInput && _selectedFile != null)
                   _buildFileCaptionInput()
                 else
-                  // ✅ اضافه کردن AnimatedPadding برای کنترل دستی کیبورد
-                  AnimatedPadding(
-                    duration: Duration.zero, // بدون انیمیشن برای جلوگیری از لگ
-                    padding: EdgeInsets.only(
-                      bottom: MediaQuery.of(context).viewInsets.bottom,
-                    ),
-                    child: _buildMessageInput(),
-                  ),
+                  _buildMessageInput(),
               ],
             ]),
           ),
         ),
+        // ✅ حباب تاریخ شناور - در Stack بیرونی برای نمایش روی AppBar (مثل تلگرام)
+        _buildFloatingDateChip(),
         // ✅ Reaction Picker Overlay - نمایش در سطح بالاتر برای جلوگیری از overflow
         // فقط نمایش بده اگر در selection mode نیستیم (یعنی اولین long press)
         if (_reactionPickerMessageId != null &&
@@ -2028,13 +2111,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final messages = ref.read(chatScreenProvider(_providerParams)).messages;
     if (messages.isEmpty) return const SizedBox.shrink();
 
-    return AnimatedOpacity(
-      opacity: _floatingDate != null ? 1.0 : 0.0,
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeIn,
-      child: Container(
-        margin: const EdgeInsets.only(top: 12.0),
-        child: FloatingDateChip(date: _floatingDate ?? DateTime.now()),
+    // ✅ محاسبه فاصله از بالا: ارتفاع status bar + ارتفاع app bar + margin اضافی
+    final statusBarHeight = MediaQuery.of(context).padding.top;
+    final appBarHeight = kToolbarHeight; // ارتفاع استاندارد app bar (56.0)
+    final topPosition = statusBarHeight + appBarHeight + 12.0;
+
+    // ✅ استفاده از Positioned برای قرار دادن دقیق زیر app bar
+    return Positioned(
+      top: topPosition,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: AnimatedOpacity(
+          opacity: _floatingDate != null ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeIn,
+          child: FloatingDateChip(date: _floatingDate ?? DateTime.now()),
+        ),
       ),
     );
   }

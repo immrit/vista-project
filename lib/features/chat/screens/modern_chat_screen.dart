@@ -627,7 +627,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         // Main Screen
         EnhancedChatBackground(
           enablePattern: true,
-          enableBlur: theme.isDark,
+          // forceEnableBlur را null می‌گذاریم تا از تنظیمات کاربر استفاده کند
           blurIntensity: 3.0,
           child: Scaffold(
             backgroundColor: Colors.transparent,
@@ -2662,6 +2662,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         isMine: isMe,
         verificationType: verificationType,
         hashtags: hashtags,
+        status: _getMessageStatus(message), // اضافه کردن status
         onTap: () => _navigateToPostScreen(postId),
         onShare: () async {
           final result = await ForwardMessageSheet.show(

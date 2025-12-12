@@ -1235,8 +1235,9 @@ class _TelegramProfileScreenState extends ConsumerState<TelegramProfileScreen>
 
   /// بررسی دسترسی بزرگنمایی و نمایش تصویر
   void _handleAvatarTap() async {
-    if (widget.otherUserAvatar == null || widget.otherUserAvatar!.isEmpty)
+    if (widget.otherUserAvatar == null || widget.otherUserAvatar!.isEmpty) {
       return;
+    }
 
     // بررسی تنظیمات حریم خصوصی کاربر
     final userSettingsAsync =
@@ -1316,8 +1317,9 @@ class _TelegramProfileScreenState extends ConsumerState<TelegramProfileScreen>
 
   /// نمایش تصویر پروفایل تمام صفحه
   void _showFullScreenAvatar() {
-    if (widget.otherUserAvatar == null || widget.otherUserAvatar!.isEmpty)
+    if (widget.otherUserAvatar == null || widget.otherUserAvatar!.isEmpty) {
       return;
+    }
 
     Navigator.push(
       context,

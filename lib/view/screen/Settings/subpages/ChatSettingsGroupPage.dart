@@ -4,7 +4,7 @@ import 'dart:math' as math;
 
 import '../../chat/ArchivedConversationsScreen.dart';
 import '../../../../provider/provider.dart';
-import '../../../../provider/settings_providers.dart';
+import '../../../../provider/settings_providers.dart' show chatBlurBackgroundProvider, advancedAppSettingsProvider;
 import '../../../../DB/advanced_settings_service.dart';
 import '../../../../services/advanced_haptic_feedback_service.dart';
 import '../widgets/SettingsListItem.dart';
@@ -119,8 +119,74 @@ class _ChatSettingsGroupPageState extends ConsumerState<ChatSettingsGroupPage> {
 
           const SizedBox(height: 20),
 
+          // عنوان بخش ظاهری چت
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                'ظاهر صفحه چت',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                ),
+              ),
+            ),
+          ),
+
+          // تنظیمات ظاهری چت
+          _buildChatAppearanceCard(context, isDark, colorScheme),
+
+          const SizedBox(height: 20),
+
           // تنظیمات اپلیکیشن
           _buildAppSettingsCard(context, isDark, colorScheme),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChatAppearanceCard(BuildContext context, bool isDark, ColorScheme colorScheme) {
+    final blurEnabled = ref.watch(chatBlurBackgroundProvider);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16.0),
+      decoration: BoxDecoration(
+        color: isDark ? colorScheme.surface : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          SettingsListItem(
+            icon: Icons.blur_on_rounded,
+            iconColor: blurEnabled ? Colors.purple : Colors.grey,
+            title: 'پس‌زمینه بلوری چت',
+            subtitle: blurEnabled 
+                ? 'فعال - افکت شیشه‌ای روی والپیپر'
+                : 'غیرفعال - نمایش والپیپر شفاف و عادی',
+            trailing: Switch(
+              value: blurEnabled,
+              onChanged: (value) async {
+                await ref.read(chatBlurBackgroundProvider.notifier).setBlurEnabled(value);
+                // نمایش پیام تأیید
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        value 
+                            ? 'افکت بلور پس‌زمینه فعال شد' 
+                            : 'افکت بلور پس‌زمینه غیرفعال شد',
+                        textDirection: TextDirection.rtl,
+                      ),
+                      duration: const Duration(seconds: 1), // کاهش زمان نمایش برای حس سریع‌تر
+                      backgroundColor: value ? Colors.purple : Colors.grey[700],
+                    ),
+                  );
+                }
+              },
+            ),
+          ),
         ],
       ),
     );

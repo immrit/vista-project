@@ -82,37 +82,55 @@ class _MessageDeleteAnimationState extends State<MessageDeleteAnimation>
   }
 
   /// متد ایمن برای به دست آوردن سایز ویجت
+  /// ✅ این متد در هر دو حالت debug و release کار میکند
   Future<void> _ensureChildSize() async {
     if (!mounted) return;
 
-    // 1. اگر در فاز رندرینگ هستیم، صبر میکنیم تا فریم تمام شود
-    if (SchedulerBinding.instance.schedulerPhase != SchedulerPhase.idle) {
-      await WidgetsBinding.instance.endOfFrame;
-      if (!mounted) return;
-    }
-
-    // 2. تلاش اول برای گرفتن سایز
-    RenderBox? box = context.findRenderObject() as RenderBox?;
-    if (box != null && box.hasSize && !box.debugNeedsLayout) {
-      _childSize = box.size;
-      return;
-    }
-
-    // 3. اگر هنوز سایز نداشتیم، یک فریم دیگر صبر میکنیم (برای اطمینان)
-    await Future.delayed(Duration.zero);
+    // 1. صبر میکنیم تا فریم فعلی تمام شود
+    await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
 
-    // تلاش مجدد بعد از تاخیر
-    box = context.findRenderObject() as RenderBox?;
-    if (box != null && box.hasSize) {
-      _childSize = box.size;
-    } else {
-      // 4. فال‌بک نهایی برای جلوگیری از کرش
-      // اگر به هر دلیلی سایز پیدا نشد، یک سایز تخمینی بر اساس عرض صفحه در نظر میگیریم
-      // تا انیمیشن بدون خطا اجرا شود (حتی اگر دقیق نباشد)
-      final mq = MediaQuery.maybeOf(context);
-      _childSize = Size(mq?.size.width ?? 300, 50);
+    // 2. تلاش اول برای گرفتن سایز
+    RenderBox? box;
+    try {
+      box = context.findRenderObject() as RenderBox?;
+    } catch (_) {
+      // در صورت خطا، box را null رها میکنیم
     }
+    
+    if (box != null && box.hasSize) {
+      try {
+        final size = box.size;
+        if (size.width > 0 && size.height > 0) {
+          _childSize = size;
+          return;
+        }
+      } catch (_) {
+        // در صورت خطا در دسترسی به سایز، ادامه میدهیم
+      }
+    }
+
+    // 3. یک فریم دیگر صبر میکنیم
+    await Future.delayed(const Duration(milliseconds: 16));
+    if (!mounted) return;
+
+    // تلاش مجدد
+    try {
+      box = context.findRenderObject() as RenderBox?;
+      if (box != null && box.hasSize) {
+        final size = box.size;
+        if (size.width > 0 && size.height > 0) {
+          _childSize = size;
+          return;
+        }
+      }
+    } catch (_) {
+      // در صورت خطا، به fallback میرویم
+    }
+
+    // 4. فال‌بک نهایی - یک سایز تخمینی بر اساس عرض صفحه
+    final mq = MediaQuery.maybeOf(context);
+    _childSize = Size(mq?.size.width ?? 300, 80);
   }
 
   void _generateParticles() {
@@ -121,23 +139,38 @@ class _MessageDeleteAnimationState extends State<MessageDeleteAnimation>
 
     _particles.clear();
     final size = _childSize!;
+    
+    // تعداد ذرات بیشتر برای افکت بهتر
+    final actualParticleCount = (widget.particleCount * 1.5).toInt();
+    
+    // تشخیص تم برای رنگ‌بندی بهتر ذرات
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    for (var i = 0; i < widget.particleCount; i++) {
+    for (var i = 0; i < actualParticleCount; i++) {
       final startX = _random.nextDouble() * size.width;
       final startY = _random.nextDouble() * size.height;
 
+      // زاویه‌های متنوع‌تر برای پراکندگی بهتر
       final angle = _random.nextDouble() * 2 * pi;
-      final speed = 20 + _random.nextDouble() * 80;
+      final speed = 30 + _random.nextDouble() * 100;
 
       final endX = startX + cos(angle) * speed;
       final endY =
-          startY + sin(angle) * speed - (10 + _random.nextDouble() * 40);
+          startY + sin(angle) * speed - (15 + _random.nextDouble() * 60);
 
-      final particleSize = 2 + _random.nextDouble() * 5;
-      final delay = _random.nextDouble() * 0.15;
+      // سایز ذرات متنوع‌تر
+      final particleSize = 2.5 + _random.nextDouble() * 6;
+      final delay = _random.nextDouble() * 0.2;
 
-      final gray = 150 + _random.nextInt(80);
-      final color = Color.fromARGB(255, gray, gray, gray);
+      // رنگ‌بندی بهتر بر اساس تم
+      Color color;
+      if (isDark) {
+        final gray = 180 + _random.nextInt(75);
+        color = Color.fromARGB(255, gray, gray, gray);
+      } else {
+        final gray = 100 + _random.nextInt(100);
+        color = Color.fromARGB(255, gray, gray, gray);
+      }
 
       _particles.add(_Particle(
         start: Offset(startX, startY),
@@ -152,22 +185,35 @@ class _MessageDeleteAnimationState extends State<MessageDeleteAnimation>
   Future<void> _startAnimation() async {
     if (!mounted) return;
 
-    // ابتدا سعی میکنیم سایز را بگیریم
-    await _ensureChildSize();
+    try {
+      // ابتدا سعی میکنیم سایز را بگیریم
+      await _ensureChildSize();
 
-    // اگر سایز معتبر بود، ذرات را تولید میکنیم
-    if (_childSize != null) {
-      _generateParticles();
-      setState(() {
-        _showParticles = true;
-      });
+      // اگر سایز معتبر بود، ذرات را تولید میکنیم
+      if (_childSize != null && _childSize!.width > 0 && _childSize!.height > 0) {
+        _generateParticles();
+        if (mounted) {
+          setState(() {
+            _showParticles = true;
+          });
+        }
+      }
+
+      // انیمیشن محو شدن همیشه اجرا شود (چه سایز داشته باشیم چه نه)
+      if (mounted && !_controller.isAnimating) {
+        await _controller.forward();
+      }
+
+      // مکث کوتاه برای هماهنگی با حذف از لیست
+      await Future.delayed(const Duration(milliseconds: 50));
+    } catch (e) {
+      // در صورت هر خطایی، انیمیشن را بدون پارتیکل اجرا کن
+      if (mounted && !_controller.isCompleted) {
+        try {
+          await _controller.forward();
+        } catch (_) {}
+      }
     }
-
-    // انیمیشن محو شدن همیشه اجرا شود (چه سایز داشته باشیم چه نه)
-    await _controller.forward();
-
-    // مکث کوتاه برای هماهنگی با حذف از لیست
-    await Future.delayed(const Duration(milliseconds: 60));
 
     if (mounted) {
       widget.onAnimationComplete?.call();

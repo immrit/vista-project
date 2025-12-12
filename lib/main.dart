@@ -55,6 +55,7 @@ import 'utils/deferred_initialization_manager.dart';
 import 'services/animation_controller_service.dart';
 import 'services/advanced_haptic_feedback_service.dart';
 import 'services/auto_lock_service.dart';
+import 'services/auth_navigation_service.dart';
 import 'provider/settings_providers.dart';
 import 'view/util/themes.dart';
 
@@ -372,6 +373,12 @@ void main() async {
           error.toString().contains('no such table') ||
           error.toString().contains('DatabaseException')) {
         print('🛡️ Cache error suppressed: $error');
+        return;
+      }
+
+      // ✅ بررسی خطاهای مربوط به عدم لاگین و هدایت به صفحه auth
+      if (AuthNavigationService.handleAuthError(error)) {
+        print('🔐 Auth error detected, redirecting to auth screen');
         return;
       }
 

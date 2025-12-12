@@ -10,6 +10,9 @@ import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../theme/chat_theme.dart';
 import '../../../utils/compat_extensions.dart';
+import 'telegram_message_status.dart';
+import '../../../services/telegram_read_receipt_service.dart';
+import 'improved_animated_message_bubble.dart' show MessageStatus;
 
 class InstagramStylePostCard extends StatefulWidget {
   final String postId;
@@ -28,6 +31,7 @@ class InstagramStylePostCard extends StatefulWidget {
   final DateTime sentAt;
   final String? verificationType;
   final List<String>? hashtags;
+  final MessageStatus? status; // وضعیت پیام
 
   const InstagramStylePostCard({
     super.key,
@@ -47,6 +51,7 @@ class InstagramStylePostCard extends StatefulWidget {
     required this.sentAt,
     this.verificationType,
     this.hashtags,
+    this.status,
   });
 
   @override
@@ -422,25 +427,26 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
             ],
           ),
           
-          // زمان ارسال پیام (داخل حباب)
+          // زمان ارسال پیام و وضعیت (داخل حباب)
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              Icon(
-                Icons.access_time_rounded,
-                size: 11,
-                color: theme.secondaryTextColor.withOpacity(0.7),
-              ),
-              const SizedBox(width: 3),
               Text(
                 widget.sentAt.toFixedTimeLabel(),
                 style: TextStyle(
-                  color: theme.secondaryTextColor.withOpacity(0.7),
+                  color: widget.isMine
+                      ? theme.myBubbleTextColor.withOpacity(0.7)
+                      : theme.secondaryTextColor.withOpacity(0.7),
                   fontSize: 10,
                   fontWeight: FontWeight.w500,
                 ),
               ),
+              // نمایش وضعیت برای پیام‌های ارسالی
+              if (widget.isMine && widget.status != null) ...[
+                const SizedBox(width: 4),
+                _buildStatusIcon(theme),
+              ],
             ],
           ),
         ],
@@ -507,6 +513,37 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
         ),
       ),
     );
+  }
+
+  Widget _buildStatusIcon(ChatTheme theme) {
+    if (widget.status == null) return const SizedBox.shrink();
+    
+    // تبدیل MessageStatus به MessageDeliveryStatus
+    final deliveryStatus = _convertToDeliveryStatus(widget.status!);
+    
+    return TelegramMessageStatus(
+      status: deliveryStatus,
+      size: 14,
+      customColor: deliveryStatus == MessageDeliveryStatus.read
+          ? MessageStatusColors.read
+          : theme.myBubbleTextColor.withOpacity(0.7),
+    );
+  }
+
+  /// تبدیل MessageStatus به MessageDeliveryStatus
+  MessageDeliveryStatus _convertToDeliveryStatus(MessageStatus status) {
+    switch (status) {
+      case MessageStatus.pending:
+        return MessageDeliveryStatus.pending;
+      case MessageStatus.sent:
+        return MessageDeliveryStatus.sent;
+      case MessageStatus.delivered:
+        return MessageDeliveryStatus.delivered;
+      case MessageStatus.read:
+        return MessageDeliveryStatus.read;
+      case MessageStatus.failed:
+        return MessageDeliveryStatus.failed;
+    }
   }
 
   String _formatCount(int count) {
