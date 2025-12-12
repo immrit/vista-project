@@ -1495,13 +1495,6 @@ class UserReportNotifier extends StateNotifier<AsyncValue<void>> {
   }
 }
 
-// شمارش پیام‌های خوانده‌نشده برای یک مکالمه
-final unreadMessageCountProvider =
-    FutureProvider.family<int, String>((ref, conversationId) async {
-  // قابلیت خوانده شده حذف شد
-  return 0;
-});
-
 // حذف پیام‌های قدیمی‌تر از یک تاریخ خاص
 final deleteOldMessagesProvider =
     FutureProvider.family<void, DateTime>((ref, date) async {
@@ -2337,8 +2330,11 @@ class CachedConversationsNotifier
             if (_disposed) return;
 
             // Enrich conversations with loaded profiles
-            final enrichedConversations =
-                cachedConversationsAfterLoad.map((conversation) {
+            final enrichedConversations = <ConversationModel>[];
+            for (final conversation in cachedConversationsAfterLoad) {
+              ConversationModel enriched = conversation;
+
+              // اگر اطلاعات پروفایل کامل نیست، enrich کن
               if ((conversation.otherUserName == null ||
                       conversation.otherUserName!.isEmpty ||
                       conversation.otherUserName == 'کاربر' ||
@@ -2347,7 +2343,7 @@ class CachedConversationsNotifier
                 final cachedProfile = userProfileService
                     .getCachedProfile(conversation.otherUserId!);
                 if (cachedProfile != null) {
-                  return conversation.copyWith(
+                  enriched = conversation.copyWith(
                     otherUserName: cachedProfile['username'] ??
                         cachedProfile['full_name'] ??
                         'VISTA USER',
@@ -2355,8 +2351,25 @@ class CachedConversationsNotifier
                   );
                 }
               }
-              return conversation;
-            }).toList();
+
+              // ✅ اگر allowProfileZoom null است، enrich کن
+              if (enriched.allowProfileZoom == null &&
+                  enriched.otherUserId != null) {
+                try {
+                  enriched =
+                      await userProfileService.enrichConversationWithUserData(
+                    enriched,
+                    userId!,
+                  );
+                  // ✅ enriched conversation را به cache اضافه کن
+                  await conversationCache.updateConversation(enriched, userId!);
+                } catch (e) {
+                  logInfo('⚠️ Error enriching allowProfileZoom: $e');
+                }
+              }
+
+              enrichedConversations.add(enriched);
+            }
 
             state = enrichedConversations;
             logInfo(
@@ -2519,6 +2532,14 @@ final conversationsWithProfilesProvider =
             currentUserId,
           );
           enrichedConversations.add(enrichedConversation);
+
+          // ✅ enriched conversation را به cache اضافه کن (اگر allowProfileZoom set شده)
+          if (enrichedConversation.allowProfileZoom != null &&
+              conversation.allowProfileZoom !=
+                  enrichedConversation.allowProfileZoom) {
+            await conversationCache.updateConversation(
+                enrichedConversation, currentUserId);
+          }
         } catch (e) {
           logInfo('Error enriching cached conversation ${conversation.id}: $e');
           enrichedConversations.add(conversation);

@@ -2,6 +2,7 @@ import '../security/logging_utility.dart';
 import '../main.dart';
 import '../model/conversation_model.dart';
 import 'profile_cache_manager.dart';
+import '../DB/settings_cache_service.dart';
 
 /// سرویس برای دریافت اطلاعات پروفایل کاربران با کشینگ مرکزی
 class UserProfileService {
@@ -53,7 +54,8 @@ class UserProfileService {
         'user_id': otherUserId,
       };
     } catch (e) {
-      logInfo('⚠️ Error fetching other user in conversation $conversationId: $e');
+      logInfo(
+          '⚠️ Error fetching other user in conversation $conversationId: $e');
       return {
         'username': null,
         'avatar_url': null,
@@ -68,11 +70,13 @@ class UserProfileService {
     ConversationModel conversation,
     String currentUserId,
   ) async {
-    // If already has proper user info (and not placeholder), return as is
-    final hasValidName = (conversation.otherUserName?.isNotEmpty == true) &&
-        (conversation.otherUserName != 'کاربر ناشناس') &&
-        (conversation.otherUserName != 'Unknown User');
-    if (hasValidName) {
+    // ✅ اگر allowProfileZoom قبلاً set شده، نیازی به fetch مجدد نیست
+    final needsEnrichment = conversation.allowProfileZoom == null ||
+        (conversation.otherUserName?.isEmpty == true ||
+            conversation.otherUserName == 'کاربر ناشناس' ||
+            conversation.otherUserName == 'Unknown User');
+
+    if (!needsEnrichment && conversation.allowProfileZoom != null) {
       return conversation;
     }
 
@@ -86,10 +90,82 @@ class UserProfileService {
             ? otherUserInfo['full_name']
             : null);
 
+    // ✅ دریافت allow_profile_zoom از settings cache
+    bool? allowProfileZoom = conversation.allowProfileZoom;
+    if (allowProfileZoom == null && otherUserInfo['user_id'] != null) {
+      try {
+        final settingsCache = SettingsCacheService();
+        final userSettings = await settingsCache
+            .getUserSettings(otherUserInfo['user_id'] as String);
+        allowProfileZoom =
+            (userSettings?['allow_profile_zoom'] as bool?) ?? true;
+      } catch (e) {
+        logInfo('⚠️ Error fetching allow_profile_zoom: $e');
+        allowProfileZoom = true; // default to true on error
+      }
+    }
+
+    // ✅ دریافت اطلاعات پروفایل کامل برای صفحه جزئیات چت
+    String? bio = conversation.otherUserBio;
+    DateTime? createdAt = conversation.otherUserCreatedAt;
+    bool? isVerified = conversation.isVerified;
+    bool? isBlocked = conversation.isBlocked;
+
+    if (otherUserInfo['user_id'] != null) {
+      final userId = otherUserInfo['user_id'] as String;
+
+      // دریافت اطلاعات پروفایل از cache یا سرور (فقط اگر null است)
+      if (bio == null || createdAt == null || isVerified == null) {
+        try {
+          final profile = await getUserProfile(userId);
+          if (profile != null) {
+            bio = bio ?? profile['bio'] as String?;
+            if (createdAt == null) {
+              final createdAtStr = profile['created_at'] as String?;
+              if (createdAtStr != null) {
+                try {
+                  createdAt = DateTime.parse(createdAtStr);
+                } catch (e) {
+                  logInfo('⚠️ Error parsing created_at: $e');
+                }
+              }
+            }
+            isVerified =
+                isVerified ?? (profile['is_verified'] as bool? ?? false);
+          }
+        } catch (e) {
+          logInfo('⚠️ Error fetching profile details: $e');
+        }
+      }
+
+      // دریافت وضعیت بلاک (فقط اگر null است)
+      if (isBlocked == null) {
+        try {
+          final currentUserId = supabase.auth.currentUser?.id;
+          if (currentUserId != null) {
+            final blockResponse = await supabase
+                .from('blocked_users')
+                .select()
+                .eq('user_id', currentUserId)
+                .eq('blocked_user_id', userId)
+                .maybeSingle();
+            isBlocked = blockResponse != null;
+          }
+        } catch (e) {
+          logInfo('⚠️ Error fetching block status: $e');
+        }
+      }
+    }
+
     return conversation.copyWith(
       otherUserName: enrichedName,
       otherUserAvatar: otherUserInfo['avatar_url'],
       otherUserId: otherUserInfo['user_id'],
+      allowProfileZoom: allowProfileZoom,
+      otherUserBio: bio,
+      otherUserCreatedAt: createdAt,
+      isBlocked: isBlocked,
+      isVerified: isVerified,
     );
   }
 

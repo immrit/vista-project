@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import '../DB/database_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../DB/profile_cache_service.dart';
+import '../DB/settings_cache_service.dart';
 import '../services/animation_controller_service.dart';
 import '../services/video_autoplay_service.dart';
 import '../services/image_quality_service.dart';
@@ -2642,15 +2643,26 @@ final userSettingsByIdProvider =
     FutureProvider.family<Map<String, dynamic>?, String>((ref, userId) async {
   try {
     print('🔧 دریافت تنظیمات کاربر: $userId');
-    final client = Supabase.instance.client;
-    final response = await client
-        .from('user_settings')
-        .select()
-        .eq('user_id', userId)
-        .maybeSingle();
-    print('🔧 تنظیمات دریافت شده: $response');
-    print('🔧 is_private: ${response?['is_private']}');
-    return response;
+    
+    // استفاده از SettingsCacheService برای کش کردن تنظیمات
+    final settingsCache = SettingsCacheService();
+    
+    // ابتدا بررسی کش - اگر موجود بود و معتبر بود، از آن استفاده کن
+    final cachedSettings = settingsCache.getCachedUserSettings(userId);
+    if (cachedSettings != null) {
+      print('🔧 استفاده از تنظیمات کش شده برای کاربر: $userId');
+      return cachedSettings;
+    }
+    
+    // اگر در کش نبود، از سرور دریافت کن و کش کن
+    print('🔧 دریافت تنظیمات از سرور برای کاربر: $userId');
+    await settingsCache.cacheUserSettings(userId);
+    
+    // دوباره از کش بخوان
+    final settings = settingsCache.getCachedUserSettings(userId);
+    print('🔧 تنظیمات دریافت شده: $settings');
+    print('🔧 allow_profile_zoom: ${settings?['allow_profile_zoom']}');
+    return settings;
   } catch (e) {
     debugPrint('Error fetching user_settings for $userId: $e');
     return null;

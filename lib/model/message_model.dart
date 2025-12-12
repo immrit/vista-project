@@ -1,5 +1,7 @@
 // lib/model/message_model.dart
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import '../services/telegram_read_receipt_service.dart';
 import 'message_reaction_ui.dart';
 
 /// مدل داده‌های پست اشتراک‌گذاری شده
@@ -115,6 +117,9 @@ class MessageModel {
   // فیلدهای حذف پیام (مشابه تلگرام)
   final bool deletedGlobally; // حذف د‌و‌طرفه: اگر true باشد، پیام باید برای همه حذف شود
   final List<String> deletedForUserIds; // حذف یک‌طرفه: شامل user_id کاربرانی که پیام را فقط برای خود حذف کرده‌اند
+
+  // ✅ ValueNotifier برای status - فقط این rebuild میشه
+  late final ValueNotifier<MessageDeliveryStatus> _statusNotifier;
 
   // تبدیل reactions به UI model
   List<MessageReactionUI> getReactionsList(String currentUserId) {
@@ -240,7 +245,90 @@ class MessageModel {
       this.sharedPostData,
       this.deletedGlobally = false,
       this.deletedForUserIds = const [],
-    });
+    }) {
+    // ✅ Initialize status notifier با مقدار محاسبه شده
+    _statusNotifier = ValueNotifier(_calculateDeliveryStatus());
+  }
+  
+  // ✅ Getter برای ValueNotifier
+  ValueNotifier<MessageDeliveryStatus> get statusNotifier => _statusNotifier;
+  
+  // ✅ Getter برای مقدار فعلی status
+  MessageDeliveryStatus get deliveryStatus => _statusNotifier.value;
+  
+  // ✅ محاسبه MessageDeliveryStatus از فیلدهای status
+  MessageDeliveryStatus _calculateDeliveryStatus() {
+    if (isFailed == true) {
+      return MessageDeliveryStatus.failed;
+    }
+    if (isPending) {
+      return MessageDeliveryStatus.pending;
+    }
+    if (isSeen) {
+      return MessageDeliveryStatus.read;
+    }
+    if (isDelivered) {
+      return MessageDeliveryStatus.delivered;
+    }
+    if (isSent) {
+      return MessageDeliveryStatus.sent;
+    }
+    return MessageDeliveryStatus.pending;
+  }
+  
+  // ✅ متد برای آپدیت status - فقط ValueNotifier رو trigger میکنه
+  void updateStatus({
+    bool? pending,
+    bool? seen,
+    bool? failed,
+    bool? sent,
+    bool? delivered,
+  }) {
+    // محاسبه status جدید
+    final newStatus = _calculateDeliveryStatusFromFields(
+      pending: pending ?? isPending,
+      seen: seen ?? isSeen,
+      failed: failed ?? isFailed,
+      sent: sent ?? isSent,
+      delivered: delivered ?? isDelivered,
+    );
+    
+    // فقط اگر تغییر کرده باشه، ValueNotifier رو آپدیت کن
+    if (_statusNotifier.value != newStatus) {
+      _statusNotifier.value = newStatus;
+    }
+  }
+  
+  // ✅ محاسبه status از فیلدها
+  MessageDeliveryStatus _calculateDeliveryStatusFromFields({
+    required bool pending,
+    required bool seen,
+    bool? failed,
+    required bool sent,
+    required bool delivered,
+  }) {
+    if (failed == true) {
+      return MessageDeliveryStatus.failed;
+    }
+    if (pending) {
+      return MessageDeliveryStatus.pending;
+    }
+    if (seen) {
+      return MessageDeliveryStatus.read;
+    }
+    if (delivered) {
+      return MessageDeliveryStatus.delivered;
+    }
+    if (sent) {
+      return MessageDeliveryStatus.sent;
+    }
+    return MessageDeliveryStatus.pending;
+  }
+  
+  // ✅ Dispose کردن notifier (برای جلوگیری از memory leak)
+  void dispose() {
+    _statusNotifier.dispose();
+  }
 
   factory MessageModel.fromJson(Map<String, dynamic> json,
       {required String currentUserId}) {
@@ -379,7 +467,7 @@ class MessageModel {
     bool? deletedGlobally,
     List<String>? deletedForUserIds,
   }) {
-    return MessageModel(
+    final newModel = MessageModel(
       id: id ?? this.id,
       conversationId: conversationId ?? this.conversationId,
       senderId: senderId ?? this.senderId,
@@ -417,6 +505,24 @@ class MessageModel {
       deletedGlobally: deletedGlobally ?? this.deletedGlobally,
       deletedForUserIds: deletedForUserIds ?? this.deletedForUserIds,
     );
+    
+    // ✅ حفظ ValueNotifier از instance قدیمی به instance جدید
+    // این باعث میشه که ValueListenableBuilder listener خودش رو از دست نده
+    newModel._statusNotifier.value = _statusNotifier.value;
+    
+    // ✅ اگر status fields تغییر کرده، آپدیت کن
+    if (isPending != null || isSeen != null || isFailed != null || 
+        isSent != null || isDelivered != null) {
+      newModel.updateStatus(
+        pending: isPending ?? this.isPending,
+        seen: isSeen ?? this.isSeen,
+        failed: isFailed ?? this.isFailed,
+        sent: isSent ?? this.isSent,
+        delivered: isDelivered ?? this.isDelivered,
+      );
+    }
+    
+    return newModel;
   }
 
   /// بررسی اینکه آیا پیام برای کاربر فعلی حذف شده است

@@ -483,11 +483,6 @@ final recentConversationsProvider =
   );
 });
 
-/// Provider for sending messages with advanced caching
-final advancedMessageSenderProvider = Provider<MessageSender>((ref) {
-  final cache = ref.watch(advancedCacheProvider);
-  return MessageSender(cache);
-});
 
 /// Provider for enriching conversations with user profile data (optimized)
 final enrichedConversationsProvider =
@@ -563,44 +558,3 @@ final performanceStatsProvider =
 });
 
 /// Class for handling message sending with advanced caching
-class MessageSender {
-  final AdvancedCacheSystem _cache;
-
-  MessageSender(this._cache);
-
-  /// Send a message with immediate UI update
-  Future<void> sendMessage({
-    required String conversationId,
-    required String content,
-    required String senderId,
-    String? attachmentUrl,
-    String? attachmentType,
-  }) async {
-    // Create temporary message for immediate UI feedback
-    final tempMessage = MessageModel.temporary(
-      tempId: 'temp_${DateTime.now().millisecondsSinceEpoch}',
-      conversationId: conversationId,
-      senderId: senderId,
-      content: content,
-      attachmentUrl: attachmentUrl,
-      attachmentType: attachmentType,
-    );
-
-    // Add to cache immediately for instant UI update
-    await _cache.cacheMessage(tempMessage);
-
-    // The advanced cache system will handle uploading to server
-    // and replacing the temporary message with the real one
-  }
-
-  /// Delete a message
-  Future<void> deleteMessage(String conversationId, String messageId) async {
-    // Advanced cache will handle this through real-time sync
-    // For now, we just trigger a server delete which will sync back
-  }
-
-  /// Mark messages as read
-  Future<void> markAsRead(String conversationId) async {
-    // Advanced cache will handle this through real-time sync
-  }
-}

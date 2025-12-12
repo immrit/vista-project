@@ -78,12 +78,16 @@ class AdvancedCacheSystem {
 
       _isInitialized = true;
       logInfo('✅ Advanced Cache System initialized successfully');
+      logInfo('📦 Cache status: ${_conversationMemoryCache.length} conversations loaded from disk');
 
       // Initial sync (only if cache is empty)
       if (_conversationMemoryCache.isEmpty) {
+        logInfo('🔄 Cache is empty, performing initial sync...');
         _performInitialSync();
       } else {
-        logInfo('📦 Using existing cache, skipping initial sync');
+        logInfo('📦 Using existing cache (${_conversationMemoryCache.length} conversations), skipping initial sync');
+        // ✅ اطمینان از اینکه کش broadcast شده است
+        _broadcastConversationUpdates();
       }
     } catch (e) {
       logInfo('❌ Failed to initialize Advanced Cache System: $e');
@@ -94,35 +98,76 @@ class AdvancedCacheSystem {
   /// Load cached data from disk
   Future<void> _loadFromDisk() async {
     try {
+      final stopwatch = Stopwatch()..start();
       final prefs = await SharedPreferences.getInstance();
 
-      // Load conversations
+      // Load conversations - بهینه‌سازی: استفاده از batch parsing
       final conversationsJson = prefs.getString('cached_conversations');
-      if (conversationsJson != null) {
-        final List<dynamic> conversationsList = jsonDecode(conversationsJson);
-        for (final convJson in conversationsList) {
-          final conversation = ConversationModel.fromJson(convJson);
-          _conversationMemoryCache[conversation.id] = conversation;
+      if (conversationsJson != null && conversationsJson.isNotEmpty) {
+        try {
+          final List<dynamic> conversationsList = jsonDecode(conversationsJson);
+          final currentUserId = supabase.auth.currentUser?.id;
+          
+          // ✅ بهینه‌سازی: parse کردن به صورت batch
+          final loadedConversations = <String, ConversationModel>{};
+          for (final convJson in conversationsList) {
+            try {
+              final conversation = ConversationModel.fromJson(
+                convJson,
+                currentUserId: currentUserId,
+              );
+              loadedConversations[conversation.id] = conversation;
+            } catch (e) {
+              logInfo('⚠️ Error parsing conversation from cache: $e');
+              // ادامه بده با بقیه
+            }
+          }
+          
+          // ✅ یکجا اضافه کردن به memory cache
+          _conversationMemoryCache.addAll(loadedConversations);
+          
+          final loadTime = stopwatch.elapsedMilliseconds;
+          print(
+              '📥 Loaded ${_conversationMemoryCache.length} conversations from disk in ${loadTime}ms');
+          
+          // ✅ بعد از load شدن، بلافاصله broadcast کن تا UI به‌روز شود
+          if (_conversationMemoryCache.isNotEmpty) {
+            _broadcastConversationUpdates();
+            print('📡 Broadcasted ${_conversationMemoryCache.length} conversations to UI');
+          }
+        } catch (e) {
+          logInfo('❌ Error loading conversations from disk: $e');
         }
-        print(
-            '📥 Loaded ${_conversationMemoryCache.length} conversations from disk');
+      } else {
+        print('📥 No cached conversations found on disk');
       }
 
-      // Load recent messages for each conversation
-      for (final conversationId in _conversationMemoryCache.keys) {
+      // Load recent messages for each conversation - بهینه‌سازی: فقط برای مکالمه‌های فعال
+      // فقط برای 20 مکالمه اخیر پیام‌ها را load کن تا startup سریع‌تر شود
+      final conversationIds = _conversationMemoryCache.keys.toList();
+      final activeConversationIds = conversationIds.take(20).toList();
+      
+      final currentUserId = supabase.auth.currentUser?.id ?? '';
+      for (final conversationId in activeConversationIds) {
         final messagesJson = prefs.getString('cached_messages_$conversationId');
-        if (messagesJson != null) {
-          final List<dynamic> messagesList = jsonDecode(messagesJson);
-          final messages = messagesList
-              .map((json) => MessageModel.fromJson(json,
-                  currentUserId: supabase.auth.currentUser?.id ?? ''))
-              .toList();
-          _messageMemoryCache[conversationId] = messages;
+        if (messagesJson != null && messagesJson.isNotEmpty) {
+          try {
+            final List<dynamic> messagesList = jsonDecode(messagesJson);
+            final messages = messagesList
+                .map((json) => MessageModel.fromJson(json,
+                    currentUserId: currentUserId))
+                .toList();
+            _messageMemoryCache[conversationId] = messages;
+          } catch (e) {
+            logInfo('⚠️ Error parsing messages for $conversationId: $e');
+          }
         }
       }
 
+      final totalTime = stopwatch.elapsedMilliseconds;
       print(
-          '📥 Loaded messages for ${_messageMemoryCache.length} conversations from disk');
+          '📥 Loaded messages for ${_messageMemoryCache.length} conversations from disk (total time: ${totalTime}ms)');
+      stopwatch.stop();
 
       // Load video thumbnails
       final thumbsJson = prefs.getString('cached_video_thumbs');
@@ -239,13 +284,44 @@ class AdvancedCacheSystem {
 
   /// Handle profile updates from real-time
   void _handleProfileUpdates(List<Map<String, dynamic>> data) {
+    bool hasConversationChanges = false;
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
     for (final profileData in data) {
-      final userId = profileData['id'] as String?;
-      if (userId != null) {
-        // Update profile cache manager
-        final profileCacheManager = ProfileCacheManager();
-        profileCacheManager.updateProfileFromRealtime(userId, profileData);
+      final updatedUserId = profileData['id'] as String?;
+      if (updatedUserId == null) continue;
+
+      // Update profile cache manager
+      final profileCacheManager = ProfileCacheManager();
+      profileCacheManager.updateProfileFromRealtime(updatedUserId, profileData);
+
+      // به‌روزرسانی آواتار و نام کاربر در مکالمات مربوطه
+      final newAvatarUrl = profileData['avatar_url'] as String?;
+      final newUsername = profileData['username'] as String?;
+      final newFullName = profileData['full_name'] as String?;
+
+      // جستجوی تمام مکالماتی که این کاربر در آن‌ها شرکت دارد
+      for (final entry in _conversationMemoryCache.entries) {
+        final conversation = entry.value;
+        
+        // بررسی اینکه آیا این کاربر، کاربر مقابل در این مکالمه است
+        if (conversation.otherUserId == updatedUserId) {
+          // به‌روزرسانی اطلاعات کاربر در مکالمه
+          final updatedConversation = conversation.copyWith(
+            otherUserAvatar: newAvatarUrl ?? conversation.otherUserAvatar,
+            otherUserName: newUsername ?? newFullName ?? conversation.otherUserName,
+          );
+          _conversationMemoryCache[entry.key] = updatedConversation;
+          hasConversationChanges = true;
+        }
       }
+    }
+
+    // اگر تغییری در مکالمات ایجاد شد، broadcast کن
+    if (hasConversationChanges) {
+      _broadcastConversationUpdates();
+      _saveToDisk();
     }
   }
 
@@ -497,11 +573,26 @@ class AdvancedCacheSystem {
 
         final existing = _conversationMemoryCache[conversation.id];
 
-        if (existing == null ||
-            existing.updatedAt.isBefore(conversation.updatedAt)) {
+        if (existing == null) {
+          // مکالمه جدید - اضافه کن
           _conversationMemoryCache[conversation.id] = conversation;
           hasChanges = true;
+        } else if (existing.updatedAt.isBefore(conversation.updatedAt)) {
+          // مکالمه به‌روز شده - اما اطلاعات پروفایل را از کش حفظ کن
+          final updatedConversation = conversation.copyWith(
+            // حفظ اطلاعات پروفایل از کش اگر در سرور موجود نیست
+            otherUserName: conversation.otherUserName?.isNotEmpty == true
+                ? conversation.otherUserName
+                : existing.otherUserName,
+            otherUserAvatar: conversation.otherUserAvatar?.isNotEmpty == true
+                ? conversation.otherUserAvatar
+                : existing.otherUserAvatar,
+            otherUserId: conversation.otherUserId ?? existing.otherUserId,
+          );
+          _conversationMemoryCache[conversation.id] = updatedConversation;
+          hasChanges = true;
         }
+        // اگر مکالمه به‌روز نشده، هیچ کاری نکن (کش را حفظ کن)
       }
 
       if (hasChanges) {
@@ -664,9 +755,18 @@ class AdvancedCacheSystem {
 
   /// Get conversations stream
   Stream<List<ConversationModel>> watchConversations() {
-    // Initial emit
+    // ✅ همیشه initial emit کن (حتی اگر خالی باشد) تا UI بداند که stream آماده است
+    // اگر کش موجود است، بلافاصله emit کن
     if (_conversationMemoryCache.isNotEmpty) {
-      Timer.run(() => _broadcastConversationUpdates());
+      // استفاده از microtask برای اطمینان از اینکه بعد از initialization emit می‌شود
+      Future.microtask(() => _broadcastConversationUpdates());
+    } else {
+      // اگر کش خالی است، empty list emit کن تا UI بداند که stream آماده است
+      Future.microtask(() {
+        if (!_conversationStream.isClosed) {
+          _conversationStream.add([]);
+        }
+      });
     }
 
     return _conversationStream.stream;
@@ -1017,6 +1117,24 @@ extension VideoThumbnailCacheExt on AdvancedCacheSystem {
       logInfo('✅ Cleared all cached messages');
     } catch (e) {
       logInfo('❌ Error clearing all messages: $e');
+    }
+  }
+
+  /// Update a conversation in cache (for enriched data like allowProfileZoom)
+  Future<void> updateConversationInCache(ConversationModel conversation) async {
+    try {
+      // Update memory cache
+      _conversationMemoryCache[conversation.id] = conversation;
+      
+      // Broadcast update
+      _broadcastConversationUpdates();
+      
+      // Save to disk
+      await _saveToDisk();
+      
+      logInfo('✅ Updated conversation in cache: ${conversation.id}');
+    } catch (e) {
+      logInfo('❌ Error updating conversation in cache: $e');
     }
   }
 

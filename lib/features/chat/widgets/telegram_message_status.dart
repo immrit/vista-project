@@ -1,13 +1,7 @@
 // lib/features/chat/widgets/telegram_message_status.dart
 //
-// ویجت نمایش وضعیت پیام - به سبک تلگرام
-//
-// ویژگی‌ها:
-// ✅ انیمیشن روان بین وضعیت‌ها
-// ✅ تیک‌های دقیق مثل تلگرام
-// ✅ رنگ‌بندی صحیح (خاکستری/آبی)
-// ✅ نمایش زمان خوانده شدن
-//
+// ویجت نمایش وضعیت پیام - کاملاً مشابه تلگرام
+// اصلاح شده: رفع مشکل پرش با استفاده از CustomPainter برای تمام وضعیت‌ها
 
 import 'package:flutter/material.dart';
 import '../../../services/telegram_read_receipt_service.dart';
@@ -21,7 +15,14 @@ class MessageStatusColors {
   static const Color failed = Color(0xFFE57373); // قرمز
 }
 
-/// ویجت تیک پیام با انیمیشن
+/// ویجت تیک پیام با انیمیشن - بهینه شده مثل تلگرام
+///
+/// ویژگی‌های کلیدی برای جلوگیری از پرش:
+/// 1. استفاده از CustomPainter برای تمام وضعیت‌ها (ساعت، تیک، خطا)
+/// 2. AnimatedSwitcher با duration کوتاه (150ms)
+/// 3. SizedBox با عرض ثابت برای جلوگیری از layout shift
+/// 4. RepaintBoundary برای ایزوله کردن rebuild
+/// 5. layoutBuilder با Stack برای تراز دقیق
 class TelegramMessageStatus extends StatefulWidget {
   final MessageDeliveryStatus status;
   final double size;
@@ -39,8 +40,6 @@ class TelegramMessageStatus extends StatefulWidget {
 }
 
 class _TelegramMessageStatusState extends State<TelegramMessageStatus> {
-  // ✅ دیگر نیازی به AnimationController نیست - از AnimatedSwitcher استفاده می‌کنیم
-
   Color _getStatusColor() {
     if (widget.customColor != null) return widget.customColor!;
 
@@ -60,222 +59,228 @@ class _TelegramMessageStatusState extends State<TelegramMessageStatus> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ Container با اندازه ثابت برای جلوگیری از پرش
-    return SizedBox(
-      width: widget.size * 1.25, // فضای کافی برای double check
-      height: widget.size,
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 200),
-        transitionBuilder: (child, animation) {
-          // Fade transition بدون تغییر اندازه
-          return FadeTransition(
-            opacity: animation,
-            child: child,
-          );
-        },
-        child: _buildStatusIcon(),
+    // نکته مهم: استفاده از RepaintBoundary برای ایزوله کردن انیمیشن
+    // این باعث می‌شود فقط این widget rebuild شود، نه کل bubble
+    return RepaintBoundary(
+      child: SizedBox(
+        width: widget.size * 1.25, // ✅ عرض ثابت - جلوگیری از پرش
+        height: widget.size,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          switchInCurve: Curves.easeIn,
+          switchOutCurve: Curves.easeOut,
+          // ✅ کلید موفقیت: Stack به جای Column
+          // همه children رو روی هم می‌ذاره و جلوی layout shift رو می‌گیره
+          layoutBuilder: (currentChild, previousChildren) {
+            return Stack(
+              alignment: Alignment.center, // ✅ تراز وسط - جلوگیری از پرش
+              children: <Widget>[
+                ...previousChildren,
+                if (currentChild != null) currentChild,
+              ],
+            );
+          },
+          transitionBuilder: (child, animation) {
+            // ✅ فقط opacity - هیچ scale یا position change نداریم
+            return FadeTransition(
+              opacity: animation,
+              child: child,
+            );
+          },
+          child: _buildStatusContent(),
+        ),
       ),
     );
   }
 
-  Widget _buildStatusIcon() {
+  Widget _buildStatusContent() {
     final color = _getStatusColor();
     final size = widget.size;
+    final strokeWidth = size * 0.10; // ضخامت قلم یکسان برای همه
 
-    // ✅ استفاده از key برای AnimatedSwitcher
-    Widget icon;
-    switch (widget.status) {
-      case MessageDeliveryStatus.pending:
-        icon = _buildPendingIcon(color, size);
-        break;
-      case MessageDeliveryStatus.sent:
-        icon = _buildSingleCheck(color, size);
-        break;
-      case MessageDeliveryStatus.delivered:
-        icon = _buildDoubleCheck(color, size);
-        break;
-      case MessageDeliveryStatus.read:
-        icon = _buildDoubleCheck(color, size);
-        break;
-      case MessageDeliveryStatus.failed:
-        icon = _buildFailedIcon(color, size);
-        break;
-    }
+    // کلید منحصر به فرد برای AnimatedSwitcher
+    final key = ValueKey<MessageDeliveryStatus>(widget.status);
 
-    // ✅ Wrap در Center برای تراز وسط
-    return Center(
-      key: ValueKey(widget.status), // Key برای AnimatedSwitcher
-      child: icon,
-    );
-  }
-
-  /// آیکون در انتظار (ساعت)
-  Widget _buildPendingIcon(Color color, double size) {
-    // ✅ اندازه ثابت برای جلوگیری از پرش
+    // تمام وضعیت‌ها داخل یک کانتینر با سایز دقیقاً یکسان قرار می‌گیرند
+    // تا هیچ تغییر لایه‌ای (Layout Shift) رخ ندهد.
     return SizedBox(
-      width: widget.size * 1.25, // همان اندازه container
-      height: size,
-      child: Center(
-        child: Icon(
-          Icons.access_time_rounded,
-          size: size * 0.85, // کمی کوچک‌تر برای ظرافت
-          color: color,
-        ),
-      ),
-    );
-  }
-
-  /// یک تیک (ارسال شده)
-  Widget _buildSingleCheck(Color color, double size) {
-    // ✅ اندازه ثابت برای جلوگیری از پرش
-    return SizedBox(
-      width: widget.size * 1.25, // همان اندازه container
+      key: key,
+      width: widget.size * 1.25,
       height: size,
       child: Center(
         child: CustomPaint(
-          size: Size(size, size),
-          painter: _SingleCheckPainter(color: color, size: size),
-        ),
-      ),
-    );
-  }
-
-  /// دو تیک (تحویل/خوانده شده)
-  Widget _buildDoubleCheck(Color color, double size) {
-    // ✅ اندازه ثابت برای جلوگیری از پرش
-    return SizedBox(
-      width: widget.size * 1.25, // همان اندازه container
-      height: size,
-      child: Center(
-        child: CustomPaint(
-          size: Size(size * 1.25, size),
-          painter: _DoubleCheckPainter(color: color, size: size),
-        ),
-      ),
-    );
-  }
-
-  /// آیکون خطا
-  Widget _buildFailedIcon(Color color, double size) {
-    // ✅ اندازه ثابت برای جلوگیری از پرش
-    return SizedBox(
-      width: widget.size * 1.25, // همان اندازه container
-      height: size,
-      child: Center(
-        child: Icon(
-          Icons.error_outline_rounded,
-          size: size * 0.85, // کمی کوچک‌تر برای ظرافت
-          color: color,
+          size: Size(widget.size * 1.25, size),
+          painter: _StatusPainter(
+            status: widget.status,
+            color: color,
+            strokeWidth: strokeWidth,
+          ),
         ),
       ),
     );
   }
 }
 
-/// نقاش یک تیک
-class _SingleCheckPainter extends CustomPainter {
+/// یک Painter واحد برای تمام وضعیت‌ها
+/// این تکنیک در تلگرام استفاده می‌شود تا مختصات رسم همواره ثابت باشد
+class _StatusPainter extends CustomPainter {
+  final MessageDeliveryStatus status;
   final Color color;
-  final double size;
+  final double strokeWidth;
 
-  _SingleCheckPainter({required this.color, required this.size});
+  _StatusPainter({
+    required this.status,
+    required this.color,
+    required this.strokeWidth,
+  });
 
   @override
-  void paint(Canvas canvas, Size canvasSize) {
-    // استفاده از strokeWidth ثابت و ظریف‌تر (مثل تلگرام)
-    final strokeWidth = size * 0.08; // نازک‌تر برای ظرافت بیشتر
-
+  void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = color
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke
-      ..isAntiAlias = true; // برای کیفیت بهتر
+      ..isAntiAlias = true;
 
+    // محاسبه مختصات مرکزی برای اینکه ساعت و تیک دقیقاً هم‌مرکز باشند
+    // در تلگرام تیک‌ها کمی سمت راست‌تر هستند، اما ساعت باید وسط باشد.
+    // ما یک افست پایه در نظر می‌گیریم.
+
+    // سایز مبنا (ارتفاع ویجت)
+    final s = size.height;
+
+    switch (status) {
+      case MessageDeliveryStatus.pending:
+        _drawClock(canvas, size, paint, s);
+        break;
+      case MessageDeliveryStatus.sent:
+        _drawSingleCheck(canvas, size, paint, s);
+        break;
+      case MessageDeliveryStatus.delivered:
+      case MessageDeliveryStatus.read:
+        _drawDoubleCheck(canvas, size, paint, s);
+        break;
+      case MessageDeliveryStatus.failed:
+        _drawFailed(canvas, size, paint, s);
+        break;
+    }
+  }
+
+  void _drawClock(Canvas canvas, Size size, Paint paint, double s) {
+    // رسم دایره ساعت - دقیقاً در همان محدوده ای که تیک قرار میگیرد
+    // استفاده از شعاع کمی کوچکتر تا با سایز تیک همخوانی بصری داشته باشد
+    final radius = (s / 2) * 0.8;
+
+    // مرکز دایره. برای تراز بودن با تیک تکی، کمی به سمت چپ کانتینر متمایل می‌کنیم
+    // یا دقیقا وسط کانتینر مربعی فرضی سمت چپ
+    final centerX = size.height / 2; // مربع سمت چپ
+    final centerY = size.height / 2;
+
+    // 1. دایره
+    canvas.drawCircle(Offset(centerX, centerY), radius, paint);
+
+    // 2. عقربه ساعت (ساعت 3)
+    // لاین کوتاه
+    canvas.drawLine(
+      Offset(centerX, centerY),
+      Offset(centerX + (radius * 0.5), centerY),
+      paint..strokeWidth = strokeWidth * 0.8, // عقربه‌ها کمی نازک‌تر
+    );
+
+    // 3. عقربه دقیقه (ساعت 12)
+    canvas.drawLine(
+      Offset(centerX, centerY),
+      Offset(centerX, centerY - (radius * 0.6)),
+      paint,
+    );
+  }
+
+  void _drawSingleCheck(Canvas canvas, Size size, Paint paint, double s) {
     final path = Path();
 
-    // تیک از چپ به راست - با منحنی ملایم‌تر
-    path.moveTo(canvasSize.width * 0.15, canvasSize.height * 0.5);
-    path.quadraticBezierTo(
-      canvasSize.width * 0.3,
-      canvasSize.height * 0.65,
-      canvasSize.width * 0.45,
-      canvasSize.height * 0.75,
-    );
-    path.quadraticBezierTo(
-      canvasSize.width * 0.6,
-      canvasSize.height * 0.5,
-      canvasSize.width * 0.85,
-      canvasSize.height * 0.25,
-    );
+    // مقیاس‌دهی مختصات بر اساس ارتفاع (s)
+    // مختصات دقیق برای تیک (شبیه تلگرام)
+    // شروع تیک
+    final startX = s * 0.25;
+    final startY = s * 0.55;
+
+    // نقطه پایین تیک
+    final midX = s * 0.45;
+    final midY = s * 0.75;
+
+    // نقطه پایان تیک
+    final endX = s * 0.80;
+    final endY = s * 0.30;
+
+    path.moveTo(startX, startY);
+    path.lineTo(midX, midY);
+    path.lineTo(endX, endY);
 
     canvas.drawPath(path, paint);
   }
 
-  @override
-  bool shouldRepaint(covariant _SingleCheckPainter oldDelegate) {
-    return oldDelegate.color != color || oldDelegate.size != size;
-  }
-}
-
-/// نقاش دو تیک
-class _DoubleCheckPainter extends CustomPainter {
-  final Color color;
-  final double size;
-
-  _DoubleCheckPainter({required this.color, required this.size});
-
-  @override
-  void paint(Canvas canvas, Size canvasSize) {
-    // استفاده از strokeWidth ثابت و ظریف‌تر (مثل تلگرام)
-    final strokeWidth = size * 0.08; // نازک‌تر برای ظرافت بیشتر
-
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke
-      ..isAntiAlias = true; // برای کیفیت بهتر
-
-    // تیک اول (عقب‌تر) - با منحنی ملایم
+  void _drawDoubleCheck(Canvas canvas, Size size, Paint paint, double s) {
+    // تیک اول (سمت چپ/عقب) - شبیه SingleCheck اما کمی چپ‌تر
     final path1 = Path();
-    path1.moveTo(canvasSize.width * 0.02, canvasSize.height * 0.5);
-    path1.quadraticBezierTo(
-      canvasSize.width * 0.15,
-      canvasSize.height * 0.65,
-      canvasSize.width * 0.28,
-      canvasSize.height * 0.75,
-    );
-    path1.quadraticBezierTo(
-      canvasSize.width * 0.4,
-      canvasSize.height * 0.5,
-      canvasSize.width * 0.52,
-      canvasSize.height * 0.3,
-    );
+
+    // افست برای تیک دوم
+    final secondCheckOffset = s * 0.25; // فاصله بین دو تیک
+
+    // تیک کامل (جلو)
+    final startX = s * 0.25 + (secondCheckOffset / 2);
+    final startY = s * 0.55;
+    final midX = s * 0.45 + (secondCheckOffset / 2);
+    final midY = s * 0.75;
+    final endX = s * 0.80 + (secondCheckOffset / 2);
+    final endY = s * 0.30;
+
+    path1.moveTo(startX, startY);
+    path1.lineTo(midX, midY);
+    path1.lineTo(endX, endY);
     canvas.drawPath(path1, paint);
 
-    // تیک دوم (جلوتر) - با منحنی ملایم
+    // تیک دوم (فقط قسمت بالایی که دیده می‌شود) - یا تیک کامل عقب
+    // در تلگرام تیک عقب کامل رسم نمی‌شود، فقط بخشی از آن
     final path2 = Path();
-    path2.moveTo(canvasSize.width * 0.28, canvasSize.height * 0.5);
-    path2.quadraticBezierTo(
-      canvasSize.width * 0.4,
-      canvasSize.height * 0.65,
-      canvasSize.width * 0.52,
-      canvasSize.height * 0.75,
-    );
-    path2.quadraticBezierTo(
-      canvasSize.width * 0.65,
-      canvasSize.height * 0.5,
-      canvasSize.width * 0.98,
-      canvasSize.height * 0.25,
-    );
+
+    // تیک عقب
+    final backStartX = s * 0.10 + (secondCheckOffset / 2);
+    final backStartY = s * 0.55;
+    final backMidX = s * 0.30 + (secondCheckOffset / 2); // پایین تیک عقب
+    final backMidY = s * 0.75;
+
+    // فقط تا پایین رسم می‌کنیم و کمی بالا می‌آییم (چون بقیش زیر تیک جلویی است)
+    // اما برای سادگی و زیبایی مشابه تلگرام، معمولا یک تیک کوچک سمت چپ است
+
+    path2.moveTo(backStartX, backStartY);
+    path2.lineTo(backMidX, backMidY);
+    // ادامه خط به سمت بالا تا جایی که به تیک جلو برسد
+    path2.lineTo(s * 0.42 + (secondCheckOffset / 2), s * 0.62);
+
     canvas.drawPath(path2, paint);
   }
 
+  void _drawFailed(Canvas canvas, Size size, Paint paint, double s) {
+    final centerX = size.height / 2;
+    final centerY = size.height / 2;
+    final radius = (s / 2) * 0.8;
+
+    paint.color = MessageStatusColors.failed;
+    canvas.drawCircle(Offset(centerX, centerY), radius, paint);
+
+    // علامت تعجب
+    paint.style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(centerX, centerY - 2), 1.5, paint);
+    canvas.drawCircle(Offset(centerX, centerY + 4), 1.5, paint);
+  }
+
   @override
-  bool shouldRepaint(covariant _DoubleCheckPainter oldDelegate) {
-    return oldDelegate.color != color || oldDelegate.size != size;
+  bool shouldRepaint(covariant _StatusPainter oldDelegate) {
+    return oldDelegate.status != status ||
+        oldDelegate.color != color ||
+        oldDelegate.strokeWidth != strokeWidth;
   }
 }
 
@@ -311,8 +316,9 @@ class MessageTimeAndStatus extends StatelessWidget {
 
     return Row(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment:
+          CrossAxisAlignment.end, // تراز پایین برای هماهنگی بهتر
       children: [
-        // نشان ویرایش شده
         if (isEdited)
           Padding(
             padding: const EdgeInsets.only(left: 4),
@@ -320,28 +326,31 @@ class MessageTimeAndStatus extends StatelessWidget {
               'ویرایش شده',
               style: TextStyle(
                 color: color,
-                fontSize: fontSize - 1,
+                fontSize: fontSize - 2, // کمی کوچک‌تر
                 fontStyle: FontStyle.italic,
               ),
             ),
           ),
-        // زمان
         Text(
           _formatTime(),
           style: TextStyle(
             color: color,
             fontSize: fontSize,
+            height: 1.2,
           ),
         ),
-        // وضعیت (فقط برای پیام‌های خودم)
         if (isMe) ...[
           const SizedBox(width: 3),
-          TelegramMessageStatus(
-            status: status,
-            size: fontSize + 1, // کوچک‌تر و ظریف‌تر
-            customColor: status == MessageDeliveryStatus.read
-                ? MessageStatusColors.read
-                : color,
+          Padding(
+            padding: const EdgeInsets.only(
+                bottom: 2), // تنظیم دقیق برای هم‌ترازی با متن
+            child: TelegramMessageStatus(
+              status: status,
+              size: fontSize + 2,
+              customColor: status == MessageDeliveryStatus.read
+                  ? MessageStatusColors.read
+                  : color,
+            ),
           ),
         ],
       ],
@@ -451,6 +460,96 @@ class ReadReceiptInfo extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// ✅ Status Icon ساده با transition نرم - بدون پرش
+/// استفاده از Icon به جای CustomPaint (برای موارد ساده‌تر)
+/// دقیقاً مثل تلگرام
+class SmoothStatusIcon extends StatelessWidget {
+  final bool isPending;
+  final bool isSeen;
+  final bool isFailed;
+  final Color? color;
+  final double size;
+
+  const SmoothStatusIcon({
+    super.key,
+    required this.isPending,
+    required this.isSeen,
+    required this.isFailed,
+    this.color,
+    this.size = 16,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final iconColor = color ?? Colors.white70;
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 200),
+        switchInCurve: Curves.easeIn,
+        switchOutCurve: Curves.easeOut,
+        transitionBuilder: (child, animation) {
+          // ✅ فقط opacity - هیچ scale یا position change نداریم
+          return FadeTransition(
+            opacity: animation,
+            child: child,
+          );
+        },
+        layoutBuilder: (currentChild, previousChildren) {
+          // ✅ کلید موفقیت: Stack به جای Column
+          // همه children رو روی هم می‌ذاره و جلوی layout shift رو می‌گیره
+          return Stack(
+            alignment: Alignment.center,
+            children: <Widget>[
+              ...previousChildren,
+              if (currentChild != null) currentChild,
+            ],
+          );
+        },
+        child: _buildIcon(iconColor),
+      ),
+    );
+  }
+
+  Widget _buildIcon(Color iconColor) {
+    if (isFailed) {
+      return Icon(
+        Icons.error_outline,
+        key: const ValueKey('failed'),
+        size: size,
+        color: Colors.red,
+      );
+    }
+
+    if (isPending) {
+      return Icon(
+        Icons.access_time,
+        key: const ValueKey('pending'),
+        size: size,
+        color: iconColor.withOpacity(0.6),
+      );
+    }
+
+    if (isSeen) {
+      return Icon(
+        Icons.done_all,
+        key: const ValueKey('seen'),
+        size: size,
+        color: Colors.lightBlueAccent,
+      );
+    }
+
+    return Icon(
+      Icons.done,
+      key: const ValueKey('sent'),
+      size: size,
+      color: iconColor,
     );
   }
 }

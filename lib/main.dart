@@ -254,6 +254,17 @@ void main() async {
       final voiceCacheService = VoiceCacheService();
       await voiceCacheService.initialize();
 
+      // ✅ 5. Advanced Cache System (کش مکالمه‌ها) - فوری برای نمایش سریع
+      // این باید فوری باشد تا مکالمه‌ها بلافاصله از دیسک load شوند
+      try {
+        final conversationCache = UnifiedConversationCacheService();
+        await conversationCache.initialize();
+        print('✅ Conversation cache initialized - conversations ready');
+      } catch (e) {
+        print('⚠️ Failed to initialize conversation cache: $e');
+        // ادامه بده حتی اگر خطا داشت
+      }
+
       // ✅ بقیه کارها را defer کن - تا زمان باز شدن کیبورد منتظر می‌مانند
       deferredManager.defer(() async {
         // راه‌اندازی سرویس امنیتی پیشرفته

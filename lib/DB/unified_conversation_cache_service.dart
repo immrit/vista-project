@@ -38,7 +38,8 @@ class UnifiedConversationCacheService {
   /// Update a conversation
   Future<void> updateConversation(
       ConversationModel conversation, String userId) async {
-    // Advanced cache handles updates through real-time sync
+    // ✅ به‌روزرسانی conversation در memory cache
+    await _advancedCache.updateConversationInCache(conversation);
   }
 
   /// Clear conversations for a user

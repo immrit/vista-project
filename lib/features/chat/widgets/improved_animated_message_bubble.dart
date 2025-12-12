@@ -10,6 +10,7 @@ import '../../../utils/compat_extensions.dart';
 import 'voice_message_bubble.dart';
 import 'telegram_message_status.dart';
 import '../../../services/telegram_read_receipt_service.dart';
+import '../../../model/message_model.dart';
 
 /// وضعیت پیام
 enum MessageStatus {
@@ -75,6 +76,9 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
   final bool isForwarded;
   final String? forwardedFrom;
 
+  // ✅ MessageModel برای دسترسی به statusNotifier
+  final MessageModel? message;
+
   const ImprovedAnimatedMessageBubble({
     super.key,
     required this.messageId,
@@ -101,6 +105,7 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
     this.duration,
     this.isForwarded = false,
     this.forwardedFrom,
+    this.message,
   });
 
   @override
@@ -399,28 +404,10 @@ class _ImprovedAnimatedMessageBubbleState
             isMe: widget.isMe,
             time: widget.time,
           ),
-          // زمان و تیک داخل حباب
+          // زمان و تیک داخل حباب - فقط این قسمت با ValueListenableBuilder rebuild میشه
           Padding(
             padding: const EdgeInsets.only(left: 12, right: 12, bottom: 6),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              mainAxisSize: MainAxisSize.max,
-              children: [
-                Text(
-                  widget.time.toFixedTimeLabel(),
-                  style: TextStyle(
-                    color: widget.isMe
-                        ? theme.myBubbleTextColor.withOpacity(0.7)
-                        : theme.otherBubbleTextColor.withOpacity(0.6),
-                    fontSize: 11,
-                  ),
-                ),
-                if (widget.isMe) ...[
-                  const SizedBox(width: 4),
-                  _buildStatusIcon(theme),
-                ],
-              ],
-            ),
+            child: _buildTimeAndStatus(theme),
           ),
         ],
       );
@@ -449,9 +436,23 @@ class _ImprovedAnimatedMessageBubbleState
                 : const SizedBox.shrink(),
           ),
           const SizedBox(width: 8),
-          // زمان و تیک
-          Row(
+          // ✅ زمان و تیک - فقط این قسمت rebuild میشه
+          _buildTimeAndStatus(theme),
+        ],
+      ),
+    );
+  }
+
+  // ✅ Build time and status - فقط این قسمت rebuild میشه
+  Widget _buildTimeAndStatus(ChatTheme theme) {
+    // ✅ اگر message موجود باشه، از ValueListenableBuilder استفاده کن
+    if (widget.message != null) {
+      return ValueListenableBuilder<MessageDeliveryStatus>(
+        valueListenable: widget.message!.statusNotifier,
+        builder: (context, status, child) {
+          return Row(
             mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
               Text(
                 widget.time.toFixedTimeLabel(),
@@ -463,26 +464,59 @@ class _ImprovedAnimatedMessageBubbleState
                 ),
               ),
               if (widget.isMe) ...[
-                const SizedBox(width: 3), // فاصله کمتر برای ظرافت
-                _buildStatusIcon(theme),
+                const SizedBox(width: 3),
+                _buildStatusIconFromDeliveryStatus(theme, status),
               ],
             ],
+          );
+        },
+      );
+    }
+
+    // Fallback به روش قدیمی
+    final deliveryStatus = _convertToDeliveryStatus(widget.status);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        Text(
+          widget.time.toFixedTimeLabel(),
+          style: TextStyle(
+            color: widget.isMe
+                ? theme.myBubbleTextColor.withOpacity(0.7)
+                : theme.otherBubbleTextColor.withOpacity(0.6),
+            fontSize: 11,
           ),
+        ),
+        if (widget.isMe) ...[
+          const SizedBox(width: 3),
+          _buildStatusIconFromDeliveryStatus(theme, deliveryStatus),
         ],
-      ),
+      ],
     );
   }
 
-  Widget _buildStatusIcon(ChatTheme theme) {
-    // ✅ استفاده از ویجت تیک حرفه‌ای تلگرام - ظریف و کوچک
-    final deliveryStatus = _convertToDeliveryStatus(widget.status);
-    
-    return TelegramMessageStatus(
-      status: deliveryStatus,
-      size: 12, // کوچک‌تر برای ظرافت بیشتر
-      customColor: deliveryStatus == MessageDeliveryStatus.read
-          ? MessageStatusColors.read
-          : theme.myBubbleTextColor.withOpacity(0.7),
+  Widget _buildStatusIconFromDeliveryStatus(
+      ChatTheme theme, MessageDeliveryStatus status) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      transitionBuilder: (child, animation) {
+        return FadeTransition(
+          opacity: animation,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.8, end: 1.0).animate(animation),
+            child: child,
+          ),
+        );
+      },
+      child: TelegramMessageStatus(
+        key: ValueKey(status),
+        status: status,
+        size: 12,
+        customColor: status == MessageDeliveryStatus.read
+            ? MessageStatusColors.read
+            : theme.myBubbleTextColor.withOpacity(0.7),
+      ),
     );
   }
 
@@ -549,5 +583,4 @@ class _ImprovedAnimatedMessageBubbleState
       ),
     );
   }
-
 }

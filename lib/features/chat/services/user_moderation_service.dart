@@ -241,7 +241,7 @@ class UserModerationService {
         final age = DateTime.now().difference(cached.cachedAt);
         
         if (age < _cacheDuration) {
-          logInfo('📦 Using cached block status for $userId');
+          // ✅ حذف لاگ cache hit برای بهبود performance
           return cached.status;
         } else {
           // کش منقضی شده
@@ -249,7 +249,11 @@ class UserModerationService {
         }
       }
 
-      logInfo('🔍 Checking block status for user: $userId');
+      // ✅ حذف لاگ info برای بهبود performance - فقط در حالت debug
+      assert(() {
+        logInfo('🔍 Checking block status for user: $userId');
+        return true;
+      }());
 
       // بررسی اینکه آیا کاربر فعلی این کاربر را مسدود کرده
       final iBlockedUser = await _supabase
@@ -281,9 +285,14 @@ class UserModerationService {
       // ذخیره در کش
       _blockCache[userId] = (status: status, cachedAt: DateTime.now());
 
-      logInfo('✅ Block status: isBlocked=${status.isBlocked}, isBlockedBy=${status.isBlockedBy}');
+      // ✅ حذف لاگ success برای بهبود performance - فقط در حالت debug لاگ می‌کنیم
+      assert(() {
+        logInfo('✅ Block status: isBlocked=${status.isBlocked}, isBlockedBy=${status.isBlockedBy}');
+        return true;
+      }());
       return status;
     } catch (e, stackTrace) {
+      // ✅ فقط لاگ error ها را نگه می‌داریم
       logInfo('❌ Error checking block status: $e\n$stackTrace');
       return BlockStatus.noBlock();
     }

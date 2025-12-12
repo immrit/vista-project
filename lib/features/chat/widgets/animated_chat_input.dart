@@ -294,33 +294,30 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
         color: theme.inputBackgroundColor,
         boxShadow: theme.inputShadow != null ? [theme.inputShadow!] : null,
       ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Reply preview
-            _buildReplyPreview(theme),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Reply preview
+          _buildReplyPreview(theme),
 
-            // Recording overlay یا Input row
-            if (_isRecording)
-              _buildRecordingOverlay(theme)
-            else
-              _buildInputRow(theme),
+          // Recording overlay یا Input row
+          if (_isRecording)
+            _buildRecordingOverlay(theme)
+          else
+            _buildInputRow(theme),
 
-            // Emoji picker
-            if (_showEmojiPicker)
-              ChatEmojiPicker(
-                onEmojiSelected: _onEmojiSelected,
-                onBackspace: () {
-                  final text = widget.controller.text;
-                  if (text.isNotEmpty) {
-                    widget.controller.text = text.substring(0, text.length - 1);
-                  }
-                },
-              ),
-          ],
-        ),
+          // Emoji picker
+          if (_showEmojiPicker)
+            ChatEmojiPicker(
+              onEmojiSelected: _onEmojiSelected,
+              onBackspace: () {
+                final text = widget.controller.text;
+                if (text.isNotEmpty) {
+                  widget.controller.text = text.substring(0, text.length - 1);
+                }
+              },
+            ),
+        ],
       ),
     );
   }

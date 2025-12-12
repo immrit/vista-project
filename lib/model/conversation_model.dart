@@ -18,6 +18,12 @@ class ConversationModel {
   final bool isPinned;
   final bool isMuted; // اضافه کردن فیلد isMuted
   final bool isArchived; // فیلد جدید برای وضعیت بایگانی
+  final bool? allowProfileZoom; // ✅ اجازه بزرگنمایی عکس پروفایل کاربر مقابل
+  // ✅ اطلاعات پروفایل کاربر مقابل برای صفحه جزئیات چت
+  final String? otherUserBio; // بیوگرافی کاربر مقابل
+  final DateTime? otherUserCreatedAt; // تاریخ عضویت کاربر مقابل
+  final bool? isBlocked; // وضعیت بلاک بودن کاربر مقابل
+  final bool? isVerified; // وضعیت تایید شده بودن کاربر مقابل
   final String?
       lastMessageType; // نوع آخرین پیام: text, voice, image, video, post, file, sticker
   final bool isLastMessageFromMe; // آیا آخرین پیام از من است؟
@@ -45,6 +51,11 @@ class ConversationModel {
     this.lastMessageSenderId, // شناسه فرستنده آخرین پیام
     this.lastMessageDeliveryStatus =
         MessageDeliveryStatus.sent, // وضعیت تحویل آخرین پیام
+    this.allowProfileZoom, // ✅ اجازه بزرگنمایی عکس پروفایل
+    this.otherUserBio, // ✅ بیوگرافی کاربر مقابل
+    this.otherUserCreatedAt, // ✅ تاریخ عضویت کاربر مقابل
+    this.isBlocked, // ✅ وضعیت بلاک بودن
+    this.isVerified, // ✅ وضعیت تایید شده بودن
   });
 
   factory ConversationModel.fromJson(Map<String, dynamic> json,
@@ -121,6 +132,13 @@ class ConversationModel {
         isLastMessageFromMe: json['is_last_message_from_me'] ?? false,
         lastMessageSenderId: json['last_message_sender_id'] as String?,
         lastMessageDeliveryStatus: _parseDeliveryStatus(json),
+        allowProfileZoom: json['allow_profile_zoom'] as bool?,
+        otherUserBio: json['other_user_bio'] as String?,
+        otherUserCreatedAt: json['other_user_created_at'] != null
+            ? DateTime.parse(json['other_user_created_at'] as String)
+            : null,
+        isBlocked: json['is_blocked'] as bool?,
+        isVerified: json['is_verified'] as bool?,
       );
     } catch (e) {
       logInfo('❌ خطا در تبدیل JSON به ConversationModel: $e');
@@ -179,6 +197,11 @@ class ConversationModel {
       'is_last_message_from_me': isLastMessageFromMe,
       'last_message_sender_id': lastMessageSenderId,
       'last_message_delivery_status': lastMessageDeliveryStatus.name,
+      'allow_profile_zoom': allowProfileZoom,
+      'other_user_bio': otherUserBio,
+      'other_user_created_at': otherUserCreatedAt?.toIso8601String(),
+      'is_blocked': isBlocked,
+      'is_verified': isVerified,
     };
   }
 
@@ -201,6 +224,11 @@ class ConversationModel {
     bool? isLastMessageFromMe,
     String? lastMessageSenderId,
     MessageDeliveryStatus? lastMessageDeliveryStatus,
+    bool? allowProfileZoom,
+    String? otherUserBio,
+    DateTime? otherUserCreatedAt,
+    bool? isBlocked,
+    bool? isVerified,
   }) {
     return ConversationModel(
       id: id ?? this.id,
@@ -222,6 +250,11 @@ class ConversationModel {
       lastMessageSenderId: lastMessageSenderId ?? this.lastMessageSenderId,
       lastMessageDeliveryStatus:
           lastMessageDeliveryStatus ?? this.lastMessageDeliveryStatus,
+      allowProfileZoom: allowProfileZoom ?? this.allowProfileZoom,
+      otherUserBio: otherUserBio ?? this.otherUserBio,
+      otherUserCreatedAt: otherUserCreatedAt ?? this.otherUserCreatedAt,
+      isBlocked: isBlocked ?? this.isBlocked,
+      isVerified: isVerified ?? this.isVerified,
     );
   }
 

@@ -70,6 +70,7 @@ import '../screens/telegram_profile_screen.dart';
 // import '../services/complete_deletion_service.dart';
 import '../services/message_actions_service.dart';
 import '../widgets/message_delete_animation.dart';
+import '../../../services/instant_message_deletion.dart';
 
 /// پارامترهای صفحه چت
 class ChatScreenArgs {
@@ -165,6 +166,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   final Set<String> _deletingMessageIds = {};
   final Map<String, MessageDeleteAnimationController>
       _deleteAnimationControllers = {};
+  // لیست موقت پیام‌های در حال حذف (برای نمایش انیمیشن)
+  final Map<String, MessageModel> _deletingMessagesCache = {};
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 🎬 LIFECYCLE
@@ -633,65 +636,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             backgroundColor: Colors.transparent,
             // ✅ فعال کردن اسکرول پیام‌ها از پشت app bar
             extendBodyBehindAppBar: true,
+            // ✅ استفاده از resizeToAvoidBottomInset: true برای همگام شدن با انیمیشن native سیستم
+            // این همان روشی است که تلگرام استفاده می‌کند - اجازه می‌دهیم Flutter با کیبورد سیستم همگام شود
+            resizeToAvoidBottomInset: true,
             appBar: _isSearchMode ? null : _buildAppBar(theme),
-            body: Column(
-              children: [
-                // Search bar
-                if (_isSearchMode)
-                  MessageSearchBar(
-                    conversationId: widget.args.conversationId,
-                    onClose: () => setState(() {
-                      _isSearchMode = false;
-                      _highlightedMessageId = null;
-                    }),
-                    onResultSelected: (messageId) {
-                      setState(() => _highlightedMessageId = messageId);
-                      _scrollToMessage(messageId);
-                    },
-                  ),
-
-                // بنر مسدودیت
-                if (_isCurrentUserBlocked || _isOtherUserBlocked)
-                  _buildBlockedBanner(theme),
-
-                // بنر اتصال
-                TelegramConnectionBanner(
-                  isConnected: true, // TODO: اتصال به network state
-                  onRetry: () {
-                    // TODO: retry connection
-                  },
-                ),
-
-                // لیست پیام‌ها
-                Expanded(
-                  child: Stack(
-                    children: [
-                      // پیام‌ها با تاریخ شناور
-                      FloatingDateHeader(
-                        currentDate: _currentVisibleDate,
-                        isScrolling: _isScrolling,
-                        child: _buildMessageList(
-                            messagesAsync, paginationState, theme),
-                      ),
-
-                      // دکمه Scroll to Bottom
-                      if (_showScrollToBottom)
-                        _buildScrollToBottomButton(theme),
-                    ],
-                  ),
-                ),
-
-                // Input area
-                if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
-                  AnimatedPadding(
-                    duration: Duration.zero,
-                    padding: EdgeInsets.only(
-                      bottom: MediaQuery.of(context).viewInsets.bottom,
-                    ),
-                    child: _buildInputArea(theme),
-                  ),
-              ],
-            ),
+            body: _buildKeyboardAwareBody(context, messagesAsync, paginationState, theme),
           ),
         ),
 
@@ -892,37 +841,93 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     if (!result.confirmed) return;
 
-    // حذف پیام‌ها
-    int successCount = 0;
-    final actionsService = ref.read(messageActionsServiceProvider);
+    // ✅ ذخیره پیام‌های انتخاب شده در cache (قبل از حذف)
+    final selectedIdsList = _selectedMessageIds.toList();
+    final messagesAsyncValue =
+        ref.read(messagesStreamProvider(widget.args.conversationId));
+    final allMessages = messagesAsyncValue.valueOrNull ?? [];
 
-    for (final messageId in _selectedMessageIds) {
-      if (!mounted) break;
-
-      try {
-        final deleteResult = await actionsService.deleteMessage(
-          messageId: messageId,
-          conversationId: widget.args.conversationId,
-          forEveryone: result.deleteForEveryone,
+    setState(() {
+      // ذخیره پیام‌ها در cache برای نمایش انیمیشن
+      for (final messageId in selectedIdsList) {
+        final message = allMessages.firstWhere(
+          (m) => m.id == messageId,
+          orElse: () => MessageModel.empty(),
         );
-        if (deleteResult.isSuccess) {
-          successCount++;
+        if (message.id.isNotEmpty) {
+          _deletingMessagesCache[messageId] = message;
         }
+      }
+      // اضافه کردن به _deletingMessageIds برای انیمیشن
+      _deletingMessageIds.addAll(selectedIdsList);
+    });
+
+    // ✅ حذف فوری از UI با استفاده از instant deletion
+    // این فوراً پیام‌ها را از providers حذف می‌کند و پیام‌های بالایی جایگزین می‌شوند
+    int successCount = 0;
+    for (final messageId in selectedIdsList) {
+      if (!mounted) break;
+      try {
+        // ✅ حذف فوری از UI با instant deletion
+        await ref.deleteMessageInstantly(
+          messageId,
+          widget.args.conversationId,
+          forEveryone: result.deleteForEveryone,
+          enableAnimation: false, // انیمیشن را خودمان مدیریت می‌کنیم
+          onSuccess: () {
+            successCount++;
+          },
+          onError: () {
+            debugPrint('Error deleting message: $messageId');
+          },
+        );
       } catch (e) {
-        debugPrint('Error deleting message: $e');
+        debugPrint('Error in instant deletion: $e');
       }
     }
+
+    // ✅ شروع انیمیشن‌ها برای همه پیام‌ها (با تأخیر کوچک برای افکت بصری بهتر)
+    final animationFutures = <Future>[];
+    for (int i = 0; i < selectedIdsList.length; i++) {
+      final messageId = selectedIdsList[i];
+      final controller = _deleteAnimationControllers[messageId];
+      if (controller != null) {
+        // تأخیر کوچک برای هر پیام تا انیمیشن‌ها به صورت متوالی اجرا شوند
+        final delay = Duration(milliseconds: i * 30);
+        animationFutures.add(
+          Future.delayed(delay, () async {
+            await Future.delayed(const Duration(milliseconds: 16));
+            await controller.startDeleteAnimation();
+          }),
+        );
+      }
+    }
+
+    // ✅ اجرای همه انیمیشن‌ها (پیام‌ها از cache نمایش داده می‌شوند)
+    await Future.wait(animationFutures);
+
+    // ✅ بعد از اتمام انیمیشن‌ها، پاک‌سازی
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (mounted) {
+        setState(() {
+          // حذف از _deletingMessageIds و cache
+          for (final messageId in selectedIdsList) {
+            _deletingMessageIds.remove(messageId);
+            _deleteAnimationControllers.remove(messageId);
+            _deletingMessagesCache.remove(messageId);
+          }
+
+          // بروزرسانی لیست پیام‌های مخفی برای حذف یک‌طرفه
+          if (!result.deleteForEveryone) {
+            _hiddenMessageIds = {..._hiddenMessageIds, ...selectedIdsList};
+          }
+        });
+      }
+    });
 
     if (successCount > 0) {
       final suffix = result.deleteForEveryone ? ' برای همه' : '';
       _showSuccessSnackBar('$successCount پیام حذف شد$suffix'.toPersianDigit());
-
-      // بروزرسانی لیست پیام‌های مخفی برای حذف یک‌طرفه
-      if (!result.deleteForEveryone) {
-        setState(() {
-          _hiddenMessageIds = {..._hiddenMessageIds, ..._selectedMessageIds};
-        });
-      }
     }
 
     _exitSelectionMode();
@@ -1140,13 +1145,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             theme.sendButtonColor,
           ],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: theme.sendButtonColor.withOpacity(0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
       ),
       child: widget.args.otherUserAvatar != null
           ? ClipOval(
@@ -1248,11 +1246,23 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       data: (allMessages) {
         // ✅ فیلتر پیام‌های مخفی شده (حذف شده برای من)
         // اما پیام‌های در حال حذف را نگه دار (برای انیمیشن پودر شدن)
-        final messages = allMessages
+        final filteredMessages = allMessages
             .where((m) =>
                 !_hiddenMessageIds.contains(m.id) ||
                 _deletingMessageIds.contains(m.id))
             .toList();
+
+        // ✅ اضافه کردن پیام‌های در حال حذف از cache (اگر در providers نیستند)
+        final messages = <MessageModel>[...filteredMessages];
+        for (final messageId in _deletingMessageIds) {
+          if (!messages.any((m) => m.id == messageId) &&
+              _deletingMessagesCache.containsKey(messageId)) {
+            messages.add(_deletingMessagesCache[messageId]!);
+          }
+        }
+
+        // ✅ مرتب‌سازی پیام‌ها بر اساس تاریخ (جدیدترین اول)
+        messages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
         if (messages.isEmpty) {
           // ✅ فیکس: اگر لیست خالی است، تاریخ شناور را فوراً حذف کن
@@ -1494,6 +1504,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                                     message.isForwarded,
                                                 forwardedFrom: message
                                                     .forwardedFromSenderName,
+                                                // ✅ MessageModel برای بهینه‌سازی rebuild - فقط status icon rebuild میشه
+                                                message: message,
                                               ),
                                       ),
                                     )
@@ -1560,6 +1572,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                               index: index,
                                               isFirstInGroup: isFirstInGroup,
                                               isLastInGroup: isLastInGroup,
+                                              // ✅ MessageModel برای بهینه‌سازی rebuild - فقط status icon rebuild میشه
+                                              message: message,
                                             ),
                                     ),
                             )
@@ -1865,6 +1879,79 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // ═══════════════════════════════════════════════════════════════════════════
   // 🖊️ INPUT AREA
   // ═══════════════════════════════════════════════════════════════════════════
+
+  /// ساخت Body با مدیریت دقیق کیبورد
+  /// روش تلگرام: استفاده از resizeToAvoidBottomInset: true و padding مستقیم بدون انیمیشن اضافی
+  /// این باعث می‌شود با انیمیشن native کیبورد سیستم همگام شویم (خیلی سریع‌تر و روان‌تر)
+  Widget _buildKeyboardAwareBody(
+    BuildContext context,
+    AsyncValue<List<MessageModel>> messagesAsync,
+    dynamic paginationState,
+    ChatTheme theme,
+  ) {
+    // ✅ با resizeToAvoidBottomInset: true، Scaffold خودش body را resize می‌کند
+    // ما فقط باید safe area bottom را برای gesture bar اضافه کنیم
+    final padding = MediaQuery.of(context).padding;
+
+    // ✅ استفاده از Padding بدون انیمیشن - اجازه می‌دهیم Flutter با کیبورد native همگام شود
+    // این روش خیلی سریع‌تر و روان‌تر از AnimatedPadding است (مثل تلگرام)
+    return Padding(
+      padding: EdgeInsets.only(bottom: padding.bottom),
+      child: RepaintBoundary(
+        child: Column(
+        children: [
+          // Search bar
+          if (_isSearchMode)
+            MessageSearchBar(
+              conversationId: widget.args.conversationId,
+              onClose: () => setState(() {
+                _isSearchMode = false;
+                _highlightedMessageId = null;
+              }),
+              onResultSelected: (messageId) {
+                setState(() => _highlightedMessageId = messageId);
+                _scrollToMessage(messageId);
+              },
+            ),
+
+          // بنر مسدودیت
+          if (_isCurrentUserBlocked || _isOtherUserBlocked)
+            _buildBlockedBanner(theme),
+
+          // بنر اتصال
+          TelegramConnectionBanner(
+            isConnected: true, // TODO: اتصال به network state
+            onRetry: () {
+              // TODO: retry connection
+            },
+          ),
+
+          // لیست پیام‌ها
+          Expanded(
+            child: Stack(
+              children: [
+                // پیام‌ها با تاریخ شناور
+                FloatingDateHeader(
+                  currentDate: _currentVisibleDate,
+                  isScrolling: _isScrolling,
+                  child: _buildMessageList(messagesAsync, paginationState, theme),
+                ),
+
+                // دکمه Scroll to Bottom
+                if (_showScrollToBottom)
+                  _buildScrollToBottomButton(theme),
+              ],
+            ),
+          ),
+
+          // Input area
+          if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
+            _buildInputArea(theme),
+        ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildInputArea(ChatTheme theme) {
     return AnimatedChatInput(

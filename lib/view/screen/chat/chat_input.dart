@@ -441,7 +441,7 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
           child: Container(
             decoration: BoxDecoration(
               color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.grey[800]
+                  ? const Color(0xFF2A2A2A) // رنگ تیره‌تر و حرفه‌ای‌تر برای تم تاریک
                   : Colors.grey[200],
               borderRadius: BorderRadius.circular(24.0),
             ),
@@ -457,6 +457,12 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
                     maxLines: 5,
                     keyboardType: TextInputType.multiline,
                     textInputAction: TextInputAction.newline,
+                    style: TextStyle(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white // متن سفید برای تم تاریک
+                          : Colors.black87, // متن تیره برای تم روشن
+                      fontSize: 16,
+                    ),
                     // ✅ بهینه‌سازی‌های performance برای کیبورد:
                     enableInteractiveSelection: true,
                     enableSuggestions: false, // غیرفعال برای عملکرد بهتر
@@ -476,11 +482,17 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
                         setState(() => _showEmojiPicker = false);
                       }
                     },
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       hintText: '...پیام',
+                      hintStyle: TextStyle(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.grey[500] // hint تیره‌تر برای تم تاریک
+                            : Colors.grey[600], // hint برای تم روشن
+                        fontSize: 16,
+                      ),
                       border: InputBorder.none,
                       contentPadding:
-                          EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       isCollapsed: true,
                     ),
                   ),
@@ -514,9 +526,18 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
   }
 
   Widget _buildRecordingUI() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor =
-        isDark ? const Color(0xFF5DADEC) : const Color(0xFF3390EC);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
+    // ✅ استفاده از رنگ primary از theme، اما اگر سفید بود از رنگ جایگزین استفاده می‌کنیم
+    Color primaryColor = theme.colorScheme.primary;
+    
+    // اگر رنگ primary سفید یا خیلی روشن است، از رنگ جایگزین استفاده می‌کنیم
+    if (primaryColor.computeLuminance() > 0.8) {
+      primaryColor = isDark 
+          ? const Color(0xFF5DADEC) // آبی روشن برای تم تاریک
+          : const Color(0xFF3390EC); // آبی استاندارد برای تم روشن
+    }
 
     return Container(
       key: ValueKey(_isLocked ? 'locked_view' : 'recording_view'),
@@ -761,6 +782,17 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
 
   /// دکمه ارسال صدا
   Widget _buildSendVoiceButton(Color primaryColor) {
+    final theme = Theme.of(context);
+    
+    // اگر رنگ primary سفید یا خیلی روشن است، از رنگ جایگزین استفاده می‌کنیم
+    Color buttonColor = primaryColor;
+    if (buttonColor.computeLuminance() > 0.8) {
+      final isDark = theme.brightness == Brightness.dark;
+      buttonColor = isDark 
+          ? const Color(0xFF5DADEC) // آبی روشن برای تم تاریک
+          : const Color(0xFF2196F3); // آبی استاندارد برای تم روشن
+    }
+    
     return GestureDetector(
       onTap: _stopRecordingAndSend,
       child: Container(
@@ -768,17 +800,10 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
         height: 48,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: LinearGradient(
-            colors: [
-              primaryColor,
-              primaryColor.withOpacity(0.8),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          color: buttonColor, // استفاده از رنگ solid
           boxShadow: [
             BoxShadow(
-              color: primaryColor.withOpacity(0.4),
+              color: buttonColor.withOpacity(0.4),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -786,7 +811,7 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
         ),
         child: const Icon(
           Icons.send_rounded,
-          color: Colors.white,
+          color: Colors.white, // همیشه سفید برای کنتراست بهتر
           size: 22,
         ),
       ),
@@ -794,6 +819,15 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
   }
 
   Widget _buildSendButton() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
+    // ✅ در تم تاریک همیشه از رنگ آبی استاندارد استفاده می‌کنیم
+    // در تم روشن از رنگ primary استفاده می‌کنیم
+    final primaryColor = isDark 
+        ? const Color(0xFF3390EC) // آبی استاندارد تلگرام برای تم تاریک
+        : theme.colorScheme.primary;
+    
     return InkWell(
       key: const ValueKey('send_button'),
       onTap: _handleSendMessage,
@@ -803,25 +837,18 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
         height: 48,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: const LinearGradient(
-            colors: [
-              Color(0xFF2196F3),
-              Color(0xFF2196F3),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          boxShadow: const [
+          color: primaryColor,
+          boxShadow: [
             BoxShadow(
-              color: Color(0x4D2196F3),
+              color: primaryColor.withOpacity(0.4),
               blurRadius: 8,
-              offset: Offset(0, 2),
+              offset: const Offset(0, 2),
             ),
           ],
         ),
         child: const Icon(
           Icons.send_rounded,
-          color: Colors.white,
+          color: Colors.white, // همیشه سفید برای کنتراست بهتر
           size: 24,
         ),
       ),

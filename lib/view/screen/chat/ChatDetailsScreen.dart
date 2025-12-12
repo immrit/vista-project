@@ -33,6 +33,9 @@ class ChatDetailsScreen extends ConsumerStatefulWidget {
 class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  // ✅ امنیت: flag برای جلوگیری از کلیک‌های مکرر و navigation همزمان
+  bool _isNavigating = false;
+  DateTime? _lastTapTime;
 
   @override
   void initState() {
@@ -48,22 +51,31 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final userProfileAsync =
-        ref.watch(userProfileDetailsProvider(widget.otherUserId));
     final conversationAsync =
         ref.watch(conversationProvider(widget.conversationId));
-    final isBlockedAsync =
-        ref.watch(userBlockStatusProvider(widget.otherUserId));
-    final userSettingsAsync =
-        ref.watch(userSettingsByIdProvider(widget.otherUserId));
+    // ✅ استفاده از اطلاعات کش شده از conversation
+    final conversation = conversationAsync.value;
+    final allowProfileZoom = conversation?.allowProfileZoom;
+    final isBlocked = conversation?.isBlocked ?? false;
+
+    // ✅ ساخت profileData از conversation کش شده
+    final userProfileData = conversation == null
+        ? null
+        : <String, dynamic>{
+            'bio': conversation.otherUserBio,
+            'created_at': conversation.otherUserCreatedAt?.toIso8601String(),
+            'is_verified': conversation.isVerified ?? false,
+            'username': conversation.otherUserName,
+            'avatar_url': conversation.otherUserAvatar,
+          };
 
     return Scaffold(
       body: NestedScrollView(
         headerSliverBuilder: (context, innerBoxIsScrolled) {
           return [
-            _buildSliverAppBar(userProfileAsync, conversationAsync,
-                isBlockedAsync, userSettingsAsync),
-            _buildUserInfo(userProfileAsync),
+            _buildSliverAppBar(AsyncValue.data(userProfileData),
+                conversationAsync, isBlocked, allowProfileZoom),
+            _buildUserInfo(AsyncValue.data(userProfileData)),
             _buildTabBar(),
           ];
         },
@@ -87,8 +99,8 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
   Widget _buildSliverAppBar(
       AsyncValue<Map<String, dynamic>?> userProfileAsync,
       AsyncValue<ConversationModel?> conversationAsync,
-      AsyncValue<bool> isBlockedAsync,
-      AsyncValue<Map<String, dynamic>?> userSettingsAsync) {
+      bool isBlocked,
+      bool? allowProfileZoom) {
     return SliverAppBar(
       expandedHeight: 320.0,
       floating: false,
@@ -117,14 +129,13 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
           tooltip: 'جستجو',
         ),
         PopupMenuButton<String>(
-          onSelected: (value) =>
-              _handleMenuAction(context, value, isBlockedAsync),
+          onSelected: (value) => _handleMenuAction(context, value, isBlocked),
           itemBuilder: (BuildContext context) {
             return conversationAsync.when(
               data: (conversation) {
                 final isMuted = conversation?.isMuted ?? false;
                 final isPinned = conversation?.isPinned ?? false;
-                final isBlocked = isBlockedAsync.value ?? false;
+                final conversationIsBlocked = conversation?.isBlocked ?? false;
 
                 return <PopupMenuEntry<String>>[
                   _buildPopupMenuItem(
@@ -145,8 +156,10 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
                   _buildPopupMenuItem(
                       context,
                       'block',
-                      isBlocked ? 'رفع مسدودیت' : 'مسدود کردن کاربر',
-                      isBlocked
+                      conversationIsBlocked
+                          ? 'رفع مسدودیت'
+                          : 'مسدود کردن کاربر',
+                      conversationIsBlocked
                           ? Icons.lock_open_outlined
                           : Icons.block_outlined,
                       isDestructive: true),
@@ -220,39 +233,141 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
               child: Column(
                 children: [
                   // آواتار بزرگ قابل کلیک
-                  GestureDetector(
-                    onTap: () => _handleAvatarTap(userSettingsAsync),
-                    child: Hero(
-                      tag: 'profile_avatar_${widget.otherUserId}',
-                      child: Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 4),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.3),
-                              blurRadius: 15,
-                              offset: const Offset(0, 8),
+                  // ✅ امنیت: استفاده از allowProfileZoom از conversation که با مکالمه کش شده
+                  conversationAsync.when(
+                    loading: () => IgnorePointer(
+                      ignoring: true,
+                      child: AbsorbPointer(
+                        child: Hero(
+                          tag: 'profile_avatar_${widget.otherUserId}',
+                          child: Container(
+                            width: 120,
+                            height: 120,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 4),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.3),
+                                  blurRadius: 15,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        child: ClipOval(
-                          child: widget.otherUserAvatar != null &&
-                                  widget.otherUserAvatar!.isNotEmpty
-                              ? CachedNetworkImage(
-                                  imageUrl: widget.otherUserAvatar!,
-                                  fit: BoxFit.cover,
-                                  placeholder: (context, url) =>
-                                      _buildAvatarShimmer(),
-                                  errorWidget: (context, url, error) =>
-                                      _buildDefaultAvatar(),
-                                )
-                              : _buildDefaultAvatar(),
+                            child: ClipOval(
+                              child: _buildAvatarShimmer(),
+                            ),
+                          ),
                         ),
                       ),
                     ),
+                    error: (_, __) => IgnorePointer(
+                      ignoring: true,
+                      child: AbsorbPointer(
+                        child: Hero(
+                          tag: 'profile_avatar_${widget.otherUserId}',
+                          child: Container(
+                            width: 120,
+                            height: 120,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 4),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.3),
+                                  blurRadius: 15,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: ClipOval(
+                              child: _buildAvatarShimmer(),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    data: (conversation) {
+                      // ✅ امنیت: استفاده از allowProfileZoom از conversation
+                      // اگر null است یعنی هنوز لود نشده - shimmer نشان بده
+                      final allowZoom = conversation?.allowProfileZoom;
+
+                      if (allowZoom == null) {
+                        // ✅ امنیت: هنوز لود نشده - استفاده از IgnorePointer برای غیرفعال کردن کامل کلیک
+                        return IgnorePointer(
+                          ignoring: true,
+                          child: AbsorbPointer(
+                            child: Hero(
+                              tag: 'profile_avatar_${widget.otherUserId}',
+                              child: Container(
+                                width: 120,
+                                height: 120,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border:
+                                      Border.all(color: Colors.white, width: 4),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color:
+                                          Colors.black.withValues(alpha: 0.3),
+                                      blurRadius: 15,
+                                      offset: const Offset(0, 8),
+                                    ),
+                                  ],
+                                ),
+                                child: ClipOval(
+                                  child: _buildAvatarShimmer(),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+
+                      // ✅ اطلاعات لود شده - بررسی allowZoom
+                      // ✅ امنیت: استفاده از IgnorePointer برای جلوگیری از کلیک اگر allowZoom false است
+                      return IgnorePointer(
+                        ignoring: !allowZoom,
+                        child: GestureDetector(
+                          onTap: () => _handleAvatarTap(),
+                          child: Hero(
+                            tag: 'profile_avatar_${widget.otherUserId}',
+                            child: Container(
+                              width: 120,
+                              height: 120,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border:
+                                    Border.all(color: Colors.white, width: 4),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.3),
+                                    blurRadius: 15,
+                                    offset: const Offset(0, 8),
+                                  ),
+                                ],
+                              ),
+                              child: ClipOval(
+                                child: allowZoom
+                                    ? (widget.otherUserAvatar != null &&
+                                            widget.otherUserAvatar!.isNotEmpty
+                                        ? CachedNetworkImage(
+                                            imageUrl: widget.otherUserAvatar!,
+                                            fit: BoxFit.cover,
+                                            placeholder: (context, url) =>
+                                                _buildAvatarShimmer(),
+                                            errorWidget:
+                                                (context, url, error) =>
+                                                    _buildDefaultAvatar(),
+                                          )
+                                        : _buildDefaultAvatar())
+                                    : _buildDefaultAvatar(),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(height: 16),
                   // نام کاربر
@@ -346,24 +461,116 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
     );
   }
 
-  void _handleAvatarTap(AsyncValue<Map<String, dynamic>?> userSettingsAsync) {
-    final settings = userSettingsAsync.value;
-    final allowZoom = (settings?["allow_profile_zoom"] as bool?) ?? true;
+  void _handleAvatarTap() {
+    // ✅ امنیت لایه 1: جلوگیری از کلیک‌های مکرر (debounce)
+    final now = DateTime.now();
+    if (_lastTapTime != null &&
+        now.difference(_lastTapTime!) < const Duration(milliseconds: 500)) {
+      return; // جلوگیری از کلیک‌های سریع
+    }
+    _lastTapTime = now;
 
+    // ✅ امنیت لایه 2: جلوگیری از navigation همزمان
+    if (_isNavigating) {
+      return;
+    }
+
+    // ✅ امنیت لایه 3: دریافت مستقیم از provider (نه از parameter) برای اطمینان از داده‌های به‌روز
+    final conversationAsync =
+        ref.read(conversationProvider(widget.conversationId));
+
+    // ✅ امنیت لایه 4: بررسی دقیق state
+    if (conversationAsync.isLoading) {
+      _showSnackBar('در حال بارگذاری اطلاعات...');
+      return;
+    }
+
+    if (conversationAsync.hasError || conversationAsync.value == null) {
+      _showSnackBar('خطا در دریافت اطلاعات');
+      return;
+    }
+
+    final conversation = conversationAsync.value!;
+
+    // ✅ امنیت لایه 5: بررسی دقیق allowProfileZoom
+    if (conversation.allowProfileZoom == null) {
+      _showSnackBar('در حال بارگذاری اطلاعات...');
+      return;
+    }
+
+    final allowZoom = conversation.allowProfileZoom!;
+
+    // ✅ امنیت لایه 6: بررسی نهایی allowZoom
     if (!allowZoom) {
       _showSnackBar('این کاربر بزرگنمایی پروفایل را غیرفعال کرده است');
       return;
     }
 
-    _showFullScreenAvatar();
-  }
-
-  void _showFullScreenAvatar() {
+    // ✅ امنیت لایه 7: بررسی وجود avatar
     if (widget.otherUserAvatar == null || widget.otherUserAvatar!.isEmpty) {
       return;
     }
 
-    Navigator.push(
+    // ✅ امنیت لایه 8: set flag قبل از navigation
+    _isNavigating = true;
+
+    _showFullScreenAvatar(conversation).then((_) {
+      // Reset flag after navigation completes
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) {
+          _isNavigating = false;
+        }
+      });
+    }).catchError((_) {
+      // Reset flag on error
+      if (mounted) {
+        _isNavigating = false;
+      }
+    });
+  }
+
+  Future<void> _showFullScreenAvatar(ConversationModel conversation) async {
+    // ✅ امنیت لایه 9: بررسی مجدد قبل از نمایش (از provider)
+    final conversationAsync =
+        ref.read(conversationProvider(widget.conversationId));
+
+    if (conversationAsync.isLoading || conversationAsync.value == null) {
+      _showSnackBar('در حال بارگذاری اطلاعات...');
+      _isNavigating = false;
+      return;
+    }
+
+    final currentConversation = conversationAsync.value!;
+
+    // ✅ امنیت لایه 10: بررسی مجدد allowProfileZoom از provider
+    if (currentConversation.allowProfileZoom == null) {
+      _showSnackBar('در حال بارگذاری اطلاعات...');
+      _isNavigating = false;
+      return;
+    }
+
+    final allowZoom = currentConversation.allowProfileZoom!;
+
+    // ✅ امنیت لایه 11: بررسی نهایی allowZoom
+    if (!allowZoom) {
+      _showSnackBar('این کاربر بزرگنمایی پروفایل را غیرفعال کرده است');
+      _isNavigating = false;
+      return;
+    }
+
+    // ✅ امنیت لایه 12: بررسی وجود avatar
+    if (widget.otherUserAvatar == null || widget.otherUserAvatar!.isEmpty) {
+      _isNavigating = false;
+      return;
+    }
+
+    // ✅ امنیت لایه 13: بررسی mounted قبل از navigation
+    if (!mounted) {
+      _isNavigating = false;
+      return;
+    }
+
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => Scaffold(
@@ -875,8 +1082,7 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
     }
   }
 
-  void _handleMenuAction(
-      BuildContext context, String value, AsyncValue<bool> isBlockedAsync) {
+  void _handleMenuAction(BuildContext context, String value, bool isBlocked) {
     switch (value) {
       case 'mute':
         _toggleMuteConversation();
@@ -885,7 +1091,7 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
         _togglePinConversation();
         break;
       case 'block':
-        _toggleBlockUser(isBlockedAsync.value ?? false);
+        _toggleBlockUser(isBlocked);
         break;
       case 'clear_history':
         _showClearHistoryDialog();

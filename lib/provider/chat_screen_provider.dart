@@ -569,15 +569,46 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
         if (msg.reactions.isEmpty &&
             existingMessage != null &&
             existingMessage.reactions.isNotEmpty) {
-          currentMessages[msg.id] =
-              msg.copyWith(reactions: existingMessage.reactions);
+          final updatedMsg = msg.copyWith(reactions: existingMessage.reactions);
+          // ✅ status را از ValueNotifier موجود sync کن
+          updatedMsg.statusNotifier.value = existingMessage.statusNotifier.value;
+          // اگر status تغییر کرده، آپدیت کن
+          updatedMsg.updateStatus(
+            pending: msg.isPending,
+            seen: msg.isSeen,
+            failed: msg.isFailed,
+            sent: msg.isSent,
+            delivered: msg.isDelivered,
+          );
+          currentMessages[msg.id] = updatedMsg;
           print('📝 Added/Updated message: ${msg.id} (preserved reactions)');
         } else {
+          // ✅ اگر پیام موجود است، status را از ValueNotifier موجود sync کن
+          if (existingMessage != null) {
+            msg.statusNotifier.value = existingMessage.statusNotifier.value;
+            // اگر status تغییر کرده، آپدیت کن
+            msg.updateStatus(
+              pending: msg.isPending,
+              seen: msg.isSeen,
+              failed: msg.isFailed,
+              sent: msg.isSent,
+              delivered: msg.isDelivered,
+            );
+          }
           currentMessages[msg.id] = msg;
           print('📝 Added/Updated message: ${msg.id}');
         }
       } else {
         // ✅ اگر پیام موجود است و جدیدتر نیست، reaction‌های جدید را اعمال کن
+        // ✅ و status را هم چک کن و آپدیت کن
+        // اگر status تغییر کرده، آپدیت کن
+        existingMessage.updateStatus(
+          pending: msg.isPending,
+          seen: msg.isSeen,
+          failed: msg.isFailed,
+          sent: msg.isSent,
+          delivered: msg.isDelivered,
+        );
         if (msg.reactions.isNotEmpty &&
             existingMessage.reactions != msg.reactions) {
           currentMessages[msg.id] =
