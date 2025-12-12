@@ -139,15 +139,22 @@ class _FloatingDateHeaderState extends State<FloatingDateHeader>
 
   @override
   Widget build(BuildContext context) {
+    // محاسبه ارتفاع نوار وضعیت + اپ‌بار
+    final topPadding = MediaQuery.of(context).padding.top + kToolbarHeight;
+
     return Stack(
       children: [
-        // محتوای اصلی
-        widget.child,
+        // ✅ محتوای اصلی (لیست پیام‌ها)
+        // هیچ پدینگ یا تغییری به این نمی‌دهیم تا پشت اپ‌بار برود
+        Positioned.fill(
+          child: widget.child,
+        ),
 
-        // تاریخ شناور
+        // ✅ تاریخ شناور
+        // فقط این را به پایین هل می‌دهیم
         if (_displayedDate != null)
           Positioned(
-            top: 8,
+            top: topPadding + -50, // ارتفاع اپ‌بار + کمی فاصله
             left: 0,
             right: 0,
             child: Center(
@@ -233,6 +240,7 @@ class FloatingDateController extends ChangeNotifier {
     }
   }
 }
+
 /// Wrapper برای استفاده راحت‌تر
 class FloatingDateScrollWrapper extends StatefulWidget {
   final ScrollController scrollController;
@@ -312,4 +320,3 @@ class _FloatingDateScrollWrapperState extends State<FloatingDateScrollWrapper> {
     );
   }
 }
-

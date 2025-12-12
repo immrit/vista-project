@@ -8,7 +8,7 @@ import '../../features/chat/widgets/telegram_message_status.dart';
 import '../util/const.dart';
 
 /// 🚀 ویجت Swipeable برای آیتم مکالمه (مثل تلگرام)
-/// 
+///
 /// قابلیت‌ها:
 /// - Swipe راست: Pin/Unpin
 /// - Swipe چپ: Archive/Delete
@@ -52,23 +52,23 @@ class SwipeableConversationItem extends StatelessWidget {
               HapticFeedback.lightImpact();
               onPin?.call();
             },
-            backgroundColor: conversation.isPinned 
-                ? Colors.grey.shade600 
-                : Colors.amber,
+            backgroundColor:
+                conversation.isPinned ? Colors.grey.shade600 : Colors.amber,
             foregroundColor: Colors.white,
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  conversation.isPinned 
-                      ? Icons.push_pin_outlined 
+                  conversation.isPinned
+                      ? Icons.push_pin_outlined
                       : Icons.push_pin_rounded,
                   size: 24,
                 ),
                 const SizedBox(height: 4),
                 Text(
                   conversation.isPinned ? 'حذف پین' : 'پین',
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+                  style: const TextStyle(
+                      fontSize: 11, fontWeight: FontWeight.w500),
                 ),
               ],
             ),
@@ -176,7 +176,8 @@ class _ConversationContent extends StatelessWidget {
                     // ✅ نوع پیام برای نمایش آیکون مناسب
                     lastMessageType: conversation.lastMessageType,
                     // ✅ وضعیت تحویل پیام - هماهنگ با صفحه چت
-                    lastMessageDeliveryStatus: conversation.lastMessageDeliveryStatus,
+                    lastMessageDeliveryStatus:
+                        conversation.lastMessageDeliveryStatus,
                   ),
                 ),
               ],
@@ -221,7 +222,7 @@ class _AvatarWidget extends StatefulWidget {
   State<_AvatarWidget> createState() => _AvatarWidgetState();
 }
 
-class _AvatarWidgetState extends State<_AvatarWidget> 
+class _AvatarWidgetState extends State<_AvatarWidget>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -331,7 +332,7 @@ class _AvatarWidgetState extends State<_AvatarWidget>
       children: [
         // لایه زیرین: آواتار پیش‌فرض (همیشه نمایش داده میشه)
         _buildDefaultAvatarImage(theme),
-        
+
         // لایه رویی: تصویر واقعی با fade-in
         AnimatedBuilder(
           animation: _fadeAnimation,
@@ -344,8 +345,10 @@ class _AvatarWidgetState extends State<_AvatarWidget>
           child: CachedNetworkImage(
             imageUrl: widget.avatarUrl!,
             fit: BoxFit.cover,
-            placeholder: (_, __) => const SizedBox.shrink(), // چیزی نشون نده چون default زیرش هست
-            errorWidget: (_, __, ___) => const SizedBox.shrink(), // error هم default رو نشون میده
+            placeholder: (_, __) =>
+                const SizedBox.shrink(), // چیزی نشون نده چون default زیرش هست
+            errorWidget: (_, __, ___) =>
+                const SizedBox.shrink(), // error هم default رو نشون میده
             imageBuilder: (context, imageProvider) {
               // وقتی تصویر لود شد، انیمیشن رو شروع کن
               WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -388,7 +391,9 @@ class _AvatarWidgetState extends State<_AvatarWidget>
       ),
       child: Center(
         child: Text(
-          widget.displayName.isNotEmpty ? widget.displayName[0].toUpperCase() : 'U',
+          widget.displayName.isNotEmpty
+              ? widget.displayName[0].toUpperCase()
+              : 'U',
           style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.bold,
@@ -476,7 +481,6 @@ class _ContentWidget extends StatelessWidget {
               TelegramMessageStatus(
                 status: lastMessageDeliveryStatus,
                 size: 15,
-                showAnimation: false,
               ),
               const SizedBox(width: 4),
             ],
@@ -536,10 +540,10 @@ class _MessageTypeIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     IconData icon;
     Color color;
-    
+
     switch (type.toLowerCase()) {
       case 'voice':
       case 'audio':
@@ -596,7 +600,7 @@ class _MessageTypeIcon extends StatelessWidget {
       default:
         return const SizedBox.shrink();
     }
-    
+
     return Icon(
       icon,
       size: 16,
@@ -604,7 +608,6 @@ class _MessageTypeIcon extends StatelessWidget {
     );
   }
 }
-
 
 /// ✅ Badge بهبود یافته با طراحی مدرن
 class _UnreadBadge extends StatelessWidget {
@@ -669,4 +672,3 @@ class _UnreadBadge extends StatelessWidget {
     );
   }
 }
-

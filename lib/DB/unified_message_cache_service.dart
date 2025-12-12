@@ -99,6 +99,85 @@ class UnifiedMessageCacheService {
     // Advanced cache handles message deletion
   }
 
+  /// حذف فیزیکی پیام از کش (برای حذف دوطرفه)
+  /// نیاز به conversationId دارد که باید از MessageDeletionService ارسال شود
+  Future<void> deleteMessage(String messageId, {String? conversationId}) async {
+    try {
+      // اگر conversationId داده نشده باشد، باید آن را پیدا کنیم
+      if (conversationId == null) {
+        // جستجو در تمام conversation های کش شده
+        // این یک روش موقت است - بهتر است conversationId همیشه ارسال شود
+        final allMessages = await _findMessageInAllConversations(messageId);
+        if (allMessages != null) {
+          conversationId = allMessages.conversationId;
+        }
+      }
+      
+      if (conversationId != null) {
+        await _advancedCache.deleteMessageFromCache(conversationId, messageId);
+        logInfo('[UnifiedMessageCache] Message deleted: $messageId');
+      } else {
+        logInfo('[UnifiedMessageCache] Warning: Could not find conversationId for message: $messageId');
+      }
+    } catch (e) {
+      logInfo('[UnifiedMessageCache] Error deleting message: $e');
+    }
+  }
+
+  /// پیدا کردن پیام در تمام conversation ها
+  Future<MessageModel?> _findMessageInAllConversations(String messageId) async {
+    // این یک روش موقت است - برای بهینه‌سازی می‌توان از index استفاده کرد
+    // برای اکنون، فقط در conversation های فعال جستجو می‌کنیم
+    // در واقعیت، بهتر است conversationId را از MessageDeletionService ارسال کرد
+    return null; // باید از caller ارسال شود
+  }
+
+  /// نشانه‌گذاری پیام به عنوان حذف شده برای کاربر فعلی (برای حذف یک‌طرفه)
+  Future<void> markMessageAsDeletedForUser(String messageId, String userId, {String? conversationId}) async {
+    try {
+      MessageModel? message;
+      
+      // اگر conversationId داده شده باشد، مستقیم جستجو می‌کنیم
+      if (conversationId != null) {
+        message = await getMessage(conversationId, messageId, userId);
+      } else {
+        // جستجو در تمام conversation ها (موقت)
+        message = await _findMessageInAllConversations(messageId);
+      }
+      
+      if (message != null) {
+        // به‌روزرسانی پیام با اضافه کردن userId به لیست deletedForUserIds
+        final updatedDeletedForUserIds = List<String>.from(message.deletedForUserIds);
+        if (!updatedDeletedForUserIds.contains(userId)) {
+          updatedDeletedForUserIds.add(userId);
+        }
+        
+        final updatedMessage = message.copyWith(
+          deletedForUserIds: updatedDeletedForUserIds,
+        );
+        
+        // به‌روزرسانی در کش
+        await _advancedCache.cacheMessage(updatedMessage);
+        logInfo('[UnifiedMessageCache] Message marked as deleted for user: $messageId');
+      } else {
+        logInfo('[UnifiedMessageCache] Warning: Could not find message: $messageId');
+      }
+    } catch (e) {
+      logInfo('[UnifiedMessageCache] Error marking message as deleted: $e');
+    }
+  }
+
+  /// به‌روزرسانی یا اضافه کردن پیام در کش
+  Future<void> upsertMessage(MessageModel message) async {
+    await _advancedCache.cacheMessage(message);
+  }
+
+  /// حذف تمام پیام‌های یک چت از کش
+  Future<void> clearAllMessagesForChat(String chatId) async {
+    await _advancedCache.clearConversationMessages(chatId);
+    logInfo('[UnifiedMessageCache] All messages cleared for chat: $chatId');
+  }
+
   /// Get unread message count
   Future<int> countUnreadMessages(String conversationId) async {
     return 0; // Placeholder

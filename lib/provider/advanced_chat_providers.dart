@@ -173,7 +173,12 @@ class UnifiedMessagesNotifier extends StateNotifier<UnifiedMessagesState> {
         userId,
       );
 
-      final filteredMessages = _filterDuplicateMessages(cachedMessages);
+      // فیلتر کردن پیام‌های حذف شده (دوطرفه یا یکطرفه برای کاربر فعلی)
+      final nonDeletedMessages = cachedMessages
+          .where((m) => !m.isDeletedFor(userId))
+          .toList();
+
+      final filteredMessages = _filterDuplicateMessages(nonDeletedMessages);
 
       state = state.copyWith(
         messages: filteredMessages,
@@ -314,10 +319,19 @@ class UnifiedMessagesNotifier extends StateNotifier<UnifiedMessagesState> {
   void addMessage(MessageModel message) {
     if (_locallyDeletedMessageIds.contains(message.id)) return;
 
+    final userId = supabase.auth.currentUser?.id;
+    // فیلتر کردن پیام‌های حذف شده
+    if (userId != null && message.isDeletedFor(userId)) return;
+
     final updatedMessages = [...state.messages, message];
     final filteredMessages = _filterDuplicateMessages(updatedMessages);
+    
+    // فیلتر نهایی برای اطمینان از عدم نمایش پیام‌های حذف شده
+    final finalFiltered = userId != null
+        ? filteredMessages.where((m) => !m.isDeletedFor(userId)).toList()
+        : filteredMessages;
 
-    state = state.copyWith(messages: filteredMessages);
+    state = state.copyWith(messages: finalFiltered);
   }
 
   /// Update message
@@ -362,11 +376,18 @@ final unifiedMessagesProvider = StateNotifierProvider.family
   },
 );
 
-/// Helper provider for easy access to messages
+/// Helper provider for easy access to messages (with deletion filtering)
 final messagesListProvider =
     Provider.family<List<MessageModel>, String>((ref, conversationId) {
   final messagesState = ref.watch(unifiedMessagesProvider(conversationId));
-  return messagesState.messages;
+  final userId = supabase.auth.currentUser?.id;
+  
+  if (userId == null) return messagesState.messages;
+  
+  // فیلتر کردن پیام‌های حذف شده
+  return messagesState.messages
+      .where((m) => !m.isDeletedFor(userId))
+      .toList();
 });
 
 /// Helper provider for loading state

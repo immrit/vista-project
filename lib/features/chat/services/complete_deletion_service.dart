@@ -13,6 +13,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../main.dart';
 import '../../../security/logging_utility.dart';
 import 'message_deletion_service.dart';
+import '../repositories/chat_repository.dart';
 
 /// رکورد حذف برای undo
 class DeletionRecord {
@@ -34,15 +35,23 @@ class DeletionRecord {
 /// سرویس حذف کامل با Undo
 class CompleteDeletionService {
   final SupabaseClient _supabase = supabase;
-  final MessageDeletionService _deletionService = MessageDeletionService();
-  
+  final MessageDeletionService _deletionService;
+
   // ذخیره backup برای undo
   final Map<String, DeletionRecord> _deletionRecords = {};
-  
+
   // تایمر برای پاک کردن backup های قدیمی
   Timer? _cleanupTimer;
 
-  CompleteDeletionService() {
+  /// سازنده - نیاز به MessageDeletionService دارد
+  CompleteDeletionService(MessageDeletionService deletionService)
+      : _deletionService = deletionService {
+    _startCleanupTimer();
+  }
+
+  /// سازنده جایگزین که ChatRepository را می‌گیرد
+  CompleteDeletionService.fromRepository(ChatRepository repository)
+      : _deletionService = MessageDeletionService(repository) {
     _startCleanupTimer();
   }
 
@@ -135,4 +144,3 @@ class CompleteDeletionService {
     _deletionRecords.clear();
   }
 }
-

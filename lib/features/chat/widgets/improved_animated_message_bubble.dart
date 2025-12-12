@@ -463,7 +463,7 @@ class _ImprovedAnimatedMessageBubbleState
                 ),
               ),
               if (widget.isMe) ...[
-                const SizedBox(width: 4),
+                const SizedBox(width: 3), // فاصله کمتر برای ظرافت
                 _buildStatusIcon(theme),
               ],
             ],
@@ -474,12 +474,12 @@ class _ImprovedAnimatedMessageBubbleState
   }
 
   Widget _buildStatusIcon(ChatTheme theme) {
-    // ✅ استفاده از ویجت تیک حرفه‌ای تلگرام
+    // ✅ استفاده از ویجت تیک حرفه‌ای تلگرام - ظریف و کوچک
     final deliveryStatus = _convertToDeliveryStatus(widget.status);
     
     return TelegramMessageStatus(
       status: deliveryStatus,
-      size: 16,
+      size: 12, // کوچک‌تر برای ظرافت بیشتر
       customColor: deliveryStatus == MessageDeliveryStatus.read
           ? MessageStatusColors.read
           : theme.myBubbleTextColor.withOpacity(0.7),

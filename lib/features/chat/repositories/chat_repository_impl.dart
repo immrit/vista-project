@@ -294,6 +294,11 @@ class ChatRepositoryImpl implements ChatRepository {
   // SYNC
   Future<void> _syncMessages(String conversationId) async {
     try {
+      final userId = _currentUserId;
+      if (userId == null) return;
+
+      // 1. دریافت آخرین 50 پیام از سرور
+      // تلگرام هم همیشه یک "Snapshot" از آخرین وضعیت می‌گیرد.
       final response = await _supabase
           .from('messages')
           .select()
@@ -301,14 +306,28 @@ class ChatRepositoryImpl implements ChatRepository {
           .order('created_at', ascending: false)
           .limit(50);
 
-      final messages = (response as List)
-          .map((json) =>
-              MessageModel.fromJson(json, currentUserId: _currentUserId ?? ''))
+      // 2. اگر جدول hidden_messages دارید، باید چک کنید که این پیام‌ها برای یوزر فعلی مخفی نشده باشند.
+      // روش کلاینت-ساید (سریع برای اجرا):
+      // ابتدا شناسه پیام‌های مخفی شده خودتان را بگیرید
+      final hiddenResponse = await _supabase
+          .from('hidden_messages')
+          .select('message_id')
+          .eq('user_id', userId);
+      
+      final hiddenIds = (hiddenResponse as List).map((e) => e['message_id'] as String).toSet();
+
+      final serverMessages = (response as List)
+          .where((json) => !hiddenIds.contains(json['id'] as String)) // فیلتر کردن مخفی‌ها
+          .map((json) => MessageModel.fromJson(json, currentUserId: userId))
           .toList();
 
-      await _localDataSource.saveMessages(messages);
+      // 3. استفاده از Reconciliation به جای saveMessages خالی
+      // این خط باعث می‌شود پیام‌هایی که در سرور نیستند، از لوکال هم پاک شوند.
+      await _localDataSource.reconcileMessages(conversationId, serverMessages);
+      
     } catch (e) {
       print('Sync Error: $e');
+      // در صورت خطای شبکه، دیتای لوکال دست نخورده باقی می‌ماند (Offline First)
     }
   }
 
@@ -431,12 +450,51 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<ChatResult<void>> clearConversation(String conversationId,
       {bool forEveryone = false}) async {
     try {
-      await _supabase
-          .from('messages')
-          .delete()
-          .eq('conversation_id', conversationId);
+      final userId = _currentUserId;
+      if (userId == null) return ChatResult.failure('کاربر وارد نشده است');
+
+      // ✅ 1. ابتدا پاکسازی فوری لوکال (Sembast) - UI فوراً خالی می‌شود
+      await _localDataSource.clearMessages(conversationId);
+
+      // ✅ 2. عملیات سمت سرور
+      if (forEveryone) {
+        // پاکسازی برای همه
+        try {
+          // استفاده از RPC برای امنیت و سرعت بالاتر (اگر تعریف کرده‌اید)
+          await _supabase.rpc(
+            'clear_chat_for_everyone',
+            params: {'chat_id_in': conversationId},
+          ).onError((error, stackTrace) {
+            // اگر RPC وجود نداشت، fallback به حذف مستقیم
+            print('⚠️ RPC not available, using direct delete: $error');
+          });
+          
+          // Fallback: حذف مستقیم از جدول messages
+          try {
+            await _supabase
+                .from('messages')
+                .delete()
+                .eq('conversation_id', conversationId);
+            print('✅ Chat cleared for everyone: $conversationId');
+          } catch (e) {
+            // اگر RPC موفق بود، این خطا طبیعی است
+            print('⚠️ Direct delete attempted (may already be cleared): $e');
+          }
+        } catch (e) {
+          print('⚠️ Server clear error (non-fatal), but local cleanup completed: $e');
+        }
+      } else {
+        // پاکسازی یک‌طرفه - فقط لوکال پاک شده است
+        // در آینده می‌توانید یک flag در conversation_participants مثل cleared_history_at اضافه کنید
+        print('✅ Chat cleared locally for user: $userId');
+      }
+
       return ChatResult.success(null);
     } catch (e) {
+      // حتی در صورت خطا، مطمئن شویم لوکال پاک شده است
+      try {
+        await _localDataSource.clearMessages(conversationId);
+      } catch (_) {}
       return ChatResult.failure(e.toString());
     }
   }
@@ -450,49 +508,97 @@ class ChatRepositoryImpl implements ChatRepository {
       final userId = _currentUserId;
       if (userId == null) return ChatResult.failure('کاربر وارد نشده است');
 
-      // ابتدا پیام را بگیر تا ببین آیا فایل ضمیمه دارد یا نه
-      final messageData = await _supabase
-          .from('messages')
-          .select('id, attachment_url, attachment_type')
-          .eq('id', messageId)
-          .single();
-
-      final attachmentUrl = messageData['attachment_url'] as String?;
-      final attachmentType = messageData['attachment_type'] as String?;
-
-      if (forEveryone) {
-        // ✅ حذف دوطرفه - پیام و فایل ضمیمه‌اش را حذف کن
-
-        if (attachmentUrl != null && attachmentUrl.isNotEmpty) {
-          // ✅ حذف فایل از Cloud Storage (Arvan/Supabase)
-          // از StorageService استفاده می‌کنیم برای حذف متمرکز
-          await _storageService.deleteFile(attachmentUrl, attachmentType);
-          print('✅ Attachment deleted from cloud for message: $messageId');
-        }
-
-        // حذف پیام از دیتابیس
-        await _supabase.from('messages').delete().eq('id', messageId);
-        print('✅ Message deleted from database for everyone: $messageId');
-      } else {
-        // حذف برای خودم - پیام را فقط برای این کاربر مخفی کن
-        // فایل را پاک نمی‌کنیم چون شاید طرف مقابل بخواهد ببیند
-        await _supabase.from('hidden_messages').insert({
-          'message_id': messageId,
-          'user_id': userId,
-          'hidden_at': DateTime.now().toUtc().toIso8601String(),
-        }).onError((error, stackTrace) {
-          // اگر رکورد قبلاً وجود دارد، خطای duplicate key رخ می‌دهد
-          // این طبیعی است و مشکلی ندارد
-          print('Note: Message may already be hidden or error: $error');
-        });
-        print('✅ Message hidden for user: $userId, messageId: $messageId');
+      // ✅ 0. دریافت conversationId قبل از حذف (برای UnifiedCache)
+      // اول از لوکال می‌گیریم چون سریع‌تر است و حتی اگر سرور خطا بدهد کار می‌کند
+      String? conversationId;
+      try {
+        final localMessage = await _localDataSource.getMessage(messageId, userId);
+        conversationId = localMessage?.conversationId;
+      } catch (_) {}
+      
+      // اگر از لوکال پیدا نشد، از سرور بگیر
+      if (conversationId == null) {
+        try {
+          final messageData = await _supabase
+              .from('messages')
+              .select('conversation_id')
+              .eq('id', messageId)
+              .maybeSingle();
+          conversationId = messageData?['conversation_id'] as String?;
+        } catch (_) {}
       }
 
-      // حذف از محلی (Sembast)
+      // ✅ 1. ابتدا حذف از لوکال (Sembast) - این تضمین می‌کند UI فوراً به‌روزرسانی می‌شود
+      // و حتی اگر سرور خطا بدهد، کاربر پیام را نمی‌بیند
       await _localDataSource.deleteMessage(messageId);
+
+      // ✅ 1.5. حذف از UnifiedCache (برای به‌روزرسانی فوری UI)
+      if (conversationId != null) {
+        await UnifiedConversationCacheService().deleteMessage(messageId, conversationId: conversationId);
+      }
+
+      // ✅ 2. حالا عملیات سمت سرور
+      if (forEveryone) {
+        // حذف دوطرفه - ابتدا اطلاعات فایل را بگیر (اگر وجود داشته باشد)
+        try {
+          final messageData = await _supabase
+              .from('messages')
+              .select('id, attachment_url, attachment_type')
+              .eq('id', messageId)
+              .maybeSingle(); // ✅ استفاده از maybeSingle برای جلوگیری از خطا
+
+          if (messageData != null) {
+            final attachmentUrl = messageData['attachment_url'] as String?;
+            final attachmentType = messageData['attachment_type'] as String?;
+
+            // حذف فایل ضمیمه از Cloud Storage
+            if (attachmentUrl != null && attachmentUrl.isNotEmpty) {
+              try {
+                await _storageService.deleteFile(attachmentUrl, attachmentType);
+                print('✅ Attachment deleted from cloud for message: $messageId');
+              } catch (e) {
+                print('⚠️ Attachment deletion error (non-fatal): $e');
+              }
+            }
+
+            // حذف پیام از دیتابیس سرور
+            await _supabase.from('messages').delete().eq('id', messageId);
+            print('✅ Message deleted from database for everyone: $messageId');
+          } else {
+            // پیام قبلاً از سرور حذف شده بود (مثلاً توسط کاربر دیگر یا دستگاه دیگر)
+            print('⚠️ Message $messageId already deleted from server, local cleanup completed.');
+          }
+        } catch (e) {
+          // اگر خطای سرور رخ داد، لوکال قبلاً پاک شده است (که مهم‌تر است)
+          print('⚠️ Server delete error (for everyone), but local cleanup completed: $e');
+          // در تلگرام، حذف لوکال مهم‌تر از حذف سرور است
+          // اگر نت نباشد، حذف می‌ماند و بعداً سینک می‌شود
+        }
+      } else {
+        // حذف یک‌طرفه - پیام را فقط برای این کاربر مخفی کن
+        try {
+          await _supabase.from('hidden_messages').insert({
+            'message_id': messageId,
+            'user_id': userId,
+            'hidden_at': DateTime.now().toUtc().toIso8601String(),
+          }).onError((error, stackTrace) {
+            // اگر رکورد قبلاً وجود دارد (duplicate key)، مشکلی نیست
+            if (!error.toString().toLowerCase().contains('duplicate')) {
+              print('⚠️ Hide message error: $error');
+            }
+          });
+          print('✅ Message hidden for user: $userId, messageId: $messageId');
+        } catch (e) {
+          print('⚠️ Server hide error (non-fatal): $e');
+        }
+      }
 
       return ChatResult.success(null);
     } catch (e) {
+      // حتی در صورت خطای کلی، مطمئن شویم لوکال پاک شده است
+      try {
+        await _localDataSource.deleteMessage(messageId);
+      } catch (_) {}
       return ChatResult.failure(e.toString());
     }
   }

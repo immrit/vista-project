@@ -14,11 +14,11 @@ import '../../../services/telegram_read_receipt_service.dart';
 
 /// رنگ‌های تیک
 class MessageStatusColors {
-  static const Color pending = Color(0xFF9E9E9E);      // خاکستری روشن
-  static const Color sent = Color(0xFF9E9E9E);         // خاکستری
-  static const Color delivered = Color(0xFF9E9E9E);    // خاکستری
-  static const Color read = Color(0xFF4FC3F7);         // آبی روشن (مثل تلگرام)
-  static const Color failed = Color(0xFFE57373);       // قرمز
+  static const Color pending = Color(0xFF9E9E9E); // خاکستری روشن
+  static const Color sent = Color(0xFF9E9E9E); // خاکستری
+  static const Color delivered = Color(0xFF9E9E9E); // خاکستری
+  static const Color read = Color(0xFF4FC3F7); // آبی روشن (مثل تلگرام)
+  static const Color failed = Color(0xFFE57373); // قرمز
 }
 
 /// ویجت تیک پیام با انیمیشن
@@ -26,59 +26,20 @@ class TelegramMessageStatus extends StatefulWidget {
   final MessageDeliveryStatus status;
   final double size;
   final Color? customColor;
-  final bool showAnimation;
 
   const TelegramMessageStatus({
     super.key,
     required this.status,
     this.size = 16,
     this.customColor,
-    this.showAnimation = true,
   });
 
   @override
   State<TelegramMessageStatus> createState() => _TelegramMessageStatusState();
 }
 
-class _TelegramMessageStatusState extends State<TelegramMessageStatus>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _scaleAnimation;
-  late Animation<double> _opacityAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-
-    _scaleAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.elasticOut),
-    );
-
-    _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-    );
-
-    _controller.forward();
-  }
-
-  @override
-  void didUpdateWidget(TelegramMessageStatus oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.status != widget.status && widget.showAnimation) {
-      _controller.reset();
-      _controller.forward();
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+class _TelegramMessageStatusState extends State<TelegramMessageStatus> {
+  // ✅ دیگر نیازی به AnimationController نیست - از AnimatedSwitcher استفاده می‌کنیم
 
   Color _getStatusColor() {
     if (widget.customColor != null) return widget.customColor!;
@@ -99,17 +60,21 @@ class _TelegramMessageStatusState extends State<TelegramMessageStatus>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return Transform.scale(
-          scale: widget.showAnimation ? _scaleAnimation.value : 1.0,
-          child: Opacity(
-            opacity: widget.showAnimation ? _opacityAnimation.value : 1.0,
-            child: _buildStatusIcon(),
-          ),
-        );
-      },
+    // ✅ Container با اندازه ثابت برای جلوگیری از پرش
+    return SizedBox(
+      width: widget.size * 1.25, // فضای کافی برای double check
+      height: widget.size,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 200),
+        transitionBuilder: (child, animation) {
+          // Fade transition بدون تغییر اندازه
+          return FadeTransition(
+            opacity: animation,
+            child: child,
+          );
+        },
+        child: _buildStatusIcon(),
+      ),
     );
   }
 
@@ -117,64 +82,91 @@ class _TelegramMessageStatusState extends State<TelegramMessageStatus>
     final color = _getStatusColor();
     final size = widget.size;
 
+    // ✅ استفاده از key برای AnimatedSwitcher
+    Widget icon;
     switch (widget.status) {
       case MessageDeliveryStatus.pending:
-        return _buildPendingIcon(color, size);
+        icon = _buildPendingIcon(color, size);
+        break;
       case MessageDeliveryStatus.sent:
-        return _buildSingleCheck(color, size);
+        icon = _buildSingleCheck(color, size);
+        break;
       case MessageDeliveryStatus.delivered:
-        return _buildDoubleCheck(color, size);
+        icon = _buildDoubleCheck(color, size);
+        break;
       case MessageDeliveryStatus.read:
-        return _buildDoubleCheck(color, size);
+        icon = _buildDoubleCheck(color, size);
+        break;
       case MessageDeliveryStatus.failed:
-        return _buildFailedIcon(color, size);
+        icon = _buildFailedIcon(color, size);
+        break;
     }
+
+    // ✅ Wrap در Center برای تراز وسط
+    return Center(
+      key: ValueKey(widget.status), // Key برای AnimatedSwitcher
+      child: icon,
+    );
   }
 
   /// آیکون در انتظار (ساعت)
   Widget _buildPendingIcon(Color color, double size) {
+    // ✅ اندازه ثابت برای جلوگیری از پرش
     return SizedBox(
-      width: size,
+      width: widget.size * 1.25, // همان اندازه container
       height: size,
-      child: Icon(
-        Icons.access_time_rounded,
-        size: size * 0.9,
-        color: color,
+      child: Center(
+        child: Icon(
+          Icons.access_time_rounded,
+          size: size * 0.85, // کمی کوچک‌تر برای ظرافت
+          color: color,
+        ),
       ),
     );
   }
 
   /// یک تیک (ارسال شده)
   Widget _buildSingleCheck(Color color, double size) {
+    // ✅ اندازه ثابت برای جلوگیری از پرش
     return SizedBox(
-      width: size,
+      width: widget.size * 1.25, // همان اندازه container
       height: size,
-      child: CustomPaint(
-        painter: _SingleCheckPainter(color: color),
+      child: Center(
+        child: CustomPaint(
+          size: Size(size, size),
+          painter: _SingleCheckPainter(color: color, size: size),
+        ),
       ),
     );
   }
 
   /// دو تیک (تحویل/خوانده شده)
   Widget _buildDoubleCheck(Color color, double size) {
+    // ✅ اندازه ثابت برای جلوگیری از پرش
     return SizedBox(
-      width: size * 1.3,
+      width: widget.size * 1.25, // همان اندازه container
       height: size,
-      child: CustomPaint(
-        painter: _DoubleCheckPainter(color: color),
+      child: Center(
+        child: CustomPaint(
+          size: Size(size * 1.25, size),
+          painter: _DoubleCheckPainter(color: color, size: size),
+        ),
       ),
     );
   }
 
   /// آیکون خطا
   Widget _buildFailedIcon(Color color, double size) {
+    // ✅ اندازه ثابت برای جلوگیری از پرش
     return SizedBox(
-      width: size,
+      width: widget.size * 1.25, // همان اندازه container
       height: size,
-      child: Icon(
-        Icons.error_outline_rounded,
-        size: size * 0.9,
-        color: color,
+      child: Center(
+        child: Icon(
+          Icons.error_outline_rounded,
+          size: size * 0.85, // کمی کوچک‌تر برای ظرافت
+          color: color,
+        ),
       ),
     );
   }
@@ -183,67 +175,107 @@ class _TelegramMessageStatusState extends State<TelegramMessageStatus>
 /// نقاش یک تیک
 class _SingleCheckPainter extends CustomPainter {
   final Color color;
+  final double size;
 
-  _SingleCheckPainter({required this.color});
+  _SingleCheckPainter({required this.color, required this.size});
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paint(Canvas canvas, Size canvasSize) {
+    // استفاده از strokeWidth ثابت و ظریف‌تر (مثل تلگرام)
+    final strokeWidth = size * 0.08; // نازک‌تر برای ظرافت بیشتر
+
     final paint = Paint()
       ..color = color
-      ..strokeWidth = size.width * 0.12
+      ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
+      ..style = PaintingStyle.stroke
+      ..isAntiAlias = true; // برای کیفیت بهتر
 
     final path = Path();
-    
-    // تیک از چپ به راست
-    path.moveTo(size.width * 0.2, size.height * 0.5);
-    path.lineTo(size.width * 0.4, size.height * 0.7);
-    path.lineTo(size.width * 0.8, size.height * 0.3);
+
+    // تیک از چپ به راست - با منحنی ملایم‌تر
+    path.moveTo(canvasSize.width * 0.15, canvasSize.height * 0.5);
+    path.quadraticBezierTo(
+      canvasSize.width * 0.3,
+      canvasSize.height * 0.65,
+      canvasSize.width * 0.45,
+      canvasSize.height * 0.75,
+    );
+    path.quadraticBezierTo(
+      canvasSize.width * 0.6,
+      canvasSize.height * 0.5,
+      canvasSize.width * 0.85,
+      canvasSize.height * 0.25,
+    );
 
     canvas.drawPath(path, paint);
   }
 
   @override
   bool shouldRepaint(covariant _SingleCheckPainter oldDelegate) {
-    return oldDelegate.color != color;
+    return oldDelegate.color != color || oldDelegate.size != size;
   }
 }
 
 /// نقاش دو تیک
 class _DoubleCheckPainter extends CustomPainter {
   final Color color;
+  final double size;
 
-  _DoubleCheckPainter({required this.color});
+  _DoubleCheckPainter({required this.color, required this.size});
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paint(Canvas canvas, Size canvasSize) {
+    // استفاده از strokeWidth ثابت و ظریف‌تر (مثل تلگرام)
+    final strokeWidth = size * 0.08; // نازک‌تر برای ظرافت بیشتر
+
     final paint = Paint()
       ..color = color
-      ..strokeWidth = size.height * 0.12
+      ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
+      ..style = PaintingStyle.stroke
+      ..isAntiAlias = true; // برای کیفیت بهتر
 
-    // تیک اول (عقب‌تر)
+    // تیک اول (عقب‌تر) - با منحنی ملایم
     final path1 = Path();
-    path1.moveTo(size.width * 0.05, size.height * 0.5);
-    path1.lineTo(size.width * 0.25, size.height * 0.7);
-    path1.lineTo(size.width * 0.55, size.height * 0.3);
+    path1.moveTo(canvasSize.width * 0.02, canvasSize.height * 0.5);
+    path1.quadraticBezierTo(
+      canvasSize.width * 0.15,
+      canvasSize.height * 0.65,
+      canvasSize.width * 0.28,
+      canvasSize.height * 0.75,
+    );
+    path1.quadraticBezierTo(
+      canvasSize.width * 0.4,
+      canvasSize.height * 0.5,
+      canvasSize.width * 0.52,
+      canvasSize.height * 0.3,
+    );
     canvas.drawPath(path1, paint);
 
-    // تیک دوم (جلوتر)
+    // تیک دوم (جلوتر) - با منحنی ملایم
     final path2 = Path();
-    path2.moveTo(size.width * 0.35, size.height * 0.5);
-    path2.lineTo(size.width * 0.55, size.height * 0.7);
-    path2.lineTo(size.width * 0.95, size.height * 0.3);
+    path2.moveTo(canvasSize.width * 0.28, canvasSize.height * 0.5);
+    path2.quadraticBezierTo(
+      canvasSize.width * 0.4,
+      canvasSize.height * 0.65,
+      canvasSize.width * 0.52,
+      canvasSize.height * 0.75,
+    );
+    path2.quadraticBezierTo(
+      canvasSize.width * 0.65,
+      canvasSize.height * 0.5,
+      canvasSize.width * 0.98,
+      canvasSize.height * 0.25,
+    );
     canvas.drawPath(path2, paint);
   }
 
   @override
   bool shouldRepaint(covariant _DoubleCheckPainter oldDelegate) {
-    return oldDelegate.color != color;
+    return oldDelegate.color != color || oldDelegate.size != size;
   }
 }
 
@@ -274,7 +306,7 @@ class MessageTimeAndStatus extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = textColor ?? 
+    final color = textColor ??
         (isMe ? Colors.white.withOpacity(0.7) : Colors.black.withOpacity(0.5));
 
     return Row(
@@ -306,9 +338,9 @@ class MessageTimeAndStatus extends StatelessWidget {
           const SizedBox(width: 3),
           TelegramMessageStatus(
             status: status,
-            size: fontSize + 3,
-            customColor: status == MessageDeliveryStatus.read 
-                ? MessageStatusColors.read 
+            size: fontSize + 1, // کوچک‌تر و ظریف‌تر
+            customColor: status == MessageDeliveryStatus.read
+                ? MessageStatusColors.read
                 : color,
           ),
         ],
@@ -330,7 +362,7 @@ class ReadReceiptInfo extends StatelessWidget {
 
   String _formatDateTime(DateTime? dateTime) {
     if (dateTime == null) return '-';
-    
+
     final now = DateTime.now();
     final diff = now.difference(dateTime);
 
@@ -371,8 +403,8 @@ class ReadReceiptInfo extends StatelessWidget {
           icon: Icons.done_all,
           label: 'تحویل داده شده',
           value: _formatDateTime(statusInfo.deliveredAt),
-          color: statusInfo.deliveredAt != null 
-              ? MessageStatusColors.delivered 
+          color: statusInfo.deliveredAt != null
+              ? MessageStatusColors.delivered
               : theme.disabledColor,
         ),
         const SizedBox(height: 8),
@@ -382,8 +414,8 @@ class ReadReceiptInfo extends StatelessWidget {
           icon: Icons.done_all,
           label: 'خوانده شده',
           value: _formatDateTime(statusInfo.seenAt),
-          color: statusInfo.seenAt != null 
-              ? MessageStatusColors.read 
+          color: statusInfo.seenAt != null
+              ? MessageStatusColors.read
               : theme.disabledColor,
         ),
       ],
@@ -422,4 +454,3 @@ class ReadReceiptInfo extends StatelessWidget {
     );
   }
 }
-

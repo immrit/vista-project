@@ -112,6 +112,10 @@ class MessageModel {
   final String? messageType; // 'text', 'image', 'video', 'voice', 'sharedPost'
   final SharedPostData? sharedPostData; // داده‌های پست اشتراک‌گذاری شده
 
+  // فیلدهای حذف پیام (مشابه تلگرام)
+  final bool deletedGlobally; // حذف د‌و‌طرفه: اگر true باشد، پیام باید برای همه حذف شود
+  final List<String> deletedForUserIds; // حذف یک‌طرفه: شامل user_id کاربرانی که پیام را فقط برای خود حذف کرده‌اند
+
   // تبدیل reactions به UI model
   List<MessageReactionUI> getReactionsList(String currentUserId) {
     return reactions.entries.map((entry) {
@@ -231,10 +235,12 @@ class MessageModel {
     this.forwardedFromSenderName,
     this.originalMessageId,
     this.typingUsers,
-    this.reactions = const {},
-    this.messageType,
-    this.sharedPostData,
-  });
+      this.reactions = const {},
+      this.messageType,
+      this.sharedPostData,
+      this.deletedGlobally = false,
+      this.deletedForUserIds = const [],
+    });
 
   factory MessageModel.fromJson(Map<String, dynamic> json,
       {required String currentUserId}) {
@@ -279,6 +285,11 @@ class MessageModel {
       reactions: _parseReactions(json['reactions']),
       messageType: json['message_type'] as String?,
       sharedPostData: _parseSharedPostData(json['shared_post_data']),
+      deletedGlobally: json['deleted_globally'] as bool? ?? false,
+      deletedForUserIds: (json['deleted_for_user_ids'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
     );
   }
 
@@ -326,6 +337,8 @@ class MessageModel {
       retryCount: retryCount,
       messageType: messageType,
       sharedPostData: sharedPostData,
+      deletedGlobally: false,
+      deletedForUserIds: const [],
     );
   }
 
@@ -363,6 +376,8 @@ class MessageModel {
     String? originalSenderId,
     String? forwardedFromSenderName,
     String? originalMessageId,
+    bool? deletedGlobally,
+    List<String>? deletedForUserIds,
   }) {
     return MessageModel(
       id: id ?? this.id,
@@ -399,7 +414,14 @@ class MessageModel {
       forwardedFromSenderName:
           forwardedFromSenderName ?? this.forwardedFromSenderName,
       originalMessageId: originalMessageId ?? this.originalMessageId,
+      deletedGlobally: deletedGlobally ?? this.deletedGlobally,
+      deletedForUserIds: deletedForUserIds ?? this.deletedForUserIds,
     );
+  }
+
+  /// بررسی اینکه آیا پیام برای کاربر فعلی حذف شده است
+  bool isDeletedFor(String currentUserId) {
+    return deletedGlobally || deletedForUserIds.contains(currentUserId);
   }
 
   Map<String, dynamic> toJson() {
@@ -437,6 +459,8 @@ class MessageModel {
       'original_sender_id': originalSenderId,
       'forwarded_from_sender_name': forwardedFromSenderName,
       'original_message_id': originalMessageId,
+      'deleted_globally': deletedGlobally,
+      'deleted_for_user_ids': deletedForUserIds,
     };
   }
 }

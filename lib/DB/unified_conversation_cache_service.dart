@@ -112,6 +112,20 @@ class UnifiedConversationCacheService {
     }
   }
 
+  /// Delete a message from cache
+  Future<void> deleteMessage(String messageId, {String? conversationId}) async {
+    try {
+      if (conversationId != null) {
+        await _advancedCache.deleteMessageFromCache(conversationId, messageId);
+        logInfo('[UnifiedConversationCache] Message deleted: $messageId');
+      } else {
+        logInfo('[UnifiedConversationCache] Warning: conversationId not provided for message: $messageId');
+      }
+    } catch (e) {
+      logInfo('[UnifiedConversationCache] Error deleting message: $e');
+    }
+  }
+
   /// Get unified service instance for initialization
   UnifiedConversationCacheService get unifiedService => this;
 }

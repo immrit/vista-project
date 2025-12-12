@@ -8,7 +8,6 @@
 import 'dart:math';
 import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 
 /// Controller used by parent to trigger the delete animation for a specific
 /// message widget.
@@ -234,12 +233,13 @@ class _MessageDeleteAnimationState extends State<MessageDeleteAnimation>
       clipBehavior: Clip.none,
       children: [
         // Animated child: fade & shrink
-        // SizeTransition کوچک میکنه و فضا رو آزاد میکنه
+        // ✅ SizeTransition کوچک میکنه و فضا رو آزاد میکنه
+        // axisAlignment: -1.0 یعنی از بالا کوچک میشه و فضا آزاد میشه
         FadeTransition(
           opacity: Tween<double>(begin: 1.0, end: 0.0).animate(_fadeAnim),
           child: SizeTransition(
             sizeFactor: Tween<double>(begin: 1.0, end: 0.0).animate(_sizeAnim),
-            axisAlignment: 0.0,
+            axisAlignment: -1.0, // از بالا کوچک میشه - فضا آزاد میشه
             child: widget.child,
           ),
         ),

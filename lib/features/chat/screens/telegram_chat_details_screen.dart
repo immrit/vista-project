@@ -20,6 +20,7 @@ import '../repositories/chat_details_repository.dart';
 import '../widgets/telegram_delete_dialog.dart';
 import '../widgets/telegram_undo_snackbar.dart';
 import '../services/complete_deletion_service.dart';
+import '../services/message_deletion_service.dart';
 import '../../../model/message_model.dart';
 
 /// صفحه جزئیات چت
@@ -38,18 +39,21 @@ class TelegramChatDetailsScreen extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<TelegramChatDetailsScreen> createState() => _TelegramChatDetailsScreenState();
+  ConsumerState<TelegramChatDetailsScreen> createState() =>
+      _TelegramChatDetailsScreenState();
 }
 
-class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsScreen> with SingleTickerProviderStateMixin {
+class _TelegramChatDetailsScreenState
+    extends ConsumerState<TelegramChatDetailsScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final _repository = ChatDetailsRepository();
-  final _deletionService = CompleteDeletionService();
-  
+  late final CompleteDeletionService _deletionService;
+
   ChatStatistics? _statistics;
   ChatSettings? _settings;
   bool _isLoadingStats = true;
-  
+
   // Media tabs
   List<MessageModel> _images = [];
   List<MessageModel> _videos = [];
@@ -59,6 +63,9 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
   @override
   void initState() {
     super.initState();
+    // استفاده از Provider برای دریافت MessageDeletionService
+    final messageDeletionService = ref.read(messageDeletionServiceProvider);
+    _deletionService = CompleteDeletionService(messageDeletionService);
     _tabController = TabController(length: 4, vsync: this);
     _loadData();
   }
@@ -72,7 +79,7 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
 
   Future<void> _loadData() async {
     setState(() => _isLoadingStats = true);
-    
+
     // بارگذاری موازی
     final results = await Future.wait([
       _repository.getChatStatistics(widget.conversationId),
@@ -82,7 +89,7 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
       _repository.getChatDocuments(conversationId: widget.conversationId),
       _repository.getChatLinks(conversationId: widget.conversationId),
     ]);
-    
+
     if (mounted) {
       setState(() {
         _statistics = results[0] as ChatStatistics;
@@ -107,7 +114,7 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
         slivers: [
           // App Bar با Hero Header
           _buildSliverAppBar(theme, isDark),
-          
+
           // محتوا
           SliverToBoxAdapter(
             child: Column(
@@ -247,7 +254,7 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
         ),
       );
     }
-    
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(20),
@@ -503,7 +510,8 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
           _buildSettingTile(
             icon: Icons.push_pin_outlined,
             title: 'پین کردن',
-            subtitle: _settings?.isPinned ?? false ? 'در بالای لیست' : 'غیرفعال',
+            subtitle:
+                _settings?.isPinned ?? false ? 'در بالای لیست' : 'غیرفعال',
             trailing: Switch(
               value: _settings?.isPinned ?? false,
               onChanged: (value) {
@@ -537,7 +545,8 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                Icon(Icons.perm_media_rounded, color: theme.primaryColor, size: 22),
+                Icon(Icons.perm_media_rounded,
+                    color: theme.primaryColor, size: 22),
                 const SizedBox(width: 12),
                 Text(
                   'رسانه، فایل‌ها و لینک‌ها',
@@ -600,7 +609,9 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              type == 'image' ? Icons.image_not_supported_rounded : Icons.videocam_off_rounded,
+              type == 'image'
+                  ? Icons.image_not_supported_rounded
+                  : Icons.videocam_off_rounded,
               size: 48,
               color: Theme.of(context).hintColor.withOpacity(0.5),
             ),
@@ -615,7 +626,7 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
         ),
       );
     }
-    
+
     return GridView.builder(
       padding: const EdgeInsets.all(8),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -640,7 +651,8 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
                 ),
                 errorWidget: (_, __, ___) => Container(
                   color: Theme.of(context).cardColor,
-                  child: Icon(Icons.broken_image_rounded, color: Theme.of(context).hintColor),
+                  child: Icon(Icons.broken_image_rounded,
+                      color: Theme.of(context).hintColor),
                 ),
               ),
               if (type == 'video')
@@ -691,7 +703,7 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
         ),
       );
     }
-    
+
     return ListView.separated(
       padding: const EdgeInsets.all(8),
       itemCount: documents.length > 5 ? 5 : documents.length,
@@ -705,7 +717,8 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
               color: Colors.blue.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(Icons.insert_drive_file_rounded, color: Colors.blue),
+            child:
+                const Icon(Icons.insert_drive_file_rounded, color: Colors.blue),
           ),
           title: Text(
             doc.attachmentFileName ?? 'فایل',
@@ -745,7 +758,7 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
         ),
       );
     }
-    
+
     return ListView.separated(
       padding: const EdgeInsets.all(8),
       itemCount: links.length > 5 ? 5 : links.length,
@@ -754,7 +767,7 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
         final link = links[index];
         final extractedLinks = _repository.extractLinks(link.content);
         if (extractedLinks.isEmpty) return const SizedBox.shrink();
-        
+
         return ListTile(
           leading: Container(
             padding: const EdgeInsets.all(8),
@@ -880,7 +893,7 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
   }) {
     final theme = Theme.of(context);
     final color = textColor ?? theme.textTheme.titleLarge?.color;
-    
+
     return ListTile(
       leading: Icon(icon, color: color, size: 24),
       title: Text(
@@ -907,13 +920,13 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
 
   void _toggleMute(bool mute) async {
     if (_settings == null) return;
-    
+
     final newSettings = _settings!.copyWith(isMuted: mute);
     final success = await _repository.saveChatSettings(
       conversationId: widget.conversationId,
       settings: newSettings,
     );
-    
+
     if (success && mounted) {
       setState(() => _settings = newSettings);
       TelegramUndoSnackbar.show(
@@ -928,13 +941,13 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
 
   void _togglePin(bool pin) async {
     if (_settings == null) return;
-    
+
     final newSettings = _settings!.copyWith(isPinned: pin);
     final success = await _repository.saveChatSettings(
       conversationId: widget.conversationId,
       settings: newSettings,
     );
-    
+
     if (success && mounted) {
       setState(() => _settings = newSettings);
     }
@@ -942,7 +955,7 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
 
   void _toggleArchive() async {
     if (_settings == null) return;
-    
+
     final newSettings = _settings!.copyWith(
       isArchived: !(_settings!.isArchived),
     );
@@ -950,7 +963,7 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
       conversationId: widget.conversationId,
       settings: newSettings,
     );
-    
+
     if (success && mounted) {
       setState(() => _settings = newSettings);
       Navigator.pop(context);
@@ -972,7 +985,7 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
       conversationId: widget.conversationId,
       isForEveryone: forEveryone,
     );
-    
+
     if (mounted) {
       TelegramUndoSnackbar.show(
         context: context,
@@ -991,7 +1004,7 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
   String _formatDate(DateTime date) {
     final now = DateTime.now();
     final difference = now.difference(date);
-    
+
     if (difference.inDays == 0) {
       return 'امروز';
     } else if (difference.inDays == 1) {
@@ -1003,4 +1016,3 @@ class _TelegramChatDetailsScreenState extends ConsumerState<TelegramChatDetailsS
     }
   }
 }
-

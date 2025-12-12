@@ -1537,7 +1537,7 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
           final followStatusResponse = await supabase
               .from('follows')
               .select()
-              .eq('follower_id', currentUserId!)
+              .eq('follower_id', currentUserId)
               .eq('following_id', userId)
               .maybeSingle();
 
@@ -1666,7 +1666,7 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
       final followStatusResponse = await supabase
           .from('follows')
           .select()
-          .eq('follower_id', currentUserId!)
+          .eq('follower_id', currentUserId)
           .eq('following_id', userId)
           .maybeSingle();
 

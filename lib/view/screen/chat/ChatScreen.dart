@@ -8,7 +8,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../../../main.dart';
-import '../../../provider/provider.dart';
 import '../../../provider/settings_providers.dart';
 import '../../../model/message_model.dart';
 import '../../../provider/chat_screen_provider.dart';

@@ -1246,9 +1246,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   ) {
     return messagesAsync.when(
       data: (allMessages) {
-        // فیلتر پیام‌های مخفی شده (حذف شده برای من)
+        // ✅ فیلتر پیام‌های مخفی شده (حذف شده برای من)
+        // اما پیام‌های در حال حذف را نگه دار (برای انیمیشن پودر شدن)
         final messages = allMessages
-            .where((m) => !_hiddenMessageIds.contains(m.id))
+            .where((m) =>
+                !_hiddenMessageIds.contains(m.id) ||
+                _deletingMessageIds.contains(m.id))
             .toList();
 
         if (messages.isEmpty) {
@@ -2375,19 +2378,21 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     if (!result.confirmed) return;
 
-    // شروع انیمیشن حذف
+    // ✅ پیام را در _deletingMessageIds قرار بده (برای انیمیشن)
+    // اما هنوز از لیست حذف نکن - بعد از انیمیشن حذف می‌شود
     setState(() {
       _deletingMessageIds.add(message.id);
     });
 
-    // اجرای انیمیشن
+    // ✅ اجرای انیمیشن (پیام از لیست حذف شده اما انیمیشن روی آن اجرا می‌شود)
     final controller = _deleteAnimationControllers[message.id];
     if (controller != null) {
+      // صبر کوتاه برای شروع انیمیشن
+      await Future.delayed(const Duration(milliseconds: 16));
       await controller.startDeleteAnimation();
-      // صبر کوتاه برای اتمام انیمیشن
-      await Future.delayed(const Duration(milliseconds: 100));
     }
 
+    // ✅ حذف از سرور در پس‌زمینه
     try {
       final actionsService = ref.read(messageActionsServiceProvider);
       final deleteResult = await actionsService.deleteMessage(
@@ -2397,23 +2402,31 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       );
 
       if (deleteResult.isSuccess) {
-        // بروزرسانی UI برای حذف یک‌طرفه
-        setState(() {
-          _deletingMessageIds.remove(message.id);
-          _deleteAnimationControllers.remove(message.id);
-          if (!result.deleteForEveryone) {
-            _hiddenMessageIds = {..._hiddenMessageIds, message.id};
+        // ✅ بعد از اتمام انیمیشن، پیام را از لیست حذف کن
+        Future.delayed(const Duration(milliseconds: 600), () {
+          if (mounted) {
+            setState(() {
+              _deletingMessageIds.remove(message.id);
+              _deleteAnimationControllers.remove(message.id);
+              // حالا پیام را از لیست حذف کن
+              if (!result.deleteForEveryone) {
+                _hiddenMessageIds = {..._hiddenMessageIds, message.id};
+              }
+            });
           }
         });
+
         final suffix = result.deleteForEveryone ? ' برای همه' : '';
         _showSuccessSnackBar('پیام حذف شد$suffix');
       } else {
+        // ✅ در صورت خطا، انیمیشن را متوقف کن
         setState(() {
           _deletingMessageIds.remove(message.id);
         });
         _showErrorSnackBar(deleteResult.error ?? 'خطا در حذف پیام');
       }
     } catch (e) {
+      // ✅ در صورت خطا، انیمیشن را متوقف کن
       setState(() {
         _deletingMessageIds.remove(message.id);
       });

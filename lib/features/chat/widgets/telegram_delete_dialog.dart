@@ -1,449 +1,188 @@
 // lib/features/chat/widgets/telegram_delete_dialog.dart
 //
-// دیالوگ حذف پیام به سبک تلگرام
-//
-// ویژگی‌ها:
-// ✅ انیمیشن ورود از پایین
-// ✅ Blur backdrop
-// ✅ Checkbox برای "حذف برای همه"
-// ✅ Timer countdown (48h)
-// ✅ Undo snackbar
+// دیالوگ حذف پیام مشابه تلگرام با قابلیت Undo
 //
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'dart:ui';
+import '../../../model/message_model.dart';
 
 /// نوع دیالوگ حذف
 enum DeleteDialogType {
   singleMessage,
-  multipleMessages,
   entireChat,
 }
 
-/// دیالوگ حذف به سبک تلگرام
-class TelegramDeleteDialog extends StatefulWidget {
-  final DeleteDialogType type;
-  final int messageCount;
-  final bool canDeleteForEveryone;
-  final Duration? timeRemaining; // زمان باقی‌مانده برای حذف دوطرفه
-  final VoidCallback onDeleteForMe;
-  final VoidCallback? onDeleteForEveryone;
-
-  const TelegramDeleteDialog({
-    super.key,
-    required this.type,
-    this.messageCount = 1,
-    this.canDeleteForEveryone = false,
-    this.timeRemaining,
-    required this.onDeleteForMe,
-    this.onDeleteForEveryone,
-  });
-
-  /// نمایش دیالوگ
-  static Future<bool?> show({
+/// کلاس اصلی دیالوگ حذف تلگرامی
+class TelegramDeleteDialog {
+  /// نمایش دیالوگ حذف (پیام یا چت)
+  static Future<void> show({
     required BuildContext context,
     required DeleteDialogType type,
-    int messageCount = 1,
-    bool canDeleteForEveryone = false,
-    Duration? timeRemaining,
-    required VoidCallback onDeleteForMe,
+    required bool canDeleteForEveryone,
+    VoidCallback? onDeleteForMe,
     VoidCallback? onDeleteForEveryone,
-  }) {
-    return showGeneralDialog<bool>(
+    // فقط برای singleMessage
+    MessageModel? message,
+    String? otherUserName,
+  }) async {
+    final result = await showDialog<bool>(
       context: context,
-      barrierDismissible: true,
-      barrierLabel: '',
-      barrierColor: Colors.black54,
-      transitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (context, animation, secondaryAnimation) {
-        return TelegramDeleteDialog(
-          type: type,
-          messageCount: messageCount,
-          canDeleteForEveryone: canDeleteForEveryone,
-          timeRemaining: timeRemaining,
-          onDeleteForMe: onDeleteForMe,
-          onDeleteForEveryone: onDeleteForEveryone,
-        );
-      },
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        return SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, 1),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeOutCubic,
-          )),
-          child: FadeTransition(
-            opacity: animation,
-            child: child,
-          ),
-        );
-      },
+      builder: (context) => _TelegramDeleteDialogWidget(
+        type: type,
+        canDeleteForEveryone: canDeleteForEveryone,
+        message: message,
+        otherUserName: otherUserName ?? 'کاربر دیگر',
+      ),
     );
-  }
 
-  @override
-  State<TelegramDeleteDialog> createState() => _TelegramDeleteDialogState();
+    if (result != null && context.mounted) {
+      if (result) {
+        // حذف برای همه
+        onDeleteForEveryone?.call();
+      } else {
+        // حذف برای من
+        onDeleteForMe?.call();
+      }
+    }
+  }
 }
 
-class _TelegramDeleteDialogState extends State<TelegramDeleteDialog>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _scaleAnimation;
-  bool _deleteForEveryone = false;
+/// ویجت دیالوگ حذف با استایل تلگرام
+class _TelegramDeleteDialogWidget extends StatelessWidget {
+  final DeleteDialogType type;
+  final bool canDeleteForEveryone;
+  final MessageModel? message;
+  final String otherUserName;
 
-  @override
-  void initState() {
-    super.initState();
-    _setupAnimations();
-  }
-
-  void _setupAnimations() {
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 200),
-      vsync: this,
-    );
-
-    _scaleAnimation = Tween<double>(begin: 0.9, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-    );
-
-    _controller.forward();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+  const _TelegramDeleteDialogWidget({
+    required this.type,
+    required this.canDeleteForEveryone,
+    this.message,
+    required this.otherUserName,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return ScaleTransition(
-      scale: _scaleAnimation,
-      child: Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Container(
-              decoration: BoxDecoration(
-                color: (isDark ? const Color(0xFF1A1A1A) : Colors.white)
-                    .withOpacity(0.95),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: (isDark ? Colors.white : Colors.black).withOpacity(0.1),
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildHeader(theme, isDark),
-                  _buildContent(theme, isDark),
-                  _buildActions(theme, isDark),
-                ],
-              ),
-            ),
-          ),
+    return AlertDialog(
+      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      title: Text(
+        type == DeleteDialogType.entireChat ? 'پاکسازی چت' : 'حذف پیام',
+        style: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+          color: isDark ? Colors.white : Colors.black87,
         ),
       ),
-    );
-  }
-
-  Widget _buildHeader(ThemeData theme, bool isDark) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: theme.dividerColor.withOpacity(0.3),
-          ),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.red.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(
-              Icons.delete_outline_rounded,
-              color: Colors.red,
-              size: 28,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _getTitle(),
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: theme.textTheme.titleLarge?.color,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _getSubtitle(),
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: theme.hintColor,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildContent(ThemeData theme, bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // توضیحات
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.orange.withOpacity(isDark ? 0.1 : 0.05),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Colors.orange.withOpacity(0.3),
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  color: Colors.orange,
-                  size: 20,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    _getWarningText(),
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.orange.withOpacity(0.9),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          // گزینه حذف یک‌طرفه
+          _buildMenuItem(
+            context: context,
+            icon: Icons.delete_outline,
+            title: 'حذف برای من',
+            subtitle: type == DeleteDialogType.entireChat
+                ? 'تمام پیام‌ها فقط از لیست شما حذف می‌شود'
+                : 'پیام فقط از لیست شما حذف می‌شود',
+            onTap: () {
+              Navigator.of(context).pop(false); // false = forMe
+            },
+            isDark: isDark,
           ),
-
-          // گزینه "حذف برای همه"
-          if (widget.canDeleteForEveryone) ...[
-            const SizedBox(height: 16),
-            _buildDeleteForEveryoneOption(theme, isDark),
-          ],
+          
+          const SizedBox(height: 8),
+          
+          // گزینه حذف دوطرفه
+          if (canDeleteForEveryone)
+            _buildMenuItem(
+              context: context,
+              icon: Icons.delete_forever,
+              title: 'حذف برای همه',
+              subtitle: type == DeleteDialogType.entireChat
+                  ? 'تمام پیام‌ها برای $otherUserName و شما حذف می‌شود'
+                  : 'پیام برای $otherUserName و شما حذف می‌شود',
+              onTap: () {
+                Navigator.of(context).pop(true); // true = forEveryone
+              },
+              isDark: isDark,
+              textColor: Colors.red,
+              iconColor: Colors.red,
+            ),
         ],
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(
+            'انصراف',
+            style: TextStyle(
+              color: isDark ? Colors.white70 : Colors.black54,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _buildDeleteForEveryoneOption(ThemeData theme, bool isDark) {
-    return InkWell(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        setState(() => _deleteForEveryone = !_deleteForEveryone);
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: _deleteForEveryone
-              ? theme.primaryColor.withOpacity(0.1)
-              : (isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade50),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: _deleteForEveryone
-                ? theme.primaryColor.withOpacity(0.5)
-                : theme.dividerColor.withOpacity(0.3),
-            width: _deleteForEveryone ? 2 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: _deleteForEveryone
-                    ? theme.primaryColor
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: _deleteForEveryone
-                      ? theme.primaryColor
-                      : theme.hintColor,
-                  width: 2,
+  Widget _buildMenuItem({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    required bool isDark,
+    Color? textColor,
+    Color? iconColor,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                size: 24,
+                color: iconColor ?? (isDark ? Colors.white70 : Colors.black54),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: textColor ?? (isDark ? Colors.white : Colors.black87),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? Colors.white60 : Colors.black54,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              child: _deleteForEveryone
-                  ? const Icon(
-                      Icons.check,
-                      color: Colors.white,
-                      size: 16,
-                    )
-                  : null,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'حذف برای همه',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: theme.textTheme.titleLarge?.color,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    widget.timeRemaining != null
-                        ? 'زمان باقی‌مانده: ${_formatDuration(widget.timeRemaining!)}'
-                        : 'پیام برای طرف مقابل هم حذف می‌شود',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: theme.hintColor,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
-  }
-
-  Widget _buildActions(ThemeData theme, bool isDark) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(
-            color: theme.dividerColor.withOpacity(0.3),
-          ),
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: OutlinedButton(
-              onPressed: () {
-                HapticFeedback.lightImpact();
-                Navigator.pop(context, false);
-              },
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                side: BorderSide(color: theme.dividerColor),
-              ),
-              child: const Text('انصراف'),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 2,
-            child: ElevatedButton(
-              onPressed: () {
-                HapticFeedback.mediumImpact();
-                Navigator.pop(context, true);
-                
-                if (_deleteForEveryone && widget.onDeleteForEveryone != null) {
-                  widget.onDeleteForEveryone!();
-                } else {
-                  widget.onDeleteForMe();
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 0,
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.delete_rounded, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    _deleteForEveryone ? 'حذف برای همه' : 'حذف برای من',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _getTitle() {
-    switch (widget.type) {
-      case DeleteDialogType.singleMessage:
-        return 'حذف پیام؟';
-      case DeleteDialogType.multipleMessages:
-        return 'حذف ${widget.messageCount} پیام؟';
-      case DeleteDialogType.entireChat:
-        return 'پاکسازی چت؟';
-    }
-  }
-
-  String _getSubtitle() {
-    switch (widget.type) {
-      case DeleteDialogType.singleMessage:
-        return 'پیام را چگونه حذف کنید؟';
-      case DeleteDialogType.multipleMessages:
-        return '${widget.messageCount} پیام انتخاب شده';
-      case DeleteDialogType.entireChat:
-        return 'تمام پیام‌های این چت';
-    }
-  }
-
-  String _getWarningText() {
-    if (widget.type == DeleteDialogType.entireChat) {
-      return 'تمام پیام‌های این مکالمه برای شما حذف خواهد شد. این عمل قابل بازگشت نیست.';
-    }
-    return 'این عمل قابل بازگشت نیست.';
-  }
-
-  String _formatDuration(Duration duration) {
-    final hours = duration.inHours;
-    final minutes = duration.inMinutes.remainder(60);
-    
-    if (hours > 0) {
-      return '$hours ساعت و $minutes دقیقه';
-    }
-    return '$minutes دقیقه';
   }
 }
-

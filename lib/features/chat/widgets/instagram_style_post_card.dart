@@ -523,7 +523,7 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
     
     return TelegramMessageStatus(
       status: deliveryStatus,
-      size: 14,
+      size: 12, // کوچک‌تر و ظریف‌تر
       customColor: deliveryStatus == MessageDeliveryStatus.read
           ? MessageStatusColors.read
           : theme.myBubbleTextColor.withOpacity(0.7),
