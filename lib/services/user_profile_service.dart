@@ -119,9 +119,9 @@ class UserProfileService {
         try {
           final profile = await getUserProfile(userId);
           if (profile != null) {
-            bio = bio ?? profile['bio'] as String?;
+            bio = bio ?? profile['bio'];
             if (createdAt == null) {
-              final createdAtStr = profile['created_at'] as String?;
+              final createdAtStr = profile['created_at'];
               if (createdAtStr != null) {
                 try {
                   createdAt = DateTime.parse(createdAtStr);

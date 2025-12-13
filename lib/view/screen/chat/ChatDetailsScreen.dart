@@ -9,7 +9,6 @@ import 'package:intl/intl.dart';
 import '../../../model/conversation_model.dart';
 import '../../../model/message_model.dart';
 import '../../../provider/chat_provider.dart';
-import '../../../provider/provider.dart';
 import 'ChatMessageSearchScreen.dart';
 
 class ChatDetailsScreen extends ConsumerStatefulWidget {
