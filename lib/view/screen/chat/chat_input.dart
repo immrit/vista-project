@@ -45,7 +45,6 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
   bool _hasText = false;
   bool _isRecording = false;
   bool _isLocked = false;
-  bool _isPaused = false;
   bool _showEmojiPicker = false;
   int _recordingDuration = 0;
   Offset? _longPressStartPosition;
@@ -57,7 +56,6 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
 
   // --- Animations ---
   late Animation<double> _micIconScaleAnimation;
-  late Animation<Offset> _slideCancelAnimation;
 
   // --- Constants ---
   static const double _lockThreshold = 80.0;
@@ -77,11 +75,6 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
 
     _slideCancelAnimationController = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 300));
-    _slideCancelAnimation =
-        Tween<Offset>(begin: const Offset(0.5, 0), end: Offset.zero).animate(
-            CurvedAnimation(
-                parent: _slideCancelAnimationController,
-                curve: Curves.easeInOut));
 
     // ✅ آماده‌سازی کیبورد با تأخیر کوتاه
     _prepareKeyboardForFastOpen();
@@ -182,7 +175,6 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
       setState(() {
         _isRecording = false;
         _isLocked = false;
-        _isPaused = false;
         _longPressStartPosition = null;
         _recordingDuration = 0;
       });
@@ -192,26 +184,6 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
   void _lockRecording() {
     _micIconAnimationController.reverse();
     setState(() => _isLocked = true);
-  }
-
-  Future<void> _pauseRecording() async {
-    await _recorderController.pause();
-    _recordingTimer?.cancel();
-    setState(() => _isPaused = true);
-  }
-
-  Future<void> _resumeRecording() async {
-    // RecorderController در audio_waveforms از resume پشتیبانی نمی‌کند
-    // بنابراین ضبط جدید شروع می‌کنیم
-    final tempDir = await getTemporaryDirectory();
-    final path =
-        '${tempDir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-    await _recorderController.record(path: path);
-
-    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _recordingDuration++);
-    });
-    setState(() => _isPaused = false);
   }
 
   void _handleSendMessage() {
@@ -438,78 +410,76 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
           onPressed: _toggleEmojiPicker,
         ),
         Expanded(
-          child: Container(
-            decoration: BoxDecoration(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? const Color(0xFF2A2A2A) // رنگ تیره‌تر و حرفه‌ای‌تر برای تم تاریک
-                  : Colors.grey[200],
-              borderRadius: BorderRadius.circular(24.0),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: TextField(
-                    key: const ValueKey('message_input'),
-                    controller: _textController,
-                    focusNode: _focusNode,
-                    minLines: 1,
-                    maxLines: 5,
-                    keyboardType: TextInputType.multiline,
-                    textInputAction: TextInputAction.newline,
-                    style: TextStyle(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: TextField(
+                  key: const ValueKey('message_input'),
+                  controller: _textController,
+                  focusNode: _focusNode,
+                  minLines: 1,
+                  maxLines: 5,
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: TextInputAction.newline,
+                  style: TextStyle(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white // متن سفید برای تم تاریک
+                        : Colors.black87, // متن تیره برای تم روشن
+                    fontSize: 16,
+                  ),
+                  // ✅ بهینه‌سازی‌های performance برای کیبورد:
+                  enableInteractiveSelection: true,
+                  enableSuggestions: false, // غیرفعال برای عملکرد بهتر
+                  autocorrect: false, // غیرفعال برای عملکرد بهتر
+                  smartDashesType: SmartDashesType.disabled,
+                  smartQuotesType: SmartQuotesType.disabled,
+                  // ✅ کاهش rebuilds
+                  buildCounter: null,
+                  onTap: () {
+                    if (!_isKeyboardReady) {
+                      print('⌨️ Keyboard not ready yet - delaying');
+                      return;
+                    }
+
+                    // فقط اگر emoji picker باز است، آن را ببند
+                    if (_showEmojiPicker && mounted) {
+                      setState(() => _showEmojiPicker = false);
+                    }
+                  },
+                  decoration: InputDecoration(
+                    hintText: '...پیام',
+                    hintStyle: TextStyle(
                       color: Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white // متن سفید برای تم تاریک
-                          : Colors.black87, // متن تیره برای تم روشن
+                          ? Colors.grey[500] // hint تیره‌تر برای تم تاریک
+                          : Colors.grey[600], // hint برای تم روشن
                       fontSize: 16,
                     ),
-                    // ✅ بهینه‌سازی‌های performance برای کیبورد:
-                    enableInteractiveSelection: true,
-                    enableSuggestions: false, // غیرفعال برای عملکرد بهتر
-                    autocorrect: false, // غیرفعال برای عملکرد بهتر
-                    smartDashesType: SmartDashesType.disabled,
-                    smartQuotesType: SmartQuotesType.disabled,
-                    // ✅ کاهش rebuilds
-                    buildCounter: null,
-                    onTap: () {
-                      if (!_isKeyboardReady) {
-                        print('⌨️ Keyboard not ready yet - delaying');
-                        return;
-                      }
-
-                      // فقط اگر emoji picker باز است، آن را ببند
-                      if (_showEmojiPicker && mounted) {
-                        setState(() => _showEmojiPicker = false);
-                      }
-                    },
-                    decoration: InputDecoration(
-                      hintText: '...پیام',
-                      hintStyle: TextStyle(
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.grey[500] // hint تیره‌تر برای تم تاریک
-                            : Colors.grey[600], // hint برای تم روشن
-                        fontSize: 16,
-                      ),
-                      border: InputBorder.none,
-                      contentPadding:
-                          const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      isCollapsed: true,
-                    ),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    isCollapsed: true,
+                    filled: true,
+                    fillColor: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(
+                            0xFF2A2A2A) // رنگ تیره‌تر و حرفه‌ای‌تر برای تم تاریک
+                        : Colors.grey[200],
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4.0),
-                  child: IconButton(
-                    icon: Icon(Icons.attach_file_rounded,
-                        color: Theme.of(context)
-                            .iconTheme
-                            .color
-                            ?.withOpacity(0.7)),
-                    onPressed: _showAttachmentBottomSheet,
-                  ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4.0),
+                child: IconButton(
+                  icon: Icon(Icons.attach_file_rounded,
+                      color:
+                          Theme.of(context).iconTheme.color?.withOpacity(0.7)),
+                  onPressed: _showAttachmentBottomSheet,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
         const SizedBox(width: 8),
@@ -528,13 +498,13 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
   Widget _buildRecordingUI() {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    
+
     // ✅ استفاده از رنگ primary از theme، اما اگر سفید بود از رنگ جایگزین استفاده می‌کنیم
     Color primaryColor = theme.colorScheme.primary;
-    
+
     // اگر رنگ primary سفید یا خیلی روشن است، از رنگ جایگزین استفاده می‌کنیم
     if (primaryColor.computeLuminance() > 0.8) {
-      primaryColor = isDark 
+      primaryColor = isDark
           ? const Color(0xFF5DADEC) // آبی روشن برای تم تاریک
           : const Color(0xFF3390EC); // آبی استاندارد برای تم روشن
     }
@@ -783,16 +753,16 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
   /// دکمه ارسال صدا
   Widget _buildSendVoiceButton(Color primaryColor) {
     final theme = Theme.of(context);
-    
+
     // اگر رنگ primary سفید یا خیلی روشن است، از رنگ جایگزین استفاده می‌کنیم
     Color buttonColor = primaryColor;
     if (buttonColor.computeLuminance() > 0.8) {
       final isDark = theme.brightness == Brightness.dark;
-      buttonColor = isDark 
+      buttonColor = isDark
           ? const Color(0xFF5DADEC) // آبی روشن برای تم تاریک
           : const Color(0xFF2196F3); // آبی استاندارد برای تم روشن
     }
-    
+
     return GestureDetector(
       onTap: _stopRecordingAndSend,
       child: Container(
@@ -821,13 +791,23 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
   Widget _buildSendButton() {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    
+
     // ✅ در تم تاریک همیشه از رنگ آبی استاندارد استفاده می‌کنیم
-    // در تم روشن از رنگ primary استفاده می‌کنیم
-    final primaryColor = isDark 
-        ? const Color(0xFF3390EC) // آبی استاندارد تلگرام برای تم تاریک
-        : theme.colorScheme.primary;
-    
+    // در تم روشن از رنگ primary استفاده می‌کنیم (اما اگر سفید بود از آبی استفاده می‌کنیم)
+    Color primaryColor;
+    if (isDark) {
+      primaryColor =
+          const Color(0xFF3390EC); // آبی استاندارد تلگرام برای تم تاریک
+    } else {
+      final themePrimary = theme.colorScheme.primary;
+      // اگر رنگ primary سفید یا خیلی روشن است، از آبی استفاده می‌کنیم
+      if (themePrimary.computeLuminance() > 0.8) {
+        primaryColor = const Color(0xFF3390EC); // آبی استاندارد
+      } else {
+        primaryColor = themePrimary;
+      }
+    }
+
     return InkWell(
       key: const ValueKey('send_button'),
       onTap: _handleSendMessage,

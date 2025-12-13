@@ -232,6 +232,11 @@ class ChatTheme {
   factory ChatTheme.dark({Color? primaryColor}) {
     final primary = primaryColor ?? const Color(0xFF818CF8); // Lighter Indigo
     
+    // ✅ در تم تاریک، اگر رنگ primary سفید یا خیلی روشن است، از آبی استاندارد استفاده می‌کنیم
+    final sendButtonColor = (primary.computeLuminance() > 0.8)
+        ? const Color(0xFF3390EC) // آبی استاندارد تلگرام
+        : primary;
+    
     return ChatTheme(
       isDark: true,
       backgroundColor: const Color(0xFF0F172A),
@@ -261,7 +266,7 @@ class ChatTheme {
       inputBackgroundColor: const Color(0xFF1E293B),
       inputBorderColor: const Color(0xFF334155),
       inputHintColor: const Color(0xFF64748B),
-      sendButtonColor: primary,
+      sendButtonColor: sendButtonColor, // ✅ استفاده از رنگ اصلاح شده
       iconColor: const Color(0xFF94A3B8),
       
       // سایه‌ها

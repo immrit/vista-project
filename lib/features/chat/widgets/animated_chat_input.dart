@@ -601,14 +601,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
                         ? const Color(0xFF1A1A1A).withOpacity(0.5)
                         : Colors.white.withOpacity(0.6)),
                 borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: _isFocused
-                      ? theme.sendButtonColor.withOpacity(0.4)
-                      : (isDark
-                          ? Colors.white.withOpacity(0.1)
-                          : Colors.black.withOpacity(0.1)),
-                  width: _isFocused ? 1.5 : 1,
-                ),
+                // ✅ حذف border برای ظاهر حرفه‌ای‌تر
               ),
               child: TextField(
                 controller: widget.controller,
@@ -706,6 +699,12 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   }
 
   Widget _buildSendButtonWidget(ChatTheme theme) {
+    // ✅ در تم تاریک، اگر رنگ sendButtonColor سفید یا خیلی روشن است، از آبی استاندارد استفاده می‌کنیم
+    Color buttonColor = theme.sendButtonColor;
+    if (theme.isDark && buttonColor.computeLuminance() > 0.8) {
+      buttonColor = const Color(0xFF3390EC); // آبی استاندارد تلگرام
+    }
+    
     return GestureDetector(
       onTap: widget.enabled && _hasText
           ? () {
@@ -723,15 +722,15 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              theme.sendButtonColor,
-              theme.sendButtonColor.withBlue(
-                (theme.sendButtonColor.blue + 20).clamp(0, 255),
+              buttonColor,
+              buttonColor.withBlue(
+                (buttonColor.blue + 20).clamp(0, 255),
               ),
             ],
           ),
           boxShadow: [
             BoxShadow(
-              color: theme.sendButtonColor.withOpacity(0.4),
+              color: buttonColor.withOpacity(0.4),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
