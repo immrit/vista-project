@@ -9,6 +9,7 @@ import '../theme/chat_theme.dart';
 import '../../../utils/compat_extensions.dart';
 import 'voice_message_bubble.dart';
 import 'telegram_message_status.dart';
+import 'gif_message_bubble.dart';
 import '../../../services/telegram_read_receipt_service.dart';
 import '../../../model/message_model.dart';
 
@@ -388,7 +389,20 @@ class _ImprovedAnimatedMessageBubbleState
   }
 
   Widget _buildContent(ChatTheme theme) {
-    // Voice message
+    // 1. نمایش GIF ✅ اضافه شده
+    if ((widget.attachmentType == 'gif' || widget.message?.messageType == 'gif') &&
+        widget.attachmentUrl != null &&
+        widget.attachmentUrl!.isNotEmpty) {
+      // اینجا مطمئن می‌شویم که آبجکت مسیج داریم
+      if (widget.message != null) {
+        return Padding(
+          padding: const EdgeInsets.all(8),
+          child: GifMessageBubble(message: widget.message!),
+        );
+      }
+    }
+
+    // 2. Voice message
     if ((widget.attachmentType == 'audio' ||
             widget.attachmentType == 'voice') &&
         widget.attachmentUrl != null &&
@@ -424,13 +438,21 @@ class _ImprovedAnimatedMessageBubbleState
           Flexible(
             child: widget.content.isNotEmpty
                 ? Text(
-                    widget.content,
+                    '${widget.content}\u200F',
+                    textDirection: TextDirection.rtl,
+                    textAlign: TextAlign.right,
                     style: TextStyle(
                       color: widget.isMe
                           ? theme.myBubbleTextColor
                           : theme.otherBubbleTextColor,
                       fontSize: 15,
                       height: 1.4,
+                      fontFamily: 'Vazir',
+                      fontFamilyFallback: const [
+                        'Apple Color Emoji',
+                        'Segoe UI Emoji',
+                        'Noto Color Emoji',
+                      ],
                     ),
                   )
                 : const SizedBox.shrink(),

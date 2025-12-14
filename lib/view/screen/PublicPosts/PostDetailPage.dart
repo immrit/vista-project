@@ -20,6 +20,7 @@ import '../../../provider/provider.dart';
 import '../../../model/MusicModel.dart';
 import '../../../provider/MusicProvider.dart';
 import 'MusicWaveform.dart';
+import '../../../utils/premium_features_helper.dart';
 
 // Provider برای مدیریت پست جزئیات
 final postDetailProvider =
@@ -650,9 +651,11 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
 
         return profileAsync.when(
           data: (profile) {
-            final isBlueTick = profile != null &&
-                profile['is_verified'] == true &&
-                profile['verification_type'] == 'blueTick';
+            // استفاده از Helper برای بررسی دسترسی
+            final currentUserProfile = ref.read(currentUserProfileProvider);
+            final canEditPost = currentUserProfile.value != null &&
+                PremiumFeaturesHelper.canEditPost(currentUserProfile.value!) &&
+                isCurrentUserPost;
 
             return PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert, color: Colors.grey),
@@ -660,7 +663,10 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                 switch (value) {
                   case 'delete':
                     // مدیران (تیک آبی) می‌توانند همه پست‌ها را حذف کنند، کاربران عادی فقط پست خودشان
-                    if (isCurrentUserPost || isBlueTick) {
+                    final isBlueTickForDelete = profile != null &&
+                        profile['is_verified'] == true &&
+                        profile['verification_type'] == 'blueTick';
+                    if (isCurrentUserPost || isBlueTickForDelete) {
                       final confirmed = await showDialog<bool>(
                         context: context,
                         builder: (context) => AlertDialog(
@@ -712,16 +718,24 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                     }
                     break;
                   case 'edit':
-                    if (isBlueTick) {
+                    if (canEditPost) {
                       // Use the same edit dialog from publicPosts.dart
                       public_posts.showEditPostDialog(context, ref, post);
                     } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('شما مجوز ویرایش این پست را ندارید'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
+                      // نمایش دیالوگ پریمیوم اگر دسترسی ندارد
+                      if (isCurrentUserPost) {
+                        PremiumFeaturesHelper.showPremiumPromptDialog(
+                          context,
+                          feature: 'ویرایش پست',
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('شما مجوز ویرایش این پست را ندارید'),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
                     }
                     break;
                   case 'report':
@@ -776,7 +790,10 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                 );
 
                 // گزینه حذف برای صاحب پست یا مدیران (تیک آبی)
-                if (isCurrentUserPost || isBlueTick) {
+                final isBlueTickForDelete = profile != null &&
+                    profile['is_verified'] == true &&
+                    profile['verification_type'] == 'blueTick';
+                if (isCurrentUserPost || isBlueTickForDelete) {
                   items.add(
                     const PopupMenuItem(
                       value: 'delete',
@@ -791,16 +808,28 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                   );
                 }
 
-                // گزینه ویرایش فقط برای کاربران با تیک آبی
-                if (isBlueTick) {
+                // گزینه ویرایش برای صاحب پست (با یا بدون دسترسی)
+                if (isCurrentUserPost) {
                   items.add(
-                    const PopupMenuItem(
+                    PopupMenuItem<String>(
                       value: 'edit',
                       child: Row(
                         children: [
-                          Icon(Icons.edit, color: Colors.green),
-                          SizedBox(width: 8),
-                          Text('ویرایش پست'),
+                          Icon(
+                            canEditPost ? Icons.edit : Icons.lock_outline,
+                            size: 20,
+                            color: canEditPost ? Colors.blue : Colors.grey,
+                          ),
+                          const SizedBox(width: 12),
+                          const Text('ویرایش پست'),
+                          if (!canEditPost) ...[
+                            const Spacer(),
+                            Icon(
+                              Icons.workspace_premium,
+                              size: 18,
+                              color: Colors.amber.shade600,
+                            ),
+                          ],
                         ],
                       ),
                     ),

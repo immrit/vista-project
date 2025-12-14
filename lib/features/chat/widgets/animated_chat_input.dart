@@ -19,7 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/chat_theme.dart';
 import '../services/voice_recorder_service.dart';
-import 'chat_emoji_picker.dart';
+import 'vista_emoji_panel.dart';
 
 class AnimatedChatInput extends StatefulWidget {
   final TextEditingController controller;
@@ -36,6 +36,9 @@ class AnimatedChatInput extends StatefulWidget {
 
   // Voice recording
   final Function(File file, int duration)? onVoiceRecorded;
+
+  // GIF
+  final Function(String gifUrl)? onGifSelected;
 
   // State
   final bool enabled;
@@ -54,6 +57,7 @@ class AnimatedChatInput extends StatefulWidget {
     this.replyToSenderName,
     this.onCancelReply,
     this.onVoiceRecorded,
+    this.onGifSelected,
     this.enabled = true,
     this.isRecording = false,
     this.hint,
@@ -86,7 +90,6 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   bool _showEmojiPicker = false;
 
   bool _hasText = false;
-  bool _isFocused = false;
 
   @override
   void initState() {
@@ -271,51 +274,103 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     }
   }
 
-  void _onEmojiSelected(String emoji) {
-    final text = widget.controller.text;
-    final selection = widget.controller.selection;
-    final newText = text.replaceRange(
-      selection.start,
-      selection.end,
-      emoji,
-    );
-    widget.controller.text = newText;
-    widget.controller.selection = TextSelection.collapsed(
-      offset: selection.start + emoji.length,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // دریافت safe area برای پدینگ داخلی خود جزیره
+    // توجه: ما در صفحه اصلی این ویجت را بالای کیبورد قرار می‌دهیم،
+    // اما اگر کیبورد بسته باشد، باید فاصله از پایین (Home Indicator) را رعایت کنیم.
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+
+    // اگر کیبورد باز است، فاصله پایین کمی بیشتر باشد تا پیام‌ها از زیر دیده شوند
+    // اگر بسته است، کمی فاصله بدهیم که روی خط هوم نیفتد
+    final effectiveBottomPadding = keyboardHeight > 0
+        ? 8.0
+        : (bottomPadding > 0 ? bottomPadding + 4.0 : 14.0);
 
     return Container(
-      decoration: BoxDecoration(
-        color: theme.inputBackgroundColor,
-        boxShadow: theme.inputShadow != null ? [theme.inputShadow!] : null,
-      ),
+      // کانتینر بیرونی کاملاً شفاف تا پیام‌ها از اطرافش دیده شوند
+      color: Colors.transparent,
+      padding: EdgeInsets.fromLTRB(6, 2, 6, effectiveBottomPadding),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Reply preview
-          _buildReplyPreview(theme),
+          // 🏝️ The Island (جزیره)
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24), // باریک‌تر و ظریف‌تر
+              // سایه ملایم برای جدا شدن از زمینه
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(isDark ? 0.3 : 0.12),
+                  blurRadius: 12,
+                  offset: const Offset(0, 3),
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24), // باریک‌تر و ظریف‌تر
+              child: BackdropFilter(
+                // 💎 افکت شیشه‌ای (Blur) - کاهش یافته چون پس‌زمینه هم بلور است
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
+                  decoration: BoxDecoration(
+                    // رنگ پس‌زمینه نیمه‌شفاف - کاهش opacity برای افکت شیشه‌ای بهتر
+                    color: isDark
+                        ? const Color(0xFF1C1C1E)
+                            .withOpacity(0.70) // کاهش یافته برای شیشه‌ای بیشتر
+                        : const Color(0xFFF9F9F9)
+                            .withOpacity(0.65), // کاهش یافته برای شیشه‌ای بیشتر
+                    border: Border.all(
+                      color: isDark
+                          ? Colors.white.withOpacity(0.1)
+                          : Colors.black.withOpacity(0.05),
+                      width: 0.5,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Reply Preview
+                      _buildReplyPreview(theme),
 
-          // Recording overlay یا Input row
-          if (_isRecording)
-            _buildRecordingOverlay(theme)
-          else
-            _buildInputRow(theme),
+                      // Input Row or Recording
+                      if (_isRecording)
+                        _buildRecordingOverlay(theme)
+                      else
+                        _buildInputRow(theme),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
 
-          // Emoji picker
+          // Emoji Picker (اگر باز باشد)
           if (_showEmojiPicker)
-            ChatEmojiPicker(
-              onEmojiSelected: _onEmojiSelected,
-              onBackspace: () {
-                final text = widget.controller.text;
-                if (text.isNotEmpty) {
-                  widget.controller.text = text.substring(0, text.length - 1);
-                }
-              },
+            Container(
+              margin: const EdgeInsets.only(top: 8),
+              decoration: BoxDecoration(
+                color:
+                    isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF0F2F5),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: VistaEmojiPanel(
+                  controller: widget.controller,
+                  height: 300,
+                  onGifSelected: (gifUrl) {
+                    if (widget.onGifSelected != null) {
+                      widget.onGifSelected!(gifUrl);
+                    }
+                  },
+                ),
+              ),
             ),
         ],
       ),
@@ -324,11 +379,12 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
 
   Widget _buildRecordingOverlay(ChatTheme theme) {
     return Container(
-      height: 56,
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      height: 50, // باریک‌تر
+      margin:
+          const EdgeInsets.symmetric(horizontal: 6, vertical: 6), // فاصله کمتر
       decoration: BoxDecoration(
         color: theme.errorColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(24), // باریک‌تر
         border: Border.all(
           color: theme.errorColor.withOpacity(0.3),
           width: 1,
@@ -439,11 +495,15 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
         },
         child: widget.replyToContent != null
             ? Container(
-                padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+                padding: const EdgeInsets.fromLTRB(
+                    12, 10, 12, 6), // پدینگ کمتر و باریک‌تر
                 decoration: BoxDecoration(
+                  color: theme.dividerColor
+                      .withOpacity(0.05), // کمی رنگ پس زمینه برای ریپلای
                   border: Border(
                     bottom: BorderSide(
-                      color: theme.dividerColor,
+                      color:
+                          theme.dividerColor.withOpacity(0.1), // خط بسیار محو
                       width: 1,
                     ),
                   ),
@@ -452,13 +512,13 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
                   children: [
                     Container(
                       width: 3,
-                      height: 40,
+                      height: 36, // ارتفاع کمتر
                       decoration: BoxDecoration(
                         color: theme.typingColor,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 8), // فاصله کمتر
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -505,9 +565,10 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
 
   Widget _buildInputRow(ChatTheme theme) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      padding:
+          const EdgeInsets.symmetric(horizontal: 6, vertical: 6), // باریک‌تر
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.center, // تراز وسط برای دکمه‌ها
         children: [
           // دکمه Attachment
           _buildIconButton(
@@ -525,14 +586,14 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
             theme: theme,
           ),
 
-          const SizedBox(width: 4),
+          const SizedBox(width: 3), // فاصله کمتر
 
           // فیلد متن
           Expanded(
             child: _buildTextField(theme),
           ),
 
-          const SizedBox(width: 8),
+          const SizedBox(width: 6), // فاصله کمتر
 
           // دکمه ارسال / صدا
           _buildSendButton(theme),
@@ -548,16 +609,16 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   }) {
     return Material(
       color: Colors.transparent,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(18),
       child: InkWell(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.all(6), // باریک‌تر
           child: Icon(
             icon,
             color: theme.iconColor,
-            size: 24,
+            size: 22, // آیکون کوچک‌تر
           ),
         ),
       ),
@@ -565,72 +626,46 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   }
 
   Widget _buildTextField(ChatTheme theme) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Focus(
-      onFocusChange: (focused) {
-        setState(() => _isFocused = focused);
-      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: _isFocused
-              ? [
-                  BoxShadow(
-                    color: theme.sendButtonColor.withOpacity(0.2),
-                    blurRadius: 12,
-                    spreadRadius: 0,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : [],
+        // ✅ حذف دکوریشن اضافی چون الان داخل یک جزیره هستیم
+        // فقط اگر بخواهید فیلد متمایز باشد نگه دارید، اما برای استایل تلگرام X معمولا ترنسپرنت بهتر است
+        decoration: const BoxDecoration(
+          color: Colors.transparent,
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Container(
-              decoration: BoxDecoration(
-                // Glass Effect - شفافیت با backdrop blur
-                color: _isFocused
-                    ? (isDark
-                        ? const Color(0xFF1A1A1A).withOpacity(0.7)
-                        : Colors.white.withOpacity(0.8))
-                    : (isDark
-                        ? const Color(0xFF1A1A1A).withOpacity(0.5)
-                        : Colors.white.withOpacity(0.6)),
-                borderRadius: BorderRadius.circular(24),
-                // ✅ حذف border برای ظاهر حرفه‌ای‌تر
-              ),
-              child: TextField(
-                controller: widget.controller,
-                focusNode: widget.focusNode,
-                enabled: widget.enabled,
-                maxLines: 5,
-                minLines: 1,
-                textInputAction: TextInputAction.newline,
-                style: TextStyle(
-                  color: theme.textColor,
-                  fontSize: 15,
-                ),
-                decoration: InputDecoration(
-                  hintText: widget.hint ?? 'پیام خود را بنویسید...',
-                  hintStyle: TextStyle(
-                    color: theme.inputHintColor.withOpacity(0.7),
-                    fontSize: 15,
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                  isDense: true,
-                ),
-                textDirection: TextDirection.rtl,
-              ),
-            ),
+        child: TextField(
+          controller: widget.controller,
+          focusNode: widget.focusNode,
+          enabled: widget.enabled,
+          maxLines: 5,
+          minLines: 1,
+          textInputAction: TextInputAction.newline,
+          style: TextStyle(
+            color: theme.textColor,
+            fontSize: 15, // فونت کمی کوچک‌تر
+            fontFamily: 'Vazir',
+            fontFamilyFallback: const [
+              'Apple Color Emoji',
+              'Segoe UI Emoji',
+              'Noto Color Emoji',
+            ],
           ),
+          decoration: InputDecoration(
+            hintText: widget.hint ?? 'پیام...',
+            hintStyle: TextStyle(
+              color: theme.secondaryTextColor.withOpacity(0.6),
+              fontSize: 15, // فونت کوچک‌تر
+            ),
+            border: InputBorder.none,
+            // ✅ تنظیم پدینگ برای تراز شدن متن - باریک‌تر و وسط
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 6,
+              vertical: 12, // افزایش vertical برای تراز بهتر با دکمه‌ها
+            ),
+            isDense: true,
+          ),
+          textDirection: TextDirection.rtl,
         ),
       ),
     );
@@ -681,8 +716,8 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        width: 44,
-        height: 44,
+        width: 40, // کوچک‌تر
+        height: 40, // کوچک‌تر
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: _isRecording
@@ -692,7 +727,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
         child: Icon(
           Icons.mic_rounded,
           color: _isRecording ? theme.errorColor : theme.sendButtonColor,
-          size: 24,
+          size: 22, // آیکون کوچک‌تر
         ),
       ),
     );
@@ -704,7 +739,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     if (theme.isDark && buttonColor.computeLuminance() > 0.8) {
       buttonColor = const Color(0xFF3390EC); // آبی استاندارد تلگرام
     }
-    
+
     return GestureDetector(
       onTap: widget.enabled && _hasText
           ? () {
@@ -714,8 +749,8 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
           : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        width: 44,
-        height: 44,
+        width: 40, // کوچک‌تر
+        height: 40, // کوچک‌تر
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: LinearGradient(
@@ -730,8 +765,8 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
           ),
           boxShadow: [
             BoxShadow(
-              color: buttonColor.withOpacity(0.4),
-              blurRadius: 8,
+              color: buttonColor.withOpacity(0.35),
+              blurRadius: 6, // سایه کوچک‌تر
               offset: const Offset(0, 2),
             ),
           ],
@@ -739,7 +774,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
         child: const Icon(
           Icons.send_rounded,
           color: Colors.white,
-          size: 20,
+          size: 18, // آیکون کوچک‌تر
         ),
       ),
     );

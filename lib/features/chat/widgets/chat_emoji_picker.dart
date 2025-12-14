@@ -3,8 +3,9 @@
 // Emoji Picker حرفه‌ای - با الهام از تلگرام
 //
 // ویژگی‌ها:
+// ✅ 2 ردیف از دسته‌بندی‌ها - مشابه تلگرام
 // ✅ دسته‌بندی ایموجی‌ها
-// ✅ جستجو
+// ✅ جستجوی پیشرفته
 // ✅ اخیراً استفاده شده
 // ✅ انیمیشن روان
 // ✅ Skin tone selector
@@ -16,7 +17,7 @@ import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/chat_theme.dart';
 
-/// Emoji Picker سفارشی
+/// Emoji Picker سفارشی با 2 ردیف دسته‌بندی - مشابه تلگرام
 class ChatEmojiPicker extends StatefulWidget {
   final Function(String) onEmojiSelected;
   final VoidCallback? onBackspace;
@@ -35,26 +36,112 @@ class ChatEmojiPicker extends StatefulWidget {
 
 class _ChatEmojiPickerState extends State<ChatEmojiPicker>
     with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🎮 CONTROLLERS
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  late TabController _categoryTabController;
   final TextEditingController _searchController = TextEditingController();
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📦 STATE
+  // ═══════════════════════════════════════════════════════════════════════════
   
   List<String> _recentEmojis = [];
   String _searchQuery = '';
+  int _selectedCategoryIndex = 0;
   
-  // دسته‌بندی‌ها
-  static const _categories = [
-    _EmojiCategory(icon: Icons.access_time_rounded, name: 'اخیر'),
-    _EmojiCategory(icon: Icons.emoji_emotions_rounded, name: 'صورتک'),
-    _EmojiCategory(icon: Icons.pets_rounded, name: 'حیوانات'),
-    _EmojiCategory(icon: Icons.fastfood_rounded, name: 'غذا'),
-    _EmojiCategory(icon: Icons.directions_car_rounded, name: 'سفر'),
-    _EmojiCategory(icon: Icons.sports_soccer_rounded, name: 'فعالیت'),
-    _EmojiCategory(icon: Icons.lightbulb_rounded, name: 'اشیاء'),
-    _EmojiCategory(icon: Icons.tag_rounded, name: 'نمادها'),
-    _EmojiCategory(icon: Icons.flag_rounded, name: 'پرچم‌ها'),
+  // دسته‌بندی‌های مختلف - مشابه تلگرام
+  // ردیف اول: Recent, Smileys, Animals, Travel, Activities, Objects, Symbols, Flags
+  // ردیف دوم: Recent, Smileys, Animals, Food, Buildings, Activities, Objects, Symbols
+  static final _categories = [
+    _EmojiCategory(
+      icon: Icons.access_time_rounded,
+      name: 'اخیر',
+      category: Category.RECENT,
+    ),
+    _EmojiCategory(
+      icon: Icons.emoji_emotions_rounded,
+      name: 'صورتک',
+      category: Category.SMILEYS,
+    ),
+    _EmojiCategory(
+      icon: Icons.pets_rounded,
+      name: 'حیوانات',
+      category: Category.ANIMALS,
+    ),
+    _EmojiCategory(
+      icon: Icons.directions_car_rounded,
+      name: 'سفر',
+      category: Category.TRAVEL,
+    ),
+    _EmojiCategory(
+      icon: Icons.sports_soccer_rounded,
+      name: 'فعالیت',
+      category: Category.ACTIVITIES,
+    ),
+    _EmojiCategory(
+      icon: Icons.lightbulb_rounded,
+      name: 'اشیاء',
+      category: Category.OBJECTS,
+    ),
+    _EmojiCategory(
+      icon: Icons.tag_rounded,
+      name: 'نمادها',
+      category: Category.SYMBOLS,
+    ),
+    _EmojiCategory(
+      icon: Icons.flag_rounded,
+      name: 'پرچم‌ها',
+      category: Category.FLAGS,
+    ),
   ];
 
-  // ایموجی‌های پرکاربرد
+  // ردیف دوم دسته‌بندی‌ها (مشابه تلگرام)
+  static final _categoriesRow2 = [
+    _EmojiCategory(
+      icon: Icons.access_time_rounded,
+      name: 'اخیر',
+      category: Category.RECENT,
+    ),
+    _EmojiCategory(
+      icon: Icons.emoji_emotions_rounded,
+      name: 'صورتک',
+      category: Category.SMILEYS,
+    ),
+    _EmojiCategory(
+      icon: Icons.pets_rounded,
+      name: 'حیوانات',
+      category: Category.ANIMALS,
+    ),
+    _EmojiCategory(
+      icon: Icons.fastfood_rounded,
+      name: 'غذا',
+      category: Category.ACTIVITIES, // استفاده از ACTIVITIES به عنوان جایگزین
+    ),
+    _EmojiCategory(
+      icon: Icons.business_rounded,
+      name: 'ساختمان',
+      category: Category.OBJECTS, // استفاده از OBJECTS به عنوان جایگزین
+    ),
+    _EmojiCategory(
+      icon: Icons.sports_soccer_rounded,
+      name: 'فعالیت',
+      category: Category.ACTIVITIES,
+    ),
+    _EmojiCategory(
+      icon: Icons.lightbulb_rounded,
+      name: 'اشیاء',
+      category: Category.OBJECTS,
+    ),
+    _EmojiCategory(
+      icon: Icons.tag_rounded,
+      name: 'نمادها',
+      category: Category.SYMBOLS,
+    ),
+  ];
+
+  // ایموجی‌های پرکاربرد برای نمایش در تب اخیر (وقتی خالی است)
   static const _popularEmojis = [
     '😀', '😂', '🥰', '😍', '😊', '🤔', '😢', '😭', '😡', '🤯',
     '👍', '👎', '❤️', '🔥', '✨', '💯', '🎉', '👏', '🙏', '💪',
@@ -64,14 +151,24 @@ class _ChatEmojiPickerState extends State<ChatEmojiPicker>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _categories.length, vsync: this);
+    _categoryTabController = TabController(
+      length: _categories.length,
+      vsync: this,
+    );
+    _categoryTabController.addListener(() {
+      if (!_categoryTabController.indexIsChanging) {
+        setState(() {
+          _selectedCategoryIndex = _categoryTabController.index;
+        });
+      }
+    });
     _loadRecentEmojis();
     _searchController.addListener(_onSearchChanged);
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _categoryTabController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -94,6 +191,10 @@ class _ChatEmojiPickerState extends State<ChatEmojiPicker>
       
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList('recent_emojis', _recentEmojis);
+      
+      if (mounted) {
+        setState(() {}); // به‌روزرسانی UI
+      }
     } catch (_) {}
   }
 
@@ -107,6 +208,14 @@ class _ChatEmojiPickerState extends State<ChatEmojiPicker>
     _saveRecentEmoji(emoji);
   }
 
+  void _onCategoryTap(int index) {
+    HapticFeedback.lightImpact();
+    _categoryTabController.animateTo(index);
+    setState(() {
+      _selectedCategoryIndex = index;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
@@ -116,27 +225,31 @@ class _ChatEmojiPickerState extends State<ChatEmojiPicker>
       decoration: BoxDecoration(
         color: theme.backgroundColor,
         border: Border(
-          top: BorderSide(color: theme.dividerColor),
+          top: BorderSide(color: theme.dividerColor, width: 0.5),
         ),
       ),
       child: Column(
         children: [
-          // Search bar
+          // Search bar - مشابه تلگرام
           _buildSearchBar(theme),
 
-          // Category tabs
-          _buildCategoryTabs(theme),
+          // 2 ردیف از دسته‌بندی‌ها - مشابه تلگرام
+          _buildCategoryRows(theme),
 
-          // Emoji grid
+          // محتوای ایموجی‌ها
           Expanded(
             child: _searchQuery.isNotEmpty
                 ? _buildSearchResults(theme)
-                : _buildEmojiGrid(theme),
+                : _buildEmojiContent(theme),
           ),
         ],
       ),
     );
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🔍 SEARCH BAR
+  // ═══════════════════════════════════════════════════════════════════════════
 
   Widget _buildSearchBar(ChatTheme theme) {
     return Container(
@@ -146,10 +259,16 @@ class _ChatEmojiPickerState extends State<ChatEmojiPicker>
           Expanded(
             child: TextField(
               controller: _searchController,
-              style: TextStyle(color: theme.textColor, fontSize: 14),
+              style: TextStyle(
+                color: theme.textColor,
+                fontSize: 14,
+              ),
               decoration: InputDecoration(
-                hintText: 'جستجوی ایموجی...',
-                hintStyle: TextStyle(color: theme.inputHintColor),
+                hintText: '... جستجوی ایموجی',
+                hintStyle: TextStyle(
+                  color: theme.inputHintColor,
+                  fontSize: 14,
+                ),
                 prefixIcon: Icon(
                   Icons.search_rounded,
                   color: theme.secondaryTextColor,
@@ -192,6 +311,7 @@ class _ChatEmojiPickerState extends State<ChatEmojiPicker>
               icon: Icon(
                 Icons.backspace_rounded,
                 color: theme.iconColor,
+                size: 20,
               ),
             ),
           ],
@@ -200,81 +320,87 @@ class _ChatEmojiPickerState extends State<ChatEmojiPicker>
     );
   }
 
-  Widget _buildCategoryTabs(ChatTheme theme) {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📑 CATEGORY ROWS (2 ردیف دسته‌بندی)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildCategoryRows(ChatTheme theme) {
     return Container(
-      height: 44,
+      padding: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
+        color: theme.inputBackgroundColor.withOpacity(0.3),
         border: Border(
           bottom: BorderSide(color: theme.dividerColor, width: 0.5),
         ),
       ),
-      child: TabBar(
-        controller: _tabController,
-        isScrollable: true,
-        indicatorColor: theme.sendButtonColor,
-        indicatorSize: TabBarIndicatorSize.label,
-        labelColor: theme.sendButtonColor,
-        unselectedLabelColor: theme.secondaryTextColor,
-        tabs: _categories.map((cat) => Tab(
-          icon: Icon(cat.icon, size: 22),
-        )).toList(),
+      child: Column(
+        children: [
+          // ردیف اول
+          _buildCategoryRow(theme, _categories, 0),
+          const SizedBox(height: 4),
+          // ردیف دوم
+          _buildCategoryRow(theme, _categoriesRow2, 0),
+        ],
       ),
     );
   }
 
-  Widget _buildEmojiGrid(ChatTheme theme) {
+  Widget _buildCategoryRow(ChatTheme theme, List<_EmojiCategory> categories, int rowOffset) {
+    return SizedBox(
+      height: 40,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        itemCount: categories.length,
+        itemBuilder: (context, index) {
+          final category = categories[index];
+          // پیدا کردن index واقعی در لیست اصلی
+          final realIndex = _categories.indexWhere(
+            (c) => c.category == category.category,
+          );
+          final isSelected = realIndex >= 0 && realIndex == _selectedCategoryIndex;
+          
+          return _CategoryIcon(
+            icon: category.icon,
+            isSelected: isSelected,
+            onTap: () {
+              if (realIndex >= 0) {
+                _onCategoryTap(realIndex);
+              }
+            },
+            theme: theme,
+          );
+        },
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📄 EMOJI CONTENT
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildEmojiContent(ChatTheme theme) {
+    // اگر دسته‌بندی اخیر انتخاب شده، ایموجی‌های اخیر را نمایش بده
+    if (_selectedCategoryIndex == 0) {
+      return _buildRecentEmojis(theme);
+    }
+    
+    // در غیر این صورت، از EmojiPicker استفاده کن
     return TabBarView(
-      controller: _tabController,
-      children: [
-        // Recent
-        _buildEmojiPage(
-          _recentEmojis.isEmpty ? _popularEmojis : _recentEmojis,
-          theme,
-        ),
-        // باقی دسته‌بندی‌ها - استفاده از emoji_picker_flutter
-        ...List.generate(8, (index) => _buildCategoryPage(index, theme)),
-      ],
+      controller: _categoryTabController,
+      children: _categories.map((cat) {
+        if (cat.category == Category.RECENT) {
+          return _buildRecentEmojis(theme);
+        }
+        return _buildCategoryPage(cat.category, theme);
+      }).toList(),
     );
   }
 
-  Widget _buildCategoryPage(int categoryIndex, ChatTheme theme) {
-    // استفاده از پکیج emoji_picker_flutter برای داده‌های واقعی
-    return EmojiPicker(
-      onEmojiSelected: (category, emoji) {
-        _onEmojiTap(emoji.emoji);
-      },
-      config: Config(
-        height: widget.height - 100,
-        checkPlatformCompatibility: true,
-        emojiViewConfig: EmojiViewConfig(
-          columns: 8,
-          emojiSizeMax: 28,
-          backgroundColor: theme.backgroundColor,
-          noRecents: Text(
-            'ایموجی اخیری نیست',
-            style: TextStyle(color: theme.secondaryTextColor),
-          ),
-        ),
-        categoryViewConfig: CategoryViewConfig(
-          initCategory: Category.values[categoryIndex.clamp(0, Category.values.length - 1)],
-          backgroundColor: theme.backgroundColor,
-          indicatorColor: theme.sendButtonColor,
-          iconColorSelected: theme.sendButtonColor,
-          iconColor: theme.secondaryTextColor,
-        ),
-        bottomActionBarConfig: const BottomActionBarConfig(
-          enabled: false,
-        ),
-        searchViewConfig: SearchViewConfig(
-          backgroundColor: theme.backgroundColor,
-          buttonIconColor: theme.iconColor,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmojiPage(List<String> emojis, ChatTheme theme) {
-    if (emojis.isEmpty) {
+  Widget _buildRecentEmojis(ChatTheme theme) {
+    final emojisToShow = _recentEmojis.isEmpty ? _popularEmojis : _recentEmojis;
+    
+    if (emojisToShow.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -287,7 +413,10 @@ class _ChatEmojiPickerState extends State<ChatEmojiPicker>
             const SizedBox(height: 12),
             Text(
               'ایموجی اخیری نیست',
-              style: TextStyle(color: theme.secondaryTextColor),
+              style: TextStyle(
+                color: theme.secondaryTextColor,
+                fontSize: 14,
+              ),
             ),
           ],
         ),
@@ -301,9 +430,9 @@ class _ChatEmojiPickerState extends State<ChatEmojiPicker>
         mainAxisSpacing: 4,
         crossAxisSpacing: 4,
       ),
-      itemCount: emojis.length,
+      itemCount: emojisToShow.length,
       itemBuilder: (context, index) {
-        final emoji = emojis[index];
+        final emoji = emojisToShow[index];
         return _EmojiButton(
           emoji: emoji,
           onTap: () => _onEmojiTap(emoji),
@@ -312,44 +441,170 @@ class _ChatEmojiPickerState extends State<ChatEmojiPicker>
     );
   }
 
-  Widget _buildSearchResults(ChatTheme theme) {
-    // جستجوی ساده در ایموجی‌های پرکاربرد
-    // در نسخه واقعی باید از دیتابیس ایموجی استفاده شه
-    final results = _popularEmojis.where((e) => e.contains(_searchQuery)).toList();
-
-    if (results.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.search_off_rounded,
-              size: 48,
-              color: theme.secondaryTextColor.withOpacity(0.5),
+  Widget _buildCategoryPage(Category category, ChatTheme theme) {
+    return Stack(
+      children: [
+        // EmojiPicker کامل
+        EmojiPicker(
+          onEmojiSelected: (cat, emoji) {
+            _onEmojiTap(emoji.emoji);
+          },
+          config: Config(
+            height: widget.height - 200,
+            checkPlatformCompatibility: true,
+            emojiViewConfig: EmojiViewConfig(
+              columns: 8,
+              emojiSizeMax: 28,
+              backgroundColor: theme.backgroundColor,
+              noRecents: Text(
+                'ایموجی اخیری نیست',
+                style: TextStyle(color: theme.secondaryTextColor),
+              ),
             ),
-            const SizedBox(height: 12),
-            Text(
-              'نتیجه‌ای یافت نشد',
-              style: TextStyle(color: theme.secondaryTextColor),
+            categoryViewConfig: CategoryViewConfig(
+              initCategory: category,
+              backgroundColor: theme.backgroundColor,
+              indicatorColor: theme.sendButtonColor,
+              iconColorSelected: theme.sendButtonColor,
+              iconColor: theme.secondaryTextColor,
             ),
-          ],
+            bottomActionBarConfig: const BottomActionBarConfig(
+              enabled: false,
+            ),
+            searchViewConfig: SearchViewConfig(
+              backgroundColor: theme.backgroundColor,
+              buttonIconColor: theme.iconColor,
+            ),
+            skinToneConfig: const SkinToneConfig(
+              enabled: true,
+            ),
+          ),
         ),
-      );
-    }
+        // پوشاندن نوار دسته‌بندی EmojiPicker
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 50, // ارتفاع نوار دسته‌بندی
+          child: Container(
+            color: theme.backgroundColor, // رنگ پس‌زمینه برای پوشاندن
+          ),
+        ),
+      ],
+    );
+  }
 
-    return _buildEmojiPage(results, theme);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🔍 SEARCH RESULTS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildSearchResults(ChatTheme theme) {
+    // استفاده از EmojiPicker برای جستجوی پیشرفته
+    return Stack(
+      children: [
+        // EmojiPicker کامل
+        EmojiPicker(
+          onEmojiSelected: (category, emoji) {
+            _onEmojiTap(emoji.emoji);
+          },
+          config: Config(
+            height: widget.height - 100,
+            checkPlatformCompatibility: true,
+            emojiViewConfig: EmojiViewConfig(
+              columns: 8,
+              emojiSizeMax: 28,
+              backgroundColor: theme.backgroundColor,
+              noRecents: Text(
+                'نتیجه‌ای یافت نشد',
+                style: TextStyle(color: theme.secondaryTextColor),
+              ),
+            ),
+            categoryViewConfig: CategoryViewConfig(
+              backgroundColor: theme.backgroundColor,
+              indicatorColor: theme.sendButtonColor,
+              iconColorSelected: theme.sendButtonColor,
+              iconColor: theme.secondaryTextColor,
+            ),
+            bottomActionBarConfig: const BottomActionBarConfig(
+              enabled: false,
+            ),
+            searchViewConfig: SearchViewConfig(
+              backgroundColor: theme.backgroundColor,
+              buttonIconColor: theme.iconColor,
+            ),
+            skinToneConfig: const SkinToneConfig(
+              enabled: true,
+            ),
+          ),
+        ),
+        // پوشاندن نوار دسته‌بندی EmojiPicker
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 50, // ارتفاع نوار دسته‌بندی
+          child: Container(
+            color: theme.backgroundColor, // رنگ پس‌زمینه برای پوشاندن
+          ),
+        ),
+      ],
+    );
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 🎯 HELPER WIDGETS
+// 🎯 HELPER CLASSES
 // ═══════════════════════════════════════════════════════════════════════════
 
 class _EmojiCategory {
   final IconData icon;
   final String name;
+  final Category category;
 
-  const _EmojiCategory({required this.icon, required this.name});
+  const _EmojiCategory({
+    required this.icon,
+    required this.name,
+    required this.category,
+  });
+}
+
+class _CategoryIcon extends StatelessWidget {
+  final IconData icon;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final ChatTheme theme;
+
+  const _CategoryIcon({
+    required this.icon,
+    required this.isSelected,
+    required this.onTap,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? theme.sendButtonColor.withOpacity(0.15)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(
+          icon,
+          size: 22,
+          color: isSelected
+              ? theme.sendButtonColor
+              : theme.secondaryTextColor,
+        ),
+      ),
+    );
+  }
 }
 
 class _EmojiButton extends StatefulWidget {
@@ -466,4 +721,3 @@ class QuickEmojiBar extends StatelessWidget {
     );
   }
 }
-

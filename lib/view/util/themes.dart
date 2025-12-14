@@ -1,6 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+// لیست فونت‌های جایگزین برای نمایش صحیح ایموجی‌ها
+const List<String> defaultFontFallback = [
+  'Apple Color Emoji',
+  'Segoe UI Emoji',
+  'Segoe UI Symbol',
+  'Noto Color Emoji',
+  'Android Emoji',
+  'EmojiSymbols',
+  'Arial',
+];
+
 // enum برای رنگ‌های اصلی
 enum ThemeColor {
   blue,
@@ -230,82 +241,37 @@ TextTheme _buildTextTheme({
   final baseSize = largeText ? 1.2 : 1.0;
   final fontWeight = boldText ? FontWeight.bold : FontWeight.normal;
   
+  // تابع کمکی برای ساخت استایل با fontFamilyFallback
+  TextStyle makeStyle(double fontSize, Color color) {
+    return TextStyle(
+      fontSize: fontSize * baseSize,
+      fontWeight: fontWeight,
+      color: color,
+      fontFamily: 'Vazir',
+      fontFamilyFallback: defaultFontFallback,
+    );
+  }
+  
+  // رنگ متن بر اساس تم
+  final mainColor = isDark ? Colors.white : Colors.black87;
+  final subColor = isDark ? Colors.grey[400] : Colors.grey[600];
+  
   return TextTheme(
-    displayLarge: TextStyle(
-      fontSize: 57 * baseSize,
-      fontWeight: fontWeight,
-      color: isDark ? Colors.white : Colors.black87,
-    ),
-    displayMedium: TextStyle(
-      fontSize: 45 * baseSize,
-      fontWeight: fontWeight,
-      color: isDark ? Colors.white : Colors.black87,
-    ),
-    displaySmall: TextStyle(
-      fontSize: 36 * baseSize,
-      fontWeight: fontWeight,
-      color: isDark ? Colors.white : Colors.black87,
-    ),
-    headlineLarge: TextStyle(
-      fontSize: 32 * baseSize,
-      fontWeight: fontWeight,
-      color: isDark ? Colors.white : Colors.black87,
-    ),
-    headlineMedium: TextStyle(
-      fontSize: 28 * baseSize,
-      fontWeight: fontWeight,
-      color: isDark ? Colors.white : Colors.black87,
-    ),
-    headlineSmall: TextStyle(
-      fontSize: 24 * baseSize,
-      fontWeight: fontWeight,
-      color: isDark ? Colors.white : Colors.black87,
-    ),
-    titleLarge: TextStyle(
-      fontSize: 22 * baseSize,
-      fontWeight: fontWeight,
-      color: isDark ? Colors.white : Colors.black87,
-    ),
-    titleMedium: TextStyle(
-      fontSize: 16 * baseSize,
-      fontWeight: fontWeight,
-      color: isDark ? Colors.white : Colors.black87,
-    ),
-    titleSmall: TextStyle(
-      fontSize: 14 * baseSize,
-      fontWeight: fontWeight,
-      color: isDark ? Colors.white : Colors.black87,
-    ),
-    bodyLarge: TextStyle(
-      fontSize: 16 * baseSize,
-      fontWeight: fontWeight,
-      color: isDark ? Colors.white : Colors.black87,
-    ),
-    bodyMedium: TextStyle(
-      fontSize: 14 * baseSize,
-      fontWeight: fontWeight,
-      color: isDark ? Colors.white : Colors.black87,
-    ),
-    bodySmall: TextStyle(
-      fontSize: 12 * baseSize,
-      fontWeight: fontWeight,
-      color: isDark ? Colors.grey[400] : Colors.grey[600],
-    ),
-    labelLarge: TextStyle(
-      fontSize: 14 * baseSize,
-      fontWeight: fontWeight,
-      color: isDark ? Colors.white : Colors.black87,
-    ),
-    labelMedium: TextStyle(
-      fontSize: 12 * baseSize,
-      fontWeight: fontWeight,
-      color: isDark ? Colors.white : Colors.black87,
-    ),
-    labelSmall: TextStyle(
-      fontSize: 11 * baseSize,
-      fontWeight: fontWeight,
-      color: isDark ? Colors.grey[400] : Colors.grey[600],
-    ),
+    displayLarge: makeStyle(57, mainColor),
+    displayMedium: makeStyle(45, mainColor),
+    displaySmall: makeStyle(36, mainColor),
+    headlineLarge: makeStyle(32, mainColor),
+    headlineMedium: makeStyle(28, mainColor),
+    headlineSmall: makeStyle(24, mainColor),
+    titleLarge: makeStyle(22, mainColor),
+    titleMedium: makeStyle(16, mainColor),
+    titleSmall: makeStyle(14, mainColor),
+    bodyLarge: makeStyle(16, mainColor),
+    bodyMedium: makeStyle(14, mainColor),
+    bodySmall: makeStyle(12, subColor!),
+    labelLarge: makeStyle(14, mainColor),
+    labelMedium: makeStyle(12, mainColor),
+    labelSmall: makeStyle(11, subColor),
   );
 }
 

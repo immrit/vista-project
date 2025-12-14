@@ -46,6 +46,10 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	
+	<!-- Enable Impeller rendering engine for better performance -->
+	<key>FLTEnableImpeller</key>
+	<true/>
+	
 	<!-- Location Permissions -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>برای ثبت موقعیت مکانی نشست‌های فعال نیاز به دسترسی به موقعیت داریم</string>

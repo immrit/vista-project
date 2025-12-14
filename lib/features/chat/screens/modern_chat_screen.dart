@@ -15,6 +15,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -625,22 +626,209 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       paginationStateProvider(widget.args.conversationId),
     );
 
+    // دریافت ارتفاع کیبورد و Safe Area
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final safePaddingBottom = MediaQuery.of(context).padding.bottom;
+
     return Stack(
       children: [
-        // Main Screen
-        EnhancedChatBackground(
-          enablePattern: true,
-          // forceEnableBlur را null می‌گذاریم تا از تنظیمات کاربر استفاده کند
-          blurIntensity: 3.0,
-          child: Scaffold(
-            backgroundColor: Colors.transparent,
-            // ✅ فعال کردن اسکرول پیام‌ها از پشت app bar
-            extendBodyBehindAppBar: true,
-            // ✅ استفاده از resizeToAvoidBottomInset: true برای همگام شدن با انیمیشن native سیستم
-            // این همان روشی است که تلگرام استفاده می‌کند - اجازه می‌دهیم Flutter با کیبورد سیستم همگام شود
-            resizeToAvoidBottomInset: true,
-            appBar: _isSearchMode ? null : _buildAppBar(theme),
-            body: _buildKeyboardAwareBody(context, messagesAsync, paginationState, theme),
+        // 1. والپیپر (زیر همه چیز)
+        Positioned.fill(
+          child: EnhancedChatBackground(
+            enablePattern: true,
+            blurIntensity: 0.0,
+            child: Container(color: Colors.transparent),
+          ),
+        ),
+
+        // 2. اسکفولد اصلی
+        Scaffold(
+          backgroundColor: Colors.transparent,
+          extendBody: true, // مهم: بادی تا زیر نوار پایین ادامه پیدا کند
+          extendBodyBehindAppBar: true,
+          resizeToAvoidBottomInset:
+              false, // مهم: خودمان هندل می‌کنیم تا انیمیشن نرم‌تر باشد
+
+          appBar: _isSearchMode ? null : _buildAppBar(theme),
+
+          body: Stack(
+            children: [
+              // لایه 1: لیست پیام‌ها (تمام صفحه) با تاریخ شناور
+              Positioned.fill(
+                child: FloatingDateHeader(
+                  currentDate: _currentVisibleDate,
+                  isScrolling: _isScrolling,
+                  child: _buildMessageList(
+                    messagesAsync,
+                    paginationState,
+                    theme,
+                    // محاسبه پدینگ پایین لیست:
+                    // ارتفاع کیبورد + ارتفاع اینپوت بار تقریبی (55) + فاصله ایمن + کمی فاصله اضافه برای دیده شدن پیام‌ها
+                    bottomPadding: (bottomInset + 55 + safePaddingBottom + 25)
+                        .clamp(0.0, double.infinity),
+                  ),
+                ),
+              ),
+
+              // لایه 2: بنرها و هدرهای شناور
+              if (_isCurrentUserBlocked || _isOtherUserBlocked)
+                Positioned(
+                  top: kToolbarHeight + 30,
+                  left: 0,
+                  right: 0,
+                  child: _buildBlockedBanner(theme),
+                ),
+
+              Positioned(
+                top: kToolbarHeight + 30,
+                left: 0,
+                right: 0,
+                child: TelegramConnectionBanner(
+                  isConnected: true,
+                  onRetry: () {},
+                ),
+              ),
+
+              // لایه 3: دکمه اسکرول به پایین (بالای اینپوت)
+              if (_showScrollToBottom)
+                Positioned(
+                  right: 16,
+                  // موقعیت دکمه بر اساس باز بودن کیبورد
+                  bottom: bottomInset + 80 + safePaddingBottom,
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: const Duration(milliseconds: 200),
+                    builder: (context, value, child) {
+                      return Transform.scale(
+                        scale: value,
+                        child: child,
+                      );
+                    },
+                    child: FloatingActionButton.small(
+                      onPressed: _scrollToBottom,
+                      backgroundColor: theme.backgroundColor,
+                      foregroundColor: theme.iconColor,
+                      elevation: 4,
+                      child: const Icon(Icons.keyboard_arrow_down_rounded),
+                    ),
+                  ),
+                ),
+
+              // لایه 3.5: لایه بلور با گرادیانت نرم و صاف از پایین تکست باکس (تا پیام‌ها به تدریج مات دیده شوند)
+              if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  // از پایین تکست باکس شروع می‌شود (همیشه دقیقاً زیر تکست باکس)
+                  bottom: (bottomInset < 0 ? 0.0 : bottomInset),
+                  // ارتفاع بر اساس وضعیت کیبورد:
+                  // وقتی کیبورد باز است، فاصله بین تکست باکس و کیبورد حدود 8-15 پیکسل است (effectiveBottomPadding در animated_chat_input)
+                  // وقتی کیبورد بسته است، فاصله تا پایین صفحه بیشتر است
+                  height: bottomInset > 0
+                      ? 25.0 // وقتی کیبورد باز است: فاصله بین تکست باکس و کیبورد (8 پدینگ + کمی بیشتر برای اطمینان)
+                      : (safePaddingBottom > 0
+                          ? safePaddingBottom + 55.0
+                          : 75.0), // وقتی بسته است: فاصله تا پایین صفحه
+                  child: ClipRect(
+                    child: Stack(
+                      children: [
+                        // لایه بلور با گرادیانت بسیار نرم
+                        Positioned.fill(
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors
+                                        .transparent, // بالا: کاملاً شفاف (0%)
+                                    theme.backgroundColor
+                                        .withOpacity(0.08), // 15%: خیلی کم
+                                    theme.backgroundColor
+                                        .withOpacity(0.18), // 30%: کم
+                                    theme.backgroundColor
+                                        .withOpacity(0.30), // 50%: متوسط-کم
+                                    theme.backgroundColor
+                                        .withOpacity(0.45), // 70%: متوسط
+                                    theme.backgroundColor
+                                        .withOpacity(0.60), // پایین: زیاد
+                                  ],
+                                  stops: const [
+                                    0.0,
+                                    0.15,
+                                    0.30,
+                                    0.50,
+                                    0.70,
+                                    1.0
+                                  ], // توزیع صاف و نرم از کم به زیاد
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        // لایه اضافی برای گرادیانت نرم‌تر و صاف‌تر
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent, // بالا: کاملاً شفاف
+                                Colors.transparent, // 40%: شفاف
+                                Colors.transparent, // 60%: شفاف
+                                theme.backgroundColor
+                                    .withOpacity(0.08), // 80%: خیلی کم مات
+                                theme.backgroundColor
+                                    .withOpacity(0.20), // پایین: کم مات
+                              ],
+                              stops: const [
+                                0.0,
+                                0.40,
+                                0.60,
+                                0.80,
+                                1.0
+                              ], // توزیع صاف از کم به زیاد
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+              // لایه 4: اینپوت بار جزیره‌ای (Input Island)
+              if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  // چسبیدن به بالای کیبورد - استفاده از max برای جلوگیری از مقادیر منفی
+                  bottom: bottomInset < 0 ? 0.0 : bottomInset,
+                  child: _buildInputArea(theme),
+                ),
+
+              // لایه 5: Search Bar (اگر فعال باشد)
+              if (_isSearchMode)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: SafeArea(
+                    child: MessageSearchBar(
+                      conversationId: widget.args.conversationId,
+                      onClose: () => setState(() {
+                        _isSearchMode = false;
+                        _highlightedMessageId = null;
+                      }),
+                      onResultSelected: (id) {
+                        setState(() => _highlightedMessageId = id);
+                        _scrollToMessage(id);
+                      },
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
 
@@ -1240,8 +1428,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   Widget _buildMessageList(
     AsyncValue<List<MessageModel>> messagesAsync,
     PaginationState paginationState,
-    ChatTheme theme,
-  ) {
+    ChatTheme theme, {
+    required double bottomPadding, // پارامتر جدید
+  }) {
     return messagesAsync.when(
       data: (allMessages) {
         // ✅ فیلتر پیام‌های مخفی شده (حذف شده برای من)
@@ -1325,6 +1514,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           reverse: true,
           physics: const BouncingScrollPhysics(),
           slivers: [
+            // ✅ مهم: پدینگ پایین لیست برای اینکه زیر اینپوت نرود
+            // چون لیست reverse است، اولین آیتم slivers پایین‌ترین نقطه بصری است
+            if (bottomPadding > 0)
+              SliverPadding(
+                padding: EdgeInsets.only(bottom: bottomPadding),
+                sliver: const SliverToBoxAdapter(child: SizedBox.shrink()),
+              ),
             const SliverPadding(padding: EdgeInsets.only(bottom: 10)),
             SliverList(
               delegate: SliverChildBuilderDelegate(
@@ -1852,106 +2048,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     );
   }
 
-  Widget _buildScrollToBottomButton(ChatTheme theme) {
-    return Positioned(
-      right: 16,
-      bottom: 16,
-      child: TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0.0, end: 1.0),
-        duration: const Duration(milliseconds: 200),
-        builder: (context, value, child) {
-          return Transform.scale(
-            scale: value,
-            child: child,
-          );
-        },
-        child: FloatingActionButton.small(
-          onPressed: _scrollToBottom,
-          backgroundColor: theme.backgroundColor,
-          foregroundColor: theme.iconColor,
-          elevation: 4,
-          child: const Icon(Icons.keyboard_arrow_down_rounded),
-        ),
-      ),
-    );
-  }
-
   // ═══════════════════════════════════════════════════════════════════════════
   // 🖊️ INPUT AREA
   // ═══════════════════════════════════════════════════════════════════════════
-
-  /// ساخت Body با مدیریت دقیق کیبورد
-  /// روش تلگرام: استفاده از resizeToAvoidBottomInset: true و padding مستقیم بدون انیمیشن اضافی
-  /// این باعث می‌شود با انیمیشن native کیبورد سیستم همگام شویم (خیلی سریع‌تر و روان‌تر)
-  Widget _buildKeyboardAwareBody(
-    BuildContext context,
-    AsyncValue<List<MessageModel>> messagesAsync,
-    dynamic paginationState,
-    ChatTheme theme,
-  ) {
-    // ✅ با resizeToAvoidBottomInset: true، Scaffold خودش body را resize می‌کند
-    // ما فقط باید safe area bottom را برای gesture bar اضافه کنیم
-    final padding = MediaQuery.of(context).padding;
-
-    // ✅ استفاده از Padding بدون انیمیشن - اجازه می‌دهیم Flutter با کیبورد native همگام شود
-    // این روش خیلی سریع‌تر و روان‌تر از AnimatedPadding است (مثل تلگرام)
-    return Padding(
-      padding: EdgeInsets.only(bottom: padding.bottom),
-      child: RepaintBoundary(
-        child: Column(
-        children: [
-          // Search bar
-          if (_isSearchMode)
-            MessageSearchBar(
-              conversationId: widget.args.conversationId,
-              onClose: () => setState(() {
-                _isSearchMode = false;
-                _highlightedMessageId = null;
-              }),
-              onResultSelected: (messageId) {
-                setState(() => _highlightedMessageId = messageId);
-                _scrollToMessage(messageId);
-              },
-            ),
-
-          // بنر مسدودیت
-          if (_isCurrentUserBlocked || _isOtherUserBlocked)
-            _buildBlockedBanner(theme),
-
-          // بنر اتصال
-          TelegramConnectionBanner(
-            isConnected: true, // TODO: اتصال به network state
-            onRetry: () {
-              // TODO: retry connection
-            },
-          ),
-
-          // لیست پیام‌ها
-          Expanded(
-            child: Stack(
-              children: [
-                // پیام‌ها با تاریخ شناور
-                FloatingDateHeader(
-                  currentDate: _currentVisibleDate,
-                  isScrolling: _isScrolling,
-                  child: _buildMessageList(messagesAsync, paginationState, theme),
-                ),
-
-                // دکمه Scroll to Bottom
-                if (_showScrollToBottom)
-                  _buildScrollToBottomButton(theme),
-              ],
-            ),
-          ),
-
-          // Input area
-          if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
-            _buildInputArea(theme),
-        ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildInputArea(ChatTheme theme) {
     return AnimatedChatInput(

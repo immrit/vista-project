@@ -28,5 +28,8 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<!-- Enable Impeller rendering engine for better performance -->
+	<key>FLTEnableImpeller</key>
+	<true/>
 </dict>
 </plist>

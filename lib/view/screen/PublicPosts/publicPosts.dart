@@ -33,6 +33,7 @@ import 'notificationScreen.dart';
 import 'profileScreen.dart';
 import 'dart:async';
 import 'package:aws_s3_api/s3-2006-03-01.dart';
+import '../../../utils/premium_features_helper.dart';
 
 class PublicPostsScreen extends ConsumerStatefulWidget {
   const PublicPostsScreen({super.key});
@@ -1894,15 +1895,31 @@ Widget _buildPostActions(
             ));
           }
 
-          // فقط کاربران با تیک آبی مجاز به ویرایش هستند
-          if (isBlueTick) {
-            items.add(const PopupMenuItem<String>(
+          // گزینه ویرایش برای صاحب پست (با یا بدون دسترسی)
+          if (currentUserId == post.userId) {
+            final currentUserProfile = ref.read(currentUserProfileProvider);
+            final canEditPost = currentUserProfile.value != null &&
+                PremiumFeaturesHelper.canEditPost(currentUserProfile.value!);
+            
+            items.add(PopupMenuItem<String>(
               value: 'edit',
               child: Row(
                 children: [
-                  Icon(Icons.edit, color: Colors.green),
-                  SizedBox(width: 8),
-                  Text('ویرایش پست'),
+                  Icon(
+                    canEditPost ? Icons.edit : Icons.lock_outline,
+                    size: 20,
+                    color: canEditPost ? Colors.blue : Colors.grey,
+                  ),
+                  const SizedBox(width: 12),
+                  const Text('ویرایش پست'),
+                  if (!canEditPost) ...[
+                    const Spacer(),
+                    Icon(
+                      Icons.workspace_premium,
+                      size: 18,
+                      color: Colors.amber.shade600,
+                    ),
+                  ],
                 ],
               ),
             ));
@@ -1944,19 +1961,31 @@ Widget _buildPostActions(
               );
             }
           } else if (value == 'edit') {
-            // فقط کاربران با تیک آبی مجاز به ویرایش هستند
-            final isBlueTick = profile != null &&
-                profile['is_verified'] == true &&
-                profile['verification_type'] == 'blueTick';
-            if (isBlueTick) {
+            // استفاده از Helper برای بررسی دسترسی
+            final currentUserProfile = ref.read(currentUserProfileProvider);
+            final currentUserId = supabase.auth.currentUser?.id;
+            final isCurrentUserPost = post.userId == currentUserId;
+            final canEditPost = currentUserProfile.value != null &&
+                PremiumFeaturesHelper.canEditPost(currentUserProfile.value!) &&
+                isCurrentUserPost;
+            
+            if (canEditPost) {
               showEditPostDialog(context, ref, post);
             } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('شما مجوز ویرایش این پست را ندارید'),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
+              // نمایش دیالوگ پریمیوم اگر دسترسی ندارد
+              if (isCurrentUserPost) {
+                PremiumFeaturesHelper.showPremiumPromptDialog(
+                  context,
+                  feature: 'ویرایش پست',
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('شما مجوز ویرایش این پست را ندارید'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
             }
           }
         },

@@ -162,13 +162,21 @@ class _PostMessageBubbleState extends State<PostMessageBubble> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
                 child: Text(
-                  widget.content,
+                  '${widget.content}\u200F',
+                  textDirection: TextDirection.rtl,
+                  textAlign: TextAlign.right,
                   style: TextStyle(
                     color: widget.isMine
                         ? theme.myBubbleTextColor
                         : theme.otherBubbleTextColor,
                     fontSize: 14.5,
                     height: 1.5,
+                    fontFamily: 'Vazir',
+                    fontFamilyFallback: const [
+                      'Apple Color Emoji',
+                      'Segoe UI Emoji',
+                      'Noto Color Emoji',
+                    ],
                   ),
                   maxLines: 5,
                   overflow: TextOverflow.ellipsis,

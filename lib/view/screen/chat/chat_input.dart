@@ -2,18 +2,20 @@ import 'dart:async';
 import 'dart:io';
 import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import '../../widgets/attachment_bottom_sheet.dart';
 import '../../widgets/image_preview_bottom_sheet.dart';
 import '../../../model/message_model.dart';
+import '../../../features/chat/widgets/vista_emoji_panel.dart';
 
 // Callbacks for the parent widget (ChatScreen)
-class ChatInput extends StatefulWidget {
+class ChatInput extends ConsumerStatefulWidget {
   final Function(String) onSendMessage;
   final Function(File) onSendVoiceMessage;
   final Function(String, List<File>) onSendImages;
   final Function(File) onFileSelected;
+  final Function(String)? onSendGif; // ✅ اضافه شده برای ارسال GIF
   final BuildContext parentContext;
   final MessageModel? replyTo;
   final VoidCallback? onClearReply;
@@ -25,15 +27,17 @@ class ChatInput extends StatefulWidget {
     required this.onSendImages,
     required this.onFileSelected,
     required this.parentContext,
+    this.onSendGif,
     this.replyTo,
     this.onClearReply,
   });
 
   @override
-  State<ChatInput> createState() => _ChatInputState();
+  ConsumerState<ChatInput> createState() => _ChatInputState();
 }
 
-class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
+class _ChatInputState extends ConsumerState<ChatInput>
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   // --- Controllers ---
   final TextEditingController _textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
@@ -50,9 +54,9 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
   Offset? _longPressStartPosition;
   Timer? _recordingTimer;
 
-  // ✅ Flag برای کنترل animation کیبورد
-  bool _isKeyboardReady = false;
-  Timer? _keyboardReadyTimer;
+  // برای جلوگیری از پرش صفحه هنگام سوییچ بین کیبورد و ایموجی
+  double _keyboardHeight = 0;
+  static const double _defaultEmojiHeight = 280.0;
 
   // --- Animations ---
   late Animation<double> _micIconScaleAnimation;
@@ -64,6 +68,7 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _recorderController = RecorderController();
     _textController.addListener(_onTextChanged);
 
@@ -76,24 +81,42 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
     _slideCancelAnimationController = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 300));
 
-    // ✅ آماده‌سازی کیبورد با تأخیر کوتاه
-    _prepareKeyboardForFastOpen();
-  }
-
-  void _prepareKeyboardForFastOpen() {
-    // بعد از 100ms، کیبورد آماده باز شدن سریع است
-    _keyboardReadyTimer = Timer(const Duration(milliseconds: 100), () {
-      if (mounted) {
+    // لیسنر برای ارتفاع کیبورد جهت تنظیم ارتفاع پنل ایموجی
+    _focusNode.addListener(() {
+      if (_focusNode.hasFocus) {
         setState(() {
-          _isKeyboardReady = true;
+          _showEmojiPicker = false;
         });
       }
     });
   }
 
   @override
+  void didChangeMetrics() {
+    // محاسبه دقیق ارتفاع کیبورد از طریق WidgetsBinding
+    if (!mounted) return;
+
+    final view = View.of(context);
+    final bottomInset = view.viewInsets.bottom;
+    final pixelRatio = view.devicePixelRatio;
+    final logicalBottomInset = bottomInset / pixelRatio;
+
+    if (logicalBottomInset > 0) {
+      // کیبورد باز است
+      setState(() {
+        _keyboardHeight = logicalBottomInset;
+      });
+    } else {
+      // کیبورد بسته است
+      setState(() {
+        _keyboardHeight = 0;
+      });
+    }
+  }
+
+  @override
   void dispose() {
-    _keyboardReadyTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _textController.dispose();
     _focusNode.dispose();
     _recorderController.dispose();
@@ -111,22 +134,38 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
     }
   }
 
-  void _toggleEmojiPicker() {
-    // ساده و بدون هیچ delay
-    setState(() {
-      _showEmojiPicker = !_showEmojiPicker;
-    });
-
-    if (!_showEmojiPicker) {
-      // اگه emoji picker بسته شد، focus رو بده به text field
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _focusNode.requestFocus();
-        }
+  Future<void> _toggleEmojiPicker() async {
+    if (_showEmojiPicker) {
+      // اگر پنل ایموجی باز است، کیبورد را باز کن
+      _focusNode.requestFocus();
+      setState(() {
+        _showEmojiPicker = false;
       });
     } else {
-      // اگه emoji picker باز شد، focus رو بردار
-      _focusNode.unfocus();
+      // اگر کیبورد باز است، اول ارتفاعش را ذخیره کن، بعد ببند و ایموجی را باز کن
+      final currentFocus = FocusScope.of(context);
+      if (!currentFocus.hasPrimaryFocus && currentFocus.focusedChild != null) {
+        FocusManager.instance.primaryFocus?.unfocus();
+      }
+
+      // تاخیر کوتاه برای جلوگیری از پرش UI هنگام بستن کیبورد
+      if (MediaQuery.of(context).viewInsets.bottom > 0) {
+        await Future.delayed(const Duration(milliseconds: 50));
+      }
+
+      setState(() {
+        _showEmojiPicker = true;
+      });
+    }
+  }
+
+  void _onPopInvokedWithResult(bool didPop, dynamic result) {
+    if (didPop) return;
+    // اگر پنل ایموجی باز بود، آن را می‌بندیم
+    if (_showEmojiPicker) {
+      setState(() {
+        _showEmojiPicker = false;
+      });
     }
   }
 
@@ -248,82 +287,73 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      elevation: 5,
-      color: Theme.of(context).cardColor,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (widget.replyTo != null) _buildReplyPreview(widget.replyTo!),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 150), // کاهش مدت انیمیشن
-              switchInCurve: Curves.easeOut,
-              switchOutCurve: Curves.easeIn,
-              transitionBuilder: (Widget child, Animation<double> animation) {
-                return FadeTransition(
-                  opacity: animation,
-                  child: child,
-                );
-              },
-              child: _isRecording ? _buildRecordingUI() : _buildStandardInput(),
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    // رنگ گلس متناسب با تم
+    final glassColor = isDark
+        ? Colors.black.withValues(alpha: 0.3)
+        : Colors.white.withValues(alpha: 0.65);
+
+    return PopScope(
+      canPop: !_showEmojiPicker, // اگر ایموجی باز باشد، اجازه خروج نده
+      onPopInvokedWithResult: _onPopInvokedWithResult,
+      child: Material(
+        elevation: 0,
+        color: Colors.transparent,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.replyTo != null) _buildReplyPreview(widget.replyTo!),
+            // کانتینر اصلی ورودی پیام با افکت شیشه‌ای
+            Container(
+              decoration: BoxDecoration(
+                color: glassColor,
+                border: Border(
+                  top: BorderSide(
+                    color: theme.dividerColor.withOpacity(0.1),
+                    width: 0.5,
+                  ),
+                ),
+              ),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6.0, vertical: 8.0),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 150),
+                  switchInCurve: Curves.easeOut,
+                  switchOutCurve: Curves.easeIn,
+                  transitionBuilder:
+                      (Widget child, Animation<double> animation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: child,
+                    );
+                  },
+                  child: _isRecording
+                      ? _buildRecordingUI()
+                      : _buildStandardInput(),
+                ),
+              ),
             ),
-          ),
-          // ✅ بهینه‌سازی: استفاده از AnimatedSize به جای AnimatedContainer
-          AnimatedSize(
-            duration: const Duration(milliseconds: 200), // ✅ کاهش از ۳۰۰ به ۲۰۰
-            curve: Curves.easeInOut,
-            child: _showEmojiPicker
-                ? SizedBox(
-                    height: 250,
-                    child: EmojiPicker(
-                      onEmojiSelected: (category, emoji) {
-                        final text = _textController.text;
-                        final selection = _textController.selection;
-                        final newText = text.replaceRange(
-                          selection.start,
-                          selection.end,
-                          emoji.emoji,
-                        );
-                        _textController.value = TextEditingValue(
-                          text: newText,
-                          selection: TextSelection.collapsed(
-                            offset: selection.start + emoji.emoji.length,
-                          ),
-                        );
-                      },
-                      config: Config(
-                        checkPlatformCompatibility: true,
-                        emojiViewConfig: EmojiViewConfig(
-                          columns: 7,
-                          emojiSizeMax: 32,
-                          verticalSpacing: 0,
-                          horizontalSpacing: 0,
-                          gridPadding: EdgeInsets.zero,
-                          backgroundColor:
-                              Theme.of(context).scaffoldBackgroundColor,
-                        ),
-                        categoryViewConfig: CategoryViewConfig(
-                          backgroundColor:
-                              Theme.of(context).scaffoldBackgroundColor,
-                          indicatorColor: Theme.of(context).colorScheme.primary,
-                          iconColor: Colors.grey,
-                          iconColorSelected:
-                              Theme.of(context).colorScheme.primary,
-                        ),
-                        skinToneConfig: const SkinToneConfig(
-                          enabled: true,
-                        ),
-                        bottomActionBarConfig: BottomActionBarConfig(
-                          enabled: false,
-                        ),
-                      ),
-                    ),
-                  )
-                : const SizedBox.shrink(), // ✅ وقتی بسته است خالی
-          ),
-        ],
+            // پنل ایموجی (زیر نوار)
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              child: _showEmojiPicker
+                  ? SizedBox(
+                      height: _keyboardHeight > 0
+                          ? _keyboardHeight
+                          : _defaultEmojiHeight,
+                      child: _buildEmojiPicker(),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            // یک فضای خالی کوچک برای آیفون‌های بدون دکمه هوم (SafeArea bottom)
+            if (!_showEmojiPicker)
+              SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
+          ],
+        ),
       ),
     );
   }
@@ -337,7 +367,7 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
         color: isDark ? const Color(0xFF2A2A2A) : Colors.grey[200],
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Theme.of(context).dividerColor.withOpacity(0.2),
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
           width: 1,
         ),
       ),
@@ -397,101 +427,243 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
   }
 
   Widget _buildStandardInput() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Row(
       key: const ValueKey('standard_input'),
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        IconButton(
-          icon: Icon(
-              _showEmojiPicker
-                  ? Icons.keyboard_rounded
-                  : Icons.emoji_emotions_outlined,
-              color: Theme.of(context).iconTheme.color?.withOpacity(0.7)),
+        // دکمه ایموجی (سمت چپ)
+        _buildIconButton(
+          icon: _showEmojiPicker
+              ? Icons.keyboard_alt_outlined
+              : Icons.emoji_emotions_outlined,
           onPressed: _toggleEmojiPicker,
+          color: Colors.grey[600],
+          activeColor: theme.primaryColor,
+          isActive: _showEmojiPicker,
         ),
-        Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: TextField(
-                  key: const ValueKey('message_input'),
-                  controller: _textController,
-                  focusNode: _focusNode,
-                  minLines: 1,
-                  maxLines: 5,
-                  keyboardType: TextInputType.multiline,
-                  textInputAction: TextInputAction.newline,
-                  style: TextStyle(
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? Colors.white // متن سفید برای تم تاریک
-                        : Colors.black87, // متن تیره برای تم روشن
-                    fontSize: 16,
-                  ),
-                  // ✅ بهینه‌سازی‌های performance برای کیبورد:
-                  enableInteractiveSelection: true,
-                  enableSuggestions: false, // غیرفعال برای عملکرد بهتر
-                  autocorrect: false, // غیرفعال برای عملکرد بهتر
-                  smartDashesType: SmartDashesType.disabled,
-                  smartQuotesType: SmartQuotesType.disabled,
-                  // ✅ کاهش rebuilds
-                  buildCounter: null,
-                  onTap: () {
-                    if (!_isKeyboardReady) {
-                      print('⌨️ Keyboard not ready yet - delaying');
-                      return;
-                    }
 
-                    // فقط اگر emoji picker باز است، آن را ببند
-                    if (_showEmojiPicker && mounted) {
-                      setState(() => _showEmojiPicker = false);
-                    }
-                  },
-                  decoration: InputDecoration(
-                    hintText: '...پیام',
-                    hintStyle: TextStyle(
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? Colors.grey[500] // hint تیره‌تر برای تم تاریک
-                          : Colors.grey[600], // hint برای تم روشن
+        // فیلد متنی (وسط)
+        Expanded(
+          child: Container(
+            constraints: const BoxConstraints(maxHeight: 120),
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            decoration: BoxDecoration(
+              // رنگ پس‌زمینه اینپوت (کمی متفاوت از گلس برای خوانایی)
+              color:
+                  isDark ? Colors.black.withValues(alpha: 0.2) : Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : Colors.black.withValues(alpha: 0.12),
+                width: 0.5,
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _textController,
+                    focusNode: _focusNode,
+                    maxLines: null,
+                    minLines: 1,
+                    textCapitalization: TextCapitalization.sentences,
+                    textDirection: TextDirection.rtl, // پشتیبانی صریح از فارسی
+                    keyboardType: TextInputType.multiline,
+                    textInputAction: TextInputAction.newline,
+                    style: TextStyle(
                       fontSize: 16,
+                      color: isDark ? Colors.white : Colors.black,
+                      fontFamily: 'Vazir',
+                      fontFamilyFallback: const [
+                        'Apple Color Emoji',
+                        'Segoe UI Emoji',
+                        'Noto Color Emoji',
+                      ],
                     ),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    disabledBorder: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    isCollapsed: true,
-                    filled: true,
-                    fillColor: Theme.of(context).brightness == Brightness.dark
-                        ? const Color(
-                            0xFF2A2A2A) // رنگ تیره‌تر و حرفه‌ای‌تر برای تم تاریک
-                        : Colors.grey[200],
+                    enableInteractiveSelection: true,
+                    enableSuggestions: false,
+                    autocorrect: false,
+                    smartDashesType: SmartDashesType.disabled,
+                    smartQuotesType: SmartQuotesType.disabled,
+                    decoration: InputDecoration(
+                      hintText: 'پیام...',
+                      hintStyle: TextStyle(color: Colors.grey[500]),
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      isDense: true,
+                      contentPadding: const EdgeInsets.fromLTRB(12, 12, 16, 12),
+                    ),
                   ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4.0),
-                child: IconButton(
-                  icon: Icon(Icons.attach_file_rounded,
-                      color:
-                          Theme.of(context).iconTheme.color?.withOpacity(0.7)),
+                // دکمه Attach (داخل فیلد سمت راست)
+                _buildIconButton(
+                  icon: Icons.attach_file_rounded,
                   onPressed: _showAttachmentBottomSheet,
+                  color: Colors.grey[600],
+                  padding: const EdgeInsets.only(bottom: 8, right: 8, left: 4),
+                  rotate: -0.7, // زاویه دادن مثل تلگرام
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-        const SizedBox(width: 8),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 150), // کاهش مدت زمان انیمیشن
-          switchInCurve: Curves.easeOut,
-          switchOutCurve: Curves.easeIn,
-          transitionBuilder: (child, animation) =>
-              ScaleTransition(scale: animation, child: child),
-          child: _hasText ? _buildSendButton() : _buildMicButton(),
+
+        // دکمه ارسال / میکروفون (سمت راست)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 2, right: 4),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 150),
+            transitionBuilder: (child, animation) => ScaleTransition(
+              scale: animation,
+              child: child,
+            ),
+            child: _hasText
+                ? _buildSendButton(theme) // دکمه ارسال (دایره آبی)
+                : _buildMicButton(), // دکمه میکروفون (بدون پس‌زمینه)
+          ),
         ),
       ],
+    );
+  }
+
+  Widget _buildIconButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+    Color? color,
+    Color? activeColor,
+    bool isActive = false,
+    EdgeInsetsGeometry? padding,
+    double rotate = 0,
+  }) {
+    return Padding(
+      padding: padding ?? const EdgeInsets.only(bottom: 10),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Transform.rotate(
+            angle: rotate,
+            child: Icon(
+              icon,
+              color: isActive
+                  ? (activeColor ?? Colors.blue)
+                  : (color ?? Colors.grey),
+              size: 26,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSendButton(ThemeData theme) {
+    final primaryColor = const Color(0xFF0088CC); // آبی تلگرام
+
+    return Container(
+      key: const ValueKey('send'),
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: primaryColor,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: primaryColor.withValues(alpha: 0.4),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          )
+        ],
+      ),
+      child: IconButton(
+        icon: const Icon(Icons.send_rounded, color: Colors.white, size: 22),
+        onPressed: _handleSendMessage,
+      ),
+    );
+  }
+
+  Widget _buildMicButton() {
+    return GestureDetector(
+      key: const ValueKey('mic'),
+      onLongPressStart: (details) => _startRecording(details.globalPosition),
+      onLongPressEnd: (details) {
+        if (_isLocked) return;
+        final dragOffsetX =
+            details.globalPosition.dx - (_longPressStartPosition?.dx ?? 0);
+        if (dragOffsetX < -_cancelThreshold) {
+          _cancelRecording();
+        } else {
+          _stopRecordingAndSend();
+        }
+      },
+      onLongPressMoveUpdate: (details) {
+        if (_isLocked) return;
+        final dragOffsetY =
+            details.globalPosition.dy - (_longPressStartPosition?.dy ?? 0);
+        if (dragOffsetY < -_lockThreshold) {
+          _lockRecording();
+        }
+      },
+      onPanUpdate: (details) {
+        if (!_isRecording || _isLocked) return;
+        final dragOffsetX =
+            details.globalPosition.dx - (_longPressStartPosition?.dx ?? 0);
+        if (dragOffsetX < -_cancelThreshold) {
+          _cancelRecording();
+        }
+      },
+      child: ScaleTransition(
+        scale: _micIconScaleAnimation,
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: _isRecording
+                ? Colors.red.withValues(alpha: 0.1)
+                : Colors.transparent,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            _isRecording ? Icons.mic : Icons.mic_none_rounded,
+            color: _isRecording ? Colors.red : Colors.grey[600],
+            size: 28,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 1. این متد را برای مدیریت دریافت گیف اضافه/اصلاح کنید
+  void _handleSendGif(String gifUrl) {
+    print("🔷 ChatInput: Received GIF from Panel: $gifUrl");
+
+    if (widget.onSendGif != null) {
+      print("🔷 ChatInput: Forwarding to ChatScreen...");
+      widget.onSendGif!(gifUrl);
+    } else {
+      print("❌ CRITICAL ERROR: widget.onSendGif is NULL in ChatInput!");
+      // فال‌بک موقت: تلاش برای ارسال به عنوان پیام متنی اگر هندلر گیف نبود
+      // widget.onSendMessage(gifUrl);
+    }
+  }
+
+  // 2. متد ساخت پنل ایموجی را دقیقاً به این شکل تغییر دهید
+  Widget _buildEmojiPicker() {
+    return VistaEmojiPanel(
+      // کلید یونیک برای اطمینان از بازسازی ویجت در صورت تغییر
+      key: ValueKey('emoji_panel_${widget.onSendGif?.hashCode ?? 0}'),
+      controller: _textController,
+      height: _keyboardHeight > 0 ? _keyboardHeight : 300,
+
+      // ✅ اتصال مستقیم متد هندلر
+      onGifSelected: _handleSendGif,
     );
   }
 
@@ -499,14 +671,9 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    // ✅ استفاده از رنگ primary از theme، اما اگر سفید بود از رنگ جایگزین استفاده می‌کنیم
     Color primaryColor = theme.colorScheme.primary;
-
-    // اگر رنگ primary سفید یا خیلی روشن است، از رنگ جایگزین استفاده می‌کنیم
     if (primaryColor.computeLuminance() > 0.8) {
-      primaryColor = isDark
-          ? const Color(0xFF5DADEC) // آبی روشن برای تم تاریک
-          : const Color(0xFF3390EC); // آبی استاندارد برای تم روشن
+      primaryColor = isDark ? const Color(0xFF5DADEC) : const Color(0xFF3390EC);
     }
 
     return Container(
@@ -561,7 +728,7 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
                     color: Colors.red,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.red.withOpacity(0.5 * pulse),
+                        color: Colors.red.withValues(alpha: 0.5 * pulse),
                         blurRadius: 8 * pulse,
                         spreadRadius: 2 * pulse,
                       ),
@@ -596,7 +763,7 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
         height: 44,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: Colors.red.withOpacity(0.1),
+          color: Colors.red.withValues(alpha: 0.1),
         ),
         child: const Icon(
           Icons.delete_rounded,
@@ -614,8 +781,8 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         color: Theme.of(context).brightness == Brightness.dark
-            ? Colors.white.withOpacity(0.05)
-            : Colors.black.withOpacity(0.03),
+            ? Colors.white.withValues(alpha: 0.05)
+            : Colors.black.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -634,7 +801,7 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
           // Waveform
           Expanded(
             child: AudioWaveforms(
-              size: Size(double.infinity, 32),
+              size: const Size(double.infinity, 32),
               recorderController: _recorderController,
               waveStyle: WaveStyle(
                 waveColor: Theme.of(context).brightness == Brightness.dark
@@ -677,7 +844,7 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
                     .textTheme
                     .bodyMedium
                     ?.color
-                    ?.withOpacity(0.5),
+                    ?.withValues(alpha: 0.5),
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -704,7 +871,7 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
               child: Icon(
                 Icons.chevron_left,
                 size: 16,
-                color: Colors.grey.withOpacity(opacity),
+                color: Colors.grey.withValues(alpha: opacity),
               ),
             );
           }),
@@ -725,16 +892,16 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
             Icon(
               Icons.keyboard_arrow_up,
               size: 16,
-              color: Colors.grey.withOpacity(0.6),
+              color: Colors.grey.withValues(alpha: 0.6),
             ),
             Container(
               width: 36,
               height: 36,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.grey.withOpacity(0.1),
+                color: Colors.grey.withValues(alpha: 0.1),
                 border: Border.all(
-                  color: Colors.grey.withOpacity(0.3),
+                  color: Colors.grey.withValues(alpha: 0.3),
                   width: 1.5,
                 ),
               ),
@@ -754,13 +921,10 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
   Widget _buildSendVoiceButton(Color primaryColor) {
     final theme = Theme.of(context);
 
-    // اگر رنگ primary سفید یا خیلی روشن است، از رنگ جایگزین استفاده می‌کنیم
     Color buttonColor = primaryColor;
     if (buttonColor.computeLuminance() > 0.8) {
       final isDark = theme.brightness == Brightness.dark;
-      buttonColor = isDark
-          ? const Color(0xFF5DADEC) // آبی روشن برای تم تاریک
-          : const Color(0xFF2196F3); // آبی استاندارد برای تم روشن
+      buttonColor = isDark ? const Color(0xFF5DADEC) : const Color(0xFF2196F3);
     }
 
     return GestureDetector(
@@ -770,10 +934,10 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
         height: 48,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: buttonColor, // استفاده از رنگ solid
+          color: buttonColor,
           boxShadow: [
             BoxShadow(
-              color: buttonColor.withOpacity(0.4),
+              color: buttonColor.withValues(alpha: 0.4),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -781,119 +945,8 @@ class _ChatInputState extends State<ChatInput> with TickerProviderStateMixin {
         ),
         child: const Icon(
           Icons.send_rounded,
-          color: Colors.white, // همیشه سفید برای کنتراست بهتر
+          color: Colors.white,
           size: 22,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSendButton() {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    // ✅ در تم تاریک همیشه از رنگ آبی استاندارد استفاده می‌کنیم
-    // در تم روشن از رنگ primary استفاده می‌کنیم (اما اگر سفید بود از آبی استفاده می‌کنیم)
-    Color primaryColor;
-    if (isDark) {
-      primaryColor =
-          const Color(0xFF3390EC); // آبی استاندارد تلگرام برای تم تاریک
-    } else {
-      final themePrimary = theme.colorScheme.primary;
-      // اگر رنگ primary سفید یا خیلی روشن است، از آبی استفاده می‌کنیم
-      if (themePrimary.computeLuminance() > 0.8) {
-        primaryColor = const Color(0xFF3390EC); // آبی استاندارد
-      } else {
-        primaryColor = themePrimary;
-      }
-    }
-
-    return InkWell(
-      key: const ValueKey('send_button'),
-      onTap: _handleSendMessage,
-      borderRadius: BorderRadius.circular(24),
-      child: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: primaryColor,
-          boxShadow: [
-            BoxShadow(
-              color: primaryColor.withOpacity(0.4),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: const Icon(
-          Icons.send_rounded,
-          color: Colors.white, // همیشه سفید برای کنتراست بهتر
-          size: 24,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMicButton() {
-    return GestureDetector(
-      onLongPressStart: (details) => _startRecording(details.globalPosition),
-      onLongPressEnd: (details) {
-        if (_isLocked) return;
-        final dragOffsetX =
-            details.globalPosition.dx - (_longPressStartPosition?.dx ?? 0);
-        if (dragOffsetX < -_cancelThreshold) {
-          _cancelRecording();
-        } else {
-          _stopRecordingAndSend();
-        }
-      },
-      onLongPressMoveUpdate: (details) {
-        if (_isLocked) return;
-        final dragOffsetY =
-            details.globalPosition.dy - (_longPressStartPosition?.dy ?? 0);
-        if (dragOffsetY < -_lockThreshold) {
-          _lockRecording();
-        }
-      },
-      // اضافه کردن gesture برای تشخیص slide to cancel
-      onPanUpdate: (details) {
-        if (!_isRecording || _isLocked) return;
-        final dragOffsetX =
-            details.globalPosition.dx - (_longPressStartPosition?.dx ?? 0);
-        if (dragOffsetX < -_cancelThreshold) {
-          _cancelRecording();
-        }
-      },
-      child: ScaleTransition(
-        scale: _micIconScaleAnimation,
-        child: Container(
-          key: const ValueKey('mic_button'),
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Theme.of(context).brightness == Brightness.dark
-                ? Colors.grey[800]
-                : Colors.grey[200],
-            boxShadow: [
-              BoxShadow(
-                color: (Theme.of(context).brightness == Brightness.dark
-                        ? Colors.grey[800]
-                        : Colors.grey[200])!
-                    .withValues(alpha: 0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Icon(
-            Icons.mic_rounded,
-            color: Theme.of(context).brightness == Brightness.dark
-                ? Colors.grey[300] // خاکستری روشن برای تم تاریک
-                : Colors.grey[700], // خاکستری تیره برای تم روشن
-            size: 24,
-          ),
         ),
       ),
     );

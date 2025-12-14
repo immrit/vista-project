@@ -127,11 +127,19 @@ class MessageInfoScreen extends StatelessWidget {
             ),
             child: Text(
               message.content.isNotEmpty
-                  ? message.content
+                  ? '${message.content}\u200F'
                   : '[${_getAttachmentTypeLabel(message.attachmentType)}]',
+              textDirection: TextDirection.rtl,
+              textAlign: TextAlign.right,
               style: TextStyle(
                 fontSize: 15,
                 color: theme.textTheme.bodyLarge?.color,
+                fontFamily: 'Vazir',
+                fontFamilyFallback: const [
+                  'Apple Color Emoji',
+                  'Segoe UI Emoji',
+                  'Noto Color Emoji',
+                ],
               ),
             ),
           ),

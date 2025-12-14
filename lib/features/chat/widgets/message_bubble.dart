@@ -28,6 +28,13 @@ class ModernMessageBubble extends StatelessWidget {
     required this.onReaction,
   });
 
+  /// تابع کمکی برای اصلاح متن دو جهته (Bi-Directional)
+  /// اضافه کردن کاراکتر RLM (\u200F) به انتهای متن برای نمایش صحیح ایموجی
+  String _fixBiDiText(String text) {
+    if (text.isEmpty) return text;
+    return '$text\u200F';
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUserId = supabase.auth.currentUser?.id;
@@ -92,13 +99,21 @@ class ModernMessageBubble extends StatelessWidget {
                     // محتوای پیام
                     if (message.content.isNotEmpty)
                       Text(
-                        message.content,
+                        _fixBiDiText(message.content),
+                        textDirection: TextDirection.rtl,
+                        textAlign: TextAlign.right,
                         style: TextStyle(
                           color: isMine
                               ? (isLightMode ? Colors.black87 : Colors.white)
                               : Colors.black87,
                           fontSize: 15,
                           height: 1.3,
+                          fontFamily: 'Vazir',
+                          fontFamilyFallback: const [
+                            'Apple Color Emoji',
+                            'Segoe UI Emoji',
+                            'Noto Color Emoji',
+                          ],
                         ),
                       ),
 

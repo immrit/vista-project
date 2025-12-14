@@ -1002,6 +1002,45 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  // --- GIF Handling ---
+  Future<void> _sendGifMessage(String gifUrl) async {
+    print("🟢 ChatScreen: _sendGifMessage CALLED with: $gifUrl");
+    setState(() {}); // رفرش UI
+    
+    try {
+      // ساخت پیام جدید
+      // نکته: اگر از مدل‌های جدید استفاده می‌کنید مطمئن شوید attachmentType درست است
+      await ref.read(chatScreenProvider(_providerParams).notifier).sendMessage(
+            '', // محتوای متنی خالی
+            attachmentUrl: gifUrl,
+            attachmentType: 'gif', // ✅ بسیار مهم: نوع پیام باید gif باشد
+            replyToMessage: _replyToMessage,
+          );
+
+      print("🟢 ChatScreen: GIF Sent Successfully!");
+      
+      _clearAttachments();
+      _autoScrollToBottom();
+
+      // آپدیت لیست مکالمات
+      ref.invalidate(conversationsProvider);
+      ref.invalidate(conversationsStreamProvider);
+      ref.invalidate(cachedConversationsStreamProvider);
+      ref.read(cachedConversationsProvider.notifier).refresh();
+      
+      // نمایش پیام موفقیت
+      ToastService.showSuccessToast(context, 'گیف با موفقیت ارسال شد');
+    } catch (e) {
+      print('❌ ChatScreen Error sending GIF: $e');
+      ToastService.showErrorToast(
+          context, 'خطا در ارسال گیف. لطفاً دوباره تلاش کنید.');
+    } finally {
+      if (mounted) {
+        setState(() {});
+      }
+    }
+  }
+
   void _clearAttachments() {
     setState(() {
       _selectedImage = null;
@@ -2247,6 +2286,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         onSendVoiceMessage: _sendVoiceMessage,
         onSendImages: _handleSendImages,
         onFileSelected: _handleFileSelected,
+        // ✅✅✅ این خط حیاتی است - مطمئن شوید وجود دارد
+        onSendGif: _sendGifMessage,
         parentContext: context,
         replyTo: _replyToMessage,
         onClearReply: () {
