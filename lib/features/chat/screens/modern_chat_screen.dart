@@ -984,6 +984,26 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     });
   }
 
+  /// ✅ توابع کمکی یکپارچه برای هندل کردن کلیک و لانگ پرس
+  void _handleMessageTap(BuildContext itemContext, MessageModel message) {
+    if (_isSelectionMode) {
+      _toggleMessageSelection(message.id);
+    } else {
+      // تک کلیک روی پیام معمولی -> باز شدن کانتکست منو (مثل تلگرام iOS)
+      _showTelegramContextMenu(itemContext, message);
+    }
+  }
+
+  void _handleMessageLongPress(BuildContext itemContext, MessageModel message) {
+    HapticFeedback.mediumImpact();
+    if (_isSelectionMode) {
+      _toggleMessageSelection(message.id);
+    } else {
+      // لانگ پرس -> باز شدن کانتکست منو
+      _showTelegramContextMenu(itemContext, message);
+    }
+  }
+
   Future<void> _forwardSelectedMessages() async {
     final result = await ForwardMessageSheet.show(
       context,
@@ -1585,294 +1605,131 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
                   return MessageDeleteAnimation(
                     controller: _deleteAnimationControllers[message.id],
+                    // ✅ اصلاح مهم: GestureDetector را اینجا نگذارید!
+                    // مستقیماً Column را برگردانید
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Date Divider (بالای پیام - قبل از محتوای پیام در Column)
+                        // Date Divider
                         if (showDateDivider)
                           date_divider.DateDivider(date: message.createdAt),
 
-                        // حباب پیام
-                        Row(
-                          mainAxisAlignment: isMe
-                              ? MainAxisAlignment.end
-                              : MainAxisAlignment.start,
-                          children: [
-                            // Selection checkbox
-                            if (_isSelectionMode)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: AnimatedScale(
-                                  scale: _isSelectionMode ? 1.0 : 0.0,
-                                  duration: const Duration(milliseconds: 200),
-                                  child: GestureDetector(
-                                    onTap: () =>
-                                        _toggleMessageSelection(message.id),
-                                    child: Container(
-                                      width: 24,
-                                      height: 24,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: _selectedMessageIds
-                                                .contains(message.id)
-                                            ? context.chatTheme.sendButtonColor
-                                            : Colors.transparent,
-                                        border: Border.all(
-                                          color: _selectedMessageIds
-                                                  .contains(message.id)
-                                              ? context
-                                                  .chatTheme.sendButtonColor
-                                              : context
-                                                  .chatTheme.secondaryTextColor,
-                                          width: 2,
-                                        ),
-                                      ),
-                                      child: _selectedMessageIds
-                                              .contains(message.id)
-                                          ? const Icon(
-                                              Icons.check,
-                                              color: Colors.white,
-                                              size: 16,
-                                            )
-                                          : null,
-                                    ),
-                                  ),
-                                ),
-                              ),
-
-                            // پیام
-                            Flexible(
-                              child: Opacity(
-                                opacity: _temporarilyHiddenMessages
-                                        .contains(message.id)
-                                    ? 0.0
-                                    : 1.0,
-                                child: (!_isSelectionMode)
-                                    ? SwipeToReplyWrapper(
-                                        isMe: isMe,
-                                        onReply: () {
-                                          setState(() {
-                                            _replyToMessage = message;
-                                          });
-                                          _focusNode.requestFocus();
-                                        },
-                                        child: AnimatedContainer(
+                        // ✅ استفاده از Builder برای گرفتن کانتکست RenderBox
+                        Builder(
+                          builder: (itemContext) {
+                            return GestureDetector(
+                              behavior: HitTestBehavior
+                                  .translucent, // کلیک روی فضای خالی
+                              onTap: () {
+                                if (_isSelectionMode) {
+                                  _toggleMessageSelection(message.id);
+                                } else {
+                                  FocusScope.of(context).unfocus();
+                                }
+                              },
+                              onLongPress: () {
+                                HapticFeedback.mediumImpact();
+                                if (_isSelectionMode) {
+                                  _toggleMessageSelection(message.id);
+                                } else {
+                                  // ✅ حالا itemContext یک RenderBox است (چون دور Row پیچیده شده)
+                                  // و دیگر خطای RenderSliverList نمی‌دهد.
+                                  _showTelegramContextMenu(
+                                      itemContext, message);
+                                }
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 2),
+                                child: Row(
+                                  mainAxisAlignment: isMe
+                                      ? MainAxisAlignment.end
+                                      : MainAxisAlignment.start,
+                                  children: [
+                                    // Selection checkbox
+                                    if (_isSelectionMode)
+                                      Padding(
+                                        padding:
+                                            const EdgeInsets.only(right: 8),
+                                        child: AnimatedScale(
+                                          scale: _isSelectionMode ? 1.0 : 0.0,
                                           duration:
-                                              const Duration(milliseconds: 500),
-                                          decoration: BoxDecoration(
-                                            color: _highlightedMessageId ==
-                                                    message.id
-                                                ? context
-                                                    .chatTheme.sendButtonColor
-                                                    .withOpacity(0.2)
-                                                : _selectedMessageIds
+                                              const Duration(milliseconds: 200),
+                                          child: GestureDetector(
+                                            onTap: () =>
+                                                _toggleMessageSelection(
+                                                    message.id),
+                                            child: Container(
+                                              width: 24,
+                                              height: 24,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: _selectedMessageIds
                                                         .contains(message.id)
                                                     ? context.chatTheme
                                                         .sendButtonColor
-                                                        .withOpacity(0.1)
                                                     : Colors.transparent,
-                                            borderRadius:
-                                                BorderRadius.circular(12),
-                                          ),
-                                          child: message.attachmentType ==
-                                                  'post'
-                                              ? Builder(
-                                                  builder: (postContext) =>
-                                                      GestureDetector(
-                                                    onLongPress: () {
-                                                      HapticFeedback
-                                                          .mediumImpact();
-                                                      if (!_isSelectionMode) {
-                                                        _showTelegramContextMenu(
-                                                            postContext,
-                                                            message);
-                                                      } else {
-                                                        _toggleMessageSelection(
-                                                            message.id);
-                                                      }
-                                                    },
-                                                    child:
-                                                        _buildPostMessageBubble(
-                                                            message, isMe),
-                                                  ),
-                                                )
-                                              : ImprovedAnimatedMessageBubble(
-                                                  key: ValueKey(message.id),
-                                                  messageId: message.id,
-                                                  content: message.content,
-                                                  isMe: isMe,
-                                                  time: message.createdAt,
-                                                  status: _getMessageStatus(
-                                                      message),
-                                                  attachmentUrl:
-                                                      message.attachmentUrl,
-                                                  attachmentType:
-                                                      message.attachmentType,
-                                                  duration: message.duration,
-                                                  replyToContent:
-                                                      message.replyToContent,
-                                                  replyToSenderName:
-                                                      message.replyToSenderName,
-                                                  replyToMessageId:
-                                                      message.replyToMessageId,
-                                                  onReplyTap: message
-                                                              .replyToMessageId !=
-                                                          null
-                                                      ? () => _scrollToMessageById(
-                                                          message
-                                                              .replyToMessageId!,
-                                                          messages)
-                                                      : null,
-                                                  reactions:
-                                                      _convertToOldReactionFormat(
-                                                          _messageReactions[
-                                                                  message.id] ??
-                                                              []),
-                                                  onTap: (bubbleContext, msg) {
-                                                    if (_isSelectionMode) {
-                                                      _toggleMessageSelection(
-                                                          msg.id);
-                                                    } else {
-                                                      _showTelegramContextMenu(
-                                                          bubbleContext, msg);
-                                                    }
-                                                  },
-                                                  onLongPress:
-                                                      (bubbleContext, msg) {
-                                                    if (!_isSelectionMode) {
-                                                      _showTelegramContextMenu(
-                                                          bubbleContext, msg);
-                                                    } else {
-                                                      _toggleMessageSelection(
-                                                          msg.id);
-                                                    }
-                                                  },
-                                                  onDoubleTap: () =>
-                                                      _onMessageDoubleTap(
-                                                          message),
-                                                  onAddReaction: (emoji) =>
-                                                      _onAddReaction(
-                                                          message, emoji),
-                                                  animate:
-                                                      index < 5 && !_isNearTop,
-                                                  index: index,
-                                                  isFirstInGroup:
-                                                      isFirstInGroup,
-                                                  isLastInGroup: isLastInGroup,
-                                                  isForwarded:
-                                                      message.isForwarded,
-                                                  forwardedFrom: message
-                                                      .forwardedFromSenderName,
-                                                  message: message,
+                                                border: Border.all(
+                                                  color: _selectedMessageIds
+                                                          .contains(message.id)
+                                                      ? context.chatTheme
+                                                          .sendButtonColor
+                                                      : context.chatTheme
+                                                          .secondaryTextColor,
+                                                  width: 2,
                                                 ),
-                                        ),
-                                      )
-                                    : AnimatedContainer(
-                                        duration:
-                                            const Duration(milliseconds: 500),
-                                        decoration: BoxDecoration(
-                                          color: _highlightedMessageId ==
-                                                  message.id
-                                              ? context
-                                                  .chatTheme.sendButtonColor
-                                                  .withOpacity(0.2)
-                                              : _selectedMessageIds
-                                                      .contains(message.id)
-                                                  ? context
-                                                      .chatTheme.sendButtonColor
-                                                      .withOpacity(0.1)
-                                                  : Colors.transparent,
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                        ),
-                                        child: message.attachmentType == 'post'
-                                            ? Builder(
-                                                builder: (postContext) =>
-                                                    GestureDetector(
-                                                  onLongPress: () {
-                                                    HapticFeedback
-                                                        .mediumImpact();
-                                                    if (!_isSelectionMode) {
-                                                      _showTelegramContextMenu(
-                                                          postContext, message);
-                                                    } else {
-                                                      _toggleMessageSelection(
-                                                          message.id);
-                                                    }
-                                                  },
-                                                  child:
-                                                      _buildPostMessageBubble(
-                                                          message, isMe),
-                                                ),
-                                              )
-                                            : ImprovedAnimatedMessageBubble(
-                                                key: ValueKey(message.id),
-                                                messageId: message.id,
-                                                content: message.content,
-                                                isMe: isMe,
-                                                time: message.createdAt,
-                                                status:
-                                                    _getMessageStatus(message),
-                                                attachmentUrl:
-                                                    message.attachmentUrl,
-                                                attachmentType:
-                                                    message.attachmentType,
-                                                duration: message.duration,
-                                                replyToContent:
-                                                    message.replyToContent,
-                                                replyToSenderName:
-                                                    message.replyToSenderName,
-                                                replyToMessageId:
-                                                    message.replyToMessageId,
-                                                onReplyTap: message
-                                                            .replyToMessageId !=
-                                                        null
-                                                    ? () => _scrollToMessageById(
-                                                        message
-                                                            .replyToMessageId!,
-                                                        messages)
-                                                    : null,
-                                                reactions:
-                                                    _convertToOldReactionFormat(
-                                                        _messageReactions[
-                                                                message.id] ??
-                                                            []),
-                                                onTap: (bubbleContext, msg) {
-                                                  if (_isSelectionMode) {
-                                                    _toggleMessageSelection(
-                                                        msg.id);
-                                                  } else {
-                                                    _showTelegramContextMenu(
-                                                        bubbleContext, msg);
-                                                  }
-                                                },
-                                                onLongPress:
-                                                    (bubbleContext, msg) {
-                                                  if (!_isSelectionMode) {
-                                                    _showTelegramContextMenu(
-                                                        bubbleContext, msg);
-                                                  } else {
-                                                    _toggleMessageSelection(
-                                                        msg.id);
-                                                  }
-                                                },
-                                                onDoubleTap: () =>
-                                                    _onMessageDoubleTap(
-                                                        message),
-                                                onAddReaction: (emoji) =>
-                                                    _onAddReaction(
-                                                        message, emoji),
-                                                animate:
-                                                    index < 5 && !_isNearTop,
-                                                index: index,
-                                                isFirstInGroup: isFirstInGroup,
-                                                isLastInGroup: isLastInGroup,
-                                                message: message,
                                               ),
+                                              child: _selectedMessageIds
+                                                      .contains(message.id)
+                                                  ? const Icon(
+                                                      Icons.check,
+                                                      color: Colors.white,
+                                                      size: 16,
+                                                    )
+                                                  : null,
+                                            ),
+                                          ),
+                                        ),
                                       ),
+
+                                    // پیام
+                                    Flexible(
+                                      child: Opacity(
+                                        opacity: _temporarilyHiddenMessages
+                                                .contains(message.id)
+                                            ? 0.0
+                                            : 1.0,
+                                        child: (!_isSelectionMode)
+                                            ? SwipeToReplyWrapper(
+                                                isMe: isMe,
+                                                onReply: () {
+                                                  setState(() =>
+                                                      _replyToMessage =
+                                                          message);
+                                                  _focusNode.requestFocus();
+                                                },
+                                                child: _buildBubbleContent(
+                                                    message,
+                                                    isMe,
+                                                    index,
+                                                    isFirstInGroup,
+                                                    isLastInGroup,
+                                                    messages),
+                                              )
+                                            : _buildBubbleContent(
+                                                message,
+                                                isMe,
+                                                index,
+                                                isFirstInGroup,
+                                                isLastInGroup,
+                                                messages),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            )
-                          ],
+                            );
+                          },
                         ),
 
                         // Unread Divider
@@ -3493,6 +3350,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           isLastInGroup: true,
           isForwarded: message.isForwarded,
           forwardedFrom: message.forwardedFromSenderName,
+          onTap: (ctx, msg) => _handleMessageTap(ctx, msg),
+          onLongPress: (ctx, msg) => _handleMessageLongPress(ctx, msg),
         );
       }
 
@@ -3516,35 +3375,88 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           ? List<String>.from(postData['hashtags'] as List)
           : null;
 
-      // استفاده از کارت پست به سبک اینستاگرام
-      return InstagramStylePostCard(
-        postId: postId,
-        authorName: authorName,
-        authorAvatar: authorAvatar,
-        authorUsername: authorUsername,
-        content: postContent,
-        mediaUrls: mediaUrls,
-        likesCount: likesCount,
-        commentsCount: commentsCount,
-        createdAt: postCreatedAt,
-        sentAt: message.createdAt,
-        isMine: isMe,
-        verificationType: verificationType,
-        hashtags: hashtags,
-        status: _getMessageStatus(message), // اضافه کردن status
-        onTap: () => _navigateToPostScreen(postId),
-        onShare: () async {
-          final result = await ForwardMessageSheet.show(
-            context,
-            messageIds: [message.id],
-          );
-          if (result == true) {
-            _showSuccessSnackBar('پست ارسال شد');
-          }
-        },
-        onLongPress: () {
-          // این متد دیگر استفاده نمی‌شود - از GestureDetector در _buildMessageList استفاده می‌شود
-        },
+      // ✅ ساختار جدید برای کنترل کامل کلیک‌ها
+      return Stack(
+        children: [
+          // ویجت پست
+          GestureDetector(
+            // اولویت کلیک با ماست
+            onTap: () {
+              if (_isSelectionMode) {
+                _toggleMessageSelection(message.id);
+              } else {
+                _navigateToPostScreen(postId);
+              }
+            },
+            onLongPress: () {
+              HapticFeedback.mediumImpact();
+              if (_isSelectionMode) {
+                _toggleMessageSelection(message.id);
+              } else {
+                // پاس دادن context درست برای باز شدن منو روی پست
+                _showTelegramContextMenu(context, message);
+              }
+            },
+            child: AbsorbPointer(
+              // اگر در حالت انتخاب هستیم، اجازه نده دکمه‌های داخلی پست (لایک و...) کار کنند
+              absorbing: _isSelectionMode,
+              child: InstagramStylePostCard(
+                postId: postId,
+                authorName: authorName,
+                authorAvatar: authorAvatar,
+                authorUsername: authorUsername,
+                content: postContent,
+                mediaUrls: mediaUrls,
+                likesCount: likesCount,
+                commentsCount: commentsCount,
+                createdAt: postCreatedAt,
+                sentAt: message.createdAt,
+                isMine: isMe,
+                verificationType: verificationType,
+                hashtags: hashtags,
+                status: _getMessageStatus(message),
+                // callbacks داخلی ویجت را خالی می‌گذاریم چون GestureDetector والد هندل می‌کند
+                onTap: () {},
+                onLongPress: () {},
+                onShare: () async {
+                  if (!_isSelectionMode) {
+                    final result = await ForwardMessageSheet.show(
+                      context,
+                      messageIds: [message.id],
+                    );
+                    if (result == true) {
+                      _showSuccessSnackBar('پست ارسال شد');
+                    }
+                  }
+                },
+              ),
+            ),
+          ),
+
+          // ✅ لایه آبی رنگ (Selection Overlay) روی پست
+          if (_selectedMessageIds.contains(message.id))
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: context.chatTheme.sendButtonColor
+                      .withOpacity(0.3), // کمی پررنگ تر برای دیده شدن روی عکس
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: context.chatTheme.sendButtonColor,
+                    width: 3,
+                  ),
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.white,
+                    size: 48,
+                    shadows: [Shadow(blurRadius: 5, color: Colors.black45)],
+                  ),
+                ),
+              ),
+            ),
+        ],
       );
     } catch (e) {
       debugPrint('Error parsing post message: $e');
@@ -3562,8 +3474,65 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         isLastInGroup: true,
         isForwarded: message.isForwarded,
         forwardedFrom: message.forwardedFromSenderName,
+        onTap: (ctx, msg) => _handleMessageTap(ctx, msg),
+        onLongPress: (ctx, msg) => _handleMessageLongPress(ctx, msg),
       );
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🔧 HELPER METHODS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// متد کمکی برای تمیز شدن کد بالا
+  Widget _buildBubbleContent(MessageModel message, bool isMe, int index,
+      bool isFirstInGroup, bool isLastInGroup, List<MessageModel> messages) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 500),
+      decoration: BoxDecoration(
+        color: _highlightedMessageId == message.id
+            ? context.chatTheme.sendButtonColor.withOpacity(0.2)
+            : _selectedMessageIds.contains(message.id)
+                ? context.chatTheme.sendButtonColor.withOpacity(0.1)
+                : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: message.attachmentType == 'post'
+          ? Builder(
+              builder: (postContext) => _buildPostMessageBubble(message, isMe),
+            )
+          : ImprovedAnimatedMessageBubble(
+              key: ValueKey(message.id),
+              messageId: message.id,
+              content: message.content,
+              isMe: isMe,
+              time: message.createdAt,
+              status: _getMessageStatus(message),
+              attachmentUrl: message.attachmentUrl,
+              attachmentType: message.attachmentType,
+              duration: message.duration,
+              replyToContent: message.replyToContent,
+              replyToSenderName: message.replyToSenderName,
+              replyToMessageId: message.replyToMessageId,
+              onReplyTap: message.replyToMessageId != null
+                  ? () =>
+                      _scrollToMessageById(message.replyToMessageId!, messages)
+                  : null,
+              reactions: _convertToOldReactionFormat(
+                  _messageReactions[message.id] ?? []),
+              onTap: (ctx, msg) => _handleMessageTap(ctx, msg),
+              onLongPress: (ctx, msg) => _handleMessageLongPress(ctx, msg),
+              onDoubleTap: () => _onMessageDoubleTap(message),
+              onAddReaction: (emoji) => _onAddReaction(message, emoji),
+              animate: index < 5 && !_isNearTop,
+              index: index,
+              isFirstInGroup: isFirstInGroup,
+              isLastInGroup: isLastInGroup,
+              isForwarded: message.isForwarded,
+              forwardedFrom: message.forwardedFromSenderName,
+              message: message,
+            ),
+    );
   }
 
   /// Navigate to post screen

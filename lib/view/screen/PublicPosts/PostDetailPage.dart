@@ -1574,23 +1574,98 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
         title: const Text('جزئیات پست'),
       ),
       resizeToAvoidBottomInset: true,
-      body: SingleChildScrollView(
+      body: postAsyncValue.when(
+        data: (post) {
+          // ✅ بررسی پست حذف شده یا null
+          // ignore: unnecessary_null_comparison
+          if (post == null) {
+            return _buildDeletedPostView(context);
+          }
+          return SingleChildScrollView(
+            child: Column(
+              children: [
+                _buildPostDetails(context, post),
+              ],
+            ),
+          );
+        },
+        loading: () => _buildLoadingWidget(),
+        error: (error, _) => _buildDeletedPostView(context),
+      ),
+      bottomNavigationBar: postAsyncValue.when(
+        data: (post) {
+          // ignore: unnecessary_null_comparison
+          return post != null ? _buildCommentInputArea(context, mentionNotifier) : null;
+        },
+        loading: () => null,
+        error: (_, __) => null,
+      ),
+    );
+  }
+
+  /// ✅ ویجت اختصاصی و زیبا برای پست حذف شده
+  Widget _buildDeletedPostView(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            postAsyncValue.when(
-              data: (post) => _buildPostDetails(context, post),
-              loading: () => _buildLoadingWidget(),
-              error: (error, _) => _buildErrorWidget(error.toString(), () {
-                setState(() {
-                  _isRetrying = true;
-                });
-                ref.invalidate(postProvider(widget.postId));
-              }),
+            // آیکون
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.grey[800] : Colors.grey[100],
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.delete_outline_rounded,
+                size: 64,
+                color: isDark ? Colors.white54 : Colors.grey[400],
+              ),
+            ),
+            const SizedBox(height: 24),
+            
+            // متن اصلی
+            Text(
+              'این پست در دسترس نیست',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 12),
+            
+            // توضیحات فرعی
+            Text(
+              'ممکن است لینک اشتباه باشد یا توسط نویسنده حذف شده باشد.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: isDark ? Colors.white54 : Colors.grey[600],
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 32),
+            
+            // دکمه بازگشت
+            OutlinedButton.icon(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('بازگشت'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
             ),
           ],
         ),
       ),
-      bottomNavigationBar: _buildCommentInputArea(context, mentionNotifier),
     );
   }
 }
