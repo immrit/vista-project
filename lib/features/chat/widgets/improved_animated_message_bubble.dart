@@ -55,8 +55,8 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
   final Function(String emoji)? onAddReaction;
 
   // Interactions
-  final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
+  final void Function(BuildContext context, MessageModel message)? onTap;
+  final void Function(BuildContext context, MessageModel message)? onLongPress;
   final VoidCallback? onDoubleTap;
 
   // Animation
@@ -213,16 +213,20 @@ class _ImprovedAnimatedMessageBubbleState
         opacity: _fadeAnimation,
         child: SlideTransition(
           position: _slideAnimation,
-          child: ScaleTransition(
+            child: ScaleTransition(
             scale: _scaleAnimation,
             child: GestureDetector(
               onTap: () {
                 HapticFeedback.selectionClick();
-                widget.onTap?.call();
+                if (widget.onTap != null && widget.message != null) {
+                  widget.onTap!(context, widget.message!);
+                }
               },
               onLongPress: () {
                 HapticFeedback.mediumImpact();
-                widget.onLongPress?.call();
+                if (widget.onLongPress != null && widget.message != null) {
+                  widget.onLongPress!(context, widget.message!);
+                }
               },
               onDoubleTap: widget.onDoubleTap,
               child: Padding(
@@ -360,6 +364,7 @@ class _ImprovedAnimatedMessageBubbleState
           ),
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min, // ✅ رفع خطای Overflow
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(

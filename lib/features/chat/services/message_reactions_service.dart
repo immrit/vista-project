@@ -18,6 +18,7 @@ class MessageReactionsService {
   /// افزودن یا حذف واکنش به پیام (toggle)
   Future<MessageReaction?> toggleReaction({
     required String messageId,
+    required String conversationId, // ✅ اضافه شد
     required String emoji,
   }) async {
     // 🔴 امکان واکنش به پیام‌های موقت وجود ندارد
@@ -44,19 +45,14 @@ class MessageReactionsService {
             .eq('id', existing['id']);
         return null;
       } else {
-        // افزودن واکنش جدید
-        final userProfile = await _supabase
-            .from('profiles')
-            .select('full_name, avatar_url')
-            .eq('id', userId)
-            .single();
-
+        // ✅ داده‌های جدید برای درج (شامل conversation_id)
         final data = {
+          'conversation_id': conversationId, // ✅ این خط مشکل 23502 را حل می‌کند
           'message_id': messageId,
           'user_id': userId,
-          'user_name': userProfile['full_name'] ?? 'کاربر',
-          'user_avatar': userProfile['avatar_url'],
           'emoji': emoji,
+          // ❌ user_name و user_avatar حذف شدند تا خطای "Column not found" ندهد
+          // اگر بعداً ستون‌ها را اضافه کردید، می‌توانید این خطوط را فعال کنید
         };
 
         final response = await _supabase

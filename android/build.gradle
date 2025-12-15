@@ -22,6 +22,19 @@ subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
 }
 
+// Fix for old packages that don't have namespace defined (e.g., image_gallery_saver)
+subprojects {
+    afterEvaluate { project ->
+        if (project.hasProperty("android")) {
+            android {
+                if (namespace == null) {
+                    namespace = project.group ?: "com.example.${project.name}"
+                }
+            }
+        }
+    }
+}
+
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }

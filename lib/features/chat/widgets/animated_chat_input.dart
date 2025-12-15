@@ -40,6 +40,9 @@ class AnimatedChatInput extends StatefulWidget {
   // GIF
   final Function(String gifUrl)? onGifSelected;
 
+  // ✅ Emoji picker toggle callback
+  final ValueChanged<bool>? onEmojiPickerToggled;
+
   // State
   final bool enabled;
   final bool isRecording;
@@ -58,6 +61,7 @@ class AnimatedChatInput extends StatefulWidget {
     this.onCancelReply,
     this.onVoiceRecorded,
     this.onGifSelected,
+    this.onEmojiPickerToggled,
     this.enabled = true,
     this.isRecording = false,
     this.hint,
@@ -268,9 +272,11 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     if (_showEmojiPicker) {
       setState(() => _showEmojiPicker = false);
       widget.focusNode?.requestFocus();
+      widget.onEmojiPickerToggled?.call(false); // ✅ اضافه شد
     } else {
       widget.focusNode?.unfocus();
       setState(() => _showEmojiPicker = true);
+      widget.onEmojiPickerToggled?.call(true); // ✅ اضافه شد
     }
   }
 

@@ -15,11 +15,16 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui';
+import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gal/gal.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../DB/profile_cache_service.dart';
 import '../../../model/ProfileModel.dart';
 import '../../../model/message_model.dart';
@@ -29,9 +34,11 @@ import '../providers/chat_providers.dart';
 // ✅ Theme & Widgets
 import '../theme/chat_theme.dart';
 import '../widgets/enhanced_chat_background.dart';
-import '../widgets/telegram_reaction_picker.dart';
+import '../widgets/telegram_reaction_picker.dart'
+    show kDefaultReactions, TelegramReactionPicker;
 import '../widgets/retry_indicator_widget.dart' show TelegramConnectionBanner;
 import '../widgets/improved_animated_message_bubble.dart';
+import '../widgets/telegram_context_menu.dart';
 import '../widgets/animated_chat_input.dart';
 import '../widgets/instagram_style_post_card.dart';
 import '../widgets/date_divider.dart' as date_divider;
@@ -169,6 +176,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       _deleteAnimationControllers = {};
   // لیست موقت پیام‌های در حال حذف (برای نمایش انیمیشن)
   final Map<String, MessageModel> _deletingMessagesCache = {};
+
+  // ✅ Emoji picker state tracking
+  bool _showEmojiPicker = false;
+  static const double _emojiPickerHeight = 300.0;
+
+  // ✅ لیست پیام‌هایی که الان منوی آن‌ها باز است (برای مخفی کردن از لیست اصلی)
+  final Set<String> _temporarilyHiddenMessages = {};
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 🎬 LIFECYCLE
@@ -343,6 +357,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     for (final sub in _reactionsSubscriptions.values) {
       sub.cancel();
     }
+
+    // ✅ پاک‌سازی پیام‌های مخفی
+    _temporarilyHiddenMessages.clear();
     _reactionsSubscriptions.clear();
     _scrollEndTimer?.cancel();
     _appBarAnimController.dispose();
@@ -630,6 +647,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final safePaddingBottom = MediaQuery.of(context).padding.bottom;
 
+    // ✅ محاسبه padding با در نظر گرفتن پنل ایموجی
+    final emojiPickerOffset = _showEmojiPicker ? _emojiPickerHeight : 0.0;
+
     return Stack(
       children: [
         // 1. والپیپر (زیر همه چیز)
@@ -662,9 +682,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                     messagesAsync,
                     paginationState,
                     theme,
-                    // محاسبه پدینگ پایین لیست:
-                    // ارتفاع کیبورد + ارتفاع اینپوت بار تقریبی (55) + فاصله ایمن + کمی فاصله اضافه برای دیده شدن پیام‌ها
-                    bottomPadding: (bottomInset + 55 + safePaddingBottom + 25)
+                    // ✅ محاسبه صحیح padding با در نظر گرفتن کیبورد و پنل ایموجی
+                    // ارتفاع کیبورد + ارتفاع پنل ایموجی (اگر باز باشد) + ارتفاع اینپوت بار (55) + Safe Area + فاصله اضافه
+                    bottomPadding: (bottomInset +
+                            emojiPickerOffset +
+                            55 +
+                            safePaddingBottom +
+                            25)
                         .clamp(0.0, double.infinity),
                   ),
                 ),
@@ -1618,16 +1642,132 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
                             // پیام
                             Flexible(
-                              child: (!_isSelectionMode)
-                                  ? SwipeToReplyWrapper(
-                                      isMe: isMe,
-                                      onReply: () {
-                                        setState(() {
-                                          _replyToMessage = message;
-                                        });
-                                        _focusNode.requestFocus();
-                                      },
-                                      child: AnimatedContainer(
+                              child: Opacity(
+                                opacity: _temporarilyHiddenMessages
+                                        .contains(message.id)
+                                    ? 0.0
+                                    : 1.0,
+                                child: (!_isSelectionMode)
+                                    ? SwipeToReplyWrapper(
+                                        isMe: isMe,
+                                        onReply: () {
+                                          setState(() {
+                                            _replyToMessage = message;
+                                          });
+                                          _focusNode.requestFocus();
+                                        },
+                                        child: AnimatedContainer(
+                                          duration:
+                                              const Duration(milliseconds: 500),
+                                          decoration: BoxDecoration(
+                                            color: _highlightedMessageId ==
+                                                    message.id
+                                                ? context
+                                                    .chatTheme.sendButtonColor
+                                                    .withOpacity(0.2)
+                                                : _selectedMessageIds
+                                                        .contains(message.id)
+                                                    ? context.chatTheme
+                                                        .sendButtonColor
+                                                        .withOpacity(0.1)
+                                                    : Colors.transparent,
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
+                                          child: message.attachmentType ==
+                                                  'post'
+                                              ? Builder(
+                                                  builder: (postContext) =>
+                                                      GestureDetector(
+                                                    onLongPress: () {
+                                                      HapticFeedback
+                                                          .mediumImpact();
+                                                      if (!_isSelectionMode) {
+                                                        _showTelegramContextMenu(
+                                                            postContext,
+                                                            message);
+                                                      } else {
+                                                        _toggleMessageSelection(
+                                                            message.id);
+                                                      }
+                                                    },
+                                                    child:
+                                                        _buildPostMessageBubble(
+                                                            message, isMe),
+                                                  ),
+                                                )
+                                              : ImprovedAnimatedMessageBubble(
+                                                  key: ValueKey(message.id),
+                                                  messageId: message.id,
+                                                  content: message.content,
+                                                  isMe: isMe,
+                                                  time: message.createdAt,
+                                                  status: _getMessageStatus(
+                                                      message),
+                                                  attachmentUrl:
+                                                      message.attachmentUrl,
+                                                  attachmentType:
+                                                      message.attachmentType,
+                                                  duration: message.duration,
+                                                  replyToContent:
+                                                      message.replyToContent,
+                                                  replyToSenderName:
+                                                      message.replyToSenderName,
+                                                  replyToMessageId:
+                                                      message.replyToMessageId,
+                                                  onReplyTap: message
+                                                              .replyToMessageId !=
+                                                          null
+                                                      ? () => _scrollToMessageById(
+                                                          message
+                                                              .replyToMessageId!,
+                                                          messages)
+                                                      : null,
+                                                  reactions:
+                                                      _convertToOldReactionFormat(
+                                                          _messageReactions[
+                                                                  message.id] ??
+                                                              []),
+                                                  onTap: (bubbleContext, msg) {
+                                                    if (_isSelectionMode) {
+                                                      _toggleMessageSelection(
+                                                          msg.id);
+                                                    } else {
+                                                      _showTelegramContextMenu(
+                                                          bubbleContext, msg);
+                                                    }
+                                                  },
+                                                  onLongPress:
+                                                      (bubbleContext, msg) {
+                                                    if (!_isSelectionMode) {
+                                                      _showTelegramContextMenu(
+                                                          bubbleContext, msg);
+                                                    } else {
+                                                      _toggleMessageSelection(
+                                                          msg.id);
+                                                    }
+                                                  },
+                                                  onDoubleTap: () =>
+                                                      _onMessageDoubleTap(
+                                                          message),
+                                                  onAddReaction: (emoji) =>
+                                                      _onAddReaction(
+                                                          message, emoji),
+                                                  animate:
+                                                      index < 5 && !_isNearTop,
+                                                  index: index,
+                                                  isFirstInGroup:
+                                                      isFirstInGroup,
+                                                  isLastInGroup: isLastInGroup,
+                                                  isForwarded:
+                                                      message.isForwarded,
+                                                  forwardedFrom: message
+                                                      .forwardedFromSenderName,
+                                                  message: message,
+                                                ),
+                                        ),
+                                      )
+                                    : AnimatedContainer(
                                         duration:
                                             const Duration(milliseconds: 500),
                                         decoration: BoxDecoration(
@@ -1646,8 +1786,25 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                               BorderRadius.circular(12),
                                         ),
                                         child: message.attachmentType == 'post'
-                                            ? _buildPostMessageBubble(
-                                                message, isMe)
+                                            ? Builder(
+                                                builder: (postContext) =>
+                                                    GestureDetector(
+                                                  onLongPress: () {
+                                                    HapticFeedback
+                                                        .mediumImpact();
+                                                    if (!_isSelectionMode) {
+                                                      _showTelegramContextMenu(
+                                                          postContext, message);
+                                                    } else {
+                                                      _toggleMessageSelection(
+                                                          message.id);
+                                                    }
+                                                  },
+                                                  child:
+                                                      _buildPostMessageBubble(
+                                                          message, isMe),
+                                                ),
+                                              )
                                             : ImprovedAnimatedMessageBubble(
                                                 key: ValueKey(message.id),
                                                 messageId: message.id,
@@ -1680,11 +1837,25 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                                         _messageReactions[
                                                                 message.id] ??
                                                             []),
-                                                onTap: () =>
-                                                    _onMessageTap(message),
-                                                onLongPress: () =>
-                                                    _onMessageLongPress(
-                                                        message),
+                                                onTap: (bubbleContext, msg) {
+                                                  if (_isSelectionMode) {
+                                                    _toggleMessageSelection(
+                                                        msg.id);
+                                                  } else {
+                                                    _showTelegramContextMenu(
+                                                        bubbleContext, msg);
+                                                  }
+                                                },
+                                                onLongPress:
+                                                    (bubbleContext, msg) {
+                                                  if (!_isSelectionMode) {
+                                                    _showTelegramContextMenu(
+                                                        bubbleContext, msg);
+                                                  } else {
+                                                    _toggleMessageSelection(
+                                                        msg.id);
+                                                  }
+                                                },
                                                 onDoubleTap: () =>
                                                     _onMessageDoubleTap(
                                                         message),
@@ -1696,82 +1867,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                                 index: index,
                                                 isFirstInGroup: isFirstInGroup,
                                                 isLastInGroup: isLastInGroup,
-                                                isForwarded:
-                                                    message.isForwarded,
-                                                forwardedFrom: message
-                                                    .forwardedFromSenderName,
-                                                // ✅ MessageModel برای بهینه‌سازی rebuild - فقط status icon rebuild میشه
                                                 message: message,
                                               ),
                                       ),
-                                    )
-                                  : AnimatedContainer(
-                                      duration:
-                                          const Duration(milliseconds: 500),
-                                      decoration: BoxDecoration(
-                                        color: _highlightedMessageId ==
-                                                message.id
-                                            ? context.chatTheme.sendButtonColor
-                                                .withOpacity(0.2)
-                                            : _selectedMessageIds
-                                                    .contains(message.id)
-                                                ? context
-                                                    .chatTheme.sendButtonColor
-                                                    .withOpacity(0.1)
-                                                : Colors.transparent,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: message.attachmentType == 'post'
-                                          ? _buildPostMessageBubble(
-                                              message, isMe)
-                                          : ImprovedAnimatedMessageBubble(
-                                              key: ValueKey(message.id),
-                                              messageId: message.id,
-                                              content: message.content,
-                                              isMe: isMe,
-                                              time: message.createdAt,
-                                              status:
-                                                  _getMessageStatus(message),
-                                              attachmentUrl:
-                                                  message.attachmentUrl,
-                                              attachmentType:
-                                                  message.attachmentType,
-                                              duration: message.duration,
-                                              replyToContent:
-                                                  message.replyToContent,
-                                              replyToSenderName:
-                                                  message.replyToSenderName,
-                                              replyToMessageId:
-                                                  message.replyToMessageId,
-                                              onReplyTap: message
-                                                          .replyToMessageId !=
-                                                      null
-                                                  ? () => _scrollToMessageById(
-                                                      message.replyToMessageId!,
-                                                      messages)
-                                                  : null,
-                                              reactions:
-                                                  _convertToOldReactionFormat(
-                                                      _messageReactions[
-                                                              message.id] ??
-                                                          []),
-                                              onTap: () =>
-                                                  _onMessageTap(message),
-                                              onLongPress: () =>
-                                                  _onMessageLongPress(message),
-                                              onDoubleTap: () =>
-                                                  _onMessageDoubleTap(message),
-                                              onAddReaction: (emoji) =>
-                                                  _onAddReaction(
-                                                      message, emoji),
-                                              animate: index < 5 && !_isNearTop,
-                                              index: index,
-                                              isFirstInGroup: isFirstInGroup,
-                                              isLastInGroup: isLastInGroup,
-                                              // ✅ MessageModel برای بهینه‌سازی rebuild - فقط status icon rebuild میشه
-                                              message: message,
-                                            ),
-                                    ),
+                              ),
                             )
                           ],
                         ),
@@ -2060,12 +2159,17 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       onAttachment: _handleAttachment,
       onVoice: _handleVoice,
       onChanged: _onTextChanged,
+      onGifSelected: _handleGifSelected, // ✅ اضافه شد
       replyToContent: _replyToMessage?.content,
       replyToSenderName: _replyToMessage?.senderId == _currentUserId
           ? 'شما'
           : widget.args.otherUserName,
       onCancelReply: () => setState(() => _replyToMessage = null),
       onVoiceRecorded: _handleVoiceRecorded,
+      // ✅ اضافه کردن callback برای tracking وضعیت پنل ایموجی
+      onEmojiPickerToggled: (isVisible) {
+        setState(() => _showEmojiPicker = isVisible);
+      },
     );
   }
 
@@ -2112,6 +2216,56 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     } else {
       if (mounted) {
         _showErrorSnackBar(result.error ?? 'خطا در ارسال پیام صوتی');
+      }
+    }
+  }
+
+  /// Handle ارسال GIF
+  Future<void> _handleGifSelected(String gifUrl) async {
+    if (!mounted || gifUrl.isEmpty) return;
+
+    debugPrint('🎞️ ModernChatScreen: Sending GIF: $gifUrl');
+
+    try {
+      final params = SendMessageParams(
+        conversationId: widget.args.conversationId,
+        content: '', // محتوای خالی برای GIF
+        attachmentUrl: gifUrl,
+        attachmentType: 'gif', // نوع attachment
+        replyToMessageId: _replyToMessage?.id,
+        replyToContent: _replyToMessage?.content,
+        replyToSenderName: _replyToMessage?.senderId == _currentUserId
+            ? 'شما'
+            : widget.args.otherUserName,
+      );
+
+      final result =
+          await ref.read(chatActionsProvider.notifier).sendMessage(params);
+
+      if (!mounted) return;
+
+      if (result.isSuccess) {
+        // پاک کردن reply اگر وجود داشت
+        if (_replyToMessage != null) {
+          setState(() => _replyToMessage = null);
+        }
+
+        // Scroll به پایین
+        _scrollToBottom();
+
+        // ✅ آپدیت آخرین پیام برای sync تیک در لیست مکالمات
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _registerLastMessage();
+        });
+
+        _showSuccessSnackBar('گیف ارسال شد');
+      } else {
+        _showErrorSnackBar(result.error ?? 'خطا در ارسال گیف');
+      }
+    } catch (e) {
+      debugPrint('❌ Error sending GIF: $e');
+      if (mounted) {
+        _showErrorSnackBar('خطا در ارسال گیف');
       }
     }
   }
@@ -2322,22 +2476,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // 👆 MESSAGE INTERACTIONS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  void _onMessageTap(MessageModel message) {
-    if (_isSelectionMode) {
-      _toggleMessageSelection(message.id);
-    } else {
-      // نمایش جزئیات پیام یا Document Preview
-      if (message.attachmentType == 'document' &&
-          message.attachmentUrl != null) {
-        _showDocumentPreview(message);
-      } else if (message.attachmentType == 'location') {
-        // Location already opens in maps via LocationMessageBubble
-      } else {
-        _showMessageInfo(message);
-      }
-    }
-  }
-
   /// Navigate to Chat Details Screen
   void _navigateToChatDetails() async {
     final result = await Navigator.of(context).push<String?>(
@@ -2384,19 +2522,270 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     );
   }
 
-  void _onMessageLongPress(MessageModel message) {
-    HapticFeedback.mediumImpact();
-    if (_isSelectionMode) {
-      _toggleMessageSelection(message.id);
-    } else {
-      // نمایش منوی گزینه‌ها
-      _showMessageOptions(message);
-    }
+  /// ✅ تغییر: Long Press → ورود به حالت Selection
+  /// این متد دیگر استفاده نمی‌شود - onLongPress مستقیماً از ImprovedAnimatedMessageBubble صدا زده می‌شود
+
+  /// ✅ Double Tap → Like سریع (بدون تغییر)
+  void _onMessageDoubleTap(MessageModel message) {
+    _onAddReaction(message, '❤️');
   }
 
-  void _onMessageDoubleTap(MessageModel message) {
-    // لایک سریع
-    _onAddReaction(message, '❤️');
+  /// ✅ تابع جدید: نمایش Context Menu به سبک تلگرام
+  void _showTelegramContextMenu(
+      BuildContext bubbleContext, MessageModel message) {
+    // 1. گرفتن مختصات دقیق حباب پیام از روی Context
+    final RenderBox? renderBox = bubbleContext.findRenderObject() as RenderBox?;
+    if (renderBox == null) {
+      // fallback به BottomSheet قدیمی
+      _showMessageOptions(message);
+      return;
+    }
+
+    final position = renderBox.localToGlobal(Offset.zero);
+    final size = renderBox.size;
+    final Rect messageRect =
+        Rect.fromLTWH(position.dx, position.dy, size.width, size.height);
+
+    final theme = context.chatTheme;
+    final isMe = message.senderId == _currentUserId;
+    final isGif = message.attachmentType == 'gif';
+    final isImage = message.attachmentType == 'image';
+    final isVideo = message.attachmentType == 'video';
+    final isVoice =
+        message.attachmentType == 'voice' || message.attachmentType == 'audio';
+    final isDocument = message.attachmentType != null &&
+        ![
+          'gif',
+          'image',
+          'video',
+          'voice',
+          'audio',
+          'location',
+          'contact',
+          'post'
+        ].contains(message.attachmentType);
+
+    // 2. ساخت ویجت برای نمایش در Overlay
+    final previewWidget = _buildMessagePreviewWidget(message, isMe);
+
+    // 3. مخفی کردن پیام اصلی در لیست
+    setState(() {
+      _temporarilyHiddenMessages.add(message.id);
+    });
+
+    // 4. ساخت آیتم‌های منو
+    final items = <TelegramContextMenuItem>[
+      // Reply
+      TelegramContextMenuItem(
+        icon: Icons.reply_rounded,
+        label: 'پاسخ',
+        onTap: () {
+          setState(() => _replyToMessage = message);
+          _focusNode.requestFocus();
+        },
+      ),
+
+      // Copy (فقط برای متن)
+      if (!isGif &&
+          !isImage &&
+          !isVideo &&
+          !isVoice &&
+          message.content.isNotEmpty)
+        TelegramContextMenuItem(
+          icon: Icons.copy_rounded,
+          label: 'کپی متن',
+          onTap: () {
+            Clipboard.setData(ClipboardData(text: message.content));
+            _showSuccessSnackBar('متن کپی شد');
+          },
+        ),
+
+      // گزینه‌های مخصوص GIF
+      if (isGif) ...[
+        TelegramContextMenuItem(
+          icon: Icons.gif_box_outlined,
+          label: 'ذخیره GIF',
+          onTap: () => _saveGif(message),
+        ),
+        TelegramContextMenuItem(
+          icon: Icons.open_in_browser_rounded,
+          label: 'باز کردن در مرورگر',
+          onTap: () => _openGifInBrowser(message),
+        ),
+        const TelegramContextMenuItem.divider(),
+      ],
+
+      // گزینه‌های مخصوص عکس
+      if (isImage) ...[
+        TelegramContextMenuItem(
+          icon: Icons.download_rounded,
+          label: 'ذخیره عکس',
+          onTap: () => _saveImage(message),
+        ),
+        TelegramContextMenuItem(
+          icon: Icons.open_in_new_rounded,
+          label: 'باز کردن در مرورگر',
+          onTap: () => _openInBrowser(message),
+        ),
+        const TelegramContextMenuItem.divider(),
+      ],
+
+      // گزینه‌های مخصوص ویدیو
+      if (isVideo) ...[
+        TelegramContextMenuItem(
+          icon: Icons.download_rounded,
+          label: 'ذخیره ویدیو',
+          onTap: () => _saveVideo(message),
+        ),
+        const TelegramContextMenuItem.divider(),
+      ],
+
+      // گزینه‌های مخصوص صدا
+      if (isVoice) ...[
+        TelegramContextMenuItem(
+          icon: Icons.download_rounded,
+          label: 'ذخیره صدا',
+          onTap: () => _saveVoice(message),
+        ),
+        const TelegramContextMenuItem.divider(),
+      ],
+
+      // گزینه‌های مخصوص فایل
+      if (isDocument) ...[
+        TelegramContextMenuItem(
+          icon: Icons.download_rounded,
+          label: 'دانلود فایل',
+          onTap: () => _downloadFile(message),
+        ),
+        const TelegramContextMenuItem.divider(),
+      ],
+
+      // Forward
+      TelegramContextMenuItem(
+        icon: Icons.forward_rounded,
+        label: 'فوروارد',
+        onTap: () => _forwardMessage(message),
+      ),
+
+      // ✅ جزئیات پیام (گزینه جدید)
+      TelegramContextMenuItem(
+        icon: Icons.info_outline_rounded,
+        label: 'جزئیات پیام',
+        onTap: () => _showMessageDetails(message),
+      ),
+
+      // Edit (فقط برای پیام‌های متنی خودم)
+      if (isMe &&
+          !isGif &&
+          !isImage &&
+          !isVideo &&
+          !isVoice &&
+          message.attachmentUrl == null)
+        TelegramContextMenuItem(
+          icon: Icons.edit_rounded,
+          label: 'ویرایش',
+          onTap: () => _editMessage(message),
+        ),
+
+      const TelegramContextMenuItem.divider(),
+
+      // Select
+      TelegramContextMenuItem(
+        icon: Icons.check_circle_outline_rounded,
+        label: 'انتخاب چندتایی',
+        onTap: () => _enterSelectionMode(message.id),
+      ),
+
+      // Delete
+      TelegramContextMenuItem(
+        icon: Icons.delete_outline_rounded,
+        label: 'حذف',
+        color: theme.errorColor,
+        onTap: () => _deleteMessage(message),
+      ),
+    ];
+
+    // 5. نمایش منو
+    TelegramContextMenu.show(
+      context: context,
+      messageWidget: previewWidget,
+      messageRect: messageRect, // پاس دادن مختصات
+      isMyMessage: isMe,
+      items: items,
+      // ✅ استفاده از لیست کامل ایموجی‌ها (از kDefaultReactions)
+      // برای GIF، صدا و فایل ری‌اکشن نمایش داده نمی‌شود
+      quickReactions:
+          (isGif || isVoice || isDocument) ? null : kDefaultReactions,
+      onReactionSelected: (emoji) => _onAddReaction(message, emoji),
+      onDismiss: () {
+        // 6. وقتی منو بسته شد، پیام اصلی را برگردان
+        if (mounted) {
+          setState(() {
+            _temporarilyHiddenMessages.remove(message.id);
+          });
+        }
+      },
+    );
+  }
+
+  /// ✅ ساخت Widget پیام برای Preview
+  Widget _buildMessagePreviewWidget(MessageModel message, bool isMe) {
+    return ImprovedAnimatedMessageBubble(
+      key: ValueKey('preview_${message.id}'),
+      messageId: message.id,
+      content: message.content,
+      isMe: isMe,
+      time: message.createdAt,
+      status: _getMessageStatus(message),
+      attachmentUrl: message.attachmentUrl,
+      attachmentType: message.attachmentType,
+      duration: message.duration,
+      replyToContent: message.replyToContent,
+      replyToSenderName: message.replyToSenderName,
+      replyToMessageId: message.replyToMessageId,
+      reactions:
+          _convertToOldReactionFormat(_messageReactions[message.id] ?? []),
+      // ✅ غیرفعال کردن تعاملات در Preview
+      onTap: (context, message) {},
+      onLongPress: (context, message) {},
+      onDoubleTap: () {},
+      onAddReaction: (emoji) {},
+      animate: false,
+      index: 0,
+      isFirstInGroup: true,
+      isLastInGroup: true,
+      isForwarded: message.isForwarded,
+      forwardedFrom: message.forwardedFromSenderName,
+      message: message,
+    );
+  }
+
+  /// ✅ تابع جدید: نمایش جزئیات پیام
+  void _showMessageDetails(MessageModel message) {
+    // تشخیص نوع پیام
+    final isDocument = message.attachmentType == 'document' ||
+        (message.attachmentType != null &&
+            ![
+              'gif',
+              'image',
+              'video',
+              'voice',
+              'audio',
+              'location',
+              'contact',
+              'post'
+            ].contains(message.attachmentType));
+
+    if (isDocument && message.attachmentUrl != null) {
+      // نمایش Document Preview
+      _showDocumentPreview(message);
+    } else if (message.attachmentType == 'location') {
+      // Location: از LocationMessageBubble باز می‌شود
+      _showSuccessSnackBar('روی مکان کلیک کنید تا در نقشه باز شود');
+    } else {
+      // نمایش Message Info Screen
+      _showMessageInfo(message);
+    }
   }
 
   void _onAddReaction(MessageModel message, String emoji) {
@@ -2417,6 +2806,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   void _showMessageOptions(MessageModel message) {
     final theme = context.chatTheme;
     final isMe = message.senderId == _currentUserId;
+    final isGif = message.attachmentType == 'gif'; // ✅ تشخیص GIF
 
     showModalBottomSheet(
       context: context,
@@ -2440,21 +2830,43 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 ),
               ),
 
-              // Quick Reactions
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: ['❤️', '👍', '😂', '😮', '😢', '🙏']
-                      .map((emoji) => _buildQuickReaction(emoji, message))
-                      .toList(),
+              // ✅ Quick Reactions (برای همه پیام‌ها به جز GIF)
+              if (!isGif)
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: ['❤️', '👍', '😂', '😮', '😢', '🙏']
+                        .map((emoji) => _buildQuickReaction(emoji, message))
+                        .toList(),
+                  ),
                 ),
-              ),
 
-              const Divider(),
+              if (!isGif) const Divider(),
 
-              // Options
+              // ✅ گزینه‌های مخصوص GIF
+              if (isGif) ...[
+                _buildOptionTile(
+                  icon: Icons.gif_box_outlined,
+                  label: 'ذخیره GIF',
+                  onTap: () {
+                    Navigator.pop(context);
+                    _saveGif(message);
+                  },
+                ),
+                _buildOptionTile(
+                  icon: Icons.open_in_browser_rounded,
+                  label: 'باز کردن در مرورگر',
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openGifInBrowser(message);
+                  },
+                ),
+                const Divider(),
+              ],
+
+              // گزینه‌های عمومی
               _buildOptionTile(
                 icon: Icons.reply_rounded,
                 label: 'پاسخ',
@@ -2464,15 +2876,19 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   _focusNode.requestFocus();
                 },
               ),
-              _buildOptionTile(
-                icon: Icons.copy_rounded,
-                label: 'کپی',
-                onTap: () {
-                  Navigator.pop(context);
-                  Clipboard.setData(ClipboardData(text: message.content));
-                  _showSuccessSnackBar('کپی شد');
-                },
-              ),
+
+              // ✅ کپی فقط برای پیام‌های متنی (نه GIF)
+              if (!isGif && message.content.isNotEmpty)
+                _buildOptionTile(
+                  icon: Icons.copy_rounded,
+                  label: 'کپی',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Clipboard.setData(ClipboardData(text: message.content));
+                    _showSuccessSnackBar('کپی شد');
+                  },
+                ),
+
               _buildOptionTile(
                 icon: Icons.forward_rounded,
                 label: 'فوروارد',
@@ -2489,7 +2905,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   _enterSelectionMode(message.id);
                 },
               ),
-              if (isMe)
+
+              // ویرایش فقط برای پیام‌های متنی خودم (نه GIF)
+              if (isMe && !isGif && message.attachmentUrl == null)
                 _buildOptionTile(
                   icon: Icons.edit_rounded,
                   label: 'ویرایش',
@@ -2498,7 +2916,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                     _editMessage(message);
                   },
                 ),
-              // حذف برای همه پیام‌ها (یک‌طرفه یا دوطرفه)
+
+              // حذف
               _buildOptionTile(
                 icon: Icons.delete_outline_rounded,
                 label: 'حذف',
@@ -2644,6 +3063,257 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     if (result == true) {
       _showSuccessSnackBar('پیام فوروارد شد');
+    }
+  }
+
+  /// ذخیره GIF در گالری
+  Future<void> _saveGif(MessageModel message) async {
+    if (message.attachmentUrl == null) {
+      _showErrorSnackBar('لینک گیف یافت نشد');
+      return;
+    }
+
+    try {
+      // نمایش loading
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white),
+                ),
+                const SizedBox(width: 12),
+                const Text('در حال دانلود...'),
+              ],
+            ),
+            duration: const Duration(seconds: 10),
+          ),
+        );
+      }
+
+      // دانلود GIF
+      final dio = Dio();
+      final response = await dio.get(
+        message.attachmentUrl!,
+        options: Options(responseType: ResponseType.bytes),
+      );
+
+      // ذخیره بایت‌ها در فایل موقت
+      final tempDir = await getTemporaryDirectory();
+      final fileName = 'gif_${DateTime.now().millisecondsSinceEpoch}.gif';
+      final tempFile = File('${tempDir.path}/$fileName');
+      await tempFile.writeAsBytes(Uint8List.fromList(response.data));
+
+      // ذخیره در گالری
+      await Gal.putImage(tempFile.path);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        _showSuccessSnackBar('گیف در گالری ذخیره شد');
+      }
+    } catch (e) {
+      debugPrint('Error saving GIF: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        _showErrorSnackBar('خطا در ذخیره گیف');
+      }
+    }
+  }
+
+  /// باز کردن GIF در مرورگر
+  Future<void> _openGifInBrowser(MessageModel message) async {
+    if (message.attachmentUrl == null) {
+      _showErrorSnackBar('لینک گیف یافت نشد');
+      return;
+    }
+
+    try {
+      final uri = Uri.parse(message.attachmentUrl!);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          _showErrorSnackBar('خطا در باز کردن لینک');
+        }
+      }
+    } catch (e) {
+      debugPrint('Error opening GIF in browser: $e');
+      if (mounted) {
+        _showErrorSnackBar('خطا در باز کردن لینک');
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 💾 SAVE MEDIA (متدهای کمکی)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// ذخیره عکس
+  Future<void> _saveImage(MessageModel message) async {
+    if (message.attachmentUrl == null) {
+      _showErrorSnackBar('لینک تصویر یافت نشد');
+      return;
+    }
+    await _saveMediaToGallery(message.attachmentUrl!, 'image', 'عکس');
+  }
+
+  /// ذخیره ویدیو
+  Future<void> _saveVideo(MessageModel message) async {
+    if (message.attachmentUrl == null) {
+      _showErrorSnackBar('لینک ویدیو یافت نشد');
+      return;
+    }
+    await _saveMediaToGallery(message.attachmentUrl!, 'video', 'ویدیو');
+  }
+
+  /// ذخیره صدا
+  Future<void> _saveVoice(MessageModel message) async {
+    if (message.attachmentUrl == null) {
+      _showErrorSnackBar('لینک صدا یافت نشد');
+      return;
+    }
+    // برای صدا از downloadFile استفاده می‌کنیم
+    await _downloadFile(message);
+  }
+
+  /// باز کردن در مرورگر
+  Future<void> _openInBrowser(MessageModel message) async {
+    if (message.attachmentUrl == null) {
+      _showErrorSnackBar('لینک یافت نشد');
+      return;
+    }
+
+    try {
+      final uri = Uri.parse(message.attachmentUrl!);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          _showErrorSnackBar('خطا در باز کردن لینک');
+        }
+      }
+    } catch (e) {
+      debugPrint('Error opening in browser: $e');
+      if (mounted) {
+        _showErrorSnackBar('خطا در باز کردن لینک');
+      }
+    }
+  }
+
+  /// دانلود فایل
+  Future<void> _downloadFile(MessageModel message) async {
+    if (message.attachmentUrl == null) {
+      _showErrorSnackBar('لینک فایل یافت نشد');
+      return;
+    }
+
+    try {
+      // نمایش loading
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white),
+                ),
+                SizedBox(width: 12),
+                Text('در حال دانلود...'),
+              ],
+            ),
+            duration: Duration(seconds: 30),
+          ),
+        );
+      }
+
+      // دانلود فایل
+      final response = await Dio().get(
+        message.attachmentUrl!,
+        options: Options(responseType: ResponseType.bytes),
+      );
+
+      // ذخیره در Downloads
+      final fileName = message.attachmentFileName ??
+          'file_${DateTime.now().millisecondsSinceEpoch}';
+
+      // استفاده از path_provider
+      final directory = await getApplicationDocumentsDirectory();
+      final filePath = '${directory.path}/$fileName';
+      final file = File(filePath);
+      await file.writeAsBytes(response.data);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        _showSuccessSnackBar('فایل در $filePath ذخیره شد');
+      }
+    } catch (e) {
+      debugPrint('Error downloading file: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        _showErrorSnackBar('خطا در دانلود فایل');
+      }
+    }
+  }
+
+  /// متد کمکی برای ذخیره رسانه در گالری
+  Future<void> _saveMediaToGallery(
+      String url, String type, String typeName) async {
+    try {
+      // نمایش loading
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white),
+                ),
+                SizedBox(width: 12),
+                Text('در حال دانلود...'),
+              ],
+            ),
+            duration: Duration(seconds: 10),
+          ),
+        );
+      }
+
+      // دانلود
+      final response = await Dio().get(
+        url,
+        options: Options(responseType: ResponseType.bytes),
+      );
+
+      // ذخیره بایت‌ها در فایل موقت
+      final tempDir = await getTemporaryDirectory();
+      final extension = type == 'image' ? 'jpg' : 'png';
+      final fileName =
+          '${type}_${DateTime.now().millisecondsSinceEpoch}.$extension';
+      final tempFile = File('${tempDir.path}/$fileName');
+      await tempFile.writeAsBytes(Uint8List.fromList(response.data));
+
+      // ذخیره در گالری
+      await Gal.putImage(tempFile.path);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        _showSuccessSnackBar('$typeName در گالری ذخیره شد');
+      }
+    } catch (e) {
+      debugPrint('Error saving media: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        _showErrorSnackBar('خطا در ذخیره $typeName');
+      }
     }
   }
 
@@ -2872,7 +3542,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             _showSuccessSnackBar('پست ارسال شد');
           }
         },
-        onLongPress: () => _onMessageLongPress(message),
+        onLongPress: () {
+          // این متد دیگر استفاده نمی‌شود - از GestureDetector در _buildMessageList استفاده می‌شود
+        },
       );
     } catch (e) {
       debugPrint('Error parsing post message: $e');

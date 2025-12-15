@@ -1,25 +1,25 @@
 // lib/features/chat/widgets/telegram_reaction_picker.dart
 //
-// Reaction Picker دقیقاً مثل تلگرام
+// Reaction Picker به سبک تلگرام iOS
 //
 // ویژگی‌ها:
-// ✅ Scale animation برای هر ایموجی
-// ✅ Haptic feedback
-// ✅ Backdrop blur
-// ✅ Smart positioning (بالا/پایین پیام)
-// ✅ Expanding animation مثل تلگرام
-//
+// ✅ ظاهر شیشه‌ای و قرصی (Pill Shape)
+// ✅ اسکرول افقی برای ایموجی‌های زیاد
+// ✅ انیمیشن نرم هنگام انتخاب و اسکرول
+// ✅ لیست کامل ایموجی‌ها
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:ui';
 
-/// لیست ایموجی‌های پیش‌فرض (مثل تلگرام)
+/// لیست گسترده‌ای از ری‌اکشن‌ها مشابه تلگرام
 const List<String> kDefaultReactions = [
-  '👍', '❤️', '😂', '😮', '😢', '🙏', '👏', '🔥',
+  '👍', '👎', '❤️', '🔥', '🥰', '👏', '😁', '🤔', '🤯', '😱', '🤬', '😢', 
+  '🎉', '🤩', '🤮', '💩', '🙏', '👌', '🕊️', '🤡', '🥱', '🥴', '😍', '🐳', 
+  '💯', '🤣', '⚡', '🍌', '🏆', '💔', '🤨', '😐', '🍓', '🍾', '💋', '🖕',
 ];
 
-/// Telegram-style Reaction Picker
+/// Telegram-style Reaction Picker با اسکرول افقی
 class TelegramReactionPicker extends StatefulWidget {
   final Function(String emoji) onReactionSelected;
   final VoidCallback? onClose;
@@ -41,130 +41,106 @@ class TelegramReactionPicker extends StatefulWidget {
 }
 
 class _TelegramReactionPickerState extends State<TelegramReactionPicker>
-    with TickerProviderStateMixin {
-  late AnimationController _expandController;
-  late AnimationController _scaleController;
-  late List<AnimationController> _emojiControllers;
-  
-  late Animation<double> _expandAnimation;
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
   late Animation<double> _scaleAnimation;
-  late List<Animation<double>> _emojiAnimations;
-
+  late Animation<double> _widthAnimation;
+  
   int? _hoveredIndex;
 
   @override
   void initState() {
     super.initState();
-    _setupAnimations();
-    _startAnimations();
-  }
-
-  void _setupAnimations() {
-    // انیمیشن باز شدن کل پیکر
-    _expandController = AnimationController(
-      duration: const Duration(milliseconds: 250),
+    
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 300),
       vsync: this,
     );
 
-    _expandAnimation = CurvedAnimation(
-      parent: _expandController,
-      curve: Curves.easeOutCubic,
+    // انیمیشن باز شدن (Scale)
+    _scaleAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutBack,
     );
 
-    // انیمیشن scale کلی
-    _scaleController = AnimationController(
-      duration: const Duration(milliseconds: 200),
-      vsync: this,
-    );
-
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+    // انیمیشن باز شدن عرضی
+    _widthAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
-        parent: _scaleController,
-        curve: Curves.easeOutBack,
+        parent: _controller,
+        curve: const Interval(0.0, 0.8, curve: Curves.easeOutCubic),
       ),
     );
 
-    // انیمیشن هر ایموجی به صورت جداگانه (staggered)
-    _emojiControllers = List.generate(
-      widget.reactions.length,
-      (index) => AnimationController(
-        duration: const Duration(milliseconds: 200),
-        vsync: this,
-      ),
-    );
-
-    _emojiAnimations = _emojiControllers.map((controller) {
-      return Tween<double>(begin: 0.0, end: 1.0).animate(
-        CurvedAnimation(
-          parent: controller,
-          curve: Curves.easeOutBack,
-        ),
-      );
-    }).toList();
-  }
-
-  void _startAnimations() async {
-    // شروع انیمیشن expand
-    _expandController.forward();
-    _scaleController.forward();
-
-    // شروع انیمیشن ایموجی‌ها با تاخیر (staggered)
-    for (int i = 0; i < _emojiControllers.length; i++) {
-      await Future.delayed(const Duration(milliseconds: 30));
-      if (mounted) {
-        _emojiControllers[i].forward();
-      }
-    }
+    _controller.forward();
   }
 
   @override
   void dispose() {
-    _expandController.dispose();
-    _scaleController.dispose();
-    for (final controller in _emojiControllers) {
-      controller.dispose();
-    }
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    
+    // محاسبه عرض: حداکثر عرض صفحه منهای حاشیه، اما نه بیشتر از 360
+    final pickerWidth = (screenSize.width - 32).clamp(200.0, 360.0);
+    const pickerHeight = 52.0;
+
+    // محاسبه دقیق موقعیت برای اینکه از صفحه بیرون نزند
+    double left = widget.position.dx - (pickerWidth / 2);
+    left = left.clamp(16.0, screenSize.width - pickerWidth - 16.0);
+
+    // محاسبه دقیق موقعیت عمودی
+    double top = widget.showAbove 
+        ? widget.position.dy - 70 
+        : widget.position.dy + 10;
+
     return Positioned(
-      left: widget.position.dx - 140, // مرکز کردن
-      top: widget.showAbove 
-          ? widget.position.dy - 70 
-          : widget.position.dy + 10,
+      left: left,
+      top: top,
       child: ScaleTransition(
         scale: _scaleAnimation,
-        child: FadeTransition(
-          opacity: _expandAnimation,
-          child: Material(
-            color: Colors.transparent,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-              decoration: BoxDecoration(
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? const Color(0xFF2B2B2B)
-                    : Colors.white,
-                borderRadius: BorderRadius.circular(28),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 20,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(28),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: List.generate(
-                      widget.reactions.length,
-                      (index) => _buildEmojiButton(index),
-                    ),
+        alignment: widget.showAbove ? Alignment.bottomCenter : Alignment.topCenter,
+        child: AnimatedBuilder(
+          animation: _widthAnimation,
+          builder: (context, child) {
+            // انیمیشن باز شدن عرضی
+            return SizedBox(
+              width: pickerWidth * _widthAnimation.value,
+              height: pickerHeight,
+              child: child,
+            );
+          },
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(30),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.15),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(30),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                child: Container(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF252525).withOpacity(0.85)
+                      : Colors.white.withOpacity(0.85),
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(), // افکت اسکرول iOS
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    itemCount: widget.reactions.length,
+                    itemBuilder: (context, index) {
+                      return _buildEmojiItem(index);
+                    },
                   ),
                 ),
               ),
@@ -175,52 +151,46 @@ class _TelegramReactionPickerState extends State<TelegramReactionPicker>
     );
   }
 
-  Widget _buildEmojiButton(int index) {
+  Widget _buildEmojiItem(int index) {
     final emoji = widget.reactions[index];
     final isHovered = _hoveredIndex == index;
 
-    return ScaleTransition(
-      scale: _emojiAnimations[index],
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hoveredIndex = index),
+      onExit: (_) => setState(() => _hoveredIndex = null),
       child: GestureDetector(
         onTapDown: (_) {
-          HapticFeedback.lightImpact();
+          HapticFeedback.selectionClick();
           setState(() => _hoveredIndex = index);
         },
         onTapUp: (_) {
-          HapticFeedback.mediumImpact();
-          widget.onReactionSelected(emoji);
-          widget.onClose?.call();
+           HapticFeedback.mediumImpact();
+           widget.onReactionSelected(emoji);
+           widget.onClose?.call();
+           setState(() => _hoveredIndex = null);
         },
         onTapCancel: () {
           setState(() => _hoveredIndex = null);
         },
-        child: MouseRegion(
-          onEnter: (_) => setState(() => _hoveredIndex = index),
-          onExit: (_) => setState(() => _hoveredIndex = null),
-          child: AnimatedContainer(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutCubic,
+          width: isHovered ? 50 : 42, // بزرگ شدن در حالت انتخاب
+          height: 52,
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..translate(0.0, isHovered ? -4.0 : 0.0), // کمی بالا آمدن
+          child: AnimatedDefaultTextStyle(
             duration: const Duration(milliseconds: 150),
-            curve: Curves.easeOut,
-            width: isHovered ? 44 : 36,
-            height: isHovered ? 44 : 36,
-            margin: const EdgeInsets.symmetric(horizontal: 2),
-            decoration: BoxDecoration(
-              color: isHovered
-                  ? Theme.of(context).primaryColor.withOpacity(0.1)
-                  : Colors.transparent,
-              shape: BoxShape.circle,
+            style: TextStyle(
+              fontSize: isHovered ? 32 : 26, // سایز فونت ایموجی
+              fontFamily: 'Apple Color Emoji',
+              fontFamilyFallback: const [
+                'Segoe UI Emoji',
+                'Noto Color Emoji',
+              ],
             ),
-            child: Center(
-              child: AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 150),
-                style: TextStyle(
-                  fontSize: isHovered ? 28 : 24,
-                ),
-                child: Text(
-                  emoji,
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
+            child: Text(emoji),
           ),
         ),
       ),
@@ -310,5 +280,3 @@ class TelegramReactionDisplay extends StatelessWidget {
     );
   }
 }
-
-

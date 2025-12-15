@@ -6,6 +6,7 @@ import '../../../model/message_model.dart';
 import '../../../model/conversation_model.dart';
 import '../data/datasources/chat_local_datasource.dart';
 import '../services/storage_service.dart';
+import '../services/message_reactions_service.dart'; // ✅ اضافه شد
 import 'chat_repository.dart';
 import '../../../../DB/unified_conversation_cache_service.dart';
 
@@ -19,6 +20,7 @@ class ChatRepositoryImpl implements ChatRepository {
   final String? _injectedCurrentUserId;
   final RealtimeChannel _messagesChannel;
   late final StorageService _storageService;
+  late final MessageReactionsService _reactionService; // ✅ اضافه شد
 
   ChatRepositoryImpl({
     required ChatLocalDataSource localDataSource,
@@ -32,8 +34,9 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   void _init() {
-    // Initialize storage service for cloud file management
+    // Initialize services
     _storageService = StorageService(_supabase);
+    _reactionService = MessageReactionsService(); // ✅ مقداردهی شد
 
     // Start listening to realtime changes immediately
     initializeRealtime();
@@ -662,16 +665,40 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<ChatResult<void>> toggleReaction(
-      {required String messageId,
-      required String conversationId,
-      required String emoji}) async {
-    return ChatResult.failure('Not implemented');
+  Future<ChatResult<void>> toggleReaction({
+    required String messageId,
+    required String conversationId,
+    required String emoji,
+  }) async {
+    try {
+      // ✅ ارسال conversationId به سرویس
+      await _reactionService.toggleReaction(
+        messageId: messageId,
+        conversationId: conversationId, // ✅ اضافه شد
+        emoji: emoji,
+      );
+      return ChatResult.success(null);
+    } catch (e) {
+      print('❌ Toggle reaction failed: $e');
+      return ChatResult.failure(e.toString());
+    }
   }
 
   @override
-  Stream<Map<String, List<String>>> watchReactions(String messageId) async* {
-    yield {};
+  Stream<Map<String, List<String>>> watchReactions(String messageId) {
+    // ✅ تبدیل استریم سرویس به فرمت مورد نظر
+    // نکته: UI شما (ModernChatScreen) مستقیماً از سرویس استفاده می‌کند (از طریق _setupReactionsStream)
+    // بنابراین این متد ممکن است استفاده نشود، اما پیاده‌سازی آن ضرری ندارد.
+    return _reactionService.watchMessageReactions(messageId).map((reactions) {
+      final Map<String, List<String>> result = {};
+      for (final reaction in reactions) {
+        if (!result.containsKey(reaction.emoji)) {
+          result[reaction.emoji] = [];
+        }
+        result[reaction.emoji]!.add(reaction.userId);
+      }
+      return result;
+    });
   }
 
   @override
