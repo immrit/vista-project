@@ -2714,11 +2714,13 @@ class ChatService {
   bool _isOnline = true;
 
   /// Initialize the optimized messaging system
+  /// ⛔️ غیرفعال شده - چون از PushNotificationService جدید استفاده می‌کنیم
   Future<void> initializeOptimizedMessaging() async {
-    _startBackgroundSync();
-    _startOfflineRetry();
-    _setupConnectivityListener();
-    logInfo('🚀 Optimized Messaging initialized');
+    return; // ⛔️ این خط را اضافه کردیم تا کدهای قدیمی اجرا نشوند و تداخل نکنند
+    // _startBackgroundSync();
+    // _startOfflineRetry();
+    // _setupConnectivityListener();
+    // logInfo('🚀 Optimized Messaging initialized');
   }
 
   /// Setup connectivity monitoring

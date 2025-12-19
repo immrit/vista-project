@@ -325,7 +325,7 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
                   widget.onClose();
                   Future.delayed(const Duration(milliseconds: 200), item.onTap);
                 },
-                overlayColor: MaterialStateProperty.all(isDark
+                overlayColor: WidgetStateProperty.all(isDark
                     ? Colors.white.withOpacity(0.05)
                     : Colors.black.withOpacity(0.03)),
                 child: Padding(

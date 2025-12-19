@@ -1,4 +1,4 @@
-import '../../../security/logging_utility.dart';
+// import '../../../security/logging_utility.dart'; // ⛔️ حذف شد - دیگر استفاده نمی‌شود
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -41,7 +41,8 @@ class _ChatConversationsScreenState
       vsync: this,
       duration: const Duration(milliseconds: 300),
     );
-    _initializeOptimizedMessaging();
+    // ⛔️ غیرفعال شده - چون از PushNotificationService جدید استفاده می‌کنیم
+    // _initializeOptimizedMessaging();
   }
 
   @override
@@ -52,15 +53,16 @@ class _ChatConversationsScreenState
   }
 
   /// Initialize optimized messaging system
-  Future<void> _initializeOptimizedMessaging() async {
-    try {
-      final chatService = ref.read(chatServiceProvider);
-      await chatService.initializeOptimizedMessaging();
-      logInfo('✅ Optimized messaging initialized for conversations screen');
-    } catch (e) {
-      logInfo('⚠️ Error initializing optimized messaging: $e');
-    }
-  }
+  /// ⛔️ غیرفعال شده - چون از PushNotificationService جدید استفاده می‌کنیم
+  // Future<void> _initializeOptimizedMessaging() async {
+  //   try {
+  //     final chatService = ref.read(chatServiceProvider);
+  //     await chatService.initializeOptimizedMessaging();
+  //     logInfo('✅ Optimized messaging initialized for conversations screen');
+  //   } catch (e) {
+  //     logInfo('⚠️ Error initializing optimized messaging: $e');
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {

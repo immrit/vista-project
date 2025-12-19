@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform; // ✅ برای تشخیص پلتفرم
 import 'package:Vista/DB/unified_conversation_cache_service.dart';
 import 'package:Vista/view/screen/Settings/vistaStore/store.dart';
 import 'package:Vista/view/screen/SplashScreen.dart';
@@ -59,6 +60,9 @@ import 'services/auto_lock_service.dart';
 import 'services/auth_navigation_service.dart';
 import 'provider/settings_providers.dart';
 import 'view/util/themes.dart';
+import 'package:package_info_plus/package_info_plus.dart'; // ✅ برای گرفتن نسخه اپ
+import 'package:device_info_plus/device_info_plus.dart'; // ✅ برای گرفتن مدل دستگاه
+// Clipboard از طریق flutter/services.dart که قبلاً import شده در دسترس است
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -69,7 +73,51 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 // جلوگیری از initialize چندگانه در طول hot restart
 bool _isAppInitialized = false;
 
-/// Notification response handler
+/// 🔥 Background Message Handler - باید Top-Level باشه (خارج از کلاس‌ها)
+/// این تابع وقتی اپ کاملا بسته است و پیام میاد اجرا میشه
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // چون در پس‌زمینه هستیم باید Firebase رو دستی اینیشیالایز کنیم
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  
+  print("📬 Handling a background message: ${message.messageId}");
+  print("   Type: ${message.data['type']}");
+  print("   Data: ${message.data}");
+
+  // اگر پیام نوعش chat_message بود، باید نوتیفیکیشن رو دستی نشون بدیم
+  if (message.data['type'] == 'chat_message') {
+    // اینجا یه نمونه موقت از سرویس میسازیم فقط برای نمایش اعلان
+    // نکته: چون دسترسی به ProviderScope نداریم، مستقیم کلاس رو صدا میزنیم
+    final notificationService = PushNotificationService(null); 
+    await notificationService.showBackgroundNotification(message);
+  }
+}
+
+/// 🔥 Handler برای پاسخ سریع در بک‌گراند (Top-Level Function)
+/// این تابع وقتی اپ کاملاً بسته است و کاربر روی دکمه "پاسخ" می‌زند اجرا می‌شود
+@pragma('vm:entry-point')
+void notificationTapBackground(NotificationResponse notificationResponse) {
+  print('🌙 notificationTapBackground called');
+  print('   Action ID: ${notificationResponse.actionId}');
+  print('   Input: ${notificationResponse.input}');
+  
+  // هندل کردن پاسخ سریع (Reply) در بک‌گراند
+  if (notificationResponse.input?.isNotEmpty ?? false) {
+    print('📝 دریافت پاسخ در بک‌گراند: ${notificationResponse.input}');
+    // اینجا باید سرویس ارسال پیام را صدا بزنید
+    // برای پیاده‌سازی کامل، باید یک نمونه جدید از Supabase Client اینجا بسازید
+    // فعلاً فقط لاگ می‌کنیم تا کرش نکنیم
+    try {
+      // TODO: در نسخه‌های بعدی می‌توانیم Supabase را اینجا initialize کنیم و پیام را ارسال کنیم
+      // final supabase = Supabase.instance.client;
+      // await supabase.rpc('send_reply_message', params: {...});
+    } catch (e) {
+      print('❌ Error in background reply handler: $e');
+    }
+  }
+}
+
+/// Notification response handler (برای فورگراند)
 Future<void> notificationResponseHandler(NotificationResponse response) async {
   print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   print('🔔 کلیک روی Local Notification');
@@ -168,6 +216,10 @@ void main() async {
       }
 
       WidgetsFlutterBinding.ensureInitialized();
+      
+      // 🔥 این خط حیاتی رو اضافه کن: Background Message Handler
+      // باید قبل از initialize Firebase باشه
+      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
       
       // ✅ تنظیمات Edge-to-Edge برای افکت شیشه‌ای در چت
       SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
@@ -329,7 +381,10 @@ void main() async {
       // 🌐 راه‌اندازی سرویس وضعیت شبکه
       await NetworkStatusService().initialize();
 
-      // راه‌اندازی اعلان‌های محلی
+      // 🔥 راه‌اندازی اعلان‌های محلی - کامنت شد
+      // چون PushNotificationService خودش init می‌کند و اگر دو بار صدا زده شود تداخل ایجاد می‌کند
+      // initialize در PushNotificationService انجام می‌شود که هم برای foreground و هم background کار می‌کند
+      /* 
       await flutterLocalNotificationsPlugin.initialize(
         InitializationSettings(
           android: AndroidInitializationSettings('@mipmap/ic_launcher'),
@@ -337,6 +392,7 @@ void main() async {
         ),
         onDidReceiveNotificationResponse: notificationResponseHandler,
       );
+      */
 
       // ✅ بررسی اعلان اولیه FCM (وقتی app کاملاً بسته بود و از اعلان باز شد)
       _checkInitialNotification();
@@ -409,34 +465,56 @@ void main() async {
   );
 }
 
-/// بررسی اعلان اولیه FCM (وقتی app کاملاً بسته بود و از اعلان باز شد)
+/// بررسی اعلان اولیه (وقتی app کاملاً بسته بود و از اعلان باز شد)
 Future<void> _checkInitialNotification() async {
   try {
-    // اگر Firebase initialize نشده، skip کن
-    if (Firebase.apps.isEmpty) {
-      print('⚠️ Firebase not initialized, skipping initial notification check');
-      return;
+    // 1. بررسی اینکه آیا اپ با کلیک روی نوتیفیکیشن "لوکال" (چت‌های ما) باز شده؟
+    final NotificationAppLaunchDetails? notificationAppLaunchDetails =
+        await flutterLocalNotificationsPlugin.getNotificationAppLaunchDetails();
+
+    if (notificationAppLaunchDetails?.didNotificationLaunchApp ?? false) {
+      final payload = notificationAppLaunchDetails!.notificationResponse?.payload;
+      
+      if (payload != null && payload.isNotEmpty) {
+        print('🚀 App opened from Local Notification (Payload found)');
+        print('   Payload: $payload');
+        
+        // منتظر می‌مانیم تا صفحه ساخته شود
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Future.delayed(const Duration(milliseconds: 1000), () {
+            final context = navigatorKey.currentContext;
+            if (context != null) {
+              // هدایت دستی به صفحه مقصد
+              NotificationNavigationService.handleLocalNotificationPayload(
+                context: context,
+                payload: payload,
+              );
+            }
+          });
+        });
+        return; // اگر لوکال بود، دیگر فایربیس را چک نکن
+      }
     }
 
-    // دریافت پیام اولیه (اگر app از طریق notification باز شده)
-    final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
-
-    if (initialMessage != null) {
-      print('🚀 App opened from notification (terminated state)');
-      print('   Data: ${initialMessage.data}');
-
-      // منتظر می‌مونیم تا app کاملاً initialize بشه
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Future.delayed(const Duration(milliseconds: 800), () {
-          final context = navigatorKey.currentContext;
-          if (context != null) {
-            NotificationNavigationService.handleFCMPayload(
-              context: context,
-              data: initialMessage.data,
-            );
-          }
+    // 2. اگر لوکال نبود، فایربیس را چک کن (برای اعلان‌های سیستمی قدیمی)
+    if (Firebase.apps.isNotEmpty) {
+      final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+      if (initialMessage != null) {
+        print('🚀 App opened from FCM System Notification');
+        print('   Data: ${initialMessage.data}');
+        
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Future.delayed(const Duration(milliseconds: 1000), () {
+            final context = navigatorKey.currentContext;
+            if (context != null) {
+              NotificationNavigationService.handleFCMPayload(
+                context: context,
+                data: initialMessage.data,
+              );
+            }
+          });
         });
-      });
+      }
     }
   } catch (e) {
     print('❌ خطا در بررسی initial notification: $e');
@@ -754,34 +832,89 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     }
   }
 
-  /// ذخیره توکن FCM در پروفایل کاربر
+  /// ✅ ذخیره توکن FCM با استفاده از RPC function جدید (با Visual Debugger)
   Future<void> _setFcmToken(String fcmToken) async {
     try {
       final user = supabase.auth.currentUser;
-      final userId = user?.id;
-
-      if (userId == null || user == null) {
-        print('⚠️ کاربر لاگین نشده، FCM Token ذخیره نشد');
+      if (user == null) {
+        print('⚠️ کاربر لاگین نیست، توکن ذخیره نمی‌شود.');
         return;
       }
 
-      final username = user.userMetadata?['username'] ??
-          user.email?.split('@')[0] ??
-          'user_$userId';
+      // تشخیص پلتفرم و مدل دستگاه
+      String deviceType = Platform.isAndroid ? 'android' : 'ios';
+      String deviceModel = 'Vista App';
+      String appVersion = '1.0.0';
 
-      final fullName = user.userMetadata?['full_name'] ?? username;
+      try {
+        final deviceInfo = DeviceInfoPlugin();
+        if (Platform.isAndroid) {
+          final androidInfo = await deviceInfo.androidInfo;
+          deviceModel = '${androidInfo.brand} ${androidInfo.model}';
+        } else if (Platform.isIOS) {
+          final iosInfo = await deviceInfo.iosInfo;
+          deviceModel = '${iosInfo.name} ${iosInfo.model}';
+        }
+        final packageInfo = await PackageInfo.fromPlatform();
+        appVersion = packageInfo.version;
+      } catch (_) {
+        // استفاده از مقادیر پیش‌فرض در صورت خطا
+      }
 
-      await supabase.from('profiles').upsert({
-        'id': userId,
-        'fcm_token': fcmToken,
-        'username': username,
-        'full_name': fullName,
+      print('🚀 تلاش برای ثبت توکن در دیتابیس...');
+      
+      // فراخوانی RPC
+      await supabase.rpc('register_device', params: {
+        'p_fcm_token': fcmToken,
+        'p_device_type': deviceType,
+        'p_device_model': deviceModel,
+        'p_app_version': appVersion,
       });
 
-      print('✅ FCM Token با موفقیت در سوپابیس ذخیره شد برای کاربر: $userId');
+      print('✅ توکن با موفقیت ثبت شد');
+      print('   Device Type: $deviceType');
+      print('   Device Model: $deviceModel');
+      print('   App Version: $appVersion');
+      
+      // ✅ نمایش پیام موفقیت (سبز) - فقط برای تست، بعدا حذف کن
+      if (navigatorKey.currentContext != null && mounted) {
+        ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
+          const SnackBar(
+            content: Text('✅ دستگاه با موفقیت در سرور ثبت شد'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+
     } catch (e) {
-      print('❌ خطا در ذخیره FCM Token: $e');
+      print('❌ خطا در ثبت توکن: $e');
       print('Stack trace: ${StackTrace.current}');
+      
+      // 🔥 نمایش خطا روی صفحه (قرمز)
+      if (navigatorKey.currentContext != null && mounted) {
+        final errorMessage = e.toString();
+        ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
+          SnackBar(
+            content: Text('خطا در ثبت دستگاه: $errorMessage'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 10), // ۱۰ ثانیه میمونه تا بتونی بخونی
+            action: SnackBarAction(
+              label: 'کپی',
+              textColor: Colors.white,
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: errorMessage));
+                ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
+                  const SnackBar(
+                    content: Text('خطا کپی شد'),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      }
     }
   }
 

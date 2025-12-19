@@ -1,246 +1,491 @@
 import '../security/logging_utility.dart';
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io'; // ✅ کامل شد برای کار با فایل
+import 'dart:typed_data'; // ✅ برای Uint8List
+import 'package:path_provider/path_provider.dart'; // ✅ برای مسیردهی
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import '../provider/notification_provider.dart';
 import '../main.dart';
-import 'ChatService_LEGACY.dart';
 import 'notification_navigation_service.dart';
 
-/// Provider برای دسترسی به PushNotificationService
 final pushNotificationServiceProvider = Provider<PushNotificationService>(
   (ref) => PushNotificationService(ref),
 );
 
 class PushNotificationService {
-  final Ref ref;
+  final Ref? ref;
   PushNotificationService(this.ref);
 
   final _firebaseMessaging = FirebaseMessaging.instance;
-  final _supabase = Supabase.instance.client;
   final _flutterLocalNotifications = FlutterLocalNotificationsPlugin();
 
-  /// این متغیر لیست اعلان‌های دریافتی رو نگه میداره
+  // ✅ Getter امن برای Supabase (ممکن است در بک‌گراند initialize نشده باشد)
+  SupabaseClient? get _supabase {
+    try {
+      return Supabase.instance.client;
+    } catch (_) {
+      return null;
+    }
+  }
+
   final List<RemoteMessage> _notifications = [];
   List<RemoteMessage> get notifications => _notifications;
 
-  /// مقداردهی اولیه سرویس
+  StreamSubscription<AuthState>? _authStateSubscription;
+
+  bool _isInitialized = false; // جلوگیری از initialize چندگانه
+
+  /// ✅ تابع Initialize که هم در Foreground و هم Background استفاده می‌شود
+  Future<void> _ensureInitialized() async {
+    if (_isInitialized) return; // جلوگیری از initialize چندگانه
+
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const iOSInit = DarwinInitializationSettings();
+    const initSettings =
+        InitializationSettings(android: androidInit, iOS: iOSInit);
+
+    await _flutterLocalNotifications.initialize(
+      initSettings,
+      // هندلر کلیک وقتی اپ باز است (Foreground)
+      onDidReceiveNotificationResponse: (details) {
+        _onNotificationTap(details);
+      },
+      // ✅ هندلر کلیک/پاسخ وقتی اپ بسته است (حیاتی برای دکمه پاسخ)
+      onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
+    );
+
+    _isInitialized = true;
+    logInfo('✅ Notification plugin initialized');
+  }
+
+  /// هندلر مرکزی کلیک روی اعلان (برای Foreground)
+  void _onNotificationTap(NotificationResponse details) {
+    if (details.payload != null) {
+      try {
+        final data = jsonDecode(details.payload!) as Map<String, dynamic>;
+        final conversationId = data['conversation_id'];
+
+        // ۱. هندل پاسخ سریع (Reply) در فورگراند
+        if (details.actionId == 'reply' && details.input != null) {
+          if (conversationId != null && _supabase != null) {
+            handleQuickReply(conversationId.toString(), details.input!);
+          }
+        }
+        // ۲. هندل دکمه "خواندم"
+        else if (details.actionId == 'mark_read') {
+          if (conversationId != null && _supabase != null) {
+            _supabase!.rpc('mark_conversation_as_read', params: {
+              'p_conversation_id': conversationId.toString(),
+            });
+            _flutterLocalNotifications.cancel(conversationId.hashCode);
+          }
+        }
+        // ۳. کلیک عادی (باز کردن چت)
+        else {
+          final navContext = navigatorKey.currentContext;
+          if (navContext != null) {
+            NotificationNavigationService.handleFCMPayload(
+              context: navContext,
+              data: data,
+            );
+          }
+        }
+      } catch (e) {
+        logInfo('❌ Error handling notification tap: $e');
+      }
+    }
+  }
+
   Future<void> init(BuildContext context) async {
     try {
-      // بررسی اینکه Firebase initialize شده یا نه
+      logInfo('🔔 Initializing Push Notification Service...');
+
       if (Firebase.apps.isEmpty) {
-        print(
-          '⚠️ Firebase not initialized, skipping PushNotificationService init',
-        );
+        logInfo(
+            '⚠️ Firebase not initialized, skipping PushNotificationService init');
         return;
       }
 
-      // درخواست اجازه دسترسی به نوتیفیکیشن (iOS / Android 13+)
+      _authStateSubscription?.cancel();
+      if (_supabase != null) {
+        _authStateSubscription =
+            _supabase!.auth.onAuthStateChange.listen((data) {
+          final AuthChangeEvent event = data.event;
+          if (event == AuthChangeEvent.signedIn ||
+              event == AuthChangeEvent.tokenRefreshed) {
+            logInfo('👤 User Signed In/Refreshed. Updating Token...');
+            saveToken();
+          }
+        });
+      }
+
       await _firebaseMessaging.requestPermission(
         alert: true,
         badge: true,
         sound: true,
+        provisional: false,
       );
 
-      // مقداردهی flutter_local_notifications
-      const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-      const iOSInit = DarwinInitializationSettings();
-      const initSettings = InitializationSettings(
-        android: androidInit,
-        iOS: iOSInit,
+      // کانال چت (حیاتی برای نمایش درست در اندروید 8+)
+      const androidChannel = AndroidNotificationChannel(
+        'chat_messages',
+        'پیام‌های چت',
+        description: 'اعلان برای پیام‌های دریافتی',
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+        showBadge: true,
       );
 
-      await _flutterLocalNotifications.initialize(
-        initSettings,
-        onDidReceiveNotificationResponse: (details) {
-          if (details.payload != null) {
-            try {
-              final data = jsonDecode(details.payload!) as Map<String, dynamic>;
+      await _flutterLocalNotifications
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(androidChannel);
 
-              // هندل پاسخ سریع
-              if (details.actionId == 'reply' && details.input != null) {
-                final conversationId = data['conversation_id'];
-                if (conversationId != null &&
-                    conversationId.toString().isNotEmpty) {
-                  handleQuickReply(conversationId.toString(), details.input!);
-                }
-              } else {
-                // هندل ناوبری عادی
-                handleNotificationNavigation(context, data);
-              }
-            } catch (e) {
-              logInfo('❌ خطا در پردازش payload نوتیفیکیشن: $e');
-            }
-          }
-        },
-      );
+      // ✅ Initialize کردن پلاگین (یکپارچه برای foreground و background)
+      await _ensureInitialized();
 
-      // گرفتن و ذخیره توکن FCM در سوپابیس
-      await _saveFcmToken();
+      await saveToken();
 
-      // گوش دادن به پیام‌ها در فورگراند
-      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        logInfo('📱 پیام FCM در فورگراند دریافت شد: ${message.data['type']}');
-        _notifications.add(message);
-        _showNotification(message);
-
-        // اضافه کردن اعلان به notificationsProvider
-        _addNotificationToProvider(message);
+      _firebaseMessaging.onTokenRefresh.listen((newToken) {
+        saveToken(token: newToken);
       });
 
-      // ✅ Handler برای زمانی که روی اعلان کلیک میشه (app در background)
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        logInfo('📱 Foreground Message: ${message.data}');
+        _notifications.add(message);
+
+        if (message.notification == null && message.data.isNotEmpty) {
+          _showNotification(message);
+        } else if (message.notification != null) {
+          _showNotification(message);
+        }
+
+        if (ref != null) {
+          _addNotificationToProvider(message);
+        }
+      });
+
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
         logInfo('📬 FCM notification opened (background)');
-        logInfo('   Data: ${message.data}');
-
-        final context = navigatorKey.currentContext;
-        if (context != null) {
+        final navContext = navigatorKey.currentContext;
+        if (navContext != null) {
           NotificationNavigationService.handleFCMPayload(
-            context: context,
+            context: navContext,
             data: message.data,
           );
         }
       });
-
-      // ✅ اگر اپ از حالت بسته با نوتیف باز شد - این در main.dart handle میشه
-      // final initialMessage = await _firebaseMessaging.getInitialMessage();
-      // if (initialMessage != null) {
-      //   NotificationNavigationService.handleFCMPayload(
-      //     context: context,
-      //     data: initialMessage.data,
-      //   );
-      // }
     } catch (e) {
       logInfo('❌ خطا در راه‌اندازی PushNotificationService: $e');
     }
   }
 
-  /// ذخیره توکن FCM در جدول profiles
-  Future<void> _saveFcmToken() async {
-    try {
-      // بررسی اینکه Firebase initialize شده یا نه
-      if (Firebase.apps.isEmpty) {
-        logInfo('⚠️ Firebase not initialized, skipping FCM token save');
-        return;
-      }
+  /// ✅ متد مخصوص بک‌گراند که اول Init میکند بعد نمایش میدهد
+  Future<void> showBackgroundNotification(RemoteMessage message) async {
+    // حیاتی: در بک‌گراند باید دستی Init کنیم تا استایل‌ها و اکشن‌ها کار کنند
+    await _ensureInitialized();
+    await _showNotification(message);
+  }
 
-      final token = await _firebaseMessaging.getToken();
-      if (token == null) {
-        logInfo('⚠️ FCM Token دریافت نشد');
-        return;
-      }
+  Future<void> _showNotification(RemoteMessage message) async {
+    final data = message.data;
+    final type = data['type'];
 
-      final user = _supabase.auth.currentUser;
-      if (user == null) {
-        logInfo('⚠️ کاربر لاگین نشده، FCM Token ذخیره نشد');
-        return;
-      }
-
-      final username = user.userMetadata?['username'] ??
-          user.email?.split('@')[0] ??
-          'user_${user.id}';
-
-      final fullName = user.userMetadata?['full_name'] ?? username;
-
-      // استفاده از upsert به جای update برای اطمینان از ذخیره شدن
-      await _supabase.from("profiles").upsert({
-        'id': user.id,
-        'fcm_token': token,
-        'username': username,
-        'full_name': fullName,
-      });
-
-      logInfo(
-          '✅ FCM Token با موفقیت در سوپابیس ذخیره شد برای کاربر: ${user.id}');
-    } catch (e) {
-      logInfo('❌ خطا در ذخیره FCM Token: $e');
-      logInfo('Stack trace: ${StackTrace.current}');
+    if (type == 'chat_message') {
+      await _showMessagingStyleNotification(data);
+    } else {
+      await _showStandardNotification(message);
     }
   }
 
-  /// نمایش نوتیفیکیشن لوکال در فورگراند
-  Future<void> _showNotification(RemoteMessage message) async {
-    final notification = message.notification;
+  /// 🎨 نمایش اعلان حرفه‌ای (MessagingStyle) با عکس پروفایل و دکمه‌ها
+  Future<void> _showMessagingStyleNotification(
+      Map<String, dynamic> data) async {
+    final int notificationId = data['conversation_id']?.hashCode ??
+        DateTime.now().millisecondsSinceEpoch;
+    final String groupKey = data['conversation_id']?.toString() ?? 'default';
+    final String senderName = data['sender_name']?.toString() ?? 'کاربر';
+    final String messageContent = data['content']?.toString() ?? 'پیام جدید';
+    // final String? senderAvatarUrl = data['sender_avatar']; // TODO: برای نسخه‌های بعدی
+
+    // ✅ ۱. دانلود هوشمند با کش
+    // TODO: Person.icon نیاز به AndroidIcon دارد که ByteArrayAndroidBitmap به آن تبدیل نمی‌شود
+    // برای نسخه‌های بعدی باید از FileUriAndroidBitmap یا روش دیگری استفاده کنیم
+    // ByteArrayAndroidBitmap? personIcon;
+    // if (senderAvatarUrl != null && senderAvatarUrl.isNotEmpty) {
+    //    personIcon = await _downloadIconWithCache(senderAvatarUrl);
+    // }
+
+    // ۲. ساخت آبجکت Person (شخص فرستنده)
+    Person senderPerson = Person(
+      name: senderName,
+      // icon: personIcon, // TODO: در نسخه‌های بعدی اضافه می‌شود
+      key: data['sender_id']?.toString() ?? 'unknown',
+      bot: false,
+      important: true,
+    );
+
+    // ۳. ساخت پیام
+    final message = Message(
+      messageContent,
+      DateTime.now(),
+      senderPerson,
+    );
+
+    // ۴. تنظیم استایل MessagingStyle
+    final style = MessagingStyleInformation(
+      senderPerson,
+      groupConversation: data['is_group'] == 'true',
+      conversationTitle:
+          data['is_group'] == 'true' ? data['sender_name'] : null,
+      messages: [message],
+    );
+
+    // ۵. دکمه‌های اکشن (Reply / Read)
+    final List<AndroidNotificationAction> actions = [
+      AndroidNotificationAction(
+        'reply',
+        'پاسخ',
+        inputs: [
+          AndroidNotificationActionInput(label: 'پیام خود را بنویسید...')
+        ],
+        icon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+        showsUserInterface: true,
+        allowGeneratedReplies: true,
+      ),
+      AndroidNotificationAction(
+        'mark_read',
+        'خواندم',
+        icon: const DrawableResourceAndroidBitmap(
+            '@mipmap/ic_launcher'), // آیکون الزامی است
+        showsUserInterface: false,
+        cancelNotification: true,
+      ),
+    ];
+
+    final androidDetails = AndroidNotificationDetails(
+      'chat_messages',
+      'پیام‌های چت',
+      importance: Importance.max,
+      priority: Priority.high,
+      styleInformation: style,
+      groupKey: groupKey,
+      color: const Color(0xFF2196F3),
+      actions: actions,
+      // ✅ رفع باگ کرش کردن LED (باید زمان روشن/خاموش مشخص باشد)
+      enableLights: true,
+      ledColor: const Color(0xFF2196F3),
+      ledOnMs: 1000,
+      ledOffMs: 500,
+      tag: groupKey,
+      category: AndroidNotificationCategory.message, // دسته‌بندی پیام
+    );
+
+    await _flutterLocalNotifications.show(
+      notificationId,
+      senderName,
+      messageContent,
+      NotificationDetails(
+          android: androidDetails, iOS: const DarwinNotificationDetails()),
+      payload: jsonEncode(data),
+    );
+  }
+
+  Future<void> _showStandardNotification(RemoteMessage message) async {
     final data = message.data;
+    final notification = message.notification;
 
-    // تعیین نوع کانال بر اساس نوع اعلان
-    String channelId = 'default_channel_id';
-    String channelName = 'عمومی';
-    String channelDescription = 'اعلان‌های عمومی';
-    List<AndroidNotificationAction>? actions;
+    final String? imageUrl = data['post_image'];
+    ByteArrayAndroidBitmap? bigPicture;
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      // ✅ دانلود هوشمند تصویر پست
+      final bytes = await _downloadFileWithCache(imageUrl);
+      if (bytes != null) {
+        bigPicture = ByteArrayAndroidBitmap(bytes);
+      }
+    }
 
-    final type = data['type'];
-    if (type == 'chat_message') {
-      channelId = 'chat_messages';
-      channelName = 'پیام‌های چت';
-      channelDescription = 'اعلان پیام‌های جدید چت';
-
-      // اضافه کردن دکمه پاسخ سریع برای چت
-      actions = [
-        AndroidNotificationAction(
-          'reply',
-          'پاسخ',
-          inputs: [AndroidNotificationActionInput()],
-          showsUserInterface: true,
-        ),
-      ];
-    } else if (type == 'like' ||
-        type == 'new_comment' ||
-        type == 'comment_reply' ||
-        type == 'follow' ||
-        type == 'follow_request' ||
-        type == 'follow_request_accepted') {
-      channelId = 'social_notify';
-      channelName = 'اعلان اجتماعی';
-      channelDescription = 'اعلان‌های اجتماعی (لایک، کامنت، دنبال‌کننده و ...)';
+    StyleInformation? style;
+    if (bigPicture != null) {
+      style = BigPictureStyleInformation(
+        bigPicture,
+        contentTitle: data['sender_name']?.toString() ?? notification?.title,
+        summaryText:
+            data['content']?.toString() ?? notification?.body ?? 'اعلان جدید',
+      );
     }
 
     final androidDetails = AndroidNotificationDetails(
-      channelId,
-      channelName,
-      channelDescription: channelDescription,
+      'social_notify',
+      'فعالیت‌های اجتماعی',
+      channelDescription: 'اعلان‌های اجتماعی (لایک، کامنت، دنبال‌کننده و ...)',
       importance: Importance.high,
       priority: Priority.high,
+      styleInformation: style,
       icon: '@mipmap/ic_launcher',
-      actions: actions,
+      // تنظیمات LED
+      enableLights: true,
+      ledColor: const Color(0xFFFF9800),
+      ledOnMs: 1000,
+      ledOffMs: 500,
     );
 
-    const iOSDetails = DarwinNotificationDetails();
+    final title = data['title']?.toString() ??
+        data['sender_name']?.toString() ??
+        notification?.title ??
+        'Vista';
+    String body = data['message']?.toString() ??
+        data['content']?.toString() ??
+        notification?.body ??
+        'خبر جدید';
 
-    final platformDetails = NotificationDetails(
-      android: androidDetails,
-      iOS: iOSDetails,
-    );
-
-    // استفاده از محتوای FCM data یا notification body
-    final title = data['title'] ?? notification?.title ?? 'اعلان جدید';
-    String body =
-        data['message'] ?? data['content'] ?? notification?.body ?? '';
-
-    // فیلتر کردن لینک‌ها از محتوای نوتیفیکیشن
     body = _filterLinksFromText(body);
 
     await _flutterLocalNotifications.show(
       message.hashCode,
       title,
       _shorten(body),
-      platformDetails,
-      payload: jsonEncode(message.data),
+      NotificationDetails(
+          android: androidDetails, iOS: const DarwinNotificationDetails()),
+      payload: jsonEncode(data),
     );
   }
 
-  /// فیلتر کردن لینک‌ها از متن
+  // -----------------------------------------------------------------------------
+  // 🔥 سیستم کشینگ پیشرفته فایل‌ها (بهینه برای نوتیفیکیشن)
+  // -----------------------------------------------------------------------------
+
+  /// ✅ متد اصلی مدیریت دانلود و کش
+  /// 1. چک میکنه فایل تو حافظه گوشی هست؟ اگه بود همونو برمیگردونه.
+  /// 2. اگه نبود دانلود میکنه و ذخیره میکنه.
+  Future<Uint8List?> _downloadFileWithCache(String url) async {
+    try {
+      // ساخت نام فایل یکتا بر اساس URL (برای جلوگیری از تکرار)
+      final fileName = _generateFileName(url);
+      final directory = await getTemporaryDirectory();
+      final filePath = '${directory.path}/$fileName';
+      final file = File(filePath);
+
+      // ۱. اگر فایل وجود داشت و حجمش اوکی بود، از همون استفاده کن
+      if (await file.exists()) {
+        final bytes = await file.readAsBytes();
+        if (bytes.isNotEmpty) {
+          // logInfo('📂 Loaded from cache: $fileName');
+          return bytes;
+        }
+      }
+
+      // ۲. اگر نبود، دانلود کن
+      // logInfo('⬇️ Downloading: $url');
+      final response =
+          await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+        // ۳. ذخیره در حافظه برای دفعه بعد
+        await file.writeAsBytes(response.bodyBytes);
+        return response.bodyBytes;
+      }
+    } catch (e) {
+      logInfo('⚠️ Cache/Download Error: $e');
+    }
+    return null;
+  }
+
+  /// تبدیل آدرس عکس به اسم فایل معتبر
+  String _generateFileName(String url) {
+    // ساده‌سازی URL برای تبدیل به نام فایل (حذف کاراکترهای خاص)
+    return "${url.hashCode}.jpg";
+  }
+
+  /// ✅ نسخه مخصوص آیکون نوتیفیکیشن (برای استفاده در نسخه‌های بعدی)
+  /// TODO: برای استفاده در Person.icon نیاز به AndroidIcon داریم
+  // Future<ByteArrayAndroidBitmap?> _downloadIconWithCache(String url) async {
+  //   final bytes = await _downloadFileWithCache(url);
+  //   if (bytes != null) {
+  //     return ByteArrayAndroidBitmap(bytes);
+  //   }
+  //   return null;
+  // }
+
+  // -----------------------------------------------------------------------------
+
+  Future<void> saveToken({String? token}) async {
+    try {
+      if (_supabase?.auth.currentUser == null) {
+        logInfo('⚠️ Skipping Token Registration: User is NOT logged in.');
+        return;
+      }
+      if (Firebase.apps.isEmpty) {
+        logInfo('⚠️ Firebase not initialized, skipping FCM token save');
+        return;
+      }
+
+      final fcmToken = token ?? await _firebaseMessaging.getToken();
+      if (fcmToken == null) {
+        logInfo('⚠️ FCM Token is null');
+        return;
+      }
+
+      final user = _supabase!.auth.currentUser;
+      if (user == null) return;
+
+      final deviceType = Platform.isIOS ? 'ios' : 'android';
+      String deviceModel = 'Unknown';
+      try {
+        final deviceInfo = DeviceInfoPlugin();
+        if (Platform.isAndroid) {
+          final androidInfo = await deviceInfo.androidInfo;
+          deviceModel = '${androidInfo.manufacturer} ${androidInfo.model}';
+        } else if (Platform.isIOS) {
+          final iosInfo = await deviceInfo.iosInfo;
+          deviceModel = '${iosInfo.name} ${iosInfo.model}';
+        }
+      } catch (e) {
+        deviceModel = 'Vista App';
+      }
+
+      String appVersion = '1.0.0';
+      try {
+        final packageInfo = await PackageInfo.fromPlatform();
+        appVersion = packageInfo.version;
+      } catch (e) {}
+
+      logInfo('🔄 Registering Device for User: ${user.id}');
+      await _supabase!.rpc('register_device', params: {
+        'p_fcm_token': fcmToken,
+        'p_device_type': deviceType,
+        'p_device_model': deviceModel,
+        'p_app_version': appVersion,
+      });
+
+      logInfo('✅ Device Token Registered in DB Successfully');
+      logInfo('   User ID: ${user.id}');
+      logInfo('   Device Type: $deviceType');
+      logInfo('   Device Model: $deviceModel');
+      logInfo('   App Version: $appVersion');
+    } catch (e) {
+      logInfo('❌ Error registering device in DB: $e');
+    }
+  }
+
+  void dispose() {
+    _authStateSubscription?.cancel();
+    _authStateSubscription = null;
+  }
+
   String _filterLinksFromText(String text) {
     if (text.isEmpty) return text;
-
-    // فیلتر کردن لینک‌های Vista و پست‌های اشتراکی
     String filteredText = text;
-
-    // حذف لینک‌های Vista
     filteredText =
         filteredText.replaceAll(RegExp(r'https?://[^\s]*vista[^\s]*'), '');
     filteredText =
@@ -249,77 +494,58 @@ class PushNotificationService {
         filteredText.replaceAll(RegExp(r'https?://[^\s]*coffevista[^\s]*'), '');
     filteredText =
         filteredText.replaceAll(RegExp(r'https?://[^\s]*arvan[^\s]*'), '');
-
-    // حذف لینک‌های عمومی
     filteredText = filteredText.replaceAll(RegExp(r'https?://[^\s]*'), '');
-
-    // حذف metadata های پست‌های اشتراکی
     filteredText = filteredText.replaceAll(RegExp(r'🖼️ آواتار:.*'), '');
     filteredText = filteredText.replaceAll(RegExp(r'🎥 ویدیو:.*'), '');
     filteredText = filteredText.replaceAll(RegExp(r'🏷️ تگ‌ها:.*'), '');
     filteredText = filteredText.replaceAll(RegExp(r'🔗.*'), '');
     filteredText = filteredText.replaceAll(RegExp(r'📝 پست از.*'), '');
-
     return filteredText.trim();
   }
 
-  /// کوتاه کردن متن طولانی
   String _shorten(String text, [int maxLength = 80]) {
     if (text.length <= maxLength) return text;
     return "${text.substring(0, maxLength)}...";
   }
 
-  /// هدایت کاربر به صفحات مرتبط بر اساس دیتای ارسالی سرور
-  /// این متد برای backward compatibility نگه داشته شده
-  /// اما بهتر است از NotificationNavigationService استفاده شود
   @Deprecated('Use NotificationNavigationService.handleFCMPayload instead')
   void handleNotificationNavigation(
     BuildContext context,
     Map<String, dynamic> data,
   ) {
-    // استفاده از سرویس جدید
     NotificationNavigationService.handleFCMPayload(
       context: context,
       data: data,
     );
   }
 
-  /// هندل پاسخ سریع به اعلان چت
   Future<void> handleQuickReply(String conversationId, String replyText) async {
     try {
-      // ارسال پیام به سرور
-      // اینجا باید ChatService یا سرویس مربوطه را فراخوانی کنید
-      logInfo('📱 پاسخ سریع ارسال شد: $replyText به چت $conversationId');
-
-      // ارسال پیام به سرور
-      try {
-        final chatService = ChatService();
-        await chatService.sendMessage(
-          conversationId: conversationId,
-          content: replyText,
-        );
-        logInfo('✅ پیام پاسخ سریع با موفقیت ارسال شد');
-      } catch (e) {
-        logInfo('❌ خطا در ارسال پیام به سرور: $e');
-        // در صورت خطا، پیام را به صورت محلی ذخیره کنید
-        // یا به کاربر اطلاع دهید که پیام ارسال نشده
+      logInfo('📱 در حال ارسال پاسخ سریع: $replyText');
+      if (_supabase != null) {
+        await _supabase!.rpc('send_reply_message', params: {
+          'p_conversation_id': conversationId,
+          'p_content': replyText,
+        });
+        logInfo('✅ پاسخ سریع ارسال شد');
+      } else {
+        logInfo('⚠️ Supabase not available for quick reply');
       }
     } catch (e) {
       logInfo('❌ خطا در ارسال پاسخ سریع: $e');
     }
   }
 
-  /// اضافه کردن اعلان به notificationsProvider
   void _addNotificationToProvider(RemoteMessage message) {
     try {
-      // استفاده از ref.read برای دسترسی به notificationsProvider
-      final notifier = ref.read(notificationsProvider.notifier);
-      notifier.addNotificationFromPush(message);
-      logInfo(
-          '✅ اعلان با موفقیت به provider اضافه شد: ${message.data['type']}');
+      if (ref != null) {
+        final notifier = ref!.read(notificationsProvider.notifier);
+        notifier.addNotificationFromPush(message);
+        logInfo(
+            '✅ اعلان با موفقیت به provider اضافه شد: ${message.data['type']}');
+      }
     } catch (e) {
       logInfo('❌ خطا در اضافه کردن اعلان به provider: $e');
-      logInfo('Stack trace: ${StackTrace.current}');
     }
   }
 }
