@@ -175,6 +175,8 @@ class _MediaMessageBubbleState extends State<MediaMessageBubble>
         fit: BoxFit.cover,
         width: double.infinity,
         height: double.infinity,
+        // ✅ اضافه کردن cacheWidth برای فایل‌های لوکال سنگین
+        cacheWidth: 400,
         errorBuilder: (context, error, stackTrace) {
           debugPrint('MediaMessageBubble: Error loading local file: $error');
           debugPrint('MediaMessageBubble: File path: $displayUrl');
@@ -188,6 +190,9 @@ class _MediaMessageBubbleState extends State<MediaMessageBubble>
       return CachedNetworkImage(
         imageUrl: displayUrl,
         fit: BoxFit.cover,
+        // ✅ بهینه‌سازی ۱: تنظیم سایز کش در حافظه (حیاتی برای جلوگیری از کرش و لگ)
+        // این باعث می‌شود عکس‌های ۴ مگابایتی به اندازه ۴۰۰ پیکسل در رم اشغال شوند
+        memCacheHeight: 400,
         placeholder: (context, url) => _buildPlaceholder(theme),
         // ۴. نمایش خطا در صورت لود نشدن (بسیار مهم برای دیباگ)
         errorWidget: (context, url, error) {
@@ -197,23 +202,16 @@ class _MediaMessageBubbleState extends State<MediaMessageBubble>
           return _buildErrorWidget(theme, 'خطا در بارگذاری');
         },
         imageBuilder: (context, imageProvider) {
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              // افکت بلور تلگرامی برای پس‌زمینه
-              ImageFiltered(
-                imageFilter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                child: Image(
-                  image: imageProvider,
-                  fit: BoxFit.cover,
-                ),
-              ),
-              // تصویر اصلی
-              Image(
-                image: imageProvider,
-                fit: BoxFit.cover,
-              ),
-            ],
+          // ✅ بهینه‌سازی ۲: حذف کامل Stack و ImageFiltered (بلور)
+          // بلور کردن عکس در لیست اسکرول‌شونده قاتل پرفرمنس است.
+          // اگر خیلی اصرار به افکت دارید، از یک Container با رنگ solid پشت عکس استفاده کنید.
+          
+          return Container(
+            color: theme.otherBubbleColor, // رنگ پس‌زمینه تا لود شدن عکس
+            child: Image(
+              image: imageProvider,
+              fit: BoxFit.cover,
+            ),
           );
         },
       );

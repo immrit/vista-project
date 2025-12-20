@@ -39,6 +39,5 @@ export 'screens/modern_chat_screen.dart';
 // ═══════════════════════════════════════════════════════════════════════════
 // 🧩 WIDGETS
 // ═══════════════════════════════════════════════════════════════════════════
-export 'widgets/messages_list.dart';
 export 'widgets/message_bubble.dart';
 export 'widgets/typing_indicator_widget.dart';

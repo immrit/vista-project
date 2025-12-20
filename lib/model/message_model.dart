@@ -369,6 +369,42 @@ class MessageModel {
     String conversationId =
         json['conversation_id'] ?? json['conversations_id'] ?? '';
 
+    // ✅ بهینه‌سازی: پارس کردن دیتا همینجا (فقط یکبار)
+    SharedPostData? parsedSharedPost = _parseSharedPostData(json['shared_post_data']);
+    
+    // اگر shared_post_data خالی بود ولی content فرمت JSON داشت (پشتیبانی از ورژن‌های قدیمی)
+    if (parsedSharedPost == null) {
+      final content = json['content'] as String? ?? '';
+      if (content.trim().startsWith('{') && content.contains('postId')) {
+        try {
+          final contentJson = jsonDecode(content) as Map<String, dynamic>?;
+          if (contentJson != null) {
+            // تبدیل فرمت قدیمی به SharedPostData
+            parsedSharedPost = SharedPostData.fromJson({
+              'post_id': contentJson['postId'] ?? '',
+              'post_content': contentJson['content'] ?? '',
+              'post_image_url': contentJson['mediaUrls'] != null && (contentJson['mediaUrls'] as List).isNotEmpty
+                  ? (contentJson['mediaUrls'] as List).first
+                  : null,
+              'post_video_url': null,
+              'post_author_name': contentJson['authorName'] ?? '',
+              'post_author_username': contentJson['authorUsername'] ?? '',
+              'post_author_avatar': contentJson['authorAvatar'],
+              'post_created_at': contentJson['createdAt'] != null
+                  ? contentJson['createdAt']
+                  : DateTime.now().toIso8601String(),
+              'like_count': contentJson['likesCount'] ?? 0,
+              'comment_count': contentJson['commentsCount'] ?? 0,
+              'is_verified': false,
+              'verification_type': contentJson['verificationType'] ?? 'none',
+            });
+          }
+        } catch (e) {
+          // اگر parse نشد، null می‌ماند
+        }
+      }
+    }
+
     return MessageModel(
       id: json['id'],
       conversationId: conversationId,
@@ -407,7 +443,8 @@ class MessageModel {
           : null,
       reactions: _parseReactions(json['reactions']),
       messageType: json['message_type'] as String?,
-      sharedPostData: _parseSharedPostData(json['shared_post_data']),
+      // ✅ استفاده از متغیر پارس شده
+      sharedPostData: parsedSharedPost,
       deletedGlobally: json['deleted_globally'] as bool? ?? false,
       deletedForUserIds: (json['deleted_for_user_ids'] as List<dynamic>?)
               ?.map((e) => e.toString())

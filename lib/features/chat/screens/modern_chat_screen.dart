@@ -13,7 +13,6 @@
 //
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 import 'package:dio/dio.dart';
@@ -24,6 +23,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gal/gal.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../DB/profile_cache_service.dart';
 import '../../../model/ProfileModel.dart';
 import '../../../model/message_model.dart';
@@ -76,7 +76,8 @@ import '../screens/telegram_profile_screen.dart';
 // TODO: Use CompleteDeletionService for delete with undo
 // import '../services/complete_deletion_service.dart';
 import '../services/message_actions_service.dart';
-import '../widgets/message_delete_animation.dart';
+import '../widgets/molecular_delete_animation.dart';
+import '../services/reliable_delete_service.dart';
 
 /// پارامترهای صفحه چت
 class ChatScreenArgs {
@@ -137,6 +138,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // Floating date
   bool _isScrolling = false;
   DateTime? _currentVisibleDate;
+  
+  // ✅ برای جلوگیری از اجرای منطق در build
+  String? _lastFirstMessageId;
 
   // Unread messages
   String? _lastReadMessageId;
@@ -170,10 +174,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   // انیمیشن حذف پیام
   final Set<String> _deletingMessageIds = {};
-  final Map<String, MessageDeleteAnimationController>
-      _deleteAnimationControllers = {};
-  // لیست موقت پیام‌های در حال حذف (برای نمایش انیمیشن)
-  final Map<String, MessageModel> _deletingMessagesCache = {};
 
   // ✅ Emoji picker state tracking
   bool _showEmojiPicker = false;
@@ -375,53 +375,56 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   Timer? _scrollEndTimer;
 
   void _onScroll() {
-    // ✅ FIX: بررسی mounted قبل از هر کاری
-    if (!mounted) return;
+    if (!mounted || !_scrollController.hasClients) return;
 
-    // Pagination - چون لیست reverse است
-    final isNearTop = _scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200;
+    bool needsSetState = false;
+
+    // 1. Pagination Logic
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    
+    // وقتی به ۲۰۰ پیکسلی انتهای لیست (بالا) رسیدیم
+    final isNearTop = currentScroll >= maxScroll - 200;
 
     if (isNearTop != _isNearTop) {
-      if (mounted) {
-        setState(() => _isNearTop = isNearTop);
-        if (_isNearTop) _loadMoreMessages();
-      }
+      _isNearTop = isNearTop;
+      needsSetState = true;
+      if (_isNearTop) _loadMoreMessages();
     }
 
-    // دکمه Scroll to Bottom
-    final showScrollButton = _scrollController.position.pixels > 300;
+    // 2. Scroll to Bottom Button Visibility
+    // دکمه فقط وقتی نمایش داده شود که بیش از ۵۰۰ پیکسل اسکرول کرده‌ایم
+    final showScrollButton = currentScroll > 500;
     if (showScrollButton != _showScrollToBottom) {
-      if (mounted) {
-        setState(() => _showScrollToBottom = showScrollButton);
-      }
+      _showScrollToBottom = showScrollButton;
+      needsSetState = true;
     }
 
-    // Floating date - شروع اسکرول
-    if (!_isScrolling && mounted) {
-      setState(() => _isScrolling = true);
+    // 3. Floating Date Logic
+    if (!_isScrolling) {
+      _isScrolling = true;
+      needsSetState = true;
     }
 
-    // ریست تایمر پایان اسکرول
+    // Debounce برای پایان اسکرول (جلوگیری از تایمرهای تودرتو)
     _scrollEndTimer?.cancel();
     _scrollEndTimer = Timer(const Duration(milliseconds: 150), () {
       if (mounted) {
-        setState(() => _isScrolling = false);
-
-        // ✅ FIX: بعد از توقف اسکرول، اگر در پایین لیست هستیم، تاریخ را به‌روز کن
-        if (mounted && _scrollController.hasClients) {
-          final offset = _scrollController.offset;
-          if (offset < 100) {
-            // در پایین لیست هستیم - تاریخ را به اولین پیام (جدیدترین) تنظیم کن
-            _updateDateForBottom();
+        setState(() {
+          _isScrolling = false;
+          // آپدیت تاریخ فقط وقتی اسکرول متوقف شد
+          if (currentScroll < 100) {
+             _updateDateForBottom(); 
+          } else {
+             _updateVisibleDate();
           }
-        }
+        });
       }
     });
 
-    // آپدیت تاریخ قابل مشاهده
-    if (mounted) {
-      _updateVisibleDate();
+    // ✅ فقط یک بار setState انجام میدهیم اگر واقعا چیزی تغییر کرده باشد
+    if (needsSetState) {
+      setState(() {});
     }
   }
 
@@ -741,81 +744,25 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 Positioned(
                   left: 0,
                   right: 0,
-                  // از پایین تکست باکس شروع می‌شود (همیشه دقیقاً زیر تکست باکس)
                   bottom: (bottomInset < 0 ? 0.0 : bottomInset),
-                  // ارتفاع بر اساس وضعیت کیبورد:
-                  // وقتی کیبورد باز است، فاصله بین تکست باکس و کیبورد حدود 8-15 پیکسل است (effectiveBottomPadding در animated_chat_input)
-                  // وقتی کیبورد بسته است، فاصله تا پایین صفحه بیشتر است
                   height: bottomInset > 0
-                      ? 25.0 // وقتی کیبورد باز است: فاصله بین تکست باکس و کیبورد (8 پدینگ + کمی بیشتر برای اطمینان)
-                      : (safePaddingBottom > 0
-                          ? safePaddingBottom + 55.0
-                          : 75.0), // وقتی بسته است: فاصله تا پایین صفحه
-                  child: ClipRect(
-                    child: Stack(
-                      children: [
-                        // لایه بلور با گرادیانت بسیار نرم
-                        Positioned.fill(
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    Colors
-                                        .transparent, // بالا: کاملاً شفاف (0%)
-                                    theme.backgroundColor
-                                        .withOpacity(0.08), // 15%: خیلی کم
-                                    theme.backgroundColor
-                                        .withOpacity(0.18), // 30%: کم
-                                    theme.backgroundColor
-                                        .withOpacity(0.30), // 50%: متوسط-کم
-                                    theme.backgroundColor
-                                        .withOpacity(0.45), // 70%: متوسط
-                                    theme.backgroundColor
-                                        .withOpacity(0.60), // پایین: زیاد
-                                  ],
-                                  stops: const [
-                                    0.0,
-                                    0.15,
-                                    0.30,
-                                    0.50,
-                                    0.70,
-                                    1.0
-                                  ], // توزیع صاف و نرم از کم به زیاد
-                                ),
-                              ),
-                            ),
-                          ),
+                      ? 25.0 
+                      : (safePaddingBottom > 0 ? safePaddingBottom + 55.0 : 75.0),
+                  // ✅ جایگزین با این (بدون ClipRect و BackdropFilter):
+                  child: IgnorePointer( // برای اینکه کلیک‌ها ازش رد بشه
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            theme.backgroundColor.withOpacity(0.0), // شفاف
+                            theme.backgroundColor.withOpacity(0.8), // رنگ پس‌زمینه
+                            theme.backgroundColor, // کاملا پر
+                          ],
+                          stops: const [0.0, 0.6, 1.0],
                         ),
-                        // لایه اضافی برای گرادیانت نرم‌تر و صاف‌تر
-                        Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.transparent, // بالا: کاملاً شفاف
-                                Colors.transparent, // 40%: شفاف
-                                Colors.transparent, // 60%: شفاف
-                                theme.backgroundColor
-                                    .withOpacity(0.08), // 80%: خیلی کم مات
-                                theme.backgroundColor
-                                    .withOpacity(0.20), // پایین: کم مات
-                              ],
-                              stops: const [
-                                0.0,
-                                0.40,
-                                0.60,
-                                0.80,
-                                1.0
-                              ], // توزیع صاف از کم به زیاد
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -1081,86 +1028,43 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     if (!result.confirmed) return;
 
-    // ⚡️ Optimistic UI Update (شبیه تلگرام)
+    // ۱. کپی کردن لیست آیدی‌ها برای انیمیشن
+    final messagesToDelete = List<String>.from(_selectedMessageIds);
 
-    // 1. آماده‌سازی انیمیشن
+    // ۲. خروج از حالت انتخاب
+    _exitSelectionMode();
+
+    // ۳. شروع انیمیشن پودر شدن (UI State)
     setState(() {
-      for (final msg in selectedMessagesList) {
-        _deletingMessagesCache[msg.id] = msg;
-        _deletingMessageIds.add(msg.id);
+      // این ست باعث می‌شود ویجت MolecularDeleteAnimation فعال شود
+      for (final msgId in messagesToDelete) {
+        _deletingMessageIds.add(msgId);
       }
     });
 
-    // 2. خروج فوری از حالت انتخاب
-    _exitSelectionMode();
+    // ۴. فراخوانی سرویس برای تک تک پیام‌ها
+    final deleteService = ref.read(reliableDeleteServiceProvider);
 
-    // 3. اجرای انیمیشن پودر شدن
-    _runDeleteAnimations(selectedMessagesList.map((e) => e.id).toList(),
-        deleteForEveryone: result.deleteForEveryone);
-
-    // 4. ارسال به سرویس (بدون await برای UI)
-    // ✅ نکته: اینجا از Provider استفاده می‌کنیم
-    ref.read(chatActionsProvider.notifier).deleteMessages(
-          selectedMessagesList, // 👈 لیست کامل مدل‌ها پاس داده می‌شود
-          widget.args.conversationId,
-          forEveryone: result.deleteForEveryone,
-        );
+    for (final msgId in messagesToDelete) {
+      // نکته مهم: اینجا await نمی‌گذاریم تا UI بلاک نشود
+      deleteService.deleteMessage(
+        messageId: msgId,
+        conversationId: widget.args.conversationId,
+        forEveryone: result.deleteForEveryone,
+        onLocalCacheUpdate: (id) {
+          // آپدیت کش لوکال همینجا انجام می‌شود
+          // اما چون انیمیشن داریم، حذف واقعی از لیست را به "بعد از انیمیشن" موکول می‌کنیم
+          // (این کار در onAnimationComplete انجام می‌شود)
+        },
+      );
+    }
 
     // فیدبک فوری
     final suffix = result.deleteForEveryone ? ' برای همه' : '';
     _showSuccessSnackBar(
-        '${selectedMessagesList.length} پیام حذف شد$suffix'.toPersianDigit());
+        '${messagesToDelete.length} پیام حذف شد$suffix'.toPersianDigit());
   }
 
-  /// متد کمکی برای مدیریت انیمیشن‌های حذف
-  Future<void> _runDeleteAnimations(List<String> messageIds,
-      {required bool deleteForEveryone}) async {
-    final animationFutures = <Future>[];
-
-    for (int i = 0; i < messageIds.length; i++) {
-      final messageId = messageIds[i];
-
-      // ساخت کنترلر اگر وجود ندارد
-      if (!_deleteAnimationControllers.containsKey(messageId)) {
-        _deleteAnimationControllers[messageId] =
-            MessageDeleteAnimationController();
-      }
-
-      final controller = _deleteAnimationControllers[messageId];
-      if (controller != null) {
-        // تأخیر بسیار کوتاه آبشاری برای زیبایی بصری (هر پیام 5 میلی‌ثانیه بعد از قبلی)
-        // در حذف‌های زیاد، این عدد باید کم باشد تا UI کند نشود
-        final delay = Duration(milliseconds: i * 5);
-        animationFutures.add(
-          Future.delayed(delay, () async {
-            if (mounted) {
-              await controller.startDeleteAnimation();
-            }
-          }),
-        );
-      }
-    }
-
-    // منتظر پایان انیمیشن‌ها می‌مانیم
-    await Future.wait(animationFutures);
-
-    // پاکسازی نهایی UI بعد از انیمیشن
-    if (mounted) {
-      setState(() {
-        for (final messageId in messageIds) {
-          _deletingMessageIds.remove(messageId);
-          _deleteAnimationControllers.remove(messageId);
-          _deletingMessagesCache.remove(messageId);
-
-          // اضافه کردن به لیست مخفی‌ها فقط برای حذف یک‌طرفه
-          // (برای اطمینان از اینکه اگر هنوز از استریم نیامده، نشان داده نشود)
-          if (!deleteForEveryone) {
-            _hiddenMessageIds = {..._hiddenMessageIds, messageId};
-          }
-        }
-      });
-    }
-  }
 
   PreferredSizeWidget _buildAppBar(ChatTheme theme) {
     // Selection mode AppBar
@@ -1377,10 +1281,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       ),
       child: widget.args.otherUserAvatar != null
           ? ClipOval(
-              child: Image.network(
-                widget.args.otherUserAvatar!,
+              child: CachedNetworkImage(
+                imageUrl: widget.args.otherUserAvatar!,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _buildAvatarText(theme),
+                // ✅ بسیار مهم: آواتار ۴۰ پیکسلی نباید عکس ۲۰۰۰ پیکسلی در رم نگه دارد
+                memCacheWidth: 100,
+                memCacheHeight: 100,
+                placeholder: (context, url) => _buildAvatarText(theme),
+                errorWidget: (_, __, ___) => _buildAvatarText(theme),
               ),
             )
           : _buildAvatarText(theme),
@@ -1482,14 +1390,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 _deletingMessageIds.contains(m.id))
             .toList();
 
-        // ✅ اضافه کردن پیام‌های در حال حذف از cache (اگر در providers نیستند)
-        final messages = <MessageModel>[...filteredMessages];
-        for (final messageId in _deletingMessageIds) {
-          if (!messages.any((m) => m.id == messageId) &&
-              _deletingMessagesCache.containsKey(messageId)) {
-            messages.add(_deletingMessagesCache[messageId]!);
-          }
-        }
+        // ✅ استفاده مستقیم از filteredMessages (دیگر نیازی به cache نیست)
+        final messages = filteredMessages;
 
         // ✅ مرتب‌سازی پیام‌ها بر اساس تاریخ (جدیدترین اول)
         messages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -1507,9 +1409,22 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           return _buildEmptyState(theme);
         }
 
-        // بارگذاری واکنش‌ها از دیتابیس
-        _loadReactionsForMessages(messages);
-        _setupReactionsStream(messages);
+        // ✅ کد جدید برای کنترل اجرا:
+        // فقط اگر پیام جدیدی آمده (آیدی اولین پیام عوض شده) استریم‌ها را آپدیت کن
+        if (messages.isNotEmpty) {
+          final firstId = messages.first.id;
+          // فقط اگر پیام جدیدی آمده (آیدی اولین پیام عوض شده) استریم‌ها را آپدیت کن
+          if (_lastFirstMessageId != firstId) {
+            _lastFirstMessageId = firstId;
+            // ✅ انتقال به یک متد امن - استفاده از addPostFrameCallback برای اطمینان از اتمام build
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                _loadReactionsForMessages(messages);
+                _setupReactionsStream(messages);
+              }
+            });
+          }
+        }
 
         // محاسبه تعداد پیام‌های خوانده نشده
         _calculateUnreadCount(messages);
@@ -1594,149 +1509,157 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                     nextMessage?.createdAt,
                   );
 
-                  // ایجاد کنترلر انیمیشن برای این پیام
-                  _deleteAnimationControllers.putIfAbsent(
-                    message.id,
-                    () => MessageDeleteAnimationController(),
-                  );
+                  // ✅ درست: فقط اگر پیام در حال حذف شدن است انیمیشن را اعمال کن
+                  final isDeleting = _deletingMessageIds.contains(message.id);
 
-                  return MessageDeleteAnimation(
-                    controller: _deleteAnimationControllers[message.id],
-                    // ✅ اصلاح مهم: GestureDetector را اینجا نگذارید!
-                    // مستقیماً Column را برگردانید
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Date Divider
-                        if (showDateDivider)
-                          date_divider.DateDivider(date: message.createdAt),
+                  // ساخت ویجت پیام (DateDivider + Bubble + Unread)
+                  Widget messageWidget = Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Date Divider
+                      if (showDateDivider)
+                        date_divider.DateDivider(date: message.createdAt),
 
-                        // ✅ استفاده از Builder برای گرفتن کانتکست RenderBox
-                        Builder(
-                          builder: (itemContext) {
-                            return GestureDetector(
-                              behavior: HitTestBehavior
-                                  .translucent, // کلیک روی فضای خالی
-                              onTap: () {
-                                if (_isSelectionMode) {
-                                  _toggleMessageSelection(message.id);
-                                } else {
-                                  FocusScope.of(context).unfocus();
-                                }
-                              },
-                              onLongPress: () {
-                                HapticFeedback.mediumImpact();
-                                if (_isSelectionMode) {
-                                  _toggleMessageSelection(message.id);
-                                } else {
-                                  // ✅ حالا itemContext یک RenderBox است (چون دور Row پیچیده شده)
-                                  // و دیگر خطای RenderSliverList نمی‌دهد.
-                                  _showTelegramContextMenu(
-                                      itemContext, message);
-                                }
-                              },
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 2),
-                                child: Row(
-                                  mainAxisAlignment: isMe
-                                      ? MainAxisAlignment.end
-                                      : MainAxisAlignment.start,
-                                  children: [
-                                    // Selection checkbox
-                                    if (_isSelectionMode)
-                                      Padding(
-                                        padding:
-                                            const EdgeInsets.only(right: 8),
-                                        child: AnimatedScale(
-                                          scale: _isSelectionMode ? 1.0 : 0.0,
-                                          duration:
-                                              const Duration(milliseconds: 200),
-                                          child: GestureDetector(
-                                            onTap: () =>
-                                                _toggleMessageSelection(
-                                                    message.id),
-                                            child: Container(
-                                              width: 24,
-                                              height: 24,
-                                              decoration: BoxDecoration(
-                                                shape: BoxShape.circle,
+                      // ✅ استفاده از Builder برای گرفتن کانتکست RenderBox
+                      Builder(
+                        builder: (itemContext) {
+                          return GestureDetector(
+                            behavior: HitTestBehavior
+                                .translucent, // کلیک روی فضای خالی
+                            onTap: () {
+                              if (_isSelectionMode) {
+                                _toggleMessageSelection(message.id);
+                              } else {
+                                FocusScope.of(context).unfocus();
+                              }
+                            },
+                            onLongPress: () {
+                              HapticFeedback.mediumImpact();
+                              if (_isSelectionMode) {
+                                _toggleMessageSelection(message.id);
+                              } else {
+                                // ✅ حالا itemContext یک RenderBox است (چون دور Row پیچیده شده)
+                                // و دیگر خطای RenderSliverList نمی‌دهد.
+                                _showTelegramContextMenu(
+                                    itemContext, message);
+                              }
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              child: Row(
+                                mainAxisAlignment: isMe
+                                    ? MainAxisAlignment.end
+                                    : MainAxisAlignment.start,
+                                children: [
+                                  // Selection checkbox
+                                  if (_isSelectionMode)
+                                    Padding(
+                                      padding:
+                                          const EdgeInsets.only(right: 8),
+                                      child: AnimatedScale(
+                                        scale: _isSelectionMode ? 1.0 : 0.0,
+                                        duration:
+                                            const Duration(milliseconds: 200),
+                                        child: GestureDetector(
+                                          onTap: () =>
+                                              _toggleMessageSelection(
+                                                  message.id),
+                                          child: Container(
+                                            width: 24,
+                                            height: 24,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: _selectedMessageIds
+                                                      .contains(message.id)
+                                                  ? context.chatTheme
+                                                      .sendButtonColor
+                                                  : Colors.transparent,
+                                              border: Border.all(
                                                 color: _selectedMessageIds
                                                         .contains(message.id)
                                                     ? context.chatTheme
                                                         .sendButtonColor
-                                                    : Colors.transparent,
-                                                border: Border.all(
-                                                  color: _selectedMessageIds
-                                                          .contains(message.id)
-                                                      ? context.chatTheme
-                                                          .sendButtonColor
-                                                      : context.chatTheme
-                                                          .secondaryTextColor,
-                                                  width: 2,
-                                                ),
+                                                    : context.chatTheme
+                                                        .secondaryTextColor,
+                                                width: 2,
                                               ),
-                                              child: _selectedMessageIds
-                                                      .contains(message.id)
-                                                  ? const Icon(
-                                                      Icons.check,
-                                                      color: Colors.white,
-                                                      size: 16,
-                                                    )
-                                                  : null,
                                             ),
+                                            child: _selectedMessageIds
+                                                    .contains(message.id)
+                                                ? const Icon(
+                                                    Icons.check,
+                                                    color: Colors.white,
+                                                    size: 16,
+                                                  )
+                                                : null,
                                           ),
                                         ),
                                       ),
-
-                                    // پیام
-                                    Flexible(
-                                      child: Opacity(
-                                        opacity: _temporarilyHiddenMessages
-                                                .contains(message.id)
-                                            ? 0.0
-                                            : 1.0,
-                                        child: (!_isSelectionMode)
-                                            ? SwipeToReplyWrapper(
-                                                isMe: isMe,
-                                                onReply: () {
-                                                  setState(() =>
-                                                      _replyToMessage =
-                                                          message);
-                                                  _focusNode.requestFocus();
-                                                },
-                                                child: _buildBubbleContent(
-                                                    message,
-                                                    isMe,
-                                                    index,
-                                                    isFirstInGroup,
-                                                    isLastInGroup,
-                                                    messages),
-                                              )
-                                            : _buildBubbleContent(
-                                                message,
-                                                isMe,
-                                                index,
-                                                isFirstInGroup,
-                                                isLastInGroup,
-                                                messages),
-                                      ),
                                     ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
 
-                        // Unread Divider
-                        if (_shouldShowUnreadDivider(message, index, messages))
-                          UnreadMessagesDivider(
-                            unreadCount: _unreadCount,
-                            onTap: _scrollToBottom,
-                          ),
-                      ],
-                    ),
+                                  // پیام
+                                  Flexible(
+                                    child: Opacity(
+                                      opacity: _temporarilyHiddenMessages
+                                              .contains(message.id)
+                                          ? 0.0
+                                          : 1.0,
+                                      child: (!_isSelectionMode)
+                                          ? SwipeToReplyWrapper(
+                                              isMe: isMe,
+                                              onReply: () {
+                                                setState(() =>
+                                                    _replyToMessage =
+                                                        message);
+                                                _focusNode.requestFocus();
+                                              },
+                                              child: _buildBubbleContent(
+                                                  message,
+                                                  isMe,
+                                                  index,
+                                                  isFirstInGroup,
+                                                  isLastInGroup,
+                                                  messages),
+                                            )
+                                          : _buildBubbleContent(
+                                              message,
+                                              isMe,
+                                              index,
+                                              isFirstInGroup,
+                                              isLastInGroup,
+                                              messages),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+
+                      // Unread Divider
+                      if (_shouldShowUnreadDivider(message, index, messages))
+                        UnreadMessagesDivider(
+                          unreadCount: _unreadCount,
+                          onTap: _scrollToBottom,
+                        ),
+                    ],
+                  );
+
+                  // ✅ استفاده از MolecularDeleteAnimation برای افکت پودر شدن
+                  return MolecularDeleteAnimation(
+                    isDeleting: isDeleting,
+                    onAnimationComplete: () {
+                      // وقتی انیمیشن تمام شد، تازه از لیست UI حذف می‌کنیم
+                      if (mounted) {
+                        setState(() {
+                          _deletingMessageIds.remove(message.id);
+                          _hiddenMessageIds.add(message.id); // مخفی کردن کامل
+                        });
+                      }
+                    },
+                    child: messageWidget,
                   );
                 },
                 childCount:
@@ -2837,60 +2760,28 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     if (!result.confirmed) return;
 
-    // ✅ پیام را در _deletingMessageIds قرار بده (برای انیمیشن)
-    // اما هنوز از لیست حذف نکن - بعد از انیمیشن حذف می‌شود
+    // ✅ شروع انیمیشن پودر شدن (UI State)
     setState(() {
       _deletingMessageIds.add(message.id);
     });
 
-    // ✅ اجرای انیمیشن (پیام از لیست حذف شده اما انیمیشن روی آن اجرا می‌شود)
-    final controller = _deleteAnimationControllers[message.id];
-    if (controller != null) {
-      // صبر کوتاه برای شروع انیمیشن
-      await Future.delayed(const Duration(milliseconds: 16));
-      await controller.startDeleteAnimation();
-    }
+    // ✅ فراخوانی سرویس حذف تضمینی
+    final deleteService = ref.read(reliableDeleteServiceProvider);
+    
+    // نکته مهم: اینجا await نمی‌گذاریم تا UI بلاک نشود
+    deleteService.deleteMessage(
+      messageId: message.id,
+      conversationId: widget.args.conversationId,
+      forEveryone: result.deleteForEveryone,
+      onLocalCacheUpdate: (id) {
+        // آپدیت کش لوکال همینجا انجام می‌شود
+        // اما چون انیمیشن داریم، حذف واقعی از لیست را به "بعد از انیمیشن" موکول می‌کنیم
+        // (این کار در onAnimationComplete انجام می‌شود)
+      },
+    );
 
-    // ✅ حذف از سرور در پس‌زمینه
-    try {
-      final actionsService = ref.read(messageActionsServiceProvider);
-      final deleteResult = await actionsService.deleteMessage(
-        messageId: message.id,
-        conversationId: widget.args.conversationId,
-        forEveryone: result.deleteForEveryone,
-      );
-
-      if (deleteResult.isSuccess) {
-        // ✅ بعد از اتمام انیمیشن، پیام را از لیست حذف کن
-        Future.delayed(const Duration(milliseconds: 600), () {
-          if (mounted) {
-            setState(() {
-              _deletingMessageIds.remove(message.id);
-              _deleteAnimationControllers.remove(message.id);
-              // حالا پیام را از لیست حذف کن
-              if (!result.deleteForEveryone) {
-                _hiddenMessageIds = {..._hiddenMessageIds, message.id};
-              }
-            });
-          }
-        });
-
-        final suffix = result.deleteForEveryone ? ' برای همه' : '';
-        _showSuccessSnackBar('پیام حذف شد$suffix');
-      } else {
-        // ✅ در صورت خطا، انیمیشن را متوقف کن
-        setState(() {
-          _deletingMessageIds.remove(message.id);
-        });
-        _showErrorSnackBar(deleteResult.error ?? 'خطا در حذف پیام');
-      }
-    } catch (e) {
-      // ✅ در صورت خطا، انیمیشن را متوقف کن
-      setState(() {
-        _deletingMessageIds.remove(message.id);
-      });
-      _showErrorSnackBar('خطا در حذف پیام');
-    }
+    final suffix = result.deleteForEveryone ? ' برای همه' : '';
+    _showSuccessSnackBar('پیام حذف شد$suffix');
   }
 
   /// ویرایش پیام
@@ -3325,15 +3216,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   /// ساخت ویجت پست برای پیام‌های پست
   Widget _buildPostMessageBubble(MessageModel message, bool isMe) {
     try {
-      // Parse اطلاعات پست از content (JSON)
-      final postData = message.content.isNotEmpty
-          ? (message.content.startsWith('{')
-              ? jsonDecode(message.content) as Map<String, dynamic>
-              : null)
-          : null;
+      // ✅ کد جدید: استفاده مستقیم از دیتای مدل (پارس شده در fromJson)
+      final postData = message.sharedPostData;
 
       if (postData == null) {
-        // اگر parse نشد، از ImprovedAnimatedMessageBubble استفاده کن
+        // Fallback به پیام متنی معمولی
         return ImprovedAnimatedMessageBubble(
           key: ValueKey(message.id),
           messageId: message.id,
@@ -3352,25 +3239,22 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         );
       }
 
-      // Extract اطلاعات پست
-      final postId = postData['postId'] as String? ?? message.id;
-      final authorName = postData['authorName'] as String? ??
-          (isMe ? 'شما' : widget.args.otherUserName);
-      final authorAvatar = postData['authorAvatar'] as String?;
-      final authorUsername = postData['authorUsername'] as String?;
-      final postContent = postData['content'] as String? ?? '';
-      final mediaUrls = postData['mediaUrls'] != null
-          ? List<String>.from(postData['mediaUrls'] as List)
-          : null;
-      final likesCount = postData['likesCount'] as int? ?? 0;
-      final commentsCount = postData['commentsCount'] as int? ?? 0;
-      final postCreatedAt = postData['createdAt'] != null
-          ? DateTime.parse(postData['createdAt'] as String)
-          : message.createdAt;
-      final verificationType = postData['verificationType'] as String?;
-      final hashtags = postData['hashtags'] != null
-          ? List<String>.from(postData['hashtags'] as List)
-          : null;
+      // ✅ Extract اطلاعات پست از SharedPostData
+      final postId = postData.postId.isNotEmpty ? postData.postId : message.id;
+      final authorName = postData.postAuthorName.isNotEmpty
+          ? postData.postAuthorName
+          : (isMe ? 'شما' : widget.args.otherUserName);
+      final authorAvatar = postData.postAuthorAvatar;
+      final authorUsername = postData.postAuthorUsername;
+      final postContent = postData.postContent;
+      final mediaUrls = postData.postImageUrl != null
+          ? [postData.postImageUrl!]
+          : (postData.postVideoUrl != null ? [postData.postVideoUrl!] : null);
+      final likesCount = postData.likeCount;
+      final commentsCount = postData.commentCount;
+      final postCreatedAt = postData.postCreatedAt;
+      final verificationType = postData.verificationType;
+      final hashtags = null; // SharedPostData فعلاً hashtags ندارد
 
       // ✅ ساختار جدید برای کنترل کامل کلیک‌ها
       return Stack(

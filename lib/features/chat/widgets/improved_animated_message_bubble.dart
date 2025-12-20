@@ -118,13 +118,27 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
 
 class _ImprovedAnimatedMessageBubbleState
     extends State<ImprovedAnimatedMessageBubble>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   static final Set<String> _shownMessages = {};
 
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
   late Animation<double> _scaleAnimation;
+
+  // 👈 اضافه کردن منطق KeepAlive
+  @override
+  bool get wantKeepAlive {
+    // فقط در این شرایط ویجت را در حافظه نگه دار:
+    // ۱. اگر ویس در حال پخش است (باید از سرویس پلیر چک شود - در مراحل بعد اضافه می‌کنیم)
+    // ۲. اگر ویدیو در حال پخش است
+    // ۳. یا اگر در حال آپلود است
+    
+    // فعلا برای آپلود و مدیاهای در حال پخش true برمی‌گردانیم
+    final isUploading = widget.message?.isUploading ?? false;
+    // اینجا بعدا شرط isPlayingAudio را اضافه می‌کنیم
+    return isUploading;
+  }
 
   @override
   void initState() {
@@ -208,6 +222,7 @@ class _ImprovedAnimatedMessageBubbleState
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // 👈 حتما این را صدا بزن برای AutomaticKeepAliveClientMixin
     final theme = context.chatTheme;
 
     return RepaintBoundary(
