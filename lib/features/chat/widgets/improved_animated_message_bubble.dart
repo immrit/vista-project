@@ -10,6 +10,8 @@ import '../../../utils/compat_extensions.dart';
 import 'voice_message_bubble.dart';
 import 'telegram_message_status.dart';
 import 'gif_message_bubble.dart';
+import 'media_message_bubble.dart';
+import 'file_message_bubble.dart';
 import '../../../services/telegram_read_receipt_service.dart';
 import '../../../model/message_model.dart';
 
@@ -213,7 +215,7 @@ class _ImprovedAnimatedMessageBubbleState
         opacity: _fadeAnimation,
         child: SlideTransition(
           position: _slideAnimation,
-            child: ScaleTransition(
+          child: ScaleTransition(
             scale: _scaleAnimation,
             child: GestureDetector(
               onTap: () {
@@ -395,7 +397,8 @@ class _ImprovedAnimatedMessageBubbleState
 
   Widget _buildContent(ChatTheme theme) {
     // 1. نمایش GIF ✅ اضافه شده
-    if ((widget.attachmentType == 'gif' || widget.message?.messageType == 'gif') &&
+    if ((widget.attachmentType == 'gif' ||
+            widget.message?.messageType == 'gif') &&
         widget.attachmentUrl != null &&
         widget.attachmentUrl!.isNotEmpty) {
       // اینجا مطمئن می‌شویم که آبجکت مسیج داریم
@@ -429,6 +432,36 @@ class _ImprovedAnimatedMessageBubbleState
             child: _buildTimeAndStatus(theme),
           ),
         ],
+      );
+    }
+
+    // 3. Image & Video message
+    if ((widget.attachmentType == 'image' ||
+            widget.attachmentType == 'video' ||
+            widget.message?.attachmentType == 'image' ||
+            widget.message?.attachmentType == 'video') &&
+        widget.attachmentUrl != null &&
+        widget.attachmentUrl!.isNotEmpty) {
+      final isVideo = widget.attachmentType == 'video' ||
+          widget.message?.attachmentType == 'video';
+
+      return MediaMessageBubble(
+        mediaUrl: widget.attachmentUrl!,
+        mediaType: isVideo ? MediaType.video : MediaType.image,
+        isMe: widget.isMe,
+        time: widget.time,
+        caption: widget.content.isNotEmpty ? widget.content : null,
+        durationSeconds: widget.duration,
+      );
+    }
+
+    // 4. File message (Fallback for other attachment types)
+    if (widget.attachmentUrl != null && widget.attachmentUrl!.isNotEmpty) {
+      return FileMessageBubble(
+        fileUrl: widget.attachmentUrl!,
+        fileName: widget.attachmentFileName ?? 'File',
+        isMe: widget.isMe,
+        time: widget.time,
       );
     }
 

@@ -571,7 +571,8 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
             existingMessage.reactions.isNotEmpty) {
           final updatedMsg = msg.copyWith(reactions: existingMessage.reactions);
           // ✅ status را از ValueNotifier موجود sync کن
-          updatedMsg.statusNotifier.value = existingMessage.statusNotifier.value;
+          updatedMsg.statusNotifier.value =
+              existingMessage.statusNotifier.value;
           // اگر status تغییر کرده، آپدیت کن
           updatedMsg.updateStatus(
             pending: msg.isPending,
@@ -665,11 +666,51 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
       String? attachmentType,
       String? attachmentFileName,
       int? duration,
-      MessageModel? replyToMessage}) async {
-    final currentUser = supabase.auth.currentUser;
-    if (currentUser == null) return;
+      MessageModel? replyToMessage,
+      String? tempMessageId}) async {
+    print('📤 ارسال پیام به سرور...');
+    print('   - محتوا: $content');
+    print('   - نوع پیوست: $attachmentType');
+    print('   - URL پیوست: $attachmentUrl');
+    print('   - پیام موقت: $tempMessageId');
 
-    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    final currentUser = supabase.auth.currentUser;
+    if (currentUser == null) {
+      print('❌ کاربر وارد نشده است');
+      return;
+    }
+
+    // ✅ اگر tempMessageId ارائه شده، از آن استفاده کن (برای جایگزینی پیام موقت)
+    if (tempMessageId != null) {
+      // پیدا کردن پیام موقت موجود
+      final existingTempMessage = state.messages.firstWhere(
+        (msg) => msg.id == tempMessageId,
+        orElse: () => MessageModel.empty(),
+      );
+
+      if (existingTempMessage.id.isNotEmpty) {
+        print('🔄 جایگزینی پیام موقت $tempMessageId');
+        // ✅ ارسال پیام و جایگزینی پیام موقت
+        await _performSendMessage(
+          tempMessageId,
+          existingTempMessage,
+          currentUser.id,
+          content,
+          attachmentUrl,
+          attachmentType,
+          attachmentFileName,
+          duration,
+          replyToMessage,
+        );
+        return;
+      } else {
+        print('⚠️ پیام موقت یافت نشد: $tempMessageId');
+      }
+    }
+
+    // ✅ در غیر این صورت، پیام جدید ایجاد کن
+    final tempId =
+        tempMessageId ?? 'temp_${DateTime.now().millisecondsSinceEpoch}';
     final tempMessage = MessageModel.temporary(
       tempId: tempId,
       conversationId: params.conversationId,
@@ -746,10 +787,26 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
         replyToSenderName: replyToMessage?.senderName,
       );
 
+      print('✅ پیام از سرور دریافت شد: ${sentMessage.id}');
+
       // Success - بروزرسانی پیام موقتی با پیام واقعی (بدون duplicate)
       if (mounted) {
         final currentMessages =
             Map.fromEntries(state.messages.map((m) => MapEntry(m.id, m)));
+
+        // ✅ حفظ مسیر محلی تصویر از پیام موقت
+        final existingTempMessage = currentMessages[tempId];
+        final finalMessage = existingTempMessage != null &&
+                existingTempMessage.localImagePath != null &&
+                existingTempMessage.localImagePath!.isNotEmpty
+            ? sentMessage.copyWith(
+                localImagePath: existingTempMessage.localImagePath,
+                isUploading: false,
+                uploadProgress: 1.0,
+                isSent: true,
+                isPending: false,
+              )
+            : sentMessage;
 
         // حذف پیام موقتی
         currentMessages.remove(tempId);
@@ -761,13 +818,19 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
         }
 
         // اضافه کردن پیام واقعی
-        currentMessages[sentMessage.id] = sentMessage;
+        currentMessages[sentMessage.id] = finalMessage;
 
         final sortedMessages = currentMessages.values.toList()
           ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
         state = state.copyWith(messages: sortedMessages);
-        print('✅ Message successfully sent and updated: ${sentMessage.id}');
+
+        if (tempId == existingTempMessage?.id) {
+          print(
+              '🔄 جایگزینی پیام موقت $tempId با پیام واقعی ${sentMessage.id}');
+        } else {
+          print('✅ Message successfully sent and updated: ${sentMessage.id}');
+        }
 
         _cacheService.cacheMessage(sentMessage, userId);
         _cacheService.clearMessage(params.conversationId, tempId, userId);
@@ -789,11 +852,20 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
       print(
           '✅ Removed tempId from pending set: $tempId → ${sentMessage.id} (total pending: ${_pendingTempIds.length})');
 
+      // ✅ به‌روزرسانی لیست مکالمات
+      if (_ref != null) {
+        _ref.invalidate(conversationsProvider);
+        _ref.invalidate(conversationsStreamProvider);
+        _ref.invalidate(cachedConversationsStreamProvider);
+        _ref.read(cachedConversationsProvider.notifier).refresh();
+      }
+
       // Cancel any pending retries
       _retryService.cancelRetry(tempId);
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Failure - نمایش پیام با خطا
       print('❌ Failed to send message: $e');
+      print('Stack trace: $stackTrace');
 
       final errorMessage = e.toString();
       final failedMessage = tempMessage.copyWith(
@@ -837,6 +909,74 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
         retryCount: 0,
       );
     }
+  }
+
+  /// ✅ افزودن پیام موقت (برای نمایش فوری قبل از آپلود)
+  void addPendingMessage(MessageModel message) {
+    if (!mounted) return;
+
+    print('⚡ Adding pending message: ${message.id}');
+
+    final currentMessages =
+        Map.fromEntries(state.messages.map((m) => MapEntry(m.id, m)));
+    currentMessages[message.id] = message;
+
+    final sortedMessages = currentMessages.values.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    state = state.copyWith(messages: sortedMessages);
+    print('✅ Pending message added: ${message.id}');
+  }
+
+  /// ✅ به‌روزرسانی پیشرفت آپلود
+  void updateMessageUploadProgress(String messageId, double progress) {
+    if (!mounted) return;
+
+    final updatedMessages = state.messages.map((msg) {
+      if (msg.id == messageId) {
+        return msg.copyWith(
+          uploadProgress: progress,
+          isUploading: progress < 1.0,
+        );
+      }
+      return msg;
+    }).toList();
+
+    state = state.copyWith(messages: updatedMessages);
+  }
+
+  /// ✅ حذف پیام موقت (در صورت خطا)
+  void removePendingMessage(String messageId) {
+    if (!mounted) return;
+
+    print('🗑️ Removing pending message: $messageId');
+
+    final updatedMessages =
+        state.messages.where((msg) => msg.id != messageId).toList();
+
+    state = state.copyWith(messages: updatedMessages);
+    print('✅ Pending message removed: $messageId');
+  }
+
+  /// ✅ علامت‌گذاری پیام به عنوان ناموفق
+  void markMessageAsFailed(String messageId, String errorMessage) {
+    if (!mounted) return;
+
+    print('❌ علامت‌گذاری پیام $messageId به عنوان ناموفق: $errorMessage');
+
+    final updatedMessages = state.messages.map((msg) {
+      if (msg.id == messageId) {
+        return msg.copyWith(
+          isFailed: true,
+          isUploading: false,
+          isPending: false,
+          errorMessage: errorMessage,
+        );
+      }
+      return msg;
+    }).toList();
+
+    state = state.copyWith(messages: updatedMessages);
   }
 
   /// Manually retry sending a failed message
@@ -914,10 +1054,21 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
       print(
           '🗑️ Batch deleting ${messageIds.length} messages (forEveryone: $forEveryone)');
 
+      // استخراج مدل‌های کامل پیام از state
+      final List<MessageModel> messages = messageIds
+          .map((id) => state.messages.firstWhere(
+                (m) => m.id == id,
+                orElse: () => MessageModel.empty(),
+              ))
+          .where((m) => m.id.isNotEmpty)
+          .toList();
+
+      if (messages.isEmpty) return;
+
       // استفاده از حذف دسته‌ای بهینه‌شده
       await _deletionService.deleteMultipleMessages(
+        messages: messages,
         conversationId: params.conversationId,
-        messageIds: messageIds,
         mode: forEveryone ? DeletionMode.everyone : DeletionMode.me,
       );
 

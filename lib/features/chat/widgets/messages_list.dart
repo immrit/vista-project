@@ -112,6 +112,7 @@ class _MessagesListState extends State<MessagesList> {
             final previousMessage = index < widget.messages.length - 1
                 ? widget.messages[index + 1]
                 : null;
+            final nextMessage = index > 0 ? widget.messages[index - 1] : null;
 
             // نمایش تاریخ اگه روز عوض شده
             final showDate = _shouldShowDate(message, previousMessage);
@@ -122,11 +123,12 @@ class _MessagesListState extends State<MessagesList> {
                   _buildDateDivider(message.createdAt),
                   const SizedBox(height: 16),
                 ],
-                ModernMessageBubble(
+                MessageBubble(
                   message: message,
-                  onLongPress: () => widget.onMessageLongPress(message),
-                  onReply: () => widget.onReply(message),
-                  onReaction: (emoji) => widget.onReaction(message, emoji),
+                  onLongPress: widget.onMessageLongPress,
+                  onReply: widget.onReply,
+                  previousMessage: previousMessage,
+                  nextMessage: nextMessage,
                 ),
                 const SizedBox(height: 8),
               ],
@@ -249,4 +251,3 @@ class _MessagesListState extends State<MessagesList> {
     );
   }
 }
-

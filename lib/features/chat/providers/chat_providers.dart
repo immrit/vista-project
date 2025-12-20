@@ -18,6 +18,7 @@ import '../services/chat_cache_service.dart';
 import '../services/typing_indicator_service.dart';
 import '../data/datasources/chat_local_datasource.dart';
 import '../../../../DB/database_manager.dart';
+import '../../../services/optimized_message_deletion_service.dart';
 
 // DatabaseManager provider
 final databaseManagerProvider = Provider<DatabaseManager>((ref) {
@@ -125,6 +126,21 @@ final getMessagesProvider = FutureProvider.autoDispose
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 🗑️ DELETION SERVICES
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// ✅ پرووایدر برای سرویس حذف بهینه (Singleton)
+final optimizedDeletionServiceProvider =
+    Provider<OptimizedMessageDeletionService>((ref) {
+  final service = OptimizedMessageDeletionService();
+  service.initialize(); // اطمینان از شروع به کار سرویس
+  ref.onDispose(() {
+    service.dispose();
+  });
+  return service;
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 🎬 ACTIONS (عملیات چت)
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -162,6 +178,10 @@ class ChatActionsNotifier extends AutoDisposeNotifier<void> {
 
   ChatRepository get _repository => ref.read(chatRepositoryProvider);
 
+  // ✅ دسترسی به سرویس حذف بهینه
+  OptimizedMessageDeletionService get _deletionService =>
+      ref.read(optimizedDeletionServiceProvider);
+
   /// ارسال پیام جدید
   Future<ChatResult<MessageModel>> sendMessage(SendMessageParams params) async {
     return await _repository.sendMessage(
@@ -177,9 +197,40 @@ class ChatActionsNotifier extends AutoDisposeNotifier<void> {
     );
   }
 
-  /// حذف پیام
-  Future<ChatResult<void>> deleteMessage(String messageId) async {
-    return await _repository.deleteMessage(messageId);
+  /// ✅ حذف پیام (تکی) با استفاده از سرویس صف‌بندی شده
+  Future<void> deleteMessage(String messageId,
+      {bool forEveryone = false, required String conversationId}) async {
+    // ⚠️ توجه: برای حذف فایل، سرویس نیاز به مدل کامل پیام دارد.
+    // اگر از این متد استفاده می‌کنید، مطمئن شوید که فایل ندارد یا مدل را پاس دهید.
+    // بهتر است از deleteMessages استفاده کنید.
+
+    // تلاش برای ساخت یک مدل موقت (ممکن است فایل حذف نشود)
+    final dummyMsg = MessageModel(
+        id: messageId,
+        conversationId: conversationId,
+        senderId: '',
+        content: '',
+        isMe: true, // ✅ Required parameter added
+        createdAt: DateTime.now());
+
+    _deletionService.deleteMessages(
+      messages: [dummyMsg],
+      conversationId: conversationId,
+      mode: forEveryone ? DeletionMode.everyone : DeletionMode.me,
+    );
+  }
+
+  /// ✅ متد جدید: حذف گروهی پیام‌ها
+  /// این متد منتظر سرور نمی‌ماند و فقط درخواست را در صف می‌گذارد
+  /// نیاز به لیست کامل MessageModel برای Smart Cleanup
+  Future<void> deleteMessages(
+      List<MessageModel> messages, String conversationId,
+      {bool forEveryone = false}) async {
+    _deletionService.deleteMessages(
+      messages: messages,
+      conversationId: conversationId,
+      mode: forEveryone ? DeletionMode.everyone : DeletionMode.me,
+    );
   }
 
   /// ویرایش پیام

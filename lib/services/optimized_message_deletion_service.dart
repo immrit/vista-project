@@ -1,42 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:aws_s3_api/s3-2006-03-01.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../security/logging_utility.dart';
-import 'ChatService_LEGACY.dart';
+import '../model/message_model.dart';
 import '../DB/advanced_cache_system.dart';
+import 'secure_config.dart';
 
-/// حالت‌های حذف پیام
-enum DeletionMode {
-  me, // فقط برای من
-  everyone, // برای همه
-}
+enum DeletionMode { me, everyone }
 
-/// وضعیت‌های سنکرونایزیشن
-enum SyncStatus {
-  pending, // منتظر ارسال به سرور
-  syncing, // در حال هماهنگ‌سازی
-  synced, // هماهنگ‌شده
-  failed, // ناموفق
-}
-
-/// ردیاب وضعیت حذف پیام
-class DeletionRecord {
-  final String messageId;
-  final String conversationId;
-  final DeletionMode mode;
-  final DateTime timestamp;
-  SyncStatus syncStatus;
-  int retryCount;
-
-  DeletionRecord({
-    required this.messageId,
-    required this.conversationId,
-    required this.mode,
-    required this.timestamp,
-    this.syncStatus = SyncStatus.pending,
-    this.retryCount = 0,
-  });
-}
-
-/// سیستم حذف پیام بهینه‌شده با هماهنگی سرور و کش
 class OptimizedMessageDeletionService {
   static final OptimizedMessageDeletionService _instance =
       OptimizedMessageDeletionService._internal();
@@ -45,310 +18,425 @@ class OptimizedMessageDeletionService {
 
   OptimizedMessageDeletionService._internal();
 
-  // سرویس‌های وابسته
-  final ChatService _chatService = ChatService();
   final AdvancedCacheSystem _cacheSystem = AdvancedCacheSystem();
+  final SupabaseClient _supabase = Supabase.instance.client;
 
-  // ردیابی حذف‌های معلق
-  final Map<String, DeletionRecord> _pendingDeletions = {};
+  // ⚠️ کلید ذخیره‌سازی صف (ورژن جدید برای جلوگیری از تداخل با قبلی)
+  static const String _storageKey = 'queue_v4_strict_key_extraction';
 
-  // ردیابی حذف‌های دسته‌ای
-  final Map<String, List<String>> _batchedDeletions = {};
+  // ⚠️ نام باکت دقیقا طبق گفته شما
+  static const String _bucketName = 'coffevista';
 
-  // تایمر برای تجمیع درخواست‌ها
-  Timer? _batchTimer;
-  static const Duration _batchInterval = Duration(milliseconds: 300);
-  static const int _maxBatchSize = 50;
-  static const int _maxRetries = 3;
+  List<Map<String, dynamic>> _pendingTasks = [];
+  bool _isProcessing = false;
+  Timer? _retryTimer;
 
-  // Stream برای ردیابی وضعیت حذف‌ها
-  final _deletionStatusStream =
-      StreamController<Map<String, SyncStatus>>.broadcast();
-
-  bool _isInitialized = false;
-  bool _isSyncing = false;
-
-  /// آغاز سرویس
-  Future<void> initialize() async {
-    if (_isInitialized) {
-      logInfo('✅ OptimizedMessageDeletionService already initialized');
-      return;
+  // تنظیمات کلاینت S3
+  static S3 get _s3 {
+    if (!SecureConfig.isConfigured) {
+      // در محیط توسعه برای جلوگیری از کرش
+      logError('AWS Config Missing!');
+      throw Exception('AWS credentials not configured');
     }
+    return S3(
+      region: SecureConfig.awsRegion,
+      credentials: AwsClientCredentials(
+        accessKey: SecureConfig.awsAccessKey,
+        secretKey: SecureConfig.awsSecretKey,
+      ),
+      endpointUrl: SecureConfig.awsEndpointUrl,
+    );
+  }
 
-    logInfo('🚀 Initializing OptimizedMessageDeletionService...');
-
-    try {
-      // بارگذاری حذف‌های معلق از ذخیره‌سازی
-      // TODO: Load from persistent storage if needed
-
-      // شروع timer برای تجمیع درخواست‌ها
-      _startBatchTimer();
-
-      _isInitialized = true;
-      logInfo('✅ OptimizedMessageDeletionService initialized successfully');
-    } catch (e) {
-      logInfo('❌ Failed to initialize OptimizedMessageDeletionService: $e');
-      rethrow;
+  /// مقداردهی اولیه
+  Future<void> initialize() async {
+    await _loadQueueFromDisk();
+    if (_pendingTasks.isNotEmpty) {
+      logInfo('🔄 Resuming ${_pendingTasks.length} pending deletions...');
+      _startProcessingLoop();
     }
   }
 
-  /// حذف یک پیام (با بهینه‌سازی)
+  /// Dispose service
+  void dispose() {
+    _retryTimer?.cancel();
+    _pendingTasks.clear(); // پاک کردن حافظه موقت (نه دیسک)
+    logInfo('🧹 OptimizedMessageDeletionService disposed');
+  }
+
+  /// متد عمومی حذف (فراخوانی از UI)
+  Future<void> deleteMessages({
+    required List<MessageModel> messages,
+    required String conversationId,
+    required DeletionMode mode,
+  }) async {
+    if (messages.isEmpty) return;
+
+    // 1. حذف فوری از کش لوکال (UI بلافاصله تمیز می‌شود)
+    await _purgeFromLocalCache(
+        messages.map((e) => e.id).toList(), conversationId);
+
+    // 2. آماده‌سازی تسک‌ها برای صف
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    for (var msg in messages) {
+      // استخراج کلید فایل در همین لحظه (چون دسترسی به آبجکت داریم)
+      final s3Key = _extractS3KeyCorrectly(msg);
+
+      // لاگ برای اطمینان از صحت کلید استخراج شده
+      if (s3Key != null) {
+        final urlUsed = msg.audioUrl ?? msg.attachmentUrl ?? 'N/A';
+        final urlType = msg.audioUrl != null ? 'audio_url' : 'attachment_url';
+        logInfo('🗑️ Queuing file deletion. MessageId: ${msg.id}, Type: ${msg.attachmentType}, Key: [$s3Key], $urlType: $urlUsed');
+      } else {
+        if (msg.audioUrl != null && msg.audioUrl!.isNotEmpty) {
+          logInfo('⚠️ Could not extract S3 key from audio_url. MessageId: ${msg.id}, URL: ${msg.audioUrl}');
+        } else if (msg.attachmentUrl != null && msg.attachmentUrl!.isNotEmpty) {
+          logInfo('⚠️ Could not extract S3 key from attachment_url. MessageId: ${msg.id}, URL: ${msg.attachmentUrl}, Type: ${msg.attachmentType}');
+        }
+      }
+
+      final task = {
+        'id': msg.id,
+        'conversationId': conversationId,
+        'mode': mode.index,
+        's3Key': s3Key, // اگر null باشد یعنی فایل ندارد یا لینک معتبر نیست
+        'retryCount': 0,
+        'nextAttempt': now, // اولین تلاش: همین الان
+        'timestamp': now,
+      };
+
+      // حذف تکراری‌ها و افزودن به صف
+      _pendingTasks.removeWhere((t) => t['id'] == msg.id);
+      _pendingTasks.add(task);
+    }
+
+    // 3. ذخیره و شروع
+    await _saveQueueToDisk();
+    _startProcessingLoop();
+  }
+
+  // --- Compatibility Wrappers ---
+
+  Future<void> deleteMultipleMessages({
+    required List<MessageModel> messages,
+    required String conversationId,
+    required DeletionMode mode,
+  }) async {
+    await deleteMessages(
+        messages: messages, conversationId: conversationId, mode: mode);
+  }
+
   Future<void> deleteMessage({
     required String messageId,
     required String conversationId,
     DeletionMode mode = DeletionMode.me,
     bool optimisticDelete = true,
+    MessageModel? message,
   }) async {
-    try {
-      logInfo(
-          '🗑️ Starting deletion: $messageId (mode: ${mode.name}, optimistic: $optimisticDelete)');
-
-      // 1. حذف فوری از UI (Optimistic Update)
-      if (optimisticDelete) {
-        await _removeFromCacheOptimistically(conversationId, messageId);
-      }
-
-      // 2. اضافه کردن به لیست حذف‌های معلق
-      final record = DeletionRecord(
-        messageId: messageId,
-        conversationId: conversationId,
-        mode: mode,
-        timestamp: DateTime.now(),
-      );
-
-      _pendingDeletions[messageId] = record;
-      _emitDeletionStatus();
-
-      logInfo('✅ Message marked for deletion: $messageId');
-
-      // 3. اضافه کردن به دسته (بدون اجرای فوری)
-      _addToBatch(conversationId, messageId);
-    } catch (e) {
-      logInfo('❌ Error marking message for deletion: $e');
-      rethrow;
-    }
+    final msg = message ??
+        MessageModel(
+            id: messageId,
+            conversationId: conversationId,
+            senderId: '',
+            content: '',
+            isMe: true,
+            createdAt: DateTime.now());
+    await deleteMessages(
+        messages: [msg], conversationId: conversationId, mode: mode);
   }
 
-  /// حذف دسته‌ای پیام‌ها (کارآمد)
-  Future<void> deleteMultipleMessages({
-    required String conversationId,
-    required List<String> messageIds,
-    DeletionMode mode = DeletionMode.me,
-  }) async {
-    try {
-      logInfo(
-          '🗑️ Starting batch deletion: ${messageIds.length} messages in $conversationId');
-
-      // 1. حذف فوری از همه UI
-      for (final messageId in messageIds) {
-        await _removeFromCacheOptimistically(conversationId, messageId);
-      }
-
-      // 2. اضافه کردن به لیست حذف‌های معلق
-      for (final messageId in messageIds) {
-        final record = DeletionRecord(
-          messageId: messageId,
-          conversationId: conversationId,
-          mode: mode,
-          timestamp: DateTime.now(),
-        );
-        _pendingDeletions[messageId] = record;
-      }
-
-      _emitDeletionStatus();
-
-      // 3. اضافه کردن تمام پیام‌ها به دسته
-      for (final messageId in messageIds) {
-        _addToBatch(conversationId, messageId);
-      }
-
-      logInfo('✅ ${messageIds.length} messages marked for deletion');
-    } catch (e) {
-      logInfo('❌ Error marking messages for batch deletion: $e');
-      rethrow;
-    }
-  }
-
-  /// پاک‌سازی تمام پیام‌های مکالمه (Clear All)
   Future<void> clearConversationMessages({
     required String conversationId,
     DeletionMode mode = DeletionMode.me,
   }) async {
     try {
-      logInfo(
-          '🗑️ Clearing all messages in conversation: $conversationId (mode: ${mode.name})');
-
-      // 1. دریافت تمام پیام‌های کش‌شده
       final cachedMessages = _cacheSystem.getCachedMessages(conversationId);
-
-      if (cachedMessages.isEmpty) {
-        logInfo('⚠️ No cached messages to clear in $conversationId');
-        return;
-      }
-
-      final messageIds = cachedMessages
-          .map((m) => m.id)
-          .where((id) => !id.startsWith('temp_'))
-          .toList();
-
-      // 2. استفاده از حذف دسته‌ای
-      await deleteMultipleMessages(
-        conversationId: conversationId,
-        messageIds: messageIds,
-        mode: mode,
-      );
-
-      logInfo('✅ Clear all initiated: ${messageIds.length} messages');
+      if (cachedMessages.isEmpty) return;
+      await deleteMessages(
+          messages: cachedMessages, conversationId: conversationId, mode: mode);
     } catch (e) {
-      logInfo('❌ Error clearing conversation messages: $e');
-      rethrow;
+      logError('Error clearing conversation: $e');
     }
   }
 
-  /// اضافه کردن به دسته برای هماهنگی
-  void _addToBatch(String conversationId, String messageId) {
-    if (!_batchedDeletions.containsKey(conversationId)) {
-      _batchedDeletions[conversationId] = [];
-    }
+  // -----------------------------
 
-    final batch = _batchedDeletions[conversationId]!;
-    if (!batch.contains(messageId)) {
-      batch.add(messageId);
-    }
-
-    // اگر دسته سایز کافی باشد، اجرا کن
-    if (batch.length >= _maxBatchSize) {
-      _batchTimer?.cancel();
-      _syncBatch(conversationId);
-    }
-  }
-
-  /// شروع تایمر دسته‌بندی
-  void _startBatchTimer() {
-    _batchTimer = Timer.periodic(_batchInterval, (_) {
-      // اگر حذف‌های معلق وجود دارد، همه دسته‌ها را هماهنگ کن
-      if (_pendingDeletions.isNotEmpty) {
-        for (final conversationId in _batchedDeletions.keys.toList()) {
-          _syncBatch(conversationId);
-        }
+  /// حذف از کش دیتابیس لوکال
+  Future<void> _purgeFromLocalCache(
+      List<String> ids, String conversationId) async {
+    try {
+      for (var id in ids) {
+        await _cacheSystem.deleteMessageFromCache(conversationId, id);
       }
-    });
+    } catch (e) {
+      // خطا در اینجا نباید مانع ادامه شود
+    }
   }
 
-  /// هماهنگی یک دسته
-  Future<void> _syncBatch(String conversationId) async {
-    final batch = _batchedDeletions[conversationId];
-    if (batch == null || batch.isEmpty) return;
+  void _startProcessingLoop() {
+    if (_isProcessing) return;
+    _retryTimer?.cancel();
+    _processQueue();
+  }
 
-    if (_isSyncing) {
-      logInfo(
-          '⚠️ Sync already in progress, skipping batch for $conversationId');
+  /// موتور پردازش صف
+  Future<void> _processQueue() async {
+    if (_pendingTasks.isEmpty) {
+      _isProcessing = false;
       return;
     }
 
-    _isSyncing = true;
+    _isProcessing = true;
+    bool queueModified = false;
+    final now = DateTime.now().millisecondsSinceEpoch;
 
-    try {
-      logInfo(
-          '🔄 Syncing batch: ${batch.length} deletions for $conversationId');
+    // انتخاب تسک‌های آماده اجرا
+    final tasksToRun = _pendingTasks.where((task) {
+      final nextAttempt = task['nextAttempt'] as int;
+      return now >= nextAttempt;
+    }).toList();
 
-      final List<String> messageIds = List.from(batch);
+    if (tasksToRun.isEmpty) {
+      _scheduleNextRun();
+      _isProcessing = false;
+      return;
+    }
 
-      // حذف از دسته (منتظر اتمام)
-      _batchedDeletions[conversationId]?.clear();
+    // پردازش 3 تایی برای جلوگیری از فشار زیاد
+    int concurrencyLimit = 3;
 
-      // هماهنگی هر پیام
-      final futures = messageIds.map((messageId) async {
-        final record = _pendingDeletions[messageId];
-        if (record == null) return;
+    for (var i = 0; i < tasksToRun.length; i += concurrencyLimit) {
+      final end = (i + concurrencyLimit < tasksToRun.length)
+          ? i + concurrencyLimit
+          : tasksToRun.length;
+      final batch = tasksToRun.sublist(i, end);
 
-        try {
-          record.syncStatus = SyncStatus.syncing;
-          _emitDeletionStatus();
-
-          // حذف از سرور
-          await _chatService.deleteMessage(
-            messageId,
-            forEveryone: record.mode == DeletionMode.everyone,
-          );
-
-          record.syncStatus = SyncStatus.synced;
-          logInfo('✅ Synced deletion: $messageId');
-        } catch (e) {
-          record.retryCount++;
-          if (record.retryCount < _maxRetries) {
-            logInfo(
-                '⚠️ Retry deletion $messageId (attempt ${record.retryCount}/$_maxRetries)');
-            record.syncStatus = SyncStatus.pending;
-            _addToBatch(conversationId, messageId);
-          } else {
-            logInfo(
-                '❌ Failed to sync deletion after $_maxRetries retries: $messageId');
-            record.syncStatus = SyncStatus.failed;
-          }
+      await Future.wait(batch.map((task) async {
+        final success = await _executeSingleTask(task);
+        if (success) {
+          _pendingTasks.remove(task);
+          queueModified = true;
+        } else {
+          // تسک در صف می‌ماند اما زمان اجرای بعدی‌اش تغییر کرده
+          queueModified = true;
         }
-      });
-
-      await Future.wait(futures, eagerError: false);
-
-      _emitDeletionStatus();
-      logInfo('✅ Batch sync completed for $conversationId');
-    } catch (e) {
-      logInfo('❌ Error syncing batch for $conversationId: $e');
-    } finally {
-      _isSyncing = false;
+      }));
     }
+
+    if (queueModified) {
+      await _saveQueueToDisk();
+    }
+
+    _scheduleNextRun();
+    _isProcessing = false;
   }
 
-  /// حذف فوری از کش
-  Future<void> _removeFromCacheOptimistically(
-    String conversationId,
-    String messageId,
-  ) async {
+  /// اجرای یک تسک تکی (حذف فایل + دیتابیس)
+  Future<bool> _executeSingleTask(Map<String, dynamic> task) async {
+    final messageId = task['id'] as String;
+    final s3Key = task['s3Key'] as String?;
+    final mode = DeletionMode.values[task['mode'] as int];
+    final conversationId = task['conversationId'] as String;
+
     try {
-      // حذف از کش هوشمند (Advanced Cache)
-      final messages = _cacheSystem.getCachedMessages(conversationId);
+      // 1. حذف فایل از آروان (اگر وجود دارد)
+      if (s3Key != null && s3Key.isNotEmpty) {
+        await _deleteS3File(s3Key, mode, messageId);
+      }
 
-      // نیاز به روش جدید برای بروزرسانی کش (نامحدود حالا)
-      // TODO: بروزرسانی مستقیم کش در AdvancedCacheSystem
+      // 2. حذف از دیتابیس (فقط اگر حذف فایل موفق بود یا اصلا فایل نداشت)
+      await _deleteFromDatabase(messageId, conversationId, mode);
 
-      logInfo('✅ Message removed from cache: $messageId');
+      logInfo('✅ Full deletion complete for: $messageId');
+      return true;
     } catch (e) {
-      logInfo('⚠️ Error removing message from cache: $e');
+      // مدیریت خطا و زمان‌بندی مجدد (Exponential Backoff)
+      int retries = (task['retryCount'] as int) + 1;
+
+      // 5s, 10s, 20s, 40s, 80s... تا ماکسیمم 1 ساعت
+      int delaySec = 5 * (1 << (retries > 10 ? 10 : retries));
+      if (delaySec > 3600) delaySec = 3600;
+
+      logError('❌ Deletion failed for $messageId. Retrying in ${delaySec}s',
+          error: e);
+
+      task['retryCount'] = retries;
+      task['nextAttempt'] =
+          DateTime.now().millisecondsSinceEpoch + (delaySec * 1000);
+
+      return false;
     }
   }
 
-  /// ارسال وضعیت حذف‌ها
-  void _emitDeletionStatus() {
-    final statusMap = <String, SyncStatus>{};
-    for (final entry in _pendingDeletions.entries) {
-      statusMap[entry.key] = entry.value.syncStatus;
+  /// حذف فایل از S3
+  /// برای حذف دوطرفه (forEveryone): همیشه فایل را حذف می‌کند
+  /// برای حذف یکطرفه (forMe): فقط اگر طرف مقابل هم حذف کرده باشد، فایل را حذف می‌کند
+  Future<void> _deleteS3File(
+      String key, DeletionMode mode, String messageId) async {
+    // در حالت "برای خودم"، باید چک کنیم آیا نفر مقابل فایل را لازم دارد؟
+    if (mode == DeletionMode.me) {
+      final currentUserId = _supabase.auth.currentUser?.id;
+      if (currentUserId == null) {
+        logInfo('⚠️ User not logged in, skipping file deletion. Key: $key');
+        return; // کاربر لاگین نیست، نمی‌توانیم چک کنیم
+      }
+
+      final otherDeletion = await _supabase
+          .from('deleted_messages')
+          .select('message_id')
+          .eq('message_id', messageId)
+          .neq('user_id', currentUserId)
+          .maybeSingle();
+
+      if (otherDeletion == null) {
+        logInfo('ℹ️ Keeping file (Other user still has message). Key: $key');
+        return; // فایل را پاک نمی‌کنیم چون طرف مقابل هنوز پیام را دارد
+      }
+      logInfo('✅ Both users deleted message, proceeding with file deletion. Key: $key');
+    } else {
+      // حذف دوطرفه: همیشه فایل را حذف می‌کنیم
+      logInfo('🗑️ Bidirectional deletion (forEveryone), deleting file. Key: $key');
     }
-    if (!_deletionStatusStream.isClosed) {
-      _deletionStatusStream.add(statusMap);
+
+    try {
+      logInfo('🚀 Sending S3 Delete Request. Bucket: $_bucketName, Key: $key');
+
+      await _s3.deleteObject(
+        bucket: _bucketName,
+        key: key,
+      );
+
+      logInfo('✅ S3 Delete successful. Bucket: $_bucketName, Key: $key');
+    } catch (e) {
+      // اگر فایل پیدا نشد (404)، یعنی قبلاً پاک شده و موفقیت محسوب می‌شود
+      if (e.toString().contains('404') || e.toString().contains('NoSuchKey')) {
+        logInfo('⚠️ File not found (404), assumed deleted. Key: $key');
+        return;
+      }
+      // بقیه خطاها (مثل قطعی نت) باید پرتاب شوند تا Retry شوند
+      logError('❌ S3 Delete failed. Bucket: $_bucketName, Key: $key', error: e);
+      throw e;
     }
   }
 
-  /// دریافت stream وضعیت حذف‌ها
-  Stream<Map<String, SyncStatus>> get deletionStatusStream =>
-      _deletionStatusStream.stream;
+  /// حذف از دیتابیس سوپابیس
+  Future<void> _deleteFromDatabase(
+      String messageId, String conversationId, DeletionMode mode) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
 
-  /// دریافت تعداد حذف‌های معلق
-  int get pendingDeletionCount => _pendingDeletions.values
-      .where((r) => r.syncStatus == SyncStatus.pending)
-      .length;
+    if (mode == DeletionMode.everyone) {
+      // Hard Delete
+      await _supabase.from('messages').delete().eq('id', messageId);
+      // Clean cleanup (optional)
+      try {
+        await _supabase
+            .from('deleted_messages')
+            .delete()
+            .eq('message_id', messageId);
+      } catch (_) {}
+    } else {
+      // Soft Delete
+      await _supabase.from('deleted_messages').upsert({
+        'user_id': userId,
+        'message_id': messageId,
+        'conversation_id': conversationId,
+        'deleted_at': DateTime.now().toIso8601String(),
+      });
+    }
+  }
 
-  /// دریافت تعداد حذف‌های ناموفق
-  int get failedDeletionCount => _pendingDeletions.values
-      .where((r) => r.syncStatus == SyncStatus.failed)
-      .length;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🔑 KEY EXTRACTION LOGIC (THE FIX)
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  /// پاک‌سازی منابع
-  void dispose() {
-    _batchTimer?.cancel();
-    _deletionStatusStream.close();
-    _pendingDeletions.clear();
-    _batchedDeletions.clear();
-    logInfo('🧹 OptimizedMessageDeletionService disposed');
+  /// استخراج دقیق کلید فایل برای S3
+  /// این متد هم audio_url (برای ویس‌ها) و هم attachment_url را بررسی می‌کند
+  /// پشتیبانی از فرمت‌های مختلف URL آروان:
+  /// - https://storage.389346.ir.cdn.ir/bucketName/path/to/file
+  /// - https://coffevista.s3.ir-thr-at1.arvanstorage.ir/path/to/file
+  String? _extractS3KeyCorrectly(MessageModel message) {
+    // ✅ اولویت با audio_url برای ویس‌ها، سپس attachment_url
+    String? url = message.audioUrl;
+    if (url == null || url.isEmpty) {
+      url = message.attachmentUrl;
+    }
+    if (url == null || url.isEmpty) return null;
+
+    try {
+      final uri = Uri.parse(url);
+      final segments = uri.pathSegments;
+      
+      if (segments.isEmpty) return null;
+
+      // فرمت 1: https://storage.389346.ir.cdn.ir/bucketName/path/to/file
+      // در این فرمت، اولین segment نام باکت است و باید حذف شود
+      if (url.contains('storage.389346.ir.cdn.ir')) {
+        if (segments.length > 1) {
+          // حذف اولین segment (نام باکت) و بازگرداندن بقیه
+          final key = segments.sublist(1).join('/');
+          // دیکد کردن URL برای کاراکترهای خاص و فارسی
+          return Uri.decodeFull(key);
+        }
+        return null;
+      }
+
+      // فرمت 2: https://coffevista.s3.ir-thr-at1.arvanstorage.ir/path/to/file
+      // یا https://domain/coffevista/chats/img.jpg
+      // اگر اولین قسمت مسیر، نام باکت باشد، باید حذف شود
+      if (segments.first == _bucketName && segments.length > 1) {
+        // بازگرداندن بقیه مسیر به عنوان کلید
+        final key = segments.skip(1).join('/');
+        return Uri.decodeFull(key);
+      }
+
+      // در غیر این صورت، کل مسیر کلید است (اگر باکت در URL نیست)
+      final key = segments.join('/');
+      return Uri.decodeFull(key);
+    } catch (e) {
+      logError('Key extraction error for: $url', error: e);
+      return null;
+    }
+  }
+
+  void _scheduleNextRun() {
+    if (_pendingTasks.isEmpty) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    int minTime = _pendingTasks
+        .map((t) => t['nextAttempt'] as int)
+        .reduce((a, b) => a < b ? a : b);
+
+    int delay = minTime - now;
+    if (delay < 1000) delay = 1000;
+
+    _retryTimer = Timer(Duration(milliseconds: delay), _processQueue);
+  }
+
+  // 💾 توابع ذخیره‌سازی
+  Future<void> _loadQueueFromDisk() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? jsonString = prefs.getString(_storageKey);
+      if (jsonString != null) {
+        final List<dynamic> decoded = json.decode(jsonString);
+        _pendingTasks = decoded.cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      _pendingTasks = [];
+      logError('Failed to load queue from disk', error: e);
+    }
+  }
+
+  Future<void> _saveQueueToDisk() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String jsonString = json.encode(_pendingTasks);
+      await prefs.setString(_storageKey, jsonString);
+    } catch (e) {
+      // خطا در ذخیره‌سازی نباید مانع کار شود
+      logError('Failed to save queue to disk', error: e);
+    }
   }
 }

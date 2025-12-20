@@ -22,7 +22,7 @@ import '../../../services/wallpaper_cache_service.dart';
 import '../../../services/current_chat_tracker.dart';
 import 'chat_input.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../../widgets/message_bubble.dart';
+import '../../../features/chat/widgets/message_bubble.dart';
 import '../../widgets/date_divider.dart';
 import '../../widgets/connection_status_widget.dart';
 import '../../widgets/typing_indicator.dart';
@@ -771,16 +771,41 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _retryFailedMessage(MessageModel message) {
-    // Haptic feedback
+    print('🔄 تلاش مجدد برای ارسال پیام: ${message.id}');
+
     HapticFeedback.lightImpact();
 
-    // فراخوانی retry از provider
-    ref
-        .read(chat_provider.messageNotifierProvider.notifier)
-        .retrySendMessage(message);
+    // بررسی نوع پیام
+    if (message.attachmentType == 'image' && message.localImagePath != null) {
+      // اگر تصویر است و مسیر محلی دارد
+      final imageFile = File(message.localImagePath!);
 
-    // نمایش پیام موفقیت
-    ToastService.showInfoToast(context, 'در حال تلاش مجدد برای ارسال پیام...');
+      if (imageFile.existsSync()) {
+        print('✅ فایل محلی یافت شد، شروع ارسال مجدد...');
+
+        // ابتدا پیام قدیمی را حذف کن
+        ref
+            .read(chatScreenProvider(_providerParams).notifier)
+            .removePendingMessage(message.id);
+
+        // سپس دوباره ارسال کن
+        _sendImageMessage(imageFile, message.content);
+      } else {
+        print('❌ فایل محلی یافت نشد');
+        ToastService.showErrorToast(
+          context,
+          'فایل محلی یافت نشد. لطفاً تصویر را دوباره انتخاب کنید.',
+        );
+        return;
+      }
+    } else {
+      // برای سایر انواع پیام‌ها
+      ref
+          .read(chat_provider.messageNotifierProvider.notifier)
+          .retrySendMessage(message);
+    }
+
+    ToastService.showInfoToast(context, 'در حال تلاش مجدد...');
   }
 
   void _retryAllFailedMessages() {
@@ -1545,7 +1570,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final isLoading = ref.watch(
       chatScreenProvider(_providerParams).select((state) => state.isLoading),
     );
-    final chatState = ref.read(chatScreenProvider(_providerParams));
 
     // دریافت تنظیم بلور پس‌زمینه
     final isBlurEnabled = ref.watch(chatBlurBackgroundProvider);
@@ -2184,42 +2208,117 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return const SizedBox.shrink();
   }
 
-  void _handleSendImages(String caption, List<File> files) async {
+  Future<void> _handleSendImages(String caption, List<File> files) async {
     try {
-      for (final file in files) {
-        await _sendImageMessage(file, caption);
+      print('📸 ارسال ${files.length} تصویر...');
+
+      for (int i = 0; i < files.length; i++) {
+        final file = files[i];
+        print('📸 ارسال تصویر ${i + 1}/${files.length}');
+
+        // فقط تصویر اول کپشن دارد
+        await _sendImageMessage(file, i == 0 ? caption : '');
+
+        // تاخیر کوتاه بین ارسال تصاویر (جلوگیری از فشار به سرور)
+        if (i < files.length - 1) {
+          await Future.delayed(const Duration(milliseconds: 300));
+        }
       }
+
+      print('✅ همه تصاویر ارسال شدند');
     } catch (e) {
+      print('❌ خطا در ارسال تصاویر: $e');
       ToastService.showErrorToast(context, 'خطا در ارسال تصاویر');
     }
   }
 
   Future<void> _sendImageMessage(File file, String caption) async {
-    try {
-      // Upload image using existing service
-      final imageUrl = await ChatImageUploadService.uploadChatImage(
-          file, widget.conversationId);
+    final tempMessageId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
 
-      final message = MessageModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+    try {
+      print('📸 شروع ارسال تصویر: ${file.path}');
+
+      // 1️⃣ ایجاد پیام موقت با تصویر محلی (نمایش فوری)
+      final tempMessage = MessageModel.temporary(
+        tempId: tempMessageId,
         conversationId: widget.conversationId,
         senderId: supabase.auth.currentUser!.id,
         content: caption.isNotEmpty ? caption : '',
-        createdAt: DateTime.now(),
-        attachmentUrl: imageUrl,
         attachmentType: 'image',
-        isMe: true,
+        attachmentUrl: '', // هنوز آپلود نشده
+        localImagePath: file.path, // ✅ مسیر محلی تصویر
+        isUploading: true,
+        uploadProgress: 0.0,
+        senderName: 'من',
+        createdAt: DateTime.now(),
       );
 
+      // 2️⃣ اضافه کردن پیام موقت به لیست (نمایش فوری با تصویر محلی)
+      ref.read(chatScreenProvider(_providerParams).notifier)
+          .addPendingMessage(tempMessage);
+
+      print('✅ پیام موقت اضافه شد با ID: $tempMessageId');
+
+      // اسکرول به پایین برای نمایش پیام جدید
+      _autoScrollToBottom();
+
+      // 3️⃣ آپلود تصویر با نمایش پیشرفت
+      print('⬆️ شروع آپلود تصویر...');
+      final imageUrl = await AdvancedFileManager.instance.uploadFile(
+        file,
+        widget.conversationId,
+        fileType: 'image',
+        onProgress: (progress) {
+          print('📊 پیشرفت آپلود: ${(progress * 100).toInt()}%');
+
+          // ✅ به‌روزرسانی پیشرفت آپلود در UI
+          if (mounted) {
+            ref
+                .read(chatScreenProvider(_providerParams).notifier)
+                .updateMessageUploadProgress(tempMessageId, progress);
+          }
+        },
+      );
+
+      if (imageUrl == null || imageUrl.isEmpty) {
+        throw Exception('URL آپلود شده خالی است');
+      }
+
+      print('✅ تصویر آپلود شد: $imageUrl');
+
+      // 4️⃣ ارسال پیام نهایی به سرور
+      print('📤 ارسال پیام به سرور...');
       await ref.read(chatScreenProvider(_providerParams).notifier).sendMessage(
-            message.content,
-            attachmentUrl: message.attachmentUrl,
-            attachmentType: message.attachmentType,
+            caption.isNotEmpty ? caption : '',
+            attachmentUrl: imageUrl,
+            attachmentType: 'image',
+            tempMessageId: tempMessageId, // برای جایگزینی پیام موقت
           );
 
-      _autoScrollToBottom();
-    } catch (e) {
-      ToastService.showErrorToast(context, 'خطا در ارسال تصویر');
+      print('✅ پیام با موفقیت ارسال شد');
+
+      // 5️⃣ به‌روزرسانی لیست مکالمات
+      ref.invalidate(conversationsProvider);
+      ref.invalidate(conversationsStreamProvider);
+      ref.invalidate(cachedConversationsStreamProvider);
+      ref.read(cachedConversationsProvider.notifier).refresh();
+
+      ToastService.showSuccessToast(context, 'تصویر با موفقیت ارسال شد');
+    } catch (e, stackTrace) {
+      print('❌ خطا در ارسال تصویر: $e');
+      print('Stack trace: $stackTrace');
+
+      // ✅ علامت‌گذاری پیام به عنوان ناموفق (با دکمه retry)
+      if (mounted) {
+        ref
+            .read(chatScreenProvider(_providerParams).notifier)
+            .markMessageAsFailed(tempMessageId, 'خطا در آپلود تصویر: $e');
+      }
+
+      ToastService.showErrorToast(
+        context,
+        'خطا در ارسال تصویر. روی پیام کلیک کنید تا دوباره تلاش کنید.',
+      );
     }
   }
 

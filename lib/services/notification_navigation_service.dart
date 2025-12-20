@@ -360,7 +360,7 @@ class NotificationNavigationService {
     }
   }
 
-  /// پردازش payload از Local Notification
+  /// مدیریت کلیک روی نوتیفیکیشن‌های داخلی (Local)
   static Future<void> handleLocalNotificationPayload({
     required BuildContext context,
     required String payload,
@@ -377,21 +377,9 @@ class NotificationNavigationService {
         print('   $key: $value');
       });
 
-      // استفاده از fromPayloadJson برای ساخت NotificationModel
-      final notification = NotificationModel.fromPayloadJson(data);
-
-      print('✅ NotificationModel created:');
-      print('   Type: ${notification.type}');
-      print('   ID: ${notification.id}');
-      print('   PostID: ${notification.postId}');
-      print('   CommentID: ${notification.commentId}');
-      print('   ConversationID: ${notification.conversationId}');
-      print('   SenderID: ${notification.senderId}');
-
-      await handleNotificationNavigation(
-        context: context,
-        notification: notification,
-      );
+      // استفاده از همان تابع handleFCMPayload که هوشمند است
+      await handleFCMPayload(context: context, data: data);
+      
       print('✅ Navigation completed');
       print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     } catch (e, stack) {
@@ -403,28 +391,57 @@ class NotificationNavigationService {
     }
   }
 
-  /// پردازش payload از FCM
+  /// 🚀 مدیریت کلیک روی نوتیفیکیشن (چه از فایربیس، چه لوکال)
   static Future<void> handleFCMPayload({
     required BuildContext context,
     required Map<String, dynamic> data,
   }) async {
     print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    print('📱 پردازش FCM Payload');
-    print('   Data: $data');
+    print('🔔 Handling Notification Payload:');
+    data.forEach((key, value) {
+      print('   $key: $value');
+    });
     print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     try {
+      // ۱. استخراج هوشمند conversation_id
+      String? conversationId;
+
+      // حالت اول: دیتای فلت (ساختار جدید ما)
+      if (data.containsKey('conversation_id')) {
+        conversationId = data['conversation_id']?.toString();
+        print('✅ conversation_id پیدا شد (flat structure): $conversationId');
+      }
+      // حالت دوم: دیتای تو در تو (برای سازگاری با نسخه‌های احتمالی دیگر)
+      else if (data.containsKey('data')) {
+        final nestedData = data['data'];
+        if (nestedData is Map) {
+          conversationId = nestedData['conversation_id']?.toString();
+          print('✅ conversation_id پیدا شد (nested structure): $conversationId');
+        } else if (nestedData is String) {
+          try {
+            final parsed = jsonDecode(nestedData);
+            if (parsed is Map) {
+              conversationId = parsed['conversation_id']?.toString();
+              print('✅ conversation_id پیدا شد (nested JSON string): $conversationId');
+            }
+          } catch (_) {}
+        }
+      }
+
+      // ۲. اگر ID پیدا شد و نوع پیام چت است، برو به صفحه چت
+      final type = data['type']?.toString() ?? '';
+      if (conversationId != null && conversationId.isNotEmpty && 
+          (type == 'chat_message' || type == 'message' || type == 'new_message')) {
+        await _navigateToChatDirectly(context, conversationId, data);
+        return;
+      }
+
+      // ۳. اگر conversation_id نداشتیم یا نوع پیام چت نبود، از روش قدیمی استفاده کن
+      print('⚠️ conversation_id پیدا نشد یا نوع پیام چت نیست - استفاده از روش قدیمی');
       final notification = NotificationModel.fromFCM(
         RemoteMessage(data: data),
       );
-      
-      print('✅ NotificationModel created from FCM:');
-      print('   Type: ${notification.type}');
-      print('   ID: ${notification.id}');
-      print('   ConversationID: ${notification.conversationId}');
-      print('   SenderID: ${notification.senderId}');
-      print('   PostID: ${notification.postId}');
-      print('   CommentID: ${notification.commentId}');
       
       await handleNotificationNavigation(
         context: context,
@@ -435,6 +452,58 @@ class NotificationNavigationService {
       print('   Error: $e');
       print('   Stack: $stack');
       print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      await _navigateToNotifications(context);
+    }
+  }
+
+  /// 🧭 نویگیشن مستقیم به صفحه چت (بدون استفاده از route)
+  static Future<void> _navigateToChatDirectly(
+    BuildContext context,
+    String conversationId,
+    Map<String, dynamic> data,
+  ) async {
+    print('🚀 Navigating to ChatScreen with ID: $conversationId');
+
+    try {
+      // استخراج اطلاعات فرستنده برای نمایش سریع
+      final senderName = data['sender_name']?.toString() ?? 
+                        data['title']?.toString() ?? 
+                        'کاربر';
+      final senderAvatar = data['sender_avatar']?.toString() ?? 
+                          data['avatar_url']?.toString();
+      final senderId = data['sender_id']?.toString() ?? '';
+
+      // اگر senderId خالی بود، باید از conversationId استفاده کنیم تا اطلاعات را بگیریم
+      // اما فعلاً با همان اطلاعات موجود کار می‌کنیم
+
+      // هدایت به صفحه چت
+      // استفاده از ChatScreen قدیمی (چون در route استفاده می‌شود)
+      final currentRoute = ModalRoute.of(context)?.settings.name;
+
+      if (currentRoute != '/home') {
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          '/home',
+          (route) => false,
+        );
+        await Future.delayed(const Duration(milliseconds: 400));
+      }
+
+      // استفاده از route برای سازگاری با سیستم موجود
+      Navigator.of(context).pushNamed(
+        '/chat',
+        arguments: {
+          'conversationId': conversationId,
+          'otherUserId': senderId.isNotEmpty ? senderId : null,
+          'username': senderName,
+          'avatarUrl': senderAvatar,
+        },
+      );
+
+      print('✅ Navigation به چت با conversation_id: $conversationId');
+    } catch (e, stack) {
+      print('❌ خطا در navigation مستقیم به چت:');
+      print('   Error: $e');
+      print('   Stack: $stack');
       await _navigateToNotifications(context);
     }
   }

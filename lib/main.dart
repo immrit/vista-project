@@ -49,6 +49,7 @@ import 'services/advanced_security_service.dart';
 import 'services/wallpaper_cache_service.dart';
 import 'services/profile_service.dart';
 import 'services/user_presence_service.dart';
+import 'services/optimized_message_deletion_service.dart';
 import 'view/screen/PublicPosts/publicPosts.dart';
 import 'view/screen/PublicPosts/PostDetailPage.dart';
 import 'view/screen/PublicPosts/profileScreen.dart';
@@ -79,7 +80,7 @@ bool _isAppInitialized = false;
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // چون در پس‌زمینه هستیم باید Firebase رو دستی اینیشیالایز کنیم
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  
+
   print("📬 Handling a background message: ${message.messageId}");
   print("   Type: ${message.data['type']}");
   print("   Data: ${message.data}");
@@ -88,7 +89,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (message.data['type'] == 'chat_message') {
     // اینجا یه نمونه موقت از سرویس میسازیم فقط برای نمایش اعلان
     // نکته: چون دسترسی به ProviderScope نداریم، مستقیم کلاس رو صدا میزنیم
-    final notificationService = PushNotificationService(null); 
+    final notificationService = PushNotificationService(null);
     await notificationService.showBackgroundNotification(message);
   }
 }
@@ -100,7 +101,7 @@ void notificationTapBackground(NotificationResponse notificationResponse) {
   print('🌙 notificationTapBackground called');
   print('   Action ID: ${notificationResponse.actionId}');
   print('   Input: ${notificationResponse.input}');
-  
+
   // هندل کردن پاسخ سریع (Reply) در بک‌گراند
   if (notificationResponse.input?.isNotEmpty ?? false) {
     print('📝 دریافت پاسخ در بک‌گراند: ${notificationResponse.input}');
@@ -216,18 +217,19 @@ void main() async {
       }
 
       WidgetsFlutterBinding.ensureInitialized();
-      
+
       // 🔥 این خط حیاتی رو اضافه کن: Background Message Handler
       // باید قبل از initialize Firebase باشه
-      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-      
+      FirebaseMessaging.onBackgroundMessage(
+          _firebaseMessagingBackgroundHandler);
+
       // ✅ تنظیمات Edge-to-Edge برای افکت شیشه‌ای در چت
       SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
         systemNavigationBarColor: Colors.transparent, // مهم برای اندروید ۱۰+
         systemNavigationBarDividerColor: Colors.transparent,
       ));
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-      
+
       _setupPerformanceOptimizations();
       PerformanceMonitor().startMonitoring();
 
@@ -310,6 +312,10 @@ void main() async {
 
       // 3.10. Initialize Retry Queue Service (✅ جدید)
       await RetryQueueService().initialize();
+
+      // 3.11. Initialize Optimized Message Deletion Service (✅ اصلاح شده)
+      // برای اطمینان از اینکه تسک‌های حذف ناتمام مجدداً شروع شوند
+      await OptimizedMessageDeletionService().initialize();
 
       // 4. Voice Cache Service (ضروری)
       final voiceCacheService = VoiceCacheService();
@@ -473,12 +479,13 @@ Future<void> _checkInitialNotification() async {
         await flutterLocalNotificationsPlugin.getNotificationAppLaunchDetails();
 
     if (notificationAppLaunchDetails?.didNotificationLaunchApp ?? false) {
-      final payload = notificationAppLaunchDetails!.notificationResponse?.payload;
-      
+      final payload =
+          notificationAppLaunchDetails!.notificationResponse?.payload;
+
       if (payload != null && payload.isNotEmpty) {
         print('🚀 App opened from Local Notification (Payload found)');
         print('   Payload: $payload');
-        
+
         // منتظر می‌مانیم تا صفحه ساخته شود
         WidgetsBinding.instance.addPostFrameCallback((_) {
           Future.delayed(const Duration(milliseconds: 1000), () {
@@ -498,11 +505,12 @@ Future<void> _checkInitialNotification() async {
 
     // 2. اگر لوکال نبود، فایربیس را چک کن (برای اعلان‌های سیستمی قدیمی)
     if (Firebase.apps.isNotEmpty) {
-      final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+      final initialMessage =
+          await FirebaseMessaging.instance.getInitialMessage();
       if (initialMessage != null) {
         print('🚀 App opened from FCM System Notification');
         print('   Data: ${initialMessage.data}');
-        
+
         WidgetsBinding.instance.addPostFrameCallback((_) {
           Future.delayed(const Duration(milliseconds: 1000), () {
             final context = navigatorKey.currentContext;
@@ -862,7 +870,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       }
 
       print('🚀 تلاش برای ثبت توکن در دیتابیس...');
-      
+
       // فراخوانی RPC
       await supabase.rpc('register_device', params: {
         'p_fcm_token': fcmToken,
@@ -875,7 +883,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       print('   Device Type: $deviceType');
       print('   Device Model: $deviceModel');
       print('   App Version: $appVersion');
-      
+
       // ✅ نمایش پیام موفقیت (سبز) - فقط برای تست، بعدا حذف کن
       if (navigatorKey.currentContext != null && mounted) {
         ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
@@ -886,11 +894,10 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
           ),
         );
       }
-
     } catch (e) {
       print('❌ خطا در ثبت توکن: $e');
       print('Stack trace: ${StackTrace.current}');
-      
+
       // 🔥 نمایش خطا روی صفحه (قرمز)
       if (navigatorKey.currentContext != null && mounted) {
         final errorMessage = e.toString();
@@ -898,7 +905,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
           SnackBar(
             content: Text('خطا در ثبت دستگاه: $errorMessage'),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 10), // ۱۰ ثانیه میمونه تا بتونی بخونی
+            duration:
+                const Duration(seconds: 10), // ۱۰ ثانیه میمونه تا بتونی بخونی
             action: SnackBarAction(
               label: 'کپی',
               textColor: Colors.white,

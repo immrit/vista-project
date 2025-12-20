@@ -77,7 +77,6 @@ import '../screens/telegram_profile_screen.dart';
 // import '../services/complete_deletion_service.dart';
 import '../services/message_actions_service.dart';
 import '../widgets/message_delete_animation.dart';
-import '../../../services/instant_message_deletion.dart';
 
 /// پارامترهای صفحه چت
 class ChatScreenArgs {
@@ -1045,123 +1044,122 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   Future<void> _deleteSelectedMessages() async {
     if (_selectedMessageIds.isEmpty) return;
 
-    // بررسی آیا همه پیام‌های انتخاب شده متعلق به کاربر فعلی هستند
+    // دسترسی به لیست کامل پیام‌ها برای استخراج MessageModel
+    final messagesAsync =
+        ref.read(messagesStreamProvider(widget.args.conversationId));
+    final allMessages = messagesAsync.valueOrNull ?? [];
+
+    // تبدیل ID های انتخاب شده به مدل‌های کامل پیام
+    // (این برای سرویس لازم است تا بتواند URL فایل‌ها را برای حذف پیدا کند)
+    final List<MessageModel> selectedMessagesList = [];
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
     bool allMyMessages = true;
 
-    // دریافت پیام‌ها برای بررسی مالکیت
-    final messagesAsync =
-        ref.read(messagesStreamProvider(widget.args.conversationId));
-    final messages = messagesAsync.valueOrNull ?? [];
-    final selectedMessages =
-        messages.where((m) => _selectedMessageIds.contains(m.id)).toList();
+    for (final id in _selectedMessageIds) {
+      final msg = allMessages.firstWhere(
+        (m) => m.id == id,
+        orElse: () => MessageModel.empty(),
+      );
 
-    for (final msg in selectedMessages) {
-      if (msg.senderId != currentUserId) {
-        allMyMessages = false;
-        break;
+      if (msg.id.isNotEmpty) {
+        selectedMessagesList.add(msg);
+        // بررسی مالکیت
+        if (msg.senderId != currentUserId) {
+          allMyMessages = false;
+        }
       }
     }
 
-    // نمایش دیالوگ حذف
+    if (selectedMessagesList.isEmpty) return;
+
+    // نمایش دیالوگ
     final result = await DeleteMessageDialog.show(
       context,
       isMyMessage: allMyMessages,
-      messageCount: _selectedMessageIds.length,
+      messageCount: selectedMessagesList.length,
     );
 
     if (!result.confirmed) return;
 
-    // ✅ ذخیره پیام‌های انتخاب شده در cache (قبل از حذف)
-    final selectedIdsList = _selectedMessageIds.toList();
-    final messagesAsyncValue =
-        ref.read(messagesStreamProvider(widget.args.conversationId));
-    final allMessages = messagesAsyncValue.valueOrNull ?? [];
+    // ⚡️ Optimistic UI Update (شبیه تلگرام)
 
+    // 1. آماده‌سازی انیمیشن
     setState(() {
-      // ذخیره پیام‌ها در cache برای نمایش انیمیشن
-      for (final messageId in selectedIdsList) {
-        final message = allMessages.firstWhere(
-          (m) => m.id == messageId,
-          orElse: () => MessageModel.empty(),
-        );
-        if (message.id.isNotEmpty) {
-          _deletingMessagesCache[messageId] = message;
-        }
+      for (final msg in selectedMessagesList) {
+        _deletingMessagesCache[msg.id] = msg;
+        _deletingMessageIds.add(msg.id);
       }
-      // اضافه کردن به _deletingMessageIds برای انیمیشن
-      _deletingMessageIds.addAll(selectedIdsList);
     });
 
-    // ✅ حذف فوری از UI با استفاده از instant deletion
-    // این فوراً پیام‌ها را از providers حذف می‌کند و پیام‌های بالایی جایگزین می‌شوند
-    int successCount = 0;
-    for (final messageId in selectedIdsList) {
-      if (!mounted) break;
-      try {
-        // ✅ حذف فوری از UI با instant deletion
-        await ref.deleteMessageInstantly(
-          messageId,
+    // 2. خروج فوری از حالت انتخاب
+    _exitSelectionMode();
+
+    // 3. اجرای انیمیشن پودر شدن
+    _runDeleteAnimations(selectedMessagesList.map((e) => e.id).toList(),
+        deleteForEveryone: result.deleteForEveryone);
+
+    // 4. ارسال به سرویس (بدون await برای UI)
+    // ✅ نکته: اینجا از Provider استفاده می‌کنیم
+    ref.read(chatActionsProvider.notifier).deleteMessages(
+          selectedMessagesList, // 👈 لیست کامل مدل‌ها پاس داده می‌شود
           widget.args.conversationId,
           forEveryone: result.deleteForEveryone,
-          enableAnimation: false, // انیمیشن را خودمان مدیریت می‌کنیم
-          onSuccess: () {
-            successCount++;
-          },
-          onError: () {
-            debugPrint('Error deleting message: $messageId');
-          },
         );
-      } catch (e) {
-        debugPrint('Error in instant deletion: $e');
-      }
-    }
 
-    // ✅ شروع انیمیشن‌ها برای همه پیام‌ها (با تأخیر کوچک برای افکت بصری بهتر)
+    // فیدبک فوری
+    final suffix = result.deleteForEveryone ? ' برای همه' : '';
+    _showSuccessSnackBar(
+        '${selectedMessagesList.length} پیام حذف شد$suffix'.toPersianDigit());
+  }
+
+  /// متد کمکی برای مدیریت انیمیشن‌های حذف
+  Future<void> _runDeleteAnimations(List<String> messageIds,
+      {required bool deleteForEveryone}) async {
     final animationFutures = <Future>[];
-    for (int i = 0; i < selectedIdsList.length; i++) {
-      final messageId = selectedIdsList[i];
+
+    for (int i = 0; i < messageIds.length; i++) {
+      final messageId = messageIds[i];
+
+      // ساخت کنترلر اگر وجود ندارد
+      if (!_deleteAnimationControllers.containsKey(messageId)) {
+        _deleteAnimationControllers[messageId] =
+            MessageDeleteAnimationController();
+      }
+
       final controller = _deleteAnimationControllers[messageId];
       if (controller != null) {
-        // تأخیر کوچک برای هر پیام تا انیمیشن‌ها به صورت متوالی اجرا شوند
-        final delay = Duration(milliseconds: i * 30);
+        // تأخیر بسیار کوتاه آبشاری برای زیبایی بصری (هر پیام 5 میلی‌ثانیه بعد از قبلی)
+        // در حذف‌های زیاد، این عدد باید کم باشد تا UI کند نشود
+        final delay = Duration(milliseconds: i * 5);
         animationFutures.add(
           Future.delayed(delay, () async {
-            await Future.delayed(const Duration(milliseconds: 16));
-            await controller.startDeleteAnimation();
+            if (mounted) {
+              await controller.startDeleteAnimation();
+            }
           }),
         );
       }
     }
 
-    // ✅ اجرای همه انیمیشن‌ها (پیام‌ها از cache نمایش داده می‌شوند)
+    // منتظر پایان انیمیشن‌ها می‌مانیم
     await Future.wait(animationFutures);
 
-    // ✅ بعد از اتمام انیمیشن‌ها، پاک‌سازی
-    Future.delayed(const Duration(milliseconds: 600), () {
-      if (mounted) {
-        setState(() {
-          // حذف از _deletingMessageIds و cache
-          for (final messageId in selectedIdsList) {
-            _deletingMessageIds.remove(messageId);
-            _deleteAnimationControllers.remove(messageId);
-            _deletingMessagesCache.remove(messageId);
-          }
+    // پاکسازی نهایی UI بعد از انیمیشن
+    if (mounted) {
+      setState(() {
+        for (final messageId in messageIds) {
+          _deletingMessageIds.remove(messageId);
+          _deleteAnimationControllers.remove(messageId);
+          _deletingMessagesCache.remove(messageId);
 
-          // بروزرسانی لیست پیام‌های مخفی برای حذف یک‌طرفه
-          if (!result.deleteForEveryone) {
-            _hiddenMessageIds = {..._hiddenMessageIds, ...selectedIdsList};
+          // اضافه کردن به لیست مخفی‌ها فقط برای حذف یک‌طرفه
+          // (برای اطمینان از اینکه اگر هنوز از استریم نیامده، نشان داده نشود)
+          if (!deleteForEveryone) {
+            _hiddenMessageIds = {..._hiddenMessageIds, messageId};
           }
-        });
-      }
-    });
-
-    if (successCount > 0) {
-      final suffix = result.deleteForEveryone ? ' برای همه' : '';
-      _showSuccessSnackBar('$successCount پیام حذف شد$suffix'.toPersianDigit());
+        }
+      });
     }
-
-    _exitSelectionMode();
   }
 
   PreferredSizeWidget _buildAppBar(ChatTheme theme) {

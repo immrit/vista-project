@@ -10,6 +10,7 @@
 // ✅ انیمیشن‌های روان
 //
 
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -32,6 +33,7 @@ class MediaMessageBubble extends StatefulWidget {
   final int? durationSeconds;
   final int? fileSizeBytes;
   final VoidCallback? onTap;
+  final bool isUploading; // وضعیت آپلود
 
   const MediaMessageBubble({
     super.key,
@@ -46,6 +48,7 @@ class MediaMessageBubble extends StatefulWidget {
     this.durationSeconds,
     this.fileSizeBytes,
     this.onTap,
+    this.isUploading = false, // مقدار پیش‌فرض
   });
 
   @override
@@ -107,9 +110,11 @@ class _MediaMessageBubbleState extends State<MediaMessageBubble>
         }
       },
       child: Container(
+        // ۲. محدود کردن ابعاد برای جلوگیری از جمع شدن ویجت
         constraints: BoxConstraints(
           maxWidth: maxWidth,
           maxHeight: height + (widget.caption != null ? 40 : 0),
+          minWidth: 200,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -125,6 +130,7 @@ class _MediaMessageBubbleState extends State<MediaMessageBubble>
               ),
               child: SizedBox(
                 height: height,
+                width: double.infinity, // اطمینان از اینکه عرض کامل را می‌گیرد
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -152,33 +158,66 @@ class _MediaMessageBubbleState extends State<MediaMessageBubble>
   Widget _buildMediaContent(ChatTheme theme) {
     final displayUrl = widget.thumbnailUrl ?? widget.mediaUrl;
 
-    return CachedNetworkImage(
-      imageUrl: displayUrl,
-      fit: BoxFit.cover,
-      placeholder: (context, url) => _buildPlaceholder(theme),
-      errorWidget: (context, url, error) => _buildErrorWidget(theme),
-      imageBuilder: (context, imageProvider) {
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            // عکس بلور شده برای پس‌زمینه
-            ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Image(
+    // ۱. بررسی کنید که لینک تصویر وجود دارد
+    if (displayUrl.isEmpty || displayUrl.trim().isEmpty) {
+      debugPrint('MediaMessageBubble: displayUrl is empty');
+      return _buildErrorWidget(theme, 'لینک تصویر موجود نیست');
+    }
+
+    // تشخیص هوشمند: آیا این یک لینک اینترنتی است یا فایل روی گوشی؟
+    final isNetworkUrl =
+        displayUrl.startsWith('http') || displayUrl.startsWith('https');
+
+    if (!isNetworkUrl) {
+      // 📂 حالت اول: نمایش فایل لوکال (زمانی که عکس را تازه انتخاب کردید و هنوز آپلود نشده)
+      return Image.file(
+        File(displayUrl),
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (context, error, stackTrace) {
+          debugPrint('MediaMessageBubble: Error loading local file: $error');
+          debugPrint('MediaMessageBubble: File path: $displayUrl');
+          debugPrint('MediaMessageBubble: Stack trace: $stackTrace');
+          return _buildErrorWidget(theme, 'خطا در بارگذاری فایل محلی');
+        },
+      );
+    } else {
+      // 🌐 حالت دوم: نمایش عکس از سرور (لینک اینترنتی)
+
+      return CachedNetworkImage(
+        imageUrl: displayUrl,
+        fit: BoxFit.cover,
+        placeholder: (context, url) => _buildPlaceholder(theme),
+        // ۴. نمایش خطا در صورت لود نشدن (بسیار مهم برای دیباگ)
+        errorWidget: (context, url, error) {
+          debugPrint('MediaMessageBubble: Error loading image from URL: $url');
+          debugPrint('MediaMessageBubble: Error details: $error');
+          debugPrint('MediaMessageBubble: Error type: ${error.runtimeType}');
+          return _buildErrorWidget(theme, 'خطا در بارگذاری');
+        },
+        imageBuilder: (context, imageProvider) {
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              // افکت بلور تلگرامی برای پس‌زمینه
+              ImageFiltered(
+                imageFilter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                child: Image(
+                  image: imageProvider,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              // تصویر اصلی
+              Image(
                 image: imageProvider,
                 fit: BoxFit.cover,
               ),
-            ),
-
-            // عکس اصلی
-            Image(
-              image: imageProvider,
-              fit: BoxFit.contain,
-            ),
-          ],
-        );
-      },
-    );
+            ],
+          );
+        },
+      );
+    }
   }
 
   Widget _buildPlaceholder(ChatTheme theme) {
@@ -186,9 +225,7 @@ class _MediaMessageBubbleState extends State<MediaMessageBubble>
       animation: _pulseController,
       builder: (context, child) {
         return Container(
-          color: (widget.isMe
-                  ? theme.myBubbleColor
-                  : theme.otherBubbleColor)
+          color: (widget.isMe ? theme.myBubbleColor : theme.otherBubbleColor)
               .withOpacity(0.3 + (_pulseController.value * 0.2)),
           child: Center(
             child: Icon(
@@ -204,12 +241,18 @@ class _MediaMessageBubbleState extends State<MediaMessageBubble>
     );
   }
 
-  Widget _buildErrorWidget(ChatTheme theme) {
+  Widget _buildErrorWidget(ChatTheme theme, [String? message]) {
     return Container(
+      // ۲. محدود کردن ابعاد برای جلوگیری از جمع شدن ویجت
+      constraints: const BoxConstraints(
+        minHeight: 150, // حداقل ارتفاع
+        minWidth: 200,
+      ),
       color: theme.errorColor.withOpacity(0.1),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               Icons.broken_image_rounded,
@@ -218,11 +261,12 @@ class _MediaMessageBubbleState extends State<MediaMessageBubble>
             ),
             const SizedBox(height: 8),
             Text(
-              'خطا در بارگذاری',
+              message ?? 'خطا در بارگذاری',
               style: TextStyle(
                 color: theme.errorColor,
                 fontSize: 12,
               ),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -231,14 +275,27 @@ class _MediaMessageBubbleState extends State<MediaMessageBubble>
   }
 
   Widget _buildOverlay(ChatTheme theme) {
-    // ویدیو - نمایش دکمه پخش
+    // 1. اگر در حال آپلود است (پیام Pending)
+    if (widget.isUploading) {
+      return Container(
+        color: Colors.black38,
+        child: const Center(
+          child: CircularProgressIndicator(
+            color: Colors.white,
+            strokeWidth: 3,
+          ),
+        ),
+      );
+    }
+
+    // 2. ویدیو - دکمه پخش
     if (widget.mediaType == MediaType.video) {
       return Center(
         child: _buildVideoPlayButton(theme),
       );
     }
 
-    // دانلود
+    // 3. دانلود
     if (_isDownloading) {
       return Container(
         color: Colors.black.withOpacity(0.4),
@@ -364,9 +421,7 @@ class _MediaMessageBubbleState extends State<MediaMessageBubble>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: widget.isMe
-            ? theme.myBubbleColor
-            : theme.otherBubbleColor,
+        color: widget.isMe ? theme.myBubbleColor : theme.otherBubbleColor,
         borderRadius: const BorderRadius.vertical(
           bottom: Radius.circular(12),
         ),

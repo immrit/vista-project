@@ -73,7 +73,7 @@ class ChatRepositoryImpl implements ChatRepository {
       final response = await _supabase
           .from('conversations')
           .select(
-              '*, conversation_participants!inner(*, profiles(username, avatar_url))')
+              '*, conversation_participants!inner(*, profiles!user_id(username, avatar_url))')
           .order('updated_at', ascending: false)
           .limit(50);
 
@@ -148,7 +148,7 @@ class ChatRepositoryImpl implements ChatRepository {
       final response = await _supabase
           .from('conversations')
           .select(
-              '*, conversation_participants!inner(*, profiles(username, avatar_url))')
+              '*, conversation_participants!inner(*, profiles!user_id(username, avatar_url))')
           .eq('id', conversationId)
           .single();
 
@@ -339,7 +339,7 @@ class ChatRepositoryImpl implements ChatRepository {
       final response = await _supabase
           .from('conversations')
           .select(
-              '*, conversation_participants!inner(*, profiles(username, avatar_url))')
+              '*, conversation_participants!inner(*, profiles!user_id(username, avatar_url))')
           .order('updated_at', ascending: false)
           .limit(50);
 
@@ -382,7 +382,7 @@ class ChatRepositoryImpl implements ChatRepository {
         final existingConv = await _supabase
             .from('conversations')
             .select(
-                '*, conversation_participants!inner(*, profiles(username, avatar_url))')
+                '*, conversation_participants!inner(*, profiles!user_id(username, avatar_url))')
             .eq('id', common.first)
             .single();
         return ChatResult.success(
@@ -412,7 +412,7 @@ class ChatRepositoryImpl implements ChatRepository {
       final full = await _supabase
           .from('conversations')
           .select(
-              '*, conversation_participants!inner(*, profiles(username, avatar_url))')
+              '*, conversation_participants!inner(*, profiles!user_id(username, avatar_url))')
           .eq('id', conversationId)
           .single();
       final conv = ConversationModel.fromJson(full, currentUserId: userId);

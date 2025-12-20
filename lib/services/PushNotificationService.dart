@@ -208,50 +208,49 @@ class PushNotificationService {
     }
   }
 
-  /// 🎨 نمایش اعلان حرفه‌ای (MessagingStyle) با عکس پروفایل و دکمه‌ها
+  /// 🎨 نمایش اعلان حرفه‌ای با عکس پروفایل دانلود شده
   Future<void> _showMessagingStyleNotification(
       Map<String, dynamic> data) async {
-    final int notificationId = data['conversation_id']?.hashCode ??
-        DateTime.now().millisecondsSinceEpoch;
-    final String groupKey = data['conversation_id']?.toString() ?? 'default';
+    final String? conversationId = data['conversation_id']?.toString();
+
+    if (conversationId == null || conversationId.isEmpty) return;
+
+    final int notificationId = conversationId.hashCode;
+    final String groupKey = conversationId;
     final String senderName = data['sender_name']?.toString() ?? 'کاربر';
     final String messageContent = data['content']?.toString() ?? 'پیام جدید';
-    // final String? senderAvatarUrl = data['sender_avatar']; // TODO: برای نسخه‌های بعدی
+    final String? senderAvatarUrl = data['sender_avatar'];
 
-    // ✅ ۱. دانلود هوشمند با کش
-    // TODO: Person.icon نیاز به AndroidIcon دارد که ByteArrayAndroidBitmap به آن تبدیل نمی‌شود
-    // برای نسخه‌های بعدی باید از FileUriAndroidBitmap یا روش دیگری استفاده کنیم
-    // ByteArrayAndroidBitmap? personIcon;
-    // if (senderAvatarUrl != null && senderAvatarUrl.isNotEmpty) {
-    //    personIcon = await _downloadIconWithCache(senderAvatarUrl);
-    // }
+    // ✅ ۱. دانلود هوشمند عکس پروفایل
+    ByteArrayAndroidIcon? personIcon;
+    if (senderAvatarUrl != null && senderAvatarUrl.isNotEmpty) {
+      // از همان تابع کش که قبلاً نوشتیم استفاده می‌کنیم
+      personIcon = await _downloadIconWithCache(senderAvatarUrl);
+    }
 
-    // ۲. ساخت آبجکت Person (شخص فرستنده)
+    // ۲. ساخت Person با آیکون دانلود شده
     Person senderPerson = Person(
       name: senderName,
-      // icon: personIcon, // TODO: در نسخه‌های بعدی اضافه می‌شود
+      icon: personIcon, // 🔥 اینجا عکس نمایش داده می‌شود
       key: data['sender_id']?.toString() ?? 'unknown',
       bot: false,
       important: true,
     );
 
-    // ۳. ساخت پیام
     final message = Message(
       messageContent,
       DateTime.now(),
       senderPerson,
     );
 
-    // ۴. تنظیم استایل MessagingStyle
     final style = MessagingStyleInformation(
       senderPerson,
       groupConversation: data['is_group'] == 'true',
-      conversationTitle:
-          data['is_group'] == 'true' ? data['sender_name'] : null,
+      conversationTitle: data['is_group'] == 'true' ? senderName : null,
       messages: [message],
     );
 
-    // ۵. دکمه‌های اکشن (Reply / Read)
+    // ۳. دکمه‌های اکشن (Reply / Read)
     final List<AndroidNotificationAction> actions = [
       AndroidNotificationAction(
         'reply',
@@ -266,8 +265,7 @@ class PushNotificationService {
       AndroidNotificationAction(
         'mark_read',
         'خواندم',
-        icon: const DrawableResourceAndroidBitmap(
-            '@mipmap/ic_launcher'), // آیکون الزامی است
+        icon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
         showsUserInterface: false,
         cancelNotification: true,
       ),
@@ -282,14 +280,17 @@ class PushNotificationService {
       groupKey: groupKey,
       color: const Color(0xFF2196F3),
       actions: actions,
-      // ✅ رفع باگ کرش کردن LED (باید زمان روشن/خاموش مشخص باشد)
       enableLights: true,
       ledColor: const Color(0xFF2196F3),
       ledOnMs: 1000,
       ledOffMs: 500,
       tag: groupKey,
-      category: AndroidNotificationCategory.message, // دسته‌بندی پیام
+      category: AndroidNotificationCategory.message,
     );
+
+    // ۴. ساخت Payload
+    // اگر متد toPayloadJson در مدل ندارید، دستی می‌سازیم:
+    final payloadJson = jsonEncode(data);
 
     await _flutterLocalNotifications.show(
       notificationId,
@@ -297,7 +298,7 @@ class PushNotificationService {
       messageContent,
       NotificationDetails(
           android: androidDetails, iOS: const DarwinNotificationDetails()),
-      payload: jsonEncode(data),
+      payload: payloadJson,
     );
   }
 
@@ -407,15 +408,14 @@ class PushNotificationService {
     return "${url.hashCode}.jpg";
   }
 
-  /// ✅ نسخه مخصوص آیکون نوتیفیکیشن (برای استفاده در نسخه‌های بعدی)
-  /// TODO: برای استفاده در Person.icon نیاز به AndroidIcon داریم
-  // Future<ByteArrayAndroidBitmap?> _downloadIconWithCache(String url) async {
-  //   final bytes = await _downloadFileWithCache(url);
-  //   if (bytes != null) {
-  //     return ByteArrayAndroidBitmap(bytes);
-  //   }
-  //   return null;
-  // }
+  /// ✅ نسخه مخصوص آیکون نوتیفیکیشن (برای استفاده در Person.icon)
+  Future<ByteArrayAndroidIcon?> _downloadIconWithCache(String url) async {
+    final bytes = await _downloadFileWithCache(url);
+    if (bytes != null) {
+      return ByteArrayAndroidIcon(bytes);
+    }
+    return null;
+  }
 
   // -----------------------------------------------------------------------------
 
@@ -521,16 +521,23 @@ class PushNotificationService {
 
   Future<void> handleQuickReply(String conversationId, String replyText) async {
     try {
-      logInfo('📱 در حال ارسال پاسخ سریع: $replyText');
-      if (_supabase != null) {
-        await _supabase!.rpc('send_reply_message', params: {
-          'p_conversation_id': conversationId,
-          'p_content': replyText,
-        });
-        logInfo('✅ پاسخ سریع ارسال شد');
-      } else {
-        logInfo('⚠️ Supabase not available for quick reply');
+      logInfo('📱 در حال ارسال پاسخ سریع به چت: $conversationId');
+      logInfo('   متن پاسخ: $replyText');
+
+      // اطمینان از اینکه کلاینت سوپابیس وجود دارد
+      if (_supabase == null) {
+        logInfo('⚠️ Supabase client not initialized in isolate');
+        // اینجا در حالت واقعی باید دوباره Supabase.initialize کنید اگر نال بود
+        return;
       }
+
+      await _supabase!.rpc('send_reply_message', params: {
+        'p_conversation_id':
+            conversationId, // ✅ مطمئن شوید این ID درست پاس داده می‌شود
+        'p_content': replyText,
+      });
+
+      logInfo('✅ پاسخ سریع با موفقیت ارسال شد');
     } catch (e) {
       logInfo('❌ خطا در ارسال پاسخ سریع: $e');
     }

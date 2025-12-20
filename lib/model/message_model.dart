@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../services/telegram_read_receipt_service.dart';
 import 'message_reaction_ui.dart';
+import '../features/chat/widgets/media_message_bubble.dart';
 
 /// مدل داده‌های پست اشتراک‌گذاری شده
 class SharedPostData {
@@ -78,6 +79,7 @@ class MessageModel {
   final String content;
   final DateTime createdAt;
   final String? attachmentUrl;
+  final String? audioUrl; // URL فایل صوتی (ویس) - از دیتابیس audio_url
   final String? attachmentType;
   final String? attachmentFileName;
   final int? duration; // مدت زمان فایل صوتی (ثانیه)
@@ -118,6 +120,12 @@ class MessageModel {
   final bool deletedGlobally; // حذف د‌و‌طرفه: اگر true باشد، پیام باید برای همه حذف شود
   final List<String> deletedForUserIds; // حذف یک‌طرفه: شامل user_id کاربرانی که پیام را فقط برای خود حذف کرده‌اند
 
+  // ✅ فیلدهای جدید برای نمایش تصاویر با پیشرفت آپلود (مثل تلگرام)
+  final String? localImagePath; // مسیر محلی تصویر (قبل از آپلود)
+  final String? localFilePath; // مسیر محلی فایل (قبل از آپلود)
+  final double? uploadProgress; // پیشرفت آپلود (0.0 تا 1.0)
+  final bool isUploading; // آیا در حال آپلود است؟
+
   // ✅ ValueNotifier برای status - فقط این rebuild میشه
   late final ValueNotifier<MessageDeliveryStatus> _statusNotifier;
 
@@ -138,6 +146,27 @@ class MessageModel {
   /// بررسی اینکه آیا پیام یک پست اشتراک‌گذاری شده است
   bool get isSharedPost =>
       messageType == 'sharedPost' && sharedPostData != null;
+
+  /// تشخیص اینکه آیا پیام حاوی عکس است
+  bool get isImage {
+    if (attachmentType == null && messageType == null) return false;
+    return (attachmentType != null && attachmentType!.startsWith('image')) ||
+        messageType == 'image';
+  }
+
+  /// تشخیص اینکه آیا پیام حاوی ویدیو است
+  bool get isVideo {
+    if (attachmentType == null && messageType == null) return false;
+    return (attachmentType != null && attachmentType!.startsWith('video')) ||
+        messageType == 'video';
+  }
+
+  /// گرفتن نوع مدیا برای ویجت MediaMessageBubble
+  MediaType get mediaTypeEnum {
+    if (isVideo) return MediaType.video;
+    // اگر گیف دارید شرط آن را اضافه کنید
+    return MediaType.image;
+  }
 
   factory MessageModel.empty() {
     return MessageModel(
@@ -215,10 +244,11 @@ class MessageModel {
     required this.senderId,
     required this.content,
     required this.createdAt,
-    this.attachmentUrl,
-    this.attachmentType,
-    this.attachmentFileName,
-    this.duration,
+      this.attachmentUrl,
+      this.audioUrl,
+      this.attachmentType,
+      this.attachmentFileName,
+      this.duration,
     this.isRead = false,
     this.isSent = true,
     this.isDelivered = false,
@@ -245,6 +275,10 @@ class MessageModel {
       this.sharedPostData,
       this.deletedGlobally = false,
       this.deletedForUserIds = const [],
+      this.localImagePath,
+      this.localFilePath,
+      this.uploadProgress,
+      this.isUploading = false,
     }) {
     // ✅ Initialize status notifier با مقدار محاسبه شده
     _statusNotifier = ValueNotifier(_calculateDeliveryStatus());
@@ -346,6 +380,7 @@ class MessageModel {
       isDelivered: json['is_delivered'] as bool? ?? false,
       isSeen: json['is_seen'] as bool? ?? false,
       attachmentUrl: json['attachment_url'],
+      audioUrl: json['audio_url'],
       attachmentType: json['attachment_type'],
       attachmentFileName: json['attachment_file_name'] as String?,
       duration: json['duration'] as int?,
@@ -378,6 +413,12 @@ class MessageModel {
               ?.map((e) => e.toString())
               .toList() ??
           [],
+      localImagePath: json['local_image_path'] as String?,
+      localFilePath: json['local_file_path'] as String?,
+      uploadProgress: json['upload_progress'] != null
+          ? (json['upload_progress'] as num).toDouble()
+          : null,
+      isUploading: json['is_uploading'] as bool? ?? false,
     );
   }
 
@@ -387,6 +428,7 @@ class MessageModel {
     required String senderId,
     required String content,
     String? attachmentUrl,
+    String? audioUrl,
     String? attachmentType,
     String? attachmentFileName,
     int? duration,
@@ -401,6 +443,10 @@ class MessageModel {
     int retryCount = 0,
     String? messageType,
     SharedPostData? sharedPostData,
+    String? localImagePath,
+    String? localFilePath,
+    double? uploadProgress,
+    bool isUploading = false,
   }) {
     return MessageModel(
       id: tempId,
@@ -409,6 +455,7 @@ class MessageModel {
       content: content,
       createdAt: createdAt ?? DateTime.now(),
       attachmentUrl: attachmentUrl,
+      audioUrl: audioUrl,
       attachmentType: attachmentType,
       attachmentFileName: attachmentFileName,
       duration: duration,
@@ -427,6 +474,10 @@ class MessageModel {
       sharedPostData: sharedPostData,
       deletedGlobally: false,
       deletedForUserIds: const [],
+      localImagePath: localImagePath,
+      localFilePath: localFilePath,
+      uploadProgress: uploadProgress,
+      isUploading: isUploading,
     );
   }
 
@@ -437,6 +488,7 @@ class MessageModel {
     String? content,
     DateTime? createdAt,
     String? attachmentUrl,
+    String? audioUrl,
     String? attachmentType,
     String? attachmentFileName,
     int? duration,
@@ -466,6 +518,10 @@ class MessageModel {
     String? originalMessageId,
     bool? deletedGlobally,
     List<String>? deletedForUserIds,
+    String? localImagePath,
+    String? localFilePath,
+    double? uploadProgress,
+    bool? isUploading,
   }) {
     final newModel = MessageModel(
       id: id ?? this.id,
@@ -474,6 +530,7 @@ class MessageModel {
       content: content ?? this.content,
       createdAt: createdAt ?? this.createdAt,
       attachmentUrl: attachmentUrl ?? this.attachmentUrl,
+      audioUrl: audioUrl ?? this.audioUrl,
       attachmentType: attachmentType ?? this.attachmentType,
       attachmentFileName: attachmentFileName ?? this.attachmentFileName,
       duration: duration ?? this.duration,
@@ -504,6 +561,10 @@ class MessageModel {
       originalMessageId: originalMessageId ?? this.originalMessageId,
       deletedGlobally: deletedGlobally ?? this.deletedGlobally,
       deletedForUserIds: deletedForUserIds ?? this.deletedForUserIds,
+      localImagePath: localImagePath ?? this.localImagePath,
+      localFilePath: localFilePath ?? this.localFilePath,
+      uploadProgress: uploadProgress ?? this.uploadProgress,
+      isUploading: isUploading ?? this.isUploading,
     );
     
     // ✅ حفظ ValueNotifier از instance قدیمی به instance جدید
@@ -538,6 +599,7 @@ class MessageModel {
       'content': content,
       'created_at': createdAt.toIso8601String(),
       'attachment_url': attachmentUrl,
+      'audio_url': audioUrl,
       'attachment_type': attachmentType,
       'attachment_file_name': attachmentFileName,
       'duration': duration,
@@ -567,6 +629,10 @@ class MessageModel {
       'original_message_id': originalMessageId,
       'deleted_globally': deletedGlobally,
       'deleted_for_user_ids': deletedForUserIds,
+      'local_image_path': localImagePath,
+      'local_file_path': localFilePath,
+      'upload_progress': uploadProgress,
+      'is_uploading': isUploading,
     };
   }
 }

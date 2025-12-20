@@ -129,20 +129,22 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.black,
-              Colors.black,
-            ],
+    return ScaffoldMessenger(
+      child: Scaffold(
+        resizeToAvoidBottomInset: false,
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black,
+                Colors.black,
+              ],
+            ),
           ),
-        ),
-        child: Stack(
-          children: [
+          child: Stack(
+            children: [
             // لوگو و انیمیشن لودینگ در وسط صفحه
             Center(
               child: Column(
@@ -222,7 +224,8 @@ class _SplashScreenState extends State<SplashScreen> {
                 ],
               ),
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );
