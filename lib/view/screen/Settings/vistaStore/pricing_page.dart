@@ -1,8 +1,7 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'dart:ui';
+import 'package:Vista/services/BazaarPaymentService.dart';
 
 class PricingPage extends ConsumerStatefulWidget {
   const PricingPage({super.key});
@@ -11,615 +10,415 @@ class PricingPage extends ConsumerStatefulWidget {
   ConsumerState<PricingPage> createState() => _PricingPageState();
 }
 
-class _PricingPageState extends ConsumerState<PricingPage>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
-  int _selectedPlanIndex = 1; // پیش‌فرض پلن سالانه (بیشترین صرفه‌جویی)
-  final Uri _premiumRedirectUri = Uri.parse('https://cafevista.ir');
+class _PricingPageState extends ConsumerState<PricingPage> {
+  final BazaarPaymentService _bazaarService = BazaarPaymentService();
+  bool _isBazaarConnected = false;
+  bool _isLoading = true;
+  int _selectedPlanIndex = 1; // پیش‌فرض روی سالانه
 
-  final List<Map<String, dynamic>> _pricingPlans = [
+  final List<Map<String, dynamic>> _plans = [
     {
       'id': 'monthly',
-      'title': 'یک ماهه',
-      'price': 99000,
-      'originalPrice': 99000,
-      'discount': 0,
-      'duration': '۱ ماه',
-      'badge': '🌟 پرطرفدار',
+      'productId': 'android.test.purchased', // شناسه دقیق در بازار
+      'title': 'ماهانه',
+      'price': '۹۹,۰۰۰ تومان',
+      'desc': 'مناسب برای تست',
       'color': Colors.blue,
-      'features': [
-        'تیک طلایی اختصاصی',
-        'پشتیبانی اولویت‌دار',
-        'بدون تبلیغات',
-        'امکانات پیشرفته',
-      ],
     },
     {
       'id': 'yearly',
-      'title': 'یک ساله',
-      'price': 799000,
-      'originalPrice': 1188000,
-      'discount': 33,
-      'duration': '۱۲ ماه',
-      'badge': '💎 بیشترین صرفه‌جویی',
-      'color': Colors.purple,
-      'monthlyPrice': '۶۶ هزار تومان/ماه',
-      'features': [
-        'همه مزایای پلن ماهانه',
-        '۳۳٪ تخفیف',
-        'پروفایل تایید شده',
-        'دسترسی زودهنگام به ویژگی‌های جدید',
-      ],
-      'popular': true,
+      'productId': 'vista_premium_yearly', // شناسه دقیق در بازار
+      'title': 'سالانه',
+      'price': '۷۹۹,۰۰۰ تومان',
+      'desc': '۳۳٪ تخفیف (پیشنهادی)',
+      'color': const Color(0xFF8774E1), // رنگ بنفش تلگرام
+      'badge': 'بصرفه',
+    },
+  ];
+
+  final List<Map<String, dynamic>> _features = [
+    {
+      'icon': Icons.verified,
+      'title': 'تیک طلایی وریفای',
+      'subtitle': 'نمایش نشان تایید در کنار نام شما برای همه کاربران'
+    },
+    {
+      'icon': Icons.speed,
+      'title': 'سرعت دانلود بیشتر',
+      'subtitle': 'بدون محدودیت سرعت در دانلود مدیا و فایل‌ها'
+    },
+    {
+      'icon': Icons.star,
+      'title': 'استیکرهای متحرک اختصاصی',
+      'subtitle': 'دسترسی به مجموعه‌ای از استیکرهای خاص پریمیوم'
+    },
+    {
+      'icon': Icons.badge,
+      'title': 'پروفایل متحرک',
+      'subtitle': 'امکان استفاده از ویدیو برای آواتار پروفایل'
+    },
+    {
+      'icon': Icons.block,
+      'title': 'بدون تبلیغات',
+      'subtitle': 'حذف کامل تبلیغات از تمام بخش‌های برنامه'
     },
   ];
 
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-    _animationController.forward();
+    _initBazaar();
+  }
+
+  Future<void> _initBazaar() async {
+    final connected = await _bazaarService.init();
+    if (mounted) {
+      setState(() {
+        _isBazaarConnected = connected;
+        _isLoading = false;
+      });
+    }
   }
 
   @override
   void dispose() {
-    _animationController.dispose();
     super.dispose();
+  }
+
+  void _onPurchaseTap() async {
+    if (!_isBazaarConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                'خطا: عدم دسترسی به سرویس بازار. لطفاً کافه‌بازار را نصب یا بروزرسانی کنید.')),
+      );
+      // تلاش مجدد برای اتصال
+      _initBazaar();
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    final selectedPlan = _plans[_selectedPlanIndex];
+    final result =
+        await _bazaarService.purchaseSubscription(selectedPlan['productId']);
+
+    setState(() => _isLoading = false);
+
+    if (result['success']) {
+      // رفرش کردن استیت کاربر (مثلاً اگر از ریورپاد برای پروفایل استفاده می‌کنید)
+      // ref.refresh(profileProvider);
+
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('تبریک! 🎉', textAlign: TextAlign.center),
+            content: const Text('اشتراک پریمیوم شما با موفقیت فعال شد.'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('باشه'))
+            ],
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message']),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    // رنگ بنفش تلگرامی
+    const premiumColor = Color(0xFF8774E1);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        body: CustomScrollView(
-          slivers: [
-            // AppBar با افکت گلس
-            SliverAppBar(
-              expandedHeight: 200.h,
-              floating: false,
-              pinned: true,
-              stretch: true,
-              backgroundColor: Colors.transparent,
-              flexibleSpace: FlexibleSpaceBar(
-                background: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.amber.withOpacity(0.3),
-                        Colors.orange.withOpacity(0.2),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                  child: Stack(
+    return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+      body: Stack(
+        children: [
+          CustomScrollView(
+            slivers: [
+              // هدر با افکت نوری
+              SliverAppBar(
+                expandedHeight: 220,
+                pinned: true,
+                backgroundColor:
+                    isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                elevation: 0,
+                leading: IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                flexibleSpace: FlexibleSpaceBar(
+                  background: Stack(
+                    alignment: Alignment.center,
                     children: [
-                      // Blur effect
-                      Positioned.fill(
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                          child: Container(
-                            color: Colors.black.withOpacity(0.1),
+                      // گرادینت پس‌زمینه
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(
+                            center: Alignment.topCenter,
+                            radius: 1.5,
+                            colors: [
+                              premiumColor.withOpacity(0.3),
+                              Colors.transparent,
+                            ],
                           ),
                         ),
                       ),
-                      // محتوا
-                      Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SizedBox(height: 40.h),
-                            // آیکون طلایی
-                            Container(
-                              padding: EdgeInsets.all(16.w),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: LinearGradient(
-                                  colors: [
-                                    Colors.amber,
-                                    Colors.orange,
-                                  ],
+                      // آیکون اصلی (ستاره چرخنده یا مشابه تلگرام)
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const SizedBox(height: 40),
+                          Container(
+                            width: 80,
+                            height: 80,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF6C5CE7), Color(0xFFA29BFE)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: premiumColor.withOpacity(0.5),
+                                  blurRadius: 20,
+                                  spreadRadius: 2,
                                 ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.amber.withOpacity(0.5),
-                                    blurRadius: 20,
-                                    spreadRadius: 5,
-                                  ),
-                                ],
-                              ),
-                              child: Icon(
-                                Icons.verified,
-                                size: 40.sp,
-                                color: Colors.white,
-                              ),
+                              ],
                             ),
-                            SizedBox(height: 16.h),
-                            Text(
-                              'ویستا پریمیوم',
-                              style: TextStyle(
-                                fontSize: 24.sp,
-                                fontWeight: FontWeight.bold,
-                                color: isDark ? Colors.white : Colors.black87,
-                              ),
+                            child: const Icon(Icons.star,
+                                color: Colors.white, size: 40),
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Vista Premium',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              fontFamily:
+                                  'BauhausBold', // فونت انگلیسی اگر دارید
                             ),
-                            SizedBox(height: 8.h),
-                            Text(
-                              'تجربه‌ای فراتر از عادی',
-                              style: TextStyle(
-                                fontSize: 14.sp,
-                                color: isDark ? Colors.white70 : Colors.black54,
-                              ),
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
               ),
-            ),
 
-            // آمار و ارقام جذاب
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 20.h),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildStatItem('۱۰,۰۰۰+', 'کاربر فعال', Icons.people),
-                    _buildStatItem('۳x', 'دیده شدن بیشتر', Icons.visibility),
-                    _buildStatItem('۴.۹⭐', 'رضایت کاربران', Icons.star),
-                  ],
+              // لیست ویژگی‌ها
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 10),
+                      ..._features.map((f) => _buildFeatureItem(f, isDark)),
+                      const SizedBox(height: 30),
+                    ],
+                  ),
                 ),
               ),
-            ),
+            ],
+          ),
 
-            // پلن‌های قیمت‌گذاری
-            SliverPadding(
-              padding: EdgeInsets.symmetric(horizontal: 16.w),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final plan = _pricingPlans[index];
-                    final isSelected = _selectedPlanIndex == index;
-                    final isPopular = plan['popular'] == true;
-
-                    return AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      margin: EdgeInsets.only(bottom: 16.h),
-                      child: GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _selectedPlanIndex = index;
-                          });
-                        },
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20.r),
-                            border: Border.all(
-                              color: isSelected
-                                  ? plan['color']
-                                  : Colors.grey.withOpacity(0.3),
-                              width: isSelected ? 2 : 1,
-                            ),
-                            gradient: isSelected
-                                ? LinearGradient(
-                                    colors: [
-                                      plan['color'].withOpacity(0.1),
-                                      plan['color'].withOpacity(0.05),
-                                    ],
-                                  )
-                                : null,
-                            boxShadow: isSelected
-                                ? [
-                                    BoxShadow(
-                                      color: plan['color'].withOpacity(0.3),
-                                      blurRadius: 20,
-                                      spreadRadius: 2,
-                                    ),
-                                  ]
-                                : null,
-                          ),
-                          child: Stack(
-                            children: [
-                              // Badge برای پلن محبوب
-                              if (isPopular)
-                                Positioned(
-                                  top: 0,
-                                  right: 0,
-                                  child: Container(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: 16.w,
-                                      vertical: 8.h,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        colors: [Colors.orange, Colors.deepOrange],
-                                      ),
-                                      borderRadius: BorderRadius.only(
-                                        topRight: Radius.circular(20.r),
-                                        bottomLeft: Radius.circular(20.r),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      plan['badge'],
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12.sp,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+          // بخش پایینی (انتخاب پلن و دکمه خرید)
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              top: false,
+              child: ClipRRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: (isDark ? Colors.black : Colors.white)
+                          .withOpacity(0.9),
+                      border: Border(
+                          top: BorderSide(color: Colors.grey.withOpacity(0.2))),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // انتخاب پلن‌ها
+                        Row(
+                          children: List.generate(_plans.length, (index) {
+                            final plan = _plans[index];
+                            final isSelected = _selectedPlanIndex == index;
+                            return Expanded(
+                              child: GestureDetector(
+                                onTap: () =>
+                                    setState(() => _selectedPlanIndex = index),
+                                child: Container(
+                                  margin: EdgeInsets.only(
+                                      left: index == 0 ? 8 : 0,
+                                      right: index == 1 ? 8 : 0),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? premiumColor.withOpacity(0.15)
+                                        : Colors.grey.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? premiumColor
+                                          : Colors.transparent,
+                                      width: 2,
                                     ),
                                   ),
-                                ),
-
-                              // محتوای کارت
-                              Padding(
-                                padding: EdgeInsets.all(20.w),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // عنوان و قیمت
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              plan['title'],
-                                              style: TextStyle(
-                                                fontSize: 20.sp,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                            SizedBox(height: 4.h),
-                                            Text(
-                                              plan['duration'],
-                                              style: TextStyle(
-                                                fontSize: 12.sp,
-                                                color: Colors.grey,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.end,
-                                          children: [
-                                            // قیمت با تخفیف
-                                            Row(
-                                              children: [
-                                                if (plan['discount'] > 0) ...[
-                                                  Text(
-                                                    _formatPrice(plan['originalPrice']),
-                                                    style: TextStyle(
-                                                      fontSize: 14.sp,
-                                                      color: Colors.grey,
-                                                      decoration: TextDecoration
-                                                          .lineThrough,
-                                                    ),
-                                                  ),
-                                                  SizedBox(width: 8.w),
-                                                ],
-                                                Text(
-                                                  _formatPrice(plan['price']),
-                                                  style: TextStyle(
-                                                    fontSize: 20.sp,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: plan['color'],
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            // قیمت ماهانه
-                                            if (plan['monthlyPrice'] != null) ...[
-                                              SizedBox(height: 4.h),
-                                              Text(
-                                                plan['monthlyPrice'],
-                                                style: TextStyle(
-                                                  fontSize: 11.sp,
-                                                  color: Colors.grey,
-                                                ),
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-
-                                    SizedBox(height: 16.h),
-
-                                    // Badge تخفیف
-                                    if (plan['discount'] > 0)
-                                      Container(
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: 12.w,
-                                          vertical: 6.h,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.green.withOpacity(0.2),
-                                          borderRadius: BorderRadius.circular(8.r),
-                                        ),
-                                        child: Text(
-                                          '${plan['discount']}٪ تخفیف',
+                                  child: Column(
+                                    children: [
+                                      if (plan['badge'] != null)
+                                        Text(
+                                          plan['badge'],
                                           style: TextStyle(
-                                            color: Colors.green,
-                                            fontSize: 12.sp,
+                                            color: premiumColor,
+                                            fontSize: 10,
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
-                                      ),
-
-                                    SizedBox(height: 16.h),
-
-                                    // لیست ویژگی‌ها
-                                    ...List.generate(
-                                      (plan['features'] as List).length,
-                                      (i) => Padding(
-                                        padding: EdgeInsets.only(bottom: 8.h),
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              Icons.check_circle,
-                                              size: 20.sp,
-                                              color: plan['color'],
-                                            ),
-                                            SizedBox(width: 12.w),
-                                            Expanded(
-                                              child: Text(
-                                                plan['features'][i],
-                                                style: TextStyle(fontSize: 14.sp),
-                                              ),
-                                            ),
-                                          ],
+                                      Text(
+                                        plan['title'],
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                          color: isSelected
+                                              ? premiumColor
+                                              : (isDark
+                                                  ? Colors.white
+                                                  : Colors.black),
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-
-                              // چک مارک برای انتخاب شده
-                              if (isSelected)
-                                Positioned(
-                                  bottom: 16.h,
-                                  left: 16.w,
-                                  child: Container(
-                                    padding: EdgeInsets.all(8.w),
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: plan['color'],
-                                    ),
-                                    child: Icon(
-                                      Icons.check,
-                                      color: Colors.white,
-                                      size: 20.sp,
-                                    ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        plan['price'],
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: isDark
+                                              ? Colors.grey[400]
+                                              : Colors.grey[600],
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                            ],
+                              ),
+                            );
+                          }),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // دکمه اصلی خرید
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            onPressed: _isLoading ? null : _onPurchaseTap,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: premiumColor,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 5,
+                              shadowColor: premiumColor.withOpacity(0.4),
+                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                        color: Colors.white, strokeWidth: 2))
+                                : Text(
+                                    _isBazaarConnected
+                                        ? 'خرید اشتراک ${_plans[_selectedPlanIndex]['title']} - ${_plans[_selectedPlanIndex]['price']}'
+                                        : 'بازار در دسترس نیست',
+                                    style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold),
+                                  ),
                           ),
                         ),
-                      ),
-                    );
-                  },
-                  childCount: _pricingPlans.length,
-                ),
-              ),
-            ),
 
-            // دکمه خرید
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.all(16.w),
-                child: Column(
-                  children: [
-                    // دکمه اصلی
-                    ElevatedButton(
-                      onPressed: () => _handlePurchase(),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            _pricingPlans[_selectedPlanIndex]['color'],
-                        foregroundColor: Colors.white,
-                        minimumSize: Size(double.infinity, 56.h),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16.r),
-                        ),
-                        elevation: 8,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            'خرید پلن ${_pricingPlans[_selectedPlanIndex]['title']}',
-                            style: TextStyle(
-                              fontSize: 16.sp,
-                              fontWeight: FontWeight.bold,
+                        if (!_isBazaarConnected && !_isLoading)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8.0),
+                            child: Text(
+                              'لطفاً مطمئن شوید برنامه "بازار" روی گوشی نصب است.',
+                              style: TextStyle(
+                                  color: Colors.red[300], fontSize: 11),
+                              textAlign: TextAlign.center,
                             ),
                           ),
-                          SizedBox(width: 8.w),
-                          Icon(Icons.arrow_back, size: 20.sp),
-                        ],
-                      ),
-                    ),
-
-                    SizedBox(height: 12.h),
-
-                    // نوار اطمینان
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.verified_user,
-                          size: 16.sp,
-                          color: Colors.green,
-                        ),
-                        SizedBox(width: 8.w),
-                        Text(
-                          'پرداخت امن و مطمئن',
-                          style: TextStyle(
-                            fontSize: 12.sp,
-                            color: Colors.grey,
-                          ),
-                        ),
                       ],
                     ),
-
-                    SizedBox(height: 24.h),
-
-                    // سوالات متداول
-                    _buildFAQSection(),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildStatItem(String value, String label, IconData icon) {
-    return Column(
-      children: [
-        Container(
-          padding: EdgeInsets.all(12.w),
-          decoration: BoxDecoration(
-            color: Colors.amber.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12.r),
-          ),
-          child: Icon(
-            icon,
-            color: Colors.amber,
-            size: 24.sp,
-          ),
-        ),
-        SizedBox(height: 8.h),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 18.sp,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        SizedBox(height: 4.h),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11.sp,
-            color: Colors.grey,
-          ),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFAQSection() {
-    return ExpansionTile(
-      title: Text(
-        'سوالات متداول',
-        style: TextStyle(
-          fontSize: 16.sp,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-      children: [
-        _buildFAQItem(
-          'آیا می‌توانم پلن را تغییر دهم؟',
-          'بله، در هر زمان می‌توانید پلن خود را ارتقا دهید.',
-        ),
-        _buildFAQItem(
-          'آیا امکان بازگشت وجه وجود دارد؟',
-          'در صورت عدم رضایت تا ۷ روز امکان بازگشت وجه دارید.',
-        ),
-        _buildFAQItem(
-          'تیک طلایی چه مزایایی دارد؟',
-          'پست‌های شما ۳ برابر بیشتر دیده می‌شوند و پشتیبانی اختصاصی دارید.',
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFAQItem(String question, String answer) {
+  Widget _buildFeatureItem(Map<String, dynamic> feature, bool isDark) {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Row(
         children: [
-          Text(
-            question,
-            style: TextStyle(
-              fontSize: 14.sp,
-              fontWeight: FontWeight.w600,
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF8774E1).withOpacity(0.1),
+              shape: BoxShape.circle,
             ),
+            child:
+                Icon(feature['icon'], color: const Color(0xFF8774E1), size: 24),
           ),
-          SizedBox(height: 4.h),
-          Text(
-            answer,
-            style: TextStyle(
-              fontSize: 12.sp,
-              color: Colors.grey,
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  feature['title'],
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  feature['subtitle'],
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
-  }
-
-  String _formatPrice(int price) {
-    return '${(price / 1000).toStringAsFixed(0)} هزار تومان';
-  }
-
-  Future<void> _handlePurchase() async {
-    final selectedPlan = _pricingPlans[_selectedPlanIndex];
-
-    // نمایش دیالوگ تایید
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('انتقال به وب‌سایت ویستا'),
-        content: Text(
-          'برای تکمیل خرید پلن ${selectedPlan['title']} به وب‌سایت cafevista.ir هدایت می‌شوید. ادامه می‌دهید؟',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('انصراف'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('ادامه'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      await _redirectToPremiumSite();
-    }
-  }
-
-  Future<void> _redirectToPremiumSite() async {
-    if (!await launchUrl(_premiumRedirectUri,
-        mode: LaunchMode.externalApplication)) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('امکان باز کردن سایت ویستا وجود ندارد.'),
-        ),
-      );
-    }
   }
 }
-

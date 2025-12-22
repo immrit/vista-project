@@ -1,3 +1,4 @@
+
 plugins {
     id "com.android.application"
     id "kotlin-android"
@@ -62,4 +63,7 @@ dependencies {
     // Add Google Play Core for Flutter deferred components references used by Flutter embedding
     implementation 'com.google.android.play:core:1.10.3'
     implementation 'com.google.android.play:core-ktx:1.8.1'
+    // 🔴 این خط را حتما اضافه کنید تا نسخه جدید و بدون باگ بازار استفاده شود
+    implementation "com.github.cafebazaar.Poolakey:poolakey:2.2.0"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
 }

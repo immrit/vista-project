@@ -280,7 +280,16 @@ class _ImprovedAnimatedMessageBubbleState
   }
 
   Widget _buildMessageBubble(ChatTheme theme) {
+    // تشخیص میدیم که آیا پیام مدیا (عکس/ویدیو) هست یا نه
+    final isMedia = (widget.attachmentType == 'image' ||
+            widget.attachmentType == 'video' ||
+            widget.message?.attachmentType == 'image' ||
+            widget.message?.attachmentType == 'video') &&
+        widget.attachmentUrl != null;
+
     return Container(
+      // برای مدیا، ClipRRect رو اعمال میکنیم تا گوشه‌ها گرد بشن
+      clipBehavior: isMedia ? Clip.antiAlias : Clip.none,
       decoration: BoxDecoration(
         color: widget.isMe ? theme.myBubbleColor : theme.otherBubbleColor,
         borderRadius: _getBorderRadius(),
@@ -297,7 +306,11 @@ class _ImprovedAnimatedMessageBubbleState
         children: [
           if (widget.isForwarded) _buildForwardHeader(theme),
           if (widget.replyToContent != null) _buildReplySection(theme),
+          
+          // محتوای اصلی
           _buildContent(theme),
+          
+          // برای مدیا، ری‌اکشن‌ها رو روی عکس هندل میکنیم یا پایینش (تلگرام پایینش میذاره)
           if (widget.reactions.isNotEmpty) _buildReactionsSection(theme),
         ],
       ),
@@ -450,23 +463,29 @@ class _ImprovedAnimatedMessageBubbleState
       );
     }
 
-    // 3. Image & Video message
+    // 3. Image & Video message (Updated)
     if ((widget.attachmentType == 'image' ||
             widget.attachmentType == 'video' ||
             widget.message?.attachmentType == 'image' ||
             widget.message?.attachmentType == 'video') &&
         widget.attachmentUrl != null &&
         widget.attachmentUrl!.isNotEmpty) {
+      
       final isVideo = widget.attachmentType == 'video' ||
           widget.message?.attachmentType == 'video';
 
+      // ✅ تغییر مهم: مدیا بابل رو مستقیم برمی‌گردونیم بدون پدینگ اضافه
       return MediaMessageBubble(
+        message: widget.message, // پاس دادن کل مدل پیام برای دسترسی به وضعیت‌ها
         mediaUrl: widget.attachmentUrl!,
         mediaType: isVideo ? MediaType.video : MediaType.image,
         isMe: widget.isMe,
         time: widget.time,
         caption: widget.content.isNotEmpty ? widget.content : null,
         durationSeconds: widget.duration,
+        // پاس دادن وضعیت آپلود
+        isUploading: widget.status == MessageStatus.pending || 
+                     (widget.message?.isUploading ?? false),
       );
     }
 

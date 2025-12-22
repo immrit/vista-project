@@ -117,8 +117,10 @@ class MessageModel {
   final SharedPostData? sharedPostData; // داده‌های پست اشتراک‌گذاری شده
 
   // فیلدهای حذف پیام (مشابه تلگرام)
-  final bool deletedGlobally; // حذف د‌و‌طرفه: اگر true باشد، پیام باید برای همه حذف شود
-  final List<String> deletedForUserIds; // حذف یک‌طرفه: شامل user_id کاربرانی که پیام را فقط برای خود حذف کرده‌اند
+  final bool
+      deletedGlobally; // حذف د‌و‌طرفه: اگر true باشد، پیام باید برای همه حذف شود
+  final List<String>
+      deletedForUserIds; // حذف یک‌طرفه: شامل user_id کاربرانی که پیام را فقط برای خود حذف کرده‌اند
 
   // ✅ فیلدهای جدید برای نمایش تصاویر با پیشرفت آپلود (مثل تلگرام)
   final String? localImagePath; // مسیر محلی تصویر (قبل از آپلود)
@@ -244,11 +246,11 @@ class MessageModel {
     required this.senderId,
     required this.content,
     required this.createdAt,
-      this.attachmentUrl,
-      this.audioUrl,
-      this.attachmentType,
-      this.attachmentFileName,
-      this.duration,
+    this.attachmentUrl,
+    this.audioUrl,
+    this.attachmentType,
+    this.attachmentFileName,
+    this.duration,
     this.isRead = false,
     this.isSent = true,
     this.isDelivered = false,
@@ -270,26 +272,26 @@ class MessageModel {
     this.forwardedFromSenderName,
     this.originalMessageId,
     this.typingUsers,
-      this.reactions = const {},
-      this.messageType,
-      this.sharedPostData,
-      this.deletedGlobally = false,
-      this.deletedForUserIds = const [],
-      this.localImagePath,
-      this.localFilePath,
-      this.uploadProgress,
-      this.isUploading = false,
-    }) {
+    this.reactions = const {},
+    this.messageType,
+    this.sharedPostData,
+    this.deletedGlobally = false,
+    this.deletedForUserIds = const [],
+    this.localImagePath,
+    this.localFilePath,
+    this.uploadProgress,
+    this.isUploading = false,
+  }) {
     // ✅ Initialize status notifier با مقدار محاسبه شده
     _statusNotifier = ValueNotifier(_calculateDeliveryStatus());
   }
-  
+
   // ✅ Getter برای ValueNotifier
   ValueNotifier<MessageDeliveryStatus> get statusNotifier => _statusNotifier;
-  
+
   // ✅ Getter برای مقدار فعلی status
   MessageDeliveryStatus get deliveryStatus => _statusNotifier.value;
-  
+
   // ✅ محاسبه MessageDeliveryStatus از فیلدهای status
   MessageDeliveryStatus _calculateDeliveryStatus() {
     if (isFailed == true) {
@@ -309,7 +311,7 @@ class MessageModel {
     }
     return MessageDeliveryStatus.pending;
   }
-  
+
   // ✅ متد برای آپدیت status - فقط ValueNotifier رو trigger میکنه
   void updateStatus({
     bool? pending,
@@ -326,13 +328,13 @@ class MessageModel {
       sent: sent ?? isSent,
       delivered: delivered ?? isDelivered,
     );
-    
+
     // فقط اگر تغییر کرده باشه، ValueNotifier رو آپدیت کن
     if (_statusNotifier.value != newStatus) {
       _statusNotifier.value = newStatus;
     }
   }
-  
+
   // ✅ محاسبه status از فیلدها
   MessageDeliveryStatus _calculateDeliveryStatusFromFields({
     required bool pending,
@@ -358,7 +360,7 @@ class MessageModel {
     }
     return MessageDeliveryStatus.pending;
   }
-  
+
   // ✅ Dispose کردن notifier (برای جلوگیری از memory leak)
   void dispose() {
     _statusNotifier.dispose();
@@ -370,8 +372,9 @@ class MessageModel {
         json['conversation_id'] ?? json['conversations_id'] ?? '';
 
     // ✅ بهینه‌سازی: پارس کردن دیتا همینجا (فقط یکبار)
-    SharedPostData? parsedSharedPost = _parseSharedPostData(json['shared_post_data']);
-    
+    SharedPostData? parsedSharedPost =
+        _parseSharedPostData(json['shared_post_data']);
+
     // اگر shared_post_data خالی بود ولی content فرمت JSON داشت (پشتیبانی از ورژن‌های قدیمی)
     if (parsedSharedPost == null) {
       final content = json['content'] as String? ?? '';
@@ -383,16 +386,16 @@ class MessageModel {
             parsedSharedPost = SharedPostData.fromJson({
               'post_id': contentJson['postId'] ?? '',
               'post_content': contentJson['content'] ?? '',
-              'post_image_url': contentJson['mediaUrls'] != null && (contentJson['mediaUrls'] as List).isNotEmpty
+              'post_image_url': contentJson['mediaUrls'] != null &&
+                      (contentJson['mediaUrls'] as List).isNotEmpty
                   ? (contentJson['mediaUrls'] as List).first
                   : null,
               'post_video_url': null,
               'post_author_name': contentJson['authorName'] ?? '',
               'post_author_username': contentJson['authorUsername'] ?? '',
               'post_author_avatar': contentJson['authorAvatar'],
-              'post_created_at': contentJson['createdAt'] != null
-                  ? contentJson['createdAt']
-                  : DateTime.now().toIso8601String(),
+              'post_created_at':
+                  contentJson['createdAt'] ?? DateTime.now().toIso8601String(),
               'like_count': contentJson['likesCount'] ?? 0,
               'comment_count': contentJson['commentsCount'] ?? 0,
               'is_verified': false,
@@ -603,14 +606,17 @@ class MessageModel {
       uploadProgress: uploadProgress ?? this.uploadProgress,
       isUploading: isUploading ?? this.isUploading,
     );
-    
+
     // ✅ حفظ ValueNotifier از instance قدیمی به instance جدید
     // این باعث میشه که ValueListenableBuilder listener خودش رو از دست نده
     newModel._statusNotifier.value = _statusNotifier.value;
-    
+
     // ✅ اگر status fields تغییر کرده، آپدیت کن
-    if (isPending != null || isSeen != null || isFailed != null || 
-        isSent != null || isDelivered != null) {
+    if (isPending != null ||
+        isSeen != null ||
+        isFailed != null ||
+        isSent != null ||
+        isDelivered != null) {
       newModel.updateStatus(
         pending: isPending ?? this.isPending,
         seen: isSeen ?? this.isSeen,
@@ -619,7 +625,7 @@ class MessageModel {
         delivered: isDelivered ?? this.isDelivered,
       );
     }
-    
+
     return newModel;
   }
 

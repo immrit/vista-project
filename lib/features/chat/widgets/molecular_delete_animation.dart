@@ -4,7 +4,6 @@
 // استفاده از ShaderMask و ترکیب انیمیشن‌ها برای ایجاد افکت حرفه‌ای
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 class MolecularDeleteAnimation extends StatefulWidget {
   final Widget child;
@@ -21,7 +20,8 @@ class MolecularDeleteAnimation extends StatefulWidget {
   });
 
   @override
-  State<MolecularDeleteAnimation> createState() => _MolecularDeleteAnimationState();
+  State<MolecularDeleteAnimation> createState() =>
+      _MolecularDeleteAnimationState();
 }
 
 class _MolecularDeleteAnimationState extends State<MolecularDeleteAnimation>
@@ -118,4 +118,3 @@ class _MolecularDeleteAnimationState extends State<MolecularDeleteAnimation>
     );
   }
 }
-

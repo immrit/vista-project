@@ -14,7 +14,6 @@
 
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
@@ -138,7 +137,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // Floating date
   bool _isScrolling = false;
   DateTime? _currentVisibleDate;
-  
+
   // ✅ برای جلوگیری از اجرای منطق در build
   String? _lastFirstMessageId;
 
@@ -382,7 +381,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     // 1. Pagination Logic
     final maxScroll = _scrollController.position.maxScrollExtent;
     final currentScroll = _scrollController.position.pixels;
-    
+
     // وقتی به ۲۰۰ پیکسلی انتهای لیست (بالا) رسیدیم
     final isNearTop = currentScroll >= maxScroll - 200;
 
@@ -414,9 +413,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           _isScrolling = false;
           // آپدیت تاریخ فقط وقتی اسکرول متوقف شد
           if (currentScroll < 100) {
-             _updateDateForBottom(); 
+            _updateDateForBottom();
           } else {
-             _updateVisibleDate();
+            _updateVisibleDate();
           }
         });
       }
@@ -746,10 +745,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   right: 0,
                   bottom: (bottomInset < 0 ? 0.0 : bottomInset),
                   height: bottomInset > 0
-                      ? 25.0 
-                      : (safePaddingBottom > 0 ? safePaddingBottom + 55.0 : 75.0),
+                      ? 25.0
+                      : (safePaddingBottom > 0
+                          ? safePaddingBottom + 55.0
+                          : 75.0),
                   // ✅ جایگزین با این (بدون ClipRect و BackdropFilter):
-                  child: IgnorePointer( // برای اینکه کلیک‌ها ازش رد بشه
+                  child: IgnorePointer(
+                    // برای اینکه کلیک‌ها ازش رد بشه
                     child: Container(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
@@ -757,7 +759,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                           end: Alignment.bottomCenter,
                           colors: [
                             theme.backgroundColor.withOpacity(0.0), // شفاف
-                            theme.backgroundColor.withOpacity(0.8), // رنگ پس‌زمینه
+                            theme.backgroundColor
+                                .withOpacity(0.8), // رنگ پس‌زمینه
                             theme.backgroundColor, // کاملا پر
                           ],
                           stops: const [0.0, 0.6, 1.0],
@@ -1064,7 +1067,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _showSuccessSnackBar(
         '${messagesToDelete.length} پیام حذف شد$suffix'.toPersianDigit());
   }
-
 
   PreferredSizeWidget _buildAppBar(ChatTheme theme) {
     // Selection mode AppBar
@@ -1540,8 +1542,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                               } else {
                                 // ✅ حالا itemContext یک RenderBox است (چون دور Row پیچیده شده)
                                 // و دیگر خطای RenderSliverList نمی‌دهد.
-                                _showTelegramContextMenu(
-                                    itemContext, message);
+                                _showTelegramContextMenu(itemContext, message);
                               }
                             },
                             child: Padding(
@@ -1555,16 +1556,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                   // Selection checkbox
                                   if (_isSelectionMode)
                                     Padding(
-                                      padding:
-                                          const EdgeInsets.only(right: 8),
+                                      padding: const EdgeInsets.only(right: 8),
                                       child: AnimatedScale(
                                         scale: _isSelectionMode ? 1.0 : 0.0,
                                         duration:
                                             const Duration(milliseconds: 200),
                                         child: GestureDetector(
-                                          onTap: () =>
-                                              _toggleMessageSelection(
-                                                  message.id),
+                                          onTap: () => _toggleMessageSelection(
+                                              message.id),
                                           child: Container(
                                             width: 24,
                                             height: 24,
@@ -1572,8 +1571,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                               shape: BoxShape.circle,
                                               color: _selectedMessageIds
                                                       .contains(message.id)
-                                                  ? context.chatTheme
-                                                      .sendButtonColor
+                                                  ? context
+                                                      .chatTheme.sendButtonColor
                                                   : Colors.transparent,
                                               border: Border.all(
                                                 color: _selectedMessageIds
@@ -1610,8 +1609,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                               isMe: isMe,
                                               onReply: () {
                                                 setState(() =>
-                                                    _replyToMessage =
-                                                        message);
+                                                    _replyToMessage = message);
                                                 _focusNode.requestFocus();
                                               },
                                               child: _buildBubbleContent(
@@ -2214,32 +2212,52 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
   }
 
-  /// آپلود فایل با progress
+  /// آپلود فایل با progress - اصلاح شده
+  /// این متد فایل ورودی را مستقیماً آپلود می‌کند بدون باز کردن picker
   Future<String?> _uploadWithProgress(
     File file,
     String type,
     ChatAttachmentService service,
   ) async {
     try {
+      AttachmentResult result;
+
       switch (type) {
         case 'image':
-          final result = await service.pickImageFromGallery(
+          // ✅ اصلاح: به جای pickImageFromGallery از متد جدید uploadImage استفاده کن
+          result = await service.uploadImage(
+            file: file,
             conversationId: widget.args.conversationId,
+            onProgress:
+                null, // اگر می‌خواهی progress نشان بدی باید callback اضافه کنی
           );
-          return result.url;
+          break;
+
         case 'video':
-          final result = await service.pickVideoFromGallery(
+          // ✅ برای ویدیو از متد جدید uploadVideo استفاده می‌کنیم
+          result = await service.uploadVideo(
+            file: file,
             conversationId: widget.args.conversationId,
+            onProgress: null,
           );
-          return result.url;
+          break;
+
         default:
-          final result = await service.pickFile(
+          // ✅ برای فایل‌های عمومی از متد جدید uploadFile استفاده می‌کنیم
+          result = await service.uploadFile(
+            file: file,
             conversationId: widget.args.conversationId,
+            onProgress: null,
           );
-          return result.url;
+          break;
       }
+
+      return result.success ? result.url : null;
     } catch (e) {
-      _showErrorSnackBar('خطا در آپلود فایل');
+      debugPrint('❌ خطا در آپلود فایل: $e');
+      if (mounted) {
+        _showErrorSnackBar('خطا در آپلود فایل');
+      }
       return null;
     }
   }
@@ -2505,8 +2523,22 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     );
   }
 
-  /// ✅ ساخت Widget پیام برای Preview
+  /// ✅ اصلاح شده: ساخت Widget پیام برای Preview
+  /// اگر پیام پست است، کارت گرافیکی پست را نمایش می‌دهد (نه کد JSON)
   Widget _buildMessagePreviewWidget(MessageModel message, bool isMe) {
+    // 1. اگر پیام پست است، ویجت پست را برگردان تا کارت گرافیکی دیده شود نه کد JSON
+    if (message.isSharedPost ||
+        message.sharedPostData != null ||
+        message.messageType == 'post' ||
+        message.messageType == 'shared_post' ||
+        message.attachmentType == 'post') {
+      // استفاده از IgnorePointer برای اینکه دکمه‌های پست در حالت پیش‌نمایش کار نکنند
+      return IgnorePointer(
+        child: _buildPostMessageBubble(message, isMe),
+      );
+    }
+
+    // 2. برای سایر پیام‌ها همان حباب معمولی
     return ImprovedAnimatedMessageBubble(
       key: ValueKey('preview_${message.id}'),
       messageId: message.id,
@@ -2767,7 +2799,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     // ✅ فراخوانی سرویس حذف تضمینی
     final deleteService = ref.read(reliableDeleteServiceProvider);
-    
+
     // نکته مهم: اینجا await نمی‌گذاریم تا UI بلاک نشود
     deleteService.deleteMessage(
       messageId: message.id,

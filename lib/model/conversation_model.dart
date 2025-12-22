@@ -1,3 +1,4 @@
+import 'dart:convert'; // ✅ اضافه شد برای jsonDecode
 import '../security/logging_utility.dart';
 import '../services/telegram_read_receipt_service.dart';
 
@@ -275,7 +276,8 @@ class ConversationModel {
     return lastMessage;
   }
 
-  /// نمایش پیش‌نمایش بر اساس نوع پیام
+  /// ✅ اصلاح شده: نمایش پیش‌نمایش بر اساس نوع پیام
+  /// برای پست‌ها، JSON را پارس می‌کند و نام نویسنده را استخراج می‌کند
   String _getMessageTypePreview(String type) {
     switch (type.toLowerCase()) {
       case 'voice':
@@ -288,7 +290,26 @@ class ConversationModel {
         return '🎬 ویدیو';
       case 'post':
       case 'shared_post':
-        return '📮 پست';
+        // ✅ لاجیک جدید: استخراج نام نویسنده از JSON
+        if (lastMessage != null && lastMessage!.isNotEmpty) {
+          try {
+            // تلاش برای دیکد کردن JSON
+            if (lastMessage!.trim().startsWith('{')) {
+              final jsonMap = jsonDecode(lastMessage!);
+              final authorName = jsonMap['post_author_name'] ?? 
+                               jsonMap['authorName'] ?? 
+                               jsonMap['postAuthorName'];
+              
+              if (authorName != null && authorName.toString().isNotEmpty) {
+                return '📮 پست از $authorName';
+              }
+            }
+          } catch (e) {
+            // اگر خطا داد، یعنی JSON نیست یا فرمت اشتباه است
+            logInfo('⚠️ خطا در پارس کردن JSON پست: $e');
+          }
+        }
+        return '📮 پست اشتراک‌گذاری شده'; // متن پیش‌فرض تمیز
       case 'file':
       case 'document':
         return '📎 فایل';

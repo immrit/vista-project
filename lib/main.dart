@@ -883,17 +883,6 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       print('   Device Type: $deviceType');
       print('   Device Model: $deviceModel');
       print('   App Version: $appVersion');
-
-      // ✅ نمایش پیام موفقیت (سبز) - فقط برای تست، بعدا حذف کن
-      if (navigatorKey.currentContext != null && mounted) {
-        ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
-          const SnackBar(
-            content: Text('✅ دستگاه با موفقیت در سرور ثبت شد'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
     } catch (e) {
       print('❌ خطا در ثبت توکن: $e');
       print('Stack trace: ${StackTrace.current}');

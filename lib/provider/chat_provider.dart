@@ -26,7 +26,13 @@ final conversationsProvider =
 // استریم مکالمات برای بروزرسانی خودکار
 final conversationsStreamProvider =
     StreamProvider.autoDispose<List<ConversationModel>>((ref) {
-  final userId = supabase.auth.currentUser!.id;
+  final user = supabase.auth.currentUser;
+  if (user == null) {
+    logInfo(
+        '⚠️ ChatProvider: User is null in conversationsStreamProvider, returning empty stream.');
+    return Stream.value([]);
+  }
+  final userId = user.id;
   final conversationCache = UnifiedConversationCacheService();
 
   // استریم تغییرات مکالمات فقط برای userId جاری
@@ -72,7 +78,13 @@ final messagesProvider = FutureProvider.family
     .autoDispose<List<MessageModel>, String>((ref, conversationId) async {
   final chatService = ref.watch(chatServiceProvider);
   final messageCache = UnifiedMessageCacheService();
-  final userId = supabase.auth.currentUser!.id;
+  final user = supabase.auth.currentUser;
+  if (user == null) {
+    logInfo(
+        '⚠️ ChatProvider: User is null in messagesProvider, returning empty list.');
+    return [];
+  }
+  final userId = user.id;
 
   // ابتدا پیام‌های کش را بازگردان
   final cachedMessages =
@@ -195,7 +207,15 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      final userId = supabase.auth.currentUser!.id;
+      final user = supabase.auth.currentUser;
+      if (user == null) {
+        logInfo(
+            '⚠️ ChatProvider: User is null in _loadInitialMessages, skipping.');
+        state =
+            state.copyWith(isLoading: false, error: 'User is not logged in');
+        return;
+      }
+      final userId = user.id;
 
       // استفاده از Future.microtask برای جلوگیری از blocking UI
       Future.microtask(() async {
@@ -305,7 +325,13 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
         .listen((jsonList) {
           if (_disposed) return;
 
-          final userId = supabase.auth.currentUser!.id;
+          final user = supabase.auth.currentUser;
+          if (user == null) {
+            logInfo(
+                '⚠️ ChatProvider: User is null in _setupRealTimeListener, skipping.');
+            return;
+          }
+          final userId = user.id;
           final newMessages = jsonList
               .map((json) => MessageModel.fromJson(json, currentUserId: userId))
               .where((msg) => !msg.id.startsWith('temp_'))
@@ -440,7 +466,13 @@ class LazyMessagesNotifier extends StateNotifier<LazyMessagesState> {
 // استریم پیام‌های یک مکالمه (real-time, بدون پیام temp برای مقصد)
 final messagesStreamProvider = StreamProvider.family
     .autoDispose<List<MessageModel>, String>((ref, conversationId) async* {
-  final userId = supabase.auth.currentUser!.id;
+  final user = supabase.auth.currentUser;
+  if (user == null) {
+    logInfo(
+        '⚠️ ChatProvider: User is null in messagesStreamProvider, returning empty stream.');
+    return;
+  }
+  final userId = user.id;
   final cache = UnifiedMessageCacheService();
   final chatService = ref.watch(chatServiceProvider);
 
@@ -684,7 +716,12 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
 
     // بررسی وجود پیام تکراری در حال ارسال با الگوریتم بهتر
     final messages = ref.read(conversationMessagesProvider(conversationId));
-    final currentUserId = supabase.auth.currentUser!.id;
+    final currentUser = supabase.auth.currentUser;
+    if (currentUser == null) {
+      logInfo('⚠️ ChatProvider: User is null in sendMessage, cannot send.');
+      return;
+    }
+    final currentUserId = currentUser.id;
 
     // بررسی پیام‌های temp که در حال ارسال هستند
     final existingTempMessages = messages.where((m) =>
@@ -723,7 +760,7 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
     final contentHash = content.hashCode;
     final random = (timestamp % 10000).toString().padLeft(4, '0');
     final tempId = 'temp_${timestamp}_${contentHash}_$random';
-    final currentUser = supabase.auth.currentUser!;
+    // currentUser already checked above
 
     final tempMessage = MessageModel.temporary(
       tempId: tempId,
@@ -1007,7 +1044,13 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
 
       if (messageIndex != -1) {
         final message = currentMessages[messageIndex];
-        final currentUserId = supabase.auth.currentUser!.id;
+        final currentUser = supabase.auth.currentUser;
+        if (currentUser == null) {
+          logInfo(
+              '⚠️ ChatProvider: User is null in toggleReaction, cannot toggle.');
+          return;
+        }
+        final currentUserId = currentUser.id;
 
         // ✅ کپی عمیق از reactions
         final newReactions = Map<String, List<String>>.from(message.reactions
@@ -1049,7 +1092,13 @@ class MessageNotifier extends StateNotifier<AsyncValue<void>> {
         // تلاش برای به‌روزرسانی chatScreenProvider اگر موجود باشد
         try {
           // پیدا کردن otherUserId از conversation
-          final currentUserId = supabase.auth.currentUser!.id;
+          final currentUser = supabase.auth.currentUser;
+          if (currentUser == null) {
+            logInfo(
+                '⚠️ ChatProvider: User is null in toggleReaction, skipping.');
+            return;
+          }
+          final currentUserId = currentUser.id;
           String? otherUserId;
 
           if (message.senderId == currentUserId) {
@@ -1739,7 +1788,13 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
   Future<void> _init() async {
     if (_disposed) return;
 
-    final userId = supabase.auth.currentUser!.id;
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      logInfo(
+          '⚠️ ConversationMessagesNotifier: User is null in _init, skipping.');
+      return;
+    }
+    final userId = user.id;
     final cached =
         await _cacheService.getConversationMessages(conversationId, userId);
     if (!_disposed) {
@@ -1804,7 +1859,13 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
     if (!message.id.startsWith('temp_')) {
       print("خطای منطقی: پیام موقت باید با temp_ شروع شود:  [31m");
     }
-    final userId = supabase.auth.currentUser!.id;
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      logInfo(
+          '⚠️ ConversationMessagesNotifier: User is null in addTempMessage, skipping cache.');
+      return;
+    }
+    final userId = user.id;
     _cacheService.cacheMessage(
         message, userId); // پیام موقت را با همان ID موقت کش کن
   }
@@ -1816,7 +1877,13 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
     ];
     state = _filterTempDuplicates(newState);
     // ابتدا پیام موقت را از کش حذف کن
-    final userId = supabase.auth.currentUser!.id;
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      logInfo(
+          '⚠️ ConversationMessagesNotifier: User is null in replaceTempWithReal, skipping cache.');
+      return;
+    }
+    final userId = user.id;
     _cacheService.clearMessage(conversationId, tempId, userId).then((_) {
       // سپس پیام واقعی را کش کن
       _cacheService.cacheMessage(realMessage, userId);
@@ -1849,7 +1916,13 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
     }).toList();
     state =
         newState; // این setter مرتب‌سازی و فیلتر _filterTempDuplicates را اعمال می‌کند
-    final userId = supabase.auth.currentUser!.id;
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      logInfo(
+          '⚠️ ConversationMessagesNotifier: User is null in updateMessage, skipping cache.');
+      return;
+    }
+    final userId = user.id;
     _cacheService.cacheMessage(
         updatedMessage, userId); // پیام آپدیت شده را در کش هم ذخیره کن
   }
@@ -1860,7 +1933,13 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
 
     final newState = [...state, message];
     state = _filterTempDuplicates(newState);
-    final userId = supabase.auth.currentUser!.id;
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      logInfo(
+          '⚠️ ConversationMessagesNotifier: User is null in addMessage, skipping cache.');
+      return;
+    }
+    final userId = user.id;
     _cacheService.cacheMessage(message, userId);
   }
 
@@ -1870,7 +1949,13 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
 
     final newState = state.where((m) => m.id != messageId).toList();
     state = _filterTempDuplicates(newState);
-    final userId = supabase.auth.currentUser!.id;
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      logInfo(
+          '⚠️ ConversationMessagesNotifier: User is null in removeMessage, skipping cache.');
+      return;
+    }
+    final userId = user.id;
     _cacheService.clearMessage(conversationId, messageId, userId);
   }
 
@@ -1896,7 +1981,13 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
     if (!_disposed) {
       state = [];
     }
-    final userId = supabase.auth.currentUser!.id;
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      logInfo(
+          '⚠️ ConversationMessagesNotifier: User is null in clearAllAndMark, skipping cache.');
+      return;
+    }
+    final userId = user.id;
     await _cacheService.clearConversationMessages(conversationId, userId);
   }
 
@@ -1913,7 +2004,13 @@ class ConversationMessagesNotifier extends StateNotifier<List<MessageModel>> {
     state = _filterTempDuplicates(newState);
 
     // آپدیت کش
-    final userId = supabase.auth.currentUser!.id;
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      logInfo(
+          '⚠️ ConversationMessagesNotifier: User is null in replaceTempMessage, skipping cache.');
+      return;
+    }
+    final userId = user.id;
     _cacheService.clearMessage(conversationId, tempId, userId).then((_) {
       _cacheService.cacheMessage(realMessage, userId);
     }).catchError((e) {
@@ -2262,8 +2359,13 @@ final cachedConversationsStreamProvider =
   // No need to initialize again
 
   // Use the advanced cache system for better performance
-  yield* conversationCache
-      .watchCachedConversations(supabase.auth.currentUser!.id);
+  final user = supabase.auth.currentUser;
+  if (user == null) {
+    logInfo(
+        '⚠️ ChatProvider: User is null in cachedConversationsStreamProvider, returning empty stream.');
+    return;
+  }
+  yield* conversationCache.watchCachedConversations(user.id);
 });
 
 // Provider برای نمایش فوری کش (بدون انتظار)
@@ -2693,13 +2795,25 @@ final conversationProvider = StreamProvider.family
     ref.read(chatServiceProvider).refreshConversation(conversationId);
   });
 
-  final userId = supabase.auth.currentUser!.id;
+  final user = supabase.auth.currentUser;
+  if (user == null) {
+    logInfo(
+        '⚠️ ChatProvider: User is null in conversationProvider, returning empty stream.');
+    return;
+  }
+  final userId = user.id;
   yield* cache.watchConversation(conversationId, userId);
 });
 
 final sharedMediaProvider = FutureProvider.family
     .autoDispose<List<MessageModel>, String>((ref, conversationId) async {
-  final userId = supabase.auth.currentUser!.id;
+  final user = supabase.auth.currentUser;
+  if (user == null) {
+    logInfo(
+        '⚠️ ChatProvider: User is null in sharedMediaProvider, returning empty list.');
+    return [];
+  }
+  final userId = user.id;
 
   // کوئری مستقیم به سابابیس برای دریافت پیام‌های دارای ضمیمه
   final response = await supabase

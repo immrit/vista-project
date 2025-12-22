@@ -77,72 +77,103 @@ class ChatService {
       final auth = _supabase.auth;
       Session? session = auth.currentSession;
 
+      // اگر سشن کلاً وجود نداشت
       if (session == null || auth.currentUser == null) {
-        // قبل از signOut، یک بار دیگر تلاش کن
-        logInfo(
-            '⚠️ No authenticated Supabase session detected, attempting to restore...');
+        logInfo('⚠️ No authenticated Supabase session detected, attempting to refresh...');
+        // تلاش برای رفرش کردن سشن قبل از تسلیم شدن
         try {
-          // تلاش برای restore session
-          await Future.delayed(Duration(milliseconds: 500));
-          session = auth.currentSession;
-
-          if (session == null || auth.currentUser == null) {
-            logInfo('❌ Session could not be restored');
-            await auth.signOut();
+          final response = await auth.refreshSession();
+          if (response.session == null) {
+            logInfo('🔴 Session is truly invalid. User needs to login again.');
+            // اینجا می‌تونید signOut کنید یا فقط ارور بدید که UI هندل کنه
+            // await auth.signOut(); 
             throw AppException(
               userFriendlyMessage:
                   'نشست کاربر منقضی شده است. لطفاً دوباره وارد شوید.',
-              technicalMessage:
-                  'Supabase session missing before PostgREST call',
+              technicalMessage: 'User is not logged in',
             );
           } else {
-            logInfo('✅ Session restored successfully');
+            logInfo('✅ Session refreshed successfully');
+            session = response.session;
           }
         } catch (e) {
+          logInfo('⚠️ Error refreshing session: $e');
+          // اگر نتونستیم رفرش کنیم، لزوماً لاگ اوت نمی‌کنیم، شاید مشکل اینترنت باشه
+          // فقط اگر مطمئنید توکن منقضی شده خارج کنید
           if (e is AppException) rethrow;
-          logInfo('❌ Error restoring session: $e');
-          await auth.signOut();
           throw AppException(
             userFriendlyMessage:
-                'نشست کاربر منقضی شده است. لطفاً دوباره وارد شوید.',
-            technicalMessage: 'Supabase session missing before PostgREST call',
+                'خطا در اتصال به سرور. لطفاً اتصال اینترنت خود را بررسی کنید.',
+            technicalMessage: 'Failed to refresh session: $e',
           );
+        }
+      } else if (session.isExpired) {
+        // اگر سشن بود ولی منقضی شده بود
+        logInfo('⚠️ Session is expired, attempting to refresh...');
+        try {
+          await auth.refreshSession();
+          logInfo('✅ Expired session refreshed successfully');
+        } catch (e) {
+          logInfo('⚠️ Failed to refresh expired session: $e');
+          // اگر نتونستیم رفرش کنیم، فقط لاگ می‌کنیم و ادامه می‌دهیم
+          // ممکن است مشکل اینترنت باشد
         }
       }
 
-      final expiresAt = session.expiresAt;
-      if (expiresAt != null) {
-        final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-        final secondsLeft = expiresAt - now;
-        // اگر کمتر از 2 دقیقه مانده باشد، refresh کن
-        if (secondsLeft <= 120) {
-          logInfo(
-              '⏳ Session expires in $secondsLeft seconds. Triggering refresh...');
-          await _refreshSupabaseSession(auth);
+      // اطمینان از اینکه session هنوز null نیست
+      session = auth.currentSession;
+      if (session != null) {
+        final expiresAt = session.expiresAt;
+        if (expiresAt != null) {
+          final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+          final secondsLeft = expiresAt - now;
+          // اگر کمتر از 2 دقیقه مانده باشد، refresh کن
+          if (secondsLeft <= 120) {
+            logInfo(
+                '⏳ Session expires in $secondsLeft seconds. Triggering refresh...');
+            await _refreshSupabaseSession(auth);
+          }
         }
       }
 
       // ✅ بررسی امنیتی: بررسی اینکه نشست هنوز معتبر و active است
       final isSessionValid = await _sessionManagerService.isSessionStillValid();
       if (!isSessionValid) {
-        logInfo('🔴 Session is no longer valid, signing out...');
-        await auth.signOut();
-        throw AppException(
-          userFriendlyMessage:
-              'نشست شما منقضی شده است. لطفاً دوباره وارد شوید.',
-          technicalMessage: 'Session is no longer active',
-        );
+        logInfo('⚠️ Session might be invalid according to manager, but trying to proceed...');
+        
+        // تلاش برای رفرش به جای خروج
+        try {
+          await auth.refreshSession();
+          logInfo('✅ Session refreshed successfully after manager check');
+        } catch (e) {
+          logInfo('⚠️ Refresh failed after manager check: $e');
+        }
+
+        // ❌ خط زیر را حذف کردیم تا کاربر بیرون نیفتد
+        // await auth.signOut(); 
+        
+        // Exception را هم حذف کردیم تا برنامه ادامه دهد
+        // throw AppException(
+        //   userFriendlyMessage: 'نشست شما منقضی شده است. لطفاً دوباره وارد شوید.',
+        //   technicalMessage: 'Session is no longer active',
+        // );
       }
 
       final ensured = await _sessionManagerService.ensureSessionRegistered();
       if (!ensured) {
-        logInfo('⚠️ SessionManager could not ensure an active session');
-        throw AppException(
-          userFriendlyMessage:
-              'نشست کاربر ثبت نشده است. لطفاً دوباره وارد شوید.',
-          technicalMessage:
-              'SessionManager.ensureSessionRegistered returned false',
-        );
+        logInfo('⚠️ SessionManager could not ensure an active session, but continuing...');
+        // تلاش برای رفرش به جای خروج
+        try {
+          await auth.refreshSession();
+          logInfo('✅ Session refreshed after ensureSessionRegistered failed');
+        } catch (e) {
+          logInfo('⚠️ Refresh failed after ensureSessionRegistered: $e');
+        }
+        // ❌ Exception را حذف کردیم تا برنامه ادامه دهد
+        // throw AppException(
+        //   userFriendlyMessage: 'نشست کاربر ثبت نشده است. لطفاً دوباره وارد شوید.',
+        //   technicalMessage: 'SessionManager.ensureSessionRegistered returned false',
+        // );
       }
     } on AppException {
       rethrow;
@@ -916,7 +947,12 @@ class ChatService {
 
   // اضافه شد: متد جدید برای یافتن مکالمه موجود بدون ایجاد مکالمه جدید
   Future<String?> findExistingConversation(String otherUserId) async {
-    final userId = _supabase.auth.currentUser!.id;
+    final currentUser = _supabase.auth.currentUser;
+    if (currentUser == null) {
+      logInfo('❌ User is not logged in, cannot find conversation.');
+      return null;
+    }
+    final userId = currentUser.id;
 
     logInfo(
         '🔍 findExistingConversation شروع شد - کاربر فعلی: $userId, کاربر هدف: $otherUserId');
@@ -933,7 +969,8 @@ class ChatService {
       try {
         final existingQuery = await _supabase.rpc(
           'find_conversation_between_users',
-          params: {'user1': userId, 'user2': otherUserId},
+          // نام پارامترها باید با تعریف SQL همخوانی داشته باشد
+          params: {'user1_id': userId, 'user2_id': otherUserId},
         );
         if (existingQuery != null && existingQuery.isNotEmpty) {
           logInfo(
@@ -1019,7 +1056,17 @@ class ChatService {
   }
 
   Future<String> createOrGetConversation(String otherUserId) async {
-    final userId = _supabase.auth.currentUser!.id;
+    // 1. اول مطمئن شو کاربر لاگین هست
+    final currentUser = _supabase.auth.currentUser;
+    if (currentUser == null) {
+      logInfo('❌ User is not logged in, cannot create conversation.');
+      throw AppException(
+        userFriendlyMessage: 'لطفاً ابتدا وارد حساب کاربری خود شوید.',
+        technicalMessage: 'User is not logged in',
+      );
+    }
+
+    final userId = currentUser.id;
 
     logInfo(
         '🚀 createOrGetConversation شروع شد - کاربر فعلی: $userId, کاربر هدف: $otherUserId');
@@ -1042,66 +1089,48 @@ class ChatService {
 
     Future<String> task() async {
       try {
-        // ابتدا سعی کن از RPC function استفاده کنی
-        logInfo('🔍 تلاش برای استفاده از RPC create_or_get_conversation...');
-        try {
-          final rpcResult = await _supabase.rpc(
-            'create_or_get_conversation',
-            params: {'user1': userId, 'user2': otherUserId},
+        logInfo('🚀 درخواست RPC create_or_get_conversation...');
+        logInfo('params: current_user_id=$userId, target_user_id=$otherUserId');
+
+        // ✅ فراخوانی تابع SQL (منبع حقیقت)
+        // نکته حیاتی: نام پارامترها باید دقیقاً با دیتابیس یکی باشد
+        // ❌ هیچ fallback logic نداریم - فقط به RPC اعتماد می‌کنیم
+        final rpcResult = await _supabase.rpc(
+          'create_or_get_conversation',
+          params: {
+            'current_user_id': userId, 
+            'target_user_id': otherUserId,
+          },
+        );
+
+        // بررسی نتیجه
+        if (rpcResult != null) {
+          final conversationId = rpcResult.toString();
+          logInfo('✅ مکالمه با موفقیت دریافت شد: $conversationId');
+          
+          // بروزرسانی کش برای سرعت بیشتر در دفعات بعد
+          await refreshConversation(conversationId);
+          
+          return conversationId;
+        } else {
+          logInfo('❌ RPC returned null conversation ID');
+          throw AppException(
+            userFriendlyMessage: 'مشکل در ایجاد گفتگو',
+            technicalMessage: 'RPC returned null conversation ID',
           );
-          if (rpcResult != null) {
-            logInfo('✅ مکالمه با موفقیت ایجاد/یافت شد (RPC): $rpcResult');
-            return rpcResult.toString();
-          }
-        } catch (e) {
-          logInfo(
-              '❌ RPC create_or_get_conversation failed: $e - ادامه با روش‌های جایگزین');
         }
 
-        // اگر RPC کار نکرد، از روش قبلی استفاده کن
-        logInfo('🔍 جستجوی مکالمه موجود...');
-        final existingId = await findExistingConversation(otherUserId);
-        if (existingId != null && existingId.isNotEmpty) {
-          logInfo('✅ مکالمه موجود یافت شد: $existingId');
-          return existingId;
-        }
-
-        logInfo('🆕 هیچ مکالمه موجودی یافت نشد، ایجاد مکالمه جدید...');
-
-        // اگر هیچ گفتگویی پیدا نشد، مکالمه جدید بساز
-        logInfo('📝 ایجاد رکورد مکالمه جدید در دیتابیس...');
-        final newConversation =
-            await _supabase.from('conversations').insert({}).select().single();
-
-        final conversationId = newConversation['id'];
-        logInfo('✅ مکالمه جدید ایجاد شد با ID: $conversationId');
-
-        // افزودن کاربران به مکالمه
-        logInfo('👥 افزودن کاربران به مکالمه...');
-        await _supabase.from('conversation_participants').insert([
-          {
-            'conversation_id': conversationId,
-            'user_id': userId,
-            'last_read_time': DateTime.now().toIso8601String(),
-          },
-          {
-            'conversation_id': conversationId,
-            'user_id': otherUserId,
-            'last_read_time': DateTime.now().toIso8601String(),
-          },
-        ]);
-
-        logInfo('✅ کاربران به مکالمه $conversationId اضافه شدند');
-
-        // بروزرسانی کش برای جلوگیری از ساخت مجدد
-        logInfo('🔄 بروزرسانی کش مکالمه...');
-        await refreshConversation(conversationId);
-        logInfo('🎉 مکالمه با موفقیت ایجاد و آماده شد: $conversationId');
-        return conversationId;
       } catch (e) {
-        logInfo('❌ خطا در ایجاد مکالمه: $e');
+        logInfo('❌ خطای بحرانی در createOrGetConversation: $e');
+        
+        // ✅ نکته بسیار مهم:
+        // اینجا دیگر نباید کد دستی برای ساخت مکالمه (INSERT) داشته باشیم.
+        // چون تابع SQL ما اتمیک است و با قفل‌گذاری کار می‌کند،
+        // اگر اون خطا بده یعنی مشکل جدی وجود داره 
+        // و نباید سمت کلاینت چیزی ساخته بشه.
+        
         throw AppException(
-          userFriendlyMessage: 'مشکل در ایجاد گفتگو',
+          userFriendlyMessage: 'مشکل در ایجاد گفتگو. لطفاً دوباره تلاش کنید.',
           technicalMessage: 'خطا در createOrGetConversation: $e',
         );
       }
@@ -2090,23 +2119,38 @@ class ChatService {
           .from('conversations')
           .select('id, type')
           .eq('id', conversationId)
-          .single();
+          .maybeSingle();
+      
+      // اگر مکالمه وجود نداشت، یعنی قبلاً حذف شده است
+      if (conversationData == null) {
+        logInfo('⚠️ مکالمه قبلاً حذف شده است: $conversationId');
+        // حذف از کش لوکال و خروج بدون خطا
+        await _conversationCache.removeConversation(conversationId, userId);
+        await _messageCache.clearConversationMessages(conversationId, userId);
+        return; // خروج بدون خطا
+      }
 
+      // ✅ ابتدا بررسی کن آیا کاربر دیگری در این گفتگو باقی مانده است (قبل از حذف)
+      // این کار را قبل از حذف انجام می‌دهیم چون بعد از حذف، RLS ممکن است اجازه دسترسی ندهد
+      final remainingParticipants = await _supabase
+          .from('conversation_participants')
+          .select('id, user_id')
+          .eq('conversation_id', conversationId);
+      
+      // تعداد کل شرکت‌کنندگان (قبل از حذف)
+      final totalParticipants = remainingParticipants.length;
+      
       // حذف مشارکت کاربر از گفتگو
+      // ✅ حذف .select() و .single() چون بعد از حذف نیازی به دیتای حذف شده نداریم
       await _supabase
           .from('conversation_participants')
           .delete()
           .eq('conversation_id', conversationId)
           .eq('user_id', userId);
 
-      // بررسی آیا کاربر دیگری در این گفتگو باقی مانده است
-      final remainingParticipants = await _supabase
-          .from('conversation_participants')
-          .select('id, user_id')
-          .eq('conversation_id', conversationId);
-
-      // اگر هیچ شرکت کننده‌ای باقی نمانده، کل گفتگو و پیام‌های آن را حذف کنیم (از سرور)
-      if (remainingParticipants.isEmpty) {
+      // اگر هیچ شرکت کننده‌ای باقی نمانده (یا فقط یک نفر بود که حذف شد)، کل گفتگو و پیام‌های آن را حذف کنیم (از سرور)
+      // totalParticipants == 1 یعنی فقط کاربر فعلی بود که حذف شد
+      if (totalParticipants <= 1) {
         print(
           'آخرین شرکت‌کننده گفتگو را ترک کرد، حذف کامل گفتگو از سرور: $conversationId',
         );
@@ -2125,7 +2169,8 @@ class ChatService {
 
         // 🔥 راهکار جدید: برای جلوگیری از نمایش "کاربر" به طرف مقابل
         // مکالمه را برای همه شرکت‌کنندگان حذف کن (مثل تلگرام)
-        if (conversationData['type'] == 'private') {
+        final conversationType = conversationData['type'] as String?;
+        if (conversationType == 'private') {
           logInfo('🔥 حذف مکالمه خصوصی برای همه شرکت‌کنندگان (مثل تلگرام)');
 
           // حذف همه شرکت‌کنندگان از مکالمه

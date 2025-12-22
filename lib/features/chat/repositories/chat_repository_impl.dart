@@ -362,64 +362,33 @@ class ChatRepositoryImpl implements ChatRepository {
     if (userId == null) return ChatResult.failure('کاربر وارد نشده');
 
     try {
-      // Try to find existing or create new conversation
-      final existing = await _supabase
-          .from('conversation_participants')
-          .select('conversation_id')
-          .eq('user_id', userId);
-      final otherParticipations = await _supabase
-          .from('conversation_participants')
-          .select('conversation_id')
-          .eq('user_id', otherUserId);
+      // ✅ استفاده از RPC function برای جلوگیری از ایجاد مکالمه تکراری
+      // این تابع SQL با قفل‌گذاری کار می‌کند و تضمین می‌کند که هرگز مکالمه تکراری ساخته نمی‌شود
+      final conversationId = await _supabase.rpc(
+        'create_or_get_conversation',
+        params: {
+          'current_user_id': userId,
+          'target_user_id': otherUserId,
+        },
+      );
 
-      final myConvIds =
-          (existing as List).map((e) => e['conversation_id'] as String).toSet();
-      final otherConvIds = (otherParticipations as List)
-          .map((e) => e['conversation_id'] as String)
-          .toSet();
-      final common = myConvIds.intersection(otherConvIds);
-      if (common.isNotEmpty) {
-        final existingConv = await _supabase
-            .from('conversations')
-            .select(
-                '*, conversation_participants!inner(*, profiles!user_id(username, avatar_url))')
-            .eq('id', common.first)
-            .single();
-        return ChatResult.success(
-            ConversationModel.fromJson(existingConv, currentUserId: userId));
+      if (conversationId == null) {
+        return ChatResult.failure('خطا در ایجاد مکالمه: RPC returned null');
       }
 
-      final now = DateTime.now().toUtc().toIso8601String();
-      final newConversation = await _supabase
-          .from('conversations')
-          .insert({'created_at': now, 'updated_at': now})
-          .select()
-          .single();
-      final conversationId = newConversation['id'] as String;
-      await _supabase.from('conversation_participants').insert([
-        {
-          'conversation_id': conversationId,
-          'user_id': userId,
-          'created_at': now
-        },
-        {
-          'conversation_id': conversationId,
-          'user_id': otherUserId,
-          'created_at': now
-        },
-      ]);
-
+      // دریافت اطلاعات کامل مکالمه
       final full = await _supabase
           .from('conversations')
           .select(
               '*, conversation_participants!inner(*, profiles!user_id(username, avatar_url))')
-          .eq('id', conversationId)
+          .eq('id', conversationId.toString())
           .single();
+      
       final conv = ConversationModel.fromJson(full, currentUserId: userId);
       await _syncConversations();
       return ChatResult.success(conv);
     } catch (e) {
-      return ChatResult.failure(e.toString());
+      return ChatResult.failure('خطا در ایجاد مکالمه: ${e.toString()}');
     }
   }
 

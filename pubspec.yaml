@@ -97,6 +97,7 @@ dependencies:
   cryptography: ^2.7.0
   flutter_secure_storage: ^9.2.2
   shared_preferences: ^2.2.2
+  flutter_poolakey: ^2.2.0
   uuid: ^4.0.0
 
 dependency_overrides:

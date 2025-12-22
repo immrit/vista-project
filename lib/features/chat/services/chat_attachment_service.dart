@@ -119,11 +119,13 @@ class ChatAttachmentService {
     }
   }
 
-  Future<AttachmentResult> _uploadImage(
-    File file,
-    String conversationId,
+  /// آپلود مستقیم فایلی که قبلاً انتخاب شده (برای استفاده در ChatAttachmentSheet)
+  /// این متد picker را باز نمی‌کند و فقط فایل را آپلود می‌کند
+  Future<AttachmentResult> uploadImage({
+    required File file,
+    required String conversationId,
     void Function(double)? onProgress,
-  ) async {
+  }) async {
     try {
       final url = await ChatImageUploadService.uploadChatImage(
         file,
@@ -135,7 +137,7 @@ class ChatAttachmentService {
         return AttachmentResult(
           success: false,
           type: AttachmentType.image,
-          error: 'آپلود ناموفق',
+          error: 'آپلود ناموفق بود',
         );
       }
 
@@ -146,6 +148,7 @@ class ChatAttachmentService {
         type: AttachmentType.image,
       );
     } catch (e) {
+      logInfo('❌ خطا در آپلود عکس: $e');
       return AttachmentResult(
         success: false,
         type: AttachmentType.image,
@@ -154,9 +157,60 @@ class ChatAttachmentService {
     }
   }
 
+  Future<AttachmentResult> _uploadImage(
+    File file,
+    String conversationId,
+    void Function(double)? onProgress,
+  ) async {
+    return await uploadImage(
+      file: file,
+      conversationId: conversationId,
+      onProgress: onProgress,
+    );
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // 🎥 VIDEO
   // ═══════════════════════════════════════════════════════════════════════════
+
+  /// آپلود مستقیم ویدیویی که قبلاً انتخاب شده (برای استفاده در ChatAttachmentSheet)
+  /// این متد picker را باز نمی‌کند و فقط فایل را آپلود می‌کند
+  Future<AttachmentResult> uploadVideo({
+    required File file,
+    required String conversationId,
+    void Function(double)? onProgress,
+  }) async {
+    try {
+      // برای ویدیو از uploadChatBinaryFile استفاده میکنیم
+      final url = await ChatFileUploadService.uploadChatBinaryFile(
+        file,
+        conversationId,
+        onProgress: onProgress,
+      );
+
+      if (url == null || url.isEmpty) {
+        return AttachmentResult(
+          success: false,
+          type: AttachmentType.video,
+          error: 'آپلود ناموفق بود',
+        );
+      }
+
+      return AttachmentResult(
+        success: true,
+        url: url,
+        fileName: file.path.split('/').last,
+        type: AttachmentType.video,
+      );
+    } catch (e) {
+      logInfo('❌ خطا در آپلود ویدیو: $e');
+      return AttachmentResult(
+        success: false,
+        type: AttachmentType.video,
+        error: e.toString(),
+      );
+    }
+  }
 
   /// انتخاب ویدیو از گالری
   Future<AttachmentResult> pickVideoFromGallery({
@@ -177,26 +231,10 @@ class ChatAttachmentService {
         );
       }
 
-      // برای ویدیو از uploadChatBinaryFile استفاده میکنیم
-      final url = await ChatFileUploadService.uploadChatBinaryFile(
-        File(video.path),
-        conversationId,
+      return await uploadVideo(
+        file: File(video.path),
+        conversationId: conversationId,
         onProgress: onProgress,
-      );
-
-      if (url == null || url.isEmpty) {
-        return AttachmentResult(
-          success: false,
-          type: AttachmentType.video,
-          error: 'آپلود ناموفق',
-        );
-      }
-
-      return AttachmentResult(
-        success: true,
-        url: url,
-        fileName: video.path.split('/').last,
-        type: AttachmentType.video,
       );
     } catch (e) {
       logInfo('❌ خطا در انتخاب ویدیو: $e');
@@ -211,6 +249,55 @@ class ChatAttachmentService {
   // ═══════════════════════════════════════════════════════════════════════════
   // 📁 FILE
   // ═══════════════════════════════════════════════════════════════════════════
+
+  /// آپلود مستقیم فایلی که قبلاً انتخاب شده (برای استفاده در ChatAttachmentSheet)
+  /// این متد picker را باز نمی‌کند و فقط فایل را آپلود می‌کند
+  Future<AttachmentResult> uploadFile({
+    required File file,
+    required String conversationId,
+    void Function(double)? onProgress,
+  }) async {
+    try {
+      final extension = file.path.split('.').last.toLowerCase();
+      String? url;
+      
+      if (extension == 'pdf') {
+        url = await ChatFileUploadService.uploadChatPdfFile(
+          file,
+          conversationId,
+          onProgress: onProgress,
+        );
+      } else {
+        url = await ChatFileUploadService.uploadChatBinaryFile(
+          file,
+          conversationId,
+          onProgress: onProgress,
+        );
+      }
+
+      if (url == null || url.isEmpty) {
+        return AttachmentResult(
+          success: false,
+          type: AttachmentType.file,
+          error: 'آپلود ناموفق بود',
+        );
+      }
+
+      return AttachmentResult(
+        success: true,
+        url: url,
+        fileName: file.path.split('/').last,
+        type: AttachmentType.file,
+      );
+    } catch (e) {
+      logInfo('❌ خطا در آپلود فایل: $e');
+      return AttachmentResult(
+        success: false,
+        type: AttachmentType.file,
+        error: e.toString(),
+      );
+    }
+  }
 
   /// انتخاب فایل
   Future<AttachmentResult> pickFile({
@@ -234,36 +321,11 @@ class ChatAttachmentService {
       }
 
       final file = File(result.files.first.path!);
-      final extension = result.files.first.extension?.toLowerCase() ?? '';
-
-      String? url;
-      if (extension == 'pdf') {
-        url = await ChatFileUploadService.uploadChatPdfFile(
-          file,
-          conversationId,
-          onProgress: onProgress,
-        );
-      } else {
-        url = await ChatFileUploadService.uploadChatBinaryFile(
-          file,
-          conversationId,
-          onProgress: onProgress,
-        );
-      }
-
-      if (url == null || url.isEmpty) {
-        return AttachmentResult(
-          success: false,
-          type: AttachmentType.file,
-          error: 'آپلود ناموفق',
-        );
-      }
-
-      return AttachmentResult(
-        success: true,
-        url: url,
-        fileName: result.files.first.name,
-        type: AttachmentType.file,
+      
+      return await uploadFile(
+        file: file,
+        conversationId: conversationId,
+        onProgress: onProgress,
       );
     } catch (e) {
       logInfo('❌ خطا در انتخاب فایل: $e');

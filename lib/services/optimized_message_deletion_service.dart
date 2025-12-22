@@ -87,12 +87,15 @@ class OptimizedMessageDeletionService {
       if (s3Key != null) {
         final urlUsed = msg.audioUrl ?? msg.attachmentUrl ?? 'N/A';
         final urlType = msg.audioUrl != null ? 'audio_url' : 'attachment_url';
-        logInfo('🗑️ Queuing file deletion. MessageId: ${msg.id}, Type: ${msg.attachmentType}, Key: [$s3Key], $urlType: $urlUsed');
+        logInfo(
+            '🗑️ Queuing file deletion. MessageId: ${msg.id}, Type: ${msg.attachmentType}, Key: [$s3Key], $urlType: $urlUsed');
       } else {
         if (msg.audioUrl != null && msg.audioUrl!.isNotEmpty) {
-          logInfo('⚠️ Could not extract S3 key from audio_url. MessageId: ${msg.id}, URL: ${msg.audioUrl}');
+          logInfo(
+              '⚠️ Could not extract S3 key from audio_url. MessageId: ${msg.id}, URL: ${msg.audioUrl}');
         } else if (msg.attachmentUrl != null && msg.attachmentUrl!.isNotEmpty) {
-          logInfo('⚠️ Could not extract S3 key from attachment_url. MessageId: ${msg.id}, URL: ${msg.attachmentUrl}, Type: ${msg.attachmentType}');
+          logInfo(
+              '⚠️ Could not extract S3 key from attachment_url. MessageId: ${msg.id}, URL: ${msg.attachmentUrl}, Type: ${msg.attachmentType}');
         }
       }
 
@@ -293,10 +296,12 @@ class OptimizedMessageDeletionService {
         logInfo('ℹ️ Keeping file (Other user still has message). Key: $key');
         return; // فایل را پاک نمی‌کنیم چون طرف مقابل هنوز پیام را دارد
       }
-      logInfo('✅ Both users deleted message, proceeding with file deletion. Key: $key');
+      logInfo(
+          '✅ Both users deleted message, proceeding with file deletion. Key: $key');
     } else {
       // حذف دوطرفه: همیشه فایل را حذف می‌کنیم
-      logInfo('🗑️ Bidirectional deletion (forEveryone), deleting file. Key: $key');
+      logInfo(
+          '🗑️ Bidirectional deletion (forEveryone), deleting file. Key: $key');
     }
 
     try {
@@ -316,7 +321,7 @@ class OptimizedMessageDeletionService {
       }
       // بقیه خطاها (مثل قطعی نت) باید پرتاب شوند تا Retry شوند
       logError('❌ S3 Delete failed. Bucket: $_bucketName, Key: $key', error: e);
-      throw e;
+      rethrow;
     }
   }
 
@@ -367,7 +372,7 @@ class OptimizedMessageDeletionService {
     try {
       final uri = Uri.parse(url);
       final segments = uri.pathSegments;
-      
+
       if (segments.isEmpty) return null;
 
       // فرمت 1: https://storage.389346.ir.cdn.ir/bucketName/path/to/file
