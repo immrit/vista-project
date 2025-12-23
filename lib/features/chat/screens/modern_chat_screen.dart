@@ -656,7 +656,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         Positioned.fill(
           child: EnhancedChatBackground(
             enablePattern: true,
-            blurIntensity: 0.0,
             child: Container(color: Colors.transparent),
           ),
         ),

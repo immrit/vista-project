@@ -1,3 +1,4 @@
+
 import '../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -157,6 +158,13 @@ class SettingsCacheService {
         'enable_dark_mode': false,
         'auto_sync': true,
         'sync_interval_minutes': 30,
+        
+        // تنظیمات دانلود خودکار مدیا (مشابه تلگرام)
+        'auto_download_mobile_image': true,  // عکس در موبایل: پیش‌فرض روشن
+        'auto_download_mobile_video': false, // ویدیو در موبایل: پیش‌فرض خاموش
+        'auto_download_wifi_image': true,    // عکس در وای‌فای: روشن
+        'auto_download_wifi_video': true,    // ویدیو در وای‌فای: روشن
+        'auto_download_roaming': false,      // رومینگ: خاموش
       };
 
       _appSettingsCache.addAll(defaultAppSettings);
@@ -471,7 +479,3 @@ class SettingsCacheService {
     }
   }
 }
-
-
-
-

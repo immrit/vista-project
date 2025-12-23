@@ -20,27 +20,20 @@ class MainActivity: FlutterFragmentActivity() {
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        // 1. تنظیمات امنیتی
         val securityCheck = SecurityCheck.Enable(rsaPublicKey = RSA_KEY)
         val paymentConfig = PaymentConfiguration(localSecurityCheck = securityCheck)
-        
-        // ساخت نمونه پیمنت (از this استفاده می‌کنیم چون FragmentActivity یک Context کامل است)
         payment = Payment(context = this, config = paymentConfig)
 
-        // 2. تنظیم متد چنل
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "connect" -> connectToBazaar(result)
-                "purchase" -> {
-                    val productId = call.argument<String>("productId")
-                    val payload = call.argument<String>("payload") ?: ""
-                    if (productId != null) {
-                        purchaseProduct(productId, payload, result)
-                    } else {
-                        result.error("ARGS", "ProductId is required", null)
-                    }
-                }
-                // متد disconnect در نسخه جدید حذف شده و نیازی به فراخوانی دستی نیست
+                
+                // متد خرید معمولی (سکه، الماس)
+                "purchase" -> handlePurchase(call.argument("productId"), call.argument("payload"), result, isSubscription = false)
+                
+                // 🔴 متد مخصوص اشتراک (تیک طلایی)
+                "subscribe" -> handlePurchase(call.argument("productId"), call.argument("payload"), result, isSubscription = true)
+                
                 else -> result.notImplemented()
             }
         }
@@ -48,54 +41,50 @@ class MainActivity: FlutterFragmentActivity() {
 
     private fun connectToBazaar(result: MethodChannel.Result) {
         payment.connect {
-            connectionSucceed {
-                // اتصال موفق
-                try { result.success(true) } catch (e: Exception) {}
-            }
-            connectionFailed { throwable ->
-                // شکست در اتصال
-                try { 
-                    result.error("CONNECTION_FAILED", throwable.message, null) 
-                } catch (e: Exception) {}
-            }
-            disconnected {
-                // قطع اتصال
-            }
+            connectionSucceed { try { result.success(true) } catch (e: Exception) {} }
+            connectionFailed { try { result.error("FAIL", it.message, null) } catch (e: Exception) {} }
+            disconnected { }
         }
     }
 
-    private fun purchaseProduct(productId: String, payload: String, result: MethodChannel.Result) {
-        val purchaseRequest = PurchaseRequest(
-            productId = productId,
-            payload = payload
-        )
+    private fun handlePurchase(productId: String?, payload: String?, result: MethodChannel.Result, isSubscription: Boolean) {
+        if (productId == null) {
+            result.error("ARGS", "ProductId required", null)
+            return
+        }
+        
+        val request = PurchaseRequest(productId, payload ?: "")
+        
+        val onSuccess: (ir.cafebazaar.poolakey.entity.PurchaseInfo) -> Unit = { info ->
+            // برگرداندن اطلاعات کامل به فلاتر
+            result.success(mapOf(
+                "purchaseToken" to info.purchaseToken,
+                "packageName" to info.packageName,
+                "orderId" to info.orderId
+            ))
+        }
 
-        // 🔴 استفاده از activityResultRegistry که حالا در دسترس است
-        payment.purchaseProduct(
-            registry = activityResultRegistry, 
-            request = purchaseRequest
-        ) {
-            purchaseSucceed { purchaseInfo ->
-                // خرید موفق
-                val response = mapOf(
-                    "orderId" to purchaseInfo.orderId,
-                    "purchaseToken" to purchaseInfo.purchaseToken,
-                    "payload" to purchaseInfo.payload,
-                    "packageName" to purchaseInfo.packageName,
-                    "purchaseState" to purchaseInfo.purchaseState.toString(),
-                    "purchaseTime" to purchaseInfo.purchaseTime
-                )
-                result.success(response)
+        val onFailure: (Throwable) -> Unit = { 
+            result.error("FAILED", it.message, null) 
+        }
+
+        val onCancel: () -> Unit = { 
+            result.error("CANCELED", "User canceled", null) 
+        }
+
+        if (isSubscription) {
+            // استفاده از متد مخصوص اشتراک
+            payment.subscribeProduct(registry = activityResultRegistry, request = request) {
+                purchaseSucceed(onSuccess)
+                purchaseCanceled(onCancel)
+                purchaseFailed(onFailure)
             }
-
-            purchaseCanceled {
-                // لغو توسط کاربر
-                result.error("CANCELED", "User canceled purchase", null)
-            }
-
-            purchaseFailed { throwable ->
-                // خطای خرید
-                result.error("FAILED", throwable.message, null)
+        } else {
+            // استفاده از متد خرید معمولی
+            payment.purchaseProduct(registry = activityResultRegistry, request = request) {
+                purchaseSucceed(onSuccess)
+                purchaseCanceled(onCancel)
+                purchaseFailed(onFailure)
             }
         }
     }

@@ -133,7 +133,7 @@ class _ImprovedAnimatedMessageBubbleState
     // ۱. اگر ویس در حال پخش است (باید از سرویس پلیر چک شود - در مراحل بعد اضافه می‌کنیم)
     // ۲. اگر ویدیو در حال پخش است
     // ۳. یا اگر در حال آپلود است
-    
+
     // فعلا برای آپلود و مدیاهای در حال پخش true برمی‌گردانیم
     final isUploading = widget.message?.isUploading ?? false;
     // اینجا بعدا شرط isPlayingAudio را اضافه می‌کنیم
@@ -222,7 +222,8 @@ class _ImprovedAnimatedMessageBubbleState
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // 👈 حتما این را صدا بزن برای AutomaticKeepAliveClientMixin
+    super.build(
+        context); // 👈 حتما این را صدا بزن برای AutomaticKeepAliveClientMixin
     final theme = context.chatTheme;
 
     return RepaintBoundary(
@@ -306,10 +307,10 @@ class _ImprovedAnimatedMessageBubbleState
         children: [
           if (widget.isForwarded) _buildForwardHeader(theme),
           if (widget.replyToContent != null) _buildReplySection(theme),
-          
+
           // محتوای اصلی
           _buildContent(theme),
-          
+
           // برای مدیا، ری‌اکشن‌ها رو روی عکس هندل میکنیم یا پایینش (تلگرام پایینش میذاره)
           if (widget.reactions.isNotEmpty) _buildReactionsSection(theme),
         ],
@@ -470,7 +471,6 @@ class _ImprovedAnimatedMessageBubbleState
             widget.message?.attachmentType == 'video') &&
         widget.attachmentUrl != null &&
         widget.attachmentUrl!.isNotEmpty) {
-      
       final isVideo = widget.attachmentType == 'video' ||
           widget.message?.attachmentType == 'video';
 
@@ -482,10 +482,10 @@ class _ImprovedAnimatedMessageBubbleState
         isMe: widget.isMe,
         time: widget.time,
         caption: widget.content.isNotEmpty ? widget.content : null,
-        durationSeconds: widget.duration,
+        videoDuration: isVideo ? widget.duration : null,
         // پاس دادن وضعیت آپلود
-        isUploading: widget.status == MessageStatus.pending || 
-                     (widget.message?.isUploading ?? false),
+        isUploading: widget.status == MessageStatus.pending ||
+            (widget.message?.isUploading ?? false),
       );
     }
 

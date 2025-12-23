@@ -4,7 +4,6 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-/// سرویس مدیریت وضعیت شبکه برای نمایش وضعیت اتصال به کاربر
 class NetworkStatusService extends ChangeNotifier {
   static final NetworkStatusService _instance =
       NetworkStatusService._internal();
@@ -12,98 +11,93 @@ class NetworkStatusService extends ChangeNotifier {
   NetworkStatusService._internal();
 
   bool _isOnline = true;
+  // ✅ اضافه شده: ذخیره نوع اتصال
+  ConnectivityResult _connectionType = ConnectivityResult.none;
   bool _isInitialized = false;
   StreamSubscription<ConnectivityResult>? _connectivitySubscription;
 
   bool get isOnline => _isOnline;
+  // ✅ اضافه شده: دسترسی به نوع اتصال
+  ConnectivityResult get connectionType => _connectionType;
   bool get isInitialized => _isInitialized;
 
-  /// مقداردهی اولیه سرویس
   Future<void> initialize() async {
     if (_isInitialized) return;
 
     try {
-      // بررسی وضعیت فعلی شبکه
       final result = await Connectivity().checkConnectivity();
-      _isOnline = result != ConnectivityResult.none;
+      _updateStatus(result); // ✅ استفاده از تابع مشترک
 
-      // گوش دادن به تغییرات شبکه
       _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
         (ConnectivityResult result) {
-          final wasOnline = _isOnline;
-          _isOnline = result != ConnectivityResult.none;
-
-          if (wasOnline != _isOnline) {
-            if (kDebugMode) {
-              print(
-                  '🌐 Network status changed: ${_isOnline ? "Online" : "Offline"}');
-            }
-            notifyListeners();
-          }
+          _updateStatus(result);
         },
         onError: (error) {
-          if (kDebugMode) {
-            logInfo('❌ Network status monitoring error: $error');
-          }
+          if (kDebugMode) logInfo('❌ Network error: $error');
         },
       );
 
       _isInitialized = true;
-      if (kDebugMode) {
-        print(
-            '✅ NetworkStatusService initialized - Status: ${_isOnline ? "Online" : "Offline"}');
-      }
     } catch (e) {
-      if (kDebugMode) {
-        logInfo('❌ Failed to initialize NetworkStatusService: $e');
-      }
-      // در صورت خطا، فرض کن که آنلاین هستیم
+      if (kDebugMode) logInfo('❌ Failed to initialize: $e');
       _isOnline = true;
       _isInitialized = true;
     }
   }
 
-  /// بررسی دستی وضعیت شبکه
-  Future<bool> checkConnectivity() async {
-    try {
-      final result = await Connectivity().checkConnectivity();
-      final isConnected = result != ConnectivityResult.none;
+  // ✅ تابع جدید برای مدیریت تغییرات
+  void _updateStatus(ConnectivityResult result) {
+    final wasOnline = _isOnline;
+    final oldType = _connectionType;
 
-      if (_isOnline != isConnected) {
-        _isOnline = isConnected;
-        notifyListeners();
-      }
+    _isOnline = result != ConnectivityResult.none;
+    _connectionType = result; // ذخیره نوع جدید
 
-      return isConnected;
-    } catch (e) {
+    // اگر وضعیت آنلاین/آفلاین یا نوع شبکه تغییر کرد
+    if (wasOnline != _isOnline || oldType != _connectionType) {
+      notifyListeners();
       if (kDebugMode) {
-        logInfo('❌ Manual connectivity check failed: $e');
+        print('🌐 Network Changed: $result (Online: $_isOnline)');
       }
-      return _isOnline; // برگرداندن آخرین وضعیت شناخته شده
     }
-  }
-
-  /// دریافت پیام وضعیت شبکه
-  String get statusMessage {
-    if (!_isInitialized) return 'بررسی وضعیت شبکه...';
-    return _isOnline ? 'آنلاین' : 'آفلاین';
-  }
-
-  /// دریافت رنگ وضعیت شبکه
-  Color get statusColor {
-    if (!_isInitialized) return Colors.orange;
-    return _isOnline ? Colors.green : Colors.red;
-  }
-
-  /// دریافت آیکون وضعیت شبکه
-  String get statusIcon {
-    if (!_isInitialized) return '🔄';
-    return _isOnline ? '🌐' : '📴';
   }
 
   @override
   void dispose() {
     _connectivitySubscription?.cancel();
     super.dispose();
+  }
+
+  // متدهای کمکی UI (رنگ و آیکون) همان‌طور که بود بماند...
+  String get statusMessage => _isOnline ? 'آنلاین' : 'آفلاین';
+  Color get statusColor => _isOnline ? Colors.green : Colors.red;
+
+  /// ارائه یک آیکون متنی جهت نمایش سریع در بنر
+  String get statusIcon {
+    if (!_isInitialized) return '🔄';
+    if (!_isOnline) return '📴';
+    // آنلاین: نشانگر بر اساس نوع اتصال
+    switch (_connectionType) {
+      case ConnectivityResult.wifi:
+        return '📶';
+      case ConnectivityResult.mobile:
+        return '📱';
+      case ConnectivityResult.ethernet:
+        return '🔌';
+      default:
+        return '🌐';
+    }
+  }
+
+  /// متد کمکی برای بررسی دستی اتصال و بروزرسانی وضعیت
+  Future<bool> checkConnectivity() async {
+    try {
+      final result = await Connectivity().checkConnectivity();
+      _updateStatus(result);
+      return _isOnline;
+    } catch (e) {
+      if (kDebugMode) logInfo('❌ Manual connectivity check failed: $e');
+      return _isOnline;
+    }
   }
 }

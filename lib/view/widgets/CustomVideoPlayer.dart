@@ -12,6 +12,7 @@ import '../../services/video_autoplay_service.dart';
 
 class CustomVideoPlayer extends ConsumerStatefulWidget {
   final String videoUrl;
+  final String? thumbnailUrl;
   final bool autoplay;
   final bool muted;
   final VoidCallback? onTap;
@@ -30,10 +31,14 @@ class CustomVideoPlayer extends ConsumerStatefulWidget {
   final String? content; // این پارامتر را نگه می‌داریم اما استفاده نمی‌کنیم
   final bool isVerified;
   final VerificationType verificationType;
+  final bool showControls; // اضافه شد
+  final bool isLocal; // اضافه شد
+  final Duration? duration; // اضافه شد
 
   const CustomVideoPlayer({
     super.key,
     required this.videoUrl,
+    this.thumbnailUrl,
     this.autoplay = true,
     this.muted = true,
     this.onTap,
@@ -52,6 +57,9 @@ class CustomVideoPlayer extends ConsumerStatefulWidget {
     this.content,
     this.isVerified = false,
     this.verificationType = VerificationType.none,
+    this.showControls = true, // اضافه شد
+    this.isLocal = false, // اضافه شد
+    this.duration, // اضافه شد
   });
 
   @override
@@ -62,6 +70,7 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
     with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   VideoPlayerController? _controller; // تغییر به nullable
   final VideoPlayerConfig _config = VideoPlayerConfig();
+  bool _isPlayerInitialized = false;
   bool _isFullScreen = false;
   bool _isInitialized = false;
   bool _isPlaying = false;
@@ -109,7 +118,7 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
       setState(() {
         _isDataSaverMode = videoAutoplayService.dataSaverEnabled;
       });
-      await _initializePlayer();
+      // await _initializePlayer(); // Removed for lazy loading
     } catch (_) {
       // ignore
     }
@@ -136,7 +145,9 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
 
       // بهینه‌سازی: همیشه از network استفاده کنیم مگر در موارد خاص
       // کش ویدیو باعث مصرف زیاد حافظه می‌شود
-      if (_isDataSaverMode || videoQuality == 'low' || widget.maxHeight != null) {
+      if (_isDataSaverMode ||
+          videoQuality == 'low' ||
+          widget.maxHeight != null) {
         _controller = VideoPlayerController.network(widget.videoUrl);
         logInfo('🎥 Using network video (optimized for performance)');
       } else {
@@ -144,7 +155,8 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
         try {
           final file = await _config.videoCacheManager
               .getSingleFile(widget.videoUrl)
-              .timeout(const Duration(seconds: 3)); // timeout برای جلوگیری از انتظار طولانی
+              .timeout(const Duration(
+                  seconds: 3)); // timeout برای جلوگیری از انتظار طولانی
           _controller = VideoPlayerController.file(file);
           logInfo('🎥 Using cached video (limited caching)');
         } catch (e) {
@@ -359,12 +371,6 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
       key: ValueKey('video-${widget.videoUrl}-${widget.postId ?? ""}'),
       onVisibilityChanged: (visibilityInfo) {
         final visibleFraction = visibilityInfo.visibleFraction;
-
-        // وضعیت قابل مشاهده بودن را چاپ کنید (برای دیباگ)
-        print(
-            'Video visibility: $visibleFraction (${widget.postId ?? "no-id"})');
-
-        // اگر بیش از 50% نمایش داده می‌شود، آن را قابل مشاهده در نظر بگیرید
         final newIsVisible = visibleFraction > 0.5;
 
         if (newIsVisible != _isVisible && mounted) {
@@ -372,12 +378,13 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
             _isVisible = newIsVisible;
           });
 
-          // بررسی تنظیمات پخش خودکار از VideoAutoplayService
+          // Do not autoplay if player hasn't been manually initialized
+          if (!_isPlayerInitialized) return;
+
           final videoAutoplayService = VideoAutoplayService();
           final shouldAutoPlay =
               widget.autoplay && videoAutoplayService.shouldAutoPlay();
 
-          // اگر قابل مشاهده است و autoplay فعال است و آماده است، پخش کنید
           if (newIsVisible && shouldAutoPlay && _isInitialized) {
             _playVideo();
           } else if (!newIsVisible && _isPlaying) {
@@ -386,147 +393,194 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
         }
       },
       child: GestureDetector(
-        onTap: widget.onTap != null
-            ? () {
-                // اگر onVideoPositionTap تعریف شده باشد، موقعیت فعلی را پاس می‌دهیم
-                if (widget.onVideoPositionTap != null) {
-                  widget.onVideoPositionTap!(_currentPosition);
-                }
-                // اجرای onTap اصلی
-                widget.onTap!();
-              }
-            : _togglePlay,
+        onTap: () {
+          if (!_isPlayerInitialized) {
+            // In lazy load mode, tap is disabled until play is pressed.
+            return;
+          }
+          if (widget.onTap != null) {
+            if (widget.onVideoPositionTap != null) {
+              widget.onVideoPositionTap!(_currentPosition);
+            }
+            widget.onTap!();
+          } else {
+            _togglePlay();
+          }
+        },
         onDoubleTap: _showLikeAnimation,
         child: Stack(
           alignment: Alignment.center,
           children: [
-            // ویدیو پلیر
-            _isInitialized
-                ? AspectRatio(
-                    aspectRatio: _controller!.value.aspectRatio,
-                    child: VideoPlayer(_controller!),
-                  )
-                : Container(
-                    color: Colors.black,
-                    height: 250,
-                    child: const Center(
-                      child: CircularProgressIndicator(),
-                    ),
-                  ),
-
-            // نشانگر بافرینگ
-            if (_isBuffering)
-              const Center(
-                child: CircularProgressIndicator(color: Colors.white),
-              ),
-
-            // دکمه پخش در صورتی که ویدیو در حال پخش نیست و در حال بافرینگ هم نیست
-            if (!_isPlaying && !_isBuffering && _isInitialized)
-              AbsorbPointer(
-                absorbing: false, // رویدادها را جذب نمی‌کند
-                child: GestureDetector(
-                  onTap: () {
-                    // فقط پخش ویدیو بدون رفتن به صفحه ریلز
-                    _togglePlay();
+            if (!_isPlayerInitialized) ...[
+              if (widget.thumbnailUrl != null && widget.thumbnailUrl!.isNotEmpty)
+                Image.network(
+                  widget.thumbnailUrl!,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: double.infinity,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return const Center(child: CircularProgressIndicator());
                   },
-                  child: Center(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.3),
-                        shape: BoxShape.circle,
-                      ),
-                      padding: const EdgeInsets.all(16),
-                      child: Icon(
-                        Icons.play_arrow,
-                        color: Colors.white.withValues(alpha: 0.9),
-                        size: 48,
-                        semanticLabel: 'پخش ویدیو',
-                      ),
-                    ),
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Center(
+                        child: Icon(Icons.error, color: Colors.white));
+                  },
+                )
+              else
+                Container(
+                  color: Colors.black,
+                  child: const Center(
+                    child: Icon(Icons.videocam, color: Colors.white30, size: 50),
                   ),
                 ),
-              ),
-
-            // انیمیشن لایک
-            if (_showLikeAnim)
               Center(
-                child: TweenAnimationBuilder<double>(
-                  tween: Tween<double>(begin: 0.5, end: 1.2),
-                  duration: const Duration(milliseconds: 400),
-                  curve: Curves.elasticOut,
-                  builder: (context, value, child) {
-                    return Transform.scale(
-                      scale: value,
-                      child: Icon(
-                        Icons.favorite,
-                        color: Colors.red.withValues(alpha: 0.9),
-                        size: 100,
-                      ),
-                    );
+                child: IconButton(
+                  icon: const Icon(Icons.play_circle_fill),
+                  color: Colors.white.withOpacity(0.9),
+                  iconSize: 60,
+                  onPressed: () {
+                    if (!mounted) return;
+                    setState(() {
+                      _isPlayerInitialized = true;
+                    });
+                    _initializePlayer().then((_) {
+                      if (mounted && _isInitialized) {
+                        _playVideo();
+                      }
+                    });
                   },
                 ),
               ),
+            ] else ...[
+              // ویدیو پلیر
+              _isInitialized
+                  ? AspectRatio(
+                      aspectRatio: _controller!.value.aspectRatio,
+                      child: VideoPlayer(_controller!),
+                    )
+                  : Container(
+                      color: Colors.black,
+                      height: 250,
+                      child: const Center(
+                        child: CircularProgressIndicator(),
+                      ),
+                    ),
 
-            // آیکون پخش/مکث در وسط صفحه (موقع تپ)
-            if (_isAnimating)
-              AnimatedOpacity(
-                opacity: _isAnimating ? 0.7 : 0.0,
-                duration: const Duration(milliseconds: 200),
-                child: Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.4),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    _isPlaying ? Icons.pause : Icons.play_arrow,
-                    color: Colors.white,
-                    size: 40,
+              // نشانگر بافرینگ
+              if (_isBuffering)
+                const Center(
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
+
+              // دکمه پخش در صورتی که ویدیو در حال پخش نیست و در حال بافرینگ هم نیست
+              if (!_isPlaying && !_isBuffering && _isInitialized)
+                AbsorbPointer(
+                  absorbing: false, // رویدادها را جذب نمی‌کند
+                  child: GestureDetector(
+                    onTap: () {
+                      // فقط پخش ویدیو بدون رفتن به صفحه ریلز
+                      _togglePlay();
+                    },
+                    child: Center(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.3),
+                          shape: BoxShape.circle,
+                        ),
+                        padding: const EdgeInsets.all(16),
+                        child: Icon(
+                          Icons.play_arrow,
+                          color: Colors.white.withOpacity(0.9),
+                          size: 48,
+                          semanticLabel: 'پخش ویدیو',
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
 
-            // دکمه خاموش/روشن کردن صدا
-            Positioned(
-              top: 8,
-              right: 8,
-              child: GestureDetector(
-                onTap: _toggleMute,
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Icon(
-                    _isMuted ? Icons.volume_off : Icons.volume_up,
-                    color: Colors.white,
-                    size: 20,
+              // انیمیشن لایک
+              if (_showLikeAnim)
+                Center(
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0.5, end: 1.2),
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.elasticOut,
+                    builder: (context, value, child) {
+                      return Transform.scale(
+                        scale: value,
+                        child: Icon(
+                          Icons.favorite,
+                          color: Colors.red.withOpacity(0.9),
+                          size: 100,
+                        ),
+                      );
+                    },
                   ),
                 ),
-              ),
-            ),
 
-            // نوار پیشرفت پایین (در صورت نیاز)
-            if (widget.showProgress && _isInitialized)
+              // آیکون پخش/مکث در وسط صفحه (موقع تپ)
+              if (_isAnimating)
+                AnimatedOpacity(
+                  opacity: _isAnimating ? 0.7 : 0.0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.4),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _isPlaying ? Icons.pause : Icons.play_arrow,
+                      color: Colors.white,
+                      size: 40,
+                    ),
+                  ),
+                ),
+
+              // دکمه خاموش/روشن کردن صدا
               Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: SizedBox(
-                  height: 3,
-                  child: LinearProgressIndicator(
-                    value: _videoDuration.inMilliseconds > 0
-                        ? _currentPosition.inMilliseconds /
-                            _videoDuration.inMilliseconds
-                        : 0.0,
-                    backgroundColor: Colors.white.withValues(alpha: 0.3),
-                    valueColor:
-                        const AlwaysStoppedAnimation<Color>(Colors.white),
-                    minHeight: 3,
+                top: 8,
+                right: 8,
+                child: GestureDetector(
+                  onTap: _toggleMute,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.6),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Icon(
+                      _isMuted ? Icons.volume_off : Icons.volume_up,
+                      color: Colors.white,
+                      size: 20,
+                    ),
                   ),
                 ),
               ),
+
+              // نوار پیشرفت پایین (در صورت نیاز)
+              if (widget.showProgress && _isInitialized)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: SizedBox(
+                    height: 3,
+                    child: LinearProgressIndicator(
+                      value: _videoDuration.inMilliseconds > 0
+                          ? _currentPosition.inMilliseconds /
+                              _videoDuration.inMilliseconds
+                          : 0.0,
+                      backgroundColor: Colors.white.withOpacity(0.3),
+                      valueColor:
+                          const AlwaysStoppedAnimation<Color>(Colors.white),
+                      minHeight: 3,
+                    ),
+                  ),
+                ),
+            ]
           ],
         ),
       ),

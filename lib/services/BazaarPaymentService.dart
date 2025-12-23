@@ -41,7 +41,7 @@ class BazaarPaymentService {
     try {
       // 1. انجام خرید و دریافت نتیجه کامل از کاتلین
       final Map<dynamic, dynamic> result =
-          await platform.invokeMethod('purchase', {
+          await platform.invokeMethod('subscribe', {
         'productId': productId,
         'payload': 'user_${Supabase.instance.client.auth.currentUser?.id}',
       });

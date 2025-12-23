@@ -19,7 +19,7 @@ class _PricingPageState extends ConsumerState<PricingPage> {
   final List<Map<String, dynamic>> _plans = [
     {
       'id': 'monthly',
-      'productId': 'android.test.purchased', // شناسه دقیق در بازار
+      'productId': 'vista_premium_monthly', // شناسه دقیق در بازار
       'title': 'ماهانه',
       'price': '۹۹,۰۰۰ تومان',
       'desc': 'مناسب برای تست',

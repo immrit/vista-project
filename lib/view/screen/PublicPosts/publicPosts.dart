@@ -798,6 +798,7 @@ Widget _buildPostItem(
                 child: CustomVideoPlayer(
                   key: ValueKey('video_player_${post.id}'),
                   videoUrl: post.videoUrl!,
+                  thumbnailUrl: post.imageUrl,
                   autoplay: ref.watch(autoPlayProvider),
                   muted: true,
                   showProgress: true,
