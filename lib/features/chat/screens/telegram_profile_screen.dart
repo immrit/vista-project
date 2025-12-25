@@ -529,7 +529,7 @@ class _TelegramProfileScreenState extends ConsumerState<TelegramProfileScreen>
       child: userProfileAsync.when(
         data: (profileData) {
           final username = profileData?['username'] ?? widget.otherUserName;
-          final phone = profileData?['phone'] as String?;
+          final phone = profileData?['phone_number'] as String?;
           final bio = profileData?['bio'] as String?;
 
           return Column(

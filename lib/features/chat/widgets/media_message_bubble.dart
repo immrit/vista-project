@@ -5,18 +5,13 @@
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:gal/gal.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:dio/dio.dart';
 
 import 'full_screen_image_viewer.dart';
 import '../../../services/telegram_read_receipt_service.dart';
-import '../../../view/util/widgets.dart' hide FullScreenImageViewer;
 import '../theme/chat_theme.dart';
 import '../../../model/message_model.dart';
 import '../../../services/network_status_service.dart';

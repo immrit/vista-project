@@ -33,6 +33,7 @@ import 'session_provider.dart';
 
 // Export security providers
 export 'security_provider.dart';
+export 'auth_provider.dart';
 
 //check user state
 final authStateProvider = StreamProvider<User?>((ref) {
@@ -2643,21 +2644,21 @@ final userSettingsByIdProvider =
     FutureProvider.family<Map<String, dynamic>?, String>((ref, userId) async {
   try {
     print('🔧 دریافت تنظیمات کاربر: $userId');
-    
+
     // استفاده از SettingsCacheService برای کش کردن تنظیمات
     final settingsCache = SettingsCacheService();
-    
+
     // ابتدا بررسی کش - اگر موجود بود و معتبر بود، از آن استفاده کن
     final cachedSettings = settingsCache.getCachedUserSettings(userId);
     if (cachedSettings != null) {
       print('🔧 استفاده از تنظیمات کش شده برای کاربر: $userId');
       return cachedSettings;
     }
-    
+
     // اگر در کش نبود، از سرور دریافت کن و کش کن
     print('🔧 دریافت تنظیمات از سرور برای کاربر: $userId');
     await settingsCache.cacheUserSettings(userId);
-    
+
     // دوباره از کش بخوان
     final settings = settingsCache.getCachedUserSettings(userId);
     print('🔧 تنظیمات دریافت شده: $settings');

@@ -1,9 +1,7 @@
-
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:photo_view/photo_view.dart';
-import 'package:photo_view/photo_view_gallery.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
@@ -136,7 +134,8 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
 
   bool _isNetworkUrl(String url) {
     final trimmedUrl = url.trim().toLowerCase();
-    return trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://');
+    return trimmedUrl.startsWith('http://') ||
+        trimmedUrl.startsWith('https://');
   }
 
   bool get _shouldTruncateCaption {
@@ -375,7 +374,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
               itemBuilder: (context, index) {
                 final item = widget.galleryItems[index];
                 final photoController = _getPhotoController(index);
-                
+
                 return Transform.scale(
                   scale: _isDragging ? _dragScale : 1.0,
                   child: GestureDetector(
@@ -404,7 +403,8 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
                             color: Colors.white,
                           ),
                         ),
-                        errorBuilder: (context, error, stackTrace) => const Center(
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Center(
                           child: Icon(
                             Icons.broken_image_rounded,
                             size: 64,

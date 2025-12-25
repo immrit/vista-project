@@ -200,7 +200,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen>
         'full_name': _fullNameController.text.trim(),
         'bio': _bioController.text.trim(),
         'birth_date': _birthDateController.text.trim(),
-        'phone': widget.phoneNumber,
+        'phone_number': widget.phoneNumber,
         'avatar_url': avatarUrl,
         'email': user.email,
         'updated_at': DateTime.now().toIso8601String(),

@@ -1,4 +1,5 @@
 import '../../../security/logging_utility.dart';
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -24,6 +25,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
   final TextEditingController fullNameController = TextEditingController();
   final TextEditingController bioController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
   bool _isLoading = false;
 
   // تاریخ تولد
@@ -48,6 +50,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
     if (data != null) {
       setState(() {
         emailController.text = supabase.auth.currentUser?.email ?? "";
+        _phoneController.text = data['phone_number'] ?? "";
         if (data['birth_date'] != null) {
           _birthDate = data['birth_date'];
           try {
@@ -556,12 +559,37 @@ class _EditProfileState extends ConsumerState<EditProfile> {
         }
       }
 
+      final data = await ref.read(profileProvider.future);
+      final String newPhone = _phoneController.text.trim();
+      final bool phoneChanged =
+          data != null && newPhone != (data['phone_number'] ?? "");
+
+      if (phoneChanged && newPhone.isNotEmpty) {
+        try {
+          await ref.read(authNotifierProvider.notifier).sendOtp(newPhone);
+          // Step 2: Show OTP Dialog
+          final bool verified = await _showOtpDialog(newPhone);
+          if (!verified) {
+            setState(() => _isLoading = false);
+            return; // Exit if OTP verification failed or canceled
+          }
+        } catch (e) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('خطا در ارسال کد تأیید: $e')),
+          );
+          setState(() => _isLoading = false);
+          return;
+        }
+      }
+
       // به‌روزرسانی پروفایل
       final updates = {
         'username': username,
         'full_name': fullNameController.text,
         'bio': bioController.text,
         'birth_date': _birthDate,
+        'phone_number': newPhone, // Updated to correct column name
       };
 
       await supabase
@@ -730,6 +758,13 @@ class _EditProfileState extends ConsumerState<EditProfile> {
                           },
                         ),
                         const SizedBox(height: 16),
+                        _buildProfileField(
+                          title: 'شماره تلفن',
+                          icon: Icons.phone_android_outlined,
+                          controller: _phoneController,
+                          keyboardType: TextInputType.phone,
+                        ),
+                        const SizedBox(height: 16),
                         _buildDateField(
                           title: 'تاریخ تولد',
                           value: _birthDate != null
@@ -807,14 +842,11 @@ class _EditProfileState extends ConsumerState<EditProfile> {
   }
 
   // تبدیل فرمت تاریخ به نمایش دوستانه
+  // تاریخ تولد را با فرمت خواناتر نمایش می‌دهد
   String _formatBirthDate(String date) {
     try {
-      final dateParts = date.split('/');
-      if (dateParts.length == 3) {
-        final year = int.parse(dateParts[0]);
-        final month = int.parse(dateParts[1]);
-        final day = int.parse(dateParts[2]);
-
+      final parts = date.split('/');
+      if (parts.length == 3) {
         final monthNames = [
           'فروردین',
           'اردیبهشت',
@@ -829,13 +861,209 @@ class _EditProfileState extends ConsumerState<EditProfile> {
           'بهمن',
           'اسفند'
         ];
-
-        return '$day ${monthNames[month - 1]} $year';
+        return '${parts[2]} ${monthNames[int.parse(parts[1]) - 1]} ${parts[0]}';
       }
     } catch (e) {
-      logInfo('خطا در نمایش تاریخ: $e');
+      logInfo('خطا در فرمت تاریخ: $e');
     }
     return date;
+  }
+
+  Future<bool> _showOtpDialog(String phoneNumber) async {
+    final TextEditingController otpController = TextEditingController();
+    bool isVerifying = false;
+    String? error;
+    int countdown = 60;
+    Timer? timer;
+
+    return await showGeneralDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          barrierLabel: 'OTP Dialog',
+          pageBuilder: (context, anim1, anim2) => const SizedBox(),
+          transitionDuration: const Duration(milliseconds: 400),
+          transitionBuilder: (context, anim1, anim2, child) {
+            final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+            return StatefulBuilder(
+              builder: (context, setDialogState) {
+                // Initialize timer if not already running
+                timer ??= Timer.periodic(const Duration(seconds: 1), (t) {
+                  if (countdown > 0) {
+                    setDialogState(() => countdown--);
+                  } else {
+                    t.cancel();
+                  }
+                });
+
+                return ScaleTransition(
+                  scale:
+                      CurvedAnimation(parent: anim1, curve: Curves.easeOutBack),
+                  child: FadeTransition(
+                    opacity: anim1,
+                    child: AlertDialog(
+                      backgroundColor:
+                          isDarkMode ? Colors.grey[900] : Colors.white,
+                      surfaceTintColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24)),
+                      title: Column(
+                        children: [
+                          Icon(Icons.sms_outlined,
+                              size: 48, color: const Color(0xFF4A80F0)),
+                          const SizedBox(height: 16),
+                          Text(
+                            'تأیید شماره تلفن',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: isDarkMode ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                        ],
+                      ),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'کد ۵ رقمی ارسال شده به $phoneNumber را وارد کنید',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color:
+                                  isDarkMode ? Colors.white70 : Colors.black54,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: isDarkMode
+                                  ? Colors.grey[850]
+                                  : Colors.grey[100],
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: error != null
+                                    ? Colors.red
+                                    : const Color(0xFF4A80F0).withOpacity(0.3),
+                                width: 2,
+                              ),
+                            ),
+                            child: TextField(
+                              controller: otpController,
+                              keyboardType: TextInputType.number,
+                              maxLength: 5,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 24,
+                                letterSpacing: 12,
+                                fontWeight: FontWeight.bold,
+                                color: isDarkMode ? Colors.white : Colors.black,
+                              ),
+                              decoration: const InputDecoration(
+                                counterText: '',
+                                border: InputBorder.none,
+                                contentPadding:
+                                    EdgeInsets.symmetric(vertical: 12),
+                              ),
+                            ),
+                          ),
+                          if (error != null) ...[
+                            const SizedBox(height: 8),
+                            Text(error!,
+                                style: const TextStyle(
+                                    color: Colors.red, fontSize: 12)),
+                          ],
+                          const SizedBox(height: 24),
+                          if (countdown > 0)
+                            Text(
+                              'ارسال مجدد کد در $countdown ثانیه',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: isDarkMode
+                                      ? Colors.white54
+                                      : Colors.black45),
+                            )
+                          else
+                            TextButton(
+                              onPressed: () async {
+                                setDialogState(() {
+                                  countdown = 60;
+                                  error = null;
+                                });
+                                try {
+                                  await ref
+                                      .read(authNotifierProvider.notifier)
+                                      .sendOtp(phoneNumber);
+                                } catch (e) {
+                                  setDialogState(
+                                      () => error = 'خطا در ارسال مجدد');
+                                }
+                              },
+                              child: const Text('ارسال مجدد کد',
+                                  style: TextStyle(color: Color(0xFF4A80F0))),
+                            ),
+                        ],
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () {
+                            timer?.cancel();
+                            Navigator.pop(context, false);
+                          },
+                          child: Text('انصراف',
+                              style: TextStyle(
+                                  color: isDarkMode
+                                      ? Colors.white54
+                                      : Colors.black45)),
+                        ),
+                        ElevatedButton(
+                          onPressed: isVerifying
+                              ? null
+                              : () async {
+                                  if (otpController.text.length < 5) return;
+                                  setDialogState(() {
+                                    isVerifying = true;
+                                    error = null;
+                                  });
+                                  final success = await ref
+                                      .read(authNotifierProvider.notifier)
+                                      .verifyOtp(
+                                          phone: phoneNumber,
+                                          token: otpController.text,
+                                          isUpdateMode: true);
+                                  if (success) {
+                                    timer?.cancel();
+                                    Navigator.pop(context, true);
+                                  } else {
+                                    setDialogState(() {
+                                      isVerifying = false;
+                                      error = 'کد وارد شده اشتباه است';
+                                    });
+                                  }
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF4A80F0),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                            elevation: 0,
+                          ),
+                          child: isVerifying
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white))
+                              : const Text('تأیید'),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ) ??
+        false;
   }
 
   // ساخت فیلد ورودی پروفایل با استایل یکسان
