@@ -43,20 +43,13 @@ class UnifiedMessageCacheService {
       {int? limit}) async {
     final messages = _advancedCache.getCachedMessages(conversationId);
     
-    // اطمینان از اینکه isMe برای همه پیام‌ها به درستی set شده است
-    final correctedMessages = messages.map((message) {
-      // بررسی و اصلاح isMe بر اساس userId فعلی
-      final correctIsMe = message.senderId == userId;
-      if (message.isMe != correctIsMe) {
-        return message.copyWith(isMe: correctIsMe);
-      }
-      return message;
-    }).toList();
+    // ✅ Optimization: Removed runtime isMe correction. 
+    // Data should be correct at write time. Avoiding O(N) allocation.
     
     if (limit != null && limit > 0) {
-      return correctedMessages.take(limit).toList();
+      return messages.take(limit).toList();
     }
-    return correctedMessages;
+    return messages;
   }
 
   /// Get cached messages for a conversation
@@ -64,15 +57,8 @@ class UnifiedMessageCacheService {
       String conversationId, String userId) async {
     final messages = _advancedCache.getCachedMessages(conversationId);
     
-    // اطمینان از اینکه isMe برای همه پیام‌ها به درستی set شده است
-    return messages.map((message) {
-      // بررسی و اصلاح isMe بر اساس userId فعلی
-      final correctIsMe = message.senderId == userId;
-      if (message.isMe != correctIsMe) {
-        return message.copyWith(isMe: correctIsMe);
-      }
-      return message;
-    }).toList();
+    // ✅ Optimization: Removed runtime isMe correction.
+    return messages;
   }
 
   /// Get a specific message

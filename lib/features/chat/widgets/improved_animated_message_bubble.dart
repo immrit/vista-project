@@ -251,8 +251,8 @@ class _ImprovedAnimatedMessageBubbleState
                 padding: EdgeInsets.only(
                   left: widget.isMe ? 60 : 12,
                   right: widget.isMe ? 12 : 60,
-                  bottom: widget.isLastInGroup ? 8 : 2,
-                  top: widget.isFirstInGroup ? 8 : 2,
+                  bottom: widget.isLastInGroup ? 4 : 1.5,
+                  top: widget.isFirstInGroup ? 4 : 1.5,
                 ),
                 child: Column(
                   crossAxisAlignment: widget.isMe
@@ -294,13 +294,7 @@ class _ImprovedAnimatedMessageBubbleState
       decoration: BoxDecoration(
         color: widget.isMe ? theme.myBubbleColor : theme.otherBubbleColor,
         borderRadius: _getBorderRadius(),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        // ✅ سایه حذف شد برای پرفورمنس
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

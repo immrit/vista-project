@@ -174,10 +174,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // انیمیشن حذف پیام
   final Set<String> _deletingMessageIds = {};
 
-  // ✅ Emoji picker state tracking
-  bool _showEmojiPicker = false;
-  static const double _emojiPickerHeight = 300.0;
-
   // ✅ لیست پیام‌هایی که الان منوی آن‌ها باز است (برای مخفی کردن از لیست اصلی)
   final Set<String> _temporarilyHiddenMessages = {};
 
@@ -643,36 +639,34 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       paginationStateProvider(widget.args.conversationId),
     );
 
-    // دریافت ارتفاع کیبورد و Safe Area
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    final safePaddingBottom = MediaQuery.of(context).padding.bottom;
-
-    // ✅ محاسبه padding با در نظر گرفتن پنل ایموجی
-    final emojiPickerOffset = _showEmojiPicker ? _emojiPickerHeight : 0.0;
-
     return Stack(
       children: [
         // 1. والپیپر (زیر همه چیز)
         Positioned.fill(
-          child: EnhancedChatBackground(
-            enablePattern: true,
-            child: Container(color: Colors.transparent),
+          // ✅ اضافه کردن RepaintBoundary
+          // این باعث می‌شود هنگام باز شدن کیبورد، بک‌گراند دوباره Paint نشود (خیلی مهم برای GPU)
+          child: RepaintBoundary(
+            child: EnhancedChatBackground(
+              enablePattern: true,
+              child: Container(color: Colors.transparent),
+            ),
           ),
         ),
 
         // 2. اسکفولد اصلی
         Scaffold(
           backgroundColor: Colors.transparent,
-          extendBody: true, // مهم: بادی تا زیر نوار پایین ادامه پیدا کند
+          extendBody: true,
           extendBodyBehindAppBar: true,
           resizeToAvoidBottomInset:
-              false, // مهم: خودمان هندل می‌کنیم تا انیمیشن نرم‌تر باشد
+              true, // ✅ بهینه‌سازی: تغییر به true برای هندل خودکار کیبورد
 
           appBar: _isSearchMode ? null : _buildAppBar(theme),
 
           body: Stack(
             children: [
-              // لایه 1: لیست پیام‌ها (تمام صفحه) با تاریخ شناور
+              // لایه 1: لیست پیام‌ها (تمام صفحه)
+              // با استفاده از Stack، لیست زیر اینپوت می‌رود و افکت شیشه‌ای دیده می‌شود
               Positioned.fill(
                 child: FloatingDateHeader(
                   currentDate: _currentVisibleDate,
@@ -681,19 +675,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                     messagesAsync,
                     paginationState,
                     theme,
-                    // ✅ محاسبه صحیح padding با در نظر گرفتن کیبورد و پنل ایموجی
-                    // ارتفاع کیبورد + ارتفاع پنل ایموجی (اگر باز باشد) + ارتفاع اینپوت بار (55) + Safe Area + فاصله اضافه
-                    bottomPadding: (bottomInset +
-                            emojiPickerOffset +
-                            55 +
-                            safePaddingBottom +
-                            25)
-                        .clamp(0.0, double.infinity),
+                    // ✅ پدینگ پایین برابر با ارتفاع اینپوت بار (تا آخرین پیام زیر بار نرود)
+                    // ارتفاع اینپوت حدود 60-70 است + فاصله اطمینان
+                    bottomPadding: 85.0,
                   ),
                 ),
               ),
 
-              // لایه 2: بنرها و هدرهای شناور
+              // لایه 2: بنرها
               if (_isCurrentUserBlocked || _isOtherUserBlocked)
                 Positioned(
                   top: kToolbarHeight + 30,
@@ -712,12 +701,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 ),
               ),
 
-              // لایه 3: دکمه اسکرول به پایین (بالای اینپوت)
+              // لایه 3: دکمه اسکرول به پایین
               if (_showScrollToBottom)
                 Positioned(
                   right: 16,
-                  // موقعیت دکمه بر اساس باز بودن کیبورد
-                  bottom: bottomInset + 80 + safePaddingBottom,
+                  bottom: 90, // بالاتر از اینپوت بار
                   child: TweenAnimationBuilder<double>(
                     tween: Tween(begin: 0.0, end: 1.0),
                     duration: const Duration(milliseconds: 200),
@@ -737,49 +725,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   ),
                 ),
 
-              // لایه 3.5: لایه بلور با گرادیانت نرم و صاف از پایین تکست باکس (تا پیام‌ها به تدریج مات دیده شوند)
+              // لایه 4: اینپوت بار (چسبیده به پایین)
               if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: (bottomInset < 0 ? 0.0 : bottomInset),
-                  height: bottomInset > 0
-                      ? 25.0
-                      : (safePaddingBottom > 0
-                          ? safePaddingBottom + 55.0
-                          : 75.0),
-                  // ✅ جایگزین با این (بدون ClipRect و BackdropFilter):
-                  child: IgnorePointer(
-                    // برای اینکه کلیک‌ها ازش رد بشه
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            theme.backgroundColor.withOpacity(0.0), // شفاف
-                            theme.backgroundColor
-                                .withOpacity(0.8), // رنگ پس‌زمینه
-                            theme.backgroundColor, // کاملا پر
-                          ],
-                          stops: const [0.0, 0.6, 1.0],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-              // لایه 4: اینپوت بار جزیره‌ای (Input Island)
-              if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  // چسبیدن به بالای کیبورد - استفاده از max برای جلوگیری از مقادیر منفی
-                  bottom: bottomInset < 0 ? 0.0 : bottomInset,
+                Align(
+                  alignment: Alignment.bottomCenter,
                   child: _buildInputArea(theme),
                 ),
 
-              // لایه 5: Search Bar (اگر فعال باشد)
+              // لایه 5: Search Bar
               if (_isSearchMode)
                 Positioned(
                   top: 0,
@@ -1469,6 +1422,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         return CustomScrollView(
           controller: _scrollController,
           reverse: true,
+          // ✅ اضافه کردن cacheExtent
+          // مقدار 300 یعنی حدود ۳-۴ پیام قبل از دیده شدن در حافظه رندر شوند
+          // این کار پرش‌های ریز هنگام اسکرول سریع را حذف می‌کند
+          cacheExtent: 300,
           physics: const BouncingScrollPhysics(),
           slivers: [
             // ✅ مهم: پدینگ پایین لیست برای اینکه زیر اینپوت نرود
@@ -1940,10 +1897,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           : widget.args.otherUserName,
       onCancelReply: () => setState(() => _replyToMessage = null),
       onVoiceRecorded: _handleVoiceRecorded,
-      // ✅ اضافه کردن callback برای tracking وضعیت پنل ایموجی
-      onEmojiPickerToggled: (isVisible) {
-        setState(() => _showEmojiPicker = isVisible);
-      },
     );
   }
 

@@ -54,15 +54,14 @@ import 'view/screen/PublicPosts/publicPosts.dart';
 import 'view/screen/PublicPosts/PostDetailPage.dart';
 import 'view/screen/PublicPosts/profileScreen.dart';
 import 'utils/performance_monitor.dart';
-import 'utils/deferred_initialization_manager.dart';
 import 'services/animation_controller_service.dart';
 import 'services/advanced_haptic_feedback_service.dart';
 import 'services/auto_lock_service.dart';
-import 'services/auth_navigation_service.dart';
 import 'provider/settings_providers.dart';
 import 'view/util/themes.dart';
 import 'package:package_info_plus/package_info_plus.dart'; // ✅ برای گرفتن نسخه اپ
 import 'package:device_info_plus/device_info_plus.dart'; // ✅ برای گرفتن مدل دستگاه
+import 'package:loading_animation_widget/loading_animation_widget.dart';
 // Clipboard از طریق flutter/services.dart که قبلاً import شده در دسترس است
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -70,9 +69,6 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
 
 // GlobalKey برای navigator
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-
-// جلوگیری از initialize چندگانه در طول hot restart
-bool _isAppInitialized = false;
 
 /// 🔥 Background Message Handler - باید Top-Level باشه (خارج از کلاس‌ها)
 /// این تابع وقتی اپ کاملا بسته است و پیام میاد اجرا میشه
@@ -205,270 +201,165 @@ void _setupPerformanceOptimizations() {
   print('⚙️ Performance optimizations applied');
 }
 
-void main() async {
-  // Global error handling to prevent crashes
-  runZonedGuarded(
-    () async {
-      // جلوگیری از initialize چندگانه در طول hot restart
-      if (_isAppInitialized) {
-        print('🔄 App already initialized, skipping initialization...');
-        runApp(ProviderScope(child: MyApp()));
-        return;
-      }
+void main() {
+  // ✅ تمام کارهای سنگین را از اینجا حذف کردیم و به RootApp بردیم
+  // فقط کارهای ضروری سیستمی اینجا می‌مانند
 
-      WidgetsFlutterBinding.ensureInitialized();
+  runZonedGuarded(() {
+    WidgetsFlutterBinding.ensureInitialized();
 
-      // 🔥 این خط حیاتی رو اضافه کن: Background Message Handler
-      // باید قبل از initialize Firebase باشه
-      FirebaseMessaging.onBackgroundMessage(
-          _firebaseMessagingBackgroundHandler);
+    // 🔥 Background Message Handler
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-      // ✅ تنظیمات Edge-to-Edge برای افکت شیشه‌ای در چت
-      SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-        systemNavigationBarColor: Colors.transparent, // مهم برای اندروید ۱۰+
-        systemNavigationBarDividerColor: Colors.transparent,
-      ));
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    // ✅ تنظیمات UI سیستم
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+    ));
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
+    // 🚀 اجرای فوری برنامه با ویجت RootApp
+    // این ویجت وظیفه نشان دادن اسپلش و لود کردن سرویس‌ها را دارد
+    runApp(ProviderScope(child: const RootApp()));
+  }, (error, stack) {
+    // باز کردن صفحه خطا یا لاگ
+    if (error.toString().contains('RealtimeSubscribeException')) {
+      return;
+    }
+    print('⚠️ Global error: $error');
+  });
+}
+
+/// ✅ ویجت ریشه که بلافاصله نمایش داده می‌شود
+/// این ویجت در حالی که اسپلش را نشان می‌دهد، سرویس‌ها را در پس‌زمینه لود می‌کند
+class RootApp extends StatefulWidget {
+  const RootApp({super.key});
+
+  @override
+  State<RootApp> createState() => _RootAppState();
+}
+
+class _RootAppState extends State<RootApp> {
+  bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initAppServices();
+  }
+
+  Future<void> _initAppServices() async {
+    final stopwatch = Stopwatch()..start();
+
+    try {
+      // 1. Initialize Date Formatting (سریع)
+      await initializeDateFormatting('fa', null);
+
+      // 2. Performance & Monitor
       _setupPerformanceOptimizations();
       PerformanceMonitor().startMonitoring();
 
-      // Initialize date formatting for all locales
-      await initializeDateFormatting('fa', null);
-
-      // راه‌اندازی Firebase با بررسی وضعیت قبلی
+      // 3. Firebase (معمولا سریع)
       await _initializeFirebase();
 
-      // راه‌اندازی Supabase با timeout مناسب برای شبکه‌های کند
-      try {
-        // استفاده از timeout مناسب برای شبکه‌های کند
-        await initializeSupabaseWithFailover().timeout(
-          const Duration(seconds: 20), // ✅ افزایش از 8 به 20 ثانیه
-          onTimeout: () {
-            print(
-              '⏰ Supabase initialization timeout - continuing with offline mode',
-            );
-            throw TimeoutException('Supabase initialization timeout');
-          },
-        );
-        print('✅ Supabase initialized successfully');
+      // 4. Supabase (این تابع را در const.dart اصلاح کردیم که سریع باشد)
+      await initializeSupabaseWithFailover().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw TimeoutException('Supabase init timeout'),
+      );
 
-        // ✅ بررسی session بلافاصله بعد از init
-        try {
-          final currentSession = Supabase.instance.client.auth.currentSession;
-          if (currentSession != null) {
-            print('🔐 Active session detected: ${currentSession.user.email}');
-            print(
-                '📅 Expires at: ${DateTime.fromMillisecondsSinceEpoch((currentSession.expiresAt ?? 0) * 1000)}');
-          } else {
-            print('ℹ️ No active session - user needs to login');
-          }
-        } catch (e) {
-          print('⚠️ Error checking session after initialization: $e');
-        }
-      } catch (e) {
-        print('❌ Supabase initialization failed: $e');
+      // 5. Session Manager (برای خواندن دیتای آفلاین ضروری است)
+      await SessionManagerServiceV2().initialize();
 
-        // در هر دو حالت debug و production، برنامه را ادامه بده
-        // اما با حالت offline
-        print('🔧 برنامه در حالت آفلاین اجرا می‌شود');
-        print('⚠️ برخی ویژگی‌های آنلاین ممکن است کار نکنند');
-      }
-
-      // ✅ Initialize Session Manager V2
-      try {
-        await SessionManagerServiceV2().initialize();
-        print('✅ SessionManagerServiceV2 initialized');
-      } catch (e) {
-        print('⚠️ SessionManagerServiceV2 initialization failed: $e');
-      }
-
-      // ✅ Deferred Initialization Manager - برای به تعویق انداختن عملیات سنگین
-      final deferredManager = DeferredInitializationManager();
-
-      // ✅ فوری: فقط چیزهای ضروری
-      // 1. ❌ حذف شده: HighPerformanceCacheSystem (کش اضافی - Repository می‌سازد)
-
-      // 2. Database Manager (ضروری)
+      // 6. Database & Settings (ضروری برای تم و ...)
       await DatabaseManager().initializeAllDatabases();
-
-      // 3. Settings Cache (ضروری)
       await SettingsCacheService().initialize();
-
-      // 3.5. Advanced Settings Service (ضروری)
       await AdvancedSettingsService().initialize();
 
-      // 3.6. Initialize Animation Controller Service
-      await AnimationControllerService().loadSettings();
-
-      // 3.7. Initialize Haptic Feedback Service
-      await AdvancedHapticFeedbackService().initialize();
-
-      // 3.8. Initialize Auto Lock Service
-      await AutoLockService().initialize();
-
-      // 3.9. Initialize Network State Service (✅ جدید)
-      await NetworkStateService().initialize();
-
-      // 3.10. Initialize Retry Queue Service (✅ جدید)
-      await RetryQueueService().initialize();
-
-      // 3.11. Initialize Optimized Message Deletion Service (✅ اصلاح شده)
-      // برای اطمینان از اینکه تسک‌های حذف ناتمام مجدداً شروع شوند
-      await OptimizedMessageDeletionService().initialize();
-
-      // 4. Voice Cache Service (ضروری)
-      final voiceCacheService = VoiceCacheService();
-      await voiceCacheService.initialize();
-
-      // ✅ 5. Advanced Cache System (کش مکالمه‌ها) - فوری برای نمایش سریع
-      // این باید فوری باشد تا مکالمه‌ها بلافاصله از دیسک load شوند
-      try {
-        final conversationCache = UnifiedConversationCacheService();
-        await conversationCache.initialize();
-        print('✅ Conversation cache initialized - conversations ready');
-      } catch (e) {
-        print('⚠️ Failed to initialize conversation cache: $e');
-        // ادامه بده حتی اگر خطا داشت
-      }
-
-      // ✅ بقیه کارها را defer کن - تا زمان باز شدن کیبورد منتظر می‌مانند
-      deferredManager.defer(() async {
-        // راه‌اندازی سرویس امنیتی پیشرفته
-        await AdvancedSecurityService.initialize();
-      });
-
-      // ❌ حذف شده: _initializeOptimizedChatSystem و _initializeOptimizedMessaging
-      // Repository و Riverpod بر عهده این کار‌ها هستند
-
-      deferredManager.defer(() async {
-        // 📦 مقداردهی اولیه UnifiedCacheManager
-        await UnifiedCacheManager().initialize();
-      });
-
-      deferredManager.defer(() async {
-        // 🚀 مقداردهی اولیه ProfileCacheService
-        await ProfileCacheService().initialize();
-      });
-
-      // تنظیم ProviderContainer بعد از راه‌اندازی کامل اپ
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final context = navigatorKey.currentContext;
-        if (context != null) {
-          voiceCacheService.setProviderContainer(
-            ProviderScope.containerOf(context),
-          );
-        }
-      });
-
-      // ✅ بهینه‌سازی: پیش‌کش پروفایل با تأخیر برای کاهش لگ startup
-      Future.delayed(const Duration(seconds: 3), () async {
-        try {
-          final currentUser = Supabase.instance.client.auth.currentUser;
-          if (currentUser != null) {
-            // پیش‌کش کردن بدون بلاک کردن راه‌اندازی اپ
-            unawaited(
-                ProfileCacheService().cacheProfileAndPosts(currentUser.id));
-          }
-        } catch (e) {
-          print('⚠️ Prefetch profile/posts failed at startup: $e');
-        }
-      });
-
-      // 🚀 مقداردهی اولیه ProfileService جدید با real-time updates
-      ProfileService().startRealtimeUpdates();
-
-      // 🟢 مقداردهی اولیه UserPresenceService - Real-time وضعیت آنلاین
-      await UserPresenceService().initialize();
-
-      // 🔍 راه‌اندازی memory leak detection
+      // 7. Memory Leak Detection
       _initializeMemoryLeakDetection();
 
-      // 🌐 راه‌اندازی سرویس وضعیت شبکه
-      await NetworkStatusService().initialize();
-
-      // 🔥 راه‌اندازی اعلان‌های محلی - کامنت شد
-      // چون PushNotificationService خودش init می‌کند و اگر دو بار صدا زده شود تداخل ایجاد می‌کند
-      // initialize در PushNotificationService انجام می‌شود که هم برای foreground و هم background کار می‌کند
-      /* 
-      await flutterLocalNotificationsPlugin.initialize(
-        InitializationSettings(
-          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-          iOS: DarwinInitializationSettings(),
-        ),
-        onDidReceiveNotificationResponse: notificationResponseHandler,
-      );
-      */
-
-      // ✅ بررسی اعلان اولیه FCM (وقتی app کاملاً بسته بود و از اعلان باز شد)
+      // 8. Initial Notification check
       _checkInitialNotification();
 
-      // ایجاد کانال‌های اعلان
-      const chatChannel = AndroidNotificationChannel(
-        'chat_notifications',
-        'Chat Notifications',
-        description: 'Notifications for chat messages',
-        importance: Importance.high,
-        playSound: true,
-        enableVibration: true,
-        showBadge: true,
+      // بقیه سرویس‌ها را می‌توان به صورت موازی یا با تأخیر لود کرد
+      _deferOtherServices();
+    } catch (e) {
+      print('❌ Error during app initialization: $e');
+      // حتی اگر خطا خوردیم، اجازه می‌دهیم برنامه باز شود (حالت آفلاین/فال‌بک)
+    } finally {
+      stopwatch.stop();
+      print('🚀 App initialized in ${stopwatch.elapsedMilliseconds}ms');
+
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
+    }
+  }
+
+  /// اجرای سرویس‌های غیرضروری در پس‌زمینه
+  void _deferOtherServices() async {
+    try {
+      await AnimationControllerService().loadSettings();
+      await AdvancedHapticFeedbackService().initialize();
+      await AutoLockService().initialize();
+      await NetworkStateService().initialize();
+      await RetryQueueService().initialize();
+      await OptimizedMessageDeletionService().initialize();
+
+      // سرویس‌هایی که نیاز به دسترسی به کلاینت سوپابیس دارند
+      await UserPresenceService().initialize();
+      ProfileService().startRealtimeUpdates();
+
+      VoiceCacheService().initialize(); // fire and forget
+
+      // تلاش برای کش مکالمه‌ها
+      UnifiedConversationCacheService().initialize().catchError((_) {});
+
+      // ثبت سکیوریتی و کش‌های جانبی
+      await AdvancedSecurityService.initialize();
+      await UnifiedCacheManager().initialize();
+      await ProfileCacheService().initialize();
+      await NetworkStatusService().initialize();
+
+      // بقیه سرویس‌ها...
+      WallpaperCacheService.preloadWallpapers();
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // تا زمانی که سرویس‌های حیاتی لود نشده‌اند، اسپلش UI را نشان بده
+    if (!_isInitialized) {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          backgroundColor: Colors.black,
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Image.asset(
+                  'lib/view/util/images/vistalogo.png',
+                  height: 200,
+                ),
+                const SizedBox(height: 30),
+                LoadingAnimationWidget.progressiveDots(
+                  color: Colors.white,
+                  size: 50,
+                ),
+              ],
+            ),
+          ),
+        ),
       );
+    }
 
-      const socialChannel = AndroidNotificationChannel(
-        'social_notifications',
-        'Social Notifications',
-        description: 'Notifications for social activities',
-        importance: Importance.high,
-        playSound: true,
-        enableVibration: true,
-        showBadge: true,
-      );
-
-      await flutterLocalNotificationsPlugin
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(chatChannel);
-      await flutterLocalNotificationsPlugin
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(socialChannel);
-
-      // ✅ بهینه‌سازی: پیش‌بارگذاری والپیپرهای چت با تأخیر بیشتر برای کاهش لگ startup
-      Future.delayed(const Duration(seconds: 5), () {
-        unawaited(WallpaperCacheService.preloadWallpapers());
-      });
-
-      // علامت‌گذاری اپلیکیشن به عنوان initialize شده
-      _isAppInitialized = true;
-      print('🚀 Vista App initialization completed successfully!');
-
-      runApp(ProviderScope(child: MyApp()));
-    },
-    (error, stack) {
-      // Handle specific errors that shouldn't crash the app
-      if (error.toString().contains('RealtimeSubscribeException')) {
-        print('⚠️ Real-time subscription error caught and handled: $error');
-        return; // Don't print full stack trace for known real-time issues
-      }
-
-      if (error.toString().contains('cacheObject') ||
-          error.toString().contains('no such table') ||
-          error.toString().contains('DatabaseException')) {
-        print('🛡️ Cache error suppressed: $error');
-        return;
-      }
-
-      // ✅ بررسی خطاهای مربوط به عدم لاگین و هدایت به صفحه auth
-      if (AuthNavigationService.handleAuthError(error)) {
-        print('🔐 Auth error detected, redirecting to auth screen');
-        return;
-      }
-
-      print('⚠️ Unhandled error (caught globally): $error');
-      print('Stack trace: $stack');
-      // Don't rethrow to prevent app crash
-    },
-  );
+    // وقتی آماده شد، برنامه اصلی را نشان بده
+    return const MyApp();
+  }
 }
 
 /// بررسی اعلان اولیه (وقتی app کاملاً بسته بود و از اعلان باز شد)

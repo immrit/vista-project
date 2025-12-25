@@ -1031,7 +1031,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Future<void> _sendGifMessage(String gifUrl) async {
     print("🟢 ChatScreen: _sendGifMessage CALLED with: $gifUrl");
     setState(() {}); // رفرش UI
-    
+
     try {
       // ساخت پیام جدید
       // نکته: اگر از مدل‌های جدید استفاده می‌کنید مطمئن شوید attachmentType درست است
@@ -1043,7 +1043,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           );
 
       print("🟢 ChatScreen: GIF Sent Successfully!");
-      
+
       _clearAttachments();
       _autoScrollToBottom();
 
@@ -1052,7 +1052,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ref.invalidate(conversationsStreamProvider);
       ref.invalidate(cachedConversationsStreamProvider);
       ref.read(cachedConversationsProvider.notifier).refresh();
-      
+
       // نمایش پیام موفقیت
       ToastService.showSuccessToast(context, 'گیف با موفقیت ارسال شد');
     } catch (e) {
@@ -1567,6 +1567,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final messages = ref.watch(
       chatScreenProvider(_providerParams).select((state) => state.messages),
     );
+    // ✅ Pre-calculate message map for O(1) lookups
+    // This prevents O(N) search inside each item build (O(N^2) total)
+    final messageMap = {for (var m in messages) m.id: m};
     final isLoading = ref.watch(
       chatScreenProvider(_providerParams).select((state) => state.isLoading),
     );
@@ -1964,11 +1967,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                           message.replyToSenderName ==
                                               'کاربر')) {
                                     // جستجو در کل لیست پیام‌ها برای پیدا کردن پیام ریپلای شده
-                                    final repliedMessage = messages.firstWhere(
-                                      (msg) =>
-                                          msg.id == message.replyToMessageId,
-                                      orElse: () => MessageModel.empty(),
-                                    );
+                                    // جستجو در map (O(1)) به جای لیست (O(N))
+                                    final repliedMessage =
+                                        messageMap[message.replyToMessageId] ??
+                                            MessageModel.empty();
 
                                     if (repliedMessage.id.isNotEmpty &&
                                         repliedMessage.senderName != null &&
@@ -2254,7 +2256,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       );
 
       // 2️⃣ اضافه کردن پیام موقت به لیست (نمایش فوری با تصویر محلی)
-      ref.read(chatScreenProvider(_providerParams).notifier)
+      ref
+          .read(chatScreenProvider(_providerParams).notifier)
           .addPendingMessage(tempMessage);
 
       print('✅ پیام موقت اضافه شد با ID: $tempMessageId');

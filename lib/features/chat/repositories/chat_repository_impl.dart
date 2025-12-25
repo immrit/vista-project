@@ -1,6 +1,7 @@
 // lib/features/chat/repositories/chat_repository_impl.dart
 
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../model/message_model.dart';
 import '../../../model/conversation_model.dart';
@@ -77,10 +78,10 @@ class ChatRepositoryImpl implements ChatRepository {
           .order('updated_at', ascending: false)
           .limit(50);
 
-      final conversations = (response as List)
-          .map(
-              (json) => ConversationModel.fromJson(json, currentUserId: userId))
-          .toList();
+      // map in background
+      final conversations = await (Future.microtask(() => compute(
+              _parseConversationsIsolate, {'data': response, 'userId': userId}))
+          as Future<List<ConversationModel>>);
 
       await _localDataSource.saveConversations(conversations);
       return ChatResult.success(conversations);
@@ -316,18 +317,22 @@ class ChatRepositoryImpl implements ChatRepository {
           .from('hidden_messages')
           .select('message_id')
           .eq('user_id', userId);
-      
-      final hiddenIds = (hiddenResponse as List).map((e) => e['message_id'] as String).toSet();
 
-      final serverMessages = (response as List)
-          .where((json) => !hiddenIds.contains(json['id'] as String)) // فیلتر کردن مخفی‌ها
-          .map((json) => MessageModel.fromJson(json, currentUserId: userId))
+      final hiddenIds = (hiddenResponse as List)
+          .map((e) => e['message_id'] as String)
+          .toSet();
+
+      final filteredData = (response as List)
+          .where((json) =>
+              !hiddenIds.contains(json['id'] as String)) // فیلتر کردن مخفی‌ها
           .toList();
+
+      final serverMessages = await compute(
+          _parseMessagesIsolate, {'data': filteredData, 'userId': userId});
 
       // 3. استفاده از Reconciliation به جای saveMessages خالی
       // این خط باعث می‌شود پیام‌هایی که در سرور نیستند، از لوکال هم پاک شوند.
       await _localDataSource.reconcileMessages(conversationId, serverMessages);
-      
     } catch (e) {
       print('Sync Error: $e');
       // در صورت خطای شبکه، دیتای لوکال دست نخورده باقی می‌ماند (Offline First)
@@ -343,10 +348,8 @@ class ChatRepositoryImpl implements ChatRepository {
           .order('updated_at', ascending: false)
           .limit(50);
 
-      final conversations = (response as List)
-          .map((json) => ConversationModel.fromJson(json,
-              currentUserId: _currentUserId ?? ''))
-          .toList();
+      final conversations = await compute(_parseConversationsIsolate,
+          {'data': response, 'userId': _currentUserId ?? ''});
 
       await _localDataSource.saveConversations(conversations);
     } catch (e) {
@@ -383,7 +386,7 @@ class ChatRepositoryImpl implements ChatRepository {
               '*, conversation_participants!inner(*, profiles!user_id(username, avatar_url))')
           .eq('id', conversationId.toString())
           .single();
-      
+
       final conv = ConversationModel.fromJson(full, currentUserId: userId);
       await _syncConversations();
       return ChatResult.success(conv);
@@ -440,7 +443,7 @@ class ChatRepositoryImpl implements ChatRepository {
             // اگر RPC وجود نداشت، fallback به حذف مستقیم
             print('⚠️ RPC not available, using direct delete: $error');
           });
-          
+
           // Fallback: حذف مستقیم از جدول messages
           try {
             await _supabase
@@ -453,7 +456,8 @@ class ChatRepositoryImpl implements ChatRepository {
             print('⚠️ Direct delete attempted (may already be cleared): $e');
           }
         } catch (e) {
-          print('⚠️ Server clear error (non-fatal), but local cleanup completed: $e');
+          print(
+              '⚠️ Server clear error (non-fatal), but local cleanup completed: $e');
         }
       } else {
         // پاکسازی یک‌طرفه - فقط لوکال پاک شده است
@@ -484,10 +488,11 @@ class ChatRepositoryImpl implements ChatRepository {
       // اول از لوکال می‌گیریم چون سریع‌تر است و حتی اگر سرور خطا بدهد کار می‌کند
       String? conversationId;
       try {
-        final localMessage = await _localDataSource.getMessage(messageId, userId);
+        final localMessage =
+            await _localDataSource.getMessage(messageId, userId);
         conversationId = localMessage?.conversationId;
       } catch (_) {}
-      
+
       // اگر از لوکال پیدا نشد، از سرور بگیر
       if (conversationId == null) {
         try {
@@ -506,7 +511,8 @@ class ChatRepositoryImpl implements ChatRepository {
 
       // ✅ 1.5. حذف از UnifiedCache (برای به‌روزرسانی فوری UI)
       if (conversationId != null) {
-        await UnifiedConversationCacheService().deleteMessage(messageId, conversationId: conversationId);
+        await UnifiedConversationCacheService()
+            .deleteMessage(messageId, conversationId: conversationId);
       }
 
       // ✅ 2. حالا عملیات سمت سرور
@@ -527,7 +533,8 @@ class ChatRepositoryImpl implements ChatRepository {
             if (attachmentUrl != null && attachmentUrl.isNotEmpty) {
               try {
                 await _storageService.deleteFile(attachmentUrl, attachmentType);
-                print('✅ Attachment deleted from cloud for message: $messageId');
+                print(
+                    '✅ Attachment deleted from cloud for message: $messageId');
               } catch (e) {
                 print('⚠️ Attachment deletion error (non-fatal): $e');
               }
@@ -538,11 +545,13 @@ class ChatRepositoryImpl implements ChatRepository {
             print('✅ Message deleted from database for everyone: $messageId');
           } else {
             // پیام قبلاً از سرور حذف شده بود (مثلاً توسط کاربر دیگر یا دستگاه دیگر)
-            print('⚠️ Message $messageId already deleted from server, local cleanup completed.');
+            print(
+                '⚠️ Message $messageId already deleted from server, local cleanup completed.');
           }
         } catch (e) {
           // اگر خطای سرور رخ داد، لوکال قبلاً پاک شده است (که مهم‌تر است)
-          print('⚠️ Server delete error (for everyone), but local cleanup completed: $e');
+          print(
+              '⚠️ Server delete error (for everyone), but local cleanup completed: $e');
           // در تلگرام، حذف لوکال مهم‌تر از حذف سرور است
           // اگر نت نباشد، حذف می‌ماند و بعداً سینک می‌شود
         }
@@ -600,9 +609,8 @@ class ChatRepositoryImpl implements ChatRepository {
           .order('created_at', ascending: false)
           .limit(50);
       final userId = _currentUserId ?? '';
-      final messages = (response as List)
-          .map((j) => MessageModel.fromJson(j, currentUserId: userId))
-          .toList();
+      final messages = await compute(
+          _parseMessagesIsolate, {'data': response as List, 'userId': userId});
       return ChatResult.success(messages);
     } catch (e) {
       return ChatResult.failure(e.toString());
@@ -623,9 +631,8 @@ class ChatRepositoryImpl implements ChatRepository {
           .order('created_at', ascending: false)
           .limit(limit);
       final userId = _currentUserId ?? '';
-      final messages = (response as List)
-          .map((j) => MessageModel.fromJson(j, currentUserId: userId))
-          .toList();
+      final messages = await compute(
+          _parseMessagesIsolate, {'data': response as List, 'userId': userId});
       await _localDataSource.saveMessages(messages);
       return ChatResult.success(messages);
     } catch (e) {
@@ -719,5 +726,24 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Future<void> clearAllCache() async {
     // not implemented
+  }
+
+  // ✅ STATIC HELPERS FOR BACKGROUND PARSING (ISOLATES)
+
+  static List<ConversationModel> _parseConversationsIsolate(
+      Map<String, dynamic> params) {
+    final list = params['data'] as List;
+    final userId = params['userId'] as String;
+    return list
+        .map((json) => ConversationModel.fromJson(json, currentUserId: userId))
+        .toList();
+  }
+
+  static List<MessageModel> _parseMessagesIsolate(Map<String, dynamic> params) {
+    final list = params['data'] as List;
+    final userId = params['userId'] as String;
+    return list
+        .map((json) => MessageModel.fromJson(json, currentUserId: userId))
+        .toList();
   }
 }

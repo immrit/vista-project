@@ -46,16 +46,14 @@ class SessionManagerServiceV2 {
   bool _isRegistering = false;
   bool _isInBackground = false;
   DateTime? _lastActivityUpdate;
-  int _healthCheckFailures = 0;
 
   bool _isTerminating = false;
 
   // ✅ Configuration
-  static const int _maxHealthCheckFailures = 15; // 15 بار خطا = 15 دقیقه
   static const Duration _activityUpdateInterval =
       Duration(minutes: 3); // هر 3 دقیقه
   static const Duration _healthCheckInterval =
-      Duration(minutes: 1); // هر 1 دقیقه
+      Duration(minutes: 2); // هر 2 دقیقه
   static const Duration _sessionExpiry = Duration(days: 90); // 90 روز
 
   Function()? onSessionTerminated;
@@ -79,9 +77,6 @@ class SessionManagerServiceV2 {
 
     // ذخیره سریع session
     await _saveSession();
-
-    // آپدیت last_activity در background (fire and forget)
-    _updateActivityInBackground();
   }
 
   /// وقتی برنامه از پس‌زمینه برمی‌گردد
@@ -91,41 +86,28 @@ class SessionManagerServiceV2 {
 
     if (!wasPaused) return;
 
-    logInfo('▶️ App resumed - exiting background mode');
+    // ✅ اگر فقط سشن لوکال داریم هم کافیست، لازم نیست حتما سوپابیس وصل باشد
+    if (_currentSessionId == null) return;
 
-    // ✅ دریافت نشست فعلی
+    logInfo('▶️ App resumed - Checking session state...');
+
     final supabaseSession = _supabase.auth.currentSession;
+    if (supabaseSession != null) {
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final expiresAt = supabaseSession.expiresAt ?? 0;
 
-    // 🛑 اصلاح مهم: اگر کلاً نشست نداریم (کاربر در صفحه لاگین است)، کاری نکن!
-    if (supabaseSession == null) {
-      logInfo(
-          'ℹ️ No active session on resume (User might be at login screen). Skipping checks.');
-
-      // اگر دیتای لوکال داشتیم ولی سشن سوپابیس نبود، اون موقع باید پاکسازی کنیم
-      if (_currentSessionId != null) {
-        logInfo(
-            '⚠️ Local session exists but Supabase session is null. Cleaning up...');
-        await _handleSessionTermination();
+      // فقط اگر توکن منقضی شده تلاش کن رفرش کنی
+      if (expiresAt - now < 300) {
+        logInfo('🔄 Session token expiring soon, attempting refresh...');
+        // نتیجه رفرش مهم نیست، اگر نت نداشتیم لاگین می‌مانیم
+        await _refreshSessionWithRetry();
       }
-      return;
     }
 
-    // از اینجا به بعد یعنی کاربر لاگین است و باید چک کنیم
-    // ✅ بررسی expire شدن
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final expiresAt = supabaseSession.expiresAt ?? 0;
-
-    if (expiresAt - now < 300) {
-      logInfo('🔄 Session expiring soon, refreshing...');
-      await _refreshSessionWithRetry();
-    }
-
-    _healthCheckFailures = 0;
     _startActivityTracking();
     _startHealthCheck();
     _setupRealtimeListener();
-
-    await _updateActivity();
+    _updateActivity(); // تلاش برای آپدیت وضعیت آنلاین (Fire & Forget)
   }
 
   /// ═══════════════════════════════════════════════════════════
@@ -136,86 +118,61 @@ class SessionManagerServiceV2 {
     if (_isInitialized) return;
 
     try {
-      logInfo('🔧 Initializing Session Manager V2...');
+      logInfo('🔧 Initializing Session Manager V2 (Offline-First Mode)...');
 
       // بارگذاری session محلی
       await _loadSavedSession();
 
-      // ✅ Offline-First: به محض اینکه توکن محلی داریم، آن را معتبر فرض می‌کنیم
-      // بررسی اعتبار واقعی در پس‌زمینه (Health Check) انجام می‌شود
-      if (_currentSessionId != null || _sessionToken != null) {
-        logInfo(
-            '🚀 Offline Mode: Local session found, trusting it immediately');
+      // ✅ مهم: اگر سشن لوکال داریم، یعنی لاگین هستیم. نقطه سر خط.
+      // اصلا مهم نیست سوپابیس الان وصل است یا نه.
+      if (_currentSessionId != null) {
+        logInfo('🚀 Local session found via Persistent Storage. Trusting it.');
+        _isInitialized = true;
+
         _startActivityTracking();
         _startHealthCheck();
         _setupRealtimeListener();
-        _isInitialized = true;
 
-        // تلاش نامحسوس برای همگام‌سازی با Supabase
-        _restoreSupabaseSessionInBackground();
+        // تلاش در پس‌زمینه برای سینک کردن با سرور (بدون بلاک کردن)
+        _syncWithServerInBackground();
         return;
       }
 
-      // اگر هیچ توکنی نداریم، وضعیت Supabase را چک می‌کنیم
-
+      // اگر لوکال نداشتیم، چک می‌کنیم شاید سوپابیس چیزی داشته باشد (مثلا بعد از لاگین اول)
       final supabaseSession = _supabase.auth.currentSession;
       if (supabaseSession != null) {
-        final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-        final expiresAt = supabaseSession.expiresAt ?? 0;
-
-        if (expiresAt - now > 300) {
-          // Session معتبر است
-          logInfo('✅ Supabase session valid - local session trusted');
-
-          // اگر session ID نداریم، پیدا کن
-          if (_currentSessionId == null && _sessionToken != null) {
-            await _findSessionFromToken();
-          }
-
-          // شروع tracking
-          _startActivityTracking();
-          _startHealthCheck();
-          _setupRealtimeListener();
-
-          _isInitialized = true;
-          return;
+        logInfo('✅ Supabase SDK has session, trusting it.');
+        if (_currentSessionId == null && _sessionToken != null) {
+          await _findSessionFromToken();
         }
-      }
-
-      // اگر session ID داریم، بررسی کن
-      if (_currentSessionId != null) {
-        final isValid = await _quickSessionCheck();
-        if (isValid) {
-          logInfo('✅ Local session verified');
-          _startActivityTracking();
-          _startHealthCheck();
-          _setupRealtimeListener();
-        } else {
-          await _clearSavedSession();
-        }
+        _startActivityTracking();
+        _startHealthCheck();
+        _setupRealtimeListener();
       }
 
       _isInitialized = true;
-      logInfo('✅ Session Manager V2 initialized (No stored session)');
     } catch (e) {
       logInfo('❌ Error initializing Session Manager: $e');
     }
   }
 
-  /// تلاش برای بازیابی نشست Supabase در پس‌زمینه (بدون بلاک کردن UI)
-  Future<void> _restoreSupabaseSessionInBackground() async {
-    // اگر Supabase خودش session دارد که عالیست
-    if (_supabase.auth.currentSession != null) return;
-
-    // اگر نه، صبر می‌کنیم شاید recover شود
-    Future.delayed(const Duration(seconds: 1), () async {
-      final session = _supabase.auth.currentSession;
-      if (session == null) {
-        logInfo(
-            '⚠️ Local token exists but Supabase has no session. Attempting manual recover or ignoring...');
-        // در معماری جدید، ما به توکن محلی خودمان اعتماد داریم
-        // اگر Supabase نتواند recover کند (مثلاً آفلاین هستیم)، مشکلی نیست
-        // فقط زمانی که سرور صریحاً 401 بدهد، لاگ‌اوت می‌کنیم (در health check)
+  void _syncWithServerInBackground() {
+    Future.delayed(const Duration(seconds: 2), () async {
+      try {
+        final session = _supabase.auth.currentSession;
+        if (session == null && _currentSessionId != null) {
+          logInfo(
+              '⚠️ Local session exists but Supabase SDK is empty. This is normal in Offline mode.');
+          // اینجا می‌توانیم تلاش کنیم `recoverSession` کنیم اما اگر نشد هم مهم نیست
+        } else if (session != null) {
+          // اگر توکن منقضی شده تلاش برای رفرش
+          final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+          if ((session.expiresAt ?? 0) < now) {
+            await _supabase.auth.refreshSession();
+          }
+        }
+      } catch (e) {
+        logInfo('⚠️ Background sync failed (Ignored): $e');
       }
     });
   }
@@ -225,75 +182,68 @@ class SessionManagerServiceV2 {
   /// ═══════════════════════════════════════════════════════════
 
   Future<String?> registerSession() async {
-    if (_isRegistering) {
-      logInfo('⚠️ Registration already in progress');
-      return _currentSessionId;
-    }
+    if (_isRegistering) return _currentSessionId;
 
-    // ✅ اگر session معتبر داریم، از ثبت مجدد جلوگیری کن
-    if (_currentSessionId != null) {
-      final isValid = await _quickSessionCheck();
-      if (isValid) {
-        logInfo('✅ Valid session exists: $_currentSessionId');
-        return _currentSessionId;
-      }
-    }
+    // اگر سشن داریم، دوباره ثبت نکن
+    if (_currentSessionId != null) return _currentSessionId;
 
     _isRegistering = true;
 
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
-        logInfo('❌ User not authenticated');
         _isRegistering = false;
         return null;
       }
 
-      // تولید session جدید
       _sessionToken = const Uuid().v4();
       final sessionId = const Uuid().v4();
 
-      // دریافت اطلاعات
-      final deviceInfo = await _getDeviceInfo();
-      final packageInfo = await PackageInfo.fromPlatform();
-      final ipAddress = await _getIPWithTimeout();
-      final locationData = await _getCurrentLocation();
+      // دریافت اطلاعات (با خطا هندلینگ که باعث کرش نشود)
+      SessionDeviceInfo? deviceInfo;
+      try {
+        deviceInfo = await _getDeviceInfo();
+      } catch (_) {}
 
-      logInfo('📝 Registering new session...');
+      final packageInfo = await PackageInfo.fromPlatform();
+
+      // IP و Location را نادیده می‌گیریم اگر نت نباشد
+      String? ipAddress;
+      Map<String, dynamic>? locationData;
+
+      try {
+        ipAddress = await _getIPWithTimeout();
+        locationData = await _getCurrentLocation();
+      } catch (_) {}
 
       final sessionData = {
         'id': sessionId,
         'user_id': userId,
         'session_token': _sessionToken,
-        'device_info': deviceInfo.toJson(),
+        'device_info': deviceInfo?.toJson() ?? {},
         'is_active': true,
         'app_version': packageInfo.version,
         'platform': _getPlatformName(),
-        'ip_address': ipAddress,
-        'location': locationData['location'],
-        'location_city': locationData['location_city'],
-        'location_country': locationData['location_country'],
-        'location_region': locationData['location_region'],
         'created_at': DateTime.now().toUtc().toIso8601String(),
         'last_activity': DateTime.now().toUtc().toIso8601String(),
-        'expires_at':
-            DateTime.now().toUtc().add(_sessionExpiry).toIso8601String(),
+        // اطلاعات اختیاری که اگر نال باشند مشکلی نیست
+        if (ipAddress != null) 'ip_address': ipAddress,
+        if (locationData != null) ...locationData,
       };
 
-      final response = await _supabase
-          .from('active_sessions')
-          .insert(sessionData)
-          .select()
-          .single();
+      try {
+        await _supabase.from('active_sessions').insert(sessionData);
+      } catch (e) {
+        // اگر نت نبود و نتوانستیم در دیتابیس ثبت کنیم،
+        // در لوکال ذخیره می‌کنیم و فرض می‌کنیم ثبت شده است.
+        // بعدا در اولین اتصال سینک می‌شود.
+        logInfo(
+            '⚠️ Could not register session on server (Offline?). Proceeding locally.');
+      }
 
-      _currentSessionId = response['id'] as String;
-      _sessionToken = response['session_token'] as String;
-
+      _currentSessionId = sessionId;
       await _saveSession();
 
-      logInfo('✅ Session registered: $_currentSessionId');
-
-      // شروع tracking
       _startActivityTracking();
       _startHealthCheck();
       _setupRealtimeListener();
@@ -301,9 +251,7 @@ class SessionManagerServiceV2 {
       _isRegistering = false;
       return _currentSessionId;
     } catch (e) {
-      logInfo('❌ Error registering session: $e');
-      _currentSessionId = null;
-      _sessionToken = null;
+      logInfo('❌ Error in registerSession: $e');
       _isRegistering = false;
       return null;
     }
@@ -324,7 +272,6 @@ class SessionManagerServiceV2 {
       final expiresAt = supabaseSession.expiresAt ?? 0;
 
       if (expiresAt - now > 300) {
-        _healthCheckFailures = 0;
         return true;
       }
     }
@@ -418,42 +365,31 @@ class SessionManagerServiceV2 {
     }
 
     try {
-      final now = DateTime.now().toUtc();
+      _lastActivityUpdate = DateTime.now();
+
+      // گرفتن IP و Location (بدون بلاک کردن زیاد)
+      final ip = await _getIPWithTimeout();
+      final locationData = await _getCurrentLocation();
+
+      final updates = {
+        'last_activity': DateTime.now().toIso8601String(),
+        if (ip != null) 'ip_address': ip,
+        // ذخیره لوکیشن اگر موجود بود
+        if (locationData['location'] != null) ...{
+          'location': jsonEncode(locationData['location']),
+          'location_city': locationData['location_city'],
+          'location_country': locationData['location_country'],
+          'location_region': locationData['location_region'],
+        }
+      };
+
       await _supabase
           .from('active_sessions')
-          .update({
-            'last_activity': now.toIso8601String(),
-            'expires_at': now.add(_sessionExpiry).toIso8601String(),
-          })
-          .eq('id', _currentSessionId!)
-          .eq('is_active', true)
-          .timeout(const Duration(seconds: 5));
-
-      _lastActivityUpdate = now;
-      _healthCheckFailures = 0;
+          .update(updates)
+          .eq('id', _currentSessionId!);
     } catch (e) {
       logInfo('⚠️ Activity update failed (non-critical): $e');
     }
-  }
-
-  void _updateActivityInBackground() {
-    if (_currentSessionId == null) return;
-
-    // Fire and forget
-    Future.microtask(() async {
-      try {
-        await _supabase
-            .from('active_sessions')
-            .update({
-              'last_activity': DateTime.now().toUtc().toIso8601String(),
-            })
-            .eq('id', _currentSessionId!)
-            .eq('is_active', true)
-            .timeout(const Duration(seconds: 3));
-      } catch (e) {
-        // Ignore
-      }
-    });
   }
 
   /// ═══════════════════════════════════════════════════════════
@@ -481,31 +417,39 @@ class SessionManagerServiceV2 {
   }
 
   Future<void> _performHealthCheck() async {
-    // ✅ اولویت اول: Supabase session
-    final supabaseSession = _supabase.auth.currentSession;
-    if (supabaseSession == null) {
-      logInfo('⚠️ No Supabase session in health check');
-      _healthCheckFailures++;
+    // ✅ قانون طلایی: Health Check هرگز نباید به خاطر مشکلات شبکه کاربر را لاگ‌اوت کند.
 
-      if (_healthCheckFailures >= _maxHealthCheckFailures) {
-        logInfo('🔴 Max health check failures reached');
-        await _handleSessionTermination();
+    final supabaseSession = _supabase.auth.currentSession;
+
+    // اگر سشن سوپابیس نال است اما ما لوکال سشن داریم، یعنی آفلاین هستیم یا SDK پریده.
+    // در این حالت هیچ کاری نمی‌کنیم (لاگین می‌مانیم).
+    if (supabaseSession == null) {
+      if (_currentSessionId != null) {
+        logInfo(
+            '⚠️ Health Check: Supabase session missing, but local exists. Keeping user logged in.');
+        // تلاش برای ریکاوری آرام
+        _restoreSupabaseSessionInBackground();
       }
       return;
     }
 
-    // بررسی expire
+    // بررسی انقضا
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final expiresAt = supabaseSession.expiresAt ?? 0;
 
     if (expiresAt - now < 600) {
-      // کمتر از 10 دقیقه - refresh کن
-      logInfo('🔄 Session expiring soon in health check');
+      logInfo('🔄 Health Check: Token expiring, refreshing...');
       await _refreshSessionWithRetry();
     }
+  }
 
-    // Reset failures
-    _healthCheckFailures = 0;
+  Future<void> _restoreSupabaseSessionInBackground() async {
+    // این متد فقط تلاش می‌کند state سوپابیس را برگرداند
+    // اگر نشد، هیچ اتفاقی نمی‌افتد
+    try {
+      // اگر رفرش توکن در localStorage باشد، خود سوپابیس تلاش می‌کند
+      // ما اینجا کار خاصی نمی‌توانیم بکنیم جز اینکه صبر کنیم نت وصل شود
+    } catch (_) {}
   }
 
   /// ═══════════════════════════════════════════════════════════
@@ -513,34 +457,31 @@ class SessionManagerServiceV2 {
   /// ═══════════════════════════════════════════════════════════
 
   Future<bool> _refreshSessionWithRetry() async {
-    int retries = 0;
-    const maxRetries = 3;
-
-    while (retries < maxRetries) {
-      try {
-        final response = await _supabase.auth.refreshSession();
-
-        if (response.session != null) {
-          logInfo('✅ Session refreshed successfully');
-          return true;
-        }
-
-        retries++;
-        if (retries < maxRetries) {
-          await Future.delayed(Duration(seconds: retries * 2));
-        }
-      } catch (e) {
-        retries++;
-        logInfo('⚠️ Refresh attempt $retries failed: $e');
-
-        if (retries < maxRetries) {
-          await Future.delayed(Duration(seconds: retries * 2));
-        }
+    try {
+      final response = await _supabase.auth.refreshSession();
+      if (response.session != null) {
+        return true;
       }
+    } on AuthException catch (e) {
+      // 🚨 فقط و فقط اینجا حق داریم کاربر را خارج کنیم
+      // اگر ارور مربوط به "Invalid Refresh Token" باشد.
+      final msg = e.message.toLowerCase();
+      if (msg.contains('invalid refresh token') ||
+          msg.contains('already been used') ||
+          msg.contains('revoked')) {
+        logInfo('🔴 Fatal Auth Error: Token is invalid. Logging out.');
+        await _handleSessionTermination();
+        return false;
+      }
+
+      // برای سایر ارورهای Auth (مثل timeout یا network)، کاری نمی‌کنیم
+      logInfo('⚠️ Auth warning during refresh (Ignored): $e');
+    } catch (e) {
+      // خطاهای عمومی شبکه را نادیده می‌گیریم
+      logInfo('⚠️ Network error during refresh (Ignored): $e');
     }
 
-    logInfo('❌ All refresh attempts failed');
-    return false;
+    return false; // رفرش نشد، ولی لاگ‌اوت هم نمی‌کنیم
   }
 
   /// ═══════════════════════════════════════════════════════════
@@ -588,46 +529,39 @@ class SessionManagerServiceV2 {
     if (_isTerminating) return;
     _isTerminating = true;
 
-    logInfo('🔴 Handling session termination...');
+    logInfo('🔴 Terminating session (User logout or Fatal Error)...');
 
-    // متوقف کردن همه چیز
     _stopHealthCheck();
     _activityTimer?.cancel();
-    _activityTimer = null;
     _sessionChannel?.unsubscribe();
-    _sessionChannel = null;
 
-    // غیرفعال کردن در database
+    // پاک کردن دیتابیس (اگر نت باشد)
     if (_currentSessionId != null) {
       try {
         await _supabase
             .from('active_sessions')
             .update({'is_active': false})
             .eq('id', _currentSessionId!)
-            .timeout(const Duration(seconds: 5));
-      } catch (e) {
-        logInfo('⚠️ Error deactivating session: $e');
-      }
+            .timeout(const Duration(seconds: 3));
+      } catch (_) {}
     }
 
-    // پاک کردن local data
+    // پاک کردن لوکال
     await _clearSavedSession();
     _currentSessionId = null;
     _sessionToken = null;
-    _healthCheckFailures = 0;
 
-    // خروج از Supabase
     try {
       await _supabase.auth.signOut();
-    } catch (e) {
-      logInfo('⚠️ Error signing out: $e');
-    }
+    } catch (_) {}
 
-    // callback
     onSessionTerminated?.call();
-
     _isTerminating = false;
-    logInfo('✅ Session termination complete');
+  }
+
+  // متد userLogout برای خروج دستی توسط کاربر
+  Future<void> userLogout() async {
+    await _handleSessionTermination();
   }
 
   /// ═══════════════════════════════════════════════════════════
@@ -800,11 +734,6 @@ class SessionManagerServiceV2 {
         logInfo('⚠️ Location/IP update failed (non-critical): $e');
       }
     });
-  }
-
-  Future<void> userLogout() async {
-    logInfo('👤 User logout...');
-    await _handleSessionTermination();
   }
 
   /// دریافت لیست نشست‌های فعال
@@ -1537,25 +1466,3 @@ class TerminateSessionResult {
     this.remainingDays,
   });
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

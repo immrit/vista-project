@@ -101,6 +101,17 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     _setupAnimations();
     _hasText = widget.controller.text.isNotEmpty;
     widget.controller.addListener(_onTextChanged);
+    // ✅ گوش دادن به تغییر فوکوس برای بستن پنل ایموجی هنگام باز شدن کیبورد
+    widget.focusNode?.addListener(_onFocusChange);
+  }
+
+  void _onFocusChange() {
+    if (widget.focusNode?.hasFocus == true && _showEmojiPicker) {
+      setState(() {
+        _showEmojiPicker = false;
+      });
+      widget.onEmojiPickerToggled?.call(false);
+    }
   }
 
   void _setupAnimations() {
@@ -180,6 +191,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
 
   @override
   void dispose() {
+    widget.focusNode?.removeListener(_onFocusChange);
     widget.controller.removeListener(_onTextChanged);
     _sendButtonController.dispose();
     _replyController.dispose();
@@ -297,88 +309,88 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
         ? 8.0
         : (bottomPadding > 0 ? bottomPadding + 4.0 : 14.0);
 
-    return Container(
-      // کانتینر بیرونی کاملاً شفاف تا پیام‌ها از اطرافش دیده شوند
-      color: Colors.transparent,
-      padding: EdgeInsets.fromLTRB(6, 2, 6, effectiveBottomPadding),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 🏝️ The Island (جزیره)
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24), // باریک‌تر و ظریف‌تر
-              // سایه ملایم برای جدا شدن از زمینه
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(isDark ? 0.3 : 0.12),
-                  blurRadius: 12,
-                  offset: const Offset(0, 3),
-                  spreadRadius: 1,
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24), // باریک‌تر و ظریف‌تر
-              child: BackdropFilter(
-                // 💎 افکت شیشه‌ای (Blur) - کاهش یافته چون پس‌زمینه هم بلور است
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                child: Container(
-                  decoration: BoxDecoration(
-                    // رنگ پس‌زمینه نیمه‌شفاف - کاهش opacity برای افکت شیشه‌ای بهتر
-                    color: isDark
-                        ? const Color(0xFF1C1C1E)
-                            .withOpacity(0.70) // کاهش یافته برای شیشه‌ای بیشتر
-                        : const Color(0xFFF9F9F9)
-                            .withOpacity(0.65), // کاهش یافته برای شیشه‌ای بیشتر
-                    border: Border.all(
-                      color: isDark
-                          ? Colors.white.withOpacity(0.1)
-                          : Colors.black.withOpacity(0.05),
-                      width: 0.5,
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Reply Preview
-                      _buildReplyPreview(theme),
-
-                      // Input Row or Recording
-                      if (_isRecording)
-                        _buildRecordingOverlay(theme)
-                      else
-                        _buildInputRow(theme),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // Emoji Picker (اگر باز باشد)
-          if (_showEmojiPicker)
+    return RepaintBoundary(
+      child: Container(
+        // کانتینر بیرونی کاملاً شفاف تا پیام‌ها از اطرافش دیده شوند
+        color: Colors.transparent,
+        padding: EdgeInsets.fromLTRB(6, 2, 6, effectiveBottomPadding),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 🏝️ The Island (جزیره)
             Container(
-              margin: const EdgeInsets.only(top: 8),
               decoration: BoxDecoration(
-                color:
-                    isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF0F2F5),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(24),
+                // سایه بسیار ملایم و سبک
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(isDark ? 0.2 : 0.08),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: VistaEmojiPanel(
-                  controller: widget.controller,
-                  height: 300,
-                  onGifSelected: (gifUrl) {
-                    if (widget.onGifSelected != null) {
-                      widget.onGifSelected!(gifUrl);
-                    }
-                  },
+                borderRadius: BorderRadius.circular(24),
+                child: BackdropFilter(
+                  // 💎 افکت شیشه‌ای بهینه شده
+                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      // رنگ پس‌زمینه نیمه‌شفاف
+                      color: isDark
+                          ? const Color(0xFF1C1C1E).withOpacity(0.75)
+                          : const Color(0xFFF9F9F9).withOpacity(0.75),
+                      border: Border.all(
+                        color: isDark
+                            ? Colors.white.withOpacity(0.1)
+                            : Colors.black.withOpacity(0.05),
+                        width: 0.5,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Reply Preview
+                        _buildReplyPreview(theme),
+
+                        // Input Row or Recording
+                        if (_isRecording)
+                          _buildRecordingOverlay(theme)
+                        else
+                          _buildInputRow(theme),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
-        ],
+
+            // Emoji Picker (اگر باز باشد)
+            if (_showEmojiPicker)
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF1C1C1E)
+                      : const Color(0xFFF0F2F5),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: VistaEmojiPanel(
+                    controller: widget.controller,
+                    height: 300,
+                    onGifSelected: (gifUrl) {
+                      if (widget.onGifSelected != null) {
+                        widget.onGifSelected!(gifUrl);
+                      }
+                    },
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

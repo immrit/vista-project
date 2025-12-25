@@ -103,14 +103,18 @@ class _ChatInputState extends ConsumerState<ChatInput>
 
     if (logicalBottomInset > 0) {
       // کیبورد باز است
-      setState(() {
-        _keyboardHeight = logicalBottomInset;
-      });
+      if (_keyboardHeight != logicalBottomInset) {
+        setState(() {
+          _keyboardHeight = logicalBottomInset;
+        });
+      }
     } else {
       // کیبورد بسته است
-      setState(() {
-        _keyboardHeight = 0;
-      });
+      if (_keyboardHeight != 0) {
+        setState(() {
+          _keyboardHeight = 0;
+        });
+      }
     }
   }
 

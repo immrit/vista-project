@@ -1,4 +1,5 @@
 import '../security/logging_utility.dart';
+import 'package:flutter/foundation.dart'; // For compute
 import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,6 +23,9 @@ class AdvancedCacheSystem {
   factory AdvancedCacheSystem() => _instance;
   AdvancedCacheSystem._internal();
 
+  // ✅ Helper for compute to avoid type errors
+  static List<dynamic> _decodeWrapper(String json) => jsonDecode(json);
+
   // Memory Cache Layer (سریع‌ترین)
   final Map<String, ConversationModel> _conversationMemoryCache = {};
   final Map<String, List<MessageModel>> _messageMemoryCache = {};
@@ -30,6 +34,14 @@ class AdvancedCacheSystem {
   final Map<String, Uint8List> _videoThumbMemoryCache = {};
   final ListQueue<String> _videoThumbOrder = ListQueue<String>();
   static const int maxVideoThumbs = 200;
+
+  // ✅ Dirty Tracking Sets (برای ذخیره هوشمند)
+  // فقط مکالماتی که تغییر کرده‌اند را ذخیره می‌کنیم
+  final Set<String> _dirtyConversationIds =
+      {}; // مکالماتی که info آنها تغییر کرده
+  final Set<String> _dirtyMessageConversationIds =
+      {}; // چت‌هایی که پیامشان تغییر کرده
+  bool _dirtyThumbs = false; // آیا تامبنیل‌ها تغییر کرده‌اند؟
 
   // Stream Controllers for real-time updates
   final Map<String, StreamController<List<MessageModel>>> _messageStreams = {};
@@ -78,14 +90,16 @@ class AdvancedCacheSystem {
 
       _isInitialized = true;
       logInfo('✅ Advanced Cache System initialized successfully');
-      logInfo('📦 Cache status: ${_conversationMemoryCache.length} conversations loaded from disk');
+      logInfo(
+          '📦 Cache status: ${_conversationMemoryCache.length} conversations loaded from disk');
 
       // Initial sync (only if cache is empty)
       if (_conversationMemoryCache.isEmpty) {
         logInfo('🔄 Cache is empty, performing initial sync...');
         _performInitialSync();
       } else {
-        logInfo('📦 Using existing cache (${_conversationMemoryCache.length} conversations), skipping initial sync');
+        logInfo(
+            '📦 Using existing cache (${_conversationMemoryCache.length} conversations), skipping initial sync');
         // ✅ اطمینان از اینکه کش broadcast شده است
         _broadcastConversationUpdates();
       }
@@ -105,9 +119,11 @@ class AdvancedCacheSystem {
       final conversationsJson = prefs.getString('cached_conversations');
       if (conversationsJson != null && conversationsJson.isNotEmpty) {
         try {
-          final List<dynamic> conversationsList = jsonDecode(conversationsJson);
+          // ✅ Decode in background with proper type
+          final List<dynamic> conversationsList =
+              await compute(_decodeWrapper, conversationsJson);
           final currentUserId = supabase.auth.currentUser?.id;
-          
+
           // ✅ بهینه‌سازی: parse کردن به صورت batch
           final loadedConversations = <String, ConversationModel>{};
           for (final convJson in conversationsList) {
@@ -122,18 +138,19 @@ class AdvancedCacheSystem {
               // ادامه بده با بقیه
             }
           }
-          
+
           // ✅ یکجا اضافه کردن به memory cache
           _conversationMemoryCache.addAll(loadedConversations);
-          
+
           final loadTime = stopwatch.elapsedMilliseconds;
           print(
               '📥 Loaded ${_conversationMemoryCache.length} conversations from disk in ${loadTime}ms');
-          
+
           // ✅ بعد از load شدن، بلافاصله broadcast کن تا UI به‌روز شود
           if (_conversationMemoryCache.isNotEmpty) {
             _broadcastConversationUpdates();
-            print('📡 Broadcasted ${_conversationMemoryCache.length} conversations to UI');
+            print(
+                '📡 Broadcasted ${_conversationMemoryCache.length} conversations to UI');
           }
         } catch (e) {
           logInfo('❌ Error loading conversations from disk: $e');
@@ -146,16 +163,18 @@ class AdvancedCacheSystem {
       // فقط برای 20 مکالمه اخیر پیام‌ها را load کن تا startup سریع‌تر شود
       final conversationIds = _conversationMemoryCache.keys.toList();
       final activeConversationIds = conversationIds.take(20).toList();
-      
+
       final currentUserId = supabase.auth.currentUser?.id ?? '';
       for (final conversationId in activeConversationIds) {
         final messagesJson = prefs.getString('cached_messages_$conversationId');
         if (messagesJson != null && messagesJson.isNotEmpty) {
           try {
-            final List<dynamic> messagesList = jsonDecode(messagesJson);
+            // ✅ Decode in background
+            final List<dynamic> messagesList =
+                await compute(_decodeWrapper, messagesJson);
             final messages = messagesList
-                .map((json) => MessageModel.fromJson(json,
-                    currentUserId: currentUserId))
+                .map((json) =>
+                    MessageModel.fromJson(json, currentUserId: currentUserId))
                 .toList();
             _messageMemoryCache[conversationId] = messages;
           } catch (e) {
@@ -172,7 +191,8 @@ class AdvancedCacheSystem {
       // Load video thumbnails
       final thumbsJson = prefs.getString('cached_video_thumbs');
       if (thumbsJson != null) {
-        final List<dynamic> list = jsonDecode(thumbsJson);
+        // ✅ Decode in background
+        final List<dynamic> list = await compute(_decodeWrapper, thumbsJson);
         for (final item in list) {
           final url = item['u'] as String?;
           final dataB64 = item['d'] as String?;
@@ -189,41 +209,92 @@ class AdvancedCacheSystem {
     }
   }
 
-  /// Save data to persistent storage
+  // ✅ Helper for compute
+  static String _encodeWrapper(Object? object) => jsonEncode(object);
+
+  // ✅ Debounce timer for disk saves
+  Timer? _saveDebounceTimer;
+
+  /// Request to save data to disk (Debounced)
   Future<void> _saveToDisk() async {
+    if (_saveDebounceTimer?.isActive ?? false) {
+      _saveDebounceTimer!.cancel();
+    }
+
+    // Wait 2 seconds before saving to batch multiple updates
+    _saveDebounceTimer = Timer(const Duration(seconds: 2), () {
+      _performDiskSave();
+    });
+  }
+
+  /// Actual disk save implementation (Background + Compute + Differential)
+  Future<void> _performDiskSave() async {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      // Save conversations
-      final conversationsList = _conversationMemoryCache.values.toList();
-      final conversationsJson =
-          jsonEncode(conversationsList.map((c) => c.toJson()).toList());
-      await prefs.setString('cached_conversations', conversationsJson);
+      // 1️⃣ Save Dirty Conversations
+      if (_dirtyConversationIds.isNotEmpty) {
+        final dirtyIds = Set<String>.from(_dirtyConversationIds);
+        _dirtyConversationIds.clear(); // Clear memory buffer immediately
 
-      // Save messages (only recent ones to save space)
-      for (final entry in _messageMemoryCache.entries) {
-        final conversationId = entry.key;
-        final messages =
-            entry.value.take(50).toList(); // Only save latest 50 messages
-        final messagesJson =
-            jsonEncode(messages.map((m) => m.toJson()).toList());
-        await prefs.setString('cached_messages_$conversationId', messagesJson);
+        // We still need to save ALL conversations for the list structure
+        // But in a real DB (SQLite/Isar) we would only update rows.
+        // For SharedPreferences with 'cached_conversations' list, we inevitably
+        // have to rewrite the full list.
+        // However, we can optimize by only checking this if dirty set is not empty.
+
+        final conversationsList = _conversationMemoryCache.values.toList();
+        final conversationsData =
+            conversationsList.map((c) => c.toJson()).toList();
+        final conversationsJson =
+            await compute(_encodeWrapper, conversationsData);
+        await prefs.setString('cached_conversations', conversationsJson);
+
+        logInfo('💾 Saved ${dirtyIds.length} changed conversations to disk');
       }
 
-      logInfo('💾 Cache saved to disk');
+      // 2️⃣ Save Dirty Messages (This is the BIG optimization)
+      if (_dirtyMessageConversationIds.isNotEmpty) {
+        final dirtyChatIds = Set<String>.from(_dirtyMessageConversationIds);
+        _dirtyMessageConversationIds.clear();
 
-      // Save video thumbnails (limit to latest maxVideoThumbs)
-      final List<Map<String, String>> thumbList = [];
-      for (final url in _videoThumbOrder) {
-        final bytes = _videoThumbMemoryCache[url];
-        if (bytes != null) {
-          thumbList.add({'u': url, 'd': base64Encode(bytes)});
+        for (final conversationId in dirtyChatIds) {
+          final messages = _messageMemoryCache[conversationId];
+
+          if (messages == null || messages.isEmpty) {
+            // Deleted messages case
+            await prefs.remove('cached_messages_$conversationId');
+          } else {
+            final recentMessages = messages.take(50).toList();
+            final messagesData = recentMessages.map((m) => m.toJson()).toList();
+            final messagesJson = await compute(_encodeWrapper, messagesData);
+            await prefs.setString(
+                'cached_messages_$conversationId', messagesJson);
+          }
         }
+        logInfo(
+            '💾 Saved messages for ${dirtyChatIds.length} chats to disk (Zero-Waste)');
       }
-      final toPersist = thumbList.take(maxVideoThumbs).toList();
-      await prefs.setString('cached_video_thumbs', jsonEncode(toPersist));
+
+      // 3️⃣ Save Video Thumbs (only if changed)
+      if (_dirtyThumbs) {
+        _dirtyThumbs = false;
+        final List<Map<String, String>> thumbList = [];
+        for (final url in _videoThumbOrder) {
+          final bytes = _videoThumbMemoryCache[url];
+          if (bytes != null) {
+            thumbList.add({'u': url, 'd': base64Encode(bytes)});
+          }
+        }
+        final toPersist = thumbList.take(maxVideoThumbs).toList();
+        final thumbsJson = await compute(_encodeWrapper, toPersist);
+        await prefs.setString('cached_video_thumbs', thumbsJson);
+        logInfo('💾 Saved video thumbnails to disk');
+      }
     } catch (e) {
-      logInfo('⚠️ Error saving to disk: $e');
+      logInfo('⚠️ Error saving to disk diffs: $e');
+      // On error, re-add dirty items to try again later?
+      // For now, simpler to just log. Ideally we might want a retry queue.
     }
   }
 
@@ -304,13 +375,14 @@ class AdvancedCacheSystem {
       // جستجوی تمام مکالماتی که این کاربر در آن‌ها شرکت دارد
       for (final entry in _conversationMemoryCache.entries) {
         final conversation = entry.value;
-        
+
         // بررسی اینکه آیا این کاربر، کاربر مقابل در این مکالمه است
         if (conversation.otherUserId == updatedUserId) {
           // به‌روزرسانی اطلاعات کاربر در مکالمه
           final updatedConversation = conversation.copyWith(
             otherUserAvatar: newAvatarUrl ?? conversation.otherUserAvatar,
-            otherUserName: newUsername ?? newFullName ?? conversation.otherUserName,
+            otherUserName:
+                newUsername ?? newFullName ?? conversation.otherUserName,
           );
           _conversationMemoryCache[entry.key] = updatedConversation;
           hasConversationChanges = true;
@@ -958,6 +1030,10 @@ extension VideoThumbnailCacheExt on AdvancedCacheSystem {
       final oldest = _videoThumbOrder.removeFirst();
       _videoThumbMemoryCache.remove(oldest);
     }
+
+    // ✅ Mark thumbs as dirty
+    _dirtyThumbs = true;
+    _saveToDisk();
   }
 
   /// Clear messages for a specific conversation
@@ -970,10 +1046,15 @@ extension VideoThumbnailCacheExt on AdvancedCacheSystem {
       _messageStreams[conversationId]?.close();
       _messageStreams.remove(conversationId);
 
-      // Remove from disk cache
-      final prefs = await SharedPreferences.getInstance();
-      final messagesKey = 'cached_messages_$conversationId';
-      await prefs.remove(messagesKey);
+      // Mark as dirty
+      _dirtyMessageConversationIds.add(conversationId);
+
+      // Remove from disk cache (this will be handled by _saveToDisk now)
+      // final prefs = await SharedPreferences.getInstance();
+      // final messagesKey = 'cached_messages_$conversationId';
+      // await prefs.remove(messagesKey);
+
+      _saveToDisk(); // Trigger save to remove from disk
 
       logInfo('✅ Cleared messages for conversation: $conversationId');
     } catch (e) {
@@ -994,16 +1075,40 @@ extension VideoThumbnailCacheExt on AdvancedCacheSystem {
 
         // Update conversation if this was the last message
         final conversation = _conversationMemoryCache[conversationId];
-        if (conversation != null && messages.isNotEmpty) {
-          final latestMessage = messages.first;
-          final updatedConversation = conversation.copyWith(
-            lastMessage: latestMessage.content,
-            lastMessageTime: latestMessage.createdAt,
-            updatedAt: latestMessage.createdAt,
-          );
-          _conversationMemoryCache[conversationId] = updatedConversation;
-          _broadcastConversationUpdates();
+        if (conversation != null) {
+          bool shouldUpdate = false;
+          ConversationModel updatedConversation = conversation;
+
+          if (messages.isNotEmpty) {
+            final latestMessage = messages.first;
+            updatedConversation = conversation.copyWith(
+              lastMessage: latestMessage.content,
+              lastMessageTime: latestMessage.createdAt,
+              updatedAt: latestMessage.createdAt,
+            );
+            shouldUpdate = true;
+          } else {
+            // If no messages left, clear last message info
+            updatedConversation = conversation.copyWith(
+              lastMessage: '',
+              lastMessageTime: null,
+              updatedAt: DateTime.now(), // Or some default
+            );
+            shouldUpdate = true;
+          }
+
+          if (shouldUpdate) {
+            _conversationMemoryCache[conversation.id] = updatedConversation;
+
+            // ✅ Mark as dirty instead of blind save
+            _dirtyConversationIds.add(conversation.id);
+
+            _broadcastConversationUpdates();
+          }
         }
+
+        // Mark messages for this conversation as dirty
+        _dirtyMessageConversationIds.add(conversationId);
 
         // Save to disk
         _saveToDisk();
@@ -1030,16 +1135,38 @@ extension VideoThumbnailCacheExt on AdvancedCacheSystem {
 
         // Update conversation if needed
         final conversation = _conversationMemoryCache[conversationId];
-        if (conversation != null && messages.isNotEmpty) {
-          final latestMessage = messages.first;
-          final updatedConversation = conversation.copyWith(
-            lastMessage: latestMessage.content,
-            lastMessageTime: latestMessage.createdAt,
-            updatedAt: latestMessage.createdAt,
-          );
-          _conversationMemoryCache[conversationId] = updatedConversation;
-          _broadcastConversationUpdates();
+        if (conversation != null) {
+          bool shouldUpdate = false;
+          ConversationModel updatedConversation = conversation;
+
+          if (messages.isNotEmpty) {
+            final latestMessage = messages.first;
+            updatedConversation = conversation.copyWith(
+              lastMessage: latestMessage.content,
+              lastMessageTime: latestMessage.createdAt,
+              updatedAt: latestMessage.createdAt,
+            );
+            shouldUpdate = true;
+          } else {
+            // If no messages left, clear last message info
+            updatedConversation = conversation.copyWith(
+              lastMessage: '',
+              lastMessageTime: null,
+              updatedAt: DateTime.now(), // Or some default
+            );
+            shouldUpdate = true;
+          }
+
+          if (shouldUpdate) {
+            _conversationMemoryCache[conversation.id] = updatedConversation;
+            _dirtyConversationIds
+                .add(conversation.id); // Mark conversation as dirty
+            _broadcastConversationUpdates();
+          }
         }
+
+        // Mark messages for this conversation as dirty
+        _dirtyMessageConversationIds.add(conversationId);
 
         // Save to disk
         _saveToDisk();
@@ -1070,6 +1197,7 @@ extension VideoThumbnailCacheExt on AdvancedCacheSystem {
 
         if (deletedCount > 0) {
           _broadcastMessageUpdates(conversationId, messages);
+          _dirtyMessageConversationIds.add(conversationId); // Mark as dirty
         }
       }
 
@@ -1105,14 +1233,20 @@ extension VideoThumbnailCacheExt on AdvancedCacheSystem {
       }
       _messageStreams.clear();
 
-      // Clear disk cache
-      final prefs = await SharedPreferences.getInstance();
-      final keys = prefs.getKeys();
-      for (final key in keys) {
-        if (key.startsWith('cached_messages_')) {
-          await prefs.remove(key);
-        }
-      }
+      // Mark all messages as dirty (to be removed from disk)
+      _dirtyMessageConversationIds.addAll(_messageMemoryCache.keys);
+      _messageMemoryCache.clear(); // Clear memory after marking for deletion
+
+      // Clear disk cache (this will be handled by _saveToDisk now)
+      // final prefs = await SharedPreferences.getInstance();
+      // final keys = prefs.getKeys();
+      // for (final key in keys) {
+      //   if (key.startsWith('cached_messages_')) {
+      //     await prefs.remove(key);
+      //   }
+      // }
+
+      _saveToDisk(); // Trigger save to remove from disk
 
       logInfo('✅ Cleared all cached messages');
     } catch (e) {
@@ -1125,13 +1259,16 @@ extension VideoThumbnailCacheExt on AdvancedCacheSystem {
     try {
       // Update memory cache
       _conversationMemoryCache[conversation.id] = conversation;
-      
+
+      // ✅ Mark as dirty
+      _dirtyConversationIds.add(conversation.id);
+
       // Broadcast update
       _broadcastConversationUpdates();
-      
+
       // Save to disk
       await _saveToDisk();
-      
+
       logInfo('✅ Updated conversation in cache: ${conversation.id}');
     } catch (e) {
       logInfo('❌ Error updating conversation in cache: $e');

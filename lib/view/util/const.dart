@@ -173,11 +173,10 @@ extension PostgrestFilterBuilderExtensions on PostgrestFilterBuilder {
   }
 }
 
-/// بررسی اتصال به Supabase
 Future<bool> checkSupabaseConnectivity() async {
   try {
     await Supabase.instance.client.from('profiles').select().limit(1).timeout(
-          const Duration(seconds: 10),
+          const Duration(seconds: 5), // کاهش تایم‌اوت برای چک سریع‌تر
           onTimeout: () => throw TimeoutException('Connection timeout'),
         );
     return true;
@@ -187,314 +186,115 @@ Future<bool> checkSupabaseConnectivity() async {
   }
 }
 
+/// ✅ نسخه بهینه‌شده و سریع برای رفع مشکل صفحه سیاه
 Future<void> initializeSupabaseWithFailover() async {
-  // تلاش اول: استفاده از CDN URL با HTTP client جدید
+  // تلاش اول: استفاده از CDN URL
   try {
     logInfo('🔄 Initializing Supabase with CDN URL: $supabaseCdnUrl');
 
-    // ایجاد Supabase client با HTTP client جدید
-    final httpClient = SupabaseHttpClient();
+    // نکته مهم: Supabase.initialize معمولاً فقط کانفیگ است و بلاک نمی‌کند مگر اینکه Auth Flow خاصی باشد
     await Supabase.initialize(
       url: supabaseCdnUrl,
       anonKey: supabaseAnonKey,
-      httpClient: httpClient,
-      debug: true, // برای دیباگ
+      httpClient: SupabaseHttpClient(),
+      debug: true,
       authOptions: FlutterAuthClientOptions(
-        authFlowType: AuthFlowType.pkce, // امن‌تر
-        autoRefreshToken: true, // ✅ خیلی مهم: Auto refresh token
+        authFlowType: AuthFlowType.pkce,
+        autoRefreshToken: true,
         detectSessionInUri: true,
       ),
-    );
+    ).timeout(const Duration(seconds: 3)); // تایم‌اوت سخت برای خود عملیات init
 
-    print('✅ Supabase initialized successfully');
+    logInfo('✅ Supabase initialized successfully (Phase 1)');
 
-    // ✅ بررسی session بعد از initialize
-    final session = Supabase.instance.client.auth.currentSession;
-    if (session != null) {
-      print('🔐 Active session found: ${session.user.email}');
-      print('📅 Session expires at: ${session.expiresAt}');
-
-      // بررسی expire شدن
-      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      final expiresAt = session.expiresAt ?? 0;
-
-      if (expiresAt < now) {
-        print('⚠️ Session expired, refreshing...');
-
-        // تلاش برای refresh با retry logic
-        // در حالت آفلاین، ما session منقضی شده را هم معتبر می‌دانیم تا زمانی که آنلاین شویم
-        try {
-          await Supabase.instance.client.auth
-              .refreshSession()
-              .timeout(const Duration(seconds: 5));
-          print('✅ Session refreshed successfully');
-        } catch (e) {
-          print(
-              '⚠️ Session refresh failed (likely offline), keeping expired session active for offline access: $e');
-        }
-      }
-    } else {
-      print('ℹ️ No active session found during initialization');
-    }
-
-    // ✅ حالت آفلاین: دیگر منتظر restore نمی‌مانیم تا UI بلاک نشود
-    // اما یک check سریع انجام می‌دهیم
-    try {
-      await _waitForSessionRestore(maxAttempts: 3, delayMs: 100);
-    } catch (e) {
-      // ignore
-    }
-
-    await Supabase.instance.client.from('profiles').select().limit(1).timeout(
-          const Duration(seconds: 10), // افزایش timeout برای شبکه‌های کند
-          onTimeout: () => throw TimeoutException('Ping timeout'),
-        );
-
-    // ✅ اضافه شده: پس از initialize موفق، session بازیابی شده را لاگ کنید
-    _logSessionStatus();
-
-    return; // اتصال موفق، خروج از تابع
+    // 🚀 بلافاصله خارج شو و بقیه کارها را به پس‌زمینه بسپار
+    _startBackgroundInitialization();
+    return;
   } catch (e) {
-    logInfo('⚠️ CDN URL failed: $e');
+    logInfo('⚠️ CDN URL init failed or timed out: $e');
 
-    // CDN attempt failed, will try direct URL
-
-    // بررسی اینکه آیا Supabase در تلاش اول مقداردهی اولیه شده بود یا خیر.
-    // اگر مقداردهی اولیه شده بود (حتی اگر پینگ ناموفق بود)، باید dispose شود.
-    bool needsDisposal = false;
+    // اگر CDN شکست خورد، dispose کن تا دوباره تلاش کنیم
     try {
-      // دسترسی به Supabase.instance در صورتی که _initialized false باشد، خطا می‌دهد.
-      // از این طریق می‌توانیم بفهمیم که آیا _initialized true شده است یا خیر.
-      Supabase.instance; // اگر این خط اجرا شود یعنی _initialized true بوده.
-      needsDisposal = true;
-    } catch (assertionError) {
-      // اگر خطای assertion رخ دهد، یعنی Supabase.instance قابل دسترسی نیست
-      // و _initialized false است. پس نیازی به dispose نیست.
-      needsDisposal = false;
-    }
+      Supabase.instance;
+      await Supabase.instance.dispose();
+    } catch (_) {}
 
-    if (needsDisposal) {
-      try {
-        await Supabase.instance.dispose(); // ریست کردن وضعیت Supabase
-      } catch (disposeError) {
-        logInfo('⚠️ Error disposing Supabase instance: $disposeError');
-      }
-    }
-
-    // تلاش دوم: استفاده از Direct URL با HTTP client جدید
+    // تلاش دوم: Direct URL
     try {
-      print(
+      logInfo(
           '🔄 Attempting Supabase initialization with Direct URL: $supabaseDirectUrl');
 
-      // ایجاد Supabase client جدید با HTTP client جدید
-      final httpClient2 = SupabaseHttpClient();
       await Supabase.initialize(
         url: supabaseDirectUrl,
         anonKey: supabaseAnonKey,
-        httpClient: httpClient2,
-        debug: true, // برای دیباگ
+        httpClient: SupabaseHttpClient(),
+        debug: true,
         authOptions: FlutterAuthClientOptions(
-          authFlowType: AuthFlowType.pkce, // امن‌تر
-          autoRefreshToken: true, // ✅ خیلی مهم: Auto refresh token
+          authFlowType: AuthFlowType.pkce,
+          autoRefreshToken: true,
           detectSessionInUri: true,
         ),
-      );
-
-      print('✅ Supabase initialized successfully');
-
-      // ✅ بررسی session بعد از initialize
-      final session = Supabase.instance.client.auth.currentSession;
-      if (session != null) {
-        print('🔐 Active session found: ${session.user.email}');
-        print('📅 Session expires at: ${session.expiresAt}');
-
-        // بررسی expire شدن
-        final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-        final expiresAt = session.expiresAt ?? 0;
-
-        if (expiresAt < now) {
-          print('⚠️ Session expired, refreshing...');
-
-          // تلاش برای refresh با retry logic
-          bool refreshSuccess = false;
-          int retryCount = 0;
-          const maxRetries = 3;
-
-          while (retryCount < maxRetries && !refreshSuccess) {
-            try {
-              await Supabase.instance.client.auth.refreshSession();
-              print('✅ Session refreshed successfully');
-              refreshSuccess = true;
-            } catch (e) {
-              retryCount++;
-              if (retryCount < maxRetries) {
-                print(
-                    '⚠️ Session refresh failed, retrying... ($retryCount/$maxRetries): $e');
-                await Future.delayed(Duration(seconds: retryCount));
-              } else {
-                print(
-                    '❌ Session refresh failed after $maxRetries attempts: $e');
-
-                // بررسی نوع خطا
-                final errorString = e.toString().toLowerCase();
-                final isNetworkError = errorString.contains('network') ||
-                    errorString.contains('timeout') ||
-                    errorString.contains('connection') ||
-                    errorString.contains('socket') ||
-                    errorString.contains('failed host lookup');
-
-                // فقط اگر خطای واقعی auth است (نه network error) و session واقعاً منقضی شده، signOut کن
-                if (!isNetworkError) {
-                  final finalSession =
-                      Supabase.instance.client.auth.currentSession;
-                  if (finalSession == null ||
-                      (finalSession.expiresAt ?? 0) < now) {
-                    await Supabase.instance.client.auth.signOut();
-                  } else {
-                    print(
-                        '⚠️ Refresh failed but session still exists, keeping it active');
-                  }
-                } else {
-                  print(
-                      '⚠️ Network error during refresh, keeping session active');
-                }
-              }
-            }
-          }
-        }
-      } else {
-        print('ℹ️ No active session found');
-      }
-
-      // ✅ اضافه شده: منتظر بمانید تا session restore شود
-      print('⏳ Waiting for session restoration (Direct URL)...');
-      await _waitForSessionRestore();
-
-      // تلاش برای ping با retry و graceful handling
-      try {
-        await Supabase.instance.client
-            .from('profiles')
-            .select()
-            .limit(1)
-            .timeout(
-              const Duration(seconds: 10), // افزایش timeout برای شبکه‌های کند
-              onTimeout: () => throw TimeoutException('Ping timeout'),
-            );
-      } catch (e) {
-        // اگر ping ناموفق بود، session را حفظ می‌کنیم (ممکن است مشکل network باشد)
-        final errorString = e.toString().toLowerCase();
-        final isNetworkError = errorString.contains('network') ||
-            errorString.contains('timeout') ||
-            errorString.contains('connection') ||
-            errorString.contains('socket');
-
-        if (isNetworkError) {
-          logInfo(
-              '⚠️ Network error during ping, but keeping session active: $e');
-          // با قطع اینترنت، session را حفظ می‌کنیم
-        } else {
-          logInfo('⚠️ Ping failed but session may still be valid: $e');
-        }
-        // حتی با خطا، ادامه می‌دهیم تا session حفظ شود
-      }
-
-      // ✅ اضافه شده: پس از initialize موفق، session بازیابی شده را لاگ کنید
-      _logSessionStatus();
+      ).timeout(const Duration(seconds: 3));
 
       logInfo('✅ Supabase initialized successfully with Direct URL');
+      _startBackgroundInitialization();
     } catch (err) {
-      print(
-          '❌ اتصال به سرور قطع است - لطفاً اتصال اینترنت خود را بررسی کنید: $err');
+      logInfo('❌ Critical: Supabase init completely failed: $err');
 
-      // در حالت debug، Supabase را با تنظیمات minimal initialize کنیم
+      // حتی اگر شکست خورد، برای اینکه برنامه کرش نکند در حالت مینیمال بالا بیاریم
+      // تا کاربر وارد برنامه شود و از دیتای آفلاین استفاده کند
       if (const bool.fromEnvironment('dart.vm.product') == false) {
-        print(
-            '🔄 تلاش برای initialize Supabase با تنظیمات minimal در حالت توسعه...');
-
         try {
-          // Supabase را با تنظیمات minimal initialize کنیم
           await Supabase.initialize(
-            url:
-                'https://localhost:54321', // این URL کار نخواهد کرد اما instance ایجاد می‌شود
+            url: 'https://placeholder.url',
             anonKey: supabaseAnonKey,
-            authOptions: FlutterAuthClientOptions(
-              authFlowType: AuthFlowType.pkce,
-              autoRefreshToken: true, // ✅ Auto refresh token
-              detectSessionInUri: true,
-            ),
           );
-          logInfo('✅ Supabase با تنظیمات minimal initialize شد (حالت توسعه)');
-          logInfo(
-              '⚠️ اتصال به دیتابیس ممکن است کار نکند اما برنامه اجرا می‌شود');
-          return; // خروج موفق
-        } catch (minimalErr) {
-          logInfo('❌ حتی minimal Supabase هم شکست خورد: $minimalErr');
-          // در این حالت نیز اجازه بده برنامه اجرا شود
-          logInfo('🔧 برنامه بدون Supabase اجرا می‌شود');
-          return;
-        }
-      } else {
-        rethrow; // در حالت production، اجازه نده برنامه اجرا شود
+        } catch (_) {}
       }
     }
   }
 }
 
-// ✅ تابع جدید: منتظر بمانید تا session restore شود
+/// ✅ عملیات سنگین (پینگ، بازیابی نشست) در پس‌زمینه انجام می‌شود
+void _startBackgroundInitialization() {
+  Future.microtask(() async {
+    try {
+      logInfo('⏳ Starting background session restoration...');
+      await _waitForSessionRestore(maxAttempts: 5, delayMs: 500);
+
+      // لاگ وضعیت نشست
+      _logSessionStatus();
+
+      // پینگ شبکه در پس‌زمینه
+      checkSupabaseConnectivity();
+    } catch (e) {
+      logInfo('⚠️ Background init tasks error: $e');
+    }
+  });
+}
+
 Future<void> _waitForSessionRestore(
     {int maxAttempts = 15, int delayMs = 200}) async {
-  print('🔄 Checking for session restoration...');
-
+  // منطق قبلی برای بازیابی نشست
   for (int attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       final session = Supabase.instance.client.auth.currentSession;
       if (session != null) {
-        print('✅ Session restored successfully! User: ${session.user.email}');
+        logInfo(
+            '✅ Session restored in background! User: ${session.user.email}');
 
-        // بررسی expire شدن و refresh در صورت نیاز
+        // رفرش توکن اگر نیاز بود
         final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-        final expiresAt = session.expiresAt ?? 0;
-
-        if (expiresAt < now) {
-          print('⚠️ Restored session expired, refreshing...');
-
-          // تلاش برای refresh با retry logic
-          bool refreshSuccess = false;
-          int retryCount = 0;
-          const maxRetries = 3;
-
-          while (retryCount < maxRetries && !refreshSuccess) {
-            try {
-              await Supabase.instance.client.auth.refreshSession();
-              print('✅ Session refreshed successfully');
-              refreshSuccess = true;
-            } catch (e) {
-              retryCount++;
-              if (retryCount < maxRetries) {
-                print(
-                    '⚠️ Session refresh failed, retrying... ($retryCount/$maxRetries): $e');
-                await Future.delayed(Duration(seconds: retryCount));
-              } else {
-                print(
-                    '❌ Session refresh failed after $maxRetries attempts: $e');
-                // در اینجا signOut نمی‌کنیم چون ممکن است مشکل موقتی باشد
-              }
-            }
-          }
+        if ((session.expiresAt ?? 0) < now) {
+          try {
+            await Supabase.instance.client.auth.refreshSession();
+          } catch (_) {}
         }
-
         return;
       }
-    } catch (e) {
-      // ignore errors during polling
-    }
-
-    if (attempt < maxAttempts - 1) {
-      await Future.delayed(Duration(milliseconds: delayMs));
-    }
+    } catch (_) {}
+    await Future.delayed(Duration(milliseconds: delayMs));
   }
-
-  print('⏳ Session restore check completed (may restore asynchronously)');
 }
 
 // ✅ تابع جدید: لاگ کردن وضعیت session
