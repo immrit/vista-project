@@ -7,7 +7,8 @@ import '../DB/unified_message_cache_service.dart';
 import '../security/logging_utility.dart';
 
 class CentralizedRealtimeManager {
-  static final CentralizedRealtimeManager _instance = CentralizedRealtimeManager._internal();
+  static final CentralizedRealtimeManager _instance =
+      CentralizedRealtimeManager._internal();
   factory CentralizedRealtimeManager() => _instance;
   CentralizedRealtimeManager._internal();
 
@@ -16,17 +17,17 @@ class CentralizedRealtimeManager {
 
   // نگهداری callback ها
   final Map<String, List<Function(MessageModel)>> _messageCallbacks = {};
-  
+
   // نگهداری callback ها برای حذف پیام
   final Map<String, List<Function(String messageId)>> _deletionCallbacks = {};
-  
+
   // نگهداری callback ها برای به‌روزرسانی پیام
   final Map<String, List<Function(MessageModel)>> _updateCallbacks = {};
 
   // Throttling برای prevent spam
   final Map<String, Timer?> _throttleTimers = {};
   static const _throttleDuration = Duration(milliseconds: 100);
-  
+
   // Cache service برای مدیریت حذف
   final UnifiedMessageCacheService _cacheService = UnifiedMessageCacheService();
 
@@ -98,7 +99,8 @@ class CentralizedRealtimeManager {
         .subscribe();
 
     _activeChannels[conversationId] = channel;
-    print('✅ Subscribed to conversation (INSERT/UPDATE/DELETE): $conversationId');
+    print(
+        '✅ Subscribed to conversation (INSERT/UPDATE/DELETE): $conversationId');
   }
 
   /// ثبت callback برای رویدادهای حذف
@@ -134,10 +136,10 @@ class CentralizedRealtimeManager {
       if (messageId == null) return;
 
       logInfo('🗑️ Message deleted via realtime: $messageId');
-      
+
       // حذف از کش محلی
-      _cacheService.deleteMessage(messageId, conversationId: conversationId);
-      
+      _cacheService.deleteMessage(conversationId, messageId);
+
       // فراخوانی callback ها
       final callbacks = _deletionCallbacks[conversationId] ?? [];
       for (final callback in callbacks) {
@@ -167,8 +169,8 @@ class CentralizedRealtimeManager {
       if (message.deletedGlobally) {
         logInfo('🗑️ Message globally deleted via realtime: ${message.id}');
         // حذف از کش محلی
-        _cacheService.deleteMessage(message.id, conversationId: conversationId);
-        
+        _cacheService.deleteMessage(conversationId, message.id);
+
         // فراخوانی callback های حذف
         final deletionCallbacks = _deletionCallbacks[conversationId] ?? [];
         for (final callback in deletionCallbacks) {
@@ -177,10 +179,10 @@ class CentralizedRealtimeManager {
       } else if (message.deletedForUserIds.isNotEmpty) {
         // پیام برای برخی کاربران حذف شده است
         logInfo('📝 Message updated (deletion flags): ${message.id}');
-        
+
         // به‌روزرسانی در کش
         _cacheService.upsertMessage(message);
-        
+
         // فراخوانی callback های به‌روزرسانی
         final updateCallbacks = _updateCallbacks[conversationId] ?? [];
         for (final callback in updateCallbacks) {
@@ -205,7 +207,8 @@ class CentralizedRealtimeManager {
     _throttleTimers[conversationId] = Timer(_throttleDuration, () {
       try {
         final messageData = payload.newRecord;
-        final message = MessageModel.fromJson(messageData, currentUserId: currentUserId);
+        final message =
+            MessageModel.fromJson(messageData, currentUserId: currentUserId);
 
         // ✅ فقط پیام‌های دیگران را نمایش بده (پیام‌های خودمان با temp system مدیریت میشوند)
         if (message.senderId != currentUserId) {
@@ -260,22 +263,3 @@ class CentralizedRealtimeManager {
     _throttleTimers.clear();
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

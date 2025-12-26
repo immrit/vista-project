@@ -14,8 +14,37 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
-import '../services/document_handler_service.dart';
 import '../../../services/toast_service.dart';
+
+/// نوع فایل‌های پشتیبانی شده
+enum DocumentType {
+  pdf('PDF', ['pdf'], '📄'),
+  word('Word', ['doc', 'docx'], '📝'),
+  excel('Excel', ['xls', 'xlsx'], '📊'),
+  powerpoint('PowerPoint', ['ppt', 'pptx'], '📽️'),
+  text('Text', ['txt', 'md'], '📃'),
+  archive('Archive', ['zip', 'rar', '7z'], '🗜️'),
+  audio('Audio', ['mp3', 'wav', 'aac', 'm4a'], '🎵'),
+  video('Video', ['mp4', 'mov', 'avi', 'm4a'], '🎥'),
+  image('Image', ['jpg', 'jpeg', 'png', 'gif', 'webp'], '🖼️'),
+  other('Other', [], '📎');
+
+  final String displayName;
+  final List<String> extensions;
+  final String emoji;
+
+  const DocumentType(this.displayName, this.extensions, this.emoji);
+
+  static DocumentType fromExtension(String ext) {
+    final extension = ext.toLowerCase().replaceAll('.', '');
+    for (final type in DocumentType.values) {
+      if (type.extensions.contains(extension)) {
+        return type;
+      }
+    }
+    return DocumentType.other;
+  }
+}
 
 /// نتیجه انتخاب فایل
 class DocumentSelectionResult {
@@ -65,7 +94,11 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
   late Animation<Offset> _slideAnimation;
 
   final _captionController = TextEditingController();
-  final _documentService = DocumentHandlerService();
+  // final _documentService = DocumentHandlerService(); // Removed
+
+  // Constants
+  static const int maxFileSizeInBytes = 100 * 1024 * 1024; // 100 MB
+  static const int maxFileSizeInMB = 100;
 
   File? _selectedFile;
   String? _fileName;
@@ -400,7 +433,7 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        _documentService.getFormattedSize(_fileSize ?? 0),
+                        _formatBytes(_fileSize ?? 0),
                         style: TextStyle(
                           fontSize: 12,
                           color: theme.hintColor,
@@ -511,9 +544,8 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
           Expanded(
             flex: 2,
             child: ElevatedButton(
-              onPressed: _selectedFile == null || _isLoading
-                  ? null
-                  : _handleSend,
+              onPressed:
+                  _selectedFile == null || _isLoading ? null : _handleSend,
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 backgroundColor: theme.primaryColor,
@@ -568,11 +600,11 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
       final fileSize = await file.length();
 
       // بررسی حجم
-      if (fileSize > DocumentHandlerService.maxFileSizeInBytes) {
+      if (fileSize > maxFileSizeInBytes) {
         if (!mounted) return;
         ToastService.showErrorToast(
           context,
-          'حجم فایل بیش از ${DocumentHandlerService.maxFileSizeInMB} مگابایت است',
+          'حجم فایل بیش از $maxFileSizeInMB مگابایت است',
         );
         return;
       }
@@ -631,5 +663,12 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
       default:
         return Colors.grey;
     }
+  }
+
+  /// فرمت کردن حجم فایل
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 }

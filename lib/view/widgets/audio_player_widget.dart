@@ -47,8 +47,6 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
 
   Future<void> _initializePlayer() async {
     try {
-      print("🎵 AudioPlayerWidget: Preparing player for ${widget.audioUrl}");
-
       // چک کردن URL
       if (widget.audioUrl.isEmpty) {
         throw Exception('URL فایل صوتی خالی است');
@@ -85,42 +83,31 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
       // انتظار برای بارگذاری کامل
       await Future.delayed(const Duration(milliseconds: 500));
 
-      setState(() {
-        _isInitialized = true;
-      });
-
-      print("🎵 AudioPlayerWidget: Player prepared successfully");
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
     } catch (e) {
-      print("❌ AudioPlayerWidget: Error preparing player: $e");
       // Error preparing player
-      // Optionally handle error state in UI
     }
   }
 
   Future<void> _playPause() async {
     try {
-      print("🎵 AudioPlayerWidget: Play/Pause button pressed");
-      print(
-          "🎵 AudioPlayerWidget: Current state: ${_isPlaying ? 'playing' : 'paused'}");
-
       // چک کردن وضعیت پلیر
       if (!_isInitialized) {
-        print("⚠️ AudioPlayerWidget: Player not initialized, preparing...");
         await _initializePlayer();
         return;
       }
 
       if (_isPlaying) {
-        print("⏸️ AudioPlayerWidget: Pausing audio");
         await _audioPlayer.pause();
       } else {
-        print("▶️ AudioPlayerWidget: Starting audio");
         await _audioPlayer.play();
       }
-
-      print("✅ AudioPlayerWidget: Play/Pause operation completed");
     } catch (e) {
-      print("❌ AudioPlayerWidget: Error in play/pause: $e");
+      // Error playing/pausing
     }
   }
 
@@ -135,7 +122,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).primaryColor;
-    
+
     // رنگ با کنتراست مناسب برای هر دو تم
     final Color textColor;
     if (widget.isMe) {

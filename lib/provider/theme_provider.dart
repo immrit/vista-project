@@ -1,12 +1,11 @@
 import '../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:sembast/sembast_io.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import '../view/util/themes.dart';
-import '../DB/database_manager.dart';
+import 'package:isar/isar.dart';
+import '../DB/isar_database_manager.dart';
+import '../DB/entities/app_settings_entity.dart';
 import 'settings_providers.dart';
+import '../view/util/themes.dart';
 
 // Provider برای مدیریت رنگ انتخاب شده
 final selectedColorProvider =
@@ -24,18 +23,19 @@ final brightnessProvider =
 final dynamicThemeProvider = Provider<ThemeData>((ref) {
   final color = ref.watch(selectedColorProvider);
   final brightness = ref.watch(brightnessProvider);
-  
+
   // دریافت تنظیمات دسترسی‌پذیری
   final appSettingsAsync = ref.watch(advancedAppSettingsProvider);
-  final accessibility = appSettingsAsync.value?['accessibility'] as Map<String, dynamic>? ?? {};
-  
+  final accessibility =
+      appSettingsAsync.value?['accessibility'] as Map<String, dynamic>? ?? {};
+
   final largeText = accessibility['large_text'] as bool? ?? false;
   final boldText = accessibility['bold_text'] as bool? ?? false;
   final highContrast = accessibility['high_contrast'] as bool? ?? false;
   final colorBlindMode = accessibility['color_blind_mode'] as String? ?? 'none';
-  
+
   return createTheme(
-    color, 
+    color,
     brightness,
     largeText: largeText,
     boldText: boldText,
@@ -46,8 +46,7 @@ final dynamicThemeProvider = Provider<ThemeData>((ref) {
 
 // Notifier برای مدیریت رنگ انتخاب شده
 class SelectedColorNotifier extends StateNotifier<ThemeColor> {
-  Database? _database;
-  final StoreRef<String, String> _store = StoreRef<String, String>.main();
+  Isar? _isar;
 
   SelectedColorNotifier() : super(ThemeColor.white) {
     _initDatabase();
@@ -55,19 +54,20 @@ class SelectedColorNotifier extends StateNotifier<ThemeColor> {
 
   Future<void> _initDatabase() async {
     try {
-      _database = await DatabaseManager().getSettingsDatabase();
-      _loadFromSembast();
+      _isar = await IsarDatabaseManager().instance;
+      _loadFromIsar();
     } catch (e) {
       logDebug('خطا در باز کردن دیتابیس تنظیمات: $e');
     }
   }
 
-  void _loadFromSembast() async {
-    if (_database == null) return;
+  void _loadFromIsar() async {
+    if (_isar == null) return;
     try {
-      final colorName =
-          await _store.record('selectedColor').get(_database!) ?? 'white';
-      state = _parseThemeColor(colorName);
+      final settings = await _isar!.appSettingsEntitys.get(1);
+      if (settings != null) {
+        state = _parseThemeColor(settings.selectedColor);
+      }
     } catch (e) {
       logDebug('خطا در بارگذاری رنگ: $e');
     }
@@ -75,15 +75,24 @@ class SelectedColorNotifier extends StateNotifier<ThemeColor> {
 
   void updateColor(ThemeColor color) {
     state = color;
-    _saveToSembast();
+    _saveToIsar();
   }
 
-  void _saveToSembast() async {
-    if (_database == null) return;
+  void _saveToIsar() async {
+    if (_isar == null) return;
     try {
-      await _store
-          .record('selectedColor')
-          .put(_database!, _themeColorToString(state));
+      await _isar!.writeTxn(() async {
+        var settings = await _isar!.appSettingsEntitys.get(1);
+        if (settings == null) {
+          settings = AppSettingsEntity()
+            ..id = 1
+            ..isDark = false // Default
+            ..selectedColor = _themeColorToString(state);
+        } else {
+          settings.selectedColor = _themeColorToString(state);
+        }
+        await _isar!.appSettingsEntitys.put(settings);
+      });
     } catch (e) {
       logDebug('خطا در ذخیره رنگ: $e');
     }
@@ -118,14 +127,14 @@ class SelectedColorNotifier extends StateNotifier<ThemeColor> {
         return 'white';
       case ThemeColor.blue:
         return 'blue';
+      default:
+        return 'white';
     }
   }
 }
 
-// Notifier برای مدیریت brightness
 class BrightnessNotifier extends StateNotifier<Brightness> {
-  Database? _database;
-  final StoreRef<String, bool> _store = StoreRef<String, bool>.main();
+  Isar? _isar;
 
   BrightnessNotifier() : super(Brightness.light) {
     _initDatabase();
@@ -133,23 +142,20 @@ class BrightnessNotifier extends StateNotifier<Brightness> {
 
   Future<void> _initDatabase() async {
     try {
-      String dbPath = 'settings.db';
-      if (!kIsWeb) {
-        final appDir = await getApplicationDocumentsDirectory();
-        dbPath = '${appDir.path}/settings.db';
-      }
-      _database = await databaseFactoryIo.openDatabase(dbPath);
-      _loadFromSembast();
+      _isar = await IsarDatabaseManager().instance;
+      _loadFromIsar();
     } catch (e) {
       logDebug('خطا در باز کردن دیتابیس تنظیمات: $e');
     }
   }
 
-  void _loadFromSembast() async {
-    if (_database == null) return;
+  void _loadFromIsar() async {
+    if (_isar == null) return;
     try {
-      final isDark = await _store.record('isDark').get(_database!) ?? false;
-      state = isDark ? Brightness.dark : Brightness.light;
+      final settings = await _isar!.appSettingsEntitys.get(1);
+      if (settings != null) {
+        state = settings.isDark ? Brightness.dark : Brightness.light;
+      }
     } catch (e) {
       logDebug('خطا در بارگذاری brightness: $e');
     }
@@ -157,18 +163,29 @@ class BrightnessNotifier extends StateNotifier<Brightness> {
 
   void updateBrightness(Brightness brightness) {
     state = brightness;
-    _saveToSembast();
+    _saveToIsar();
   }
 
   void toggleBrightness() {
     state = state == Brightness.light ? Brightness.dark : Brightness.light;
-    _saveToSembast();
+    _saveToIsar();
   }
 
-  void _saveToSembast() async {
-    if (_database == null) return;
+  void _saveToIsar() async {
+    if (_isar == null) return;
     try {
-      await _store.record('isDark').put(_database!, state == Brightness.dark);
+      await _isar!.writeTxn(() async {
+        var settings = await _isar!.appSettingsEntitys.get(1);
+        if (settings == null) {
+          settings = AppSettingsEntity()
+            ..id = 1
+            ..isDark = state == Brightness.dark
+            ..selectedColor = 'white'; // Default
+        } else {
+          settings.isDark = state == Brightness.dark;
+        }
+        await _isar!.appSettingsEntitys.put(settings);
+      });
     } catch (e) {
       logDebug('خطا در ذخیره brightness: $e');
     }

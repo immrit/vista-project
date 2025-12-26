@@ -14,30 +14,24 @@ import '../../../model/conversation_model.dart';
 import '../../../model/message_model.dart';
 import '../repositories/chat_repository.dart';
 import '../repositories/chat_repository_impl.dart';
-import '../services/chat_cache_service.dart';
 import '../services/typing_indicator_service.dart';
-import '../data/datasources/chat_local_datasource.dart';
-import '../../../../DB/database_manager.dart';
+import '../data/datasources/chat_local_datasource_isar.dart';
+import '../../../../DB/isar_database_manager.dart';
 import '../../../services/optimized_message_deletion_service.dart';
 
 // DatabaseManager provider
-final databaseManagerProvider = Provider<DatabaseManager>((ref) {
-  return DatabaseManager();
+final isarDatabaseManagerProvider = Provider<IsarDatabaseManager>((ref) {
+  return IsarDatabaseManager();
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔧 CORE PROVIDERS (پایه سیستم)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Provider برای CacheService (Singleton)
-final chatCacheServiceProvider = Provider<ChatCacheService>((ref) {
-  return ChatCacheService();
-});
-
-/// Local datasource backed by Sembast
-final chatLocalDataSourceProvider = Provider<ChatLocalDataSource>((ref) {
-  final dbManager = ref.watch(databaseManagerProvider);
-  return ChatLocalDataSource(dbManager);
+/// Local datasource backed by Isar
+final chatLocalDataSourceProvider = Provider<ChatLocalDataSourceIsar>((ref) {
+  final dbManager = ref.watch(isarDatabaseManagerProvider);
+  return ChatLocalDataSourceIsar(dbManager: dbManager);
 });
 
 /// Provider برای Repository (Singleton)

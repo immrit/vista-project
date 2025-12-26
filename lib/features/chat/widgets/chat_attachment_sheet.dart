@@ -17,6 +17,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../theme/chat_theme.dart';
 import 'document_upload_sheet.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 
 /// نوع پیوست
 enum ChatAttachmentType {
@@ -170,11 +171,9 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
   }
 
   void _showMaxSelectionWarning() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('حداکثر ۱۰ فایل می‌توانید انتخاب کنید'),
-        duration: Duration(seconds: 2),
-      ),
+    UserFriendlyErrorUtils.showErrorSnackBar(
+      context,
+      'حداکثر ۱۰ فایل می‌توانید انتخاب کنید',
     );
   }
 
@@ -206,7 +205,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
 
   Future<void> _pickFromCamera() async {
     Navigator.pop(context);
-    
+
     final picker = ImagePicker();
     final image = await picker.pickImage(
       source: ImageSource.camera,
@@ -265,7 +264,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
       files: [],
     ));
   }
-  
+
   Future<void> _showContact() async {
     Navigator.pop(context);
     // Contact picker will be handled in ModernChatScreen
@@ -404,7 +403,9 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
           IconButton(
             onPressed: () => setState(() => _showGallery = !_showGallery),
             icon: Icon(
-              _showGallery ? Icons.grid_view_rounded : Icons.photo_library_rounded,
+              _showGallery
+                  ? Icons.grid_view_rounded
+                  : Icons.photo_library_rounded,
               color: theme.iconColor,
             ),
           ),
@@ -725,7 +726,8 @@ class _OptionChip extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.2) : theme.inputBackgroundColor,
+          color:
+              isSelected ? color.withOpacity(0.2) : theme.inputBackgroundColor,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected ? color : theme.dividerColor,
@@ -913,7 +915,7 @@ class _SelectedThumbnail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
-    
+
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: Stack(
@@ -966,4 +968,3 @@ class _SelectedThumbnail extends StatelessWidget {
     );
   }
 }
-

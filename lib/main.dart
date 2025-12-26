@@ -19,7 +19,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'DB/profile_cache_service.dart';
 import 'DB/settings_cache_service.dart';
 import 'DB/advanced_settings_service.dart';
-import 'DB/database_manager.dart';
+import 'DB/isar_database_manager.dart'; // Added Isar
+import 'DB/high_performance_cache_system.dart';
 import 'services/voice_cache_service.dart';
 import 'services/network_status_service.dart';
 import 'services/network_state_service.dart';
@@ -272,9 +273,12 @@ class _RootAppState extends State<RootApp> {
       await SessionManagerServiceV2().initialize();
 
       // 6. Database & Settings (ضروری برای تم و ...)
-      await DatabaseManager().initializeAllDatabases();
+      // Init Isar
+      await IsarDatabaseManager().instance;
+      // await DatabaseManager().initializeAllDatabases(); // Removed Sembast
       await SettingsCacheService().initialize();
       await AdvancedSettingsService().initialize();
+      await HighPerformanceCacheSystem().initialize(); // Added
 
       // 7. Memory Leak Detection
       _initializeMemoryLeakDetection();
@@ -775,34 +779,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       print('   Device Model: $deviceModel');
       print('   App Version: $appVersion');
     } catch (e) {
-      print('❌ خطا در ثبت توکن: $e');
-      print('Stack trace: ${StackTrace.current}');
-
-      // 🔥 نمایش خطا روی صفحه (قرمز)
-      if (navigatorKey.currentContext != null && mounted) {
-        final errorMessage = e.toString();
-        ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
-          SnackBar(
-            content: Text('خطا در ثبت دستگاه: $errorMessage'),
-            backgroundColor: Colors.red,
-            duration:
-                const Duration(seconds: 10), // ۱۰ ثانیه میمونه تا بتونی بخونی
-            action: SnackBarAction(
-              label: 'کپی',
-              textColor: Colors.white,
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: errorMessage));
-                ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
-                  const SnackBar(
-                    content: Text('خطا کپی شد'),
-                    duration: Duration(seconds: 1),
-                  ),
-                );
-              },
-            ),
-          ),
-        );
-      }
+      // خطا در کنسول لاگ می‌شود (از نمایش اسنک‌بار برای کاربر صرف‌نظر شد طبق درخواست)
     }
   }
 

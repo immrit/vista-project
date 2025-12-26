@@ -92,12 +92,15 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _fadeAnimation;
-  late Animation<double> _blurAnimation;
 
   // متغیرهای محاسبه شده برای انیمیشن جابجایی
   late double _targetMessageTop;
   late double _targetMessageHeight;
   late bool _isScrollable;
+
+  // ✅ Cache heavy widgets
+  Widget? _cachedMenu;
+  Widget? _cachedReactions;
 
   List<String> get _currentReactions =>
       (widget.quickReactions != null && widget.quickReactions!.isNotEmpty)
@@ -124,16 +127,19 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
       parent: _controller,
       curve: Curves.easeOut,
     );
-
-    _blurAnimation = Tween<double>(begin: 0.0, end: 12.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-    );
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _calculateLayout();
+
+    // ✅ Cache widgets here to avoid rebuilding in animation loop
+    final theme = context.chatTheme;
+    final isDark = theme.isDark;
+    _cachedMenu = _buildMenu(theme, isDark);
+    _cachedReactions = _buildQuickReactionsBar(theme, isDark);
+
     _controller.forward();
   }
 
@@ -189,9 +195,6 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
 
   @override
   Widget build(BuildContext context) {
-    final theme = context.chatTheme;
-    final isDark = theme.isDark;
-
     // تنظیمات منو (گوشه سمت چپ/راست)
     const menuWidth = 250.0;
 
@@ -202,93 +205,94 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
     // موقعیت عمودی منو: همیشه زیر پیام (چون پیام را می‌بریم بالا اگر جا نباشد)
     // ما از انیمیشن استفاده می‌کنیم تا موقعیت نهایی منو را تعیین کنیم
 
-    return GestureDetector(
-      onTap: widget.onClose,
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, child) {
-          // محاسبه انیمیشن پوزیشن پیام (Tween بین جای اولیه و جای نهایی)
-          final currentTop = lerpDouble(
-              widget.messageRect.top, _targetMessageTop, _controller.value)!;
+    return RepaintBoundary(
+      child: GestureDetector(
+        onTap: widget.onClose,
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            // محاسبه انیمیشن پوزیشن پیام (Tween بین جای اولیه و جای نهایی)
+            final currentTop = lerpDouble(
+                widget.messageRect.top, _targetMessageTop, _controller.value)!;
 
-          final currentHeight = lerpDouble(widget.messageRect.height,
-              _targetMessageHeight, _controller.value)!;
+            final currentHeight = lerpDouble(widget.messageRect.height,
+                _targetMessageHeight, _controller.value)!;
 
-          // موقعیت منو بر اساس موقعیت فعلی پیام
-          final menuTop = currentTop + currentHeight + 16;
+            // موقعیت منو بر اساس موقعیت فعلی پیام
+            final menuTop = currentTop + currentHeight + 16;
 
-          return Stack(
-            children: [
-              // 1. پس‌زمینه بلور
-              Positioned.fill(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(
-                    sigmaX: _blurAnimation.value,
-                    sigmaY: _blurAnimation.value,
-                  ),
-                  child: Container(
-                    color: Colors.black.withOpacity(0.3 * _fadeAnimation.value),
-                  ),
-                ),
-              ),
-
-              // 2. پیام اصلی (متحرک و اسکرول‌دار)
-              Positioned(
-                top: currentTop,
-                left: widget.messageRect.left,
-                width: widget.messageRect.width,
-                height: currentHeight,
-                child: Material(
-                  // اضافه کردن Material برای جلوگیری از Overflow داخلی
-                  color: Colors.transparent,
-                  child: SingleChildScrollView(
-                    physics: _isScrollable
-                        ? const BouncingScrollPhysics()
-                        : const NeverScrollableScrollPhysics(),
-                    child: IgnorePointer(
-                      ignoring: true, // محتوای پیام کلیک نشود (فقط اسکرول)
-                      child: widget.messageWidget,
+            return Stack(
+              children: [
+                // 1. پس‌زمینه بلور
+                // 1. پس‌زمینه (بدون افکت بلور - ساده و سریع مثل تلگرام اندروید)
+                Positioned.fill(
+                  child: FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: Container(
+                      color: Colors.black
+                          .withOpacity(0.6), // تاریکی بیشتر برای تمرکز روی پیام
                     ),
                   ),
                 ),
-              ),
 
-              // 3. منوی گزینه‌ها
-              Positioned(
-                top: menuTop,
-                left: menuLeft, // منو سمت چپ فیکس شده
-                width: menuWidth,
-                child: Transform.scale(
-                  scale: _scaleAnimation.value,
-                  alignment: Alignment.topLeft, // انیمیشن باز شدن از بالا چپ
-                  child: Opacity(
-                    opacity: _fadeAnimation.value,
-                    child: _buildMenu(theme, isDark),
-                  ),
-                ),
-              ),
-
-              // 4. نوار ری‌اکشن‌ها (بالای پیام یا بالای منو)
-              Positioned(
-                top: currentTop - 60, // همیشه بالای پیام حرکت می‌کند
-                left: 16,
-                right: 16,
-                child: Transform.scale(
-                  scale: _scaleAnimation.value,
-                  alignment: Alignment.bottomCenter,
-                  child: Opacity(
-                    opacity: _fadeAnimation.value,
-                    child: Center(
-                      child: _buildQuickReactionsBar(theme, isDark),
+                // 2. پیام اصلی (متحرک و اسکرول‌دار)
+                Positioned(
+                  top: currentTop,
+                  left: widget.messageRect.left,
+                  width: widget.messageRect.width,
+                  height: currentHeight,
+                  child: Material(
+                    // اضافه کردن Material برای جلوگیری از Overflow داخلی
+                    color: Colors.transparent,
+                    child: SingleChildScrollView(
+                      physics: _isScrollable
+                          ? const BouncingScrollPhysics()
+                          : const NeverScrollableScrollPhysics(),
+                      child: IgnorePointer(
+                        ignoring: true, // محتوای پیام کلیک نشود (فقط اسکرول)
+                        child: widget.messageWidget,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
-          );
-        },
+
+                // 3. منوی گزینه‌ها
+                Positioned(
+                  top: menuTop,
+                  left: menuLeft, // منو سمت چپ فیکس شده
+                  width: menuWidth,
+                  child: Transform.scale(
+                    scale: _scaleAnimation.value,
+                    alignment: Alignment.topLeft, // انیمیشن باز شدن از بالا چپ
+                    child: Opacity(
+                      opacity: _fadeAnimation.value,
+                      child: _cachedMenu, // ✅ استفاده از نسخه کش شده
+                    ),
+                  ),
+                ),
+
+                // 4. نوار ری‌اکشن‌ها (بالای پیام یا بالای منو)
+                Positioned(
+                  top: currentTop - 60, // همیشه بالای پیام حرکت می‌کند
+                  left: 16,
+                  right: 16,
+                  child: Transform.scale(
+                    scale: _scaleAnimation.value,
+                    alignment: Alignment.bottomCenter,
+                    child: Opacity(
+                      opacity: _fadeAnimation.value,
+                      child: Center(
+                        child: _cachedReactions, // ✅ استفاده از نسخه کش شده
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
       ),
-    );
+    ); // Correct closing for RepaintBoundary
   }
 
   Widget _buildMenu(ChatTheme theme, bool isDark) {

@@ -1,132 +1,250 @@
-import '../security/logging_utility.dart';
+import 'package:isar/isar.dart';
+import 'isar_database_manager.dart';
+import '../features/chat/data/entities/conversation_entity.dart';
 import '../model/conversation_model.dart';
-import 'advanced_cache_system.dart';
+import '../security/logging_utility.dart';
 
-/// Unified conversation cache service that works on all platforms
 class UnifiedConversationCacheService {
   static final UnifiedConversationCacheService _instance =
       UnifiedConversationCacheService._internal();
+
   factory UnifiedConversationCacheService() => _instance;
+
   UnifiedConversationCacheService._internal();
 
-  final AdvancedCacheSystem _advancedCache = AdvancedCacheSystem();
+  Isar? _isar;
 
   Future<void> initialize() async {
-    await _advancedCache.initialize();
-    logInfo('UnifiedConversationCacheService initialized with Advanced Cache');
+    try {
+      _isar = await IsarDatabaseManager().instance;
+      logInfo('✅ UnifiedConversationCacheService initialized');
+    } catch (e) {
+      logError('❌ Failed to initialize UnifiedConversationCacheService',
+          error: e);
+    }
   }
 
-  /// Cache a conversation
-  Future<void> cacheConversation(
-      ConversationModel conversation, String userId) async {
-    // Advanced cache handles all the logic
-    // No additional action needed as real-time updates handle this
+  Future<void> cacheConversations(List<ConversationModel> conversations) async {
+    if (_isar == null) await initialize();
+    if (_isar == null) return;
+
+    try {
+      await _isar!.writeTxn(() async {
+        final entities =
+            conversations.map((c) => ConversationEntity.fromModel(c)).toList();
+        await _isar!.conversationEntitys.putAll(entities);
+      });
+    } catch (e) {
+      logError('Error caching conversations', error: e);
+    }
   }
 
-  /// Get cached conversations for a user
-  Future<List<ConversationModel>> getCachedConversations(String userId) async {
-    return _advancedCache.getCachedConversations();
+  Future<List<ConversationModel>> getConversations(
+      [String? userId, int limit = 50, int offset = 0]) async {
+    if (_isar == null) await initialize();
+    if (_isar == null) return [];
+
+    try {
+      final entities = await _isar!.conversationEntitys
+          .where()
+          .sortByLastMessageTimeDesc() // Assuming validation of schema sorting
+          .offset(offset)
+          .limit(limit)
+          .findAll();
+      return entities.map((e) => e.toModel()).toList();
+    } catch (e) {
+      logError('Error fetching conversations', error: e);
+      return [];
+    }
   }
 
-  /// Get a specific conversation
-  Future<ConversationModel?> getConversation(
-      String conversationId, String userId) async {
-    final conversations = _advancedCache.getCachedConversations();
-    return conversations.where((c) => c.id == conversationId).firstOrNull;
+  Future<void> upsertConversation(ConversationModel conversation,
+      [String? userId]) async {
+    if (_isar == null) await initialize();
+    if (_isar == null) return;
+
+    try {
+      await _isar!.writeTxn(() async {
+        await _isar!.conversationEntitys
+            .put(ConversationEntity.fromModel(conversation));
+      });
+    } catch (e) {
+      logError('Error upserting conversation', error: e);
+    }
   }
 
-  /// Update a conversation
-  Future<void> updateConversation(
-      ConversationModel conversation, String userId) async {
-    // ✅ به‌روزرسانی conversation در memory cache
-    await _advancedCache.updateConversationInCache(conversation);
+  Future<void> deleteConversation(String conversationId,
+      [String? userId]) async {
+    if (_isar == null) await initialize();
+    if (_isar == null) return;
+
+    try {
+      await _isar!.writeTxn(() async {
+        await _isar!.conversationEntitys
+            .filter()
+            .idEqualTo(conversationId)
+            .deleteAll();
+      });
+    } catch (e) {
+      logError('Error deleting conversation', error: e);
+    }
   }
 
-  /// Clear conversations for a user
-  Future<void> clearConversations(String userId) async {
-    // Advanced cache doesn't support user-specific clearing in this simple implementation
+  ConversationModel? getConversationSync(String conversationId) {
+    if (_isar == null) return null;
+    try {
+      final entity = _isar!.conversationEntitys
+          .filter()
+          .idEqualTo(conversationId)
+          .findFirstSync();
+      return entity?.toModel();
+    } catch (e) {
+      logError('Error fetching conversation sync', error: e);
+      return null;
+    }
   }
 
-  /// Delete a conversation
-  Future<void> deleteConversation(String conversationId, String userId) async {
-    await _advancedCache.removeConversation(conversationId);
+  Future<ConversationModel?> getConversation(String conversationId,
+      [String? userId]) async {
+    if (_isar == null) await initialize();
+    if (_isar == null) return null;
+
+    try {
+      final entity = await _isar!.conversationEntitys
+          .filter()
+          .idEqualTo(conversationId)
+          .findFirst();
+      return entity?.toModel();
+    } catch (e) {
+      logError('Error fetching conversation', error: e);
+      return null;
+    }
   }
 
-  /// Clear all conversations for a user
-  Future<void> clearCache(String userId) async {
-    // Advanced cache handles clearing
+  Future<List<ConversationModel>> getCachedConversations([String? userId]) =>
+      getConversations(userId);
+
+  Future<void> cacheConversation(ConversationModel conversation,
+          [String? userId]) =>
+      upsertConversation(conversation, userId);
+
+  Future<void> updateConversation(ConversationModel conversation,
+          [String? userId]) =>
+      upsertConversation(conversation, userId);
+
+  Stream<List<ConversationModel>> watchCachedConversations(
+      [String? userId]) async* {
+    if (_isar == null) await initialize();
+    if (_isar == null) yield [];
+
+    try {
+      yield* _isar!.conversationEntitys
+          .where()
+          .sortByLastMessageTimeDesc()
+          .watch(fireImmediately: true)
+          .map((entities) => entities.map((e) => e.toModel()).toList());
+    } catch (e) {
+      logError('Error observing conversations', error: e);
+      yield [];
+    }
   }
 
-  /// Set pin status
+  Stream<ConversationModel?> watchConversation(
+      String conversationId, String userId) async* {
+    if (_isar == null) await initialize();
+    if (_isar == null) yield null;
+
+    try {
+      yield* _isar!.conversationEntitys
+          .filter()
+          .idEqualTo(conversationId)
+          .watch(fireImmediately: true)
+          .map((entities) =>
+              entities.isNotEmpty ? entities.first.toModel() : null);
+    } catch (e) {
+      logError('Error observing conversation $conversationId', error: e);
+      yield null;
+    }
+  }
+
+  Future<void> clearAll() async {
+    if (_isar == null) await initialize();
+    if (_isar == null) return;
+
+    try {
+      await _isar!.writeTxn(() async {
+        await _isar!.conversationEntitys.clear();
+      });
+    } catch (e) {
+      logError('Error clearing conversations', error: e);
+    }
+  }
+
+  Future<void> removeConversation(String conversationId, [String? userId]) =>
+      deleteConversation(conversationId, userId);
+
+  Future<void> clearCache([String? userId]) => clearAll();
+
   Future<void> setPinStatus(
       String conversationId, String userId, bool isPinned) async {
-    // Advanced cache handles pin status through real-time sync
+    if (_isar == null) await initialize();
+    if (_isar == null) return;
+
+    try {
+      await _isar!.writeTxn(() async {
+        final conversation = await _isar!.conversationEntitys
+            .filter()
+            .idEqualTo(conversationId)
+            .findFirst();
+        if (conversation != null) {
+          conversation.isPinned = isPinned;
+          await _isar!.conversationEntitys.put(conversation);
+        }
+      });
+    } catch (e) {
+      logError('Error setting pin status', error: e);
+    }
   }
 
-  /// Set mute status
   Future<void> setMuteStatus(
       String conversationId, String userId, bool isMuted) async {
-    // Simple implementation
+    if (_isar == null) await initialize();
+    if (_isar == null) return;
+
+    try {
+      await _isar!.writeTxn(() async {
+        final conversation = await _isar!.conversationEntitys
+            .filter()
+            .idEqualTo(conversationId)
+            .findFirst();
+        if (conversation != null) {
+          conversation.isMuted = isMuted;
+          await _isar!.conversationEntitys.put(conversation);
+        }
+      });
+    } catch (e) {
+      logError('Error setting mute status', error: e);
+    }
   }
 
-  /// Set archive status
   Future<void> setArchiveStatus(
       String conversationId, String userId, bool isArchived) async {
-    // Simple implementation
-  }
+    if (_isar == null) await initialize();
+    if (_isar == null) return;
 
-  /// Watch cached conversations
-  Stream<List<ConversationModel>> watchCachedConversations(String userId) {
-    return _advancedCache.watchConversations();
-  }
-
-  /// Watch a specific conversation
-  Stream<ConversationModel?> watchConversation(
-      String conversationId, String userId) {
-    return _advancedCache.watchConversations().map((conversations) {
-      return conversations.where((c) => c.id == conversationId).firstOrNull;
-    });
-  }
-
-  /// Get conversation synchronously
-  ConversationModel? getConversationSync(String conversationId) {
-    // Simple implementation - not supported
-    return null;
-  }
-
-  /// Update last read
-  Future<void> updateLastRead(String conversationId, String readTimeIso) async {
-    // Simple implementation
-  }
-
-  /// Remove conversation
-  Future<void> removeConversation(String conversationId, String userId) async {
-    await _advancedCache.removeConversation(conversationId);
-  }
-
-  /// Cache a message (Optimistic update)
-  Future<void> cacheMessage(dynamic message) async {
-    // Dynamic to avoid circular imports or model conflicts if models are different
-    // But ideally should be MessageModel
-    if (message.runtimeType.toString().contains('MessageModel')) {
-      await _advancedCache.cacheMessage(message);
-    }
-  }
-
-  /// Delete a message from cache
-  Future<void> deleteMessage(String messageId, {String? conversationId}) async {
     try {
-      if (conversationId != null) {
-        await _advancedCache.deleteMessageFromCache(conversationId, messageId);
-        logInfo('[UnifiedConversationCache] Message deleted: $messageId');
-      } else {
-        logInfo('[UnifiedConversationCache] Warning: conversationId not provided for message: $messageId');
-      }
+      await _isar!.writeTxn(() async {
+        final conversation = await _isar!.conversationEntitys
+            .filter()
+            .idEqualTo(conversationId)
+            .findFirst();
+        if (conversation != null) {
+          conversation.isArchived = isArchived;
+          await _isar!.conversationEntitys.put(conversation);
+        }
+      });
     } catch (e) {
-      logInfo('[UnifiedConversationCache] Error deleting message: $e');
+      logError('Error setting archive status', error: e);
     }
   }
-
-  /// Get unified service instance for initialization
-  UnifiedConversationCacheService get unifiedService => this;
 }

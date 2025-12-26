@@ -4,27 +4,25 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../model/message_model.dart';
+import '../../../DB/unified_conversation_cache_service.dart';
+import '../../../DB/unified_message_cache_service.dart'; // ✅ Added
 import '../../../model/conversation_model.dart';
-import '../data/datasources/chat_local_datasource.dart';
+import '../data/datasources/chat_local_datasource_isar.dart';
 import '../services/storage_service.dart';
 import '../services/message_reactions_service.dart'; // ✅ اضافه شد
 import 'chat_repository.dart';
-import '../../../../DB/unified_conversation_cache_service.dart';
 
-/// A local-first ChatRepository implementation.
-///
-/// - UI reads only from local DB streams provided by `ChatLocalDataSource`.
-/// - Repository syncs with Supabase in background and updates local DB.
+/// A local-first ChatRepository implementation using Isar.
 class ChatRepositoryImpl implements ChatRepository {
-  final ChatLocalDataSource _localDataSource;
+  final ChatLocalDataSourceIsar _localDataSource;
   final SupabaseClient _supabase;
   final String? _injectedCurrentUserId;
   final RealtimeChannel _messagesChannel;
   late final StorageService _storageService;
-  late final MessageReactionsService _reactionService; // ✅ اضافه شد
+  late final MessageReactionsService _reactionService;
 
   ChatRepositoryImpl({
-    required ChatLocalDataSource localDataSource,
+    required ChatLocalDataSourceIsar localDataSource,
     required SupabaseClient supabase,
     String? currentUserId,
   })  : _localDataSource = localDataSource,
@@ -80,8 +78,7 @@ class ChatRepositoryImpl implements ChatRepository {
 
       // map in background
       final conversations = await (Future.microtask(() => compute(
-              _parseConversationsIsolate, {'data': response, 'userId': userId}))
-          as Future<List<ConversationModel>>);
+          _parseConversationsIsolate, {'data': response, 'userId': userId})));
 
       await _localDataSource.saveConversations(conversations);
       return ChatResult.success(conversations);
@@ -240,7 +237,7 @@ class ChatRepositoryImpl implements ChatRepository {
 
       // ✅ Trigger UI Update immediately via Unified Cache (Optimistic)
       // This bridges the gap between Sembast (Storage) and AdvancedCacheSystem (UI)
-      await UnifiedConversationCacheService().cacheMessage(tempMessage);
+      await UnifiedMessageCacheService().cacheMessage(tempMessage);
 
       // ✅ Update Conversation Metadata (Optimistic)
       final existingConv =
@@ -275,7 +272,7 @@ class ChatRepositoryImpl implements ChatRepository {
       await _localDataSource.saveMessage(serverMessage);
 
       // ✅ Update UI with confirmed message
-      await UnifiedConversationCacheService().cacheMessage(serverMessage);
+      await UnifiedMessageCacheService().cacheMessage(serverMessage);
 
       // ✅ Update Conversation Metadata (Confirmed)
       if (existingConv != null) {
@@ -511,8 +508,8 @@ class ChatRepositoryImpl implements ChatRepository {
 
       // ✅ 1.5. حذف از UnifiedCache (برای به‌روزرسانی فوری UI)
       if (conversationId != null) {
-        await UnifiedConversationCacheService()
-            .deleteMessage(messageId, conversationId: conversationId);
+        await UnifiedMessageCacheService()
+            .deleteMessage(messageId, conversationId);
       }
 
       // ✅ 2. حالا عملیات سمت سرور

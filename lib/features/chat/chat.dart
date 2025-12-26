@@ -22,7 +22,6 @@ export 'repositories/chat_repository_impl.dart';
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔧 SERVICES
 // ═══════════════════════════════════════════════════════════════════════════
-export 'services/chat_cache_service.dart';
 export 'services/typing_indicator_service.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════

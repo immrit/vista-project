@@ -4,8 +4,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
-import 'package:sembast/sembast_io.dart';
-import '../../DB/database_manager.dart';
+import 'package:isar/isar.dart';
+import '../../DB/isar_database_manager.dart';
+import '../../DB/entities/recent_search_entity.dart';
 import '../../model/ProfileModel.dart';
 import '../../model/SearchResut.dart';
 import '../../model/publicPostModel.dart';
@@ -22,51 +23,17 @@ class SearchPage extends ConsumerStatefulWidget {
   ConsumerState<SearchPage> createState() => _SearchPageState();
 }
 
-// Recent search model for Sembast
-class RecentSearch {
-  final String query;
-  final DateTime timestamp;
-  final SearchType searchType;
-
-  RecentSearch({
-    required this.query,
-    required this.timestamp,
-    required this.searchType,
-  });
-
-  Map<String, dynamic> toMap() {
-    return {
-      'query': query,
-      'timestamp': timestamp.toIso8601String(),
-      'searchType': searchType.name,
-    };
-  }
-
-  static RecentSearch fromMap(Map<String, dynamic> map) {
-    return RecentSearch(
-      query: map['query'] as String,
-      timestamp: DateTime.parse(map['timestamp'] as String),
-      searchType: SearchType.values.firstWhere(
-        (e) => e.name == map['searchType'],
-        orElse: () => SearchType.user,
-      ),
-    );
-  }
-}
-
-enum SearchType {
-  hashtag,
-  user,
-}
+// Local RecentSearch and SearchType removed in favor of Isar entities
 
 class _SearchPageState extends ConsumerState<SearchPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounceTimer;
-  Database? _database;
-  final StoreRef<String, Map<String, dynamic>> _store =
-      StoreRef<String, Map<String, dynamic>>.main();
+
+  Isar? _isar;
+  // final StoreRef<String, Map<String, dynamic>> _store =
+  //     StoreRef<String, Map<String, dynamic>>.main();
   bool _showRecentSearches = true;
   bool _isInitialized = false;
   bool _isSearching = false;
@@ -79,7 +46,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
   }
 
   Future<void> _initializeApp() async {
-    await _initSembast();
+    await _initIsar();
     if (mounted) {
       setState(() {
         _isInitialized = true;
@@ -115,45 +82,49 @@ class _SearchPageState extends ConsumerState<SearchPage>
     }
   }
 
-  Future<void> _initSembast() async {
+  Future<void> _initIsar() async {
     try {
-      _database = await DatabaseManager().getRecentSearchesDatabase();
+      _isar = await IsarDatabaseManager().instance;
     } catch (e) {
-      logDebug('خطا در باز کردن دیتابیس Sembast: $e');
+      logDebug('خطا در باز کردن دیتابیس Isar: $e');
     }
   }
 
   Future<void> _addToRecentSearches(String query) async {
-    if (query.isEmpty || _database == null) return;
+    if (query.isEmpty || _isar == null) return;
 
     final searchType =
         query.startsWith('#') ? SearchType.hashtag : SearchType.user;
 
     try {
-      // حذف جستجوی تکراری قبلی
-      await _store.record(query).delete(_database!);
+      await _isar!.writeTxn(() async {
+        // حذف جستجوی تکراری قبلی
+        await _isar!.recentSearchEntitys
+            .filter()
+            .queryEqualTo(query)
+            .deleteAll();
 
-      // اضافه کردن جستجوی جدید
-      final recentSearch = RecentSearch(
-        query: query,
-        timestamp: DateTime.now(),
-        searchType: searchType,
-      );
+        // اضافه کردن جستجوی جدید
+        final recentSearch = RecentSearchEntity()
+          ..query = query
+          ..timestamp = DateTime.now()
+          ..searchType = searchType;
 
-      await _store.record(query).put(_database!, recentSearch.toMap());
+        await _isar!.recentSearchEntitys.put(recentSearch);
 
-      // محدود کردن تعداد جستجوها به 20 مورد
-      final allRecords = await _store.find(_database!);
-      if (allRecords.length > 20) {
-        final searches = allRecords
-            .map((record) => RecentSearch.fromMap(record.value))
-            .toList()
-          ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        // محدود کردن تعداد جستجوها به 20 مورد
+        final count = await _isar!.recentSearchEntitys.count();
+        if (count > 20) {
+          final oldSearches = await _isar!.recentSearchEntitys
+              .where()
+              .sortByTimestamp() // قدیمی‌ترین‌ها اول
+              .limit(count - 20)
+              .findAll();
 
-        for (var i = 20; i < searches.length; i++) {
-          await _store.record(searches[i].query).delete(_database!);
+          await _isar!.recentSearchEntitys
+              .deleteAll(oldSearches.map((e) => e.id).toList());
         }
-      }
+      });
     } catch (e) {
       logDebug('خطا در ذخیره جستجوی اخیر: $e');
     }
@@ -196,16 +167,16 @@ class _SearchPageState extends ConsumerState<SearchPage>
     _debounceTimer?.cancel();
     _tabController.dispose();
     _searchController.dispose();
-    _database?.close();
+    // _database?.close(); Isar manager handles closing usually, or keep open
     super.dispose();
   }
 
   Widget _buildRecentSearches() {
-    if (!_isInitialized || _database == null) {
+    if (!_isInitialized || _isar == null) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    return FutureBuilder<List<RecentSearch>>(
+    return FutureBuilder<List<RecentSearchEntity>>(
       future: _getRecentSearches(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -315,15 +286,14 @@ class _SearchPageState extends ConsumerState<SearchPage>
     );
   }
 
-  Future<List<RecentSearch>> _getRecentSearches() async {
-    if (_database == null) return [];
+  Future<List<RecentSearchEntity>> _getRecentSearches() async {
+    if (_isar == null) return [];
 
     try {
-      final records = await _store.find(_database!);
-      final searches = records
-          .map((record) => RecentSearch.fromMap(record.value))
-          .toList()
-        ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      final searches = await _isar!.recentSearchEntitys
+          .where()
+          .sortByTimestampDesc()
+          .findAll();
       return searches;
     } catch (e) {
       logDebug('خطا در دریافت جستجوهای اخیر: $e');
@@ -332,10 +302,15 @@ class _SearchPageState extends ConsumerState<SearchPage>
   }
 
   Future<void> _deleteRecentSearch(String query) async {
-    if (_database == null) return;
+    if (_isar == null) return;
 
     try {
-      await _store.record(query).delete(_database!);
+      await _isar!.writeTxn(() async {
+        await _isar!.recentSearchEntitys
+            .filter()
+            .queryEqualTo(query)
+            .deleteAll();
+      });
       setState(() {}); // Refresh the UI
     } catch (e) {
       logDebug('خطا در حذف جستجوی اخیر: $e');
@@ -422,10 +397,12 @@ class _SearchPageState extends ConsumerState<SearchPage>
   }
 
   Future<void> _clearAllRecentSearches() async {
-    if (_database == null) return;
+    if (_isar == null) return;
 
     try {
-      await _store.delete(_database!);
+      await _isar!.writeTxn(() async {
+        await _isar!.recentSearchEntitys.clear();
+      });
       setState(() {}); // Refresh the UI
     } catch (e) {
       logDebug('خطا در پاک کردن تمام جستجوهای اخیر: $e');

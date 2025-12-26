@@ -25,6 +25,8 @@ dependencies:
   device_info_plus: ^11.3.3
   package_info_plus: ^8.0.2
   dotted_border: ^2.1.0
+  isar: ^3.1.0+1
+  isar_flutter_libs: ^3.1.0+1
   # drift: ^2.16.0  # Replaced with Isar
   # drift_flutter: ^0.2.4  # Replaced with Isar
   emoji_picker_flutter: ^4.3.0
@@ -78,7 +80,7 @@ dependencies:
   share_plus: ^10.1.4
   shimmer: ^3.0.0
   # sqlite3_flutter_libs: ^0.5.0  # Disabled for web compatibility
-  sembast: ^3.7.0
+  # sembast: ^3.7.0 # Removed
   supabase_flutter: ^2.9.1
   qr_flutter: ^4.1.0
   record: ^6.1.2  # برای ضبط صدا (فقط موبایل) - bumped to pick compatible platform implementations
@@ -126,6 +128,7 @@ flutter_launcher_icons:
     image_path: "lib/view/util/images/vistalogo-new.png"
 
 dev_dependencies:
+  isar_generator: ^3.1.0+1
   # drift_dev: ^2.16.0  # Replaced with Sembast
   # isar_generator: ^3.1.0+1  # Replaced with Sembast
   flutter_lints: ^5.0.0

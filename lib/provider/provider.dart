@@ -6,10 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:sembast/sembast_io.dart';
+import 'package:isar/isar.dart';
+import '../DB/isar_database_manager.dart';
+import '../DB/entities/app_settings_entity.dart';
 import 'package:path_provider/path_provider.dart';
-import '../DB/database_manager.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../DB/profile_cache_service.dart';
 import '../DB/settings_cache_service.dart';
 import '../services/animation_controller_service.dart';
@@ -2906,23 +2906,15 @@ class AutoPlayNotifier extends StateNotifier<bool> {
 
 // Font size settings provider
 class MessageFontSizeNotifier extends StateNotifier<double> {
-  Database? _database;
-  final StoreRef<String, double> _store = StoreRef<String, double>.main();
+  Isar? _isar;
 
   MessageFontSizeNotifier() : super(14.0) {
     _initDatabase();
   }
 
-  static const String _fontSizeKey = 'message_font_size';
-
   Future<void> _initDatabase() async {
     try {
-      String dbPath = 'settings.db';
-      if (!kIsWeb) {
-        final appDir = await getApplicationDocumentsDirectory();
-        dbPath = '${appDir.path}/settings.db';
-      }
-      _database = await databaseFactoryIo.openDatabase(dbPath);
+      _isar = await IsarDatabaseManager().instance;
       _loadFontSize();
     } catch (e) {
       debugPrint('خطا در باز کردن دیتابیس تنظیمات: $e');
@@ -2930,11 +2922,12 @@ class MessageFontSizeNotifier extends StateNotifier<double> {
   }
 
   Future<void> _loadFontSize() async {
-    if (_database == null) return;
+    if (_isar == null) return;
     try {
-      final savedSize =
-          await _store.record(_fontSizeKey).get(_database!) ?? 14.0;
-      state = savedSize;
+      final settings = await _isar!.appSettingsEntitys.get(1);
+      if (settings != null && settings.messageFontSize != null) {
+        state = settings.messageFontSize!;
+      }
     } catch (e) {
       debugPrint('خطا در بارگذاری اندازه فونت: $e');
     }
@@ -2942,9 +2935,21 @@ class MessageFontSizeNotifier extends StateNotifier<double> {
 
   Future<void> setFontSize(double size) async {
     state = size;
-    if (_database == null) return;
+    if (_isar == null) return;
     try {
-      await _store.record(_fontSizeKey).put(_database!, size);
+      await _isar!.writeTxn(() async {
+        var settings = await _isar!.appSettingsEntitys.get(1);
+        if (settings == null) {
+          settings = AppSettingsEntity()
+            ..id = 1
+            ..isDark = false // Default
+            ..selectedColor = 'white' // Default
+            ..messageFontSize = size;
+        } else {
+          settings.messageFontSize = size;
+        }
+        await _isar!.appSettingsEntitys.put(settings);
+      });
     } catch (e) {
       debugPrint('خطا در ذخیره اندازه فونت: $e');
     }
@@ -3001,18 +3006,15 @@ class AutoDownloadSettings {
 }
 
 class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
-  Database? _database;
-  final StoreRef<String, dynamic> _store = StoreRef<String, dynamic>.main();
+  Isar? _isar;
 
   AutoDownloadNotifier() : super(AutoDownloadSettings()) {
     _initDatabase();
   }
 
-  static const String _autoDownloadKey = 'auto_download_settings';
-
   Future<void> _initDatabase() async {
     try {
-      _database = await DatabaseManager().getSettingsDatabase();
+      _isar = await IsarDatabaseManager().instance;
       _loadSettings();
     } catch (e) {
       debugPrint('خطا در باز کردن دیتابیس تنظیمات: $e');
@@ -3020,13 +3022,14 @@ class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
   }
 
   Future<void> _loadSettings() async {
-    if (_database == null) return;
+    if (_isar == null) return;
     try {
-      final savedSettings = await _store
-          .record(_autoDownloadKey)
-          .get(_database!) as Map<String, dynamic>?;
-      if (savedSettings != null) {
-        state = AutoDownloadSettings.fromMap(savedSettings);
+      final settings = await _isar!.appSettingsEntitys.get(1);
+      if (settings != null) {
+        state = state.copyWith(
+          photos: settings.autoDownloadPhotos,
+          voices: settings.autoDownloadVoices,
+        );
       }
     } catch (e) {
       debugPrint('خطا در بارگذاری تنظیمات دانلود خودکار: $e');
@@ -3089,9 +3092,23 @@ class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
   }
 
   Future<void> _saveSettings() async {
-    if (_database == null) return;
+    if (_isar == null) return;
     try {
-      await _store.record(_autoDownloadKey).put(_database!, state.toMap());
+      await _isar!.writeTxn(() async {
+        var settings = await _isar!.appSettingsEntitys.get(1);
+        if (settings == null) {
+          settings = AppSettingsEntity()
+            ..id = 1
+            ..isDark = false
+            ..selectedColor = 'white'
+            ..autoDownloadPhotos = state.photos
+            ..autoDownloadVoices = state.voices;
+        } else {
+          settings.autoDownloadPhotos = state.photos;
+          settings.autoDownloadVoices = state.voices;
+        }
+        await _isar!.appSettingsEntitys.put(settings);
+      });
     } catch (e) {
       debugPrint('خطا در ذخیره تنظیمات دانلود خودکار: $e');
     }
@@ -3158,18 +3175,15 @@ class PerformanceSettings {
 }
 
 class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
-  Database? _database;
-  final StoreRef<String, dynamic> _store = StoreRef<String, dynamic>.main();
+  Isar? _isar;
 
   PerformanceNotifier() : super(PerformanceSettings()) {
     _initDatabase();
   }
 
-  static const String _performanceKey = 'performance_settings';
-
   Future<void> _initDatabase() async {
     try {
-      _database = await DatabaseManager().getSettingsDatabase();
+      _isar = await IsarDatabaseManager().instance;
       _loadSettings();
     } catch (e) {
       debugPrint('خطا در باز کردن دیتابیس تنظیمات: $e');
@@ -3177,12 +3191,15 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
   }
 
   Future<void> _loadSettings() async {
-    if (_database == null) return;
+    if (_isar == null) return;
     try {
-      final savedSettings = await _store.record(_performanceKey).get(_database!)
-          as Map<String, dynamic>?;
-      if (savedSettings != null) {
-        state = PerformanceSettings.fromMap(savedSettings);
+      final settings = await _isar!.appSettingsEntitys.get(1);
+      if (settings != null) {
+        state = state.copyWith(
+          batterySaverMode: settings.batterySaverMode,
+          smartCache: settings.smartCache,
+          messagePreloading: settings.messagePreloading,
+        );
       }
     } catch (e) {
       debugPrint('خطا در بارگذاری تنظیمات عملکرد: $e');
@@ -3194,11 +3211,12 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
     await _saveSettings();
 
     // اعمال تنظیمات حالت کم‌مصرف
-    if (enabled) {
-      await _applyBatterySaverMode();
-    } else {
-      await _disableBatterySaverMode();
-    }
+    // Note: Services are updated below directly
+    // if (enabled) {
+    //   await _applyBatterySaverMode();
+    // } else {
+    //   await _disableBatterySaverMode();
+    // }
 
     // به‌روزرسانی سرویس انیمیشن
     final animationService = AnimationControllerService();
@@ -3231,94 +3249,39 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
   }
 
   Future<void> _saveSettings() async {
-    if (_database == null) return;
+    if (_isar == null) return;
     try {
-      await _store.record(_performanceKey).put(_database!, state.toMap());
+      await _isar!.writeTxn(() async {
+        var settings = await _isar!.appSettingsEntitys.get(1);
+        if (settings == null) {
+          settings = AppSettingsEntity()
+            ..id = 1
+            ..isDark = false
+            ..selectedColor = 'white'
+            ..batterySaverMode = state.batterySaverMode
+            ..smartCache = state.smartCache
+            ..messagePreloading = state.messagePreloading;
+        } else {
+          settings.batterySaverMode = state.batterySaverMode;
+          settings.smartCache = state.smartCache;
+          settings.messagePreloading = state.messagePreloading;
+        }
+        await _isar!.appSettingsEntitys.put(settings);
+      });
     } catch (e) {
       debugPrint('خطا در ذخیره تنظیمات عملکرد: $e');
     }
   }
 
+  /*
   Future<void> _applyBatterySaverMode() async {
-    if (_database == null) return;
-    try {
-      // غیرفعال کردن انیمیشن‌ها
-      await _store.record('animations_enabled').put(_database!, false);
-
-      // غیرفعال کردن پخش خودکار ویدیوهای پست‌ها
-      await _store.record('video_auto_play').put(_database!, false);
-
-      // غیرفعال کردن همگام‌سازی خودکار
-      await _store.record('auto_sync').put(_database!, false);
-
-      // غیرفعال کردن به‌روزرسانی پس‌زمینه
-      await _store.record('background_refresh').put(_database!, false);
-
-      // کاهش کیفیت تصاویر
-      await _store.record('image_quality').put(_database!, 'low');
-
-      // کاهش کیفیت ویدیوها
-      await _store.record('video_quality').put(_database!, 'low');
-
-      // غیرفعال کردن پیش‌بارگذاری پیام‌ها
-      await _store.record('message_preloading').put(_database!, false);
-
-      // کاهش اندازه کش
-      await _store.record('cache_size_limit').put(_database!, 50);
-
-      // غیرفعال کردن اعلان‌های غیرضروری
-      await _store.record('non_essential_notifications').put(_database!, false);
-
-      // کاهش فرکانس به‌روزرسانی
-      await _store.record('update_frequency').put(_database!, 'low');
-
-      print(
-          '🔋 Battery saver mode enabled - All animations, auto-play videos, and non-essential activities disabled');
-    } catch (e) {
-      debugPrint('خطا در اعمال حالت کم‌مصرف: $e');
-    }
+    // Legacy Sembast removal
   }
 
   Future<void> _disableBatterySaverMode() async {
-    if (_database == null) return;
-    try {
-      // فعال کردن انیمیشن‌ها
-      await _store.record('animations_enabled').put(_database!, true);
-
-      // بازگردانی تنظیمات پخش خودکار ویدیو (بر اساس تنظیمات کاربر)
-      final prefs = await SharedPreferences.getInstance();
-      final autoPlaySetting = prefs.getBool('video_auto_play') ?? false;
-      await _store.record('video_auto_play').put(_database!, autoPlaySetting);
-
-      // فعال کردن همگام‌سازی خودکار
-      await _store.record('auto_sync').put(_database!, true);
-
-      // فعال کردن به‌روزرسانی پس‌زمینه
-      await _store.record('background_refresh').put(_database!, true);
-
-      // بازگردانی کیفیت تصاویر به بالا
-      await _store.record('image_quality').put(_database!, 'high');
-
-      // بازگردانی کیفیت ویدیوها
-      await _store.record('video_quality').put(_database!, 'high');
-
-      // فعال کردن پیش‌بارگذاری پیام‌ها
-      await _store.record('message_preloading').put(_database!, true);
-
-      // بازگردانی اندازه کش
-      await _store.record('cache_size_limit').put(_database!, 200);
-
-      // فعال کردن اعلان‌های غیرضروری
-      await _store.record('non_essential_notifications').put(_database!, true);
-
-      // بازگردانی فرکانس به‌روزرسانی
-      await _store.record('update_frequency').put(_database!, 'high');
-
-      print('⚡ Battery saver mode disabled - All features restored');
-    } catch (e) {
-      debugPrint('خطا در غیرفعال کردن حالت کم‌مصرف: $e');
-    }
+    // Legacy Sembast removal
   }
+  */
 
   String getBatterySaverDescription() {
     return state.batterySaverMode

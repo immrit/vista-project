@@ -1,4 +1,5 @@
 import '../../security/logging_utility.dart';
+import '../../utils/user_friendly_error_utils.dart';
 import 'dart:io';
 import 'dart:developer' as developer;
 import 'package:cached_network_image/cached_network_image.dart';
@@ -686,7 +687,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
   String? replyToCommentId;
   List<UserModel> mentionedUsers = [];
   final String currentUserId = supabase.auth.currentUser!.id;
-  final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
   bool _isSubmittingComment = false;
 
   @override
@@ -1155,12 +1156,8 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
 
         // Show success message
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('نظر با موفقیت ثبت شد'),
-              duration: Duration(seconds: 2),
-            ),
-          );
+          UserFriendlyErrorUtils.showSuccessSnackBar(
+              context, 'نظر با موفقیت ثبت شد');
         }
       } catch (e) {
         logInfo('Error sending comment: $e');
@@ -1169,12 +1166,8 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
           setState(() {
             _isSubmittingComment = false;
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('خطا در ارسال نظر: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          UserFriendlyErrorUtils.showErrorSnackBar(
+              context, 'خطا در ارسال نظر: $e');
         }
       }
     }
@@ -1389,13 +1382,10 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
           .deleteComment(commentId, ref);
       ref.invalidate(commentsProvider(postId));
 
-      _scaffoldMessengerKey.currentState?.showSnackBar(
-        const SnackBar(content: Text('کامنت با موفقیت حذف شد')),
-      );
+      UserFriendlyErrorUtils.showSuccessSnackBar(
+          context, 'کامنت با موفقیت حذف شد');
     } catch (e) {
-      _scaffoldMessengerKey.currentState?.showSnackBar(
-        SnackBar(content: Text('خطا در حذف کامنت: $e')),
-      );
+      UserFriendlyErrorUtils.showErrorSnackBar(context, 'خطا در حذف کامنت: $e');
     }
   }
 
@@ -1601,10 +1591,9 @@ class _ReportProfileDialogState extends State<ReportProfileDialog> {
             child: const Text('گزارش'),
             onPressed: () async {
               if (selectedReason.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('لطفاً دلیل گزارش را انتخاب کنید'),
-                  ),
+                UserFriendlyErrorUtils.showErrorSnackBar(
+                  context,
+                  'لطفاً دلیل گزارش را انتخاب کنید',
                 );
                 return;
               }
@@ -1619,17 +1608,15 @@ class _ReportProfileDialogState extends State<ReportProfileDialog> {
                               ? null
                               : additionalDetailsController.text,
                     );
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('پروفایل با موفقیت گزارش شد.'),
-                  ),
+                UserFriendlyErrorUtils.showSuccessSnackBar(
+                  context,
+                  'پروفایل با موفقیت گزارش شد.',
                 );
               } catch (e) {
                 logInfo('خطا در گزارش پروفایل: $e');
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('خطا در گزارش پروفایل.'),
-                  ),
+                UserFriendlyErrorUtils.showErrorSnackBar(
+                  context,
+                  'خطا در گزارش پروفایل.',
                 );
               }
 

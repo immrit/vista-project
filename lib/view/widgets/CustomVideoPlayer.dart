@@ -1,4 +1,3 @@
-import '../../security/logging_utility.dart';
 import 'dart:async';
 import 'package:Vista/view/widgets/VideoPlayerConfig.dart';
 import 'package:flutter/material.dart';
@@ -149,7 +148,6 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
           videoQuality == 'low' ||
           widget.maxHeight != null) {
         _controller = VideoPlayerController.network(widget.videoUrl);
-        logInfo('🎥 Using network video (optimized for performance)');
       } else {
         // استفاده محدود از کش فقط برای ویدیوهای کوچک
         try {
@@ -158,10 +156,8 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
               .timeout(const Duration(
                   seconds: 3)); // timeout برای جلوگیری از انتظار طولانی
           _controller = VideoPlayerController.file(file);
-          logInfo('🎥 Using cached video (limited caching)');
         } catch (e) {
           // fallback به network اگر کش شکست خورد
-          logInfo('⚠️ Cache failed, falling back to network: $e');
           _controller = VideoPlayerController.network(widget.videoUrl);
         }
       }
@@ -199,7 +195,6 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
         }
       }
     } catch (e) {
-      logInfo('Error initializing player: $e');
       if (mounted) {
         setState(() {
           _isBuffering = false;
@@ -412,7 +407,8 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
           alignment: Alignment.center,
           children: [
             if (!_isPlayerInitialized) ...[
-              if (widget.thumbnailUrl != null && widget.thumbnailUrl!.isNotEmpty)
+              if (widget.thumbnailUrl != null &&
+                  widget.thumbnailUrl!.isNotEmpty)
                 Image.network(
                   widget.thumbnailUrl!,
                   fit: BoxFit.cover,
@@ -431,7 +427,8 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
                 Container(
                   color: Colors.black,
                   child: const Center(
-                    child: Icon(Icons.videocam, color: Colors.white30, size: 50),
+                    child:
+                        Icon(Icons.videocam, color: Colors.white30, size: 50),
                   ),
                 ),
               Center(

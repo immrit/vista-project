@@ -1900,14 +1900,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         final likeCount =
             post.likeCount + (isLiked != post.isLiked ? (isLiked ? 1 : -1) : 0);
 
-        // Debug logging
-        logInfo('🔍 UI Like Button Debug - Post ID: ${post.id}');
-        logInfo(
-            '🔍 Base likeCount: ${post.likeCount}, isLiked: ${post.isLiked}');
-        print(
-            '🔍 LikeStateProvider value: ${ref.watch(likeStateProvider)[post.id]}');
-        logInfo('🔍 Final likeCount: $likeCount, final isLiked: $isLiked');
-
         return Row(
           children: [
             IconButton(
@@ -1923,10 +1915,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   }
 
   Widget _buildCommentButton(PublicPostModel post) {
-    // Debug logging
-    logInfo('🔍 UI Comment Button Debug - Post ID: ${post.id}');
-    logInfo('🔍 Comment count: ${post.commentCount}');
-
     return Row(
       children: [
         GestureDetector(
@@ -2615,10 +2603,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         final canEditPost = currentUserProfile.value != null &&
             PremiumFeaturesHelper.canEditPost(currentUserProfile.value!) &&
             isCurrentUserPost;
-
-        // Debug: چاپ اطلاعات پروفایل
-        logInfo('DEBUG: Profile data: $profile');
-        logInfo('DEBUG: canEditPost: $canEditPost');
 
         return PopupMenuButton<String>(
           onSelected: (value) async {
