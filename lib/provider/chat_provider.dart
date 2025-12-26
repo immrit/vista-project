@@ -7,7 +7,7 @@ import '../DB/unified_conversation_cache_service.dart';
 import '../DB/unified_message_cache_service.dart';
 import '../DB/database_file_utils.dart';
 import '../services/user_profile_service.dart';
-import '../main.dart';
+import '../utils/const.dart';
 import '../model/conversation_model.dart';
 import '../model/message_model.dart';
 import '../services/ChatService_LEGACY.dart';

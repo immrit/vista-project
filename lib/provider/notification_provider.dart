@@ -5,7 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import '../../../model/notificationModel.dart';
-import '../../../main.dart';
+import '../utils/const.dart';
+
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
 
 final userIdProvider = Provider<String?>((ref) {
   return supabase.auth.currentUser?.id;

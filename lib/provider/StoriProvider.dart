@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../view/screen/Stories/story_system.dart';
+import 'package:Vista/features/stories/screens/story_system.dart';
 
 final storyUsersProvider =
     StateNotifierProvider<StoryUsersNotifier, List<StoryUser>>((ref) {

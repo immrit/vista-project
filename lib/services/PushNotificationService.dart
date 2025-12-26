@@ -14,8 +14,19 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import '../provider/notification_provider.dart';
-import '../main.dart';
+import '../utils/const.dart';
 import 'notification_navigation_service.dart';
+
+@pragma('vm:entry-point')
+void notificationTapBackground(NotificationResponse notificationResponse) {
+  // handle action
+  print(
+      'notification(${notificationResponse.id}) action tapped: ${notificationResponse.actionId} with payload: ${notificationResponse.payload}');
+  if (notificationResponse.input?.isNotEmpty ?? false) {
+    print(
+        'notification action tapped with input: ${notificationResponse.input}');
+  }
+}
 
 final pushNotificationServiceProvider = Provider<PushNotificationService>(
   (ref) => PushNotificationService(ref),

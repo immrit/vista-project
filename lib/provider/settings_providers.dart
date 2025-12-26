@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../DB/settings_cache_service.dart';
 import '../DB/advanced_settings_service.dart';
-import '../main.dart';
+import '../utils/const.dart';
 
 /// Provider برای تنظیمات کاربر با قابلیت آفلاین
 final userSettingsProvider = StateNotifierProvider.family<UserSettingsNotifier,
@@ -275,24 +275,28 @@ final initializeSettingsCacheProvider =
 // ===== Advanced Settings Providers =====
 
 /// Provider برای Advanced Settings Service
-final advancedSettingsServiceProvider = Provider<AdvancedSettingsService>((ref) {
+final advancedSettingsServiceProvider =
+    Provider<AdvancedSettingsService>((ref) {
   return AdvancedSettingsService();
 });
 
 /// Provider برای تنظیمات عملکرد
-final performanceSettingsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+final performanceSettingsProvider =
+    FutureProvider<Map<String, dynamic>>((ref) async {
   final service = ref.watch(advancedSettingsServiceProvider);
   return service.getPerformanceSettings();
 });
 
 /// Provider برای تنظیمات ذخیره‌سازی
-final storageSettingsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+final storageSettingsProvider =
+    FutureProvider<Map<String, dynamic>>((ref) async {
   final service = ref.watch(advancedSettingsServiceProvider);
   return service.getStorageSettings();
 });
 
 /// Provider برای تنظیمات اپلیکیشن پیشرفته
-final advancedAppSettingsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+final advancedAppSettingsProvider =
+    FutureProvider<Map<String, dynamic>>((ref) async {
   final service = ref.watch(advancedSettingsServiceProvider);
   return service.getAdvancedAppSettings();
 });
@@ -347,7 +351,8 @@ class ChatBlurBackgroundNotifier extends StateNotifier<bool> {
       _loadBlurSetting();
       _isInitialized = true;
     } catch (e) {
-      logInfo('❌ خطا در مقداردهی اولیه SharedPreferences برای تنظیمات بلور: $e');
+      logInfo(
+          '❌ خطا در مقداردهی اولیه SharedPreferences برای تنظیمات بلور: $e');
     }
   }
 
@@ -366,12 +371,12 @@ class ChatBlurBackgroundNotifier extends StateNotifier<bool> {
   Future<void> setBlurEnabled(bool enabled) async {
     state = enabled;
     logInfo('🔄 تغییر وضعیت بلور به: $enabled');
-    
+
     if (_prefs == null) {
       // اگر prefs آماده نیست، منتظر بمان
       await _initPrefs();
     }
-    
+
     try {
       await _prefs?.setBool(_blurBackgroundKey, enabled);
       logInfo('✅ تنظیم بلور ذخیره شد: $enabled');
@@ -383,13 +388,13 @@ class ChatBlurBackgroundNotifier extends StateNotifier<bool> {
   void toggle() {
     setBlurEnabled(!state);
   }
-  
+
   /// بررسی آماده بودن provider
   bool get isInitialized => _isInitialized;
 }
 
 /// Provider برای کنترل وضعیت بلور پس‌زمینه چت
-final chatBlurBackgroundProvider = StateNotifierProvider<ChatBlurBackgroundNotifier, bool>((ref) {
+final chatBlurBackgroundProvider =
+    StateNotifierProvider<ChatBlurBackgroundNotifier, bool>((ref) {
   return ChatBlurBackgroundNotifier();
 });
-

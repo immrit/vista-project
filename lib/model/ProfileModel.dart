@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 
-import '../view/screen/Stories/story_system.dart';
+import 'package:Vista/features/stories/screens/story_system.dart';
 import 'publicPostModel.dart';
 
 enum VerificationType {

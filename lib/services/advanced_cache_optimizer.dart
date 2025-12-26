@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:developer' as developer;
-import '../main.dart';
+import '../utils/const.dart';
 import '../DB/unified_message_cache_service.dart';
 
 /// سرویس بهینه‌سازی پیشرفته cache برای همگام‌سازی روان

@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../model/publicPostModel.dart';
-import '../view/screen/PublicPosts/VistaStoryTemplateScreen.dart';
-import '../view/widgets/share_bottom_sheet.dart';
+import 'package:Vista/features/posts/screens/VistaStoryTemplateScreen.dart';
+import 'package:Vista/widgets/share_bottom_sheet.dart';
 
 class SmartShareService {
   static final SmartShareService _instance = SmartShareService._internal();

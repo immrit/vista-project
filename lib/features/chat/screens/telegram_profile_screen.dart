@@ -22,8 +22,8 @@ import 'package:shimmer/shimmer.dart';
 import '../../../model/message_model.dart';
 import '../../../provider/chat_provider.dart';
 import '../../../provider/provider.dart';
-import '../../../view/screen/chat/ChatMessageSearchScreen.dart';
-import '../../../view/screen/PublicPosts/profileScreen.dart';
+import 'ChatMessageSearchScreen.dart';
+import 'package:Vista/features/posts/screens/profileScreen.dart';
 
 /// صفحه جزئیات چت به سبک تلگرام
 class TelegramProfileScreen extends ConsumerStatefulWidget {

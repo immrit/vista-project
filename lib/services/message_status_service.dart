@@ -1,5 +1,5 @@
 import '../security/logging_utility.dart';
-import '../main.dart';
+import '../utils/const.dart';
 
 /// سرویس مدیریت وضعیت پیام‌ها (delivered, seen)
 class MessageStatusService {

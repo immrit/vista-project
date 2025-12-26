@@ -9,7 +9,7 @@
 //
 
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../main.dart';
+import '../../../utils/const.dart';
 import '../../../model/message_model.dart';
 import '../../../security/logging_utility.dart';
 
@@ -192,7 +192,10 @@ class ChatDetailsRepository {
           .limit(limit);
 
       final currentUserId = _supabase.auth.currentUser?.id ?? '';
-      return result.map((json) => MessageModel.fromJson(json, currentUserId: currentUserId)).toList();
+      return result
+          .map((json) =>
+              MessageModel.fromJson(json, currentUserId: currentUserId))
+          .toList();
     } catch (e) {
       logInfo('❌ Error getting chat images: $e');
       return [];
@@ -214,7 +217,10 @@ class ChatDetailsRepository {
           .limit(limit);
 
       final currentUserId = _supabase.auth.currentUser?.id ?? '';
-      return result.map((json) => MessageModel.fromJson(json, currentUserId: currentUserId)).toList();
+      return result
+          .map((json) =>
+              MessageModel.fromJson(json, currentUserId: currentUserId))
+          .toList();
     } catch (e) {
       logInfo('❌ Error getting chat videos: $e');
       return [];
@@ -236,7 +242,10 @@ class ChatDetailsRepository {
           .limit(limit);
 
       final currentUserId = _supabase.auth.currentUser?.id ?? '';
-      return result.map((json) => MessageModel.fromJson(json, currentUserId: currentUserId)).toList();
+      return result
+          .map((json) =>
+              MessageModel.fromJson(json, currentUserId: currentUserId))
+          .toList();
     } catch (e) {
       logInfo('❌ Error getting chat documents: $e');
       return [];
@@ -257,8 +266,11 @@ class ChatDetailsRepository {
           .limit(limit);
 
       final currentUserId = _supabase.auth.currentUser?.id ?? '';
-      final messages = result.map((json) => MessageModel.fromJson(json, currentUserId: currentUserId)).toList();
-      
+      final messages = result
+          .map((json) =>
+              MessageModel.fromJson(json, currentUserId: currentUserId))
+          .toList();
+
       // فیلتر کردن پیام‌هایی که لینک دارند
       return messages.where((msg) => _hasLink(msg.content)).toList();
     } catch (e) {
@@ -281,4 +293,3 @@ class ChatDetailsRepository {
     return extractLinks(text).isNotEmpty;
   }
 }
-

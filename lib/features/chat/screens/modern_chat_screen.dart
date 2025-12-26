@@ -64,8 +64,8 @@ import '../services/voice_duration_service.dart';
 import '../services/message_reactions_service.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../models/message_reaction.dart' as reaction_models;
-import '../../../view/screen/PublicPosts/profileScreen.dart';
-import '../../../view/screen/PublicPosts/PostDetailPage.dart';
+import 'package:Vista/features/posts/screens/profileScreen.dart';
+import 'package:Vista/features/posts/screens/PostDetailPage.dart';
 
 // ✅ Phase 4: Final Integration
 import '../widgets/location_message_widgets.dart';

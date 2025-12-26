@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import '../main.dart';
+import '../utils/const.dart';
 import '../model/notificationModel.dart';
 
 class NotificationNavigationService {
@@ -107,8 +107,7 @@ class NotificationNavigationService {
     try {
       await supabase
           .from('notifications')
-          .update({'is_read': true})
-          .eq('id', notificationId);
+          .update({'is_read': true}).eq('id', notificationId);
     } catch (e) {
       print('⚠️ خطا در mark as read: $e');
     }
@@ -202,7 +201,8 @@ class NotificationNavigationService {
     String? parentCommentId,
   ) async {
     // برای reply، به صفحه کامنت‌ها می‌ریم و کامنت پدر رو هایلایت می‌کنیم
-    await _navigateToPostComments(context, postId, parentCommentId ?? commentId);
+    await _navigateToPostComments(
+        context, postId, parentCommentId ?? commentId);
   }
 
   /// هدایت به پروفایل کاربر
@@ -276,7 +276,8 @@ class NotificationNavigationService {
           'avatarUrl': notification.avatarUrl,
         },
       );
-      print('✅ Navigation به چت با conversation_id: ${notification.conversationId}');
+      print(
+          '✅ Navigation به چت با conversation_id: ${notification.conversationId}');
       return;
     }
 
@@ -288,7 +289,8 @@ class NotificationNavigationService {
       return;
     }
 
-    print('🔄 ConversationID خالی است - تلاش برای یافتن conversation با sender_id...');
+    print(
+        '🔄 ConversationID خالی است - تلاش برای یافتن conversation با sender_id...');
     try {
       // پیدا کردن conversationId از userId
       final conversationResponse = await supabase
@@ -379,7 +381,7 @@ class NotificationNavigationService {
 
       // استفاده از همان تابع handleFCMPayload که هوشمند است
       await handleFCMPayload(context: context, data: data);
-      
+
       print('✅ Navigation completed');
       print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     } catch (e, stack) {
@@ -417,13 +419,15 @@ class NotificationNavigationService {
         final nestedData = data['data'];
         if (nestedData is Map) {
           conversationId = nestedData['conversation_id']?.toString();
-          print('✅ conversation_id پیدا شد (nested structure): $conversationId');
+          print(
+              '✅ conversation_id پیدا شد (nested structure): $conversationId');
         } else if (nestedData is String) {
           try {
             final parsed = jsonDecode(nestedData);
             if (parsed is Map) {
               conversationId = parsed['conversation_id']?.toString();
-              print('✅ conversation_id پیدا شد (nested JSON string): $conversationId');
+              print(
+                  '✅ conversation_id پیدا شد (nested JSON string): $conversationId');
             }
           } catch (_) {}
         }
@@ -431,18 +435,22 @@ class NotificationNavigationService {
 
       // ۲. اگر ID پیدا شد و نوع پیام چت است، برو به صفحه چت
       final type = data['type']?.toString() ?? '';
-      if (conversationId != null && conversationId.isNotEmpty && 
-          (type == 'chat_message' || type == 'message' || type == 'new_message')) {
+      if (conversationId != null &&
+          conversationId.isNotEmpty &&
+          (type == 'chat_message' ||
+              type == 'message' ||
+              type == 'new_message')) {
         await _navigateToChatDirectly(context, conversationId, data);
         return;
       }
 
       // ۳. اگر conversation_id نداشتیم یا نوع پیام چت نبود، از روش قدیمی استفاده کن
-      print('⚠️ conversation_id پیدا نشد یا نوع پیام چت نیست - استفاده از روش قدیمی');
+      print(
+          '⚠️ conversation_id پیدا نشد یا نوع پیام چت نیست - استفاده از روش قدیمی');
       final notification = NotificationModel.fromFCM(
         RemoteMessage(data: data),
       );
-      
+
       await handleNotificationNavigation(
         context: context,
         notification: notification,
@@ -466,11 +474,11 @@ class NotificationNavigationService {
 
     try {
       // استخراج اطلاعات فرستنده برای نمایش سریع
-      final senderName = data['sender_name']?.toString() ?? 
-                        data['title']?.toString() ?? 
-                        'کاربر';
-      final senderAvatar = data['sender_avatar']?.toString() ?? 
-                          data['avatar_url']?.toString();
+      final senderName = data['sender_name']?.toString() ??
+          data['title']?.toString() ??
+          'کاربر';
+      final senderAvatar =
+          data['sender_avatar']?.toString() ?? data['avatar_url']?.toString();
       final senderId = data['sender_id']?.toString() ?? '';
 
       // اگر senderId خالی بود، باید از conversationId استفاده کنیم تا اطلاعات را بگیریم
@@ -508,4 +516,3 @@ class NotificationNavigationService {
     }
   }
 }
-

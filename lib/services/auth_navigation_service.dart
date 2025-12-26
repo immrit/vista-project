@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../main.dart';
+import '../utils/const.dart';
 import '../security/logging_utility.dart';
 import 'session_manager_service_v2.dart';
 
@@ -11,22 +11,22 @@ import 'session_manager_service_v2.dart';
 enum SessionState {
   /// نشست کاملاً معتبر و فعال
   authenticated,
-  
+
   /// نشست در حال بررسی (منتظر تأیید)
   verifying,
-  
+
   /// نشست منقضی شده ولی قابل تمدید
   expiredRefreshable,
-  
+
   /// نشست منقضی شده و غیرقابل تمدید
   expiredTerminal,
-  
+
   /// نشست توسط کاربر/سرور باطل شده
   revoked,
-  
+
   /// هیچ نشستی وجود ندارد
   unauthenticated,
-  
+
   /// خطا در بررسی (مشکل شبکه)
   networkError,
 }
@@ -51,23 +51,24 @@ class SessionVerificationResult {
 
   bool get isValid => state == SessionState.authenticated;
   bool get needsRefresh => state == SessionState.expiredRefreshable;
-  bool get needsReauth => 
+  bool get needsReauth =>
       state == SessionState.expiredTerminal ||
       state == SessionState.revoked ||
       state == SessionState.unauthenticated;
 
   @override
-  String toString() => 'SessionVerificationResult(state: $state, userId: $userId)';
+  String toString() =>
+      'SessionVerificationResult(state: $state, userId: $userId)';
 }
 
 /// ═══════════════════════════════════════════════════════════════════════════
 /// سرویس مدیریت احراز هویت - سطح Enterprise
-/// 
+///
 /// الهام گرفته از:
 /// - Telegram MTProto Session Layer
 /// - WhatsApp Signal Protocol Auth
 /// - Instagram Session Persistence
-/// 
+///
 /// ویژگی‌ها:
 /// - Multi-layer session verification
 /// - Graceful degradation
@@ -77,27 +78,28 @@ class SessionVerificationResult {
 /// - Offline-first approach
 /// ═══════════════════════════════════════════════════════════════════════════
 class AuthNavigationService {
-  static final AuthNavigationService _instance = AuthNavigationService._internal();
+  static final AuthNavigationService _instance =
+      AuthNavigationService._internal();
   factory AuthNavigationService() => _instance;
   AuthNavigationService._internal();
 
   // ═══════════════════════════════════════════════════════════════════════════
   // STATE MANAGEMENT
   // ═══════════════════════════════════════════════════════════════════════════
-  
+
   /// وضعیت فعلی نشست (cached)
   static SessionState _currentState = SessionState.verifying;
-  
+
   /// آخرین بررسی موفق
   static DateTime? _lastSuccessfulVerification;
-  
+
   /// جلوگیری از redirect های متوالی
   static bool _isRedirecting = false;
   static DateTime? _lastRedirectAttempt;
-  
+
   /// شمارنده تلاش‌های ناموفق
   static int _consecutiveFailures = 0;
-  
+
   /// Cache بررسی نشست
   static SessionVerificationResult? _cachedResult;
   static DateTime? _cacheTime;
@@ -105,28 +107,28 @@ class AuthNavigationService {
   // ═══════════════════════════════════════════════════════════════════════════
   // CONFIGURATION (Telegram-inspired)
   // ═══════════════════════════════════════════════════════════════════════════
-  
+
   /// حداکثر تلاش برای refresh
   static const int _maxRefreshAttempts = 3;
-  
+
   /// تأخیر اولیه بین retry ها (exponential backoff)
   static const Duration _baseRetryDelay = Duration(milliseconds: 500);
-  
+
   /// حداکثر تأخیر بین retry ها
   static const Duration _maxRetryDelay = Duration(seconds: 5);
-  
+
   /// مدت اعتبار cache نتیجه بررسی
   static const Duration _cacheValidity = Duration(seconds: 30);
-  
+
   /// cooldown بین redirect ها
   static const Duration _redirectCooldown = Duration(seconds: 5);
-  
+
   /// حداکثر خطاهای متوالی قبل از redirect
   static const int _maxConsecutiveFailures = 5;
-  
+
   /// زمان انتظار برای restore نشست
   static const Duration _sessionRestoreWait = Duration(milliseconds: 500);
-  
+
   /// threshold برای refresh نشست (دقیقه قبل از انقضا)
   static const int _refreshThresholdMinutes = 10;
 
@@ -158,14 +160,14 @@ class AuthNavigationService {
   // ═══════════════════════════════════════════════════════════════════════════
   // LAYER 1: QUICK CHECK (Offline-First)
   // ═══════════════════════════════════════════════════════════════════════════
-  
+
   /// بررسی سریع نشست بدون درخواست شبکه
-  /// 
+  ///
   /// این متد از داده‌های محلی استفاده می‌کند و فوراً نتیجه می‌دهد.
   /// مناسب برای UI checks و blocking operations.
   static SessionVerificationResult quickCheck() {
     logInfo('🔍 [AuthNav] Quick check starting...');
-    
+
     try {
       final supabase = Supabase.instance.client;
       final session = supabase.auth.currentSession;
@@ -183,7 +185,8 @@ class AuthNavigationService {
       // بررسی expiry
       final expiresAt = session.expiresAt;
       if (expiresAt != null) {
-        final expiryTime = DateTime.fromMillisecondsSinceEpoch(expiresAt * 1000);
+        final expiryTime =
+            DateTime.fromMillisecondsSinceEpoch(expiresAt * 1000);
         final now = DateTime.now();
         final timeUntilExpiry = expiryTime.difference(now);
 
@@ -199,7 +202,8 @@ class AuthNavigationService {
         }
 
         if (timeUntilExpiry.inMinutes < _refreshThresholdMinutes) {
-          logInfo('⏳ [AuthNav] Quick check: Session expiring soon (${timeUntilExpiry.inMinutes}m)');
+          logInfo(
+              '⏳ [AuthNav] Quick check: Session expiring soon (${timeUntilExpiry.inMinutes}m)');
           return SessionVerificationResult(
             state: SessionState.expiredRefreshable,
             message: 'نشست در حال انقضا',
@@ -215,7 +219,7 @@ class AuthNavigationService {
       return SessionVerificationResult(
         state: SessionState.authenticated,
         userId: user.id,
-        expiresAt: expiresAt != null 
+        expiresAt: expiresAt != null
             ? DateTime.fromMillisecondsSinceEpoch(expiresAt * 1000)
             : null,
       );
@@ -232,9 +236,9 @@ class AuthNavigationService {
   // ═══════════════════════════════════════════════════════════════════════════
   // LAYER 2: DEEP VERIFICATION (Network-Aware)
   // ═══════════════════════════════════════════════════════════════════════════
-  
+
   /// بررسی عمیق نشست با تلاش برای recovery
-  /// 
+  ///
   /// این متد:
   /// 1. ابتدا از cache استفاده می‌کند (اگر معتبر باشد)
   /// 2. Quick check انجام می‌دهد
@@ -245,7 +249,8 @@ class AuthNavigationService {
     bool forceRefresh = false,
     bool useCache = true,
   }) async {
-    logInfo('🔐 [AuthNav] Deep verification starting (forceRefresh: $forceRefresh)...');
+    logInfo(
+        '🔐 [AuthNav] Deep verification starting (forceRefresh: $forceRefresh)...');
 
     // استفاده از cache اگر معتبر است
     if (useCache && !forceRefresh && _isCacheValid()) {
@@ -258,12 +263,12 @@ class AuthNavigationService {
     try {
       // مرحله 1: Quick check
       final quickResult = quickCheck();
-      
+
       if (quickResult.state == SessionState.unauthenticated) {
         // صبر برای احتمال restore شدن session
         logInfo('⏳ [AuthNav] Waiting for potential session restore...');
         await Future.delayed(_sessionRestoreWait);
-        
+
         // بررسی مجدد
         final retryResult = quickCheck();
         if (retryResult.state == SessionState.unauthenticated) {
@@ -276,17 +281,17 @@ class AuthNavigationService {
       if (quickResult.needsRefresh || forceRefresh) {
         logInfo('🔄 [AuthNav] Attempting session refresh...');
         final refreshResult = await _refreshWithRetry();
-        
+
         if (refreshResult.isValid) {
           _consecutiveFailures = 0;
           _lastSuccessfulVerification = DateTime.now();
           _updateCache(refreshResult);
           return refreshResult;
         }
-        
+
         // refresh ناموفق بود
         _consecutiveFailures++;
-        
+
         if (_consecutiveFailures >= _maxConsecutiveFailures) {
           logInfo('❌ [AuthNav] Too many consecutive failures');
           final terminalResult = SessionVerificationResult(
@@ -297,7 +302,7 @@ class AuthNavigationService {
           _updateCache(terminalResult);
           return terminalResult;
         }
-        
+
         _updateCache(refreshResult);
         return refreshResult;
       }
@@ -317,10 +322,9 @@ class AuthNavigationService {
       _currentState = SessionState.authenticated;
       _updateCache(quickResult);
       return quickResult;
-
     } catch (e) {
       logInfo('❌ [AuthNav] Verification error: $e');
-      
+
       // در صورت خطای شبکه، به session محلی اعتماد کن
       if (_isNetworkError(e)) {
         logInfo('🌐 [AuthNav] Network error, trusting local session');
@@ -345,9 +349,9 @@ class AuthNavigationService {
   // ═══════════════════════════════════════════════════════════════════════════
   // LAYER 3: FULL AUTHENTICATION GUARD
   // ═══════════════════════════════════════════════════════════════════════════
-  
+
   /// بررسی کامل و هدایت به auth در صورت نیاز
-  /// 
+  ///
   /// این متد برای محافظت از صفحات و عملیات‌های حساس استفاده می‌شود.
   /// فقط زمانی redirect می‌کند که واقعاً نشست معتبر نباشد.
   static Future<bool> ensureAuthenticated({
@@ -410,9 +414,9 @@ class AuthNavigationService {
   // ═══════════════════════════════════════════════════════════════════════════
   // ERROR HANDLING
   // ═══════════════════════════════════════════════════════════════════════════
-  
+
   /// بررسی خطا و هدایت هوشمند به auth
-  /// 
+  ///
   /// این متد خطا را تحلیل می‌کند و فقط در صورتی redirect می‌کند
   /// که واقعاً مشکل auth باشد.
   static Future<bool> handleAuthErrorAsync(dynamic error) async {
@@ -510,7 +514,7 @@ class AuthNavigationService {
         if (response.session != null && response.user != null) {
           logInfo('✅ [AuthNav] Session refreshed successfully');
           _currentState = SessionState.authenticated;
-          
+
           return SessionVerificationResult(
             state: SessionState.authenticated,
             userId: response.user!.id,
@@ -522,7 +526,7 @@ class AuthNavigationService {
         }
       } on AuthException catch (e) {
         logInfo('⚠️ [AuthNav] Auth exception on refresh: ${e.message}');
-        
+
         // برخی خطاها غیرقابل retry هستند
         if (e.message.contains('refresh_token_not_found') ||
             e.message.contains('Invalid Refresh Token')) {
@@ -541,7 +545,8 @@ class AuthNavigationService {
       // Exponential backoff
       if (attempt < _maxRefreshAttempts) {
         final delay = _calculateBackoff(attempt);
-        logInfo('⏳ [AuthNav] Waiting ${delay.inMilliseconds}ms before retry...');
+        logInfo(
+            '⏳ [AuthNav] Waiting ${delay.inMilliseconds}ms before retry...');
         await Future.delayed(delay);
       }
     }
@@ -590,19 +595,20 @@ class AuthNavigationService {
   /// بررسی آیا باید redirect را skip کرد
   static bool _shouldSkipRedirect() {
     if (_isRedirecting) return true;
-    
+
     if (_lastRedirectAttempt != null) {
-      final timeSinceLastRedirect = DateTime.now().difference(_lastRedirectAttempt!);
+      final timeSinceLastRedirect =
+          DateTime.now().difference(_lastRedirectAttempt!);
       if (timeSinceLastRedirect < _redirectCooldown) return true;
     }
-    
+
     return false;
   }
 
   /// بررسی آیا خطا مربوط به auth است
   static bool _isAuthRelatedError(dynamic error) {
     final errorStr = error.toString().toLowerCase();
-    
+
     return errorStr.contains('کاربر وارد نشده') ||
         errorStr.contains('پروفایل کاربر یافت نشد') ||
         errorStr.contains('user not logged in') ||
@@ -620,7 +626,7 @@ class AuthNavigationService {
   /// بررسی آیا خطا مربوط به شبکه است
   static bool _isNetworkError(dynamic error) {
     final errorStr = error.toString().toLowerCase();
-    
+
     return errorStr.contains('socketexception') ||
         errorStr.contains('connection refused') ||
         errorStr.contains('connection timed out') ||
@@ -660,7 +666,7 @@ class AuthNavigationService {
 
     try {
       final context = navigatorKey.currentContext;
-      
+
       if (context == null || !context.mounted) {
         logInfo('⚠️ [AuthNav] Context not available');
         return false;
@@ -766,7 +772,8 @@ class AuthNavigationService {
       'currentUserId': currentUserId,
       'isRedirecting': _isRedirecting,
       'consecutiveFailures': _consecutiveFailures,
-      'lastSuccessfulVerification': _lastSuccessfulVerification?.toIso8601String(),
+      'lastSuccessfulVerification':
+          _lastSuccessfulVerification?.toIso8601String(),
       'cacheValid': _isCacheValid(),
     };
   }

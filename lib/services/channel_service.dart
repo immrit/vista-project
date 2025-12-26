@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../model/channel_model.dart';
 import '../model/channel_message_model.dart';
-import '/main.dart';
+import '../utils/const.dart';
 
 class ChannelService {
   final SupabaseClient _supabase = supabase;

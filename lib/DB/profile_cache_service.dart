@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../model/ProfileModel.dart';
 import '../model/publicPostModel.dart';
-import '../main.dart';
+import '../utils/const.dart';
 
 /// سرویس کش برای پروفایل کاربران و پست‌های آن‌ها
 /// این سرویس آخرین 10 پست هر کاربر را کش می‌کند

@@ -11,7 +11,7 @@
 //
 
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../main.dart';
+import '../../../utils/const.dart';
 import '../../../security/logging_utility.dart';
 
 /// دلایل مختلف گزارش کاربر
@@ -135,7 +135,8 @@ class UserModerationService {
       return ModerationResult.success('کاربر با موفقیت مسدود شد');
     } catch (e, stackTrace) {
       logInfo('❌ Error blocking user: $e\n$stackTrace');
-      return ModerationResult.failure('خطا در مسدود کردن کاربر: ${e.toString()}');
+      return ModerationResult.failure(
+          'خطا در مسدود کردن کاربر: ${e.toString()}');
     }
   }
 
@@ -228,7 +229,8 @@ class UserModerationService {
   /// [useCache] - استفاده از کش (پیش‌فرض: true)
   ///
   /// Returns: وضعیت مسدودیت
-  Future<BlockStatus> getBlockStatus(String userId, {bool useCache = true}) async {
+  Future<BlockStatus> getBlockStatus(String userId,
+      {bool useCache = true}) async {
     try {
       final currentUserId = _supabase.auth.currentUser?.id;
       if (currentUserId == null) {
@@ -239,7 +241,7 @@ class UserModerationService {
       if (useCache && _blockCache.containsKey(userId)) {
         final cached = _blockCache[userId]!;
         final age = DateTime.now().difference(cached.cachedAt);
-        
+
         if (age < _cacheDuration) {
           // ✅ حذف لاگ cache hit برای بهبود performance
           return cached.status;
@@ -274,7 +276,7 @@ class UserModerationService {
       final status = BlockStatus(
         isBlocked: iBlockedUser != null,
         isBlockedBy: userBlockedMe != null,
-        blockedAt: iBlockedUser != null 
+        blockedAt: iBlockedUser != null
             ? DateTime.parse(iBlockedUser['created_at'] as String)
             : null,
         blockedByAt: userBlockedMe != null
@@ -287,7 +289,8 @@ class UserModerationService {
 
       // ✅ حذف لاگ success برای بهبود performance - فقط در حالت debug لاگ می‌کنیم
       assert(() {
-        logInfo('✅ Block status: isBlocked=${status.isBlocked}, isBlockedBy=${status.isBlockedBy}');
+        logInfo(
+            '✅ Block status: isBlocked=${status.isBlocked}, isBlockedBy=${status.isBlockedBy}');
         return true;
       }());
       return status;
@@ -359,5 +362,3 @@ class UserModerationService {
     }
   }
 }
-
-

@@ -7,7 +7,7 @@ import 'package:path/path.dart' as path;
 import 'package:aws_s3_api/s3-2006-03-01.dart';
 import 'package:uuid/uuid.dart';
 import '../services/secure_config.dart';
-import '/main.dart';
+import '../utils/const.dart';
 
 class StoryImageUploadService {
   // تنظیمات S3 برای فضای ذخیره‌سازی آروان

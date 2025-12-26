@@ -6,7 +6,7 @@ import 'package:path/path.dart' as path;
 import 'package:aws_s3_api/s3-2006-03-01.dart';
 import '../services/secure_config.dart';
 import '../services/user_friendly_error_handler.dart';
-import '/main.dart';
+import '../utils/const.dart';
 
 class ProfileImageUploadService {
   static S3 get s3 {

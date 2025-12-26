@@ -1,7 +1,7 @@
 import 'dart:async';
 import '../security/logging_utility.dart';
 import '../DB/advanced_cache_system.dart';
-import '../main.dart';
+import '../utils/const.dart';
 
 /// سرویس پاک‌سازی مموری و مدیریت کش بهینه
 class MemoryCleanupService {

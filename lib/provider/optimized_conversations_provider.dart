@@ -7,7 +7,7 @@ import '../services/user_profile_service.dart';
 import '../services/telegram_read_receipt_service.dart';
 import '../DB/unified_conversation_cache_service.dart';
 import '../services/ChatService_LEGACY.dart';
-import '../main.dart';
+import '../utils/const.dart';
 
 /// 🚀 Provider بهینه‌شده برای لیست مکالمات
 /// این provider تمام نیازهای UI را با یک منبع واحد برطرف می‌کند:
@@ -82,7 +82,7 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
 
   Future<void> _initialize() async {
     if (_disposed) return;
-    
+
     if (_userId == null) {
       state = const ConversationsState(
         status: ConversationsStatus.error,
@@ -206,8 +206,7 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
     if (_userId == null || _disposed) return;
 
     _cacheSubscription?.cancel();
-    _cacheSubscription =
-        _cacheService.watchCachedConversations(_userId).listen(
+    _cacheSubscription = _cacheService.watchCachedConversations(_userId).listen(
       (conversations) async {
         if (_disposed) return;
 
@@ -308,7 +307,8 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
 
       // Re-enrich conversations با پروفایل‌های جدید
       final reEnriched = conversations.map((conversation) {
-        if (_needsEnrichment(conversation) && conversation.otherUserId != null) {
+        if (_needsEnrichment(conversation) &&
+            conversation.otherUserId != null) {
           final cached =
               _profileService.getCachedProfile(conversation.otherUserId!);
           if (cached != null) {
@@ -373,7 +373,7 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
     if (_disposed) return;
 
     state = state.copyWith(isRefreshing: true);
-    
+
     try {
       // بارگذاری مستقیم از سرور
       await _loadFromServer();
@@ -416,24 +416,35 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
         messageType = 'forward';
       } else if (message.sharedPostData != null) {
         messageType = 'post';
-      } else if (message.attachmentType != null && message.attachmentType!.isNotEmpty) {
+      } else if (message.attachmentType != null &&
+          message.attachmentType!.isNotEmpty) {
         final attachType = message.attachmentType!.toLowerCase();
         if (attachType.contains('audio') || attachType.contains('voice')) {
           messageType = 'voice';
-        } else if (attachType.contains('image') || attachType.contains('photo')) {
+        } else if (attachType.contains('image') ||
+            attachType.contains('photo')) {
           messageType = 'image';
         } else if (attachType.contains('video')) {
           messageType = 'video';
         } else {
           messageType = 'file';
         }
-      } else if (message.attachmentUrl != null && message.attachmentUrl!.isNotEmpty) {
+      } else if (message.attachmentUrl != null &&
+          message.attachmentUrl!.isNotEmpty) {
         final url = message.attachmentUrl!.toLowerCase();
-        if (url.contains('.mp3') || url.contains('.wav') || url.contains('.ogg') || url.contains('.m4a')) {
+        if (url.contains('.mp3') ||
+            url.contains('.wav') ||
+            url.contains('.ogg') ||
+            url.contains('.m4a')) {
           messageType = 'voice';
-        } else if (url.contains('.jpg') || url.contains('.jpeg') || url.contains('.png') || url.contains('.gif')) {
+        } else if (url.contains('.jpg') ||
+            url.contains('.jpeg') ||
+            url.contains('.png') ||
+            url.contains('.gif')) {
           messageType = 'image';
-        } else if (url.contains('.mp4') || url.contains('.mov') || url.contains('.avi')) {
+        } else if (url.contains('.mp4') ||
+            url.contains('.mov') ||
+            url.contains('.avi')) {
           messageType = 'video';
         } else {
           messageType = 'file';
@@ -483,8 +494,9 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
 
     try {
       // 1️⃣ دریافت مکالمه از کش
-      final conversation = await _cacheService.getConversation(conversationId, _userId);
-      
+      final conversation =
+          await _cacheService.getConversation(conversationId, _userId);
+
       if (conversation == null) {
         logInfo('⚠️ Conversation not found in cache: $conversationId');
         return;
@@ -494,7 +506,8 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
       String? messageType = lastMessageType;
       if (messageType == null) {
         // تشخیص نوع از محتوا
-        if (lastMessage.trim().startsWith('{') && lastMessage.contains('post_id')) {
+        if (lastMessage.trim().startsWith('{') &&
+            lastMessage.contains('post_id')) {
           messageType = 'post';
         } else {
           messageType = 'text';
@@ -510,14 +523,11 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
         isLastMessageFromMe: isFromMe,
         lastMessageSenderId: senderId,
         // اگر پیام از من نیست، unreadCount رو افزایش بده
-        unreadCount: isFromMe 
-            ? conversation.unreadCount 
-            : conversation.unreadCount + 1,
-        hasUnreadMessages: isFromMe 
-            ? conversation.hasUnreadMessages 
-            : true,
+        unreadCount:
+            isFromMe ? conversation.unreadCount : conversation.unreadCount + 1,
+        hasUnreadMessages: isFromMe ? conversation.hasUnreadMessages : true,
         // ✅ وضعیت تحویل پیام - هماهنگ با صفحه چت
-        lastMessageDeliveryStatus: isFromMe 
+        lastMessageDeliveryStatus: isFromMe
             ? (deliveryStatus ?? MessageDeliveryStatus.pending)
             : conversation.lastMessageDeliveryStatus,
       );
@@ -526,9 +536,11 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
       await _cacheService.updateConversation(updatedConversation, _userId);
 
       // 5️⃣ به‌روزرسانی state برای UI (بدون نیاز به سرور)
-      final currentConversations = List<ConversationModel>.from(state.conversations);
-      final index = currentConversations.indexWhere((c) => c.id == conversationId);
-      
+      final currentConversations =
+          List<ConversationModel>.from(state.conversations);
+      final index =
+          currentConversations.indexWhere((c) => c.id == conversationId);
+
       if (index != -1) {
         currentConversations[index] = updatedConversation;
       } else {
@@ -557,13 +569,15 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
     if (_userId == null || _disposed) return;
 
     try {
-      final currentConversations = List<ConversationModel>.from(state.conversations);
-      final index = currentConversations.indexWhere((c) => c.id == conversationId);
-      
+      final currentConversations =
+          List<ConversationModel>.from(state.conversations);
+      final index =
+          currentConversations.indexWhere((c) => c.id == conversationId);
+
       if (index == -1) return;
-      
+
       final conversation = currentConversations[index];
-      
+
       // فقط اگر پیام از من باشه، وضعیت رو آپدیت کن
       if (!conversation.isLastMessageFromMe) return;
 
@@ -594,8 +608,9 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
     if (_userId == null || _disposed) return;
 
     try {
-      final conversation = await _cacheService.getConversation(conversationId, _userId);
-      
+      final conversation =
+          await _cacheService.getConversation(conversationId, _userId);
+
       if (conversation == null || conversation.unreadCount == 0) return;
 
       final updatedConversation = conversation.copyWith(
@@ -606,9 +621,11 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
       await _cacheService.updateConversation(updatedConversation, _userId);
 
       // به‌روزرسانی state
-      final currentConversations = List<ConversationModel>.from(state.conversations);
-      final index = currentConversations.indexWhere((c) => c.id == conversationId);
-      
+      final currentConversations =
+          List<ConversationModel>.from(state.conversations);
+      final index =
+          currentConversations.indexWhere((c) => c.id == conversationId);
+
       if (index != -1) {
         currentConversations[index] = updatedConversation;
         if (!_disposed) {
@@ -674,4 +691,3 @@ final searchedConversationsProvider =
     Provider.family<List<ConversationModel>, String>((ref, query) {
   return ref.read(optimizedConversationsProvider.notifier).search(query);
 });
-

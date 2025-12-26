@@ -2,7 +2,7 @@ import '../security/logging_utility.dart';
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
-import '../main.dart';
+import '../utils/const.dart';
 import '../model/message_model.dart';
 import '../model/conversation_model.dart';
 import '../DB/unified_message_cache_service.dart';

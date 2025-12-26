@@ -1,6 +1,6 @@
 import '../security/logging_utility.dart';
 import 'dart:async';
-import '../main.dart';
+import '../utils/const.dart';
 
 /// سرویس مدیریت نشانگر تایپ کردن مانند توییتر
 class TypingService {

@@ -8,7 +8,7 @@ import '../DB/advanced_cache_system.dart';
 import '../DB/unified_message_cache_service.dart';
 import '../services/user_profile_service.dart';
 import '../services/ChatService_LEGACY.dart';
-import '../main.dart';
+import '../utils/const.dart';
 
 /// Advanced chat providers using the new cache system
 ///
@@ -174,9 +174,8 @@ class UnifiedMessagesNotifier extends StateNotifier<UnifiedMessagesState> {
       );
 
       // فیلتر کردن پیام‌های حذف شده (دوطرفه یا یکطرفه برای کاربر فعلی)
-      final nonDeletedMessages = cachedMessages
-          .where((m) => !m.isDeletedFor(userId))
-          .toList();
+      final nonDeletedMessages =
+          cachedMessages.where((m) => !m.isDeletedFor(userId)).toList();
 
       final filteredMessages = _filterDuplicateMessages(nonDeletedMessages);
 
@@ -325,7 +324,7 @@ class UnifiedMessagesNotifier extends StateNotifier<UnifiedMessagesState> {
 
     final updatedMessages = [...state.messages, message];
     final filteredMessages = _filterDuplicateMessages(updatedMessages);
-    
+
     // فیلتر نهایی برای اطمینان از عدم نمایش پیام‌های حذف شده
     final finalFiltered = userId != null
         ? filteredMessages.where((m) => !m.isDeletedFor(userId)).toList()
@@ -381,13 +380,11 @@ final messagesListProvider =
     Provider.family<List<MessageModel>, String>((ref, conversationId) {
   final messagesState = ref.watch(unifiedMessagesProvider(conversationId));
   final userId = supabase.auth.currentUser?.id;
-  
+
   if (userId == null) return messagesState.messages;
-  
+
   // فیلتر کردن پیام‌های حذف شده
-  return messagesState.messages
-      .where((m) => !m.isDeletedFor(userId))
-      .toList();
+  return messagesState.messages.where((m) => !m.isDeletedFor(userId)).toList();
 });
 
 /// Helper provider for loading state
@@ -482,7 +479,6 @@ final recentConversationsProvider =
     error: (_, __) => [],
   );
 });
-
 
 /// Provider for enriching conversations with user profile data (optimized)
 final enrichedConversationsProvider =

@@ -5,7 +5,7 @@ import 'package:path/path.dart' as path;
 import 'package:aws_s3_api/s3-2006-03-01.dart';
 import 'secure_config.dart';
 import 'user_friendly_error_handler.dart';
-import '/main.dart';
+import '../utils/const.dart';
 
 class ChatAudioUploadService {
   // استفاده از همان تنظیمات S3 موجود

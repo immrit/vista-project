@@ -13,9 +13,9 @@ import '../DB/unified_message_cache_service.dart';
 import '../model/conversation_model.dart';
 import '../model/message_model.dart';
 import '../model/message_reaction.dart';
-import '../view/Exeption/app_exceptions.dart';
+import 'package:Vista/utils/app_exception.dart';
 import 'user_friendly_error_handler.dart';
-import '/main.dart';
+import '../utils/const.dart';
 import 'uploadImageChatService.dart';
 import 'uploadAudioChatService.dart';
 import 'profile_service.dart';
@@ -79,14 +79,15 @@ class ChatService {
 
       // اگر سشن کلاً وجود نداشت
       if (session == null || auth.currentUser == null) {
-        logInfo('⚠️ No authenticated Supabase session detected, attempting to refresh...');
+        logInfo(
+            '⚠️ No authenticated Supabase session detected, attempting to refresh...');
         // تلاش برای رفرش کردن سشن قبل از تسلیم شدن
         try {
           final response = await auth.refreshSession();
           if (response.session == null) {
             logInfo('🔴 Session is truly invalid. User needs to login again.');
             // اینجا می‌تونید signOut کنید یا فقط ارور بدید که UI هندل کنه
-            // await auth.signOut(); 
+            // await auth.signOut();
             throw AppException(
               userFriendlyMessage:
                   'نشست کاربر منقضی شده است. لطفاً دوباره وارد شوید.',
@@ -139,8 +140,9 @@ class ChatService {
       // ✅ بررسی امنیتی: بررسی اینکه نشست هنوز معتبر و active است
       final isSessionValid = await _sessionManagerService.isSessionStillValid();
       if (!isSessionValid) {
-        logInfo('⚠️ Session might be invalid according to manager, but trying to proceed...');
-        
+        logInfo(
+            '⚠️ Session might be invalid according to manager, but trying to proceed...');
+
         // تلاش برای رفرش به جای خروج
         try {
           await auth.refreshSession();
@@ -150,8 +152,8 @@ class ChatService {
         }
 
         // ❌ خط زیر را حذف کردیم تا کاربر بیرون نیفتد
-        // await auth.signOut(); 
-        
+        // await auth.signOut();
+
         // Exception را هم حذف کردیم تا برنامه ادامه دهد
         // throw AppException(
         //   userFriendlyMessage: 'نشست شما منقضی شده است. لطفاً دوباره وارد شوید.',
@@ -161,7 +163,8 @@ class ChatService {
 
       final ensured = await _sessionManagerService.ensureSessionRegistered();
       if (!ensured) {
-        logInfo('⚠️ SessionManager could not ensure an active session, but continuing...');
+        logInfo(
+            '⚠️ SessionManager could not ensure an active session, but continuing...');
         // تلاش برای رفرش به جای خروج
         try {
           await auth.refreshSession();
@@ -362,7 +365,8 @@ class ChatService {
             // دریافت آخرین پیام غیر مخفی با اطلاعات کامل
             final lastMessageQuery = await _supabase
                 .from('messages')
-                .select('content, created_at, attachment_type, attachment_url, is_forwarded, sender_id')
+                .select(
+                    'content, created_at, attachment_type, attachment_url, is_forwarded, sender_id')
                 .eq('conversation_id', conversationId)
                 .not(
                   'id',
@@ -388,16 +392,17 @@ class ChatService {
               json['last_message'] = lastMessageQuery['content'] as String?;
               json['last_message_time'] = lastMessageQuery['created_at'];
               json['updated_at'] = lastMessageQuery['created_at'];
-              
+
               // ✅ تعیین نوع پیام
               lastMessageSenderId = lastMessageQuery['sender_id'] as String?;
               isLastMessageFromMe = lastMessageSenderId == userId;
-              
+
               final attachType = lastMessageQuery['attachment_type'] as String?;
               final attachUrl = lastMessageQuery['attachment_url'] as String?;
-              final isForwarded = lastMessageQuery['is_forwarded'] as bool? ?? false;
+              final isForwarded =
+                  lastMessageQuery['is_forwarded'] as bool? ?? false;
               final content = lastMessageQuery['content'] as String?;
-              
+
               // ✅ تعیین نوع پیام بر اساس فیلدهای موجود
               if (isForwarded) {
                 lastMessageType = 'forward';
@@ -407,9 +412,12 @@ class ChatService {
               } else if (attachType != null && attachType.isNotEmpty) {
                 // تبدیل نوع فایل پیوست به نوع پیام
                 final lowerAttachType = attachType.toLowerCase();
-                if (lowerAttachType.contains('audio') || lowerAttachType.contains('voice') || lowerAttachType == 'voice') {
+                if (lowerAttachType.contains('audio') ||
+                    lowerAttachType.contains('voice') ||
+                    lowerAttachType == 'voice') {
                   lastMessageType = 'voice';
-                } else if (lowerAttachType.contains('image') || lowerAttachType.contains('photo')) {
+                } else if (lowerAttachType.contains('image') ||
+                    lowerAttachType.contains('photo')) {
                   lastMessageType = 'image';
                 } else if (lowerAttachType.contains('video')) {
                   lastMessageType = 'video';
@@ -419,11 +427,21 @@ class ChatService {
               } else if (attachUrl != null && attachUrl.isNotEmpty) {
                 // اگر attachment_url داریم ولی type نداریم، از URL تشخیص بده
                 final lowerUrl = attachUrl.toLowerCase();
-                if (lowerUrl.contains('.mp3') || lowerUrl.contains('.wav') || lowerUrl.contains('.ogg') || lowerUrl.contains('.m4a')) {
+                if (lowerUrl.contains('.mp3') ||
+                    lowerUrl.contains('.wav') ||
+                    lowerUrl.contains('.ogg') ||
+                    lowerUrl.contains('.m4a')) {
                   lastMessageType = 'voice';
-                } else if (lowerUrl.contains('.jpg') || lowerUrl.contains('.jpeg') || lowerUrl.contains('.png') || lowerUrl.contains('.gif') || lowerUrl.contains('.webp')) {
+                } else if (lowerUrl.contains('.jpg') ||
+                    lowerUrl.contains('.jpeg') ||
+                    lowerUrl.contains('.png') ||
+                    lowerUrl.contains('.gif') ||
+                    lowerUrl.contains('.webp')) {
                   lastMessageType = 'image';
-                } else if (lowerUrl.contains('.mp4') || lowerUrl.contains('.mov') || lowerUrl.contains('.avi') || lowerUrl.contains('.webm')) {
+                } else if (lowerUrl.contains('.mp4') ||
+                    lowerUrl.contains('.mov') ||
+                    lowerUrl.contains('.avi') ||
+                    lowerUrl.contains('.webm')) {
                   lastMessageType = 'video';
                 } else {
                   lastMessageType = 'file';
@@ -501,7 +519,7 @@ class ChatService {
   /// چک کن آیا محتوا یک پست اشتراک‌گذاری شده است
   bool _isSharedPostContent(String? content) {
     if (content == null || content.isEmpty) return false;
-    
+
     try {
       // اگر محتوا با { شروع میشه، احتمالاً JSON است
       final trimmed = content.trim();
@@ -509,7 +527,7 @@ class ChatService {
         return true;
       }
       // یا اگر شامل کلمات کلیدی پست است
-      if (trimmed.contains('"post_id"') || 
+      if (trimmed.contains('"post_id"') ||
           trimmed.contains("'post_id'") ||
           trimmed.contains('post_id')) {
         return true;
@@ -518,7 +536,7 @@ class ChatService {
       // اگر parse نشد، پست نیست
       return false;
     }
-    
+
     return false;
   }
 
@@ -1098,7 +1116,7 @@ class ChatService {
         final rpcResult = await _supabase.rpc(
           'create_or_get_conversation',
           params: {
-            'current_user_id': userId, 
+            'current_user_id': userId,
             'target_user_id': otherUserId,
           },
         );
@@ -1107,10 +1125,10 @@ class ChatService {
         if (rpcResult != null) {
           final conversationId = rpcResult.toString();
           logInfo('✅ مکالمه با موفقیت دریافت شد: $conversationId');
-          
+
           // بروزرسانی کش برای سرعت بیشتر در دفعات بعد
           await refreshConversation(conversationId);
-          
+
           return conversationId;
         } else {
           logInfo('❌ RPC returned null conversation ID');
@@ -1119,16 +1137,15 @@ class ChatService {
             technicalMessage: 'RPC returned null conversation ID',
           );
         }
-
       } catch (e) {
         logInfo('❌ خطای بحرانی در createOrGetConversation: $e');
-        
+
         // ✅ نکته بسیار مهم:
         // اینجا دیگر نباید کد دستی برای ساخت مکالمه (INSERT) داشته باشیم.
         // چون تابع SQL ما اتمیک است و با قفل‌گذاری کار می‌کند،
-        // اگر اون خطا بده یعنی مشکل جدی وجود داره 
+        // اگر اون خطا بده یعنی مشکل جدی وجود داره
         // و نباید سمت کلاینت چیزی ساخته بشه.
-        
+
         throw AppException(
           userFriendlyMessage: 'مشکل در ایجاد گفتگو. لطفاً دوباره تلاش کنید.',
           technicalMessage: 'خطا در createOrGetConversation: $e',
@@ -1541,7 +1558,8 @@ class ChatService {
     // دریافت آخرین پیام غیر مخفی با اطلاعات کامل
     final lastMessageQuery = await _supabase
         .from('messages')
-        .select('content, created_at, attachment_type, attachment_url, is_forwarded, sender_id')
+        .select(
+            'content, created_at, attachment_type, attachment_url, is_forwarded, sender_id')
         .eq('conversation_id', conversationId)
         .not(
           'id',
@@ -1570,16 +1588,16 @@ class ChatService {
           lastMessageQuery['created_at'] as String?;
       updatedConversationData['updated_at'] =
           lastMessageQuery['created_at'] as String?;
-      
+
       // ✅ تعیین نوع پیام
       lastMessageSenderId = lastMessageQuery['sender_id'] as String?;
       isLastMessageFromMe = lastMessageSenderId == userId;
-      
+
       final attachType = lastMessageQuery['attachment_type'] as String?;
       final attachUrl = lastMessageQuery['attachment_url'] as String?;
       final isForwarded = lastMessageQuery['is_forwarded'] as bool? ?? false;
       final content = lastMessageQuery['content'] as String?;
-      
+
       // ✅ تعیین نوع پیام بر اساس فیلدهای موجود
       if (isForwarded) {
         lastMessageType = 'forward';
@@ -1588,9 +1606,12 @@ class ChatService {
         lastMessageType = 'post';
       } else if (attachType != null && attachType.isNotEmpty) {
         final lowerAttachType = attachType.toLowerCase();
-        if (lowerAttachType.contains('audio') || lowerAttachType.contains('voice') || lowerAttachType == 'voice') {
+        if (lowerAttachType.contains('audio') ||
+            lowerAttachType.contains('voice') ||
+            lowerAttachType == 'voice') {
           lastMessageType = 'voice';
-        } else if (lowerAttachType.contains('image') || lowerAttachType.contains('photo')) {
+        } else if (lowerAttachType.contains('image') ||
+            lowerAttachType.contains('photo')) {
           lastMessageType = 'image';
         } else if (lowerAttachType.contains('video')) {
           lastMessageType = 'video';
@@ -1600,11 +1621,21 @@ class ChatService {
       } else if (attachUrl != null && attachUrl.isNotEmpty) {
         // اگر attachment_url داریم ولی type نداریم، از URL تشخیص بده
         final lowerUrl = attachUrl.toLowerCase();
-        if (lowerUrl.contains('.mp3') || lowerUrl.contains('.wav') || lowerUrl.contains('.ogg') || lowerUrl.contains('.m4a')) {
+        if (lowerUrl.contains('.mp3') ||
+            lowerUrl.contains('.wav') ||
+            lowerUrl.contains('.ogg') ||
+            lowerUrl.contains('.m4a')) {
           lastMessageType = 'voice';
-        } else if (lowerUrl.contains('.jpg') || lowerUrl.contains('.jpeg') || lowerUrl.contains('.png') || lowerUrl.contains('.gif') || lowerUrl.contains('.webp')) {
+        } else if (lowerUrl.contains('.jpg') ||
+            lowerUrl.contains('.jpeg') ||
+            lowerUrl.contains('.png') ||
+            lowerUrl.contains('.gif') ||
+            lowerUrl.contains('.webp')) {
           lastMessageType = 'image';
-        } else if (lowerUrl.contains('.mp4') || lowerUrl.contains('.mov') || lowerUrl.contains('.avi') || lowerUrl.contains('.webm')) {
+        } else if (lowerUrl.contains('.mp4') ||
+            lowerUrl.contains('.mov') ||
+            lowerUrl.contains('.avi') ||
+            lowerUrl.contains('.webm')) {
           lastMessageType = 'video';
         } else {
           lastMessageType = 'file';
@@ -2120,7 +2151,7 @@ class ChatService {
           .select('id, type')
           .eq('id', conversationId)
           .maybeSingle();
-      
+
       // اگر مکالمه وجود نداشت، یعنی قبلاً حذف شده است
       if (conversationData == null) {
         logInfo('⚠️ مکالمه قبلاً حذف شده است: $conversationId');
@@ -2136,10 +2167,10 @@ class ChatService {
           .from('conversation_participants')
           .select('id, user_id')
           .eq('conversation_id', conversationId);
-      
+
       // تعداد کل شرکت‌کنندگان (قبل از حذف)
       final totalParticipants = remainingParticipants.length;
-      
+
       // حذف مشارکت کاربر از گفتگو
       // ✅ حذف .select() و .single() چون بعد از حذف نیازی به دیتای حذف شده نداریم
       await _supabase

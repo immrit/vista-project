@@ -1,6 +1,6 @@
 import '../security/logging_utility.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../main.dart';
+import '../utils/const.dart';
 import '../model/channel_model.dart';
 import '../model/channel_message_model.dart';
 import '../services/channel_service.dart';

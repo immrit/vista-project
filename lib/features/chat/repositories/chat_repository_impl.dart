@@ -4,7 +4,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../model/message_model.dart';
-import '../../../DB/unified_conversation_cache_service.dart';
 import '../../../DB/unified_message_cache_service.dart'; // ✅ Added
 import '../../../model/conversation_model.dart';
 import '../data/datasources/chat_local_datasource_isar.dart';

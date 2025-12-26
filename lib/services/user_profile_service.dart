@@ -1,5 +1,5 @@
 import '../security/logging_utility.dart';
-import '../main.dart';
+import '../utils/const.dart';
 import '../model/conversation_model.dart';
 import 'profile_cache_manager.dart';
 import '../DB/settings_cache_service.dart';

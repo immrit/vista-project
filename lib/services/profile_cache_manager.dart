@@ -1,6 +1,6 @@
 import '../security/logging_utility.dart';
 import 'dart:async';
-import '../main.dart';
+import '../utils/const.dart';
 
 /// مدیریت مرکزی کشینگ پروفایل‌ها با batching هوشمند و real-time updates
 class ProfileCacheManager {

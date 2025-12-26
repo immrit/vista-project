@@ -5,7 +5,7 @@ import 'package:isar/isar.dart';
 import '../DB/isar_database_manager.dart';
 import '../DB/entities/app_settings_entity.dart';
 import 'settings_providers.dart';
-import '../view/util/themes.dart';
+import 'package:Vista/utils/themes.dart';
 
 // Provider برای مدیریت رنگ انتخاب شده
 final selectedColorProvider =

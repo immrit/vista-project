@@ -8,7 +8,7 @@ import '../services/message_reaction_service.dart';
 import '../DB/unified_message_cache_service.dart';
 import '../services/optimized_message_deletion_service.dart';
 import '../services/background_message_loader.dart';
-import '../main.dart';
+import '../utils/const.dart';
 import 'chat_provider.dart';
 
 // Class to hold parameters for the chat provider

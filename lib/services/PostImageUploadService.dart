@@ -8,7 +8,7 @@ import 'package:aws_s3_api/s3-2006-03-01.dart';
 import 'cache_manager.dart';
 import 'secure_config.dart';
 import 'user_friendly_error_handler.dart';
-import '/main.dart';
+import '../utils/const.dart';
 
 class PostImageUploadService {
   static S3 get s3 {

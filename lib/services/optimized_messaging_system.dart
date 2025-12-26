@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/message_model.dart';
 import '../DB/unified_message_cache_service.dart';
 import '../provider/provider.dart';
-import '../main.dart';
+import '../utils/const.dart';
 import 'realtime_connection_optimizer.dart';
 import 'advanced_cache_optimizer.dart';
 

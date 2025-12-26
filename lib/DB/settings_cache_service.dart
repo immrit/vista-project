@@ -1,9 +1,8 @@
-
 import '../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../main.dart';
+import '../utils/const.dart';
 
 /// سرویس کش برای تنظیمات کاربر
 /// این سرویس تمام تنظیمات کاربر را کش می‌کند تا در حالت آفلاین نیز قابل دسترسی باشد
@@ -158,13 +157,13 @@ class SettingsCacheService {
         'enable_dark_mode': false,
         'auto_sync': true,
         'sync_interval_minutes': 30,
-        
+
         // تنظیمات دانلود خودکار مدیا (مشابه تلگرام)
-        'auto_download_mobile_image': true,  // عکس در موبایل: پیش‌فرض روشن
+        'auto_download_mobile_image': true, // عکس در موبایل: پیش‌فرض روشن
         'auto_download_mobile_video': false, // ویدیو در موبایل: پیش‌فرض خاموش
-        'auto_download_wifi_image': true,    // عکس در وای‌فای: روشن
-        'auto_download_wifi_video': true,    // ویدیو در وای‌فای: روشن
-        'auto_download_roaming': false,      // رومینگ: خاموش
+        'auto_download_wifi_image': true, // عکس در وای‌فای: روشن
+        'auto_download_wifi_video': true, // ویدیو در وای‌فای: روشن
+        'auto_download_roaming': false, // رومینگ: خاموش
       };
 
       _appSettingsCache.addAll(defaultAppSettings);
@@ -458,9 +457,11 @@ class SettingsCacheService {
         cachePrivacySettings(userId),
         cacheNotificationSettings(userId),
       ]);
-      logInfo('🔄 Background settings cache refresh completed for user: $userId');
+      logInfo(
+          '🔄 Background settings cache refresh completed for user: $userId');
     } catch (e) {
-      logInfo('⚠️ Background settings cache refresh failed for user $userId: $e');
+      logInfo(
+          '⚠️ Background settings cache refresh failed for user $userId: $e');
     }
   }
 

@@ -15,7 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/voice_recorder_service.dart';
-import '../../../view/widgets/enhanced_voice_visualizer.dart';
+import 'package:Vista/widgets/enhanced_voice_visualizer.dart';
 
 /// ویجت ضبط صدا مدرن و جذاب
 class TelegramVoiceRecorder extends ConsumerStatefulWidget {
@@ -123,10 +123,10 @@ class _TelegramVoiceRecorderState extends ConsumerState<TelegramVoiceRecorder>
   // پایان ضبط و ارسال
   void _stopAndSend() async {
     if (!_isRecording) return;
-    
+
     final file = await _voiceRecorder.stopRecording();
     _resetState();
-    
+
     if (file != null && mounted) {
       widget.onSend(file.path, _recordDuration);
     }
@@ -168,7 +168,7 @@ class _TelegramVoiceRecorderState extends ConsumerState<TelegramVoiceRecorder>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     if (_isLocked) {
       return _buildLockedUi(theme);
     }
@@ -182,7 +182,8 @@ class _TelegramVoiceRecorderState extends ConsumerState<TelegramVoiceRecorder>
           Positioned(
             right: 50,
             bottom: 0,
-            left: -MediaQuery.of(context).size.width + 100, // کشیدن تا انتهای چپ صفحه
+            left: -MediaQuery.of(context).size.width +
+                100, // کشیدن تا انتهای چپ صفحه
             child: Opacity(
               // هرچقدر بیشتر میکشی، متن کمرنگ تر میشه (افکت تلگرام)
               opacity:
@@ -216,16 +217,18 @@ class _TelegramVoiceRecorderState extends ConsumerState<TelegramVoiceRecorder>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: theme.brightness == Brightness.dark 
-                    ? Colors.black.withOpacity(0.6) 
+                color: theme.brightness == Brightness.dark
+                    ? Colors.black.withOpacity(0.6)
                     : Colors.white.withOpacity(0.9),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [
                   FadeTransition(
-                    opacity: _cancelController.drive(Tween(begin: 1.0, end: 0.0)),
-                    child: const Icon(Icons.circle, size: 10, color: Colors.red),
+                    opacity:
+                        _cancelController.drive(Tween(begin: 1.0, end: 0.0)),
+                    child:
+                        const Icon(Icons.circle, size: 10, color: Colors.red),
                   ),
                   const SizedBox(width: 6),
                   Text(
@@ -255,15 +258,14 @@ class _TelegramVoiceRecorderState extends ConsumerState<TelegramVoiceRecorder>
                   child: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: theme.cardColor,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 4,
-                        )
-                      ]
-                    ),
+                        color: theme.cardColor,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 4,
+                          )
+                        ]),
                     child: const Column(
                       children: [
                         Icon(Icons.lock_open, size: 18, color: Colors.grey),
@@ -325,8 +327,7 @@ class _TelegramVoiceRecorderState extends ConsumerState<TelegramVoiceRecorder>
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color:
-                        _isRecording ? Colors.red : theme.primaryColor,
+                    color: _isRecording ? Colors.red : theme.primaryColor,
                     shape: BoxShape.circle,
                     boxShadow: [
                       if (_isRecording)
@@ -358,22 +359,22 @@ class _TelegramVoiceRecorderState extends ConsumerState<TelegramVoiceRecorder>
     // ۱. اگر تم دارک بود و رنگ اصلی سفید/روشن بود -> از آبی تلگرام استفاده کن
     // ۲. در غیر این صورت -> از رنگ اصلی تم استفاده کن
     Color sendBtnColor;
-    if (theme.brightness == Brightness.dark && theme.primaryColor.computeLuminance() > 0.5) {
-       sendBtnColor = const Color(0xFF3390EC); // Telegram Blue
+    if (theme.brightness == Brightness.dark &&
+        theme.primaryColor.computeLuminance() > 0.5) {
+      sendBtnColor = const Color(0xFF3390EC); // Telegram Blue
     } else {
-       sendBtnColor = theme.primaryColor;
+      sendBtnColor = theme.primaryColor;
     }
 
     // منطق تعیین رنگ آیکون داخل دکمه:
     // اگر رنگ دکمه روشن است -> آیکون سیاه
     // اگر رنگ دکمه تیره است -> آیکون سفید
-    final sendIconColor = sendBtnColor.computeLuminance() > 0.5 
-        ? Colors.black 
-        : Colors.white;
+    final sendIconColor =
+        sendBtnColor.computeLuminance() > 0.5 ? Colors.black : Colors.white;
 
     return Container(
       width: double.infinity,
-      height: 60, 
+      height: 60,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: bgColor, // رنگ پس‌زمینه یکدست با ورودی متن
@@ -385,7 +386,7 @@ class _TelegramVoiceRecorderState extends ConsumerState<TelegramVoiceRecorder>
             icon: const Icon(Icons.delete_outline, color: Colors.red, size: 28),
             onPressed: _cancelRecording,
           ),
-          
+
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -411,7 +412,7 @@ class _TelegramVoiceRecorderState extends ConsumerState<TelegramVoiceRecorder>
               ],
             ),
           ),
-          
+
           const SizedBox(width: 8),
 
           // دکمه ارسال با کنتراست رنگی اصلاح شده

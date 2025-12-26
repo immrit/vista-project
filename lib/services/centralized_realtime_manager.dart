@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../model/message_model.dart';
-import '../main.dart';
+import '../utils/const.dart';
 import '../DB/unified_message_cache_service.dart';
 import '../security/logging_utility.dart';
 
