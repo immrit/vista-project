@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../provider/reaction_provider.dart';
-import '../../provider/chat_provider.dart';
+
 import '../../model/message_reaction_ui.dart';
 
 class ReactionDisplay extends ConsumerWidget {
@@ -54,23 +54,18 @@ class ReactionDisplay extends ConsumerWidget {
           return InkWell(
             onTap: () async {
               HapticFeedback.lightImpact();
-              
+
               // ✅ استفاده از toggleReaction از MessageNotifier برای optimistic update
               try {
-                final messageNotifier = ref.read(messageNotifierProvider.notifier);
-                await messageNotifier.toggleReaction(
+                final reactionService = ref.read(reactionServiceProvider);
+                await reactionService.toggleReaction(
                   messageId: messageId,
                   conversationId: conversationId,
                   emoji: reaction.emoji,
                 );
               } catch (e) {
-                // Fallback به service در صورت خطا
-                final service = ref.read(reactionServiceProvider);
-                await service.toggleReaction(
-                  messageId: messageId,
-                  conversationId: conversationId,
-                  emoji: reaction.emoji,
-                );
+                // Fallback or log error
+                debugPrint('Error toggling reaction: $e');
               }
             },
             onLongPress: onTap, // Long press برای نمایش لیست کامل
@@ -110,16 +105,16 @@ class _ReactionChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: isReactedByMe
-            ? (isDark 
+            ? (isDark
                 ? Colors.blue.withOpacity(0.25)
                 : Colors.blue.withOpacity(0.15))
-            : (isDark 
+            : (isDark
                 ? Colors.grey.withOpacity(0.2)
                 : Colors.grey.withOpacity(0.1)),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isReactedByMe
-              ? (isDark 
+              ? (isDark
                   ? Colors.blue.withOpacity(0.5)
                   : Colors.blue.withOpacity(0.4))
               : Colors.transparent,
@@ -169,6 +164,3 @@ class _ReactionChip extends StatelessWidget {
     );
   }
 }
-
-
-

@@ -2,29 +2,35 @@ import '../security/logging_utility.dart';
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/message_model.dart';
-import '../services/cache_sync_service.dart';
-import '../services/ChatService_LEGACY.dart';
+// import '../services/cache_sync_service.dart'; // Removed
+import 'package:Vista/features/chat/repositories/chat_repository.dart';
+import 'package:Vista/features/chat/providers/chat_providers.dart';
+
 import '../utils/const.dart';
 
 /// Provider بهبود یافته برای مدیریت چت با سیستم sync تلگرامی
 class ImprovedChatProvider extends StateNotifier<ImprovedChatState> {
   final String conversationId;
-  final CacheSyncService _cacheSync = CacheSyncService();
-  final ChatService _chatService = ChatService();
+  final ChatRepository _chatRepository; // ✅ Injected
+  // final CacheSyncService _cacheSync = CacheSyncService(); // Removed
+
+  // NOTE: We don't need independent ChatService anymore.
+  // We use repository for all data ops.
 
   StreamSubscription? _messageSubscription;
   bool _isInitialized = false;
   // مجموعه پیام‌هایی که کاربر به‌صورت خوشبینانه حذف کرده
   final Set<String> _locallyDeletedMessageIds = <String>{};
 
-  ImprovedChatProvider(this.conversationId) : super(const ImprovedChatState()) {
+  ImprovedChatProvider(this.conversationId, this._chatRepository)
+      : super(const ImprovedChatState()) {
     _initialize();
   }
 
   @override
   void dispose() {
     _messageSubscription?.cancel();
-    _cacheSync.unsubscribeFromConversation(conversationId);
+    // _cacheSync.unsubscribeFromConversation(conversationId);
     super.dispose();
   }
 
@@ -36,13 +42,13 @@ class ImprovedChatProvider extends StateNotifier<ImprovedChatState> {
 
     try {
       // مقداردهی سیستم cache sync
-      await _cacheSync.initialize();
+      // await _cacheSync.initialize();
 
       // دریافت پیام‌های کش شده
       await _loadCachedMessages();
 
       // شروع sync فوری
-      await _cacheSync.syncConversationNow(conversationId);
+      await _chatRepository.refreshMessages(conversationId);
 
       // راه‌اندازی real-time listener
       await _setupRealtimeListener();
@@ -60,7 +66,8 @@ class ImprovedChatProvider extends StateNotifier<ImprovedChatState> {
   /// دریافت پیام‌های کش شده
   Future<void> _loadCachedMessages() async {
     try {
-      final messages = await _chatService.getMessages(conversationId);
+      final result = await _chatRepository.getMessages(conversationId);
+      final messages = result.data ?? [];
 
       // فیلتر پیام‌های حذف شده محلی
       final filteredMessages = messages
@@ -78,33 +85,21 @@ class ImprovedChatProvider extends StateNotifier<ImprovedChatState> {
 
   /// راه‌اندازی real-time listener
   Future<void> _setupRealtimeListener() async {
-    await _cacheSync.subscribeToConversation(conversationId);
+    // await _cacheSync.subscribeToConversation(conversationId);
 
     // گوش دادن به تغییرات cache
-    _messageSubscription = Stream.periodic(
-      const Duration(seconds: 1),
-      (_) => _checkForNewMessages(),
-    ).listen((_) {});
-  }
-
-  /// بررسی پیام‌های جدید از cache
-  Future<void> _checkForNewMessages() async {
-    try {
-      final currentMessages = state.messages;
-      final latestMessages =
-          await _chatService.getMessages(conversationId, limit: 50);
-
+    // Instead of polling cache via periodic stream, let's use the repository stream!
+    _messageSubscription =
+        _chatRepository.watchMessages(conversationId).listen((messages) {
       // فیلتر پیام‌های حذف شده محلی
-      final filteredMessages = latestMessages
+      final filteredMessages = messages
           .where((m) => !_locallyDeletedMessageIds.contains(m.id))
           .toList();
 
-      if (filteredMessages.length > currentMessages.length) {
+      if (mounted) {
         state = state.copyWith(messages: filteredMessages);
       }
-    } catch (e) {
-      // خطا در بررسی پیام‌های جدید
-    }
+    });
   }
 
   /// بارگذاری پیام‌های بیشتر
@@ -114,11 +109,17 @@ class ImprovedChatProvider extends StateNotifier<ImprovedChatState> {
     state = state.copyWith(isLoadingMore: true);
 
     try {
-      final newMessages = await _chatService.getMessages(
+      final oldestMessage =
+          state.messages.isNotEmpty ? state.messages.last : null;
+      if (oldestMessage == null) return;
+
+      final result = await _chatRepository.getMessages(
         conversationId,
-        offset: state.messages.length,
+        beforeMessageId: oldestMessage.id,
         limit: 20,
       );
+
+      final newMessages = result.data ?? [];
 
       if (newMessages.isNotEmpty) {
         // فیلتر پیام‌های حذف شده محلی
@@ -169,18 +170,28 @@ class ImprovedChatProvider extends StateNotifier<ImprovedChatState> {
       state = state.copyWith(messages: updatedMessages);
 
       // ارسال به سرور
-      final sentMessage = await _chatService.sendMessage(
+      // Repository handles optimistic update implicitly if used correctly,
+      // but here we are managing state manually.
+      // Calling sendMessage on repo returns the final message.
+
+      final result = await _chatRepository.sendMessage(
         conversationId: conversationId,
         content: content,
         attachmentUrl: attachmentUrl,
         attachmentType: attachmentType,
         replyToMessageId: replyToMessageId,
-        localId: tempId,
+        id: tempId, // Pass temp ID if we want repo to use it or track it?
+        // Repo usually generates its own or uses UUID, let's see.
+        // Providing ID helps if we want to match it.
       );
+
+      if (!result.isSuccess) throw Exception(result.error);
+
+      final sentMessage = result.data!;
 
       // جایگزینی پیام موقت با واقعی
       final finalMessages = state.messages.map((m) {
-        return m.id == tempId ? sentMessage : m;
+        return (m.id == tempId || m.id == sentMessage.id) ? sentMessage : m;
       }).toList();
 
       state = state.copyWith(messages: finalMessages);
@@ -213,13 +224,13 @@ class ImprovedChatProvider extends StateNotifier<ImprovedChatState> {
       state = state.copyWith(messages: filteredMessages);
 
       // حذف از سرور
-      await _chatService.deleteMessage(messageId, forEveryone: forEveryone);
+      await _chatRepository.deleteMessage(messageId, forEveryone: forEveryone);
 
       // sync مجدد برای اطمینان
-      await _cacheSync.syncConversationNow(conversationId);
+      await _chatRepository.refreshMessages(conversationId);
     } catch (e) {
       // بازگردانی پیام در صورت خطا
-      await _loadCachedMessages();
+      // await _loadCachedMessages(); // Might be jarring
       state = state.copyWith(error: 'خطا در حذف پیام: $e');
     }
   }
@@ -244,7 +255,7 @@ class ImprovedChatProvider extends StateNotifier<ImprovedChatState> {
     state = state.copyWith(isLoading: true);
 
     try {
-      await _cacheSync.syncConversationNow(conversationId);
+      await _chatRepository.refreshMessages(conversationId);
       await _loadCachedMessages();
     } catch (e) {
       state = state.copyWith(error: 'خطا در همگام‌سازی: $e');
@@ -296,7 +307,8 @@ class ImprovedChatState {
 final improvedChatProvider = StateNotifierProvider.family<ImprovedChatProvider,
     ImprovedChatState, String>(
   (ref, conversationId) {
-    return ImprovedChatProvider(conversationId);
+    final repository = ref.watch(chatRepositoryProvider);
+    return ImprovedChatProvider(conversationId, repository);
   },
 );
 

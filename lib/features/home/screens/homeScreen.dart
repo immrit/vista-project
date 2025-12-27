@@ -133,13 +133,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           destinations: <NavigationDestination>[
             NavigationDestination(
               icon: Image.asset(
-                'lib/view/util/images/bottomnavigation/home-outline.png',
+                'lib/utils/images/bottomnavigation/home-outline.png',
                 width: 24,
                 height: 24,
                 color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
               ),
               selectedIcon: Image.asset(
-                'lib/view/util/images/bottomnavigation/home.png',
+                'lib/utils/images/bottomnavigation/home.png',
                 width: 24,
                 height: 24,
                 color: Theme.of(context).primaryColor,
@@ -148,13 +148,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
             NavigationDestination(
               icon: Image.asset(
-                'lib/view/util/images/bottomnavigation/magnifying-glass.png',
+                'lib/utils/images/bottomnavigation/magnifying-glass.png',
                 width: 24,
                 height: 24,
                 color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
               ),
               selectedIcon: Image.asset(
-                'lib/view/util/images/bottomnavigation/magnifying-glass.png',
+                'lib/utils/images/bottomnavigation/magnifying-glass.png',
                 width: 24,
                 height: 24,
                 color: Theme.of(context).primaryColor,
@@ -198,12 +198,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             // تب چت با بج نمایش پیام‌های جدید
             NavigationDestination(
               icon: _buildMessageBadge(
-                'lib/view/util/images/bottomnavigation/email-outline.png',
+                'lib/utils/images/bottomnavigation/email-outline.png',
                 false,
                 unreadCount,
               ),
               selectedIcon: _buildMessageBadge(
-                'lib/view/util/images/bottomnavigation/email.png',
+                'lib/utils/images/bottomnavigation/email.png',
                 true,
                 unreadCount,
               ),
@@ -211,13 +211,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
             NavigationDestination(
               icon: Image.asset(
-                'lib/view/util/images/bottomnavigation/user-outline.png',
+                'lib/utils/images/bottomnavigation/user-outline.png',
                 width: 24,
                 height: 24,
                 color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
               ),
               selectedIcon: Image.asset(
-                'lib/view/util/images/bottomnavigation/user.png',
+                'lib/utils/images/bottomnavigation/user.png',
                 width: 24,
                 height: 24,
                 color: Theme.of(context).primaryColor,

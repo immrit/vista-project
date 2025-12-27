@@ -28,7 +28,6 @@ export 'services/typing_indicator_service.dart';
 // 🎯 PROVIDERS
 // ═══════════════════════════════════════════════════════════════════════════
 export 'providers/chat_providers.dart';
-export 'providers/paginated_messages_provider.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 📱 SCREENS

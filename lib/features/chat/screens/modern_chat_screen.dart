@@ -43,7 +43,7 @@ import '../widgets/date_divider.dart' as date_divider;
 import '../widgets/swipe_to_reply_wrapper.dart';
 
 // ✅ Providers
-import '../../../provider/typing_provider.dart' show typingUsersProvider;
+import '../../../provider/typing_provider.dart';
 import '../../../provider/presence_provider.dart';
 import '../../../provider/optimized_conversations_provider.dart';
 import '../../../services/telegram_read_receipt_service.dart';
@@ -215,7 +215,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             .read(optimizedConversationsProvider.notifier)
             .updateLastMessageDeliveryStatus(
               conversationId: conversationId,
-              status: status,
+              status: status.name,
             );
       }
     };
@@ -236,7 +236,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     if (!mounted) return;
 
     final messagesAsync =
-        ref.read(messagesStreamProvider(widget.args.conversationId));
+        ref.read(chatMessagesProvider(widget.args.conversationId));
     messagesAsync.whenData((messages) {
       if (messages.isEmpty) return;
 
@@ -341,7 +341,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     // توقف تایپ هنگام خروج - با try-catch برای جلوگیری از خطا
     try {
       if (mounted) {
-        ref.read(typingActionsProvider).stopTyping(widget.args.conversationId);
+        if (_currentUserId != null) {
+          ref
+              .read(typingServiceProvider)
+              .stopTyping(widget.args.conversationId, _currentUserId!);
+        }
       }
     } catch (e) {
       // Ignore errors after dispose
@@ -439,7 +443,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     try {
       final messagesAsync =
-          ref.read(messagesStreamProvider(widget.args.conversationId));
+          ref.read(chatMessagesProvider(widget.args.conversationId));
       messagesAsync.whenData((messages) {
         if (!mounted) return;
 
@@ -540,19 +544,17 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     try {
       final messagesAsync = ref.read(
-        messagesStreamProvider(widget.args.conversationId),
+        chatMessagesProvider(widget.args.conversationId),
       );
 
       messagesAsync.whenData((messages) {
         if (!mounted) return;
         if (messages.isEmpty) return;
 
-        final oldestMessage = messages.last;
         if (mounted) {
           ref
-              .read(
-                  paginationStateProvider(widget.args.conversationId).notifier)
-              .loadMore(oldestMessage.createdAt);
+              .read(chatMessagesProvider(widget.args.conversationId).notifier)
+              .loadMore();
         }
       });
     } catch (e) {
@@ -585,7 +587,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     // ✅ FIX: بررسی mounted قبل از استفاده از ref
     try {
       final messagesAsync =
-          ref.read(messagesStreamProvider(widget.args.conversationId));
+          ref.read(chatMessagesProvider(widget.args.conversationId));
       messagesAsync.whenData((messages) {
         if (!mounted) return;
 
@@ -641,7 +643,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
     final messagesAsync = ref.watch(
-      messagesStreamProvider(widget.args.conversationId),
+      chatMessagesProvider(widget.args.conversationId),
     );
     final paginationState = ref.watch(
       paginationStateProvider(widget.args.conversationId),
@@ -948,7 +950,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     try {
       // گرفتن متن پیام‌های انتخاب شده
       final messagesAsync =
-          ref.read(messagesStreamProvider(widget.args.conversationId));
+          ref.read(chatMessagesProvider(widget.args.conversationId));
       messagesAsync.whenData((messages) {
         if (!mounted) return;
 
@@ -974,7 +976,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     // دسترسی به لیست کامل پیام‌ها برای استخراج MessageModel
     final messagesAsync =
-        ref.read(messagesStreamProvider(widget.args.conversationId));
+        ref.read(chatMessagesProvider(widget.args.conversationId));
     final allMessages = messagesAsync.valueOrNull ?? [];
 
     // تبدیل ID های انتخاب شده به مدل‌های کامل پیام
@@ -1891,7 +1893,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             ElevatedButton.icon(
               onPressed: () {
                 ref.invalidate(
-                    messagesStreamProvider(widget.args.conversationId));
+                    chatMessagesProvider(widget.args.conversationId));
               },
               icon: const Icon(Icons.refresh),
               label: const Text('تلاش مجدد'),
@@ -1962,7 +1964,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       );
 
       try {
-        await ref.read(chatActionsProvider.notifier).sendMessage(params);
+        await ref.read(chatActionControllerProvider.notifier).sendMessage(
+              conversationId: params.conversationId,
+              content: params.content,
+              attachmentUrl: params.attachmentUrl,
+              attachmentType: params.attachmentType,
+              replyToMessageId: params.replyToMessageId,
+            );
         if (mounted) {
           _scrollToBottom();
         }
@@ -1999,7 +2007,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       );
 
       final result =
-          await ref.read(chatActionsProvider.notifier).sendMessage(params);
+          await ref.read(chatActionControllerProvider.notifier).sendMessage(
+                conversationId: params.conversationId,
+                content: params.content,
+                attachmentUrl: params.attachmentUrl,
+                attachmentType: params.attachmentType,
+                replyToMessageId: params.replyToMessageId,
+              );
 
       if (!mounted) return;
 
@@ -2033,7 +2047,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     if (!mounted) return;
     if (text.isNotEmpty) {
       try {
-        ref.read(typingActionsProvider).startTyping(widget.args.conversationId);
+        if (_currentUserId != null) {
+          ref
+              .read(typingServiceProvider)
+              .startTyping(widget.args.conversationId, _currentUserId!);
+        }
       } catch (e) {
         debugPrint('Error starting typing: $e');
       }
@@ -2067,7 +2085,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       if (!mounted) return;
 
       final result =
-          await ref.read(chatActionsProvider.notifier).sendMessage(params);
+          await ref.read(chatActionControllerProvider.notifier).sendMessage(
+                conversationId: params.conversationId,
+                content: params.content,
+                replyToMessageId: params.replyToMessageId,
+              );
 
       if (!mounted) return;
 
@@ -2114,7 +2136,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         );
 
         try {
-          await ref.read(chatActionsProvider.notifier).sendMessage(params);
+          await ref.read(chatActionControllerProvider.notifier).sendMessage(
+                conversationId: params.conversationId,
+                content: params.content,
+                attachmentType: params.attachmentType,
+              );
           if (mounted) {
             _scrollToBottom();
           }
@@ -2138,7 +2164,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         );
 
         try {
-          await ref.read(chatActionsProvider.notifier).sendMessage(params);
+          await ref.read(chatActionControllerProvider.notifier).sendMessage(
+                conversationId: params.conversationId,
+                content: params.content,
+                attachmentType: params.attachmentType,
+              );
           if (mounted) {
             _scrollToBottom();
           }
@@ -2185,7 +2215,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         );
 
         try {
-          await ref.read(chatActionsProvider.notifier).sendMessage(params);
+          await ref.read(chatActionControllerProvider.notifier).sendMessage(
+                conversationId: params.conversationId,
+                content: params.content,
+                attachmentUrl: params.attachmentUrl,
+                attachmentType: params.attachmentType,
+              );
           if (mounted) {
             _scrollToBottom();
           }
@@ -2597,7 +2632,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     HapticFeedback.lightImpact();
     try {
-      ref.read(chatActionsProvider.notifier).toggleReaction(
+      ref.read(chatActionControllerProvider.notifier).toggleReaction(
             messageId: message.id,
             conversationId: widget.args.conversationId,
             emoji: emoji,
@@ -2817,7 +2852,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     if (result == true) {
       _showSuccessSnackBar('پیام ویرایش شد');
       // Refresh messages
-      ref.invalidate(messagesStreamProvider(widget.args.conversationId));
+      ref.invalidate(chatMessagesProvider(widget.args.conversationId));
     }
   }
 
@@ -3172,7 +3207,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               showAbove: _reactionPickerPosition!.dy > 200,
               onReactionSelected: (emoji) async {
                 if (_reactionPickerMessageId != null) {
-                  await ref.read(chatActionsProvider.notifier).toggleReaction(
+                  await ref
+                      .read(chatActionControllerProvider.notifier)
+                      .toggleReaction(
                         messageId: _reactionPickerMessageId!,
                         conversationId: widget.args.conversationId,
                         emoji: emoji,

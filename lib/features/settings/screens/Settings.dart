@@ -342,8 +342,7 @@ class Settings extends ConsumerWidget {
                 backgroundColor: colorScheme.primaryContainer,
                 backgroundImage: profile!['avatar_url'] != null
                     ? NetworkImage(profile['avatar_url'].toString())
-                    : const AssetImage(
-                            'lib/view/util/images/default-avatar.jpg')
+                    : const AssetImage('lib/utils/images/default-avatar.jpg')
                         as ImageProvider,
               ),
               // اضافه کردن نشان تأیید بر اساس نوع آن

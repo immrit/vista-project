@@ -5,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../../provider/provider.dart';
-import '../../../../provider/chat_provider.dart';
+import '../../../../features/chat/providers/chat_providers.dart';
 
 class BlockedUsersPage extends ConsumerStatefulWidget {
   const BlockedUsersPage({super.key});
@@ -105,7 +105,8 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
                   .maybeSingle();
 
               if (profileResponse != null) {
-                logInfo('✅ کوئری profiles موفق: ${profileResponse['username']}');
+                logInfo(
+                    '✅ کوئری profiles موفق: ${profileResponse['username']}');
               } else {
                 logInfo('⚠️ پروفایل برای کاربر $blockedUserId یافت نشد');
               }
@@ -239,10 +240,10 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
     try {
       logInfo('🔄 شروع رفع مسدودیت کاربر: $userId');
 
-      final chatService = ref.read(chatServiceProvider);
+      final repo = ref.read(chatRepositoryProvider);
       logInfo('🔧 سرویس چت دریافت شد');
 
-      await chatService.unblockUser(userId);
+      await repo.unblockUser(userId);
       logInfo('✅ رفع مسدودیت در دیتابیس انجام شد');
 
       // حذف کاربر از لیست

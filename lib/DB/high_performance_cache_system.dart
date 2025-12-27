@@ -2,7 +2,7 @@ import 'dart:async';
 import '../model/message_model.dart';
 import '../utils/lru_cache.dart';
 import 'unified_message_cache_service.dart';
-import 'unified_conversation_cache_service.dart';
+import '../core/data/cache/cache_repository.dart';
 import '../model/conversation_model.dart';
 
 /// ✅ High-performance multi-layer cache system الهام‌گرفته از معماری‌های پیام‌رسان
@@ -21,8 +21,6 @@ class HighPerformanceCacheSystem {
 
   // ✅ LAYER 3: Disk Cache (via UnifiedMessageCacheService)
   final UnifiedMessageCacheService _diskCache = UnifiedMessageCacheService();
-  final UnifiedConversationCacheService _conversationCache =
-      UnifiedConversationCacheService();
 
   // ✅ Performance metrics
   int _l1Hits = 0; // Hot cache
@@ -247,7 +245,7 @@ class HighPerformanceCacheSystem {
 
   // ✅ Reactive Streams
   Stream<List<ConversationModel>> watchConversations() {
-    return _conversationCache.watchCachedConversations();
+    return CacheRepository().watchConversations();
   }
 
   Stream<List<MessageModel>> watchMessages(String conversationId) async* {

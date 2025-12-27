@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import 'package:rxdart/rxdart.dart';
 import '../../../model/message_model.dart';
-import '../../../provider/chat_provider.dart';
+import '../../../features/chat/providers/chat_providers.dart';
 
 // Provider for searching messages
 final searchMessagesProvider = FutureProvider.autoDispose
@@ -16,8 +16,13 @@ final searchMessagesProvider = FutureProvider.autoDispose
     return [];
   }
 
-  final chatService = ref.read(chatServiceProvider);
-  return await chatService.searchMessages(conversationId, query);
+  final repo = ref.read(chatRepositoryProvider);
+  final result = await repo.searchMessages(conversationId, query);
+
+  return result.fold(
+    (data) => data,
+    (error) => [], // Handle error or return empty
+  );
 });
 
 class ChatMessageSearchScreen extends ConsumerStatefulWidget {
@@ -69,21 +74,6 @@ class _ChatMessageSearchScreenState
     _querySubject.close();
     super.dispose();
   }
-
-  // This Debouncer class is not defined in the provided code.
-  // It should be defined or imported from a package.
-  // For now, I'll define a simple one for demonstration.
-  // In a real app, you might use rxdart's debounceTime directly on a StreamController or BehaviorSubject.
-  // Since the original code used a Debouncer class, I'll add a minimal one here.
-  // However, the fix above using BehaviorSubject and debounceTime is generally preferred.
-  // If the original Debouncer class was intended to be used, it needs to be defined.
-  // For the purpose of fixing the "Debouncer isn't defined" error,
-  // the `_querySubject` approach is a direct replacement for the debouncing logic.
-  // The `_debouncer.value = _searchController.text;` line will still cause an error
-  // if `_debouncer` is not defined.
-  // Given the instruction is to fix "Debouncer isn't defined", the simplest fix is to remove its usage
-  // and replace it with a standard RxDart debounce pattern.
-  // I'm removing the `_debouncer` field and its usage.
 
   String _formatDate(DateTime date) {
     final jalali = Jalali.fromDateTime(date);

@@ -538,9 +538,10 @@ class SessionManagerServiceV2 {
     // پاک کردن دیتابیس (اگر نت باشد)
     if (_currentSessionId != null) {
       try {
+        // 🔒 SECURITY UPDATE: Hard Delete instead of Soft Delete
         await _supabase
             .from('active_sessions')
-            .update({'is_active': false})
+            .delete() // Changed from update({'is_active': false})
             .eq('id', _currentSessionId!)
             .timeout(const Duration(seconds: 3));
       } catch (_) {}

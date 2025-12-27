@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../provider/reaction_provider.dart';
-import '../../provider/chat_provider.dart';
 
 class ReactionSelectorWidget extends ConsumerStatefulWidget {
   final String messageId;
@@ -125,8 +124,9 @@ class _ReactionSelectorWidgetState extends ConsumerState<ReactionSelectorWidget>
 
                         // ✅ استفاده از toggleReaction از MessageNotifier برای optimistic update
                         try {
-                          final messageNotifier = ref.read(messageNotifierProvider.notifier);
-                          await messageNotifier.toggleReaction(
+                          final reactionService =
+                              ref.read(reactionServiceProvider);
+                          await reactionService.toggleReaction(
                             messageId: widget.messageId,
                             conversationId: widget.conversationId,
                             emoji: emoji,

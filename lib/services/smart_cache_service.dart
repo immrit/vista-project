@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../DB/unified_message_cache_service.dart';
 
 /// سرویس مدیریت کش هوشمند
+@Deprecated('Use CacheRepository instead')
 class SmartCacheService {
   static final SmartCacheService _instance = SmartCacheService._internal();
   factory SmartCacheService() => _instance;

@@ -659,7 +659,7 @@ class PostCard extends StatelessWidget {
             radius: 16,
             backgroundImage: post.avatarUrl.isNotEmpty
                 ? NetworkImage(post.avatarUrl)
-                : const AssetImage('lib/view/util/images/default-avatar.jpg')
+                : const AssetImage('lib/utils/images/default-avatar.jpg')
                     as ImageProvider,
           ),
           const SizedBox(width: 8),
@@ -711,7 +711,7 @@ class PostCard extends StatelessWidget {
         Row(
           children: [
             Image.asset(
-              'lib/view/util/images/component/comment.png',
+              'lib/utils/images/component/comment.png',
               width: 16,
               height: 16,
               color: Colors.grey,
@@ -846,7 +846,7 @@ class _UserCardState extends ConsumerState<UserCard> {
           backgroundImage:
               widget.user.avatarUrl != null && widget.user.avatarUrl!.isNotEmpty
                   ? NetworkImage(widget.user.avatarUrl!)
-                  : const AssetImage('lib/view/util/images/default-avatar.jpg')
+                  : const AssetImage('lib/utils/images/default-avatar.jpg')
                       as ImageProvider,
         ),
         if (widget.user.isVerified)

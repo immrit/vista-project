@@ -9,6 +9,10 @@ import 'package:intl/intl.dart';
 import '../../../model/conversation_model.dart';
 import '../../../model/message_model.dart';
 import '../../../provider/chat_provider.dart';
+import '../../../provider/chat_screen_provider.dart';
+// import '../../posts/screens/profileScreen.dart'; // Unused
+// import '../../../features/chat/repositories/chat_repository.dart'; // Unused
+import '../providers/chat_providers.dart';
 import 'ChatMessageSearchScreen.dart';
 
 class ChatDetailsScreen extends ConsumerStatefulWidget {
@@ -1073,8 +1077,11 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
 
   void _toggleMuteConversation() async {
     try {
-      final messageNotifier = ref.read(messageNotifierProvider.notifier);
-      await messageNotifier.toggleMuteConversation(widget.conversationId);
+      // ChatScreenNotifier might not expose toggleMute directly if it's in ChatRepository
+      // But ChatRepository HAS it.
+      // So calling repo directly is better for action-only.
+      final repo = ref.read(chatRepositoryProvider);
+      await repo.toggleMuteConversation(widget.conversationId);
       _showSnackBar('تنظیمات اعلان تغییر کرد');
     } catch (e) {
       _showSnackBar('خطا در تغییر تنظیمات اعلان');
@@ -1135,8 +1142,8 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
 
   void _togglePinConversation() async {
     try {
-      final messageNotifier = ref.read(messageNotifierProvider.notifier);
-      await messageNotifier.togglePinConversation(widget.conversationId);
+      final repo = ref.read(chatRepositoryProvider);
+      await repo.togglePinConversation(widget.conversationId);
       _showSnackBar('وضعیت پین تغییر کرد');
     } catch (e) {
       _showSnackBar('خطا در تغییر وضعیت پین');
@@ -1158,8 +1165,11 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
             onPressed: () {
               Navigator.pop(context);
               ref
-                  .read(messageNotifierProvider.notifier)
-                  .deleteAllMessages(widget.conversationId, forEveryone: false)
+                  .read(chatScreenProvider(ChatScreenArgs(
+                          conversationId: widget.conversationId,
+                          otherUserId: widget.otherUserId))
+                      .notifier)
+                  .clearAllMessages()
                   .then((_) => _showSnackBar('تاریخچه گفتگو پاکسازی شد.'))
                   .catchError((e) =>
                       _showSnackBar('خطا در پاکسازی تاریخچه', isError: true));
@@ -1186,10 +1196,8 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
           TextButton(
             onPressed: () {
               Navigator.pop(context); // Close dialog first
-              ref
-                  .read(messageNotifierProvider.notifier)
-                  .deleteConversation(widget.conversationId)
-                  .then((_) {
+              final repo = ref.read(chatRepositoryProvider);
+              repo.deleteConversation(widget.conversationId).then((_) {
                 // After successful deletion, pop the details screen
                 if (mounted) {
                   Navigator.of(context).pop();
@@ -1231,8 +1239,8 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
 
   void _archiveConversation() async {
     try {
-      final messageNotifier = ref.read(messageNotifierProvider.notifier);
-      await messageNotifier.toggleArchiveConversation(widget.conversationId);
+      final repo = ref.read(chatRepositoryProvider);
+      await repo.toggleArchiveConversation(widget.conversationId);
       _showSnackBar('مکالمه بایگانی شد');
       Navigator.pop(context);
     } catch (e) {

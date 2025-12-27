@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
-import '../../provider/chat_provider.dart';
+import '../../provider/reaction_provider.dart';
 
 /// مدیریت مرکزی برای نمایش و کنترل Reaction Panel
 class ReactionManager {
@@ -154,12 +154,12 @@ class ReactionManager {
     VoidCallback? onReactionSelected,
   }) {
     // فراخوانی provider برای toggle reaction
-    ref.read(messageNotifierProvider.notifier).toggleReaction(
+    ref.read(reactionServiceProvider).toggleReaction(
           messageId: messageId,
           conversationId: conversationId,
           emoji: emoji,
         );
-    
+
     // فراخوانی callback برای خاموش کردن selection mode
     onReactionSelected?.call();
   }
@@ -211,15 +211,7 @@ class _ReactionOverlayWidgetState extends State<_ReactionOverlayWidget>
   late Animation<double> _fadeAnimation;
 
   // ✅ Emojis محبوب (مشابه واتساپ)
-  final List<String> _quickEmojis = [
-    '😂',
-    '❤️',
-    '😮',
-    '😢',
-    '🙏',
-    '👏',
-    '🔥'
-  ];
+  final List<String> _quickEmojis = ['😂', '❤️', '😮', '😢', '🙏', '👏', '🔥'];
 
   @override
   void initState() {
@@ -299,7 +291,7 @@ class _ReactionOverlayWidgetState extends State<_ReactionOverlayWidget>
 
   Widget _buildReactionPanel() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Positioned(
       left: widget.position.left,
       top: widget.position.top,
@@ -523,4 +515,3 @@ class _FullEmojiPickerSheet extends StatelessWidget {
     );
   }
 }
-

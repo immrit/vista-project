@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../model/conversation_model.dart';
-import '../../../provider/chat_provider.dart';
+import '../../../features/chat/providers/chat_providers.dart';
+// import '../../../provider/chat_provider.dart'; // Unused
 import '../../../provider/optimized_conversations_provider.dart';
 import '../../../features/chat/screens/modern_chat_screen.dart';
 
@@ -173,13 +174,21 @@ class ArchivedConversationsScreen extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     ConversationModel conversation,
-  ) {
-    ref
-        .read(messageNotifierProvider.notifier)
-        .toggleArchiveConversation(conversation.id);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('گفتگو از بایگانی خارج شد')),
-    );
+  ) async {
+    final repo = ref.read(chatRepositoryProvider);
+    final result = await repo.toggleArchiveConversation(conversation.id);
+
+    if (context.mounted) {
+      if (result.isSuccess) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('گفتگو از بایگانی خارج شد')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا: ${result.error}')),
+        );
+      }
+    }
   }
 
   void _showDeleteConfirmation(
@@ -232,13 +241,19 @@ class ArchivedConversationsScreen extends ConsumerWidget {
     ConversationModel conversation,
   ) async {
     try {
-      await ref
-          .read(messageNotifierProvider.notifier)
-          .deleteConversation(conversation.id);
+      final repo = ref.read(chatRepositoryProvider);
+      final result = await repo.deleteConversation(conversation.id);
+
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('گفتگو با موفقیت حذف شد')),
-        );
+        if (result.isSuccess) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('گفتگو با موفقیت حذف شد')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('خطا در حذف گفتگو: ${result.error}')),
+          );
+        }
       }
     } catch (e) {
       if (context.mounted) {

@@ -5,9 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shimmer/shimmer.dart';
 
 import '../../../model/conversation_model.dart';
-import '../../../provider/chat_provider.dart';
+
 // ✅ Provider بهینه‌شده جدید
 import '../../../provider/optimized_conversations_provider.dart';
+import '../../../features/chat/providers/chat_providers.dart';
 import 'ArchivedConversationsScreen.dart';
 // ✅ استفاده از صفحه چت جدید
 import '../../../features/chat/screens/modern_chat_screen.dart';
@@ -503,13 +504,19 @@ class _ChatConversationsScreenState
 
   // ✅ حذف مکالمه
   Future<void> _deleteConversation(ConversationModel conversation) async {
-    final messageNotifier = ref.read(messageNotifierProvider.notifier);
+    final repo = ref.read(chatRepositoryProvider);
     try {
-      await messageNotifier.deleteConversation(conversation.id);
+      final result = await repo.deleteConversation(conversation.id);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("گفتگو با موفقیت حذف شد!")),
-        );
+        if (result.isSuccess) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("گفتگو با موفقیت حذف شد!")),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("خطا در حذف گفتگو: ${result.error}")),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -924,42 +931,46 @@ class _ChatConversationsScreenState
   }
 
   // ✅ Action Methods (ConversationModel-based)
-  void _togglePinConversation(ConversationModel conversation) {
-    ref
-        .read(messageNotifierProvider.notifier)
-        .togglePinConversation(conversation.id);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-            'مکالمه ${conversation.isPinned ? 'از سنجاق حذف' : 'سنجاق'} شد'),
-      ),
-    );
+  void _togglePinConversation(ConversationModel conversation) async {
+    final repo = ref.read(chatRepositoryProvider);
+    final result = await repo.togglePinConversation(conversation.id);
+
+    if (mounted && result.isSuccess) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'مکالمه ${conversation.isPinned ? 'از سنجاق حذف' : 'سنجاق'} شد'),
+        ),
+      );
+    }
   }
 
-  void _toggleMuteConversation(ConversationModel conversation) {
-    ref
-        .read(messageNotifierProvider.notifier)
-        .toggleMuteConversation(conversation.id);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-            'اعلان‌ها برای این گفتگو ${conversation.isMuted ? 'فعال' : 'خاموش'} شد'),
-      ),
-    );
+  void _toggleMuteConversation(ConversationModel conversation) async {
+    final repo = ref.read(chatRepositoryProvider);
+    final result = await repo.toggleMuteConversation(conversation.id);
+
+    if (mounted && result.isSuccess) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'اعلان‌ها برای این گفتگو ${conversation.isMuted ? 'فعال' : 'خاموش'} شد'),
+        ),
+      );
+    }
   }
 
-  void _archiveConversation(ConversationModel conversation) {
-    ref
-        .read(messageNotifierProvider.notifier)
-        .toggleArchiveConversation(conversation.id)
-        .then((_) {
-      if (mounted) {
+  void _archiveConversation(ConversationModel conversation) async {
+    final repo = ref.read(chatRepositoryProvider);
+    final result = await repo.toggleArchiveConversation(conversation.id);
+
+    if (mounted) {
+      if (result.isSuccess) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('درخواست بایگانی/خروج از بایگانی ارسال شد.')),
+              content: Text('درخواست بایگانی/خروج از بایگانی انجام شد.')),
         );
       }
-    });
+    }
   }
 
   void _createNewChannel() {}

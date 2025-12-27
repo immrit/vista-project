@@ -1,12 +1,10 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:Vista/firebase_options.dart';
 import 'package:Vista/services/PushNotificationService.dart';
@@ -21,7 +19,11 @@ import 'package:Vista/utils/performance_monitor.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // 🔒 FIX: Prevent duplicate initialization in background isolate
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform);
+  }
   debugPrint("📬 Handling a background message: ${message.messageId}");
   if (message.data['type'] == 'chat_message') {
     final notificationService = PushNotificationService(null);
@@ -52,24 +54,42 @@ class AppInitialization {
     ));
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
-    // Core services
+    // Initial Setup
     await initializeDateFormatting('fa', null);
     _setupPerformanceOptimizations();
     PerformanceMonitor().startMonitoring();
-    await _initializeFirebase();
-    await initializeSupabaseWithFailover().timeout(
-      const Duration(seconds: 10),
-      onTimeout: () => throw TimeoutException('Supabase init timeout'),
-    );
-    await SessionManagerServiceV2().initialize();
-    await IsarDatabaseManager().instance;
-    await SettingsCacheService().initialize();
-    await AdvancedSettingsService().initialize();
-    await HighPerformanceCacheSystem().initialize();
+
+    // 🚀 PHASE 1: Core Platform Services (Parallel)
+    // These are independent and can run together.
+    await Future.wait([
+      _initializeFirebase(),
+      initializeSupabaseWithFailover().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw TimeoutException('Supabase init timeout'),
+      ),
+    ]);
+
+    // 🚀 PHASE 2: Data layer (Parallel)
+    // Supabase is ready now. SessionManager needs Supabase.
+    await Future.wait([
+      SessionManagerServiceV2().initialize(),
+      IsarDatabaseManager().instance,
+    ]);
+
+    // 🚀 PHASE 3: Feature Services & Cache (Parallel)
+    // These might depend on Isar/Supabase
+    await Future.wait([
+      SettingsCacheService().initialize(),
+      AdvancedSettingsService().initialize(),
+      HighPerformanceCacheSystem().initialize(),
+    ]);
+
+    // Monitoring (Fire & Forget)
     MemoryLeakDetector().startMonitoring();
   }
 
   static Future<void> _initializeFirebase() async {
+    // 🔒 FIX: Prevent race condition if Firebase is already initialized
     if (Firebase.apps.isNotEmpty) return;
     try {
       await Firebase.initializeApp(

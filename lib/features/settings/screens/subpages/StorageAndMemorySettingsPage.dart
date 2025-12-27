@@ -2,7 +2,10 @@ import '../../../../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import 'dart:math' as math;
+import 'dart:io';
 
 import '../../../../services/storage_info_service.dart';
 import '../../../../services/cache_manager.dart';
@@ -163,16 +166,64 @@ class _StorageAndMemorySettingsPageState
     return _profileService.getCacheStats();
   }
 
-  void _calculateStorageCategories() {
-    // محاسبه حجم‌های واقعی از سیستم‌های cache
-    final imageCacheRaw = _cacheStats['image_cache'];
+  Future<void> _calculateStorageCategories() async {
+    try {
+      final params = {
+        'cacheStats': _cacheStats,
+        'profileStats': _profileStats,
+        'storageInfo': _storageInfo,
+        'voiceCacheStats': _voiceCacheStats,
+      };
+
+      // استفاده از Isolate برای جلوگیری از بلاک شدن UI
+      final categories = await compute(_calculateCategoriesIsolate, params);
+
+      setState(() {
+        _storageCategories = categories;
+
+        // همگام‌سازی مجموعه دسته‌های قابل مشاهده با دسته‌های فعلی (کپی شده از منطق قبلی)
+        final currentTypes = _storageCategories.map((c) => c.type).toSet();
+        if (_visibleCategoryTypes.isEmpty) {
+          _visibleCategoryTypes = {...currentTypes};
+        } else {
+          _visibleCategoryTypes =
+              _visibleCategoryTypes.intersection(currentTypes);
+          if (_visibleCategoryTypes.isEmpty) {
+            _visibleCategoryTypes = {...currentTypes};
+          }
+        }
+      });
+
+      // Debug: چاپ مقادیر واقعی
+      logInfo('=== Real Storage Categories (via Isolate) ===');
+      for (var cat in _storageCategories) {
+        logInfo(
+          '${cat.name}: ${cat.size.toStringAsFixed(2)} MB (${cat.percentage.toStringAsFixed(1)}%)',
+        );
+      }
+    } catch (e) {
+      logInfo('Error calculating storage categories: $e');
+    }
+  }
+
+  // ✅ Static function for Isolate
+  static List<StorageCategory> _calculateCategoriesIsolate(
+      Map<String, dynamic> params) {
+    var storageCategories = <StorageCategory>[];
+
+    final cacheStats = params['cacheStats'] as Map<String, dynamic>;
+    final profileStats = params['profileStats'] as Map<String, dynamic>;
+    final storageInfo = params['storageInfo'] as Map<String, dynamic>;
+    final voiceCacheStats = params['voiceCacheStats'] as Map<String, dynamic>;
+
+    // محاسبه حجم‌های واقعی
+    final imageCacheRaw = cacheStats['image_cache'];
     final imageCache = imageCacheRaw is Map<String, dynamic>
         ? imageCacheRaw
         : (imageCacheRaw is Map
             ? Map<String, dynamic>.from(imageCacheRaw)
             : {});
 
-    // دریافت داده‌های واقعی از cache سیستم‌ها
     final storyCache = (imageCache['story_cache'] as Map?)?['size_mb'] ?? 0.0;
     final postCache = (imageCache['post_cache'] as Map?)?['size_mb'] ?? 0.0;
     final chatImageCache =
@@ -180,108 +231,79 @@ class _StorageAndMemorySettingsPageState
     final wallpaperCache =
         (imageCache['wallpaper_cache'] as Map?)?['size_mb'] ?? 0.0;
 
-    final profileCacheSize = _profileStats['total_cache_size_mb'] ?? 0.0;
-    final messageCache = _storageInfo['messageCacheSize'] ?? 0.0;
-    final conversationCache = _storageInfo['conversationCacheSize'] ?? 0.0;
-    final tempCache = _storageInfo['tempCacheSize'] ?? 0.0;
-    final voiceCacheSize = _voiceCacheStats['size_mb'] ?? 0.0;
-
-    // Debug: نمایش آمار دریافت شده
-    logInfo('📊 آمار کش دریافت شده:');
-    logInfo('   Story Cache: ${storyCache.toStringAsFixed(2)} MB');
-    logInfo('   Post Cache: ${postCache.toStringAsFixed(2)} MB');
-    logInfo('   Chat Image Cache: ${chatImageCache.toStringAsFixed(2)} MB');
-    logInfo('   Wallpaper Cache: ${wallpaperCache.toStringAsFixed(2)} MB');
-    logInfo('   Profile Cache: ${profileCacheSize.toStringAsFixed(2)} MB');
-    logInfo('   Message Cache: ${messageCache.toStringAsFixed(2)} MB');
-    logInfo(
-        '   Conversation Cache: ${conversationCache.toStringAsFixed(2)} MB');
-    logInfo('   Temp Cache: ${tempCache.toStringAsFixed(2)} MB');
-    logInfo('   Voice Cache: ${voiceCacheSize.toStringAsFixed(2)} MB');
+    final profileCacheSize = profileStats['total_cache_size_mb'] ?? 0.0;
+    final messageCache = storageInfo['messageCacheSize'] ?? 0.0;
+    final conversationCache = storageInfo['conversationCacheSize'] ?? 0.0;
+    final tempCache = storageInfo['tempCacheSize'] ?? 0.0;
+    final voiceCacheSize = voiceCacheStats['size_mb'] ?? 0.0;
 
     // تخصیص داده‌های واقعی به دسته‌ها
-    _storageCategories = [
+    storageCategories = [
       StorageCategory(
         'تصاویر',
         Colors.blue,
         'photos',
-        size: storyCache + postCache + chatImageCache,
+        size: (storyCache + postCache + chatImageCache).toDouble(),
       ),
       StorageCategory(
         'پیام‌ها و گفتگوها',
         Colors.green,
         'messages',
-        size: messageCache + conversationCache,
+        size: (messageCache + conversationCache).toDouble(),
       ),
       StorageCategory(
         'پیام‌های صوتی',
         Colors.teal,
         'voice',
-        size: voiceCacheSize,
+        size: voiceCacheSize.toDouble(),
       ),
       StorageCategory(
         'پروفایل‌ها و پست‌ها',
         Colors.purple,
         'profiles',
-        size: profileCacheSize,
+        size: profileCacheSize.toDouble(),
       ),
       StorageCategory(
         'پس‌زمینه‌ها',
         Colors.orange,
         'wallpapers',
-        size: wallpaperCache,
+        size: wallpaperCache.toDouble(),
       ),
-      StorageCategory('فایل‌های موقت', Colors.red, 'temp', size: tempCache),
+      StorageCategory('فایل‌های موقت', Colors.red, 'temp',
+          size: tempCache.toDouble()),
       StorageCategory(
         'اسناد',
         Colors.teal,
         'documents',
-        size: _storageInfo['appDocumentsSize'] ?? 0.0,
+        size: (storageInfo['appDocumentsSize'] ?? 0.0).toDouble(),
       ),
       StorageCategory(
         'سایر',
         Colors.grey,
         'other',
-        size: _storageInfo['appLibrarySize'] ?? 0.0,
+        size: (storageInfo['appLibrarySize'] ?? 0.0).toDouble(),
       ),
     ];
 
     // حذف دسته‌هایی که حجم صفر دارن
-    _storageCategories.removeWhere((cat) => cat.size <= 0.001);
+    storageCategories.removeWhere((cat) => cat.size <= 0.001);
 
     // محاسبه مجموع حجم
-    final totalSize = _storageCategories.fold(
+    final totalSize = storageCategories.fold(
       0.0,
       (sum, cat) => sum + cat.size,
     );
 
     // محاسبه درصدها
-    for (var category in _storageCategories) {
+    for (var category in storageCategories) {
       category.percentage =
           totalSize > 0 ? (category.size / totalSize * 100) : 0;
     }
 
     // مرتب‌سازی بر اساس حجم (بزرگ‌ترین اول)
-    _storageCategories.sort((a, b) => b.size.compareTo(a.size));
+    storageCategories.sort((a, b) => b.size.compareTo(a.size));
 
-    // همگام‌سازی مجموعه دسته‌های قابل مشاهده با دسته‌های فعلی
-    final currentTypes = _storageCategories.map((c) => c.type).toSet();
-    if (_visibleCategoryTypes.isEmpty) {
-      _visibleCategoryTypes = {...currentTypes};
-    } else {
-      _visibleCategoryTypes = _visibleCategoryTypes.intersection(currentTypes);
-      if (_visibleCategoryTypes.isEmpty) {
-        _visibleCategoryTypes = {...currentTypes};
-      }
-    }
-
-    // Debug: چاپ مقادیر واقعی
-    logInfo('=== Real Storage Categories ===');
-    for (var cat in _storageCategories) {
-      print(
-        '${cat.name}: ${cat.size.toStringAsFixed(2)} MB (${cat.percentage.toStringAsFixed(1)}%)',
-      );
-    }
+    return storageCategories;
   }
 
   @override
@@ -954,10 +976,12 @@ class _StorageAndMemorySettingsPageState
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                  '${excessSizeGB.toStringAsFixed(1)} گیگابایت فضا آزاد شد'),
+                  'پاک‌سازی ${excessSizeGB.toStringAsFixed(1)} گیگابایت انجام شد'),
               backgroundColor: Colors.green,
             ),
           );
+          // Reload stats
+          _loadAllStats();
         }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -982,6 +1006,51 @@ class _StorageAndMemorySettingsPageState
     // پیاده‌سازی حذف قدیمی‌ترین فایل‌ها بر اساس اندازه هدف
     print(
         '🧹 پاک‌سازی ${targetSizeMB.toStringAsFixed(1)} مگابایت از قدیمی‌ترین فایل‌ها');
+
+    try {
+      final tempDir = await getTemporaryDirectory();
+      if (!await tempDir.exists()) return;
+
+      int deletedCount = 0;
+      double deletedSizeMB = 0;
+
+      // 1. لیست کردن تمام فایل‌ها
+      final List<FileSystemEntity> files = [];
+      await for (final entity
+          in tempDir.list(recursive: true, followLinks: false)) {
+        if (entity is File) {
+          files.add(entity);
+        }
+      }
+
+      // 2. مرتب‌سازی بر اساس تاریخ آخرین تغییر (قدیمی‌ترین اول)
+      files.sort((a, b) {
+        try {
+          return a.statSync().modified.compareTo(b.statSync().modified);
+        } catch (e) {
+          return 0;
+        }
+      });
+
+      // 3. حذف فایل‌ها تا رسیدن به هدف
+      for (final file in files) {
+        if (deletedSizeMB >= targetSizeMB) break;
+
+        try {
+          final size = (await (file as File).length()) / (1024 * 1024);
+          await file.delete();
+          deletedSizeMB += size;
+          deletedCount++;
+        } catch (e) {
+          print('Error deleting file: $e');
+        }
+      }
+
+      print(
+          '✅ پاک‌سازی انجام شد: $deletedCount فایل حذف شد (${deletedSizeMB.toStringAsFixed(2)} MB)');
+    } catch (e) {
+      print('❌ خطا در پاک‌سازی کش: $e');
+    }
   }
 
   /// نمایش جزئیات اندازه کش

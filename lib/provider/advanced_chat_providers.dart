@@ -7,8 +7,9 @@ import '../model/conversation_model.dart';
 import '../DB/advanced_cache_system.dart';
 import '../DB/unified_message_cache_service.dart';
 import '../services/user_profile_service.dart';
-import '../services/ChatService_LEGACY.dart';
 import '../utils/const.dart';
+import '../features/chat/repositories/chat_repository.dart';
+import '../features/chat/providers/chat_providers.dart';
 
 /// Advanced chat providers using the new cache system
 ///
@@ -132,14 +133,15 @@ class UnifiedMessagesState {
 /// Unified Notifier for managing messages
 class UnifiedMessagesNotifier extends StateNotifier<UnifiedMessagesState> {
   final String conversationId;
-  final ChatService _chatService = ChatService();
+  final ChatRepository _chatRepository;
   final UnifiedMessageCacheService _messageCache = UnifiedMessageCacheService();
   static const int _pageSize = 20;
-  int _currentPage = 0;
+  // int _currentPage = 0; // Unused
   RealtimeChannel? _realtimeSubscription;
+
   final Set<String> _locallyDeletedMessageIds = <String>{};
 
-  UnifiedMessagesNotifier(this.conversationId)
+  UnifiedMessagesNotifier(this.conversationId, this._chatRepository)
       : super(const UnifiedMessagesState()) {
     _initializeMessages();
     _setupRealTimeListener();
@@ -282,14 +284,19 @@ class UnifiedMessagesNotifier extends StateNotifier<UnifiedMessagesState> {
       final userId = supabase.auth.currentUser?.id;
       if (userId == null) return;
 
-      _currentPage++;
-      final offset = _currentPage * _pageSize;
+      if (state.messages.isEmpty) {
+        state = state.copyWith(isLoading: false, hasMore: false);
+        return;
+      }
+      final oldestMessageId = state.messages.last.id;
 
-      final newMessages = await _chatService.getMessages(
+      final result = await _chatRepository.getMessages(
         conversationId,
         limit: _pageSize,
-        offset: offset,
+        beforeMessageId: oldestMessageId,
       );
+
+      final newMessages = result.data ?? [];
 
       if (newMessages.isNotEmpty) {
         final allMessages = [...state.messages, ...newMessages];
@@ -365,7 +372,8 @@ final unifiedMessagesProvider = StateNotifierProvider.family
     .autoDispose<UnifiedMessagesNotifier, UnifiedMessagesState, String>(
   (ref, conversationId) {
     final link = ref.keepAlive();
-    final notifier = UnifiedMessagesNotifier(conversationId);
+    final repository = ref.watch(chatRepositoryProvider);
+    final notifier = UnifiedMessagesNotifier(conversationId, repository);
 
     ref.onDispose(() {
       link.close();

@@ -16,7 +16,7 @@ import '../DB/settings_cache_service.dart';
 import '../services/animation_controller_service.dart';
 import '../services/video_autoplay_service.dart';
 import '../services/image_quality_service.dart';
-import '../services/smart_cache_service.dart';
+import '../core/data/cache/cache_repository.dart';
 import '../model/SearchResut.dart';
 import '../services/PostImageUploadService.dart';
 // import '../view/widgets/VideoPlayerConfig.dart';
@@ -3240,8 +3240,10 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
     await _saveSettings();
 
     // اعمال تنظیمات کش هوشمند
-    final smartCacheService = SmartCacheService();
-    await smartCacheService.setSmartCache(enabled);
+    // اعمال تنظیمات کش هوشمند
+    if (enabled) {
+      await CacheRepository().optimize();
+    }
   }
 
   Future<void> updateMessagePreloading(bool enabled) async {

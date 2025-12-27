@@ -128,7 +128,7 @@ class _EmailUsernameAuthScreenState extends State<EmailUsernameAuthScreen>
                       ),
                       child: ClipOval(
                         child: Image.asset(
-                          'lib/view/util/images/component/login.png',
+                          'lib/utils/images/component/login.png',
                           width: 120.w,
                           height: 120.w,
                           fit: BoxFit.cover,

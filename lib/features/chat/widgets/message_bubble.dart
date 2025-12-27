@@ -29,7 +29,6 @@ import '../../../widgets/reactions/reaction_selector.dart';
 import '../../../widgets/reactions/reaction_picker_sheet.dart';
 import '../../../widgets/reactions/reaction_manager.dart';
 import '../../../provider/reaction_provider.dart';
-import '../../../provider/chat_provider.dart';
 
 /// ویجت یکپارچه و نهایی MessageBubble
 class MessageBubble extends ConsumerStatefulWidget {
@@ -1253,7 +1252,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       child: GestureDetector(
         onTap: () {
           HapticFeedback.lightImpact();
-          ref.read(messageNotifierProvider.notifier).toggleReaction(
+          ref.read(reactionServiceProvider).toggleReaction(
                 messageId: widget.message.id,
                 conversationId: widget.conversationId!,
                 emoji: emoji,

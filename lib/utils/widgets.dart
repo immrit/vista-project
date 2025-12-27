@@ -3,6 +3,7 @@ import '../../utils/user_friendly_error_utils.dart';
 import 'dart:io';
 import 'dart:developer' as developer;
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:Vista/services/secure_logout_service.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,7 +12,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:Vista/features/settings/screens/ContactUs.dart';
-import 'package:Vista/features/auth/screens/auth_screen.dart';
+
 import 'const.dart';
 import '../../model/CommentModel.dart';
 import '../../model/UserModel.dart';
@@ -19,9 +20,6 @@ import '../../model/publicPostModel.dart';
 import '../../provider/provider.dart';
 import '../../provider/theme_provider.dart';
 import 'package:Vista/features/posts/screens/profileScreen.dart';
-import '../../DB/unified_message_cache_service.dart';
-import '../../DB/unified_conversation_cache_service.dart';
-import '../../services/session_manager_service.dart';
 
 class topText extends StatelessWidget {
   const topText({
@@ -1930,47 +1928,17 @@ Future<void> _showLogoutDialog(
     _showLoadingDialog(context, dynamicTheme);
 
     try {
-      // پاک کردن کش پیام‌ها و مکالمات
-      try {
-        await UnifiedMessageCacheService().clearAllCache();
-        await UnifiedConversationCacheService()
-            .clearCache(supabase.auth.currentUser!.id);
-      } catch (e) {
-        developer.log('Error clearing message/conversation cache: $e');
-      }
-
-      // خروج از حساب با استفاده از SessionManager
-      final sessionManager = SessionManagerService();
-      await sessionManager.userLogout();
+      // 🔒 Use Centralized Secure Logout Service
+      await SecureLogoutService.performLogout(context, ref);
     } catch (e) {
-      developer.log('Error during logout: $e');
+      developer.log('Error during secure logout: $e');
+      // If secure logout fails, try fallback or just close dialogs
+      if (context.mounted) {
+        Navigator.pop(context); // close loading
+        Navigator.pop(context); // close drawer or stay
+      }
     }
-
-    if (context.mounted) {
-      Navigator.pop(context); // بستن loading dialog
-      Navigator.pop(context); // بستن drawer
-
-      // هدایت به صفحه لاگین
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const AuthScreen()),
-        (route) => false,
-      );
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.white),
-              SizedBox(width: 12),
-              Text('با موفقیت خارج شدید'),
-            ],
-          ),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
+    // SecureLogoutService handles navigation on success
   }
 }
 

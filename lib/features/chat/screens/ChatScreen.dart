@@ -11,9 +11,11 @@ import '../../../utils/const.dart';
 import '../../../provider/settings_providers.dart';
 import '../../../model/message_model.dart';
 import '../../../provider/chat_screen_provider.dart';
+import '../../../features/chat/providers/chat_providers.dart';
 import '../../../provider/chat_provider.dart' as chat_provider;
 import '../../../provider/chat_provider.dart';
 import '../../../services/uploadAudioChatService.dart';
+import '../../../provider/optimized_conversations_provider.dart';
 import 'package:audio_waveforms/audio_waveforms.dart';
 import '../../../services/uploadImageChatService.dart';
 import '../../../services/advanced_file_manager.dart';
@@ -73,7 +75,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // State
   DateTime? _floatingDate;
   Timer? _floatingDateTimer;
-  late final ChatProviderParams _providerParams;
+  late final ChatScreenArgs _providerParams;
   MessageModel? _replyToMessage;
 
   // File handling state
@@ -117,7 +119,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     print('🚀 ChatScreen initState - conversationId: ${widget.conversationId}');
 
-    _providerParams = ChatProviderParams(
+    _providerParams = ChatScreenArgs(
       conversationId: widget.conversationId,
       otherUserId: widget.otherUserId,
     );
@@ -148,11 +150,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _checkBlockStatus() async {
     try {
-      final chatService = ref.read(chat_provider.chatServiceProvider);
-      final isBlocked = await chatService.isUserBlocked(widget.otherUserId);
-      final isCurrentUserBlocked = await chatService.isCurrentUserBlockedBy(
-        widget.otherUserId,
-      );
+      final repo = ref.read(chatRepositoryProvider);
+      // Assuming repo exposes block status or we use userBlockStatusProvider
+      final isBlocked = await repo.isUserBlocked(widget.otherUserId);
+      final isCurrentUserBlocked =
+          await repo.isCurrentUserBlockedBy(widget.otherUserId);
+
       if (mounted) {
         setState(() {
           _isOtherUserBlocked = isBlocked;
@@ -586,7 +589,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   void _deleteSelectedMessages(bool forEveryone) async {
     try {
-      final chatService = ref.read(chat_provider.chatServiceProvider);
+      final repo = ref.read(chatRepositoryProvider);
       final messageIdsToDelete = Set<String>.from(_selectedMessageIds);
 
       // ✅ شروع انیمیشن حذف برای همه پیام‌های انتخاب شده
@@ -609,7 +612,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       // حذف واقعی پیام‌ها
       for (final messageId in messageIdsToDelete) {
-        await chatService.deleteMessage(messageId, forEveryone: forEveryone);
+        await repo.deleteMessage(messageId, forEveryone: forEveryone);
       }
 
       // پاکسازی state
@@ -673,9 +676,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _resetUnreadCount() async {
     try {
-      final chatService = ref.read(chat_provider.chatServiceProvider);
-      await chatService.resetUnreadCount(
-          widget.conversationId, supabase.auth.currentUser!.id);
+      // ChatRepository usually handles this or exposes a method
+      final repo = ref.read(chatRepositoryProvider);
+      await repo.resetUnreadCount(widget.conversationId);
       print('✅ Unread count reset for conversation: ${widget.conversationId}');
     } catch (e) {
       print('خطا در بازنشانی تعداد خوانده‌نشده: $e');
@@ -764,9 +767,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _setReplyMessage(MessageModel message) {
+    ref
+        .read(chatScreenProvider(_providerParams).notifier)
+        .setReplyToMessage(message);
     setState(() {
       _replyToMessage = message;
-      // Focus logic is now handled inside ChatInput
     });
   }
 
@@ -788,7 +793,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             .read(chatScreenProvider(_providerParams).notifier)
             .removePendingMessage(message.id);
 
-        // سپس دوباره ارسال کن
         _sendImageMessage(imageFile, message.content);
       } else {
         print('❌ فایل محلی یافت نشد');
@@ -801,7 +805,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     } else {
       // برای سایر انواع پیام‌ها
       ref
-          .read(chat_provider.messageNotifierProvider.notifier)
+          .read(chatScreenProvider(_providerParams).notifier)
           .retrySendMessage(message);
     }
 
@@ -826,7 +830,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     // تلاش مجدد برای تمام پیام‌های ناموفق
     for (final message in failedMessages) {
       ref
-          .read(chat_provider.messageNotifierProvider.notifier)
+          .read(chatScreenProvider(_providerParams).notifier)
           .retrySendMessage(message);
     }
 
@@ -904,7 +908,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             message,
             attachmentUrl: attachmentUrl,
             attachmentType: attachmentType,
-            replyToMessage: _replyToMessage,
+            // Reply is handled by state
           );
 
       _clearAttachments();
@@ -918,11 +922,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
 
       // بروزرسانی لیست مکالمات برای نمایش آخرین پیام
-      ref.invalidate(conversationsProvider);
-      ref.invalidate(conversationsStreamProvider);
-      ref.invalidate(cachedConversationsStreamProvider);
+      ref.invalidate(optimizedConversationsProvider);
       // برای StateNotifier، refresh method فراخوانی کنیم
-      ref.read(cachedConversationsProvider.notifier).refresh();
+      ref.read(optimizedConversationsProvider.notifier).refresh();
     } catch (e) {
       ToastService.showErrorToast(
           context, 'خطا در ارسال پیام. لطفاً دوباره تلاش کنید.');
@@ -955,8 +957,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               '', // Voice messages have no text content
               attachmentUrl: audioUrl,
               attachmentType: 'audio',
-              duration: duration, // فعال کردن duration برای وویس
-              replyToMessage: _replyToMessage,
+              duration: duration,
+              // Reply handled by state
             );
 
         print("✅ پیام صوتی ارسال شد");
@@ -1039,7 +1041,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             '', // محتوای متنی خالی
             attachmentUrl: gifUrl,
             attachmentType: 'gif', // ✅ بسیار مهم: نوع پیام باید gif باشد
-            replyToMessage: _replyToMessage,
+            // Reply handled by state
           );
 
       print("🟢 ChatScreen: GIF Sent Successfully!");
@@ -1048,10 +1050,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _autoScrollToBottom();
 
       // آپدیت لیست مکالمات
-      ref.invalidate(conversationsProvider);
-      ref.invalidate(conversationsStreamProvider);
-      ref.invalidate(cachedConversationsStreamProvider);
-      ref.read(cachedConversationsProvider.notifier).refresh();
+      ref.invalidate(optimizedConversationsProvider);
+      ref.read(optimizedConversationsProvider.notifier).refresh();
 
       // نمایش پیام موفقیت
       ToastService.showSuccessToast(context, 'گیف با موفقیت ارسال شد');
@@ -1381,16 +1381,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
             TextButton(
               onPressed: () {
-                final additionalInfo = reportReasonController.text.trim();
+                // final additionalInfo = reportReasonController.text.trim(); // Unused
                 Navigator.pop(context);
 
                 ref
-                    .read(chat_provider.userReportNotifierProvider.notifier)
+                    .read(chatScreenProvider(_providerParams).notifier)
                     .reportUser(
-                      userId: widget.otherUserId,
+                      widget.otherUserId,
                       reason: selectedReason,
-                      additionalInfo:
-                          additionalInfo.isEmpty ? null : additionalInfo,
                     )
                     .then((_) {
                   ToastService.showSuccessToast(
@@ -1534,14 +1532,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _clearHistory(bool forEveryone) async {
     try {
-      final chatService = ref.read(chat_provider.chatServiceProvider);
-      await chatService.clearConversation(
-        widget.conversationId,
-        bothSides: forEveryone,
-      );
-
-      // پاکسازی فوری از UI
-      ref.read(chatScreenProvider(_providerParams).notifier).clearAllMessages();
+      await ref
+          .read(chatScreenProvider(_providerParams).notifier)
+          .clearAllMessages(forEveryone: forEveryone);
 
       ToastService.showSuccessToast(
         context,
@@ -2144,7 +2137,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               if (_reactionPickerMessageId != null) {
                                 // ارسال reaction به سرور
                                 await ref
-                                    .read(messageNotifierProvider.notifier)
+                                    .read(chatScreenProvider(_providerParams)
+                                        .notifier)
                                     .toggleReaction(
                                       messageId: _reactionPickerMessageId!,
                                       conversationId: widget.conversationId,
@@ -2301,10 +2295,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       print('✅ پیام با موفقیت ارسال شد');
 
       // 5️⃣ به‌روزرسانی لیست مکالمات
-      ref.invalidate(conversationsProvider);
-      ref.invalidate(conversationsStreamProvider);
-      ref.invalidate(cachedConversationsStreamProvider);
-      ref.read(cachedConversationsProvider.notifier).refresh();
+      ref.invalidate(optimizedConversationsProvider);
+      ref.read(optimizedConversationsProvider.notifier).refresh();
 
       ToastService.showSuccessToast(context, 'تصویر با موفقیت ارسال شد');
     } catch (e, stackTrace) {
@@ -2363,11 +2355,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _autoScrollToBottom();
 
       // بروزرسانی لیست مکالمات برای نمایش آخرین پیام
-      ref.invalidate(conversationsProvider);
-      ref.invalidate(conversationsStreamProvider);
-      ref.invalidate(cachedConversationsStreamProvider);
+      ref.invalidate(optimizedConversationsProvider);
       // برای StateNotifier، refresh method فراخوانی کنیم
-      ref.read(cachedConversationsProvider.notifier).refresh();
+      ref.read(optimizedConversationsProvider.notifier).refresh();
     } catch (e) {
       ToastService.showErrorToast(context, 'خطا در ارسال فایل');
     }

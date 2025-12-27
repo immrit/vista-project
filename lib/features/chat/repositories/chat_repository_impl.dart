@@ -7,8 +7,10 @@ import '../../../model/message_model.dart';
 import '../../../DB/unified_message_cache_service.dart'; // ✅ Added
 import '../../../model/conversation_model.dart';
 import '../data/datasources/chat_local_datasource_isar.dart';
-import '../services/storage_service.dart';
 import '../services/message_reactions_service.dart'; // ✅ اضافه شد
+import 'package:uuid/uuid.dart';
+import '../../../../services/vista_node_service.dart';
+import '../../../../security/logging_utility.dart'; // Added
 import 'chat_repository.dart';
 
 /// A local-first ChatRepository implementation using Isar.
@@ -17,7 +19,6 @@ class ChatRepositoryImpl implements ChatRepository {
   final SupabaseClient _supabase;
   final String? _injectedCurrentUserId;
   final RealtimeChannel _messagesChannel;
-  late final StorageService _storageService;
   late final MessageReactionsService _reactionService;
 
   ChatRepositoryImpl({
@@ -33,7 +34,6 @@ class ChatRepositoryImpl implements ChatRepository {
 
   void _init() {
     // Initialize services
-    _storageService = StorageService(_supabase);
     _reactionService = MessageReactionsService(); // ✅ مقداردهی شد
 
     // Start listening to realtime changes immediately
@@ -104,11 +104,34 @@ class ChatRepositoryImpl implements ChatRepository {
             final userId = _currentUserId;
             if (userId == null) return;
 
-            final newMessage =
-                MessageModel.fromJson(payload.newRecord, currentUserId: userId);
+            // logInfo('Realtime Event: ${payload.eventType}');
 
-            // 1. Save Message to Local DB
-            await _localDataSource.saveMessage(newMessage);
+            final newRecord = payload.newRecord;
+
+            final newMessage =
+                MessageModel.fromJson(newRecord, currentUserId: userId);
+
+            // logInfo('Realtime Message ID: ${newMessage.id}');
+
+            // ✅ Check if message already exists locally (by ID)
+            final existingMessage =
+                await _localDataSource.getMessage(newMessage.id, userId);
+
+            if (existingMessage != null) {
+              // MERGE: Keep local data, update status to 'sent'
+              // logInfo('Message exists locally. Updating status.');
+
+              final updatedMessage = existingMessage.copyWith(
+                isSent: true,
+                isPending: false, // Confirmed on server
+                createdAt: newMessage.createdAt,
+              );
+              await _localDataSource.saveMessage(updatedMessage);
+            } else {
+              // INSERT: New message from others
+              // logInfo('New message. Inserting.');
+              await _localDataSource.saveMessage(newMessage);
+            }
 
             // 2. Update Conversation Metadata (Unread Count, Last Message)
             final conversationId = newMessage.conversationId;
@@ -197,6 +220,7 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<ChatResult<MessageModel>> sendMessage({
     required String conversationId,
     required String content,
+    String? id,
     String? attachmentUrl,
     String? attachmentType,
     String? attachmentFileName,
@@ -208,51 +232,56 @@ class ChatRepositoryImpl implements ChatRepository {
     final userId = _currentUserId;
     if (userId == null) return ChatResult.failure('کاربر وارد نشده است');
 
-    // ✅ بررسی اعتبار جلسه کاری
     try {
       await _ensureAuth();
     } catch (e) {
       return ChatResult.failure(e.toString());
     }
 
-    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    // ✅ Generate ID client-side (UUID v4)
+    final messageId = id ?? const Uuid().v4();
     final now = DateTime.now();
 
-    final tempMessage = MessageModel(
-      id: tempId,
+    final messageModel = MessageModel(
+      id: messageId,
       conversationId: conversationId,
       senderId: userId,
       content: content,
       createdAt: now,
       isMe: true,
-      isPending: true,
+      isPending: true, // Initially pending
       isSent: false,
       attachmentUrl: attachmentUrl,
       attachmentType: attachmentType,
+      replyToMessageId: replyToMessageId, // Added support for replies
     );
 
     try {
-      await _localDataSource.saveMessage(tempMessage);
+      // 1. Save Optimistic Message to Local DB
+      await _localDataSource.saveMessage(messageModel);
 
-      // ✅ Trigger UI Update immediately via Unified Cache (Optimistic)
-      // This bridges the gap between Sembast (Storage) and AdvancedCacheSystem (UI)
-      await UnifiedMessageCacheService().cacheMessage(tempMessage);
+      // 2. Update Unified Cache (UI Update)
+      await UnifiedMessageCacheService().cacheMessage(messageModel);
 
-      // ✅ Update Conversation Metadata (Optimistic)
+      // 3. Update Conversation Metadata (Optimistic)
       final existingConv =
           await _localDataSource.getConversation(conversationId, userId);
       if (existingConv != null) {
         final updatedConv = existingConv.copyWith(
-          lastMessage: tempMessage.content,
+          lastMessage: messageModel.content,
           updatedAt: now,
-          unreadCount: 0, // Sending a message implies we read the chat
+          unreadCount: 0,
         );
         await _localDataSource.saveConversation(updatedConv);
+      } else {
+        // Handle case where conversation doesn't exist locally yet (rare but possible)
       }
 
+      // 4. Send to Supabase (using the SAME ID)
       final response = await _supabase
           .from('messages')
           .insert({
+            'id': messageId, // ✅ USE THE SAME ID
             'conversation_id': conversationId,
             'sender_id': userId,
             'content': content,
@@ -260,20 +289,23 @@ class ChatRepositoryImpl implements ChatRepository {
             'attachment_type': attachmentType,
             'is_sent': true,
             'is_pending': false,
-            'created_at': DateTime.now().toUtc().toIso8601String(),
+            'created_at': now.toUtc().toIso8601String(),
+            'reply_to_message_id': replyToMessageId,
           })
           .select()
           .single();
 
       final serverMessage =
           MessageModel.fromJson(response, currentUserId: userId);
-      await _localDataSource.deleteMessage(tempId);
+
+      // 5. Update Local DB w/ Server Response (mark as sent)
+      // No delete needed! Just update.
       await _localDataSource.saveMessage(serverMessage);
 
-      // ✅ Update UI with confirmed message
+      // 6. Update Unified Cache (Confirmed)
       await UnifiedMessageCacheService().cacheMessage(serverMessage);
 
-      // ✅ Update Conversation Metadata (Confirmed)
+      // 7. Sync Conversation Metadata (Confirmed)
       if (existingConv != null) {
         final updatedConv = existingConv.copyWith(
           lastMessage: serverMessage.content,
@@ -284,9 +316,12 @@ class ChatRepositoryImpl implements ChatRepository {
 
       return ChatResult.success(serverMessage);
     } catch (e) {
+      // On Failure: Mark as failed in DB
       final failedMessage =
-          tempMessage.copyWith(isPending: false, isFailed: true);
+          messageModel.copyWith(isPending: false, isFailed: true);
       await _localDataSource.saveMessage(failedMessage);
+      await UnifiedMessageCacheService()
+          .cacheMessage(failedMessage); // Update UI
       return ChatResult.failure(e.toString());
     }
   }
@@ -475,108 +510,108 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<ChatResult<void>> deleteMessage(String messageId,
       {bool forEveryone = false}) async {
     try {
+      print(
+          '🗑️ [Repo] Delete requested for message: $messageId, forEveryone: $forEveryone');
       await _ensureAuth();
 
       final userId = _currentUserId;
       if (userId == null) return ChatResult.failure('کاربر وارد نشده است');
 
-      // ✅ 0. دریافت conversationId قبل از حذف (برای UnifiedCache)
-      // اول از لوکال می‌گیریم چون سریع‌تر است و حتی اگر سرور خطا بدهد کار می‌کند
+      // ✅ 1. Fetch Message & Extract Key
       String? conversationId;
+      String? attachmentUrl;
+      String? attachmentType;
+      String? fileKey;
+
       try {
         final localMessage =
             await _localDataSource.getMessage(messageId, userId);
-        conversationId = localMessage?.conversationId;
-      } catch (_) {}
-
-      // اگر از لوکال پیدا نشد، از سرور بگیر
-      if (conversationId == null) {
-        try {
-          final messageData = await _supabase
+        if (localMessage != null) {
+          conversationId = localMessage.conversationId;
+          attachmentUrl = localMessage.attachmentUrl;
+          attachmentType = localMessage.attachmentType;
+        } else {
+          // Fallback to Server
+          final data = await _supabase
               .from('messages')
-              .select('conversation_id')
+              .select('conversation_id, attachment_url, attachment_type')
               .eq('id', messageId)
               .maybeSingle();
-          conversationId = messageData?['conversation_id'] as String?;
-        } catch (_) {}
+          if (data != null) {
+            conversationId = data['conversation_id'] as String?;
+            attachmentUrl = data['attachment_url'] as String?;
+            attachmentType = data['attachment_type'] as String?;
+          }
+        }
+
+        // Extract Key
+        if (forEveryone && attachmentUrl != null && attachmentUrl.isNotEmpty) {
+          // Fix: use named arguments if defined named, or correct positional count
+          fileKey = _extractFileKey(attachmentUrl, fileType: attachmentType);
+        }
+      } catch (e) {
+        print('⚠️ [Repo] Error gathering info: $e');
       }
 
-      // ✅ 1. ابتدا حذف از لوکال (Sembast) - این تضمین می‌کند UI فوراً به‌روزرسانی می‌شود
-      // و حتی اگر سرور خطا بدهد، کاربر پیام را نمی‌بیند
-      await _localDataSource.deleteMessage(messageId);
+      // ✅ 2. Server Side Action (Pessimistic)
+      if (forEveryone) {
+        print('🌐 [Repo] Calling Node Service to delete...');
+        await VistaNodeService.deleteMessage(messageId, fileKey: fileKey);
+        print('✅ [Repo] Server deletion successful.');
+      } else {
+        await _supabase.from('hidden_messages').insert({
+          'message_id': messageId,
+          'user_id': userId,
+          'hidden_at': DateTime.now().toUtc().toIso8601String(),
+        }).onError((error, stackTrace) {
+          if (!error.toString().toLowerCase().contains('duplicate')) {
+            throw error ?? Exception('Unknown error during hide');
+          }
+        });
+        print('✅ [Repo] Message hidden locally.');
+      }
 
-      // ✅ 1.5. حذف از UnifiedCache (برای به‌روزرسانی فوری UI)
+      // ✅ 3. Local Cleanup (Only after server success)
+      print('🧹 [Repo] Cleaning up local DB...');
+      await _localDataSource.deleteMessage(messageId);
       if (conversationId != null) {
         await UnifiedMessageCacheService()
             .deleteMessage(messageId, conversationId);
       }
 
-      // ✅ 2. حالا عملیات سمت سرور
-      if (forEveryone) {
-        // حذف دوطرفه - ابتدا اطلاعات فایل را بگیر (اگر وجود داشته باشد)
-        try {
-          final messageData = await _supabase
-              .from('messages')
-              .select('id, attachment_url, attachment_type')
-              .eq('id', messageId)
-              .maybeSingle(); // ✅ استفاده از maybeSingle برای جلوگیری از خطا
-
-          if (messageData != null) {
-            final attachmentUrl = messageData['attachment_url'] as String?;
-            final attachmentType = messageData['attachment_type'] as String?;
-
-            // حذف فایل ضمیمه از Cloud Storage
-            if (attachmentUrl != null && attachmentUrl.isNotEmpty) {
-              try {
-                await _storageService.deleteFile(attachmentUrl, attachmentType);
-                print(
-                    '✅ Attachment deleted from cloud for message: $messageId');
-              } catch (e) {
-                print('⚠️ Attachment deletion error (non-fatal): $e');
-              }
-            }
-
-            // حذف پیام از دیتابیس سرور
-            await _supabase.from('messages').delete().eq('id', messageId);
-            print('✅ Message deleted from database for everyone: $messageId');
-          } else {
-            // پیام قبلاً از سرور حذف شده بود (مثلاً توسط کاربر دیگر یا دستگاه دیگر)
-            print(
-                '⚠️ Message $messageId already deleted from server, local cleanup completed.');
-          }
-        } catch (e) {
-          // اگر خطای سرور رخ داد، لوکال قبلاً پاک شده است (که مهم‌تر است)
-          print(
-              '⚠️ Server delete error (for everyone), but local cleanup completed: $e');
-          // در تلگرام، حذف لوکال مهم‌تر از حذف سرور است
-          // اگر نت نباشد، حذف می‌ماند و بعداً سینک می‌شود
-        }
-      } else {
-        // حذف یک‌طرفه - پیام را فقط برای این کاربر مخفی کن
-        try {
-          await _supabase.from('hidden_messages').insert({
-            'message_id': messageId,
-            'user_id': userId,
-            'hidden_at': DateTime.now().toUtc().toIso8601String(),
-          }).onError((error, stackTrace) {
-            // اگر رکورد قبلاً وجود دارد (duplicate key)، مشکلی نیست
-            if (!error.toString().toLowerCase().contains('duplicate')) {
-              print('⚠️ Hide message error: $error');
-            }
-          });
-          print('✅ Message hidden for user: $userId, messageId: $messageId');
-        } catch (e) {
-          print('⚠️ Server hide error (non-fatal): $e');
-        }
-      }
-
       return ChatResult.success(null);
     } catch (e) {
-      // حتی در صورت خطای کلی، مطمئن شویم لوکال پاک شده است
-      try {
-        await _localDataSource.deleteMessage(messageId);
-      } catch (_) {}
+      print('❌ [Repo] Delete failed: $e');
       return ChatResult.failure(e.toString());
+    }
+  }
+
+  /// استخراج کلید فایل از URL با قابلیت Decoding
+  String? _extractFileKey(String fileUrl, {String? fileType}) {
+    try {
+      print('🔍 [Repo] Extracting key from: $fileUrl');
+      final decodedUrl = Uri.decodeFull(fileUrl);
+      final uri = Uri.parse(decodedUrl);
+
+      // Handle ArvanCloud/S3 path styles
+      // Assume bucket name might be the first segment
+      if (uri.pathSegments.isNotEmpty &&
+          uri.pathSegments.first == 'chat_attachments') {
+        final key = uri.pathSegments.sublist(1).join('/');
+        print('🔑 [Repo] Extracted Key (Bucket Prefix): $key');
+        return key;
+      }
+
+      if (uri.path.startsWith('/')) {
+        final key = uri.path.substring(1);
+        print('🔑 [Repo] Extracted Key (Direct): $key');
+        return key;
+      }
+
+      return uri.path;
+    } catch (e) {
+      print('❌ [Repo] Key extraction failed: $e');
+      return null;
     }
   }
 
@@ -722,6 +757,77 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Future<void> clearAllCache() async {
     // not implemented
+  }
+
+  @override
+  Future<void> resetUnreadCount(String conversationId) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      await _supabase
+          .from('conversation_participants')
+          .update({'unread_count': 0})
+          .eq('conversation_id', conversationId)
+          .eq('user_id', userId);
+    } catch (e) {
+      logInfo('Error resetting unread count: $e');
+    }
+  }
+
+  @override
+  Future<bool> isUserBlocked(String userId) async {
+    try {
+      final currentUserId = _supabase.auth.currentUser?.id;
+      if (currentUserId == null) return false;
+
+      final count = await _supabase
+          .from('blocked_users')
+          .count(CountOption.exact)
+          .eq('user_id', currentUserId)
+          .eq('blocked_user_id', userId);
+
+      return count > 0;
+    } catch (e) {
+      logInfo('Error checking blocked status: $e');
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> isCurrentUserBlockedBy(String userId) async {
+    try {
+      final currentUserId = _supabase.auth.currentUser?.id;
+      if (currentUserId == null) return false;
+
+      final count = await _supabase
+          .from('blocked_users')
+          .count(CountOption.exact)
+          .eq('user_id', userId)
+          .eq('blocked_user_id', currentUserId);
+
+      return count > 0;
+    } catch (e) {
+      logInfo('Error checking blocked by status: $e');
+      return false;
+    }
+  }
+
+  @override
+  Future<void> unblockUser(String userId) async {
+    try {
+      final currentUserId = _supabase.auth.currentUser?.id;
+      if (currentUserId == null) return;
+
+      await _supabase
+          .from('blocked_users')
+          .delete()
+          .eq('user_id', currentUserId)
+          .eq('blocked_user_id', userId);
+    } catch (e) {
+      logInfo('Error unblocking user: $e');
+      rethrow;
+    }
   }
 
   // ✅ STATIC HELPERS FOR BACKGROUND PARSING (ISOLATES)

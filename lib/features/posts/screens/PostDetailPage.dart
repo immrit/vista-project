@@ -612,7 +612,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
       children: [
         CircleAvatar(
           backgroundImage: post.avatarUrl.isEmpty
-              ? const AssetImage('lib/view/util/images/default-avatar.jpg')
+              ? const AssetImage('lib/utils/images/default-avatar.jpg')
               : CachedNetworkImageProvider(post.avatarUrl),
         ),
         const SizedBox(width: 10),
@@ -935,7 +935,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
               color: Colors.transparent,
             ),
             child: Image.asset(
-              'lib/view/util/images/component/comment.png',
+              'lib/utils/images/component/comment.png',
               width: 20,
               height: 20,
               color: Theme.of(context).brightness == Brightness.dark
@@ -1039,8 +1039,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                 CircleAvatar(
                   radius: 20,
                   backgroundImage: comment.avatarUrl.isEmpty
-                      ? const AssetImage(
-                          'lib/view/util/images/default-avatar.jpg')
+                      ? const AssetImage('lib/utils/images/default-avatar.jpg')
                       : CachedNetworkImageProvider(comment.avatarUrl)
                           as ImageProvider,
                 ),
@@ -1237,11 +1236,10 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
               onTap: () => _onMentionTap(user),
               child: Chip(
                 avatar: CircleAvatar(
-                  backgroundImage:
-                      user.avatarUrl != null && user.avatarUrl!.isNotEmpty
-                          ? CachedNetworkImageProvider(user.avatarUrl!)
-                          : const AssetImage(
-                              'lib/view/util/images/default-avatar.jpg'),
+                  backgroundImage: user.avatarUrl != null &&
+                          user.avatarUrl!.isNotEmpty
+                      ? CachedNetworkImageProvider(user.avatarUrl!)
+                      : const AssetImage('lib/utils/images/default-avatar.jpg'),
                 ),
                 label: Text(user.username),
               ),

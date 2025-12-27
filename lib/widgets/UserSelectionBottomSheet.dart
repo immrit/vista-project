@@ -5,8 +5,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../model/publicPostModel.dart';
 import '../../model/ProfileModel.dart';
-import '../../provider/chat_provider.dart';
+
 import '../../provider/optimized_conversations_provider.dart';
+import '../../features/chat/providers/chat_providers.dart';
 import '../../services/user_friendly_error_handler.dart';
 
 class UserSelectionBottomSheet extends ConsumerStatefulWidget {
@@ -220,9 +221,7 @@ class _UserSelectionBottomSheetState
     final filteredConversations = state.conversations.where((conversation) {
       if (_searchQuery.isEmpty) return true;
       final searchLower = _searchQuery.toLowerCase();
-      return conversation.otherUserName
-              ?.toLowerCase()
-              .contains(searchLower) ==
+      return conversation.otherUserName?.toLowerCase().contains(searchLower) ==
           true;
     }).toList();
 
@@ -523,24 +522,24 @@ class _UserSelectionBottomSheetState
     });
 
     try {
-      final chatService = ref.read(chatServiceProvider);
+      final repo = ref.read(chatRepositoryProvider);
       int successCount = 0;
 
       for (final userId in _selectedUsers) {
         try {
           // ایجاد یا دریافت مکالمه
           final conversationId =
-              await chatService.createOrGetConversation(userId);
+              (await repo.createConversation(userId)).data!.id;
 
           // ایجاد محتوای پیام برای پست به صورت JSON
           final postContent = _createPostJsonContent(widget.post);
 
           // ارسال پیام با attachmentType: 'post' برای نمایش به صورت کارت پست
-          await ref.read(messageNotifierProvider.notifier).sendMessage(
-                conversationId: conversationId,
-                content: postContent,
-                attachmentType: 'post',
-              );
+          await repo.sendMessage(
+            conversationId: conversationId,
+            content: postContent,
+            attachmentType: 'post',
+          );
 
           successCount++;
         } catch (e) {

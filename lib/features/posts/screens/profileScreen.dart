@@ -14,14 +14,14 @@ import '../../../utils/const.dart';
 import '../../../model/MusicModel.dart';
 import '../../../model/ProfileModel.dart';
 import '../../../provider/MusicProvider.dart';
-import '../../../provider/chat_provider.dart' as chat_provider;
+
 import '../../../services/secure_config.dart';
-import 'package:Vista/utils/const.dart';
 import 'package:Vista/utils/widgets.dart';
 import 'package:Vista/widgets/CustomVideoPlayer.dart';
 import 'package:Vista/widgets/ReelsScreen.dart';
 // ✅ استفاده از صفحه چت جدید
 import '../../../features/chat/screens/modern_chat_screen.dart';
+import '../../../features/chat/providers/chat_providers.dart';
 import 'package:Vista/features/profile/screens/editeProfile.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
 import '../../../model/publicPostModel.dart';
@@ -928,7 +928,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       String? existingConversationId;
 
       try {
-        final chatService = ref.read(chat_provider.chatServiceProvider);
+        final chatRepository = ref.read(chatRepositoryProvider);
         // نمایش نشانگر بارگذاری
         showDialog(
           context: context,
@@ -987,10 +987,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           ),
         );
 
-        // استفاده از createOrGetConversation که هم جستجو می‌کند و هم در صورت نیاز ایجاد می‌کند
+        // استفاده از createConversation از ChatRepository
         logInfo('🔍 جستجو و ایجاد مکالمه برای کاربر: $otherUserId');
-        existingConversationId =
-            await chatService.createOrGetConversation(otherUserId);
+        final result = await chatRepository.createConversation(otherUserId);
+
+        result.fold(
+          (conversation) => existingConversationId = conversation.id,
+          (error) => throw Exception(error),
+        );
         logInfo('✅ مکالمه آماده شد: $existingConversationId');
 
         // بستن نشانگر بارگذاری
@@ -1019,7 +1023,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       // انتقال به صفحه چت
       if (context.mounted) {
         // بررسی وجود conversationId معتبر
-        if (existingConversationId.isEmpty) {
+        if (existingConversationId == null || existingConversationId!.isEmpty) {
           logInfo('❌ conversationId نامعتبر: $existingConversationId');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -1269,7 +1273,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Image.asset(
-                        'lib/view/util/images/component/reels.png',
+                        'lib/utils/images/component/reels.png',
                         width: 18,
                         height: 18,
                         color: isDark ? Colors.grey[400] : Colors.grey[600],
@@ -1506,7 +1510,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Image.asset(
-                  'lib/view/util/images/component/reels.png',
+                  'lib/utils/images/component/reels.png',
                   width: 56,
                   height: 56,
                   color: Colors.grey,
@@ -1926,7 +1930,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               color: Colors.transparent,
             ),
             child: Image.asset(
-              'lib/view/util/images/component/comment.png',
+              'lib/utils/images/component/comment.png',
               width: 20,
               height: 20,
               color: Theme.of(context).brightness == Brightness.dark
@@ -1943,7 +1947,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   Widget _buildShareButton(PublicPostModel post) {
     return IconButton(
         icon: Image.asset(
-          'lib/view/util/images/component/send.png',
+          'lib/utils/images/component/send.png',
           width: 20,
           height: 20,
           color: Theme.of(context).brightness == Brightness.dark
@@ -2329,7 +2333,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                                 children: [
                                   Center(
                                     child: Image.asset(
-                                      'lib/view/util/images/component/reels.png',
+                                      'lib/utils/images/component/reels.png',
                                       width: 50,
                                       height: 50,
                                       color: Colors.white,

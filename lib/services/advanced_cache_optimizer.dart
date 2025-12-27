@@ -4,6 +4,7 @@ import '../utils/const.dart';
 import '../DB/unified_message_cache_service.dart';
 
 /// سرویس بهینه‌سازی پیشرفته cache برای همگام‌سازی روان
+@Deprecated('Use CacheRepository instead')
 class AdvancedCacheOptimizer {
   static final AdvancedCacheOptimizer _instance =
       AdvancedCacheOptimizer._internal();

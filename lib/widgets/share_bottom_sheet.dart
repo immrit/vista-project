@@ -89,7 +89,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                       label: 'اشتراک‌گذاری...',
                       onTap: _shareVia,
                       customIcon: Image.asset(
-                        'lib/view/util/images/component/send.png',
+                        'lib/utils/images/component/send.png',
                         width: 24,
                         height: 24,
                         color: Colors.black,
@@ -233,7 +233,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: Image.asset(
-          'lib/view/util/images/share_icons/Instagram.png',
+          'lib/utils/images/share_icons/Instagram.png',
           fit: BoxFit.cover,
         ),
       ),
@@ -253,7 +253,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
         child: Padding(
           padding: const EdgeInsets.all(8.0),
           child: Image.asset(
-            'lib/view/util/images/share_icons/whatsapp.png',
+            'lib/utils/images/share_icons/whatsapp.png',
             fit: BoxFit.contain,
           ),
         ),
@@ -274,7 +274,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
         child: Padding(
           padding: const EdgeInsets.all(8.0),
           child: Image.asset(
-            'lib/view/util/images/share_icons/gmail.png',
+            'lib/utils/images/share_icons/gmail.png',
             fit: BoxFit.contain,
           ),
         ),
@@ -295,7 +295,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
         child: Padding(
           padding: const EdgeInsets.all(8.0),
           child: Image.asset(
-            'lib/view/util/images/share_icons/Rubika.png',
+            'lib/utils/images/share_icons/Rubika.png',
             fit: BoxFit.contain,
           ),
         ),

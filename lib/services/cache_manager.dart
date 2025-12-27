@@ -5,7 +5,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import '../DB/unified_message_cache_service.dart';
-import '../DB/unified_conversation_cache_service.dart';
+
 import 'file_manager_service.dart';
 import 'safe_cache_manager.dart';
 
@@ -26,8 +26,6 @@ class UnifiedCacheManager {
 
   // سرویس‌های کش دیتابیس
   final UnifiedMessageCacheService _messageCache = UnifiedMessageCacheService();
-  final UnifiedConversationCacheService _conversationCache =
-      UnifiedConversationCacheService();
 
   // تنظیمات هوشمند کش
   bool _smartCacheEnabled = true;

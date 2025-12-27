@@ -679,7 +679,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
                                                     avatarUrl.isNotEmpty)
                                                 ? NetworkImage(avatarUrl)
                                                 : const AssetImage(
-                                                    'lib/view/util/images/default-avatar.jpg'),
+                                                    'lib/utils/images/default-avatar.jpg'),
                                         fit: BoxFit.cover,
                                       ),
                                     ),

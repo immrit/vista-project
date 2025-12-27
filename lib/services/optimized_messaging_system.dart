@@ -6,7 +6,7 @@ import '../DB/unified_message_cache_service.dart';
 import '../provider/provider.dart';
 import '../utils/const.dart';
 import 'realtime_connection_optimizer.dart';
-import 'advanced_cache_optimizer.dart';
+import '../core/data/cache/cache_repository.dart';
 
 /// سیستم پیام‌رسانی بهینه‌شده - تک کش، تک provider
 class OptimizedMessagingSystem {
@@ -20,7 +20,7 @@ class OptimizedMessagingSystem {
   // ChatService مستقیماً استفاده نمی‌شود - از Supabase مستقیم استفاده می‌کنیم
   final RealtimeConnectionOptimizer _connectionOptimizer =
       RealtimeConnectionOptimizer();
-  final AdvancedCacheOptimizer _cacheOptimizer = AdvancedCacheOptimizer();
+  // Optimization handled by CacheRepository internally or ignored for now
 
   // تنها یک realtime subscription manager
   final Map<String, StreamSubscription> _activeSubscriptions = {};
@@ -48,7 +48,7 @@ class OptimizedMessagingSystem {
 
       // MessageCacheService از پیش initialize شده در main
       await _connectionOptimizer.initialize();
-      await _cacheOptimizer.startOptimization();
+      await CacheRepository().optimize();
 
       _isInitialized = true;
       logInfo('✅ Optimized Messaging System initialized');
@@ -65,12 +65,12 @@ class OptimizedMessagingSystem {
 
     // بررسی memory cache ابتدا
     if (_messagesCache.containsKey(cacheKey) && !_isCacheExpired(cacheKey)) {
-      _cacheOptimizer.recordCacheHit(cacheKey);
+      // _cacheOptimizer.recordCacheHit(cacheKey);
       return List.from(_messagesCache[cacheKey]!);
     }
 
     // Record cache miss
-    _cacheOptimizer.recordCacheMiss(cacheKey);
+    // _cacheOptimizer.recordCacheMiss(cacheKey);
 
     // دریافت از persistent cache
     final messages =
@@ -200,7 +200,7 @@ class OptimizedMessagingSystem {
 
   /// پاکسازی کامل (برای memory management)
   void dispose() {
-    _cacheOptimizer.dispose();
+    // _cacheOptimizer.dispose();
     _connectionOptimizer.dispose();
 
     for (final subscription in _activeSubscriptions.values) {
@@ -218,7 +218,7 @@ class OptimizedMessagingSystem {
       'cached_conversations': _messagesCache.length,
       'memory_usage_kb': _estimateMemoryUsage(),
       'connection_stats': _connectionOptimizer.getConnectionStats(),
-      'cache_optimization': _cacheOptimizer.getOptimizationStats(),
+      'cache_optimization': 'Managed by CacheRepository/Isar',
     };
   }
 

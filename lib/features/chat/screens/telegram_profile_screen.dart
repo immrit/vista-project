@@ -20,10 +20,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../../model/message_model.dart';
-import '../../../provider/chat_provider.dart';
-import '../../../provider/provider.dart';
+import '../../../provider/chat_provider.dart' as legacy_chat;
+import '../../../provider/chat_screen_provider.dart';
 import 'ChatMessageSearchScreen.dart';
-import 'package:Vista/features/posts/screens/profileScreen.dart';
+
+import '../../../features/chat/providers/chat_providers.dart';
+import '../../../provider/provider.dart';
+import '../../posts/screens/profileScreen.dart';
 
 /// صفحه جزئیات چت به سبک تلگرام
 class TelegramProfileScreen extends ConsumerStatefulWidget {
@@ -93,13 +96,13 @@ class _TelegramProfileScreenState extends ConsumerState<TelegramProfileScreen>
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final userProfileAsync =
-        ref.watch(userProfileDetailsProvider(widget.otherUserId));
+        ref.watch(legacy_chat.userProfileProvider(widget.otherUserId));
     final conversationAsync =
-        ref.watch(conversationProvider(widget.conversationId));
+        ref.watch(legacy_chat.conversationProvider(widget.conversationId));
     final isBlockedAsync =
-        ref.watch(userBlockStatusProvider(widget.otherUserId));
-    final userOnlineAsync =
-        ref.watch(userOnlineStatusStreamProvider(widget.otherUserId));
+        ref.watch(legacy_chat.userBlockStatusProvider(widget.otherUserId));
+    final userOnlineAsync = ref
+        .watch(legacy_chat.userOnlineStatusStreamProvider(widget.otherUserId));
 
     final bgColor = isDark ? _darkBg : _lightBg;
 
@@ -514,8 +517,7 @@ class _TelegramProfileScreenState extends ConsumerState<TelegramProfileScreen>
   }
 
   /// بخش اطلاعات کاربر
-  Widget _buildUserInfoSection(
-      bool isDark, AsyncValue<Map<String, dynamic>?> userProfileAsync) {
+  Widget _buildUserInfoSection(bool isDark, AsyncValue userProfileAsync) {
     final cardColor = isDark ? _darkCard : Colors.white;
     final subtitleColor = isDark ? Colors.white60 : Colors.grey[600];
     final dividerColor = isDark ? _darkDivider : _lightDivider;
@@ -710,7 +712,8 @@ class _TelegramProfileScreenState extends ConsumerState<TelegramProfileScreen>
 
   /// تب رسانه (تصاویر و ویدیوها)
   Widget _buildMediaTab(bool isDark) {
-    final mediaAsync = ref.watch(sharedMediaProvider(widget.conversationId));
+    final mediaAsync =
+        ref.watch(legacy_chat.sharedMediaProvider(widget.conversationId));
 
     return mediaAsync.when(
       data: (messages) {
@@ -813,7 +816,8 @@ class _TelegramProfileScreenState extends ConsumerState<TelegramProfileScreen>
 
   /// تب فایل‌ها
   Widget _buildFilesTab(bool isDark) {
-    final mediaAsync = ref.watch(sharedMediaProvider(widget.conversationId));
+    final mediaAsync =
+        ref.watch(legacy_chat.sharedMediaProvider(widget.conversationId));
 
     return mediaAsync.when(
       data: (messages) {
@@ -891,7 +895,8 @@ class _TelegramProfileScreenState extends ConsumerState<TelegramProfileScreen>
 
   /// تب صدا
   Widget _buildVoiceTab(bool isDark) {
-    final mediaAsync = ref.watch(sharedMediaProvider(widget.conversationId));
+    final mediaAsync =
+        ref.watch(legacy_chat.sharedMediaProvider(widget.conversationId));
 
     return mediaAsync.when(
       data: (messages) {
@@ -1354,7 +1359,7 @@ class _TelegramProfileScreenState extends ConsumerState<TelegramProfileScreen>
   void _showOptionsMenu(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isBlockedAsync =
-        ref.read(userBlockStatusProvider(widget.otherUserId));
+        ref.read(legacy_chat.userBlockStatusProvider(widget.otherUserId));
     final isBlocked = isBlockedAsync.value ?? false;
 
     showModalBottomSheet(
@@ -1433,8 +1438,8 @@ class _TelegramProfileScreenState extends ConsumerState<TelegramProfileScreen>
 
   void _toggleMute() async {
     try {
-      final messageNotifier = ref.read(messageNotifierProvider.notifier);
-      await messageNotifier.toggleMuteConversation(widget.conversationId);
+      final repo = ref.read(chatRepositoryProvider);
+      await repo.toggleMuteConversation(widget.conversationId);
       _showSnackBar('تنظیمات اعلان تغییر کرد');
     } catch (e) {
       _showSnackBar('خطا در تغییر تنظیمات', isError: true);
@@ -1472,7 +1477,7 @@ class _TelegramProfileScreenState extends ConsumerState<TelegramProfileScreen>
   }
 
   void _toggleBlock(bool isCurrentlyBlocked) {
-    final notifier = ref.read(userBlockNotifierProvider.notifier);
+    final notifier = ref.read(legacy_chat.userBlockNotifierProvider.notifier);
     final future = isCurrentlyBlocked
         ? notifier.unblockUser(widget.otherUserId)
         : notifier.blockUser(widget.otherUserId);
@@ -1533,9 +1538,11 @@ class _TelegramProfileScreenState extends ConsumerState<TelegramProfileScreen>
 
   void _deleteConversation() async {
     try {
-      await ref
-          .read(messageNotifierProvider.notifier)
-          .deleteConversation(widget.conversationId);
+      final notifier = ref.read(chatScreenProvider(ChatScreenArgs(
+              conversationId: widget.conversationId,
+              otherUserId: widget.otherUserId))
+          .notifier);
+      await notifier.deleteConversation();
       if (mounted) {
         Navigator.of(context).popUntil((route) => route.isFirst);
       }

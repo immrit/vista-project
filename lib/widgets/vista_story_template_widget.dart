@@ -187,7 +187,7 @@ class VistaStoryTemplateWidget extends StatelessWidget {
               shape: BoxShape.circle,
             ),
             child: Image.asset(
-              'lib/view/util/images/logo/black-logo.png',
+              'lib/utils/images/logo/black-logo.png',
               width: 60, // اندازه خیلی بزرگ‌تر
               height: 60,
               errorBuilder: (context, error, stackTrace) {
@@ -310,7 +310,7 @@ class VistaStoryTemplateWidget extends StatelessWidget {
               Row(
                 children: [
                   Image.asset(
-                    'lib/view/util/images/component/comment.png',
+                    'lib/utils/images/component/comment.png',
                     width: 40, // اندازه خیلی بزرگ‌تر
                     height: 40,
                     color: Colors.grey[600],

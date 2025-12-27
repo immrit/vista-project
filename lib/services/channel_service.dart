@@ -1,4 +1,5 @@
 import '../security/logging_utility.dart';
+import 'package:Vista/services/secure_config.dart';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -23,9 +24,7 @@ class ChannelService {
   // 📸 آپلود تصویر به آروان کلود
   Future<String?> _uploadImageToArvan(File imageFile, String folder) async {
     try {
-      const String accessKey = 'YOUR_ARVAN_ACCESS_KEY';
-      const String secretKey = 'YOUR_ARVAN_SECRET_KEY';
-      const String bucketName = 'YOUR_BUCKET_NAME';
+      final String bucketName = SecureConfig.awsBucketName;
       const String endpoint = 'https://s3.ir-thr-at1.arvanstorage.ir';
 
       // ساخت نام فایل یونیک
@@ -67,9 +66,7 @@ class ChannelService {
   // 🗑️ حذف تصویر از آروان کلود
   Future<bool> _deleteImageFromArvan(String imageUrl) async {
     try {
-      const String accessKey = 'YOUR_ARVAN_ACCESS_KEY';
-      const String secretKey = 'YOUR_ARVAN_SECRET_KEY';
-      const String bucketName = 'YOUR_BUCKET_NAME';
+      final String bucketName = SecureConfig.awsBucketName;
       const String endpoint = 'https://s3.ir-thr-at1.arvanstorage.ir';
 
       // استخراج نام فایل از URL

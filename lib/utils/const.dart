@@ -8,7 +8,7 @@ import '../../services/session_manager_service.dart';
 final supabase = Supabase.instance.client;
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-const String defaultAvatarUrl = 'lib/view/util/images/default-avatar.jpg';
+const String defaultAvatarUrl = 'lib/utils/images/default-avatar.jpg';
 
 const String supabaseCdnUrl = 'https://api.coffevista.ir:8443';
 const String supabaseDirectUrl = 'http://cdn.exiritshop.ir:8000';
@@ -319,7 +319,9 @@ void _logSessionStatus() {
       print('📅 Created: ${session.user.createdAt}');
       print(
           '⏰ Expires in: ${Duration(seconds: timeUntilExpiry).inMinutes} minutes');
-      print('🔑 Access Token: ${session.accessToken.substring(0, 20)}...');
+      final token = session.accessToken;
+      print(
+          '🔑 Access Token: ${token.length > 20 ? token.substring(0, 20) : token}...');
       print(
           '🔄 Refresh Token: ${session.refreshToken?.substring(0, 20) ?? 'N/A'}...');
       print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

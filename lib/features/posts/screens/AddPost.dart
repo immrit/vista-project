@@ -603,33 +603,48 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     });
 
     try {
-      String? imageUrl;
-      String? musicUrl;
-      String? videoUrl;
-
-      // آپلود تصویر در صورت انتخاب
-      if (kIsWeb && _selectedImageBytes != null && _selectedImageName != null) {
-        imageUrl = await PostImageUploadService.uploadPostImageWeb(
-            _selectedImageBytes!, _selectedImageName!);
-      } else if (_selectedImage != null) {
-        imageUrl =
-            await PostImageUploadService.uploadPostImage(_selectedImage!);
+      // تعریف Future های آپلود به صورت همزمان
+      Future<String?> uploadImageTask() async {
+        if (kIsWeb &&
+            _selectedImageBytes != null &&
+            _selectedImageName != null) {
+          return PostImageUploadService.uploadPostImageWeb(
+              _selectedImageBytes!, _selectedImageName!);
+        } else if (_selectedImage != null) {
+          return PostImageUploadService.uploadPostImage(_selectedImage!);
+        }
+        return null;
       }
 
-      // آپلود ویدیو در صورت انتخاب
-      if (kIsWeb && _selectedVideoBytes != null && _selectedVideoName != null) {
-        videoUrl = await PostImageUploadService.uploadVideoFileWeb(
-            _selectedVideoBytes!, _selectedVideoName!);
-      } else if (_selectedVideo != null) {
-        videoUrl =
-            await PostImageUploadService.uploadVideoFile(_selectedVideo!);
+      Future<String?> uploadVideoTask() async {
+        if (kIsWeb &&
+            _selectedVideoBytes != null &&
+            _selectedVideoName != null) {
+          return PostImageUploadService.uploadVideoFileWeb(
+              _selectedVideoBytes!, _selectedVideoName!);
+        } else if (_selectedVideo != null) {
+          return PostImageUploadService.uploadVideoFile(_selectedVideo!);
+        }
+        return null;
       }
 
-      // آپلود موزیک در صورت انتخاب
-      if (_selectedMusic != null) {
-        musicUrl =
-            await PostImageUploadService.uploadMusicFile(_selectedMusic!);
+      Future<String?> uploadMusicTask() async {
+        if (_selectedMusic != null) {
+          return PostImageUploadService.uploadMusicFile(_selectedMusic!);
+        }
+        return null;
       }
+
+      // اجرای همزمان آپلودها
+      final results = await Future.wait([
+        uploadImageTask(),
+        uploadVideoTask(),
+        uploadMusicTask(),
+      ]);
+
+      String? imageUrl = results[0];
+      String? videoUrl = results[1];
+      String? musicUrl = results[2];
 
       // بررسی احراز هویت کاربر
       final currentUser = supabase.auth.currentUser;
@@ -910,14 +925,13 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
               backgroundImage: userData.when(
                 data: (data) => data != null && data['avatar_url'] != null
                     ? NetworkImage(data['avatar_url'])
-                    : const AssetImage(
-                            'lib/view/util/images/default-avatar.jpg')
+                    : const AssetImage('lib/utils/images/default-avatar.jpg')
                         as ImageProvider,
                 loading: () =>
-                    const AssetImage('lib/view/util/images/default-avatar.jpg')
+                    const AssetImage('lib/utils/images/default-avatar.jpg')
                         as ImageProvider,
                 error: (_, __) =>
-                    const AssetImage('lib/view/util/images/default-avatar.jpg')
+                    const AssetImage('lib/utils/images/default-avatar.jpg')
                         as ImageProvider,
               ),
               backgroundColor: Colors.grey[300],
@@ -1026,7 +1040,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
           radius: 20,
           backgroundImage: userData['avatar_url'] != null
               ? NetworkImage(userData['avatar_url'])
-              : const AssetImage('lib/view/util/images/default-avatar.jpg')
+              : const AssetImage('lib/utils/images/default-avatar.jpg')
                   as ImageProvider,
         ),
         const SizedBox(width: 8),

@@ -17,23 +17,24 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:Vista/app/app_initialization.dart';
 
 // Services
-import 'package:Vista/services/ChatService_LEGACY.dart';
+
 import 'package:Vista/services/deep_link_service.dart' as new_deep_link;
 import 'package:Vista/services/PushNotificationService.dart';
 import 'package:Vista/services/notification_navigation_service.dart';
 import 'package:Vista/services/session_manager_service_v2.dart';
-import 'package:Vista/services/user_presence_service.dart';
+
 import 'package:Vista/services/auto_lock_service.dart';
 import 'package:Vista/services/network_state_service.dart';
-import 'package:Vista/DB/unified_conversation_cache_service.dart';
+
 import 'package:Vista/DB/profile_cache_service.dart';
+import 'package:Vista/services/user_presence_service.dart';
+import 'package:Vista/core/data/cache/cache_repository.dart';
 
 // Middlewares
 import 'package:Vista/middleware/session_middleware.dart';
 
 // Providers
 import 'package:Vista/provider/theme_provider.dart';
-import 'package:Vista/provider/settings_providers.dart';
 
 // Utils
 import 'package:Vista/utils/themes.dart';
@@ -243,7 +244,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   Future<void> _handleUserSignIn(Session? session) async {
     if (session == null) return;
     SessionManagerServiceV2().updateLocationAndIP();
-    ChatService().updateUserOnlineStatus();
+    UserPresenceService().initialize();
     try {
       ProfileCacheService().cacheProfileAndPosts(session.user.id);
     } catch (_) {}
@@ -368,7 +369,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   void _setupDeepLinkHandling() {
     _processInitialLink();
     _linkSubscription = _appLinks.uriLinkStream.listen((uri) {
-      if (uri != null) _processDeepLink(uri);
+      _processDeepLink(uri);
     });
   }
 
@@ -438,18 +439,20 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                 final args = ModalRoute.of(context)?.settings.arguments
                     as Map<String, dynamic>?;
                 final postId = args?['postId'];
-                if (postId != null)
+                if (postId != null) {
                   return SessionMiddleware(
                       child: PostDetailsPage(postId: postId));
+                }
                 return const Scaffold();
               },
               '/profile': (context) {
                 final args = ModalRoute.of(context)?.settings.arguments
                     as Map<String, dynamic>?;
                 final username = args?['username'];
-                if (username != null)
+                if (username != null) {
                   return SessionMiddleware(
                       child: ProfileScreen(username: username, userId: ''));
+                }
                 return const Scaffold();
               },
               '/chat': (context) {
@@ -458,17 +461,17 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                 String? otherUserId;
                 String? username;
                 String? avatarUrl;
-                if (args is String)
+                if (args is String) {
                   conversationId = args;
-                else if (args is Map<String, dynamic>) {
+                } else if (args is Map<String, dynamic>) {
                   conversationId = args['conversationId'];
                   otherUserId = args['otherUserId'];
                   username = args['username'];
                   avatarUrl = args['avatarUrl'];
                 }
                 if (conversationId != null) {
-                  final conversation = UnifiedConversationCacheService()
-                      .getConversationSync(conversationId);
+                  final conversation =
+                      CacheRepository().getConversationSync(conversationId);
                   return SessionMiddleware(
                     child: ModernChatScreen(
                       args: ChatScreenArgs(

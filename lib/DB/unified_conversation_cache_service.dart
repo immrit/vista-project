@@ -4,6 +4,7 @@ import '../features/chat/data/entities/conversation_entity.dart';
 import '../model/conversation_model.dart';
 import '../security/logging_utility.dart';
 
+@Deprecated('Use CacheRepository instead. This file will be removed.')
 class UnifiedConversationCacheService {
   static final UnifiedConversationCacheService _instance =
       UnifiedConversationCacheService._internal();

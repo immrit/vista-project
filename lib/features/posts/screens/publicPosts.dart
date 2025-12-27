@@ -735,8 +735,7 @@ Widget _buildPostItem(
               },
               child: CircleAvatar(
                 backgroundImage: post.avatarUrl.isEmpty
-                    ? const AssetImage(
-                            'lib/view/util/images/default-avatar.jpg')
+                    ? const AssetImage('lib/utils/images/default-avatar.jpg')
                         as ImageProvider
                     : CachedNetworkImageProvider(
                         post.avatarUrl,
@@ -966,7 +965,7 @@ Widget _buildPostItem(
                     color: Colors.transparent,
                   ),
                   child: Image.asset(
-                    'lib/view/util/images/component/send.png',
+                    'lib/utils/images/component/send.png',
                     width: 20,
                     height: 20,
                     color: Theme.of(context).brightness == Brightness.dark
@@ -2313,7 +2312,7 @@ class _CommentButtonState extends State<CommentButton>
                     color: Colors.transparent,
                   ),
                   child: Image.asset(
-                    'lib/view/util/images/component/comment.png',
+                    'lib/utils/images/component/comment.png',
                     width: 20,
                     height: 20,
                     color: Theme.of(context).brightness == Brightness.dark

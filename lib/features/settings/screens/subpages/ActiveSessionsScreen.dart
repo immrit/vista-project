@@ -8,7 +8,7 @@ import 'package:Vista/model/session_model.dart';
 import 'package:Vista/provider/session_provider.dart';
 import 'package:Vista/services/session_manager_service.dart';
 import 'package:Vista/DB/unified_message_cache_service.dart';
-import 'package:Vista/DB/unified_conversation_cache_service.dart';
+import '../../../../core/data/cache/cache_repository.dart';
 import 'package:Vista/features/auth/screens/auth_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -648,7 +648,7 @@ class _SessionDetailsBottomSheet extends StatelessWidget {
         await UnifiedMessageCacheService().clearAllCache();
         final userId = Supabase.instance.client.auth.currentUser?.id;
         if (userId != null) {
-          await UnifiedConversationCacheService().clearCache(userId);
+          await CacheRepository().clearCache(userId);
         }
       } catch (e) {
         // خطا را نادیده می‌گیریم
