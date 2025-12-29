@@ -12,9 +12,7 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:aws_s3_api/s3-2006-03-01.dart';
-import '../../../services/secure_config.dart';
-import '../../../security/logging_utility.dart';
+import '../../../services/vista_node_service.dart';
 
 /// نتیجه عملیات
 class ActionResult<T> {
@@ -241,17 +239,17 @@ class MessageActionsService {
   }
 
   /// حذف برای همه (Hard Delete)
-  /// این متد پیام را از دیتابیس حذف می‌کند و اگر پیام دارای فایل باشد، آن را از آروان استوریج هم حذف می‌کند
+  /// ⚠️ این متد درخواست را به سرور Node.js ارسال می‌کند
+  /// سرور مسئول حذف فایل از S3 و رکورد از DB است
   Future<ActionResult<void>> _deleteForEveryone({
     required String messageId,
     required String userId,
   }) async {
     try {
-      // بررسی مالکیت پیام و دریافت اطلاعات فایل
-      // ✅ خواندن هم attachment_url و هم audio_url (برای ویس‌ها)
+      // بررسی مالکیت پیام
       final message = await _supabase
           .from('messages')
-          .select('sender_id, attachment_url, audio_url, conversation_id')
+          .select('sender_id')
           .eq('id', messageId)
           .maybeSingle();
 
@@ -265,45 +263,9 @@ class MessageActionsService {
         );
       }
 
-      // ✅ حذف فایل از آروان استوریج (اگر وجود دارد)
-      // اولویت با audio_url برای ویس‌ها، سپس attachment_url
-      final audioUrl = message['audio_url'] as String?;
-      final attachmentUrl = message['attachment_url'] as String?;
-      
-      // حذف audio_url (اگر وجود دارد - برای ویس‌ها)
-      if (audioUrl != null && audioUrl.isNotEmpty) {
-        try {
-          await _deleteFileFromArvan(audioUrl);
-          print('✅ Audio file deleted from Arvan storage: $audioUrl');
-        } catch (e) {
-          print('⚠️ Error deleting audio file from Arvan (continuing): $e');
-        }
-      }
-      
-      // حذف attachment_url (اگر وجود دارد - برای عکس، فیلم، فایل)
-      if (attachmentUrl != null && attachmentUrl.isNotEmpty) {
-        try {
-          await _deleteFileFromArvan(attachmentUrl);
-          print('✅ Attachment file deleted from Arvan storage: $attachmentUrl');
-        } catch (e) {
-          // اگر حذف فایل با خطا مواجه شد، لاگ می‌کنیم اما ادامه می‌دهیم
-          // چون پیام باید از دیتابیس حذف شود
-          print('⚠️ Error deleting attachment file from Arvan (continuing): $e');
-        }
-      }
-
-      // حذف پیام از دیتابیس
-      await _supabase.from('messages').delete().eq('id', messageId);
-
-      // پاکسازی deleted_messages (اگر وجود دارد)
-      try {
-        await _supabase
-            .from('deleted_messages')
-            .delete()
-            .eq('message_id', messageId);
-      } catch (_) {
-        // خطا در پاکسازی deleted_messages مهم نیست
-      }
+      // ارسال درخواست به سرور Node.js
+      // سرور خودش فایل S3 و رکورد DB را حذف می‌کند
+      await VistaNodeService.deleteMessage(messageId);
 
       print('✅ Message deleted for everyone: $messageId');
       return const ActionResult.success();
@@ -320,7 +282,6 @@ class MessageActionsService {
     required String userId,
   }) async {
     try {
-      // درج در جدول hidden_messages
       await _supabase.from('hidden_messages').upsert({
         'message_id': messageId,
         'user_id': userId,
@@ -443,97 +404,6 @@ class MessageActionsService {
     } catch (e) {
       print('❌ Error getting pinned messages: $e');
       return [];
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 🗑️ FILE DELETION FROM ARVAN STORAGE
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  /// حذف فایل از آروان استوریج
-  /// پشتیبانی از فرمت‌های مختلف URL:
-  /// - https://storage.389346.ir.cdn.ir/bucketName/path/to/file
-  /// - https://coffevista.s3.ir-thr-at1.arvanstorage.ir/path/to/file
-  Future<void> _deleteFileFromArvan(String fileUrl) async {
-    if (fileUrl.isEmpty) {
-      logInfo('⚠️ File URL is empty, skipping deletion');
-      return;
-    }
-
-    try {
-      // استخراج کلید S3 از URL
-      final s3Key = _extractS3KeyFromUrl(fileUrl);
-      if (s3Key == null || s3Key.isEmpty) {
-        logInfo('⚠️ Could not extract S3 key from URL: $fileUrl');
-        return;
-      }
-
-      logInfo('🗑️ Deleting file from Arvan. URL: $fileUrl, Key: $s3Key');
-
-      // ایجاد کلاینت S3
-      if (!SecureConfig.isConfigured) {
-        logError('AWS Config Missing!');
-        return;
-      }
-
-      final s3 = S3(
-        region: SecureConfig.awsRegion,
-        credentials: AwsClientCredentials(
-          accessKey: SecureConfig.awsAccessKey,
-          secretKey: SecureConfig.awsSecretKey,
-        ),
-        endpointUrl: SecureConfig.awsEndpointUrl,
-      );
-
-      // حذف فایل
-      await s3.deleteObject(
-        bucket: SecureConfig.awsBucketName,
-        key: s3Key,
-      );
-
-      logInfo('✅ File deleted from Arvan storage: $fileUrl');
-    } catch (e) {
-      // اگر فایل پیدا نشد (404)، یعنی قبلاً پاک شده و موفقیت محسوب می‌شود
-      if (e.toString().contains('404') || e.toString().contains('NoSuchKey')) {
-        logInfo('⚠️ File not found (404), assumed deleted: $fileUrl');
-        return;
-      }
-      logError('❌ Error deleting file from Arvan: $fileUrl', error: e);
-      rethrow; // پرتاب خطا برای مدیریت در متد فراخوان
-    }
-  }
-
-  /// استخراج کلید S3 از URL
-  String? _extractS3KeyFromUrl(String url) {
-    try {
-      final uri = Uri.parse(url);
-      final segments = uri.pathSegments;
-
-      if (segments.isEmpty) return null;
-
-      // فرمت 1: https://storage.389346.ir.cdn.ir/bucketName/path/to/file
-      if (url.contains('storage.389346.ir.cdn.ir')) {
-        if (segments.length > 1) {
-          // حذف اولین segment (نام باکت) و بازگرداندن بقیه
-          final key = segments.sublist(1).join('/');
-          return Uri.decodeFull(key);
-        }
-        return null;
-      }
-
-      // فرمت 2: https://coffevista.s3.ir-thr-at1.arvanstorage.ir/path/to/file
-      final bucketName = SecureConfig.awsBucketName;
-      if (segments.first == bucketName && segments.length > 1) {
-        final key = segments.skip(1).join('/');
-        return Uri.decodeFull(key);
-      }
-
-      // در غیر این صورت، کل مسیر کلید است
-      final key = segments.join('/');
-      return Uri.decodeFull(key);
-    } catch (e) {
-      logError('Key extraction error for: $url', error: e);
-      return null;
     }
   }
 }

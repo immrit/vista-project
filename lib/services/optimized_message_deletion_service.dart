@@ -1,16 +1,23 @@
 import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:aws_s3_api/s3-2006-03-01.dart';
 import 'package:isar/isar.dart';
 import '../security/logging_utility.dart';
 import '../model/message_model.dart';
 import '../DB/high_performance_cache_system.dart';
 import '../DB/isar_database_manager.dart';
 import '../DB/entities/deletion_task_entity.dart';
-import 'secure_config.dart';
+import 'vista_node_service.dart';
 
 enum DeletionMode { me, everyone }
 
+/// سرویس حذف پیام بهینه‌شده - سرور-محور
+///
+/// این سرویس تنها مسئول:
+/// 1. حذف فوری از کش لوکال (برای UI)
+/// 2. ارسال درخواست به سرور Node.js
+/// 3. مدیریت صف retry برای خطاهای شبکه
+///
+/// ⚠️ حذف فایل از S3 کاملاً سمت سرور انجام می‌شود
 class OptimizedMessageDeletionService {
   static final OptimizedMessageDeletionService _instance =
       OptimizedMessageDeletionService._internal();
@@ -23,27 +30,8 @@ class OptimizedMessageDeletionService {
   final SupabaseClient _supabase = Supabase.instance.client;
   Isar? _isar;
 
-  // ⚠️ نام باکت دقیقا طبق گفته شما
-  static const String _bucketName = 'coffevista';
-
   bool _isProcessing = false;
   Timer? _retryTimer;
-
-  // تنظیمات کلاینت S3
-  static S3 get _s3 {
-    if (!SecureConfig.isConfigured) {
-      logError('AWS Config Missing!');
-      throw Exception('AWS credentials not configured');
-    }
-    return S3(
-      region: SecureConfig.awsRegion,
-      credentials: AwsClientCredentials(
-        accessKey: SecureConfig.awsAccessKey,
-        secretKey: SecureConfig.awsSecretKey,
-      ),
-      endpointUrl: SecureConfig.awsEndpointUrl,
-    );
-  }
 
   /// مقداردهی اولیه
   Future<void> initialize() async {
@@ -52,7 +40,7 @@ class OptimizedMessageDeletionService {
       // بررسی تسک‌های باقی‌مانده
       final count = await _isar!.deletionTaskEntitys.count();
       if (count > 0) {
-        logInfo('🔄 Resuming $count pending deletions form Isar...');
+        logInfo('🔄 Resuming $count pending deletions from Isar...');
         _startProcessingLoop();
       }
     } catch (e) {
@@ -63,7 +51,6 @@ class OptimizedMessageDeletionService {
   /// Dispose service
   void dispose() {
     _retryTimer?.cancel();
-    // _isar?.close(); Isar usually stays open
     logInfo('🧹 OptimizedMessageDeletionService disposed');
   }
 
@@ -86,19 +73,14 @@ class OptimizedMessageDeletionService {
     final tasks = <DeletionTaskEntity>[];
 
     for (var msg in messages) {
-      final s3Key = _extractS3KeyCorrectly(msg);
+      logInfo('🗑️ Queuing deletion. ID: ${msg.id}, Mode: ${mode.name}');
 
-      // لاگ
-      if (s3Key != null) {
-        logInfo('🗑️ Queuing deletion. ID: ${msg.id}, Key: [$s3Key]');
-      }
-
-      // ایجاد تسک
+      // ایجاد تسک (بدون s3Key - سرور خودش key را استخراج می‌کند)
       final task = DeletionTaskEntity()
         ..messageId = msg.id
         ..conversationId = conversationId
         ..deletionMode = mode.index
-        ..s3Key = s3Key
+        ..s3Key = null // ⚠️ دیگر نیازی نیست - سرور استخراج می‌کند
         ..retryCount = 0
         ..nextAttempt = now
         ..timestamp = now;
@@ -106,15 +88,10 @@ class OptimizedMessageDeletionService {
       tasks.add(task);
     }
 
-    // 3. ذخیره در Isar
+    // 2. ذخیره در Isar
     try {
       await _isar!.writeTxn(() async {
-        // ابتدا تسک‌های قبلی برای این پیام‌ها را پاک کن تا تکراری نشود (اگر لازم است)
-        // اما چون ID پیام یکتا است، شاید Isar خودش هندل نکند مگر ID Isar یکی باشد.
-        // اینجا messageId داریم.
-        // بهتر است چک کنیم if exists update or delete old.
-        // ساده: put اضافه می‌کند (autoIncrement id).
-        // پس بهتر است کوئری بزنیم و پاک کنیم اگر تکراری است.
+        // حذف تسک‌های قبلی برای این پیام‌ها
         final msgIds = messages.map((e) => e.id).toList();
         await _isar!.deletionTaskEntitys
             .filter()
@@ -199,11 +176,10 @@ class OptimizedMessageDeletionService {
     final now = DateTime.now().millisecondsSinceEpoch;
 
     try {
-      // دریافت تسک‌های آماده
-      // محدودیت 5 تایی
+      // دریافت تسک‌های آماده (محدود به 5 تا)
       final tasks = await _isar!.deletionTaskEntitys
           .filter()
-          .nextAttemptLessThan(now + 1) // +1 for strict inequality safety
+          .nextAttemptLessThan(now + 1)
           .sortByNextAttempt()
           .limit(5)
           .findAll();
@@ -237,21 +213,22 @@ class OptimizedMessageDeletionService {
 
   Future<bool> _executeSingleTask(DeletionTaskEntity task) async {
     final messageId = task.messageId;
-    final s3Key = task.s3Key;
     final mode = DeletionMode.values[task.deletionMode];
     final conversationId = task.conversationId;
 
     try {
-      // 1. حذف فایل دیتابیس
-      // منطق اصلی: اول فایل AWS، بعد DB.
-      if (s3Key != null && s3Key.isNotEmpty) {
-        await _deleteS3File(s3Key, mode, messageId);
+      if (mode == DeletionMode.everyone) {
+        // ─── حذف برای همه: ارسال به سرور Node.js ───
+        // سرور خودش فایل S3 و رکورد DB را حذف می‌کند
+        logInfo('🌐 Sending delete request to server: $messageId');
+        await VistaNodeService.deleteMessage(messageId);
+        logInfo('✅ Server deletion complete for: $messageId');
+      } else {
+        // ─── حذف فقط برای من: ذخیره در hidden_messages ───
+        await _hideMessageForCurrentUser(messageId, conversationId);
+        logInfo('✅ Message hidden for current user: $messageId');
       }
 
-      // 2. حذف از سوپابیس
-      await _deleteFromDatabase(messageId, conversationId, mode);
-
-      logInfo('✅ Full deletion complete for: $messageId');
       return true;
     } catch (e) {
       int retries = task.retryCount + 1;
@@ -290,91 +267,17 @@ class OptimizedMessageDeletionService {
     _retryTimer = Timer(Duration(milliseconds: delay), _processQueue);
   }
 
-  // --- Helpers (Same as before) ---
-
-  String? _extractS3KeyCorrectly(MessageModel message) {
-    String? url = message.audioUrl;
-    if (url == null || url.isEmpty) {
-      url = message.attachmentUrl;
-    }
-    if (url == null || url.isEmpty) return null;
-
-    try {
-      final uri = Uri.parse(url);
-      final segments = uri.pathSegments;
-      if (segments.isEmpty) return null;
-
-      if (url.contains('storage.389346.ir.cdn.ir')) {
-        if (segments.length > 1) {
-          final key = segments.sublist(1).join('/');
-          return Uri.decodeFull(key);
-        }
-        return null;
-      }
-
-      if (segments.first == _bucketName && segments.length > 1) {
-        final key = segments.skip(1).join('/');
-        return Uri.decodeFull(key);
-      }
-
-      final key = segments.join('/');
-      return Uri.decodeFull(key);
-    } catch (e) {
-      logError('Key extraction error for: $url', error: e);
-      return null;
-    }
-  }
-
-  Future<void> _deleteS3File(
-      String key, DeletionMode mode, String messageId) async {
-    if (mode == DeletionMode.me) {
-      final currentUserId = _supabase.auth.currentUser?.id;
-      if (currentUserId == null) return;
-
-      final otherDeletion = await _supabase
-          .from('deleted_messages')
-          .select('message_id')
-          .eq('message_id', messageId)
-          .neq('user_id', currentUserId)
-          .maybeSingle();
-
-      if (otherDeletion == null) {
-        logInfo('ℹ️ Keeping file (Other user has msg). Key: $key');
-        return;
-      }
-    }
-
-    try {
-      await _s3.deleteObject(bucket: _bucketName, key: key);
-      logInfo('✅ S3 Delete successful: $key');
-    } catch (e) {
-      if (e.toString().contains('404') || e.toString().contains('NoSuchKey')) {
-        return;
-      }
-      rethrow;
-    }
-  }
-
-  Future<void> _deleteFromDatabase(
-      String messageId, String conversationId, DeletionMode mode) async {
+  /// ذخیره پیام در جدول hidden_messages (حذف یک‌طرفه)
+  Future<void> _hideMessageForCurrentUser(
+      String messageId, String conversationId) async {
     final userId = _supabase.auth.currentUser?.id;
-    if (userId == null) return;
+    if (userId == null) throw Exception('User not authenticated');
 
-    if (mode == DeletionMode.everyone) {
-      await _supabase.from('messages').delete().eq('id', messageId);
-      try {
-        await _supabase
-            .from('deleted_messages')
-            .delete()
-            .eq('message_id', messageId);
-      } catch (_) {}
-    } else {
-      await _supabase.from('deleted_messages').upsert({
-        'user_id': userId,
-        'message_id': messageId,
-        'conversation_id': conversationId,
-        'deleted_at': DateTime.now().toIso8601String(),
-      });
-    }
+    await _supabase.from('hidden_messages').upsert({
+      'user_id': userId,
+      'message_id': messageId,
+      'conversation_id': conversationId,
+      'hidden_at': DateTime.now().toIso8601String(),
+    });
   }
 }

@@ -511,68 +511,39 @@ class ChatRepositoryImpl implements ChatRepository {
       {bool forEveryone = false}) async {
     try {
       print(
-          '🗑️ [Repo] Delete requested for message: $messageId, forEveryone: $forEveryone');
+          '🗑️ [Repo] Delete requested: $messageId, forEveryone: $forEveryone');
       await _ensureAuth();
 
       final userId = _currentUserId;
       if (userId == null) return ChatResult.failure('کاربر وارد نشده است');
 
-      // ✅ 1. Fetch Message & Extract Key
+      // 1. دریافت conversationId برای پاکسازی کش
       String? conversationId;
-      String? attachmentUrl;
-      String? attachmentType;
-      String? fileKey;
-
       try {
         final localMessage =
             await _localDataSource.getMessage(messageId, userId);
-        if (localMessage != null) {
-          conversationId = localMessage.conversationId;
-          attachmentUrl = localMessage.attachmentUrl;
-          attachmentType = localMessage.attachmentType;
-        } else {
-          // Fallback to Server
-          final data = await _supabase
-              .from('messages')
-              .select('conversation_id, attachment_url, attachment_type')
-              .eq('id', messageId)
-              .maybeSingle();
-          if (data != null) {
-            conversationId = data['conversation_id'] as String?;
-            attachmentUrl = data['attachment_url'] as String?;
-            attachmentType = data['attachment_type'] as String?;
-          }
-        }
-
-        // Extract Key
-        if (forEveryone && attachmentUrl != null && attachmentUrl.isNotEmpty) {
-          // Fix: use named arguments if defined named, or correct positional count
-          fileKey = _extractFileKey(attachmentUrl, fileType: attachmentType);
-        }
+        conversationId = localMessage?.conversationId;
       } catch (e) {
-        print('⚠️ [Repo] Error gathering info: $e');
+        print('⚠️ [Repo] Could not get conversationId: $e');
       }
 
-      // ✅ 2. Server Side Action (Pessimistic)
+      // 2. ارسال به سرور (سرور خودش S3 و DB را مدیریت می‌کند)
       if (forEveryone) {
-        print('🌐 [Repo] Calling Node Service to delete...');
-        await VistaNodeService.deleteMessage(messageId, fileKey: fileKey);
+        print('🌐 [Repo] Calling Node Service...');
+        await VistaNodeService.deleteMessage(messageId);
         print('✅ [Repo] Server deletion successful.');
       } else {
-        await _supabase.from('hidden_messages').insert({
+        // حذف یک‌طرفه: فقط در hidden_messages ذخیره کن
+        await _supabase.from('hidden_messages').upsert({
           'message_id': messageId,
           'user_id': userId,
           'hidden_at': DateTime.now().toUtc().toIso8601String(),
-        }).onError((error, stackTrace) {
-          if (!error.toString().toLowerCase().contains('duplicate')) {
-            throw error ?? Exception('Unknown error during hide');
-          }
         });
-        print('✅ [Repo] Message hidden locally.');
+        print('✅ [Repo] Message hidden for user.');
       }
 
-      // ✅ 3. Local Cleanup (Only after server success)
-      print('🧹 [Repo] Cleaning up local DB...');
+      // 3. پاکسازی کش لوکال
+      print('🧹 [Repo] Cleaning up local cache...');
       await _localDataSource.deleteMessage(messageId);
       if (conversationId != null) {
         await UnifiedMessageCacheService()
@@ -583,35 +554,6 @@ class ChatRepositoryImpl implements ChatRepository {
     } catch (e) {
       print('❌ [Repo] Delete failed: $e');
       return ChatResult.failure(e.toString());
-    }
-  }
-
-  /// استخراج کلید فایل از URL با قابلیت Decoding
-  String? _extractFileKey(String fileUrl, {String? fileType}) {
-    try {
-      print('🔍 [Repo] Extracting key from: $fileUrl');
-      final decodedUrl = Uri.decodeFull(fileUrl);
-      final uri = Uri.parse(decodedUrl);
-
-      // Handle ArvanCloud/S3 path styles
-      // Assume bucket name might be the first segment
-      if (uri.pathSegments.isNotEmpty &&
-          uri.pathSegments.first == 'chat_attachments') {
-        final key = uri.pathSegments.sublist(1).join('/');
-        print('🔑 [Repo] Extracted Key (Bucket Prefix): $key');
-        return key;
-      }
-
-      if (uri.path.startsWith('/')) {
-        final key = uri.path.substring(1);
-        print('🔑 [Repo] Extracted Key (Direct): $key');
-        return key;
-      }
-
-      return uri.path;
-    } catch (e) {
-      print('❌ [Repo] Key extraction failed: $e');
-      return null;
     }
   }
 
