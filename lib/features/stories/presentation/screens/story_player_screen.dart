@@ -7,6 +7,7 @@ import 'package:video_player/video_player.dart';
 import '../../domain/entities/entities.dart';
 import '../../core/story_enums.dart';
 import '../providers/story_providers.dart';
+import '../widgets/sticker_factory.dart';
 import 'story_progress_bar.dart';
 import 'story_header.dart';
 import 'story_actions.dart';
@@ -17,11 +18,13 @@ import '../../../../utils/const.dart';
 class StoryPlayerScreen extends ConsumerStatefulWidget {
   final List<StoryUser> users;
   final int initialUserIndex;
+  final int initialStoryIndex;
 
   const StoryPlayerScreen({
     super.key,
     required this.users,
     required this.initialUserIndex,
+    this.initialStoryIndex = 0,
   });
 
   @override
@@ -44,6 +47,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   void initState() {
     super.initState();
     _currentUserIndex = widget.initialUserIndex;
+    _currentStoryIndex = widget.initialStoryIndex;
 
     _progressController = AnimationController(
       vsync: this,
@@ -315,6 +319,19 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   }
 
   Widget _buildContent() {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Background media (image or video)
+        _buildMediaBackground(),
+
+        // Interactive elements (stickers, text) from Story Editor
+        ..._buildInteractiveElements(),
+      ],
+    );
+  }
+
+  Widget _buildMediaBackground() {
     if (_currentStory.media.isVideo && _videoController != null) {
       return Center(
         child: AspectRatio(
@@ -327,11 +344,166 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     return CachedNetworkImage(
       imageUrl: _currentStory.media.url,
       fit: BoxFit.cover,
+      fadeInDuration: Duration.zero,
+      fadeOutDuration: Duration.zero,
+      memCacheHeight: 1600, // Optimize memory usage
       placeholder: (context, url) => Container(color: Colors.black),
-      errorWidget: (context, url, error) => const Center(
-        child: Icon(Icons.error, color: Colors.white, size: 48),
-      ),
+      errorWidget: (context, url, error) {
+        debugPrint('Story Image Error: $error'); // Log detail error
+        return const Center(
+          child: Icon(Icons.error, color: Colors.white, size: 48),
+        );
+      },
     );
+  }
+
+  List<Widget> _buildInteractiveElements() {
+    final elements = _currentStory.interactiveElements;
+    if (elements == null || elements.isEmpty) return [];
+
+    return elements.map((element) {
+      return Positioned(
+        left: element.x,
+        top: element.y,
+        child: Transform.rotate(
+          angle: element.rotation,
+          child: Transform.scale(
+            scale: element.scale,
+            child: GestureDetector(
+              onTap: () => _handleElementTap(element),
+              child: StickerFactory.buildSticker(
+                element,
+                isEditable: false, // Viewer mode - tap triggers interaction
+              ),
+            ),
+          ),
+        ),
+      );
+    }).toList();
+  }
+
+  void _handleElementTap(dynamic element) {
+    // Handle different sticker types in viewer mode
+    switch (element.interactionType) {
+      case StoryInteractionType.poll:
+        _showPollVoteDialog(element);
+        break;
+      case StoryInteractionType.link:
+        _openLink(element.interactionData?['url']);
+        break;
+      case StoryInteractionType.location:
+        _openLocation(element.interactionData);
+        break;
+      case StoryInteractionType.mention:
+        _openProfile(element.interactionData?['username']);
+        break;
+      case StoryInteractionType.hashtag:
+        _openHashtag(element.interactionData?['hashtag']);
+        break;
+      default:
+        debugPrint('Tapped element: ${element.interactionType}');
+    }
+  }
+
+  void _showPollVoteDialog(dynamic element) {
+    final data = element.interactionData ?? {};
+    final question = data['question'] ?? 'سوال';
+    final option1 = data['option1'] ?? 'گزینه ۱';
+    final option2 = data['option2'] ?? 'گزینه ۲';
+
+    _progressController.stop();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.grey[900],
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              question,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => _votePoll(0, ctx),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: Text(option1),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => _votePoll(1, ctx),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.pink,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: Text(option2),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ).then((_) {
+      if (!_isPaused) _progressController.forward();
+    });
+  }
+
+  Future<void> _votePoll(int optionIndex, BuildContext ctx) async {
+    Navigator.pop(ctx);
+    final repository = ref.read(storyRepositoryProvider);
+    await repository.voteOnPoll(_currentStory.id, optionIndex.toString());
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('رأی شما ثبت شد')),
+      );
+    }
+  }
+
+  Future<void> _openLink(String? url) async {
+    if (url == null) return;
+    debugPrint('Opening link: $url');
+    // TODO: Use url_launcher to open link
+    // await launchUrl(Uri.parse(url));
+  }
+
+  void _openLocation(Map<String, dynamic>? data) {
+    if (data == null) return;
+    final lat = data['latitude'];
+    final lng = data['longitude'];
+    debugPrint('Opening location: $lat, $lng');
+    // TODO: Open map with lat/lng
+  }
+
+  void _openProfile(String? username) {
+    if (username == null) return;
+    debugPrint('Opening profile: @$username');
+    // TODO: Navigate to profile screen
+  }
+
+  void _openHashtag(String? hashtag) {
+    if (hashtag == null) return;
+    debugPrint('Opening hashtag: #$hashtag');
+    // TODO: Navigate to hashtag search
   }
 
   void _showOptions() {

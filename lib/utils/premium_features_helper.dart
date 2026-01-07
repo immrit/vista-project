@@ -8,156 +8,157 @@ class PremiumFeaturesHelper {
     return currentUser.hasGoldBadge || currentUser.hasBlueBadge;
   }
 
-  /// نمایش دیالوگ ترغیب به خرید تیک طلایی
+  /// بررسی دسترسی به استوری ۴۸ ساعته
+  static bool canPostLongDurationStory(UserModel currentUser) {
+    return currentUser.hasGoldBadge || currentUser.hasBlueBadge;
+  }
+
+  /// نمایش دیالوگ ترغیب به خرید تیک طلایی (طراحی مشابه تلگرام)
   static void showPremiumPromptDialog(
     BuildContext context, {
-    String feature = 'ویرایش پست',
+    String feature = 'استوری ۴۸ ساعته',
   }) {
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(20),
         child: Container(
-          padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: LinearGradient(
+            borderRadius: BorderRadius.circular(24),
+            gradient: const LinearGradient(
               colors: [
-                Colors.amber.shade50,
-                Colors.white,
+                Color(0xFF2A2A2A), // Dark grey
+                Color(0xFF1F1F1F), // Darker grey
               ],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.5),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // آیکون تیک طلایی با انیمیشن
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.amber.shade400,
-                      Colors.amber.shade700,
-                    ],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.amber.withOpacity(0.3),
-                      blurRadius: 20,
-                      spreadRadius: 5,
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.workspace_premium,
-                  size: 48,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 20),
-              
-              // عنوان
-              const Text(
-                'قابلیت ویژه ویستا پریمیوم',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              
-              // توضیحات
-              Text(
-                'برای دسترسی به $feature، نیاز به تیک طلایی یا آبی دارید.',
-                style: TextStyle(
-                  fontSize: 15,
-                  color: Colors.grey.shade700,
-                  height: 1.5,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              
-              // مزایای پریمیوم
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  children: [
-                    _buildFeatureRow(Icons.edit, 'ویرایش نامحدود پست‌ها'),
-                    const SizedBox(height: 8),
-                    _buildFeatureRow(Icons.verified, 'دریافت تیک طلایی'),
-                    const SizedBox(height: 8),
-                    _buildFeatureRow(Icons.star, 'دسترسی به قابلیت‌های ویژه'),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              
-              // دکمه‌ها
-              Row(
+              // Header Image/Icon Section (Mocking the visual style)
+              Stack(
+                alignment: Alignment.center,
                 children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: Text(
-                        'بعداً',
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 16,
-                        ),
-                      ),
+                  // Background glow
+                  Container(
+                    height: 120,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF8774E1).withOpacity(0.2),
+                      borderRadius:
+                          const BorderRadius.vertical(top: Radius.circular(24)),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        // هدایت به صفحه ویستا پریمیوم در تنظیمات
-                        Navigator.pushNamed(context, '/verification-store');
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.amber.shade600,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                  // Premium Icon (Star/Check)
+                  Container(
+                    width: 70,
+                    height: 70,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFB66DFF), Color(0xFF8774E1)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF8774E1).withOpacity(0.4),
+                          blurRadius: 15,
+                          spreadRadius: 2,
                         ),
-                        elevation: 0,
-                      ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.workspace_premium, size: 20),
-                          SizedBox(width: 8),
-                          Text(
-                            'دریافت تیک طلایی',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.star_rounded,
+                      size: 40,
+                      color: Colors.white,
+                    ),
+                  ),
+                  // Close Button
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white70),
+                      onPressed: () => Navigator.pop(context),
                     ),
                   ),
                 ],
+              ),
+
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    const Text(
+                      'الماس ویستا',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        fontFamily: 'Vazir',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'با دریافت الماس ویستا، به قابلیت‌های ویژه‌ای مثل $feature و تیک طلایی دسترسی پیدا کنید.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.white.withOpacity(0.8),
+                        height: 1.5,
+                        fontFamily: 'Vazir',
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Feature List (Simplified)
+                    _buildFeatureItem(Icons.timelapse, 'استوری‌های ۴۸ ساعته'),
+                    const SizedBox(height: 12),
+                    _buildFeatureItem(Icons.verified, 'نشان تایید طلایی'),
+                    const SizedBox(height: 12),
+                    _buildFeatureItem(Icons.edit_note, 'ویرایش نامحدود پست'),
+
+                    const SizedBox(height: 24),
+
+                    // Subscribe Button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          Navigator.pushNamed(context, '/verification-store');
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF8774E1),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'دریافت اشتراک الماس',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'Vazir',
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -166,16 +167,24 @@ class PremiumFeaturesHelper {
     );
   }
 
-  static Widget _buildFeatureRow(IconData icon, String text) {
+  static Widget _buildFeatureItem(IconData icon, String text) {
     return Row(
       children: [
-        Icon(icon, size: 18, color: Colors.amber.shade700),
-        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF8774E1).withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: const Color(0xFF8774E1), size: 20),
+        ),
+        const SizedBox(width: 12),
         Text(
           text,
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey.shade800,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontFamily: 'Vazir',
           ),
         ),
       ],
@@ -195,16 +204,3 @@ class PremiumFeaturesHelper {
     return isPostOwner(currentUserId, post);
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-

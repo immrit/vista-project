@@ -1,6 +1,7 @@
 import '../entities/story.dart';
 import '../entities/story_user.dart';
 import '../entities/story_highlight.dart';
+import '../entities/story_editor_models.dart';
 import '../../core/story_enums.dart';
 
 /// پارامترهای آپلود استوری
@@ -18,6 +19,7 @@ class StoryUploadParams {
   final List<StoryMention>? mentions;
   final String? musicUrl;
   final String? filter;
+  final List<StoryElement>? interactiveElements;
 
   const StoryUploadParams({
     required this.mediaFile,
@@ -33,6 +35,7 @@ class StoryUploadParams {
     this.mentions,
     this.musicUrl,
     this.filter,
+    this.interactiveElements,
   });
 }
 

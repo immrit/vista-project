@@ -81,7 +81,7 @@ class StoryHeader extends StatelessWidget {
                           const SizedBox(width: 4),
                           Icon(
                             Icons.verified,
-                            color: user.isPremium ? Colors.amber : Colors.blue,
+                            color: _getVerificationColor(user),
                             size: 14,
                           ),
                         ],
@@ -127,6 +127,21 @@ class StoryHeader extends StatelessWidget {
     // تنظیم زبان فارسی برای timeago
     timeago.setLocaleMessages('fa', timeago.FaMessages());
     return timeago.format(dateTime, locale: 'fa');
+  }
+
+  Color _getVerificationColor(StoryUser user) {
+    switch (user.verificationType) {
+      case StoryVerificationType.gold:
+        return Colors.amber;
+      case StoryVerificationType.blue:
+        return Colors.blue;
+      case StoryVerificationType.black:
+        return Colors.white; // Or Colors.grey[300] for dark theme
+      case StoryVerificationType.none:
+      default:
+        // Fallback to legacy logic
+        return user.isPremium ? Colors.amber : Colors.blue;
+    }
   }
 
   void _openProfile(BuildContext context) {

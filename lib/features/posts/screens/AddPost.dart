@@ -16,6 +16,7 @@ import '../../../model/UserModel.dart';
 import '../../../provider/provider.dart';
 import 'package:Vista/widgets/YourVideoTrimmerPage.dart';
 import '../../../../features/posts/providers/post_upload_provider.dart';
+import '../widgets/hashtag_autocomplete_field.dart';
 
 class AddPublicPostScreen extends ConsumerStatefulWidget {
   const AddPublicPostScreen({super.key});
@@ -749,31 +750,18 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
 
   Widget _buildContentTextField(
       Color textColor, Color secondaryTextColor, Color cardColor) {
-    return Card(
-      color: cardColor,
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: TextField(
-          controller: contentController,
-          // focusNode: _focusNode,
-          maxLines: 7,
-          minLines: 3,
-          keyboardType: TextInputType.multiline,
-          textDirection: TextDirection.rtl,
-          style: TextStyle(
-            color: textColor,
-            fontSize: 16,
-          ),
-          decoration: InputDecoration(
-            hintText: 'چیزی بنویسید...',
-            hintStyle: TextStyle(color: secondaryTextColor),
-            border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(vertical: 8),
-          ),
-        ),
+    return HashtagAutocompleteField(
+      controller: contentController,
+      maxLines: 7,
+      minLines: 3,
+      hintText: 'چیزی بنویسید...',
+      cardColor: cardColor,
+      textDirection: TextDirection.rtl,
+      style: TextStyle(
+        color: textColor,
+        fontSize: 16,
       ),
+      hintStyle: TextStyle(color: secondaryTextColor),
     );
   }
 

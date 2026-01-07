@@ -8,6 +8,9 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 
 import '../../core/story_enums.dart';
+import '../../domain/entities/story_editor_models.dart';
+import '../../domain/repositories/i_story_repository.dart';
+import '../../presentation/providers/story_upload_provider.dart';
 import 'story_editor_screen.dart';
 
 /// صفحه ایجاد استوری - مشابه اینستاگرام
@@ -251,10 +254,15 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
       );
 
       if (result != null && mounted) {
+        // اگر استوری با موفقیت ساخته شد، شروع آپلود
         await _uploadStory(
           result['media'] as File,
           type,
           caption: result['caption'] as String?,
+          interactiveElements:
+              result['elements'] as List<StoryElement>?, // Send elements
+          duration:
+              (result['duration'] as StoryDuration?) ?? StoryDuration.hours24,
         );
       }
     }
@@ -264,9 +272,25 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
     File media,
     StoryMediaType type, {
     String? caption,
+    List<StoryElement>? interactiveElements,
+    StoryDuration duration = StoryDuration.hours24,
   }) async {
-    // TODO: نشان دادن پیشرفت آپلود
-    Navigator.pop(context);
+    // بستن صفحه ساخت استوری و برگشتن به خانه
+    // آپلود در پس‌زمینه انجام می‌شود (توسط StoryBar نمایش داده می‌شود)
+    if (mounted) {
+      Navigator.pop(context);
+    }
+
+    // شروع آپلود از طریق Provider
+    final params = StoryUploadParams(
+      mediaFile: media,
+      mediaType: type,
+      caption: caption,
+      interactiveElements: interactiveElements,
+      duration: duration,
+    );
+
+    ref.read(storyUploadProvider.notifier).uploadStory(params);
   }
 
   void _showAlbumPicker() {

@@ -499,11 +499,14 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                 if (args != null) {
                   final users = args['users'] as List<StoryUser>?;
                   final initialIndex = args['initialIndex'] as int? ?? 0;
+                  final initialStoryIndex =
+                      args['initialStoryIndex'] as int? ?? 0;
                   if (users != null && users.isNotEmpty) {
                     return SessionMiddleware(
                       child: StoryPlayerScreen(
                         users: users,
                         initialUserIndex: initialIndex,
+                        initialStoryIndex: initialStoryIndex,
                       ),
                     );
                   }

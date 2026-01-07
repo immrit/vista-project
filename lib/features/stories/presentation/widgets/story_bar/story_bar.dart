@@ -75,12 +75,18 @@ class StoryBar extends ConsumerWidget {
 
   Widget _buildStoryList(
       BuildContext context, List<StoryUser> users, WidgetRef ref) {
+    // Check upload status
+    final uploadState = ref.watch(storyUploadProvider);
+
     return ListView.builder(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      itemCount: users.length + 1, // +1 برای دکمه اضافه کردن
+      itemCount: users.length + 1, // +1 for Add Button or Upload status
       itemBuilder: (context, index) {
         if (index == 0) {
+          if (uploadState.isUploading) {
+            return const _StoryUploadStatusWidget();
+          }
           return AddStoryButton(
             onTap: () => _openStoryCreation(context),
           );
@@ -100,13 +106,63 @@ class StoryBar extends ConsumerWidget {
 
   void _openStoryViewer(
       BuildContext context, List<StoryUser> users, int initialIndex) {
+    // Smart Navigation: Find first unseen story
+    final selectedUser = users[initialIndex];
+    int initialStoryIndex = selectedUser.stories.indexWhere((s) => !s.isViewed);
+    if (initialStoryIndex == -1) initialStoryIndex = 0;
+
     Navigator.pushNamed(
       context,
       '/story/view',
       arguments: {
         'users': users,
         'initialIndex': initialIndex,
+        'initialStoryIndex': initialStoryIndex,
       },
+    );
+  }
+}
+
+class _StoryUploadStatusWidget extends StatelessWidget {
+  const _StoryUploadStatusWidget();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+      child: Column(
+        children: [
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              // Spinning gradient ring
+              SizedBox(
+                width: 74,
+                height: 74,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.redAccent),
+                ),
+              ),
+              // Avatar placeholder
+              Container(
+                width: 66,
+                height: 66,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.grey,
+                ),
+                child: const Icon(Icons.person, color: Colors.white),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'در حال آپلود...',
+            style: TextStyle(fontSize: 10, color: Colors.grey),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -193,7 +249,7 @@ class StoryRing extends StatelessWidget {
                     const SizedBox(width: 2),
                     Icon(
                       Icons.verified,
-                      color: user.isPremium ? Colors.amber : Colors.blue,
+                      color: _getVerificationColor(user),
                       size: 12,
                     ),
                   ],
@@ -204,6 +260,21 @@ class StoryRing extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Color _getVerificationColor(StoryUser user) {
+    switch (user.verificationType) {
+      case StoryVerificationType.gold:
+        return Colors.amber;
+      case StoryVerificationType.blue:
+        return Colors.blue;
+      case StoryVerificationType.black:
+        return Colors.white; // Or Colors.grey[300] for dark theme
+      case StoryVerificationType.none:
+      default:
+        // Fallback to legacy logic
+        return user.isPremium ? Colors.amber : Colors.blue;
+    }
   }
 
   Widget _buildAvatar() {

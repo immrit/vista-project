@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import '../../core/story_enums.dart';
 import 'story_media.dart';
+import 'story_editor_models.dart';
 
 /// Entity اصلی استوری
 @immutable
@@ -26,6 +27,9 @@ class Story {
   final String? musicUrl;
   final String? musicTitle;
 
+  // Interactive elements from Story Editor (stickers, text, etc.)
+  final List<StoryElement>? interactiveElements;
+
   const Story({
     required this.id,
     required this.userId,
@@ -45,6 +49,7 @@ class Story {
     this.mentions,
     this.musicUrl,
     this.musicTitle,
+    this.interactiveElements,
   });
 
   /// آیا استوری منقضی شده
@@ -75,6 +80,7 @@ class Story {
     List<StoryMention>? mentions,
     String? musicUrl,
     String? musicTitle,
+    List<StoryElement>? interactiveElements,
   }) {
     return Story(
       id: id ?? this.id,
@@ -95,6 +101,7 @@ class Story {
       mentions: mentions ?? this.mentions,
       musicUrl: musicUrl ?? this.musicUrl,
       musicTitle: musicTitle ?? this.musicTitle,
+      interactiveElements: interactiveElements ?? this.interactiveElements,
     );
   }
 
@@ -118,6 +125,8 @@ class Story {
       'mentions': mentions?.map((m) => m.toMap()).toList(),
       'music_url': musicUrl,
       'music_title': musicTitle,
+      'interactive_elements':
+          interactiveElements?.map((e) => e.toJson()).toList(),
     };
   }
 
@@ -157,6 +166,9 @@ class Story {
           .toList(),
       musicUrl: map['music_url'],
       musicTitle: map['music_title'],
+      interactiveElements: (map['interactive_elements'] as List?)
+          ?.map((e) => StoryElement.fromJson(e))
+          .toList(),
     );
   }
 

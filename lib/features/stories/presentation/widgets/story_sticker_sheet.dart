@@ -1,11 +1,24 @@
 import 'package:flutter/material.dart';
+import '../../../../services/weather_service.dart';
 import 'location_picker_sheet.dart';
+import 'link_input_sheet.dart';
+import 'poll_input_sheet.dart';
+import 'mention_input_sheet.dart';
+import 'countdown_input_sheet.dart';
+import 'questions_input_sheet.dart';
+import '../../domain/entities/story_editor_models.dart';
 
 /// Bottom Sheet استیکرهای تعاملی (مشابه اینستاگرام)
 class StoryStickerSheet extends StatefulWidget {
   final Function(String content) onStickerSelected;
+  final Function(StoryInteractionType type, Map<String, dynamic> data)?
+      onInteractiveStickerSelected;
 
-  const StoryStickerSheet({super.key, required this.onStickerSelected});
+  const StoryStickerSheet({
+    super.key,
+    required this.onStickerSelected,
+    this.onInteractiveStickerSelected,
+  });
 
   @override
   State<StoryStickerSheet> createState() => _StoryStickerSheetState();
@@ -98,7 +111,23 @@ class _StoryStickerSheetState extends State<StoryStickerSheet> {
   }
 
   void _onInteractiveStickerTap(_InteractiveSticker sticker) {
-    Navigator.pop(context);
+    // Premium input sheets handle their own navigation - don't pre-pop
+    // Only pop immediately for simple stickers like date
+    final sheetsWithOwnNavigation = [
+      'location',
+      'mention',
+      'hashtag',
+      'link',
+      'poll',
+      'questions',
+      'countdown',
+      'weather', // Uses location picker which handles its own navigation
+    ];
+
+    if (!sheetsWithOwnNavigation.contains(sticker.type)) {
+      Navigator.pop(context);
+    }
+
     // نمایش دیالوگ مناسب برای هر نوع استیکر
     switch (sticker.type) {
       case 'location':
@@ -136,170 +165,288 @@ class _StoryStickerSheetState extends State<StoryStickerSheet> {
   }
 
   /// نمایش صفحه انتخاب لوکیشن با GPS
-  void _showLocationPicker() {
+  void _showLocationPicker(
+      {StoryInteractionType targetType = StoryInteractionType.location}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => LocationPickerSheet(
-        onLocationSelected: (locationName, lat, lng) {
-          widget.onStickerSelected('📍 $locationName');
+        onLocationSelected: (locationName, lat, lng) async {
+          // شیت انتخاب لوکیشن خودش بسته می‌شود، نیازی به pop مجدد نیست
+
+          int? temperature;
+          int? weatherCode;
+
+          // Only fetch weather if needed (for Weather widget)
+          if (targetType == StoryInteractionType.weather) {
+            try {
+              final weatherData =
+                  await WeatherService().getCurrentTemperature(lat, lng);
+              if (weatherData != null) {
+                temperature = weatherData['temperature'] as int?;
+                weatherCode = weatherData['weathercode'] as int?;
+              }
+            } catch (e) {
+              debugPrint('Error fetching weather: $e');
+            }
+          }
+
+          if (!mounted) return;
+
+          // Call parent immediately
+          if (widget.onInteractiveStickerSelected != null) {
+            debugPrint(
+                'Adding sticker: $targetType, City: $locationName, Temp: $temperature');
+            widget.onInteractiveStickerSelected!(
+              targetType,
+              {
+                'city': locationName,
+                'latitude': lat,
+                'longitude': lng,
+                'temperature': temperature ?? 24, // Fallback
+                'weathercode': weatherCode,
+              },
+            );
+          } else {
+            widget.onStickerSelected(
+                '📍 $locationName ${temperature != null ? "$temperature°" : ""}');
+          }
+
+          // بستن شیت اصلی استیکرها
+          if (mounted) {
+            Navigator.of(context).pop();
+          }
         },
       ),
     );
   }
 
   void _showMentionDialog() {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('منشن کاربر'),
-        content: TextField(
-          decoration: const InputDecoration(
-            hintText: 'نام کاربری را وارد کنید',
-            prefixIcon: Icon(Icons.alternate_email),
-          ),
-          onSubmitted: (value) {
-            if (value.isNotEmpty) {
-              widget.onStickerSelected('@$value');
-              Navigator.pop(ctx);
-            }
-          },
-        ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => MentionInputSheet(
+        onMentionCreated: (type, data) {
+          if (widget.onInteractiveStickerSelected != null) {
+            widget.onInteractiveStickerSelected!(type, data);
+          } else {
+            widget.onStickerSelected('@${data['username']}');
+          }
+        },
       ),
     );
   }
 
   void _showHashtagDialog() {
-    showDialog(
+    final TextEditingController hashtagController = TextEditingController();
+
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('هشتگ'),
-        content: TextField(
-          decoration: const InputDecoration(
-            hintText: 'هشتگ را وارد کنید',
-            prefixIcon: Icon(Icons.tag),
-          ),
-          onSubmitted: (value) {
-            if (value.isNotEmpty) {
-              widget.onStickerSelected('#$value');
-              Navigator.pop(ctx);
-            }
-          },
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 24,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.grey[900],
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  icon: const Icon(Icons.close, color: Colors.white),
+                ),
+                const Text(
+                  'هشتگ',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    String value = hashtagController.text.trim();
+                    if (value.isNotEmpty) {
+                      // Remove # if user added it, we'll add it in the widget
+                      if (value.startsWith('#')) {
+                        value = value.substring(1);
+                      }
+                      if (widget.onInteractiveStickerSelected != null) {
+                        widget.onInteractiveStickerSelected!(
+                          StoryInteractionType.hashtag,
+                          {'hashtag': value},
+                        );
+                      } else {
+                        widget.onStickerSelected('#$value');
+                      }
+                      Navigator.pop(ctx);
+                      // Pop the parent sticker sheet
+                      Navigator.pop(context);
+                    }
+                  },
+                  child: const Text(
+                    'تایید',
+                    style: TextStyle(
+                      color: Colors.blue,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Input Field with # prefix
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.grey[800],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[700]!),
+              ),
+              child: Row(
+                children: [
+                  const Text(
+                    '#',
+                    style: TextStyle(
+                      color: Colors.blue,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: hashtagController,
+                      autofocus: true,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                      ),
+                      decoration: const InputDecoration(
+                        hintText: 'هشتگ خود را وارد کنید...',
+                        hintStyle: TextStyle(color: Colors.grey),
+                        border: InputBorder.none,
+                      ),
+                      onSubmitted: (value) {
+                        value = value.trim();
+                        if (value.isNotEmpty) {
+                          if (value.startsWith('#')) {
+                            value = value.substring(1);
+                          }
+                          if (widget.onInteractiveStickerSelected != null) {
+                            widget.onInteractiveStickerSelected!(
+                              StoryInteractionType.hashtag,
+                              {'hashtag': value},
+                            );
+                          } else {
+                            widget.onStickerSelected('#$value');
+                          }
+                          Navigator.pop(ctx);
+                          // Pop the parent sticker sheet
+                          Navigator.pop(context);
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Hint text
+            Text(
+              'روی استیکر ضربه بزنید تا استایل تغییر کند',
+              style: TextStyle(
+                color: Colors.grey[500],
+                fontSize: 13,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       ),
     );
   }
 
   void _showLinkDialog() {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('لینک'),
-        content: TextField(
-          decoration: const InputDecoration(
-            hintText: 'آدرس لینک را وارد کنید',
-            prefixIcon: Icon(Icons.link),
-          ),
-          keyboardType: TextInputType.url,
-          onSubmitted: (value) {
-            if (value.isNotEmpty) {
-              widget.onStickerSelected('🔗 $value');
-              Navigator.pop(ctx);
-            }
-          },
-        ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => LinkInputSheet(
+        onLinkCreated: (type, data) {
+          if (widget.onInteractiveStickerSelected != null) {
+            widget.onInteractiveStickerSelected!(type, data);
+          } else {
+            widget.onStickerSelected('🔗 ${data['url']}');
+          }
+        },
       ),
     );
   }
 
   void _showPollDialog() {
-    String question = '';
-    String option1 = '';
-    String option2 = '';
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('نظرسنجی'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              decoration: const InputDecoration(hintText: 'سوال نظرسنجی'),
-              onChanged: (v) => question = v,
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              decoration: const InputDecoration(hintText: 'گزینه ۱'),
-              onChanged: (v) => option1 = v,
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              decoration: const InputDecoration(hintText: 'گزینه ۲'),
-              onChanged: (v) => option2 = v,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('انصراف'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (question.isNotEmpty &&
-                  option1.isNotEmpty &&
-                  option2.isNotEmpty) {
-                widget
-                    .onStickerSelected('📊 $question\n• $option1\n• $option2');
-                Navigator.pop(ctx);
-              }
-            },
-            child: const Text('اضافه کن'),
-          ),
-        ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => PollInputSheet(
+        onPollCreated: (type, data) {
+          if (widget.onInteractiveStickerSelected != null) {
+            widget.onInteractiveStickerSelected!(type, data);
+          } else {
+            widget.onStickerSelected(
+                '📊 ${data['question']}\n• ${data['option1']}\n• ${data['option2']}');
+          }
+        },
       ),
     );
   }
 
   void _showQuestionsDialog() {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('سوالات'),
-        content: TextField(
-          decoration: const InputDecoration(
-            hintText: 'سوال خود را بنویسید',
-            prefixIcon: Icon(Icons.help_outline),
-          ),
-          onSubmitted: (value) {
-            if (value.isNotEmpty) {
-              widget.onStickerSelected('❓ $value');
-              Navigator.pop(ctx);
-            }
-          },
-        ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => QuestionsInputSheet(
+        onQuestionCreated: (type, data) {
+          if (widget.onInteractiveStickerSelected != null) {
+            widget.onInteractiveStickerSelected!(type, data);
+          } else {
+            widget.onStickerSelected('❓ ${data['question']}');
+          }
+        },
       ),
     );
   }
 
   void _showCountdownDialog() {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('شمارش معکوس'),
-        content: TextField(
-          decoration: const InputDecoration(
-            hintText: 'نام رویداد',
-            prefixIcon: Icon(Icons.timer),
-          ),
-          onSubmitted: (value) {
-            if (value.isNotEmpty) {
-              widget.onStickerSelected('⏱️ $value');
-              Navigator.pop(ctx);
-            }
-          },
-        ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => CountdownInputSheet(
+        onCountdownCreated: (type, data) {
+          if (widget.onInteractiveStickerSelected != null) {
+            widget.onInteractiveStickerSelected!(type, data);
+          } else {
+            widget.onStickerSelected('⏱️ ${data['title']}');
+          }
+        },
       ),
     );
   }
@@ -311,7 +458,7 @@ class _StoryStickerSheetState extends State<StoryStickerSheet> {
   }
 
   void _addWeatherSticker() {
-    widget.onStickerSelected('🌤️ تهران 12°C');
+    _showLocationPicker(targetType: StoryInteractionType.weather);
   }
 
   @override

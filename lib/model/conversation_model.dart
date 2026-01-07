@@ -98,8 +98,15 @@ class ConversationModel {
               // Extract profile info if available - prioritize cached data
               final profiles = participantData['profiles'];
               if (profiles != null) {
-                otherUserName = profiles['username'] as String?;
-                otherUserAvatar = profiles['avatar_url'] as String?;
+                if (profiles is List && profiles.isNotEmpty) {
+                  // If profiles is a list, take the first one
+                  otherUserName = profiles[0]['username'] as String?;
+                  otherUserAvatar = profiles[0]['avatar_url'] as String?;
+                } else if (profiles is Map) {
+                  // If profiles is a single object
+                  otherUserName = profiles['username'] as String?;
+                  otherUserAvatar = profiles['avatar_url'] as String?;
+                }
               } else {
                 // No profile info available - will be enriched by ProfileService later
                 otherUserName = null;
@@ -296,10 +303,10 @@ class ConversationModel {
             // تلاش برای دیکد کردن JSON
             if (lastMessage!.trim().startsWith('{')) {
               final jsonMap = jsonDecode(lastMessage!);
-              final authorName = jsonMap['post_author_name'] ?? 
-                               jsonMap['authorName'] ?? 
-                               jsonMap['postAuthorName'];
-              
+              final authorName = jsonMap['post_author_name'] ??
+                  jsonMap['authorName'] ??
+                  jsonMap['postAuthorName'];
+
               if (authorName != null && authorName.toString().isNotEmpty) {
                 return '📮 پست از $authorName';
               }

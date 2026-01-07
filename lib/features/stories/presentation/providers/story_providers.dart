@@ -228,8 +228,11 @@ class StoryPlayerNotifier extends StateNotifier<StoryPlayerState> {
   final IStoryRepository _repository;
   final List<StoryUser> users;
 
-  StoryPlayerNotifier(this._repository, this.users, int initialUserIndex)
-      : super(StoryPlayerState(currentUserIndex: initialUserIndex));
+  StoryPlayerNotifier(this._repository, this.users, int initialUserIndex,
+      [int initialStoryIndex = 0])
+      : super(StoryPlayerState(
+            currentUserIndex: initialUserIndex,
+            currentStoryIndex: initialStoryIndex));
 
   StoryUser get currentUser => users[state.currentUserIndex];
   Story get currentStory => currentUser.stories[state.currentStoryIndex];
@@ -314,7 +317,12 @@ class StoryPlayerNotifier extends StateNotifier<StoryPlayerState> {
 final storyPlayerProvider = StateNotifierProvider.autoDispose.family<
     StoryPlayerNotifier,
     StoryPlayerState,
-    ({List<StoryUser> users, int initialIndex})>((ref, params) {
+    ({
+      List<StoryUser> users,
+      int initialIndex,
+      int initialStoryIndex
+    })>((ref, params) {
   final repository = ref.watch(storyRepositoryProvider);
-  return StoryPlayerNotifier(repository, params.users, params.initialIndex);
+  return StoryPlayerNotifier(
+      repository, params.users, params.initialIndex, params.initialStoryIndex);
 });

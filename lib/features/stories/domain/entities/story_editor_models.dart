@@ -46,6 +46,43 @@ class StoryElement {
   });
 
   int styleIndex;
+
+  factory StoryElement.fromJson(Map<String, dynamic> json) {
+    return StoryElement(
+      text: json['text'] as String? ?? '',
+      x: (json['x'] as num).toDouble(),
+      y: (json['y'] as num).toDouble(),
+      rotation: (json['rotation'] as num?)?.toDouble() ?? 0.0,
+      scale: (json['scale'] as num?)?.toDouble() ?? 1.0,
+      color: Color(json['color'] as int? ?? 0xFFFFFFFF),
+      fontSize: (json['font_size'] as num?)?.toDouble() ?? 20.0,
+      fontFamily: json['font_family'] as String? ?? 'Vazir',
+      textAlign: TextAlign.values[json['text_align'] as int? ?? 2],
+      interactionType: StoryInteractionType.values.firstWhere(
+        (e) => e.name == json['type'],
+        orElse: () => StoryInteractionType.none,
+      ),
+      interactionData: json['data'] as Map<String, dynamic>?,
+      styleIndex: json['style_index'] as int? ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'text': text,
+      'x': x,
+      'y': y,
+      'rotation': rotation,
+      'scale': scale,
+      'color': color.value,
+      'font_size': fontSize,
+      'font_family': fontFamily,
+      'text_align': textAlign.index,
+      'type': interactionType.name,
+      'data': interactionData,
+      'style_index': styleIndex,
+    };
+  }
 }
 
 /// مسیر نقاشی

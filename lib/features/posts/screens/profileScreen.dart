@@ -36,6 +36,8 @@ import 'package:aws_s3_api/s3-2006-03-01.dart';
 import '../../../DB/profile_cache_service.dart';
 import '../../../utils/premium_features_helper.dart';
 import 'package:Vista/features/posts/widgets/standard_edit_post_dialog.dart';
+import '../../stories/presentation/providers/story_providers.dart';
+import '../../stories/domain/entities/entities.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   final String userId;
@@ -414,45 +416,98 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   }
 
   Widget _buildProfileAvatar(ProfileModel profile) {
-    // TODO: استوری‌ها اکنون از activeStoriesProvider می‌آیند - باید به‌روز شود
-    final hasStoriesAndIsPublic =
-        false; // فعلاً غیرفعال تا از Provider استفاده شود
+    // Listen to active stories to determine ring status
+    final activeStoriesAsync = ref.watch(activeStoriesProvider);
 
-    return Container(
-      padding: const EdgeInsets.all(3), // کاهش padding
-      decoration: hasStoriesAndIsPublic
-          ? BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                colors: [
-                  Colors.blue.shade400,
-                  Colors.purple.shade400,
-                  Colors.pink.shade400,
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            )
-          : null,
-      child: Container(
-        padding: hasStoriesAndIsPublic
-            ? const EdgeInsets.all(2)
-            : EdgeInsets.zero, // کاهش padding داخلی
-        decoration: hasStoriesAndIsPublic
-            ? BoxDecoration(
+    return activeStoriesAsync.when(
+      data: (users) {
+        // Find if this profile user has active stories
+        final storyUserIndex = users.indexWhere((u) => u.id == profile.id);
+        final hasStories = storyUserIndex != -1;
+        final storyUser = hasStories ? users[storyUserIndex] : null;
+        final hasUnseenStories = storyUser?.hasUnseenStories ?? false;
+
+        return GestureDetector(
+          onTap: hasStories
+              ? () => _openStoryViewer(context, users, storyUserIndex)
+              : null,
+          child: Container(
+            padding: const EdgeInsets.all(3),
+            decoration: hasStories
+                ? BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: hasUnseenStories
+                        ? LinearGradient(
+                            colors: [
+                              Colors.blue.shade400,
+                              Colors.purple.shade400,
+                              Colors.pink.shade400,
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
+                    color: hasUnseenStories ? null : Colors.grey[400],
+                  )
+                : null,
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: Theme.of(context).brightness == Brightness.dark
                     ? Colors.grey[900]
                     : Colors.white,
-              )
-            : null,
+              ),
+              child: CircleAvatar(
+                radius: 42,
+                backgroundImage: profile.avatarUrl != null
+                    ? NetworkImage(profile.avatarUrl!)
+                    : const AssetImage(defaultAvatarUrl),
+              ),
+            ),
+          ),
+        );
+      },
+      loading: () => _buildSimpleAvatar(profile),
+      error: (_, __) => _buildSimpleAvatar(profile),
+    );
+  }
+
+  Widget _buildSimpleAvatar(ProfileModel profile) {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      child: Container(
+        padding: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Theme.of(context).brightness == Brightness.dark
+              ? Colors.grey[900]
+              : Colors.white,
+        ),
         child: CircleAvatar(
-          radius: 42, // اندازه مناسب برای سازگاری با سایر عناصر
+          radius: 42,
           backgroundImage: profile.avatarUrl != null
               ? NetworkImage(profile.avatarUrl!)
               : const AssetImage(defaultAvatarUrl),
         ),
       ),
+    );
+  }
+
+  void _openStoryViewer(
+      BuildContext context, List<StoryUser> users, int initialIndex) {
+    final selectedUser = users[initialIndex];
+    int initialStoryIndex = selectedUser.stories.indexWhere((s) => !s.isViewed);
+    if (initialStoryIndex == -1) initialStoryIndex = 0;
+
+    Navigator.pushNamed(
+      context,
+      '/story/view',
+      arguments: {
+        'users': users,
+        'initialIndex': initialIndex,
+        'initialStoryIndex': initialStoryIndex,
+      },
     );
   }
 

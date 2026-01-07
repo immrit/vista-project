@@ -2,3 +2,4 @@ export 'story.dart';
 export 'story_user.dart';
 export 'story_media.dart';
 export 'story_highlight.dart';
+export 'story_editor_models.dart' hide StoryInteractionType;
