@@ -186,7 +186,7 @@ class MemoryLeakDetector {
             100)
         : 0.0;
 
-    if (kDebugMode && _totalMemoryAllocations % 100 == 0) {
+    if (kDebugMode && _totalMemoryAllocations % 1000 == 0) {
       // گزارش هر 100 allocation
       logInfo('\n📊 Memory Stats:');
       logInfo('   Allocations: $_totalMemoryAllocations');

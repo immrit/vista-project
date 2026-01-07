@@ -209,7 +209,7 @@ Future<void> initializeSupabaseWithFailover() async {
       ),
     ).timeout(const Duration(seconds: 3)); // تایم‌اوت سخت برای خود عملیات init
 
-    logInfo('✅ Supabase initialized successfully (Phase 1)');
+    logInfo('✅ Supabase initialized (CDN)');
 
     // 🚀 بلافاصله خارج شو و بقیه کارها را به پس‌زمینه بسپار
     _startBackgroundInitialization();
@@ -311,19 +311,8 @@ void _logSessionStatus() {
       final timeUntilExpiry = expiresAt - now;
 
       print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      print('📊 SESSION STATUS');
-      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      print('✅ Session Active');
-      print('👤 User: ${session.user.email}');
-      print('🆔 User ID: ${session.user.id}');
-      print('📅 Created: ${session.user.createdAt}');
       print(
-          '⏰ Expires in: ${Duration(seconds: timeUntilExpiry).inMinutes} minutes');
-      final token = session.accessToken;
-      print(
-          '🔑 Access Token: ${token.length > 20 ? token.substring(0, 20) : token}...');
-      print(
-          '🔄 Refresh Token: ${session.refreshToken?.substring(0, 20) ?? 'N/A'}...');
+          '✅ SESSION ACTIVE: ${session.user.email} (Exp: ${Duration(seconds: timeUntilExpiry).inMinutes} min)');
       print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     } else {
       print('⚠️ No session currently available (may restore later)');

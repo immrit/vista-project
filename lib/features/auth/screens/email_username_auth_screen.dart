@@ -83,7 +83,9 @@ class _EmailUsernameAuthScreenState extends State<EmailUsernameAuthScreen>
   void _validateEmailOrUsername(String emailOrUsername) {
     setState(() {
       _isEmailOrUsernameValid = emailOrUsername.isNotEmpty &&
-          (emailOrUsername.contains('@') || emailOrUsername.length >= 3);
+          (emailOrUsername.contains('@') ||
+              emailOrUsername.length >= 3 ||
+              RegExp(r'^\+?[0-9]{10,13}$').hasMatch(emailOrUsername));
     });
     widget.onEmailOrUsernameChanged(emailOrUsername);
   }
@@ -150,9 +152,9 @@ class _EmailUsernameAuthScreenState extends State<EmailUsernameAuthScreen>
                     child: Column(
                       children: [
                         Text(
-                          'ایمیل یا نام کاربری خود را وارد کنید',
+                          'شماره موبایل، ایمیل یا نام کاربری',
                           style: TextStyle(
-                            fontSize: 28.sp,
+                            fontSize: 24.sp,
                             fontWeight: FontWeight.bold,
                             color: isDark ? Colors.white : Colors.black87,
                           ),
@@ -259,7 +261,7 @@ class _EmailUsernameAuthScreenState extends State<EmailUsernameAuthScreen>
       child: TextField(
         controller: _emailOrUsernameController,
         focusNode: _emailOrUsernameFocus,
-        keyboardType: TextInputType.emailAddress,
+        keyboardType: TextInputType.text,
         onChanged: _validateEmailOrUsername,
         style: TextStyle(
           fontSize: 16.sp,
@@ -267,7 +269,7 @@ class _EmailUsernameAuthScreenState extends State<EmailUsernameAuthScreen>
           color: isDark ? Colors.white : Colors.black87,
         ),
         decoration: InputDecoration(
-          hintText: 'ایمیل یا نام کاربری',
+          hintText: 'شماره موبایل، ایمیل یا نام کاربری',
           hintStyle: TextStyle(
             color: isDark ? Colors.grey.shade500 : Colors.grey.shade400,
             fontSize: 16.sp,

@@ -35,6 +35,7 @@ import 'dart:async';
 import 'package:aws_s3_api/s3-2006-03-01.dart';
 import '../../../DB/profile_cache_service.dart';
 import '../../../utils/premium_features_helper.dart';
+import 'package:Vista/features/posts/widgets/standard_edit_post_dialog.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   final String userId;
@@ -413,8 +414,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   }
 
   Widget _buildProfileAvatar(ProfileModel profile) {
+    // TODO: استوری‌ها اکنون از activeStoriesProvider می‌آیند - باید به‌روز شود
     final hasStoriesAndIsPublic =
-        profile.stories.isNotEmpty && !profile.isPrivate;
+        false; // فعلاً غیرفعال تا از Provider استفاده شود
 
     return Container(
       padding: const EdgeInsets.all(3), // کاهش padding
@@ -2602,11 +2604,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         final currentUserId = supabase.auth.currentUser?.id;
         final isCurrentUserPost = post.userId == currentUserId;
 
+        // بررسی تیک آبی
+        final isBlueTick = profile != null &&
+            profile['is_verified'] == true &&
+            profile['verification_type'] == 'blueTick';
+
         // استفاده از Helper برای بررسی دسترسی
         final currentUserProfile = ref.read(currentUserProfileProvider);
-        final canEditPost = currentUserProfile.value != null &&
-            PremiumFeaturesHelper.canEditPost(currentUserProfile.value!) &&
-            isCurrentUserPost;
+        final canEditPost = (currentUserProfile.value != null &&
+                PremiumFeaturesHelper.canEditPost(currentUserProfile.value!) &&
+                isCurrentUserPost) ||
+            (isCurrentUserPost && isBlueTick);
 
         return PopupMenuButton<String>(
           onSelected: (value) async {
@@ -2664,6 +2672,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 break;
               case 'edit':
                 if (canEditPost) {
+                  // استفاده از دایالوگ استاندارد برای ویرایش توسط صاحب پست
+                  showStandardEditDialog(
+                    context: context,
+                    ref: ref,
+                    post: post,
+                    onSuccess: () {
+                      ref.invalidate(userProfileProvider(widget.userId));
+                    },
+                  );
+                } else if (!isCurrentUserPost && isBlueTick) {
+                  // استفاده از دایالوگ ادمین برای ویرایش پست توسط ناظر
                   showEditPostDialog(context, ref, post);
                 } else {
                   // نمایش دیالوگ پریمیوم اگر دسترسی ندارد
@@ -2705,21 +2724,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                   const PopupMenuItem(value: 'delete', child: Text('حذف')));
             }
 
-            // گزینه ویرایش برای صاحب پست (با یا بدون دسترسی)
-            if (isCurrentUserPost) {
+            // گزینه ویرایش
+            if (isCurrentUserPost || isBlueTick) {
+              final isLocked = !canEditPost && isCurrentUserPost;
+
               items.add(
                 PopupMenuItem<String>(
                   value: 'edit',
                   child: Row(
                     children: [
                       Icon(
-                        canEditPost ? Icons.edit : Icons.lock_outline,
+                        isLocked ? Icons.lock_outline : Icons.edit,
                         size: 20,
-                        color: canEditPost ? Colors.blue : Colors.grey,
+                        color: isLocked ? Colors.grey : Colors.blue,
                       ),
                       const SizedBox(width: 12),
-                      const Text('ویرایش پست'),
-                      if (!canEditPost) ...[
+                      Text(isCurrentUserPost ? 'ویرایش پست' : 'ویرایش ناظر'),
+                      if (isLocked) ...[
                         const Spacer(),
                         Icon(
                           Icons.workspace_premium,

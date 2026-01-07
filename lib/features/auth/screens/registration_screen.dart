@@ -11,8 +11,11 @@ import 'dart:io';
 import 'dart:typed_data';
 import '../../../utils/const.dart';
 import '../../../provider/ProfileImageUploadService.dart';
+import '../../../provider/provider.dart';
+import '../../auth/widgets/otp_dialog.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class RegistrationScreen extends StatefulWidget {
+class RegistrationScreen extends ConsumerStatefulWidget {
   final String initialEmail;
   final String initialUsername;
 
@@ -23,10 +26,10 @@ class RegistrationScreen extends StatefulWidget {
   });
 
   @override
-  State<RegistrationScreen> createState() => _RegistrationScreenState();
+  ConsumerState<RegistrationScreen> createState() => _RegistrationScreenState();
 }
 
-class _RegistrationScreenState extends State<RegistrationScreen>
+class _RegistrationScreenState extends ConsumerState<RegistrationScreen>
     with TickerProviderStateMixin {
   late AnimationController _animationController;
   late AnimationController _pulseController;
@@ -58,6 +61,10 @@ class _RegistrationScreenState extends State<RegistrationScreen>
   bool _isPasswordVisible = false;
   bool _isUploadingImage = false;
   bool _isConfirmPasswordVisible = false;
+
+  // Phone verification
+  final TextEditingController _phoneController = TextEditingController();
+  bool _isPhoneVerified = false;
 
   @override
   void initState() {
@@ -110,6 +117,7 @@ class _RegistrationScreenState extends State<RegistrationScreen>
     _confirmPasswordController.dispose();
     _fullNameController.dispose();
     _bioController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
@@ -146,7 +154,10 @@ class _RegistrationScreenState extends State<RegistrationScreen>
             _confirmPasswordController.text.isNotEmpty &&
             _passwordController.text == _confirmPasswordController.text &&
             _passwordController.text.length >= 6 &&
-            _isUsernameAvailable; // نام کاربری باید آزاد باشه
+            _passwordController.text.length >= 6 &&
+            _isUsernameAvailable &&
+            _phoneController.text.isNotEmpty &&
+            _isPhoneVerified; // تایید شماره موبایل الزامی است
       case 1: // Profile Info
         return _fullNameController.text.trim().isNotEmpty;
       case 2: // Additional Info
@@ -295,6 +306,7 @@ class _RegistrationScreenState extends State<RegistrationScreen>
               'full_name': _fullNameController.text.trim(),
               'avatar_url': _selectedAvatarUrl,
               'email': email,
+              'phone': _phoneController.text.trim(),
             },
           ),
         );
@@ -947,6 +959,99 @@ class _RegistrationScreenState extends State<RegistrationScreen>
             label: 'ایمیل',
             icon: Icons.email_outlined,
             keyboardType: TextInputType.emailAddress,
+          ),
+
+          SizedBox(height: 16.h),
+
+          // Phone Number Field
+          Container(
+            decoration: BoxDecoration(
+              color: isDark ? Colors.grey.shade900 : Colors.white,
+              borderRadius: BorderRadius.circular(16.r),
+              border: Border.all(
+                color: _isPhoneVerified
+                    ? Colors.green
+                    : (isDark ? Colors.grey.shade800 : Colors.grey.shade200),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                    enabled: !_isPhoneVerified,
+                    decoration: InputDecoration(
+                      hintText: 'شماره موبایل',
+                      hintStyle: TextStyle(
+                        color: isDark
+                            ? Colors.grey.shade600
+                            : Colors.grey.shade400,
+                      ),
+                      prefixIcon: Icon(
+                        Icons.phone_android_rounded,
+                        color: _isPhoneVerified
+                            ? Colors.green
+                            : const Color(0xFF4A80F0),
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 16.w,
+                        vertical: 16.h,
+                      ),
+                    ),
+                  ),
+                ),
+                if (!_isPhoneVerified)
+                  Padding(
+                    padding: EdgeInsets.only(left: 8.w),
+                    child: TextButton(
+                      onPressed: () async {
+                        final phone = _phoneController.text.trim();
+                        if (phone.isEmpty ||
+                            !RegExp(r'^\+?[0-9]{10,13}$').hasMatch(phone)) {
+                          _showErrorSnackBar('شماره موبایل نامعتبر است');
+                          return;
+                        }
+
+                        try {
+                          setState(() => _isLoading = true);
+                          // Send OTP
+                          await ref
+                              .read(authNotifierProvider.notifier)
+                              .sendOtp(phone);
+
+                          if (!mounted) return;
+                          setState(() => _isLoading = false);
+
+                          // Show Dialog
+                          final verified =
+                              await showOtpDialog(context, ref, phone);
+                          if (verified) {
+                            setState(() {
+                              _isPhoneVerified = true;
+                            });
+                            _showSuccessSnackBar('شماره موبایل تایید شد');
+                          }
+                        } catch (e) {
+                          setState(() => _isLoading = false);
+                          _showErrorSnackBar('خطا در ارسال کد: $e');
+                        }
+                      },
+                      child: const Text('تایید'),
+                    ),
+                  )
+                else
+                  Padding(
+                    padding: EdgeInsets.only(left: 16.w),
+                    child: Icon(Icons.check_circle,
+                        color: Colors.green, size: 24.sp),
+                  ),
+              ],
+            ),
           ),
 
           SizedBox(height: 16.h),

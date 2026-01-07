@@ -279,13 +279,6 @@ class ProfileCacheService {
         final postLikes = post['likes'] as List? ?? [];
         final comments = post['comments'] as List<dynamic>? ?? [];
 
-        // Debug logging for cache
-        logInfo('🔍 Cache Post Debug - Post ID: ${post['id']}');
-        logInfo(
-            '🔍 Cache Likes array: $postLikes (length: ${postLikes.length})');
-        print(
-            '🔍 Cache Comments array: $comments (length: ${comments.length})');
-
         final mappedPost = PublicPostModel.fromMap({
           ...post,
           'like_count': postLikes.length,
@@ -296,9 +289,6 @@ class ProfileCacheService {
           'comment_count': comments.length,
           'verification_type': post['profiles']['verification_type'],
         });
-
-        print(
-            '🔍 Cache Final mapped post - likeCount: ${mappedPost.likeCount}, commentCount: ${mappedPost.commentCount}, isLiked: ${mappedPost.isLiked}');
 
         return mappedPost;
       }).toList();

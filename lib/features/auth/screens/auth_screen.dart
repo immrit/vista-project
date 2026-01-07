@@ -136,7 +136,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
 
   Future<void> _validateUser() async {
     if (_emailOrUsername.isEmpty) {
-      _showErrorSnackBar('لطفاً ایمیل یا نام کاربری را وارد کنید');
+      _showErrorSnackBar(
+          'لطفاً ایمیل، نام کاربری یا شماره موبایل را وارد کنید');
       return;
     }
 
@@ -153,6 +154,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
             .from('profiles')
             .select('*')
             .eq('email', _emailOrUsername)
+            .maybeSingle();
+      } else if (RegExp(r'^\+?[0-9]{10,13}$').hasMatch(_emailOrUsername)) {
+        // اگر شماره موبایل است
+        userProfile = await Supabase.instance.client
+            .from('profiles')
+            .select('*')
+            .eq('phone', _emailOrUsername) // Assuming column name is 'phone'
             .maybeSingle();
       } else {
         // اگر نام کاربری است
@@ -230,6 +238,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
             .select('id')
             .eq('email', _emailOrUsername)
             .maybeSingle();
+      } else if (RegExp(r'^\+?[0-9]{10,13}$').hasMatch(_emailOrUsername)) {
+        tempProfile = await Supabase.instance.client
+            .from('profiles')
+            .select('id')
+            .eq('phone', _emailOrUsername)
+            .maybeSingle();
       } else {
         tempProfile = await Supabase.instance.client
             .from('profiles')
@@ -278,7 +292,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
     Map<String, dynamic>? userProfile;
 
     try {
-      // بررسی نوع ورود (ایمیل یا نام کاربری)
+      // بررسی نوع ورود (ایمیل، موبایل یا نام کاربری)
       if (_emailOrUsername.contains('@')) {
         email = _emailOrUsername;
         logInfo('🔍 Logging in with email: $email');
@@ -288,6 +302,16 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
             .eq('email', email)
             .single();
         userProfile = Map<String, dynamic>.from(response);
+      } else if (RegExp(r'^\+?[0-9]{10,13}$').hasMatch(_emailOrUsername)) {
+        logInfo('🔍 Logging in with phone: $_emailOrUsername');
+        final response = await Supabase.instance.client
+            .from('profiles')
+            .select('*')
+            .eq('phone', _emailOrUsername)
+            .single();
+        userProfile = Map<String, dynamic>.from(response);
+        email = userProfile['email'] as String;
+        logInfo('📧 Found email for phone: $email');
       } else {
         logInfo('🔍 Logging in with username: $_emailOrUsername');
         final response = await Supabase.instance.client
@@ -423,7 +447,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
       }
 
       if (e is PostgrestException) {
-        _showErrorSnackBar('نام کاربری یا ایمیل یافت نشد');
+        _showErrorSnackBar('اطلاعات کاربری اشتباه است');
       } else if (e is AuthException) {
         // نمایش پیام خطای دقیق‌تر
         final errorMessage = e.message;
@@ -504,9 +528,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('کاربر یافت نشد'),
+          alignment: Alignment.center,
+          title: const Text('کاربر یافت نشد', textAlign: TextAlign.center),
           content: Text(
-              'نام کاربری یا ایمیل "$_emailOrUsername" در سیستم وجود ندارد. آیا می‌خواهید ثبت نام کنید؟'),
+              'اطلاعات "$_emailOrUsername" در سیستم وجود ندارد. آیا می‌خواهید ثبت نام کنید؟',
+              textAlign: TextAlign.center),
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
             TextButton(
               onPressed: () {
@@ -524,9 +551,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
                       initialEmail: _emailOrUsername.contains('@')
                           ? _emailOrUsername
                           : '',
-                      initialUsername: _emailOrUsername.contains('@')
-                          ? ''
-                          : _emailOrUsername,
+                      initialUsername: !_emailOrUsername.contains('@') &&
+                              !RegExp(r'^\+?[0-9]{10,13}$')
+                                  .hasMatch(_emailOrUsername)
+                          ? _emailOrUsername
+                          : '',
                     ),
                   ),
                 );

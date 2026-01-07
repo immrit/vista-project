@@ -11,6 +11,9 @@ import 'package:Vista/features/posts/screens/publicPosts.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
 import 'package:Vista/provider/chat_provider.dart';
 import 'package:Vista/provider/optimized_conversations_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../../features/auth/widgets/otp_dialog.dart';
+import '../../../provider/provider.dart';
 
 import '../../../utils/responsive_constants.dart';
 // import 'package:Vista/utils/responsive_constants.dart';
@@ -39,6 +42,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void initState() {
     super.initState();
     _checkProfileCompletion();
+    _checkPhoneVerification();
     // ساخت یکبار صفحات در initState
     final currentUser = supabase.auth.currentUser;
     final userId = currentUser?.id ?? '';
@@ -77,6 +81,182 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         // خطا را نادیده می‌گیریم - کاربر نباید متوجه شود
       }
     });
+  }
+
+  void _checkPhoneVerification() async {
+    // اجرای غیرمسدودکننده در پس‌زمینه
+    Future.microtask(() async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final lastSkipped =
+            prefs.getInt('last_phone_verification_skipped_time');
+
+        // اگر قبلاً رد کرده و کمتر از 15 دقیقه گذشته، مزاحم نشو
+        if (lastSkipped != null) {
+          final lastSkippedTime =
+              DateTime.fromMillisecondsSinceEpoch(lastSkipped);
+          final diff = DateTime.now().difference(lastSkippedTime);
+          if (diff.inMinutes < 15) {
+            return;
+          }
+        }
+
+        final user = supabase.auth.currentUser;
+        if (user == null) return;
+
+        // دریافت اطلاعات پروفایل
+        final profile = await supabase
+            .from('profiles')
+            .select('phone')
+            .eq('id', user.id)
+            .maybeSingle();
+
+        if (profile != null) {
+          final phone = profile['phone'] as String?;
+          // اگر شماره تلفن ندارد یا خالی است
+          if (phone == null || phone.isEmpty) {
+            if (mounted) {
+              await Future.delayed(const Duration(seconds: 1)); // تاخیر کوتاه
+              _showPhoneVerificationDialog();
+            }
+          }
+        }
+      } catch (e) {
+        // خطا را نادیده می‌گیریم
+      }
+    });
+  }
+
+  void _showPhoneVerificationDialog() {
+    if (!mounted) return;
+
+    final phoneController = TextEditingController();
+    bool isLoading = false;
+    String? errorText;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text(
+                'تایید شماره موبایل',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'برای ادامه فعالیت و امنیت بیشتر حساب کاربری، لطفاً شماره موبایل خود را تایید کنید.',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: phoneController,
+                    keyboardType: TextInputType.phone,
+                    decoration: InputDecoration(
+                      hintText: 'شماره موبایل (مثال: 0912...)',
+                      errorText: errorText,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () async {
+                    // ذخیره زمان رد کردن
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setInt('last_phone_verification_skipped_time',
+                        DateTime.now().millisecondsSinceEpoch);
+                    Navigator.of(dialogContext).pop();
+                  },
+                  child: const Text('بعداً یادآوری کن'),
+                ),
+                ElevatedButton(
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          final phone = phoneController.text.trim();
+                          if (phone.isEmpty ||
+                              !RegExp(r'^\+?[0-9]{10,13}$').hasMatch(phone)) {
+                            setDialogState(() {
+                              errorText = 'شماره موبایل نامعتبر است';
+                            });
+                            return;
+                          }
+
+                          setDialogState(() {
+                            isLoading = true;
+                            errorText = null;
+                          });
+
+                          try {
+                            // ارسال کد
+                            await ref
+                                .read(authNotifierProvider.notifier)
+                                .sendOtp(phone);
+
+                            if (!mounted) return;
+                            setDialogState(() {
+                              isLoading = false;
+                            });
+
+                            // بستن این دیالوگ و باز کردن OTP
+                            Navigator.of(dialogContext).pop();
+
+                            // نمایش OTP Dialog
+                            final verified =
+                                await showOtpDialog(context, ref, phone);
+                            if (verified) {
+                              // آپدیت پروفایل با شماره تلفن
+                              try {
+                                await supabase.from('profiles').update({
+                                  'phone': phone,
+                                }).eq('id', supabase.auth.currentUser!.id);
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text(
+                                          'شماره موبایل با موفقیت تایید شد')),
+                                );
+                              } catch (e) {
+                                // اگر در آپدیت خطا خورد، لااقل می‌دانیم وریفای شده ولی سیو نشده
+                              }
+                            } else {
+                              // اگر وریفای نشد، دوباره دیالوگ اول را نشان بده (یا ولش کن تا دفعه بعد)
+                              // فعلاً ولش می‌کنیم تا کاربر اذیت نشود، دفعه بعد (15 دقیقه بعد) دوباره می‌آید
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              setDialogState(() {
+                                isLoading = false;
+                                errorText = 'خطا در ارسال پیامک: $e';
+                              });
+                            }
+                          }
+                        },
+                  child: isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('ارسال کد'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   // هندل کردن تغییر تب

@@ -54,6 +54,9 @@ import 'package:Vista/features/posts/screens/publicPosts.dart';
 import 'package:Vista/features/posts/screens/PostDetailPage.dart';
 import 'package:Vista/features/posts/screens/profileScreen.dart';
 
+// Stories Module
+import 'package:Vista/features/stories/stories.dart';
+
 /// Notification response handler
 Future<void> notificationResponseHandler(NotificationResponse response) async {
   debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -485,7 +488,28 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                   );
                 }
                 return const Scaffold();
-              }
+              },
+              // Story Routes
+              '/story/create': (context) => const SessionMiddleware(
+                    child: StoryCreationScreen(),
+                  ),
+              '/story/view': (context) {
+                final args = ModalRoute.of(context)?.settings.arguments
+                    as Map<String, dynamic>?;
+                if (args != null) {
+                  final users = args['users'] as List<StoryUser>?;
+                  final initialIndex = args['initialIndex'] as int? ?? 0;
+                  if (users != null && users.isNotEmpty) {
+                    return SessionMiddleware(
+                      child: StoryPlayerScreen(
+                        users: users,
+                        initialUserIndex: initialIndex,
+                      ),
+                    );
+                  }
+                }
+                return const Scaffold();
+              },
             },
           ),
         );

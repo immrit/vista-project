@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 
-import 'package:Vista/features/stories/screens/story_system.dart';
 import 'publicPostModel.dart';
 
 enum VerificationType {
@@ -28,7 +27,7 @@ class ProfileModel extends Equatable {
   final bool isFollowed;
   final bool isPrivate;
   final List<PublicPostModel> posts;
-  final List<Story> stories; // اضافه کردن لیست استوری‌ها
+  // استوری‌ها اکنون از Provider جداگانه (activeStoriesProvider) می‌آیند
   final String? role; // فیلد نقش کاربر
   final int postsCount;
 
@@ -47,7 +46,6 @@ class ProfileModel extends Equatable {
     this.isFollowed = false,
     this.isPrivate = false,
     this.posts = const [],
-    this.stories = const [], // مقدار پیش‌فرض برای استوری‌ها
     this.role, // پارامتر نقش کاربر
     this.postsCount = 0,
   });
@@ -79,9 +77,6 @@ class ProfileModel extends Equatable {
       posts: (map['posts'] as List<dynamic>? ?? [])
           .map((post) => PublicPostModel.fromMap(post))
           .toList(),
-      stories: (map['stories'] as List<dynamic>? ?? [])
-          .map((story) => Story.fromMap(story))
-          .toList(), // واکشی استوری‌ها
       role: map['role']?.toString(), // واکشی نقش کاربر
       postsCount: map['posts_count'] ?? 0,
     );
@@ -103,8 +98,6 @@ class ProfileModel extends Equatable {
       'is_followed': isFollowed,
       'is_private': isPrivate,
       'posts': posts.map((post) => post.toMap()).toList(),
-      'stories':
-          stories.map((story) => story.toMap()).toList(), // ذخیره استوری‌ها
       'role': role, // ذخیره نقش کاربر
       'posts_count': postsCount,
     };
@@ -127,7 +120,6 @@ class ProfileModel extends Equatable {
     bool? isFollowed,
     bool? isPrivate,
     List<PublicPostModel>? posts,
-    List<Story>? stories, // اضافه کردن استوری‌ها به copyWith
     String? role, // اضافه کردن نقش کاربر به copyWith
     int? postsCount,
   }) {
@@ -146,7 +138,6 @@ class ProfileModel extends Equatable {
       isFollowed: isFollowed ?? this.isFollowed,
       isPrivate: isPrivate ?? this.isPrivate,
       posts: posts ?? this.posts,
-      stories: stories ?? this.stories, // اضافه کردن استوری‌ها
       role: role ?? this.role, // اضافه کردن نقش کاربر
       postsCount: postsCount ?? this.postsCount,
     );
@@ -168,7 +159,6 @@ class ProfileModel extends Equatable {
         isFollowed,
         isPrivate,
         posts,
-        stories, // اضافه کردن استوری‌ها به props
         role, // اضافه کردن نقش کاربر به props
         postsCount,
       ];

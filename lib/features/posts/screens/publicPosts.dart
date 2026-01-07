@@ -23,11 +23,13 @@ import 'package:Vista/utils/widgets.dart';
 import 'package:Vista/widgets/CustomVideoPlayer.dart';
 import 'package:Vista/widgets/ReelsScreen.dart';
 import 'package:Vista/features/music/screens/MiniMusicPlayer.dart';
-import 'package:Vista/features/stories/screens/story_system.dart';
+import 'package:Vista/features/stories/stories.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
 import '../../../model/publicPostModel.dart';
 import '../../../provider/provider.dart';
 import '../../../services/smart_share_service.dart';
+import 'package:Vista/features/posts/widgets/standard_edit_post_dialog.dart';
+import '../../../../features/posts/providers/post_upload_provider.dart';
 import 'MusicWaveform.dart';
 import 'notificationScreen.dart';
 import 'profileScreen.dart';
@@ -399,103 +401,110 @@ class _AllPostsPaginatedTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // تغییر به استفاده از engagementPostsProvider
     final postsAsync = ref.watch(engagementPostsProvider);
     final notifier = ref.watch(engagementPostsProvider.notifier);
 
-    return RefreshIndicator(
-      onRefresh: () async =>
-          ref.read(engagementPostsProvider.notifier).refreshPosts(),
-      child: postsAsync.when(
-        loading: () => _buildPostsSkeletonList(),
-        error: (error, stack) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.error_outline_rounded,
-                size: 56,
-                color: Colors.red,
-              ),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Text(
-                  error.toString(),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey,
-                  ),
+    return Column(
+      children: [
+        const UploadProgressList(),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () async =>
+                ref.read(engagementPostsProvider.notifier).refreshPosts(),
+            child: postsAsync.when(
+              loading: () => _buildPostsSkeletonList(),
+              error: (error, stack) => Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.error_outline_rounded,
+                      size: 56,
+                      color: Colors.red,
+                    ),
+                    const SizedBox(height: 16),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Text(
+                        error.toString(),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        ref.refresh(engagementPostsProvider);
+                        ref.refresh(fetchFollowingPostsProvider);
+                        ref.refresh(activeStoriesProvider);
+                        ref.refresh(commentNotifierProvider);
+                      },
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('تلاش مجدد'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: () {
-                  ref.refresh(engagementPostsProvider);
-                  ref.refresh(fetchFollowingPostsProvider);
-                  ref.refresh(storyUsersProvider);
-                  ref.refresh(commentNotifierProvider);
-                },
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('تلاش مجدد'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-              ),
-            ],
+              data: (posts) {
+                if (posts.isEmpty) {
+                  return const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.article_outlined,
+                            size: 64, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text('هیچ پستی یافت نشد',
+                            style: TextStyle(fontSize: 18)),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
+                  physics: const ClampingScrollPhysics(),
+                  addAutomaticKeepAlives: false,
+                  addRepaintBoundaries: true,
+                  addSemanticIndexes: false,
+                  cacheExtent: 500,
+                  itemBuilder: (context, index) {
+                    if (index == posts.length) {
+                      notifier.loadMorePosts();
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: LoadingAnimationWidget.staggeredDotsWave(
+                            color: Theme.of(context).primaryColor,
+                            size: 40,
+                          ),
+                        ),
+                      );
+                    }
+
+                    final post = posts[index];
+                    return RepaintBoundary(
+                      child: _buildPostItem(context, ref, post),
+                    );
+                  },
+                );
+              },
+            ),
           ),
         ),
-        data: (posts) {
-          if (posts.isEmpty) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.article_outlined, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text('هیچ پستی یافت نشد', style: TextStyle(fontSize: 18)),
-                ],
-              ),
-            );
-          }
-
-          return ListView.builder(
-            itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
-            physics: const ClampingScrollPhysics(),
-            // ✅ بهینه‌سازی‌های performance:
-            addAutomaticKeepAlives: false, // state آیتم‌ها رو نگه نداره
-            addRepaintBoundaries: true, // هر آیتم رو جدا render کنه
-            addSemanticIndexes: false, // indexing اضافی نداشته باشه
-            cacheExtent: 500, // فقط ۵۰۰ پیکسل اطراف رو cache کنه
-            itemBuilder: (context, index) {
-              if (index == posts.length) {
-                notifier.loadMorePosts();
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: LoadingAnimationWidget.staggeredDotsWave(
-                      color: Theme.of(context).primaryColor,
-                      size: 40,
-                    ),
-                  ),
-                );
-              }
-
-              final post = posts[index];
-              return RepaintBoundary(
-                child: _buildPostItem(context, ref, post),
-              );
-            },
-          );
-        },
-      ),
+      ],
     );
   }
 
@@ -518,81 +527,89 @@ class _FollowingPostsTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final postsAsync = ref.watch(fetchFollowingPostsProvider);
 
-    return RefreshIndicator(
-      onRefresh: () async =>
-          ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
-      child: postsAsync.when(
-        loading: () => _buildPostsSkeletonList(),
-        error: (error, stack) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.error_outline_rounded,
-                size: 56,
-                color: Colors.red,
-              ),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Text(
-                  error.toString(),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey,
-                  ),
+    return Column(
+      children: [
+        const UploadProgressList(),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () async =>
+                ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
+            child: postsAsync.when(
+              loading: () => _buildPostsSkeletonList(),
+              error: (error, stack) => Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.error_outline_rounded,
+                      size: 56,
+                      color: Colors.red,
+                    ),
+                    const SizedBox(height: 16),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Text(
+                        error.toString(),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: () => ref.refresh(publicPostsProvider),
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('تلاش مجدد'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: () => ref.refresh(publicPostsProvider),
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('تلاش مجدد'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-              ),
-            ],
+              data: (posts) {
+                return ListView.builder(
+                  itemCount: posts.length + (_hasMore ? 1 : 0),
+                  physics: const ClampingScrollPhysics(),
+                  addAutomaticKeepAlives: false,
+                  addRepaintBoundaries: true,
+                  addSemanticIndexes: false,
+                  cacheExtent: 500,
+                  itemBuilder: (context, index) {
+                    if (index == posts.length) {
+                      ref
+                          .read(fetchFollowingPostsProvider.notifier)
+                          .loadMorePosts();
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: LoadingAnimationWidget.progressiveDots(
+                            color: Theme.of(context).primaryColor,
+                            size: 40,
+                          ),
+                        ),
+                      );
+                    }
+
+                    final post = posts[index];
+                    return RepaintBoundary(
+                      child: _buildPostItem(context, ref, post),
+                    );
+                  },
+                );
+              },
+            ),
           ),
         ),
-        data: (posts) {
-          return ListView.builder(
-            itemCount: posts.length + (_hasMore ? 1 : 0),
-            physics: const ClampingScrollPhysics(),
-            // ✅ بهینه‌سازی‌های performance:
-            addAutomaticKeepAlives: false, // state آیتم‌ها رو نگه نداره
-            addRepaintBoundaries: true, // هر آیتم رو جدا render کنه
-            addSemanticIndexes: false, // indexing اضافی نداشته باشه
-            cacheExtent: 500, // فقط ۵۰۰ پیکسل اطراف رو cache کنه
-            itemBuilder: (context, index) {
-              if (index == posts.length) {
-                ref.read(fetchFollowingPostsProvider.notifier).loadMorePosts();
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: LoadingAnimationWidget.progressiveDots(
-                      color: Theme.of(context).primaryColor,
-                      size: 40,
-                    ),
-                  ),
-                );
-              }
-
-              final post = posts[index];
-              return RepaintBoundary(
-                child: _buildPostItem(context, ref, post),
-              );
-            },
-          );
-        },
-      ),
+      ],
     );
   }
 
@@ -1768,8 +1785,8 @@ void showEditPostDialog(
                               .eq('id', post.id);
 
                           // رفرش همه provider های مربوطه
-                          ref.refresh(engagementPostsProvider);
-                          ref.refresh(fetchFollowingPostsProvider);
+                          ref.invalidate(engagementPostsProvider);
+                          ref.invalidate(fetchFollowingPostsProvider);
 
                           if (context.mounted) {
                             Navigator.of(context).pop();
@@ -1848,12 +1865,12 @@ Widget _buildPostActions(
 
   return profileAsync.when(
     data: (profile) {
-      // فقط از is_verified و verification_type استفاده کن
       final isBlueTick = profile != null &&
           profile['is_verified'] == true &&
           profile['verification_type'] == 'blueTick';
 
       final currentUserId = supabase.auth.currentUser?.id;
+      final isCurrentUserPost = post.userId == currentUserId;
 
       return PopupMenuButton<String>(
         icon: const Icon(Icons.more_vert),
@@ -1882,7 +1899,7 @@ Widget _buildPostActions(
           ];
 
           // صاحب پست یا مدیران (تیک آبی) مجاز به حذف هستند
-          if (currentUserId == post.userId || isBlueTick) {
+          if (isCurrentUserPost || isBlueTick) {
             items.add(const PopupMenuItem<String>(
               value: 'delete',
               child: Row(
@@ -1895,31 +1912,47 @@ Widget _buildPostActions(
             ));
           }
 
-          // گزینه ویرایش برای صاحب پست (با یا بدون دسترسی)
-          if (currentUserId == post.userId) {
-            final currentUserProfile = ref.read(currentUserProfileProvider);
-            final canEditPost = currentUserProfile.value != null &&
-                PremiumFeaturesHelper.canEditPost(currentUserProfile.value!);
+          // منطق نمایش گزینه ویرایش
+          final currentUserProfile = ref.read(currentUserProfileProvider);
+          final hasPremiumEdit = currentUserProfile.value != null &&
+              PremiumFeaturesHelper.canEditPost(currentUserProfile.value!) &&
+              isCurrentUserPost;
 
+          // ویرایش: اگر تیک آبی دارد (برای همه) یا صاحب پست است (اگر پرمیوم باشد)
+          if (isBlueTick || hasPremiumEdit) {
             items.add(PopupMenuItem<String>(
               value: 'edit',
               child: Row(
                 children: [
                   Icon(
-                    canEditPost ? Icons.edit : Icons.lock_outline,
+                    isBlueTick ? Icons.admin_panel_settings : Icons.edit,
                     size: 20,
-                    color: canEditPost ? Colors.blue : Colors.grey,
+                    color: Colors.blue,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(isBlueTick ? 'ویرایش ناظر' : 'ویرایش پست'),
+                ],
+              ),
+            ));
+          } else if (isCurrentUserPost) {
+            // نمایش گزینه قفل برای صاحب پست که پرمیوم نیست
+            items.add(PopupMenuItem<String>(
+              value: 'edit_locked',
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.lock_outline,
+                    size: 20,
+                    color: Colors.grey,
                   ),
                   const SizedBox(width: 12),
                   const Text('ویرایش پست'),
-                  if (!canEditPost) ...[
-                    const Spacer(),
-                    Icon(
-                      Icons.workspace_premium,
-                      size: 18,
-                      color: Colors.amber.shade600,
-                    ),
-                  ],
+                  const Spacer(),
+                  Icon(
+                    Icons.workspace_premium,
+                    size: 18,
+                    color: Colors.amber.shade600,
+                  ),
                 ],
               ),
             ));
@@ -1946,11 +1979,7 @@ Widget _buildPostActions(
               ),
             );
           } else if (value == 'delete') {
-            // مدیران (تیک آبی) می‌توانند همه پست‌ها را حذف کنند، کاربران عادی فقط پست خودشان
-            final isBlueTick = profile != null &&
-                profile['is_verified'] == true &&
-                profile['verification_type'] == 'blueTick';
-            if (currentUserId == post.userId || isBlueTick) {
+            if (isCurrentUserPost || isBlueTick) {
               _showDeleteConfirmation(context, ref, post.id);
             } else {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -1961,32 +1990,26 @@ Widget _buildPostActions(
               );
             }
           } else if (value == 'edit') {
-            // استفاده از Helper برای بررسی دسترسی
-            final currentUserProfile = ref.read(currentUserProfileProvider);
-            final currentUserId = supabase.auth.currentUser?.id;
-            final isCurrentUserPost = post.userId == currentUserId;
-            final canEditPost = currentUserProfile.value != null &&
-                PremiumFeaturesHelper.canEditPost(currentUserProfile.value!) &&
-                isCurrentUserPost;
-
-            if (canEditPost) {
+            if (isBlueTick && !isCurrentUserPost) {
+              // نمایش ویرایش مخصوص ناظرین (فقط برای پست دیگران)
               showEditPostDialog(context, ref, post);
             } else {
-              // نمایش دیالوگ پریمیوم اگر دسترسی ندارد
-              if (isCurrentUserPost) {
-                PremiumFeaturesHelper.showPremiumPromptDialog(
-                  context,
-                  feature: 'ویرایش پست',
-                );
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('شما مجوز ویرایش این پست را ندارید'),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
+              // نمایش ویرایش استاندارد (برای پست خود، چه تیک آبی چه طلایی)
+              showStandardEditDialog(
+                context: context,
+                ref: ref,
+                post: post,
+                onSuccess: () {
+                  ref.invalidate(engagementPostsProvider);
+                  ref.invalidate(fetchFollowingPostsProvider);
+                },
+              );
             }
+          } else if (value == 'edit_locked') {
+            PremiumFeaturesHelper.showPremiumPromptDialog(
+              context,
+              feature: 'ویرایش پست',
+            );
           }
         },
       );
@@ -2762,3 +2785,101 @@ class _ConnectionStatusBarState extends State<ConnectionStatusBar>
 //     );
 //   }
 // }
+
+class UploadProgressList extends ConsumerWidget {
+  const UploadProgressList({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tasks = ref.watch(postUploadProvider);
+
+    if (tasks.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: Theme.of(context).cardColor,
+      child: Column(
+        children: tasks.map((task) => UploadTaskItem(task: task)).toList(),
+      ),
+    );
+  }
+}
+
+class UploadTaskItem extends ConsumerWidget {
+  final UploadTask task;
+
+  const UploadTaskItem({super.key, required this.task});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.dark
+            ? Colors.black26
+            : Colors.grey[100],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4),
+              color: Colors.grey[300],
+            ),
+            child: task.thumbnail != null
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: Image.file(task.thumbnail!, fit: BoxFit.cover),
+                  )
+                : const Icon(Icons.image, size: 20, color: Colors.grey),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      task.status == 'uploading'
+                          ? 'در حال ارسال...'
+                          : task.status == 'success'
+                              ? 'پست ارسال شد'
+                              : 'خطا در ارسال',
+                      style: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                    if (task.status == 'failed')
+                      IconButton(
+                        icon: const Icon(Icons.close,
+                            size: 16, color: Colors.red),
+                        onPressed: () {
+                          ref
+                              .read(postUploadProvider.notifier)
+                              .dismissTask(task.id);
+                        },
+                      )
+                  ],
+                ),
+                if (task.status == 'uploading')
+                  const LinearProgressIndicator(minHeight: 2),
+                if (task.errorMessage != null)
+                  Text(
+                    task.errorMessage!,
+                    style: const TextStyle(fontSize: 10, color: Colors.red),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

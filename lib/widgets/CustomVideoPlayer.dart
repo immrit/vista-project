@@ -424,11 +424,31 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
                   },
                 )
               else
-                Container(
-                  color: Colors.black,
-                  child: const Center(
-                    child:
-                        Icon(Icons.videocam, color: Colors.white30, size: 50),
+                AspectRatio(
+                  aspectRatio: 16 / 9, // نسبت تصویر استاندارد برای ویدیو
+                  child: Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Colors
+                          .grey[900], // رنگ پس‌زمینه کمی روشن‌تر از مشکی مطلق
+                      borderRadius: BorderRadius.circular(
+                          12), // گرد کردن گوشه‌ها اگر نیاز باشد
+                    ),
+                    child: const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.videocam_off,
+                              color: Colors.white24, size: 50),
+                          SizedBox(height: 8),
+                          Text(
+                            "پیش‌نمایش در دسترس نیست",
+                            style:
+                                TextStyle(color: Colors.white24, fontSize: 10),
+                          )
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               Center(
