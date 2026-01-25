@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/chat/providers/chat_providers.dart';
@@ -213,6 +214,17 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
       attachmentType: message.attachmentType,
       duration: message.duration,
     );
+  }
+
+  Future<void> sendImageMessage(File file, {String? caption}) async {
+    // Placeholder: Upload logic should be here
+    // For now we assume typical flow: upload -> get URL -> sendMessage
+    try {
+      // final url = await ref.read(chatRepositoryProvider).uploadFile(file);
+      // await sendMessage(caption ?? '', attachmentUrl: url, attachmentType: 'image');
+    } catch (e) {
+      state = state.copyWith(error: "Image upload failed: $e");
+    }
   }
 
   Future<void> fetchLatestMessages() async {

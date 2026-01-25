@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:Vista/utils/themes.dart';
 import 'package:Vista/provider/theme_provider.dart';
 import 'package:Vista/provider/settings_providers.dart';
 import 'package:Vista/DB/advanced_settings_service.dart';
@@ -18,7 +17,7 @@ class ThemeSettingsPage extends ConsumerStatefulWidget {
 class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
   @override
   Widget build(BuildContext context) {
-    final selectedColor = ref.watch(selectedColorProvider);
+    // Removed selectedColor usage
     final brightness = ref.watch(brightnessProvider);
     final currentTheme = ref.watch(dynamicThemeProvider);
     final isDark = currentTheme.brightness == Brightness.dark;
@@ -66,8 +65,11 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                       color: brightness == Brightness.dark
-                          ? Colors.amber.withValues(alpha: 0.2)
-                          : Colors.blue.withValues(alpha: 0.2),
+                          ? Colors.grey.withValues(
+                              alpha:
+                                  0.2) // Changed from amber to grey for monochrome
+                          : Colors.grey
+                              .withValues(alpha: 0.2), // Changed from blue
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -75,9 +77,9 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
-                        color: brightness == Brightness.dark
-                            ? Colors.amber[700]
-                            : Colors.blue[700],
+                        color: isDark
+                            ? Colors.white
+                            : Colors.black, // Monochrome text
                       ),
                     ),
                   ),
@@ -105,18 +107,15 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: brightness == Brightness.dark
-                        ? [Colors.amber[400]!, Colors.orange[400]!]
-                        : [Colors.blue[400]!, Colors.lightBlue[400]!],
+                        ? [Colors.grey[800]!, Colors.black]
+                        : [Colors.grey[300]!, Colors.white],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: (brightness == Brightness.dark
-                              ? Colors.amber
-                              : Colors.blue)
-                          .withValues(alpha: 0.4),
+                      color: Colors.black.withValues(alpha: 0.1),
                       blurRadius: 8,
                       offset: const Offset(0, 4),
                     ),
@@ -129,172 +128,19 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                         ? Icons.nightlight_round
                         : Icons.wb_sunny,
                     key: ValueKey(brightness == Brightness.dark),
-                    color: Colors.white,
+                    color: isDark ? Colors.white : Colors.black,
                     size: 24,
                   ),
                 ),
               ),
-              activeThumbColor:
-                  brightness == Brightness.dark ? Colors.amber : Colors.blue,
+              activeThumbColor: isDark ? Colors.white : Colors.black,
+              activeTrackColor: Colors.grey,
             ),
           ),
 
           const SizedBox(height: 20),
 
-          // انتخاب رنگ تم
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16.0),
-            decoration: BoxDecoration(
-              color: isDark ? colorScheme.surface : Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isDark ? Colors.grey[700]! : Colors.grey[100]!,
-                width: 1,
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "انتخاب رنگ تم",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "رنگ مورد نظر خود را انتخاب کنید",
-                    style: TextStyle(
-                        fontSize: 14,
-                        color: isDark ? Colors.grey[400] : Colors.grey[700]),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // پیش‌نمایش تم‌ها به صورت افقی قابل اسکرول
-                  SizedBox(
-                    height: 240, // ارتفاع ثابت برای پیش‌نمایش‌ها
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      children: [
-                        _buildThemePreview(
-                          context,
-                          color: ThemeColor.white,
-                          label: 'سفید',
-                          isSelected: selectedColor == ThemeColor.white,
-                          brightness: brightness,
-                          onTap: () {
-                            ref
-                                .read(selectedColorProvider.notifier)
-                                .updateColor(ThemeColor.white);
-                          },
-                        ),
-                        const SizedBox(width: 12),
-                        _buildThemePreview(
-                          context,
-                          color: ThemeColor.blue,
-                          label: 'آبی',
-                          isSelected: selectedColor == ThemeColor.blue,
-                          brightness: brightness,
-                          onTap: () {
-                            ref
-                                .read(selectedColorProvider.notifier)
-                                .updateColor(ThemeColor.blue);
-                          },
-                        ),
-                        const SizedBox(width: 12),
-                        _buildThemePreview(
-                          context,
-                          color: ThemeColor.red,
-                          label: 'قرمز',
-                          isSelected: selectedColor == ThemeColor.red,
-                          brightness: brightness,
-                          onTap: () {
-                            ref
-                                .read(selectedColorProvider.notifier)
-                                .updateColor(ThemeColor.red);
-                          },
-                        ),
-                        const SizedBox(width: 12),
-                        _buildThemePreview(
-                          context,
-                          color: ThemeColor.yellow,
-                          label: 'زرد',
-                          isSelected: selectedColor == ThemeColor.yellow,
-                          brightness: brightness,
-                          onTap: () {
-                            ref
-                                .read(selectedColorProvider.notifier)
-                                .updateColor(ThemeColor.yellow);
-                          },
-                        ),
-                        const SizedBox(width: 12),
-                        _buildThemePreview(
-                          context,
-                          color: ThemeColor.teal,
-                          label: 'سبزآبی',
-                          isSelected: selectedColor == ThemeColor.teal,
-                          brightness: brightness,
-                          onTap: () {
-                            ref
-                                .read(selectedColorProvider.notifier)
-                                .updateColor(ThemeColor.teal);
-                          },
-                        ),
-                        const SizedBox(width: 4), // فاصله انتهایی
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          // راهنمای تم‌ها
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16.0),
-            decoration: BoxDecoration(
-              color: isDark ? colorScheme.surface : Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isDark ? Colors.grey[700]! : Colors.grey[100]!,
-                width: 1,
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.info_outline, size: 20, color: Colors.blue),
-                      SizedBox(width: 8),
-                      Text(
-                        "راهنمای تم‌ها",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    "ابتدا حالت تاریک یا روشن را انتخاب کنید، سپس رنگ مورد نظر خود را از بین رنگ‌های موجود انتخاب کنید. تنظیمات انتخاب شده در تمام بخش‌های برنامه اعمال خواهد شد.",
-                    style: TextStyle(
-                        fontSize: 14,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600]),
-                    textAlign: TextAlign.justify,
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 20),
+          // REMOVED: Color Selection Container
 
           // تنظیمات عملکرد و انیمیشن
           _buildPerformanceSettingsCard(context, isDark, colorScheme),
@@ -334,11 +180,11 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.purple.withValues(alpha: 0.1),
+                    color: Colors.black.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.speed_rounded,
-                      color: Colors.purple, size: 20),
+                  child: Icon(Icons.speed_rounded,
+                      color: isDark ? Colors.white : Colors.black, size: 20),
                 ),
                 const SizedBox(width: 12),
                 const Text(
@@ -359,18 +205,18 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                 children: [
                   SettingsListItem(
                     icon: Icons.animation_rounded,
-                    iconColor: Colors.blue,
+                    iconColor: isDark ? Colors.white : Colors.black,
                     title: 'انیمیشن‌ها',
                     subtitle: 'فعال/غیرفعال کردن انیمیشن‌ها',
                     trailing: Switch(
                       value: animations['enabled'] as bool? ?? true,
+                      activeColor: isDark ? Colors.white : Colors.black,
                       onChanged: (value) async {
                         final service = AdvancedSettingsService();
                         await service.updatePerformanceSettings({
                           'animations': {...animations, 'enabled': value}
                         });
                         ref.invalidate(performanceSettingsProvider);
-                        // به‌روزرسانی AnimationControllerService
                         await AnimationControllerService().loadSettings();
                       },
                     ),
@@ -378,7 +224,7 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   _buildDivider(),
                   SettingsListItem(
                     icon: Icons.speed_rounded,
-                    iconColor: Colors.orange,
+                    iconColor: isDark ? Colors.white : Colors.black,
                     title: 'سرعت انیمیشن',
                     subtitle: animations['speed'] == 'slow'
                         ? 'کند'
@@ -390,18 +236,18 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   _buildDivider(),
                   SettingsListItem(
                     icon: Icons.accessibility_new_rounded,
-                    iconColor: Colors.green,
+                    iconColor: isDark ? Colors.white : Colors.black,
                     title: 'کاهش حرکت',
                     subtitle: 'برای کاربران حساس به حرکت',
                     trailing: Switch(
                       value: animations['reduce_motion'] as bool? ?? false,
+                      activeColor: isDark ? Colors.white : Colors.black,
                       onChanged: (value) async {
                         final service = AdvancedSettingsService();
                         await service.updatePerformanceSettings({
                           'animations': {...animations, 'reduce_motion': value}
                         });
                         ref.invalidate(performanceSettingsProvider);
-                        // به‌روزرسانی AnimationControllerService
                         await AnimationControllerService().loadSettings();
                       },
                     ),
@@ -409,12 +255,13 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   _buildDivider(),
                   SettingsListItem(
                     icon: Icons.memory_rounded,
-                    iconColor: Colors.teal,
+                    iconColor: isDark ? Colors.white : Colors.black,
                     title: 'GPU Acceleration',
                     subtitle: 'افزایش سرعت رندرینگ',
                     trailing: Switch(
                       value:
                           rendering['enable_gpu_acceleration'] as bool? ?? true,
+                      activeColor: isDark ? Colors.white : Colors.black,
                       onChanged: (value) async {
                         final service = AdvancedSettingsService();
                         await service.updatePerformanceSettings({
@@ -470,11 +317,11 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.indigo.withValues(alpha: 0.1),
+                    color: Colors.black.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.accessibility_new_rounded,
-                      color: Colors.indigo, size: 20),
+                  child: Icon(Icons.accessibility_new_rounded,
+                      color: isDark ? Colors.white : Colors.black, size: 20),
                 ),
                 const SizedBox(width: 12),
                 const Text(
@@ -493,11 +340,12 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                 children: [
                   SettingsListItem(
                     icon: Icons.text_fields_rounded,
-                    iconColor: Colors.blue,
+                    iconColor: isDark ? Colors.white : Colors.black,
                     title: 'متن بزرگ',
                     subtitle: 'افزایش اندازه متن',
                     trailing: Switch(
                       value: accessibility['large_text'] as bool? ?? false,
+                      activeColor: isDark ? Colors.white : Colors.black,
                       onChanged: (value) async {
                         final service = AdvancedSettingsService();
                         await service.updateAdvancedAppSettings({
@@ -507,7 +355,6 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                           }
                         });
                         ref.invalidate(advancedAppSettingsProvider);
-                        // Force rebuild theme
                         ref.invalidate(dynamicThemeProvider);
                       },
                     ),
@@ -515,11 +362,12 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   _buildDivider(),
                   SettingsListItem(
                     icon: Icons.format_bold_rounded,
-                    iconColor: Colors.purple,
+                    iconColor: isDark ? Colors.white : Colors.black,
                     title: 'متن پررنگ',
                     subtitle: 'افزایش ضخامت متن',
                     trailing: Switch(
                       value: accessibility['bold_text'] as bool? ?? false,
+                      activeColor: isDark ? Colors.white : Colors.black,
                       onChanged: (value) async {
                         final service = AdvancedSettingsService();
                         await service.updateAdvancedAppSettings({
@@ -529,7 +377,6 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                           }
                         });
                         ref.invalidate(advancedAppSettingsProvider);
-                        // Force rebuild theme
                         ref.invalidate(dynamicThemeProvider);
                       },
                     ),
@@ -537,11 +384,12 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   _buildDivider(),
                   SettingsListItem(
                     icon: Icons.contrast_rounded,
-                    iconColor: Colors.orange,
+                    iconColor: isDark ? Colors.white : Colors.black,
                     title: 'کنتراست بالا',
                     subtitle: 'افزایش کنتراست رنگ‌ها',
                     trailing: Switch(
                       value: accessibility['high_contrast'] as bool? ?? false,
+                      activeColor: isDark ? Colors.white : Colors.black,
                       onChanged: (value) async {
                         final service = AdvancedSettingsService();
                         await service.updateAdvancedAppSettings({
@@ -551,7 +399,6 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                           }
                         });
                         ref.invalidate(advancedAppSettingsProvider);
-                        // Force rebuild theme
                         ref.invalidate(dynamicThemeProvider);
                       },
                     ),
@@ -559,7 +406,7 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   _buildDivider(),
                   SettingsListItem(
                     icon: Icons.color_lens_rounded,
-                    iconColor: Colors.teal,
+                    iconColor: isDark ? Colors.white : Colors.black,
                     title: 'حالت رنگ‌کوری',
                     subtitle: _getColorBlindModeText(
                         accessibility['color_blind_mode'] as String? ?? 'none'),
@@ -616,7 +463,6 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   'animations': {...animations, 'speed': value}
                 });
                 ref.invalidate(performanceSettingsProvider);
-                // به‌روزرسانی AnimationControllerService
                 await AnimationControllerService().loadSettings();
               },
             ),
@@ -631,7 +477,6 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   'animations': {...animations, 'speed': value}
                 });
                 ref.invalidate(performanceSettingsProvider);
-                // به‌روزرسانی AnimationControllerService
                 await AnimationControllerService().loadSettings();
               },
             ),
@@ -646,7 +491,6 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   'animations': {...animations, 'speed': value}
                 });
                 ref.invalidate(performanceSettingsProvider);
-                // به‌روزرسانی AnimationControllerService
                 await AnimationControllerService().loadSettings();
               },
             ),
@@ -691,7 +535,6 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   'accessibility': {...accessibility, 'color_blind_mode': value}
                 });
                 ref.invalidate(advancedAppSettingsProvider);
-                // Force rebuild theme
                 ref.invalidate(dynamicThemeProvider);
               },
             ),
@@ -706,7 +549,6 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   'accessibility': {...accessibility, 'color_blind_mode': value}
                 });
                 ref.invalidate(advancedAppSettingsProvider);
-                // Force rebuild theme
                 ref.invalidate(dynamicThemeProvider);
               },
             ),
@@ -721,7 +563,6 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   'accessibility': {...accessibility, 'color_blind_mode': value}
                 });
                 ref.invalidate(advancedAppSettingsProvider);
-                // Force rebuild theme
                 ref.invalidate(dynamicThemeProvider);
               },
             ),
@@ -736,413 +577,10 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   'accessibility': {...accessibility, 'color_blind_mode': value}
                 });
                 ref.invalidate(advancedAppSettingsProvider);
-                // Force rebuild theme
                 ref.invalidate(dynamicThemeProvider);
               },
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  // متد پیش‌نمایش تم با شبیه‌سازی publicPosts
-  Widget _buildThemePreview(
-    BuildContext context, {
-    required ThemeColor color,
-    required String label,
-    required bool isSelected,
-    required Brightness brightness,
-    required VoidCallback onTap,
-  }) {
-    final themeData = createTheme(color, brightness);
-    final previewIsDark = themeData.brightness == Brightness.dark;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeInOut,
-        transform: Matrix4.identity()..scale(isSelected ? 1.02 : 1.0),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected
-                ? themeData.primaryColor
-                : Colors.grey.withValues(alpha: 0.3),
-            width: isSelected ? 3 : 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: isSelected
-                  ? themeData.primaryColor.withValues(alpha: 0.4)
-                  : Colors.black.withValues(alpha: 0.1),
-              blurRadius: isSelected ? 12 : 8,
-              offset: Offset(0, isSelected ? 6 : 4),
-            ),
-          ],
-          gradient: isSelected
-              ? LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    themeData.primaryColor.withValues(alpha: 0.1),
-                    themeData.primaryColor.withValues(alpha: 0.05),
-                  ],
-                )
-              : null,
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            width: 160, // عرض ثابت برای هر پیش‌نمایش
-            height: 200, // ارتفاع کمی بیشتر برای تناسب بهتر
-            color: previewIsDark
-                ? const Color(0xFF1E1E1E)
-                : const Color(0xFFF5F5F5),
-            child: Column(
-              children: [
-                // هدر با نام تم و gradient
-                Container(
-                  height: 40,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        themeData.primaryColor,
-                        themeData.primaryColor.withValues(alpha: 0.8),
-                      ],
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 12),
-                      Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Icon(
-                          Icons.palette,
-                          color: Colors.white,
-                          size: 14,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        label,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          shadows: [
-                            Shadow(
-                              offset: Offset(1, 1),
-                              blurRadius: 2,
-                              color: Colors.black26,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Spacer(),
-                      if (isSelected)
-                        AnimatedScale(
-                          scale: isSelected ? 1.0 : 0.0,
-                          duration: const Duration(milliseconds: 200),
-                          child: Container(
-                            padding: const EdgeInsets.all(2),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(
-                              Icons.check,
-                              color: themeData.primaryColor,
-                              size: 14,
-                            ),
-                          ),
-                        ),
-                      const SizedBox(width: 12),
-                    ],
-                  ),
-                ),
-
-                // محتوای شبیه‌سازی شده
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      children: [
-                        // شبیه‌سازی AppBar
-                        Container(
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: themeData.primaryColor,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            children: [
-                              const SizedBox(width: 8),
-                              Icon(Icons.public, color: Colors.white, size: 14),
-                              const SizedBox(width: 6),
-                              const Text(
-                                'Vista',
-                                style: TextStyle(
-                                  fontFamily: 'Bauhaus',
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const Spacer(),
-                              Icon(Icons.favorite_border,
-                                  color: Colors.white, size: 14),
-                              const SizedBox(width: 8),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        // شبیه‌سازی TabBar
-                        Container(
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: previewIsDark
-                                ? Colors.grey[800]
-                                : Colors.grey[100],
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Container(
-                                  height: 20,
-                                  margin: const EdgeInsets.all(2),
-                                  decoration: BoxDecoration(
-                                    color: themeData.primaryColor,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: const Center(
-                                    child: Text(
-                                      'همه پست‌ها',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 8,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: Container(
-                                  height: 20,
-                                  margin: const EdgeInsets.all(2),
-                                  child: Center(
-                                    child: Text(
-                                      'دنبال‌شده‌ها',
-                                      style: TextStyle(
-                                        color: previewIsDark
-                                            ? Colors.white70
-                                            : Colors.black54,
-                                        fontSize: 8,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        // شبیه‌سازی Story Bar
-                        Container(
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color:
-                                previewIsDark ? Colors.grey[800] : Colors.white,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            children: [
-                              const SizedBox(width: 8),
-                              ...List.generate(
-                                  4,
-                                  (index) => Container(
-                                        margin: const EdgeInsets.only(right: 4),
-                                        child: Container(
-                                          width: 18,
-                                          height: 18,
-                                          decoration: BoxDecoration(
-                                            gradient: LinearGradient(
-                                              colors: [
-                                                themeData.primaryColor,
-                                                themeData.primaryColor
-                                                    .withValues(alpha: 0.7),
-                                              ],
-                                            ),
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
-                                                color: Colors.white, width: 1),
-                                          ),
-                                          child: Icon(
-                                            Icons.person,
-                                            color: Colors.white,
-                                            size: 8,
-                                          ),
-                                        ),
-                                      )),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        // شبیه‌سازی پست
-                        Expanded(
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: previewIsDark
-                                  ? Colors.grey[800]
-                                  : Colors.white,
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(
-                                color: previewIsDark
-                                    ? Colors.grey[700]!
-                                    : Colors.grey[100]!,
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // هدر پست
-                                Row(
-                                  children: [
-                                    Container(
-                                      width: 12,
-                                      height: 12,
-                                      decoration: BoxDecoration(
-                                        color: themeData.primaryColor,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(Icons.person,
-                                          color: Colors.white, size: 6),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'کاربر نمونه',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: previewIsDark
-                                            ? Colors.white
-                                            : Colors.black87,
-                                        fontSize: 8,
-                                      ),
-                                    ),
-                                    const Spacer(),
-                                    Icon(
-                                      Icons.more_vert,
-                                      color: previewIsDark
-                                          ? Colors.white70
-                                          : Colors.black54,
-                                      size: 8,
-                                    ),
-                                  ],
-                                ),
-
-                                const SizedBox(height: 4),
-
-                                // متن پست
-                                Text(
-                                  'این یک پست نمونه است',
-                                  style: TextStyle(
-                                    color: previewIsDark
-                                        ? Colors.white
-                                        : Colors.black87,
-                                    fontSize: 7,
-                                  ),
-                                ),
-
-                                const SizedBox(height: 4),
-
-                                // تصویر نمونه
-                                Expanded(
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: themeData.primaryColor
-                                          .withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Center(
-                                      child: Icon(
-                                        Icons.image,
-                                        color: themeData.primaryColor,
-                                        size: 12,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-
-                                const SizedBox(height: 4),
-
-                                // دکمه‌های تعامل
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.favorite_border,
-                                      color: previewIsDark
-                                          ? Colors.white70
-                                          : Colors.black54,
-                                      size: 8,
-                                    ),
-                                    const SizedBox(width: 2),
-                                    Text(
-                                      '12',
-                                      style: TextStyle(
-                                        fontSize: 6,
-                                        color: previewIsDark
-                                            ? Colors.white70
-                                            : Colors.black54,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Icon(
-                                      Icons.comment_outlined,
-                                      color: previewIsDark
-                                          ? Colors.white70
-                                          : Colors.black54,
-                                      size: 8,
-                                    ),
-                                    const SizedBox(width: 2),
-                                    Text(
-                                      '3',
-                                      style: TextStyle(
-                                        fontSize: 6,
-                                        color: previewIsDark
-                                            ? Colors.white70
-                                            : Colors.black54,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );

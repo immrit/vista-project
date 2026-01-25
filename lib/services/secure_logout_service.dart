@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/data/cache/cache_repository.dart';
-import '../features/auth/screens/auth_screen.dart'; // Adjust import if needed
+import '../features/auth/screens/auth_wizard_screen.dart';
 import '../security/logging_utility.dart';
 import 'session_manager_service_v2.dart';
 
@@ -55,7 +55,7 @@ class SecureLogoutService {
       // 6. Navigation
       if (context.mounted) {
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const AuthScreen()),
+          MaterialPageRoute(builder: (context) => const AuthWizardScreen()),
           (route) => false,
         );
       }
@@ -66,7 +66,7 @@ class SecureLogoutService {
       // Attempt to force navigation even if something failed
       if (context.mounted) {
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const AuthScreen()),
+          MaterialPageRoute(builder: (context) => const AuthWizardScreen()),
           (route) => false,
         );
       }

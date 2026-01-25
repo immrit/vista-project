@@ -120,8 +120,8 @@ final themeProvider = StateProvider<ThemeData>((ref) {
   final platformBrightness = PlatformDispatcher.instance.platformBrightness;
 
   return platformBrightness == Brightness.dark
-      ? darkTheme // اگر گوشی در حالت تیره است
-      : lightTheme; // اگر گوشی در حالت روشن است
+      ? VistaThemes.darkTheme // اگر گوشی در حالت تیره است
+      : VistaThemes.lightTheme; // اگر گوشی در حالت روشن است
 });
 
 final isLoadingProvider = StateProvider<bool>((ref) => false);

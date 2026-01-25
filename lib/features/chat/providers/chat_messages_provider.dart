@@ -1,10 +1,9 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:Vista/model/message_model.dart';
-import 'package:Vista/DB/unified_message_cache_service.dart';
+
 import 'package:Vista/features/chat/repositories/chat_repository.dart';
 import 'package:Vista/features/chat/providers/chat_providers.dart';
 
-import 'package:Vista/utils/const.dart';
 import 'package:Vista/security/logging_utility.dart';
 import 'dart:async';
 
@@ -12,7 +11,6 @@ part 'chat_messages_provider.g.dart';
 
 @riverpod
 class ChatMessages extends _$ChatMessages {
-  late final UnifiedMessageCacheService _cacheService;
   late final ChatRepository _chatRepository;
   StreamSubscription? _realtimeSubscription;
   static const int _pageSize = 20;
@@ -20,7 +18,6 @@ class ChatMessages extends _$ChatMessages {
 
   @override
   FutureOr<List<MessageModel>> build(String conversationId) async {
-    _cacheService = UnifiedMessageCacheService();
     _chatRepository = ref.read(chatRepositoryProvider);
 
     // Cleanup on dispose
@@ -28,61 +25,15 @@ class ChatMessages extends _$ChatMessages {
       _realtimeSubscription?.cancel();
     });
 
-    // 1. Load from Cache immediately
-    final currentUser = supabase.auth.currentUser;
-    if (currentUser == null) return [];
+    // Return the stream from repository directly.
+    // This is the SINGLE SOURCE OF TRUTH.
+    _realtimeSubscription =
+        _chatRepository.watchMessages(conversationId).listen((messages) {
+      state = AsyncValue.data(messages);
+    });
 
-    final cachedMessages = await _cacheService.getConversationMessages(
-        conversationId, currentUser.id);
-
-    // 2. Setup Realtime Listener (via Repository)
-    _setupRealtimeListener(conversationId);
-
-    // 3. Fetch fresh data from network in background if we have cache,
-    //    or wait for it if cache is empty.
-    if (cachedMessages.isEmpty) {
-      return await _fetchFromNetwork(conversationId);
-    } else {
-      // Optimistically return cache, but update in background
-      _fetchAndSync(conversationId);
-      return cachedMessages;
-    }
-  }
-
-  Future<List<MessageModel>> _fetchFromNetwork(String conversationId,
-      {String? beforeMessageId}) async {
-    final result = await _chatRepository.getMessages(
-      conversationId,
-      limit: _pageSize,
-      beforeMessageId: beforeMessageId,
-    );
-
-    return result.fold(
-      (messages) async {
-        _hasMore = messages.length >= _pageSize;
-        // Update Cache
-        final currentUser = supabase.auth.currentUser;
-        if (currentUser != null && messages.isNotEmpty) {
-          await _cacheService.cacheMessages(messages, currentUser.id);
-        }
-        return messages;
-      },
-      (error) {
-        logInfo('Network fetch error: $error');
-        return [];
-      },
-    );
-  }
-
-  Future<void> _fetchAndSync(String conversationId) async {
-    try {
-      final messages = await _fetchFromNetwork(conversationId);
-      if (messages.isNotEmpty) {
-        state = AsyncValue.data(messages);
-      }
-    } catch (e) {
-      logInfo('Background sync failed: $e');
-    }
+    // Initial value while stream connects (Isar usually fires immediately)
+    return [];
   }
 
   Future<void> loadMore() async {
@@ -90,67 +41,51 @@ class ChatMessages extends _$ChatMessages {
       if (!_hasMore || state.isLoading) return;
 
       final currentMessages = state.value ?? [];
-      // Don't wipe state, just keep showing current
-
       final oldestMessage =
           currentMessages.isNotEmpty ? currentMessages.last : null;
+
       if (oldestMessage == null) return;
 
-      final newMessages = await _fetchFromNetwork(
-        conversationId,
-        beforeMessageId:
-            oldestMessage.id, // Use ID based pagination if repo supports it
-        // Or if repo uses offset, we might need a different method.
-        // Assuming repo supports standard pagination.
+      // Correctly load older messages using the repository
+      final result = await _chatRepository.loadMoreMessages(
+        conversationId: conversationId,
+        oldestMessageDate: oldestMessage.createdAt,
+        limit: _pageSize,
       );
 
-      if (newMessages.isNotEmpty) {
-        state = AsyncValue.data([...currentMessages, ...newMessages]);
-      }
+      result.fold(
+        (newMessages) {
+          if (newMessages.isEmpty) {
+            _hasMore = false;
+          }
+          // No need to update state manually, saving to DB triggers the stream!
+        },
+        (error) {
+          logInfo('Load more failed: $error');
+        },
+      );
     } catch (e) {
-      // Keep old state on error, maybe show toast
       logInfo('Load more failed: $e');
     }
   }
 
-  void _setupRealtimeListener(String conversationId) {
-    // We can use the repository stream if we want full sync
-    // Or just simple stream if provided.
-    // For now, let's trust the repository's internal sync or use its watchMessages
-    // Actually, ChatRepository.watchMessages handles sync + local stream.
-    // But this provider seems to want to manage state manually (legacy style).
-    // Ideally we should switch to StreamProvider, but to minimize refactor risk:
+  // Optimistic updates are now handled by the repository saving to Isar immediately.
+  // We keep these methods empty or remove them if UI calls them,
+  // but looking at ModernChatScreen, it doesn't seem to call these directly for sending.
+  // It relies on the provider stream updates.
 
-    _realtimeSubscription =
-        _chatRepository.watchMessages(conversationId).listen((messages) {
-      // Repository stream yields FULL list usually?
-      // Check implementation: yield* _localDataSource.watchMessages
-      // Yes, Isar watch yields the full list matching the query.
-
-      // So we can just update state directly!
-      state = AsyncValue.data(messages);
-    });
-  }
-
-  // Optimistic updates methods
-  // These might be redundant if we use watchMessages from Isar,
-  // because saving to Isar triggers the stream update automatically.
-  // But keeping them for now if UI expects instant feedback before DB write.
+  // If ModernChatScreen calls these, we should ideally remove usage there too,
+  // but to preserve API compatibility we can leave no-ops or delegate to repo if needed.
+  // However, since repo.sendMessage writes to DB, the stream updates automatically.
   void addOptimisticMessage(MessageModel message) {
-    final currentMessages = state.value ?? [];
-    state = AsyncValue.data([message, ...currentMessages]);
+    // No-op: Repository handles DB write -> Stream update
   }
 
   void updateOptimisticMessage(MessageModel message) {
-    final currentMessages = state.value ?? [];
-    final updated =
-        currentMessages.map((m) => m.id == message.id ? message : m).toList();
-    state = AsyncValue.data(updated);
+    // No-op: Repository handles DB write -> Stream update
   }
 
   void removeOptimisticMessage(String messageId) {
-    final currentMessages = state.value ?? [];
-    final updated = currentMessages.where((m) => m.id != messageId).toList();
-    state = AsyncValue.data(updated);
+    // No-op: Repository handles DB write -> Stream update
   }
 }

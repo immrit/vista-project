@@ -39,10 +39,10 @@ import 'package:Vista/provider/theme_provider.dart';
 import 'package:Vista/utils/const.dart';
 
 // Feature Screens (Moved)
-import 'package:Vista/features/splash/screens/SplashScreen.dart';
 import 'package:Vista/features/home/screens/homeScreen.dart';
-import 'package:Vista/features/chat/screens/modern_chat_screen.dart';
-import 'package:Vista/features/auth/screens/auth_screen.dart';
+
+import 'package:Vista/features/chat/screens/ChatScreen.dart';
+import 'package:Vista/features/auth/screens/auth_wizard_screen.dart';
 import 'package:Vista/features/auth/screens/biometric_login_screen.dart';
 import 'package:Vista/features/auth/screens/reset_password_screen.dart';
 import 'package:Vista/features/auth/screens/password_reset_code_screen.dart';
@@ -346,7 +346,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         final context = navigatorKey.currentContext;
         if (context == null || !context.mounted) return;
         Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (context) => const AuthScreen()),
+            MaterialPageRoute(builder: (context) => const AuthWizardScreen()),
             (r) => false);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('نشست شما توسط دستگاه دیگری خاتمه یافت')));
@@ -413,13 +413,13 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
             // I'll stick to basic theme for now to ensure compile.
             // If they had custom theme logic, better to import providers.
             theme: theme,
-            home: const SplashScreen(),
+            home: const AuthWizardScreen(),
             initialRoute: '/',
             routes: {
               '/home': (context) =>
                   const SessionMiddleware(child: HomeScreen()),
               '/onboarding': (context) => const Onboarding(),
-              '/auth': (context) => const AuthScreen(),
+              '/auth': (context) => const AuthWizardScreen(),
               '/reset-password': (context) => const ResetPasswordScreen(),
               '/reset-password-code': (context) =>
                   const PasswordResetCodeScreen(),
@@ -474,21 +474,22 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                   final conversation =
                       CacheRepository().getConversationSync(conversationId);
                   return SessionMiddleware(
-                    child: ModernChatScreen(
-                      args: ChatScreenArgs(
-                        conversationId: conversationId,
-                        otherUserName:
-                            username ?? conversation?.otherUserName ?? '...',
-                        otherUserAvatar:
-                            avatarUrl ?? conversation?.otherUserAvatar,
-                        otherUserId:
-                            otherUserId ?? conversation?.otherUserId ?? '',
-                      ),
+                    child: ChatScreen(
+                      conversationId: conversationId,
+                      otherUserId:
+                          otherUserId ?? conversation?.otherUserId ?? '',
+                      otherUserName:
+                          username ?? conversation?.otherUserName ?? 'Unknown',
+                      otherUserAvatar:
+                          avatarUrl ?? conversation?.otherUserAvatar,
                     ),
                   );
                 }
-                return const Scaffold();
+                return const Scaffold(
+                  body: Center(child: Text('Invalid arguments')),
+                );
               },
+
               // Story Routes
               '/story/create': (context) => const SessionMiddleware(
                     child: StoryCreationScreen(),
@@ -518,17 +519,5 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         );
       },
     );
-  }
-}
-
-class _NoAnimationPageTransitionsBuilder extends PageTransitionsBuilder {
-  @override
-  Widget buildTransitions<T>(
-      PageRoute<T> route,
-      BuildContext context,
-      Animation<double> animation,
-      Animation<double> secondaryAnimation,
-      Widget child) {
-    return child;
   }
 }

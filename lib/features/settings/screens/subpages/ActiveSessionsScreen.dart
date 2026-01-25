@@ -9,7 +9,8 @@ import 'package:Vista/provider/session_provider.dart';
 import 'package:Vista/services/session_manager_service.dart';
 import 'package:Vista/DB/unified_message_cache_service.dart';
 import '../../../../core/data/cache/cache_repository.dart';
-import 'package:Vista/features/auth/screens/auth_screen.dart';
+
+import 'package:Vista/features/auth/screens/auth_wizard_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ActiveSessionsScreen extends ConsumerStatefulWidget {
@@ -663,7 +664,7 @@ class _SessionDetailsBottomSheet extends StatelessWidget {
 
         // هدایت به صفحه لاگین
         navigator.pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const AuthScreen()),
+          MaterialPageRoute(builder: (context) => const AuthWizardScreen()),
           (route) => false,
         );
 
