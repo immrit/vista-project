@@ -6,11 +6,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../model/message_model.dart';
 import '../../../provider/chat_screen_provider.dart';
-import '../../../features/chat/widgets/direct_chat_input.dart';
 import '../../../features/chat/widgets/message_bubble.dart';
-import 'ChatDetailsScreen.dart';
 
-// Minimalist ChatScreen
+// New Imports
+import '../../../features/chat/widgets/vista_chat_input.dart';
+import 'telegram_profile_screen.dart';
+
 class ChatScreen extends ConsumerStatefulWidget {
   final String conversationId;
   final String otherUserName;
@@ -42,15 +43,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       conversationId: widget.conversationId,
       otherUserId: widget.otherUserId,
     );
-    // Scroll to bottom after frame
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Logic to scroll can be added here if needed, usually ScrollablePositionedList with reverse:true handles bottom alignment well.
-    });
   }
 
   void _showMessageActionsBottomSheet(
       BuildContext context, MessageModel message) {
-    // Minimal options for now
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
@@ -60,7 +56,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             if (message.isMe)
               ListTile(
                 leading: const Icon(Icons.delete, color: Colors.red),
-                title: const Text('Delete'),
+                title: const Text('حذف پیام'),
                 onTap: () {
                   Navigator.pop(context);
                   ref
@@ -70,7 +66,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
             ListTile(
               leading: const Icon(Icons.copy),
-              title: const Text('Copy'),
+              title: const Text('کپی'),
               onTap: () {
                 // Copy logic
                 Navigator.pop(context);
@@ -88,6 +84,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         .sendImageMessage(file, caption: caption);
   }
 
+  void _sendVoiceMessage(File file) {
+    // Implement voice sending logic
+    // ref.read(chatScreenProvider(_providerParams).notifier).sendVoiceMessage(file);
+    // For now assuming generic file send for MVP or similar
+    debugPrint("Voice message file: ${file.path}");
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.conversationId.isEmpty) {
@@ -101,57 +104,69 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     // Theme
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor, // Solid background
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         elevation: 0,
         backgroundColor: theme.scaffoldBackgroundColor,
         foregroundColor: theme.textTheme.bodyLarge?.color,
         titleSpacing: 0,
-        title: Row(
-          children: [
-            CircleAvatar(
-              radius: 16,
-              backgroundImage: widget.otherUserAvatar != null &&
-                      widget.otherUserAvatar!.isNotEmpty
-                  ? CachedNetworkImageProvider(widget.otherUserAvatar!)
-                  : null,
-              child: widget.otherUserAvatar == null ||
-                      widget.otherUserAvatar!.isEmpty
-                  ? Text(widget.otherUserName.substring(0, 1).toUpperCase())
-                  : null,
-            ),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.otherUserName,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+        title: GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => VistaChatProfileScreen(
+                  conversationId: widget.conversationId,
+                  otherUserId: widget.otherUserId,
+                  otherUserName: widget.otherUserName,
+                  otherUserAvatar: widget.otherUserAvatar,
                 ),
-                // if (_isOtherUserTyping) ... // Removed for simplicity/compilation safety
-              ],
-            ),
-          ],
+              ),
+            );
+          },
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundImage: widget.otherUserAvatar != null &&
+                        widget.otherUserAvatar!.isNotEmpty
+                    ? CachedNetworkImageProvider(widget.otherUserAvatar!)
+                    : null,
+                child: widget.otherUserAvatar == null ||
+                        widget.otherUserAvatar!.isEmpty
+                    ? Text(widget.otherUserName.substring(0, 1).toUpperCase())
+                    : null,
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.otherUserName,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    "آنلاین", // Dynamic status can be added later
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.green,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.info_outline_rounded),
+            icon: const Icon(Icons.more_vert),
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ChatDetailsScreen(
-                    conversationId: widget.conversationId,
-                    otherUserId: widget.otherUserId,
-                    otherUserName: widget.otherUserName,
-                    otherUserAvatar: widget.otherUserAvatar,
-                  ),
-                ),
-              );
+              // Menu options
             },
           ),
         ],
@@ -166,7 +181,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     itemScrollController: _itemScrollController,
                     itemPositionsListener: _itemPositionsListener,
                     itemCount: chatState.messages.length,
-                    reverse: true, // Important for chat
+                    reverse: true,
                     itemBuilder: (context, index) {
                       final message = chatState.messages[index];
                       final isMe = message.isMe;
@@ -185,28 +200,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   ),
           ),
 
-          // Direct Input
-          DirectChatInput(
-            onSend: (text) {
+          // Vista Chat Input
+          VistaChatInput(
+            onSendMessage: (text) {
               ref
                   .read(chatScreenProvider(_providerParams).notifier)
                   .sendMessage(text);
             },
-            onAttachmentSelected: (file) {
-              // Handle attachment
-              if (file != null && file.path != null) {
-                // For now treating as image for simplicity or generic file
-                _sendImageMessage(File(file.path!), null);
-              }
+            onAttachPressed: () {
+              // Handle Attach
             },
-            onRecordStart: () {
-              // Start Recording logic
-              debugPrint('Mic held');
+            onSendVoiceMessage: (file) {
+              _sendVoiceMessage(file);
             },
-            onRecordEnd: () {
-              // Stop Recording logic
-              debugPrint('Mic released');
-            },
+            hint: "پیام خود را بنویسید...",
           ),
         ],
       ),

@@ -70,9 +70,9 @@ import 'package:Vista/features/posts/screens/PostDetailPage.dart';
 // ✅ Phase 4: Final Integration
 import '../widgets/location_message_widgets.dart';
 import '../widgets/contact_card_widgets.dart';
-import '../screens/document_preview_screen.dart';
+import 'telegram_profile_screen.dart';
+import 'document_preview_screen.dart';
 import '../screens/message_info_screen.dart';
-import '../screens/telegram_profile_screen.dart';
 // TODO: Use CompleteDeletionService for delete with undo
 // import '../services/complete_deletion_service.dart';
 import '../services/message_actions_service.dart';
@@ -2294,7 +2294,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   void _navigateToChatDetails() async {
     final result = await Navigator.of(context).push<String?>(
       MaterialPageRoute(
-        builder: (context) => TelegramProfileScreen(
+        builder: (context) => VistaChatProfileScreen(
           conversationId: widget.args.conversationId,
           otherUserId: widget.args.otherUserId,
           otherUserName: widget.args.otherUserName,

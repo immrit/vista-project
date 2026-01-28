@@ -106,6 +106,7 @@ dependencies:
   overlay_support: ^2.1.0
   riverpod_annotation: ^2.6.1
   camera: ^0.11.3
+  mobile_scanner: ^7.1.4
 
 dependency_overrides:
   intl: ^0.19.0

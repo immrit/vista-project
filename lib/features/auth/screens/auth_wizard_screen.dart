@@ -243,8 +243,9 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
             .select('phone_number')
             .eq('id', user.id)
             .maybeSingle();
-        if (profile != null && profile['phone_number'] != null)
+        if (profile != null && profile['phone_number'] != null) {
           phoneNumberIsSet = true;
+        }
       }
 
       if (phoneNumberIsSet) {
@@ -296,10 +297,11 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
     timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (mounted) {
         setState(() {
-          if (countdown > 0)
+          if (countdown > 0) {
             countdown--;
-          else
+          } else {
             t.cancel();
+          }
         });
       }
     });

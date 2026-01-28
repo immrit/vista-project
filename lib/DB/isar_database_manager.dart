@@ -3,6 +3,8 @@ import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import '../features/chat/data/entities/message_entity.dart';
 import '../features/chat/data/entities/conversation_entity.dart';
+import '../features/profile/data/entities/profile_entity.dart';
+import '../features/posts/data/entities/post_entity.dart';
 
 import '../DB/entities/recent_search_entity.dart';
 import '../DB/entities/app_settings_entity.dart';
@@ -30,6 +32,8 @@ class IsarDatabaseManager {
         RecentSearchEntitySchema,
         AppSettingsEntitySchema,
         DeletionTaskEntitySchema,
+        ProfileEntitySchema,
+        PostEntitySchema,
       ],
       directory: dir.path,
       inspector: kDebugMode,

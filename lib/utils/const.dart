@@ -202,7 +202,7 @@ Future<void> initializeSupabaseWithFailover() async {
       anonKey: supabaseAnonKey,
       httpClient: SupabaseHttpClient(),
       debug: true,
-      authOptions: FlutterAuthClientOptions(
+      authOptions: const FlutterAuthClientOptions(
         authFlowType: AuthFlowType.pkce,
         autoRefreshToken: true,
         detectSessionInUri: true,
@@ -233,7 +233,7 @@ Future<void> initializeSupabaseWithFailover() async {
         anonKey: supabaseAnonKey,
         httpClient: SupabaseHttpClient(),
         debug: true,
-        authOptions: FlutterAuthClientOptions(
+        authOptions: const FlutterAuthClientOptions(
           authFlowType: AuthFlowType.pkce,
           autoRefreshToken: true,
           detectSessionInUri: true,

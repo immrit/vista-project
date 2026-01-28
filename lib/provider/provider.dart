@@ -636,82 +636,6 @@ class SupabaseService {
   //   }
   // }
 
-  Future<void> _addLike(String postId, String userId, String ownerId) async {
-    try {
-      await supabase.from('likes').insert({
-        'post_id': postId,
-        'user_id': userId,
-      });
-
-      await _updateLikeCount(postId, increase: true);
-
-      if (userId != ownerId) {
-        await _createLikeNotification(postId, userId, ownerId);
-      }
-    } catch (e) {
-      print('خطا در افزودن لایک: $e');
-      rethrow;
-    }
-  }
-
-  Future<void> _removeLike(String postId, String userId, String ownerId) async {
-    try {
-      await supabase.from('likes').delete().match({
-        'post_id': postId,
-        'user_id': userId,
-      });
-
-      await _updateLikeCount(postId, increase: false);
-      await _removeLikeNotification(postId, userId, ownerId);
-    } catch (e) {
-      print('خطا در حذف لایک: $e');
-      rethrow;
-    }
-  }
-
-  Future<void> _createLikeNotification(
-      String postId, String senderId, String recipientId) async {
-    try {
-      final existingNotification = await supabase
-          .from('notifications')
-          .select()
-          .eq('recipient_id', recipientId)
-          .eq('sender_id', senderId)
-          .eq('post_id', postId)
-          .eq('type', 'like')
-          .maybeSingle();
-
-      if (existingNotification == null) {
-        await supabase.from('notifications').insert({
-          'recipient_id': recipientId,
-          'sender_id': senderId,
-          'post_id': postId,
-          'type': 'like',
-          'content': '⭐',
-          'is_read': false
-        });
-      }
-    } catch (e) {
-      print('خطا در ایجاد نوتیفیکیشن: $e');
-      rethrow;
-    }
-  }
-
-  Future<void> _removeLikeNotification(
-      String postId, String senderId, String recipientId) async {
-    try {
-      await supabase.from('notifications').delete().match({
-        'recipient_id': recipientId,
-        'sender_id': senderId,
-        'post_id': postId,
-        'type': 'like'
-      });
-    } catch (e) {
-      print('خطا در حذف نوتیفیکیشن: $e');
-      rethrow;
-    }
-  }
-
   // متد اعتبارسنجی UUID
   void _validateUUID(String uuid) {
     final uuidRegex = RegExp(
@@ -720,16 +644,6 @@ class SupabaseService {
 
     if (uuid.isEmpty || !uuidRegex.hasMatch(uuid)) {
       throw ArgumentError('شناسه نامعتبر: $uuid');
-    }
-  }
-
-  Future<void> _updateLikeCount(String postId, {required bool increase}) async {
-    try {
-      await supabase.rpc('update_like_count',
-          params: {'post_id_input': postId, 'increment': increase ? 1 : -1});
-    } catch (e) {
-      print('خطا در بروزرسانی تعداد لایک‌ها: $e');
-      rethrow;
     }
   }
 
@@ -1530,185 +1444,49 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
         return;
       }
 
-      // ابتدا سعی کن از کش استفاده کن
-      if (_profileCache.shouldUseCache(userId)) {
-        try {
-          final cachedProfile = await _profileCache.getProfile(userId);
-          final cachedPosts = await _profileCache.getUserPosts(userId);
+      try {
+        // دریافت پروفایل (مدیریت کش و سرور با خود سرویس است)
+        final profile = await _profileCache.getProfile(userId);
+        final posts = await _profileCache.getUserPosts(userId);
 
-          // بررسی وضعیت فالو از سرور (این اطلاعات معمولاً در کش نیست)
+        // بررسی وضعیت فالو (به‌روزرسانی از سرور برای اطمینان)
+        bool isFollowed = profile.isFollowed;
+        try {
           final followStatusResponse = await supabase
               .from('follows')
-              .select()
+              .select('id')
               .eq('follower_id', currentUserId)
               .eq('following_id', userId)
               .maybeSingle();
-
-          // به‌روزرسانی استیت با داده‌های کش شده
-          state = cachedProfile.copyWith(
-            posts: cachedPosts,
-            isFollowed: followStatusResponse != null,
-          );
-
-          // به‌روزرسانی پس‌زمینه کش
-          _profileCache.refreshCacheInBackground(userId);
-          return;
+          isFollowed = followStatusResponse != null;
         } catch (e) {
-          print('⚠️ Failed to use cached profile, fetching from server: $e');
+          // Ignore network error for follow status check, use cached value
         }
-      }
 
-      // اگر کش در دسترس نیست، از سرور دریافت کن
-      print('🌐 Fetching profile from server for user: $userId');
-
-      // دریافت اطلاعات پروفایل
-      final profileResponse = await supabase.from('profiles').select('''
-            id,
-            username,
-            full_name,
-            avatar_url,
-            email,
-            bio,
-            created_at,
-            is_verified,
-            verification_type,
-            account_type,
-            role,
-            is_private
-          ''').eq('id', userId).maybeSingle();
-
-      if (profileResponse == null) {
-        throw Exception('پروفایل کاربر یافت نشد');
-      }
-
-      // محاسبه تعداد دنبال‌کنندگان
-      final followersResponse = await supabase
-          .from('follows')
-          .select('id')
-          .eq('following_id', userId);
-
-      final followersCount = followersResponse.length;
-
-      // محاسبه تعداد دنبال‌شونده‌ها
-      final followingResponse =
-          await supabase.from('follows').select('id').eq('follower_id', userId);
-
-      final followingCount = followingResponse.length;
-
-      // دریافت تعداد کل پست‌ها
-      final postsCountResponse =
-          await supabase.from('posts').select('id').eq('user_id', userId);
-
-      final postsCount = postsCountResponse.length;
-
-      // دریافت اولین 10 پست - برای lazy loading
-      print('🔍 Fetching initial posts for userId: $userId');
-      final postsResponse = await supabase
-          .from('posts')
-          .select('''
-            *,
-            profiles!posts_user_id_fkey (
-              username,
-              avatar_url,
-              is_verified,
-              verification_type
-            ),
-            likes (
-              user_id
-            ),
-            comments (
-              id
-            )
-          ''')
-          .eq('user_id',
-              userId) // این userId مربوط به پروفایلی است که می‌خواهیم ببینیم
-          .order('created_at', ascending: false)
-          .limit(10);
-
-      print('🔍 Posts fetched: ${postsResponse.length} posts');
-
-      // ساخت مدل پروفایل با اطلاعات به‌روز شده
-      final profile = ProfileModel.fromMap({
-        ...profileResponse,
-        'followers_count': followersCount,
-        'following_count': followingCount,
-        'posts_count': postsCount,
-      });
-
-      final posts = postsResponse.map((post) {
-        final postLikes = post['likes'] as List? ?? [];
-        final comments = post['comments'] as List<dynamic>? ?? [];
-
-        // Debug logging
-        print('🔍 Profile Post Debug - Post ID: ${post['id']}');
-        print('🔍 Likes array: $postLikes (length: ${postLikes.length})');
-        print('🔍 Comments array: $comments (length: ${comments.length})');
-        print('🔍 Current user ID: $currentUserId');
-
-        final mappedPost = PublicPostModel.fromMap({
-          ...post,
-          'like_count': postLikes.length,
-          'is_liked': postLikes.any((like) => like['user_id'] == currentUserId),
-          'username': post['profiles']['username'] ??
-              post['profiles']['full_name'] ??
-              'Unknown',
-          'avatar_url': post['profiles']['avatar_url'] ?? '',
-          'is_verified': post['profiles']['is_verified'] ?? false,
-          'comment_count': comments.length,
-          'verification_type': post['profiles']
-              ['verification_type'], // اضافه کردن verification_type
-        });
-
-        print(
-            '🔍 Final mapped post - likeCount: ${mappedPost.likeCount}, commentCount: ${mappedPost.commentCount}, isLiked: ${mappedPost.isLiked}');
-
-        return mappedPost;
-      }).toList();
-
-      // بررسی وضعیت فالو
-      final followStatusResponse = await supabase
-          .from('follows')
-          .select()
-          .eq('follower_id', currentUserId)
-          .eq('following_id', userId)
-          .maybeSingle();
-
-      // کش کردن پروفایل و پست‌ها
-      try {
-        await _profileCache.cacheProfileAndPosts(userId);
+        state = profile.copyWith(
+          posts: posts,
+          isFollowed: isFollowed,
+        );
       } catch (e) {
-        print('⚠️ Failed to cache profile: $e');
+        print('❌ Error fetching profile in Notifier: $e');
+
+        // تلاش برای خواندن کش اگر خطا رخ داد (مثلاً آفلاین)
+        try {
+          final cachedProfile = await _profileCache.getCachedProfile(userId);
+          if (cachedProfile != null) {
+            final cachedPosts = await _profileCache.getCachedPosts(userId);
+            state = cachedProfile.copyWith(posts: cachedPosts);
+            print('📱 Using cached profile due to error');
+            return;
+          }
+        } catch (_) {}
+
+        rethrow;
       }
-
-      // به‌روزرسانی استیت
-      state = profile.copyWith(
-        posts: posts,
-        isFollowed: followStatusResponse != null,
-      );
-    } catch (e) {
-      print('خطا در دریافت پروفایل: $e');
-
-      // ✅ بررسی کامل خطاهای auth با verify نشست
-      final wasAuthError = await AuthNavigationService.handleAuthErrorAsync(e);
-      if (wasAuthError) {
-        return;
-      }
-
-      // در صورت خطا، سعی کن از کش استفاده کن
-      try {
-        final cachedProfile = _profileCache.getCachedProfile(userId);
-        final cachedPosts = _profileCache.getCachedPosts(userId);
-
-        if (cachedProfile != null) {
-          state = cachedProfile.copyWith(posts: cachedPosts);
-          print('📱 Using cached profile due to network error');
-          return;
-        }
-      } catch (cacheError) {
-        print('⚠️ Failed to use cached profile: $cacheError');
-      }
-
-      rethrow;
+    } catch (e, stackTrace) {
+      print('❌ Error in fetchProfile: $e');
+      UserFriendlyErrorHandler.logError(e,
+          context: 'profile_fetch', stackTrace: stackTrace);
     }
   }
 
@@ -2242,7 +2020,6 @@ class FollowingPostsNotifier
   final int _limit = 10;
   int _offset = 0;
   bool _hasMore = true;
-  bool _isLoading = false;
 
   FollowingPostsNotifier(this.supabase) : super(const AsyncValue.loading()) {
     _loadInitialPosts();
@@ -2339,8 +2116,6 @@ class FollowingPostsNotifier
       }
 
       state = AsyncValue.error(errorMessage, stackTrace);
-    } finally {
-      _isLoading = false;
     }
   }
 

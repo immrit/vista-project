@@ -210,7 +210,7 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                     subtitle: 'فعال/غیرفعال کردن انیمیشن‌ها',
                     trailing: Switch(
                       value: animations['enabled'] as bool? ?? true,
-                      activeColor: isDark ? Colors.white : Colors.black,
+                      activeThumbColor: isDark ? Colors.white : Colors.black,
                       onChanged: (value) async {
                         final service = AdvancedSettingsService();
                         await service.updatePerformanceSettings({
@@ -241,7 +241,7 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                     subtitle: 'برای کاربران حساس به حرکت',
                     trailing: Switch(
                       value: animations['reduce_motion'] as bool? ?? false,
-                      activeColor: isDark ? Colors.white : Colors.black,
+                      activeThumbColor: isDark ? Colors.white : Colors.black,
                       onChanged: (value) async {
                         final service = AdvancedSettingsService();
                         await service.updatePerformanceSettings({
@@ -261,7 +261,7 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                     trailing: Switch(
                       value:
                           rendering['enable_gpu_acceleration'] as bool? ?? true,
-                      activeColor: isDark ? Colors.white : Colors.black,
+                      activeThumbColor: isDark ? Colors.white : Colors.black,
                       onChanged: (value) async {
                         final service = AdvancedSettingsService();
                         await service.updatePerformanceSettings({
@@ -345,7 +345,7 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                     subtitle: 'افزایش اندازه متن',
                     trailing: Switch(
                       value: accessibility['large_text'] as bool? ?? false,
-                      activeColor: isDark ? Colors.white : Colors.black,
+                      activeThumbColor: isDark ? Colors.white : Colors.black,
                       onChanged: (value) async {
                         final service = AdvancedSettingsService();
                         await service.updateAdvancedAppSettings({
@@ -367,7 +367,7 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                     subtitle: 'افزایش ضخامت متن',
                     trailing: Switch(
                       value: accessibility['bold_text'] as bool? ?? false,
-                      activeColor: isDark ? Colors.white : Colors.black,
+                      activeThumbColor: isDark ? Colors.white : Colors.black,
                       onChanged: (value) async {
                         final service = AdvancedSettingsService();
                         await service.updateAdvancedAppSettings({
@@ -389,7 +389,7 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                     subtitle: 'افزایش کنتراست رنگ‌ها',
                     trailing: Switch(
                       value: accessibility['high_contrast'] as bool? ?? false,
-                      activeColor: isDark ? Colors.white : Colors.black,
+                      activeThumbColor: isDark ? Colors.white : Colors.black,
                       onChanged: (value) async {
                         final service = AdvancedSettingsService();
                         await service.updateAdvancedAppSettings({

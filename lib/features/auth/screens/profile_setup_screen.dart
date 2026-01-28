@@ -16,7 +16,6 @@ final logger = Logger(
     lineLength: 120,
     colors: true,
     printEmojis: true,
-    printTime: true,
   ),
 );
 
@@ -50,7 +49,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen>
   final TextEditingController _birthDateController = TextEditingController();
 
   File? _imageFile;
-  final bool _isLoading = false;
+
   bool _isSaving = false;
   Jalali? _selectedDate;
   int _currentStep = 0;
@@ -116,18 +115,6 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen>
         _currentStep++;
       });
       _pageController.nextPage(
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOutCubic,
-      );
-    }
-  }
-
-  void _previousStep() {
-    if (_currentStep > 0) {
-      setState(() {
-        _currentStep--;
-      });
-      _pageController.previousPage(
         duration: const Duration(milliseconds: 500),
         curve: Curves.easeInOutCubic,
       );
@@ -640,8 +627,6 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen>
   }
 
   Widget _buildContinueButton() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Container(
       width: double.infinity,
       height: 56.h,
@@ -692,8 +677,6 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen>
   }
 
   Widget _buildCompleteButton() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Container(
       width: double.infinity,
       height: 56.h,

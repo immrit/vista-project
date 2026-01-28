@@ -46,6 +46,7 @@ import 'package:Vista/features/auth/screens/auth_wizard_screen.dart';
 import 'package:Vista/features/auth/screens/biometric_login_screen.dart';
 import 'package:Vista/features/auth/screens/reset_password_screen.dart';
 import 'package:Vista/features/auth/screens/password_reset_code_screen.dart';
+import 'package:Vista/features/auth/widgets/session_auth_wrapper.dart'; // Import SessionAuthWrapper
 import 'package:Vista/features/onboarding/screens/Onboarding.dart';
 import 'package:Vista/features/profile/screens/editeProfile.dart';
 import 'package:Vista/features/settings/screens/Settings.dart';
@@ -413,7 +414,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
             // I'll stick to basic theme for now to ensure compile.
             // If they had custom theme logic, better to import providers.
             theme: theme,
-            home: const AuthWizardScreen(),
+            home: const SessionAuthWrapper(), // Use SessionAuthWrapper
             initialRoute: '/',
             routes: {
               '/home': (context) =>

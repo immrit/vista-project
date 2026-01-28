@@ -338,13 +338,9 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
                   child: Container(
                     decoration: BoxDecoration(
                       // رنگ پس‌زمینه نیمه‌شفاف
-                      color: isDark
-                          ? const Color(0xFF1C1C1E).withOpacity(0.75)
-                          : const Color(0xFFF9F9F9).withOpacity(0.75),
+                      color: theme.inputBackgroundColor.withOpacity(0.75),
                       border: Border.all(
-                        color: isDark
-                            ? Colors.white.withOpacity(0.1)
-                            : Colors.black.withOpacity(0.05),
+                        color: theme.inputBorderColor.withOpacity(0.3),
                         width: 0.5,
                       ),
                     ),
@@ -371,9 +367,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
               Container(
                 margin: const EdgeInsets.only(top: 8),
                 decoration: BoxDecoration(
-                  color: isDark
-                      ? const Color(0xFF1C1C1E)
-                      : const Color(0xFFF0F2F5),
+                  color: theme.inputBackgroundColor,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: ClipRRect(

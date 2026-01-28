@@ -951,32 +951,88 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
 
   Widget _buildCommentsSection() {
     final commentsAsyncValue = ref.watch(commentsProvider(widget.postId));
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: const Directionality(
-            textDirection: TextDirection.rtl,
-            child: Text(
-              'نظرات:',
-              textAlign: TextAlign.right,
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
+        // هدر مدرن
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12),
+          child: Row(
+            children: [
+              Icon(
+                Icons.chat_bubble_outline,
+                size: 20,
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'نظرات',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black,
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 10),
-        const Divider(color: Colors.grey, height: 1, endIndent: 75, indent: 25),
-        const SizedBox(height: 10),
+        Divider(
+          height: 1,
+          thickness: 0.5,
+          color: isDark ? Colors.grey[800] : Colors.grey[300],
+        ),
+        const SizedBox(height: 8),
         commentsAsyncValue.when(
           data: (comments) => comments.isEmpty
-              ? const Center(child: Text('هنوز کامنتی وجود ندارد'))
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32.0),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.chat_bubble_outline,
+                          size: 48,
+                          color: isDark ? Colors.grey[700] : Colors.grey[400],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'هنوز نظری ثبت نشده',
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: isDark ? Colors.grey[500] : Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'اولین نفری باش که نظر میدی!',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isDark ? Colors.grey[600] : Colors.grey[500],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
               : _buildCommentTree(comments),
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) =>
-              Center(child: Text('خطا در بارگذاری کامنت‌ها: $error')),
+          loading: () => const Center(
+            child: Padding(
+              padding: EdgeInsets.all(32.0),
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+          error: (error, _) => Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32.0),
+              child: Text(
+                'خطا در بارگذاری نظرات',
+                style: TextStyle(color: Colors.red[400]),
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -1025,134 +1081,202 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
 
   Widget _buildCommentItem(CommentModel comment) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // هدر کامنت
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 20,
-                  backgroundImage: comment.avatarUrl.isEmpty
-                      ? const AssetImage('lib/utils/images/default-avatar.jpg')
-                      : CachedNetworkImageProvider(comment.avatarUrl)
-                          as ImageProvider,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            // آواتار
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ProfileScreen(
+                      userId: comment.userId,
+                      username: comment.username,
+                    ),
+                  ),
+                );
+              },
+              child: CircleAvatar(
+                radius: 20,
+                backgroundImage: comment.avatarUrl.isEmpty
+                    ? const AssetImage('lib/utils/images/default-avatar.jpg')
+                    : CachedNetworkImageProvider(comment.avatarUrl)
+                        as ImageProvider,
+                backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
+              ),
+            ),
+            const SizedBox(width: 12),
+
+            // محتوای کامنت
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // هدر (نام کاربری و زمان)
+                  Row(
                     children: [
-                      Row(
-                        children: [
-                          Text(
+                      Flexible(
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ProfileScreen(
+                                  userId: comment.userId,
+                                  username: comment.username,
+                                ),
+                              ),
+                            );
+                          },
+                          child: Text(
                             comment.username,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 15,
+                              color: isDark ? Colors.white : Colors.black,
                             ),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(width: 5),
-                          if (comment.isVerified)
-                            _buildVerificationBadgeComment(comment),
-                        ],
+                        ),
                       ),
+                      const SizedBox(width: 4),
+                      if (comment.isVerified)
+                        _buildVerificationBadgeComment(comment),
+                      const SizedBox(width: 8),
                       Text(
-                        _formatDate(comment.createdAt),
+                        _getTimeAgoComment(comment.createdAt),
                         style: TextStyle(
-                          color: Colors.grey.shade600,
                           fontSize: 12,
+                          color: isDark ? Colors.grey[400] : Colors.grey[600],
                         ),
                       ),
                     ],
                   ),
-                ),
-                // آیکون‌های اکشن
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert, color: Colors.grey),
-                  itemBuilder: (context) => [
-                    if (comment.userId != supabase.auth.currentUser?.id)
-                      PopupMenuItem(
-                        value: 'report',
-                        child: const Row(
-                          children: [
-                            Icon(Icons.flag, color: Colors.orange),
-                            SizedBox(width: 8),
-                            Text(
-                              'گزارش',
-                            ),
-                          ],
-                        ),
+                  const SizedBox(height: 6),
+
+                  // متن کامنت
+                  Directionality(
+                    textDirection: getDirectionality(comment.content),
+                    child: Text(
+                      comment.content,
+                      style: TextStyle(
+                        fontSize: 14,
+                        height: 1.4,
+                        color: isDark ? Colors.white70 : Colors.black87,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  // دکمه‌های اکشن
+                  Row(
+                    children: [
+                      // دکمه پاسخ
+                      GestureDetector(
                         onTap: () {
-                          _showReportDialog(context, ref, comment,
-                              supabase.auth.currentUser!.id);
-                          Navigator.of(context).pop();
+                          setState(() {
+                            replyToCommentId = comment.id;
+                            commentController.text = '@${comment.username} ';
+                            commentController.selection =
+                                TextSelection.fromPosition(
+                              TextPosition(
+                                  offset: commentController.text.length),
+                            );
+                          });
+                        },
+                        child: Text(
+                          'پاسخ',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: isDark ? Colors.blue[300] : Colors.blue,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      // منوی اکشن
+                      PopupMenuButton<String>(
+                        padding: EdgeInsets.zero,
+                        icon: Icon(
+                          Icons.more_horiz,
+                          size: 18,
+                          color: isDark ? Colors.grey[500] : Colors.grey[400],
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        itemBuilder: (context) => [
+                          if (comment.userId != supabase.auth.currentUser?.id)
+                            const PopupMenuItem(
+                              value: 'report',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.flag,
+                                      color: Colors.orange, size: 18),
+                                  SizedBox(width: 8),
+                                  Text('گزارش'),
+                                ],
+                              ),
+                            ),
+                          if (comment.userId == supabase.auth.currentUser?.id)
+                            const PopupMenuItem(
+                              value: 'delete',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.delete,
+                                      color: Colors.red, size: 18),
+                                  SizedBox(width: 8),
+                                  Text('حذف'),
+                                ],
+                              ),
+                            ),
+                        ],
+                        onSelected: (value) {
+                          if (value == 'report') {
+                            _showReportDialog(context, ref, comment,
+                                supabase.auth.currentUser!.id);
+                          } else if (value == 'delete') {
+                            _deleteComment(
+                                context, ref, comment.id, widget.postId);
+                          }
                         },
                       ),
-                    PopupMenuItem(
-                      value: 'delete',
-                      child: const Row(
-                        children: [
-                          Icon(Icons.delete, color: Colors.red),
-                          SizedBox(width: 8),
-                          Text('حذف'),
-                        ],
-                      ),
-                      onTap: () {
-                        _deleteComment(context, ref, comment.id, widget.postId);
-                        // Navigator.of(context).pop();
-                      },
-                    ),
-                  ],
-                  onSelected: (value) {
-                    if (value == 'reply') {
-                      setState(() {
-                        replyToCommentId = comment.id;
-                      });
-                    }
-                  },
-                ),
-              ],
-            ),
-
-            // متن کامنت
-            const SizedBox(height: 10),
-            Directionality(
-              textDirection: getDirectionality(comment.content),
-              child: RichText(
-                text: TextSpan(
-                  children: _buildCommentTextSpans(
-                      comment, theme.brightness == Brightness.dark),
-                  style: const TextStyle(
-                    fontSize: 14,
-                    height: 1.4,
+                    ],
                   ),
-                ),
+                ],
               ),
-            ),
-
-            // گزینه ریپلای
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  replyToCommentId = comment.id;
-                  commentController.text = '@${comment.username} ';
-                  commentController.selection = TextSelection.fromPosition(
-                    TextPosition(offset: commentController.text.length),
-                  );
-                });
-              },
-              child: const Text('پاسخ'),
             ),
           ],
         ),
       ),
     );
+  }
+
+  String _getTimeAgoComment(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inDays > 7) {
+      // برای تاریخ‌های قدیمی‌تر از یک هفته، تاریخ جلالی نمایش بده
+      final jalaliDate = Jalali.fromDateTime(dateTime.toLocal());
+      return '${jalaliDate.year}/${jalaliDate.month}/${jalaliDate.day}';
+    } else if (difference.inDays > 0) {
+      return '${difference.inDays} روز پیش';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours} ساعت پیش';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes} دقیقه پیش';
+    } else {
+      return 'همین الان';
+    }
   }
 
   Widget _buildVerificationBadgeComment(CommentModel profile) {
