@@ -31,10 +31,13 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
 
   final List<_EmojiCategory> _categories = const [
     _EmojiCategory(icon: Icons.access_time_rounded, category: Category.RECENT),
-    _EmojiCategory(icon: Icons.emoji_emotions_rounded, category: Category.SMILEYS),
+    _EmojiCategory(
+        icon: Icons.emoji_emotions_rounded, category: Category.SMILEYS),
     _EmojiCategory(icon: Icons.pets_rounded, category: Category.ANIMALS),
-    _EmojiCategory(icon: Icons.directions_car_rounded, category: Category.TRAVEL),
-    _EmojiCategory(icon: Icons.sports_soccer_rounded, category: Category.ACTIVITIES),
+    _EmojiCategory(
+        icon: Icons.directions_car_rounded, category: Category.TRAVEL),
+    _EmojiCategory(
+        icon: Icons.sports_soccer_rounded, category: Category.ACTIVITIES),
     _EmojiCategory(icon: Icons.lightbulb_rounded, category: Category.OBJECTS),
     _EmojiCategory(icon: Icons.tag_rounded, category: Category.SYMBOLS),
     _EmojiCategory(icon: Icons.flag_rounded, category: Category.FLAGS),
@@ -91,7 +94,9 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
       final cursorPosition = selection.isValid ? selection.start : text.length;
       if (cursorPosition > 0) {
         final newText = text.substring(0, cursorPosition - 1) +
-            (cursorPosition < text.length ? text.substring(cursorPosition) : '');
+            (cursorPosition < text.length
+                ? text.substring(cursorPosition)
+                : '');
         widget.controller.value = TextEditingValue(
           text: newText,
           selection: TextSelection.collapsed(offset: cursorPosition - 1),
@@ -104,7 +109,8 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final backgroundColor = isDark ? const Color(0xFF000000) : const Color(0xFFF2F2F7);
+    final backgroundColor =
+        isDark ? const Color(0xFF000000) : const Color(0xFFF2F2F7);
     final bottomBarColor = isDark
         ? const Color(0xFF1C1C1E).withOpacity(0.9)
         : const Color(0xFFF9F9F9).withOpacity(0.9);
@@ -125,13 +131,14 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
                 // ✅ بخش گیف: اتصال مستقیم به تابع پدر
                 GifPickerWidget(
                   // حذف کلید ثابت برای جلوگیری از مشکل کش شدن ویجت
-                  // key: const ValueKey('gif_picker'), 
+                  // key: const ValueKey('gif_picker'),
                   onGifSelected: (url) {
                     print("🚀 VistaPanel: GIF Selected -> $url");
                     if (widget.onGifSelected != null) {
                       widget.onGifSelected!(url);
                     } else {
-                      print("❌ Error: onGifSelected callback is NULL in VistaPanel");
+                      print(
+                          "❌ Error: onGifSelected callback is NULL in VistaPanel");
                     }
                   },
                 ),
@@ -161,9 +168,14 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _buildTabBtn(Icons.gif_box_outlined, PanelView.gif, activeIconColor, isDark),
-                      _buildTabBtn(Icons.emoji_emotions_outlined, PanelView.emoji, activeIconColor, isDark),
-                      Container(width: 1, height: 16, color: theme.dividerColor.withOpacity(0.3)),
+                      _buildTabBtn(Icons.gif_box_outlined, PanelView.gif,
+                          activeIconColor, isDark),
+                      _buildTabBtn(Icons.emoji_emotions_outlined,
+                          PanelView.emoji, activeIconColor, isDark),
+                      Container(
+                          width: 1,
+                          height: 16,
+                          color: theme.dividerColor.withOpacity(0.3)),
                       if (_currentView == PanelView.emoji)
                         Expanded(
                           child: ListView.builder(
@@ -173,13 +185,15 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
                             itemCount: _categories.length,
                             itemBuilder: (context, index) {
                               final category = _categories[index];
-                              final isSelected = index == _selectedCategoryIndex;
+                              final isSelected =
+                                  index == _selectedCategoryIndex;
                               return GestureDetector(
                                 onTap: () => _onCategoryTap(index),
                                 child: Container(
                                   width: 38,
                                   height: 38,
-                                  margin: const EdgeInsets.symmetric(horizontal: 2),
+                                  margin:
+                                      const EdgeInsets.symmetric(horizontal: 2),
                                   decoration: BoxDecoration(
                                     color: isSelected
                                         ? activeIconColor.withOpacity(0.15)
@@ -190,7 +204,9 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
                                     category.icon,
                                     color: isSelected
                                         ? activeIconColor
-                                        : (isDark ? Colors.grey[500] : Colors.grey[600]),
+                                        : (isDark
+                                            ? Colors.grey[500]
+                                            : Colors.grey[600]),
                                     size: isSelected ? 24 : 20,
                                   ),
                                 ),
@@ -203,13 +219,17 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
                       if (_currentView == PanelView.emoji)
                         GestureDetector(
                           onTap: _onBackspace,
-                          onLongPress: () { HapticFeedback.mediumImpact(); _onBackspace(); },
+                          onLongPress: () {
+                            HapticFeedback.mediumImpact();
+                            _onBackspace();
+                          },
                           child: Container(
                             width: 60,
                             alignment: Alignment.center,
                             color: Colors.transparent,
-                            child: Icon(Icons.backspace_outlined, 
-                              color: isDark ? Colors.white70 : Colors.black54, size: 22),
+                            child: Icon(Icons.backspace_outlined,
+                                color: isDark ? Colors.white70 : Colors.black54,
+                                size: 22),
                           ),
                         )
                       else
@@ -232,10 +252,12 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
       itemCount: _categories.length,
       itemBuilder: (context, index) {
         return EmojiPicker(
-          onEmojiSelected: (cat, emoji) => _onEmojiSelected(cat ?? _categories[index].category, emoji),
+          onEmojiSelected: (cat, emoji) =>
+              _onEmojiSelected(cat ?? _categories[index].category, emoji),
           config: Config(
             height: widget.height - 45,
-            checkPlatformCompatibility: true,
+            checkPlatformCompatibility:
+                false, // ❌ جلوگیری از استایل iOS که باعث هدر شناور می‌شود
             emojiViewConfig: EmojiViewConfig(
               columns: 8,
               emojiSizeMax: 28,
@@ -244,15 +266,20 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
               horizontalSpacing: 0,
               gridPadding: EdgeInsets.zero,
               recentsLimit: 28,
-              buttonMode: ButtonMode.CUPERTINO,
+              buttonMode: ButtonMode.MATERIAL, // ✅ استایل متریال ساده‌تر
             ),
             categoryViewConfig: CategoryViewConfig(
               initCategory: _categories[index].category,
               backgroundColor: bgColor,
-              tabBarHeight: 0, // مخفی کردن تب‌بار پیش‌فرض
+              tabBarHeight: 0, // مخفی کردن تب‌بار
+              dividerColor: Colors.transparent,
+              indicatorColor: Colors.transparent,
+              iconColor: Colors.transparent,
+              iconColorSelected: Colors.transparent,
             ),
             bottomActionBarConfig: const BottomActionBarConfig(enabled: false),
-            searchViewConfig: const SearchViewConfig(backgroundColor: Colors.transparent),
+            searchViewConfig:
+                const SearchViewConfig(backgroundColor: Colors.transparent),
             skinToneConfig: const SkinToneConfig(enabled: false),
           ),
         );
@@ -260,7 +287,8 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
     );
   }
 
-  Widget _buildTabBtn(IconData icon, PanelView view, Color activeColor, bool isDark) {
+  Widget _buildTabBtn(
+      IconData icon, PanelView view, Color activeColor, bool isDark) {
     final isSelected = _currentView == view;
     return GestureDetector(
       onTap: () {
@@ -272,7 +300,9 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
         color: Colors.transparent,
         child: Icon(
           icon,
-          color: isSelected ? activeColor : (isDark ? Colors.grey[500] : Colors.grey[600]),
+          color: isSelected
+              ? activeColor
+              : (isDark ? Colors.grey[500] : Colors.grey[600]),
           size: 26,
         ),
       ),

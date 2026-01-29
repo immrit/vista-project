@@ -112,6 +112,17 @@ class VistaThemes {
       bodyMedium: TextStyle(fontFamily: fontFamily, color: Colors.black87),
       titleMedium: TextStyle(fontFamily: fontFamily, color: Colors.black),
     ),
+
+    // Bottom Navigation Bar Theme
+    bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      backgroundColor: Colors.white,
+      selectedItemColor: Colors.black,
+      unselectedItemColor: Colors.grey,
+      showSelectedLabels: false,
+      showUnselectedLabels: false,
+      type: BottomNavigationBarType.fixed,
+      elevation: 0,
+    ),
   );
 
   // Dark Theme
@@ -221,6 +232,17 @@ class VistaThemes {
       bodyLarge: TextStyle(fontFamily: fontFamily, color: Colors.white),
       bodyMedium: TextStyle(fontFamily: fontFamily, color: Colors.white70),
       titleMedium: TextStyle(fontFamily: fontFamily, color: Colors.white),
+    ),
+
+    // Bottom Navigation Bar Theme
+    bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      backgroundColor: Colors.black,
+      selectedItemColor: Colors.white,
+      unselectedItemColor: Colors.grey,
+      showSelectedLabels: false,
+      showUnselectedLabels: false,
+      type: BottomNavigationBarType.fixed,
+      elevation: 0,
     ),
   );
 }

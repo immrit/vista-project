@@ -1,9 +1,11 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'chat_messages_provider.dart';
 import '../repositories/chat_repository.dart';
 import '../repositories/chat_repository_impl.dart';
 import '../data/datasources/chat_local_datasource_isar.dart';
+import '../../../model/conversation_model.dart';
 
 export 'chat_connection_status_provider.dart';
 export 'chat_messages_provider.dart';
@@ -73,3 +75,15 @@ class ChatProviderParams {
   @override
   int get hashCode => conversationId.hashCode ^ otherUserId.hashCode;
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// 🔄 CONVERSATIONS STREAM (Real-time از Isar)
+// ═══════════════════════════════════════════════════════════════════
+
+/// StreamProvider برای مکالمات - مستقیماً به Isar متصل
+/// این Stream فوراً با هر تغییر در Isar آپدیت میشه
+final conversationsStreamProvider =
+    StreamProvider<List<ConversationModel>>((ref) {
+  final repo = ref.watch(chatRepositoryProvider);
+  return repo.watchConversations();
+});

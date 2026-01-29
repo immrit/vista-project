@@ -1,13 +1,16 @@
 import 'package:Vista/security/logging_utility.dart';
 import 'dart:async';
-import 'package:flutter/material.dart';
 
-import 'package:loading_animation_widget/loading_animation_widget.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'package:Vista/services/advanced_security_service.dart';
 import 'package:Vista/services/session_manager_service_v2.dart';
 import 'package:Vista/features/auth/screens/biometric_login_screen.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
+/// SplashScreen - Premium First Impression
+/// طراحی ساده و مینیمال با انیمیشن زیبا
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -15,219 +18,176 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
-  String _statusMessage = 'در حال بارگذاری...';
-  int _loadingTime = 0;
-  Timer? _loadingTimer;
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  bool _showLogo = true;
+  bool _isNavigating = false;
 
   @override
   void initState() {
     super.initState();
-    _startLoadingTimer();
-    _redirect();
+    _startSplashSequence();
   }
 
-  @override
-  void dispose() {
-    _loadingTimer?.cancel();
-    super.dispose();
-  }
+  /// شروع توالی اسپلش: 2 ثانیه نمایش لوگو + چک auth + ترانزیشن
+  Future<void> _startSplashSequence() async {
+    // حداقل 2 ثانیه نمایش لوگو
+    final minimumDelay = Future.delayed(const Duration(milliseconds: 2000));
 
-  void _startLoadingTimer() {
-    _loadingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        setState(() {
-          _loadingTime++;
-        });
+    // همزمان چک auth
+    final authStatus = _checkAuthStatus();
 
-        // اگر بیش از 10 ثانیه طول کشید، پیام timeout نمایش بده
-        if (_loadingTime >= 10) {
-          setState(() {
-            _statusMessage = 'اتصال کند است - لطفاً صبر کنید...';
-          });
-        }
-      }
-    });
-  }
-
-  Future<void> _redirect() async {
-    try {
-      // ✅ Offline-First: Check SessionManagerV2 directly
-      // Since it's initialized in main.dart, it already has the local session loaded.
-      final sessionManager = SessionManagerServiceV2.instance;
-
-      // اگر session معتبر داریم (محلی یا ریموت)، مستقیم برو داخل
-      if (sessionManager.currentSessionId != null) {
-        logInfo('🚀 Offline-First: Local session found, skipping wait.');
-        // سریع برو به صفحه اصلی
-        if (mounted) {
-          _navigateToHome();
-        }
-        return;
-      }
-
-      // اگر session نداریم، شاید Supabase در حال restore باشد (برای اولین نصب یا clear data)
-      // یک صبر کوتاه (غیرمسدودکننده برای حس بهتر)
-      logInfo('⏳ No local session, waiting briefly for Supabase restore...');
-
-      // تلاش کوتاه برای دیدن اینکه آیا Supabase خودش چیزی پیدا می‌کند
-      // مثلاً اگر deep link باشد یا ...
-      int attempts = 0;
-      while (attempts < 5) {
-        // حدود 1 ثانیه
-        if (Supabase.instance.client.auth.currentSession != null) {
-          logInfo('✅ Supabase session restored during splash wait');
-          if (mounted) _navigateToHome();
-          return;
-        }
-        await Future.delayed(const Duration(milliseconds: 200));
-        attempts++;
-      }
-
-      // اگر هنوز هیچ خبری نیست، برو لاگین
-      logInfo('ℹ️ No session found, redirecting to auth');
-      if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/auth');
-      }
-    } catch (e) {
-      logInfo('❌ Error in splash screen: $e');
-      // در بدترین حالت، برو لاگین
-      if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/auth');
-      }
-    }
-  }
-
-  Future<void> _navigateToHome() async {
-    // بررسی سریع بیومتریک (اگر فعال باشد)
-    final isBiometricEnabled =
-        await AdvancedSecurityService.isBiometricEnabled()
-            .timeout(const Duration(milliseconds: 300), // timeout خیلی کوتاه
-                onTimeout: () => false);
+    // صبر برای هر دو
+    await minimumDelay;
+    final isLoggedIn = await authStatus;
 
     if (!mounted) return;
 
-    if (isBiometricEnabled) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => BiometricLoginScreen(
-            onSuccess: () {
-              Navigator.pushReplacementNamed(context, '/home');
-            },
-            onFallback: () {
-              Navigator.pushReplacementNamed(context, '/auth');
-            },
-          ),
-        ),
-      );
+    // شروع انیمیشن fade out
+    setState(() => _showLogo = false);
+
+    // صبر برای انیمیشن خروج
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    if (!mounted || _isNavigating) return;
+    _isNavigating = true;
+
+    // ناوبری با fade transition
+    if (isLoggedIn) {
+      await _navigateToHome();
     } else {
-      Navigator.pushReplacementNamed(context, '/home');
+      _navigateToAuth();
     }
   }
 
-  // بررسی محدودیت حساب به صورت سریع
+  /// بررسی وضعیت احراز هویت
+  Future<bool> _checkAuthStatus() async {
+    try {
+      // ابتدا چک SessionManager محلی (سریع‌تر)
+      final sessionManager = SessionManagerServiceV2.instance;
+      if (sessionManager.currentSessionId != null) {
+        logInfo('🚀 Local session found');
+        return true;
+      }
+
+      // سپس چک Supabase
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null) {
+        logInfo('✅ Supabase session found');
+        return true;
+      }
+
+      // تلاش کوتاه برای restore
+      for (int i = 0; i < 3; i++) {
+        await Future.delayed(const Duration(milliseconds: 150));
+        if (Supabase.instance.client.auth.currentSession != null) {
+          return true;
+        }
+      }
+
+      logInfo('ℹ️ No session found');
+      return false;
+    } catch (e) {
+      logInfo('❌ Auth check error: $e');
+      return false;
+    }
+  }
+
+  /// ناوبری به صفحه اصلی (با چک بیومتریک)
+  Future<void> _navigateToHome() async {
+    try {
+      final isBiometricEnabled =
+          await AdvancedSecurityService.isBiometricEnabled().timeout(
+              const Duration(milliseconds: 300),
+              onTimeout: () => false);
+
+      if (!mounted) return;
+
+      if (isBiometricEnabled) {
+        Navigator.of(context).pushReplacement(
+          _createFadeRoute(
+            BiometricLoginScreen(
+              onSuccess: () => Navigator.pushReplacementNamed(context, '/home'),
+              onFallback: () =>
+                  Navigator.pushReplacementNamed(context, '/auth'),
+            ),
+          ),
+        );
+      } else {
+        Navigator.of(context)
+            .pushReplacement(_createFadeRoute(null, routeName: '/home'));
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/home');
+      }
+    }
+  }
+
+  /// ناوبری به صفحه لاگین
+  void _navigateToAuth() {
+    if (!mounted) return;
+    Navigator.of(context)
+        .pushReplacement(_createFadeRoute(null, routeName: '/auth'));
+  }
+
+  /// ایجاد ترانزیشن fade
+  Route _createFadeRoute(Widget? page, {String? routeName}) {
+    return PageRouteBuilder(
+      settings: routeName != null ? RouteSettings(name: routeName) : null,
+      pageBuilder: (context, animation, secondaryAnimation) {
+        if (page != null) return page;
+        // اگر page نداریم، به route برو
+        return const SizedBox.shrink();
+      },
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        return FadeTransition(opacity: animation, child: child);
+      },
+      transitionDuration: const Duration(milliseconds: 400),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ScaffoldMessenger(
-      child: Scaffold(
-        resizeToAvoidBottomInset: false,
-        body: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.black,
-                Colors.black,
-              ],
-            ),
-          ),
-          child: Stack(
-            children: [
-              // لوگو و انیمیشن لودینگ در وسط صفحه
-              Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    TweenAnimationBuilder(
-                      duration: const Duration(milliseconds: 1500),
-                      tween: Tween<double>(begin: 0, end: 1),
-                      builder: (context, double value, child) {
-                        return Opacity(
-                          opacity: value,
-                          child: child,
-                        );
-                      },
-                      child: Image.asset(
-                        'lib/utils/images/vistalogo.png',
-                        height: 200,
-                      ),
-                    ),
-                    const SizedBox(height: 30),
-                    LoadingAnimationWidget.progressiveDots(
-                      color: Colors.white,
-                      size: 50,
-                    ),
-                  ],
-                ),
-              ),
-              // متن وضعیت و دکمه در پایین صفحه
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: Column(
-                  children: [
-                    // نمایش پیام وضعیت در پایین صفحه
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      child: Text(
-                        _statusMessage,
-                        key: ValueKey(_statusMessage),
-                        style: const TextStyle(
-                          color: Colors.white60,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w300,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                    // نمایش دکمه retry اگر بیش از 15 ثانیه طول کشید
-                    if (_loadingTime >= 15) ...[
-                      const SizedBox(height: 10),
-                      ElevatedButton(
-                        onPressed: () {
-                          setState(() {
-                            _loadingTime = 0;
-                            _statusMessage = 'تلاش مجدد...';
-                          });
-                          _redirect();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 8,
-                          ),
-                          minimumSize: const Size(120, 36),
-                        ),
-                        child: const Text(
-                          'تلاش مجدد',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                    ] else
-                      const SizedBox(height: 40),
-                  ],
-                ),
-              ),
-            ],
-          ),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Scaffold(
+      backgroundColor: isDark ? Colors.black : Colors.white,
+      body: Center(
+        child: AnimatedOpacity(
+          opacity: _showLogo ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 400),
+          child: _buildLogo(isDark),
         ),
       ),
     );
+  }
+
+  Widget _buildLogo(bool isDark) {
+    final logoPath = isDark
+        ? 'lib/utils/images/vistalogo-new.png'
+        : 'lib/utils/images/black-logo.png';
+
+    return Image.asset(
+      logoPath,
+      height: 120,
+      errorBuilder: (context, error, stackTrace) {
+        // Fallback به لوگوی اصلی
+        return Image.asset(
+          'lib/utils/images/vistalogo.png',
+          height: 120,
+        );
+      },
+    )
+        .animate(
+          onPlay: (controller) => controller.forward(),
+        )
+        .fadeIn(duration: 600.ms, curve: Curves.easeOut)
+        .scale(
+          begin: const Offset(0.8, 0.8),
+          end: const Offset(1.0, 1.0),
+          duration: 800.ms,
+          curve: Curves.easeOutBack,
+        );
   }
 }

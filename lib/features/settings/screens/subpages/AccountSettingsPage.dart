@@ -22,60 +22,63 @@ class AccountSettingsPage extends ConsumerWidget {
         centerTitle: true,
         elevation: 0,
       ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 16.0),
-        children: [
-          // بخش تنظیمات حساب کاربری
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16.0),
-            decoration: BoxDecoration(
-              color: isDark ? colorScheme.surface : Colors.white,
-              borderRadius: BorderRadius.circular(12),
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.symmetric(vertical: 16.0),
+          children: [
+            // بخش تنظیمات حساب کاربری
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16.0),
+              decoration: BoxDecoration(
+                color: isDark ? colorScheme.surface : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  SettingsListItem(
+                    icon: Icons.person,
+                    iconColor: Colors.blue,
+                    title: 'ویرایش پروفایل',
+                    subtitle: 'تغییر نام، بیو، عکس پروفایل',
+                    onTap: () {
+                      Navigator.pushNamed(context, '/editeProfile');
+                    },
+                  ),
+                  _buildDivider(),
+                  SettingsListItem(
+                    icon: Icons.lock,
+                    iconColor: Colors.orange,
+                    title: 'تغییر رمز عبور',
+                    subtitle: 'تنظیم رمز عبور جدید',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => ChangePasswordWidget(),
+                        ),
+                      );
+                    },
+                  ),
+                  _buildDivider(),
+                  SettingsListItem(
+                    icon: Icons.email,
+                    iconColor: Colors.green,
+                    title: 'ویرایش ایمیل',
+                    subtitle: 'تغییر آدرس ایمیل حساب کاربری',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const EmailEditPage(),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
-            child: Column(
-              children: [
-                SettingsListItem(
-                  icon: Icons.person,
-                  iconColor: Colors.blue,
-                  title: 'ویرایش پروفایل',
-                  subtitle: 'تغییر نام، بیو، عکس پروفایل',
-                  onTap: () {
-                    Navigator.pushNamed(context, '/editeProfile');
-                  },
-                ),
-                _buildDivider(),
-                SettingsListItem(
-                  icon: Icons.lock,
-                  iconColor: Colors.orange,
-                  title: 'تغییر رمز عبور',
-                  subtitle: 'تنظیم رمز عبور جدید',
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => ChangePasswordWidget(),
-                      ),
-                    );
-                  },
-                ),
-                _buildDivider(),
-                SettingsListItem(
-                  icon: Icons.email,
-                  iconColor: Colors.green,
-                  title: 'ویرایش ایمیل',
-                  subtitle: 'تغییر آدرس ایمیل حساب کاربری',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const EmailEditPage(),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -15,7 +15,8 @@ class PrivacySettingsPage extends ConsumerStatefulWidget {
   const PrivacySettingsPage({super.key});
 
   @override
-  ConsumerState<PrivacySettingsPage> createState() => _PrivacySettingsPageState();
+  ConsumerState<PrivacySettingsPage> createState() =>
+      _PrivacySettingsPageState();
 }
 
 class _PrivacySettingsPageState extends ConsumerState<PrivacySettingsPage> {
@@ -31,27 +32,30 @@ class _PrivacySettingsPageState extends ConsumerState<PrivacySettingsPage> {
         centerTitle: true,
         elevation: 0,
       ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 16.0),
-        children: [
-          // بخش حریم خصوصی پروفایل
-          _buildPrivacySection(context, ref),
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.symmetric(vertical: 16.0),
+          children: [
+            // بخش حریم خصوصی پروفایل
+            _buildPrivacySection(context, ref),
 
-          const SizedBox(height: 20),
+            const SizedBox(height: 20),
 
-          // بخش مسدودسازی و گزارش
-          _buildBlockingSection(context, ref),
+            // بخش مسدودسازی و گزارش
+            _buildBlockingSection(context, ref),
 
-          const SizedBox(height: 20),
+            const SizedBox(height: 20),
 
-          // بخش امنیت
-          _buildSecuritySection(context, ref),
+            // بخش امنیت
+            _buildSecuritySection(context, ref),
 
-          const SizedBox(height: 20),
+            const SizedBox(height: 20),
 
-          // بخش داده‌ها و حفظ حریم خصوصی
-          _buildDataSection(context, ref),
-        ],
+            // بخش داده‌ها و حفظ حریم خصوصی
+            _buildDataSection(context, ref),
+          ],
+        ),
       ),
     );
   }
@@ -74,8 +78,8 @@ class _PrivacySettingsPageState extends ConsumerState<PrivacySettingsPage> {
             icon: Icons.lock_rounded,
             iconColor: Colors.red,
             title: 'قفل خودکار',
-            subtitle: security['auto_lock_enabled'] == true 
-                ? '${security['auto_lock_timeout_minutes'] ?? 5} دقیقه' 
+            subtitle: security['auto_lock_enabled'] == true
+                ? '${security['auto_lock_timeout_minutes'] ?? 5} دقیقه'
                 : 'غیرفعال',
             value: security['auto_lock_enabled'] as bool? ?? false,
             onChanged: (bool value) async {

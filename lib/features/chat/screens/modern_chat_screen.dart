@@ -133,6 +133,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // Search
   bool _isSearchMode = false;
   String? _highlightedMessageId;
+  final Map<String, GlobalKey> _messageKeys =
+      {}; // ✅ کلیدها برای اسکرول به پیام
 
   // Selection mode
   bool _isSelectionMode = false;
@@ -161,6 +163,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   // Profile
   ProfileModel? _otherUserProfile;
+  ProfileModel? _currentUserProfile; // ✅ پروفایل کاربر فعلی برای چک کردن badge
 
   // Reaction picker
   String? _reactionPickerMessageId;
@@ -305,7 +308,68 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       debugPrint('⚠️ Warning: currentUserId is null!');
     } else {
       debugPrint('✅ Current user ID loaded: $_currentUserId');
+      // ✅ بارگذاری پروفایل کاربر فعلی برای چک کردن badge
+      _loadCurrentUserProfile();
     }
+  }
+
+  /// ✅ بارگذاری پروفایل کاربر فعلی
+  Future<void> _loadCurrentUserProfile() async {
+    if (_currentUserId == null) return;
+    try {
+      final profile = await ProfileCacheService().getProfile(_currentUserId!);
+      if (mounted) {
+        setState(() => _currentUserProfile = profile);
+      }
+    } catch (e) {
+      debugPrint('Error loading current user profile: $e');
+    }
+  }
+
+  /// ✅ چک کردن اینکه کاربر می‌تواند ویرایش کند (تیک طلایی یا آبی)
+  bool get _canEditMessages {
+    if (_currentUserProfile == null) return false;
+    return _currentUserProfile!.hasGoldBadge ||
+        _currentUserProfile!.hasBlueBadge;
+  }
+
+  /// ✅ نمایش دیالوگ ارتقا به پریمیوم
+  void _showUpgradeDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.lock, color: Colors.amber, size: 24),
+            const SizedBox(width: 8),
+            const Text('قابلیت ویژه'),
+          ],
+        ),
+        content: const Text(
+          'ویرایش پیام مخصوص کاربران تایید شده (تیک آبی) یا کاربران پریمیوم (تیک طلایی) است.',
+          style: TextStyle(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('بستن'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pushNamed(context, '/pricing');
+            },
+            icon: const Icon(Icons.star, size: 18),
+            label: const Text('دریافت تیک طلایی'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.amber,
+              foregroundColor: Colors.black,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _checkBlockStatus() async {
@@ -669,7 +733,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           extendBody: true,
           extendBodyBehindAppBar: true,
           resizeToAvoidBottomInset:
-              true, // ✅ بهینه‌سازی: تغییر به true برای هندل خودکار کیبورد
+              true, // ✅ بازگشت به حالت استاندارد برای جلوگیری از مشکل مخفی شدن اینپوت
 
           appBar: _isSearchMode ? null : _buildAppBar(theme),
 
@@ -791,50 +855,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         });
       }
     }
-  }
-
-  /// Scroll به پیام خاص
-  void _scrollToMessage(String messageId) {
-    setState(() => _highlightedMessageId = messageId);
-
-    // پاک کردن highlight بعد از چند ثانیه
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted && _highlightedMessageId == messageId) {
-        setState(() => _highlightedMessageId = null);
-      }
-    });
-  }
-
-  /// Scroll به پیام با استفاده از ID
-  void _scrollToMessageById(String messageId, List<MessageModel> messages) {
-    // پیدا کردن ایندکس پیام
-    final index = messages.indexWhere((m) => m.id == messageId);
-
-    if (index == -1) {
-      _showErrorSnackBar('پیام یافت نشد');
-      return;
-    }
-
-    // Scroll به پیام
-    // چون لیست reverse هست، باید از scrollController استفاده کنیم
-    final itemExtent = 80.0; // تقریبی ارتفاع هر پیام
-    final scrollPosition = index * itemExtent;
-
-    _scrollController.animateTo(
-      scrollPosition,
-      duration: const Duration(milliseconds: 400),
-      curve: Curves.easeOutCubic,
-    );
-
-    // Highlight پیام
-    setState(() => _highlightedMessageId = messageId);
-
-    // پاک کردن highlight بعد از چند ثانیه
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted && _highlightedMessageId == messageId) {
-        setState(() => _highlightedMessageId = null);
-      }
-    });
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -2089,6 +2109,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 conversationId: params.conversationId,
                 content: params.content,
                 replyToMessageId: params.replyToMessageId,
+                replyToContent: params.replyToContent,
+                replyToSenderName: params.replyToSenderName,
               );
 
       if (!mounted) return;
@@ -2507,9 +2529,16 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           !isVoice &&
           message.attachmentUrl == null)
         TelegramContextMenuItem(
-          icon: Icons.edit_rounded,
+          icon: _canEditMessages ? Icons.edit_rounded : Icons.lock_outline,
           label: 'ویرایش',
-          onTap: () => _editMessage(message),
+          color: _canEditMessages ? null : Colors.amber,
+          onTap: () {
+            if (_canEditMessages) {
+              _editMessage(message);
+            } else {
+              _showUpgradeDialog();
+            }
+          },
         ),
 
       const TelegramContextMenuItem.divider(),
@@ -2748,11 +2777,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               // ویرایش فقط برای پیام‌های متنی خودم (نه GIF)
               if (isMe && !isGif && message.attachmentUrl == null)
                 _buildOptionTile(
-                  icon: Icons.edit_rounded,
+                  icon: _canEditMessages
+                      ? Icons.edit_rounded
+                      : Icons.lock_outline,
                   label: 'ویرایش',
+                  color: _canEditMessages ? null : Colors.amber,
                   onTap: () {
                     Navigator.pop(context);
-                    _editMessage(message);
+                    if (_canEditMessages) {
+                      _editMessage(message);
+                    } else {
+                      _showUpgradeDialog();
+                    }
                   },
                 ),
 
@@ -3404,6 +3440,38 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // 🔧 HELPER METHODS
   // ═══════════════════════════════════════════════════════════════════════════
 
+  /// اسکرول به پیام خاص
+  void _scrollToMessage(String? messageId) {
+    if (messageId == null) return;
+
+    final key = _messageKeys[messageId];
+    if (key?.currentContext != null) {
+      // اسکرول به پیام
+      Scrollable.ensureVisible(
+        key!.currentContext!,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+        alignment: 0.5, // پیام را در وسط صفحه قرار می‌دهد
+      );
+
+      // هایلایت کردن پیام برای چند لحظه
+      setState(() {
+        _highlightedMessageId = messageId;
+      });
+
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted) {
+          setState(() {
+            _highlightedMessageId = null;
+          });
+        }
+      });
+    } else {
+      // پیام در لیست فعلی موجود نیست (شاید باید لود شود یا دور است)
+      _showErrorSnackBar('پیام در دسترس نیست');
+    }
+  }
+
   /// متد کمکی برای تمیز شدن کد بالا
   Widget _buildBubbleContent(MessageModel message, bool isMe, int index,
       bool isFirstInGroup, bool isLastInGroup, List<MessageModel> messages) {
@@ -3422,7 +3490,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               builder: (postContext) => _buildPostMessageBubble(message, isMe),
             )
           : ImprovedAnimatedMessageBubble(
-              key: ValueKey(message.id),
+              key: _messageKeys[message.id] ??=
+                  GlobalKey(), // ✅ استفاده از GlobalKey ذخیره شده
               messageId: message.id,
               content: message.content,
               isMe: isMe,
@@ -3430,14 +3499,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               status: _getMessageStatus(message),
               attachmentUrl: message.attachmentUrl,
               attachmentType: message.attachmentType,
-              duration: message.duration,
+
+              // ✅ اضافه کردن هندلر تپ روی ریپلی
               replyToContent: message.replyToContent,
               replyToSenderName: message.replyToSenderName,
               replyToMessageId: message.replyToMessageId,
-              onReplyTap: message.replyToMessageId != null
-                  ? () =>
-                      _scrollToMessageById(message.replyToMessageId!, messages)
-                  : null,
+              onReplyTap: () => _scrollToMessage(message.replyToMessageId),
+
+              duration: message.duration,
               reactions: _convertToOldReactionFormat(
                   _messageReactions[message.id] ?? []),
               onTap: (ctx, msg) => _handleMessageTap(ctx, msg),

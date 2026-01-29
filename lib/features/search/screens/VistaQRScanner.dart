@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../chat/screens/ChatPartnerInfoScreen.dart';
+import '../../posts/screens/profileScreen.dart';
 
 /// اسکنر پیشرفته ویستا برای اسکن QR کدهای پروفایل
 class VistaQRScanner extends ConsumerStatefulWidget {
@@ -16,6 +20,7 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
   late AnimationController _animationController;
   late Animation<double> _animation;
   bool _isProcessing = false;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -43,49 +48,188 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
   }
 
   void _onDetect(BarcodeCapture capture) async {
-    if (_isProcessing) return;
+    if (_isProcessing || _isLoading) return;
 
     final List<Barcode> barcodes = capture.barcodes;
     for (final barcode in barcodes) {
       final String? code = barcode.rawValue;
-      if (code != null && code.startsWith('vista://user/')) {
-        setState(() => _isProcessing = true);
-
-        final userId = code.replaceFirst('vista://user/', '');
-
-        // Haptic feedback
-        // TODO: Add haptic feedback if service available
-
-        // Play sound
-        // TODO: Play success sound
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('کاربر پیدا شد: $userId'),
-              behavior: SnackBarBehavior.floating,
-              backgroundColor: Colors.green,
-            ),
-          );
-
-          Navigator.pop(context); // Close scanner
-
-          // Navigation logic here - ideally we would fetch user details first
-          // For now, we assume we might need to navigate directly
-          // Since we don't have user name/avatar yet, we might need a loading state
-          // or pass just ID to a profile screen that handles fetching
-        }
+      if (code != null) {
+        // پردازش کد QR
+        await _processQRCode(code);
         return;
       }
     }
   }
 
+  Future<void> _processQRCode(String code) async {
+    // بررسی فرمت vista://user/
+    if (code.startsWith('vista://user/')) {
+      setState(() {
+        _isProcessing = true;
+        _isLoading = true;
+      });
+
+      // Haptic Feedback
+      HapticFeedback.mediumImpact();
+
+      final userId = code.replaceFirst('vista://user/', '');
+
+      try {
+        // دریافت اطلاعات کاربر از دیتابیس
+        final response = await Supabase.instance.client
+            .from('profiles')
+            .select('id, username, avatar_url, full_name')
+            .eq('id', userId)
+            .maybeSingle();
+
+        if (!mounted) return;
+
+        if (response != null) {
+          final username = response['username'] as String? ?? 'کاربر';
+          // avatarUrl available if needed for future features
+
+          setState(() => _isLoading = false);
+
+          // بستن اسکنر و رفتن به پروفایل
+          Navigator.pop(context);
+
+          // رفتن به صفحه پروفایل کاربر
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ProfileScreen(
+                userId: userId,
+                username: username,
+              ),
+            ),
+          );
+        } else {
+          // کاربر یافت نشد
+          setState(() {
+            _isLoading = false;
+            _isProcessing = false;
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('کاربر یافت نشد'),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: Colors.red[400],
+            ),
+          );
+        }
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+          _isProcessing = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در دریافت اطلاعات: $e'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.red[400],
+          ),
+        );
+      }
+      return;
+    }
+
+    // بررسی فرمت vista://chat/
+    if (code.startsWith('vista://chat/')) {
+      setState(() {
+        _isProcessing = true;
+        _isLoading = true;
+      });
+
+      HapticFeedback.mediumImpact();
+
+      final chatData = code.replaceFirst('vista://chat/', '');
+      // فرمت: userId/username (اختیاری)
+      final parts = chatData.split('/');
+      final userId = parts.isNotEmpty ? parts[0] : '';
+
+      if (userId.isEmpty) {
+        setState(() {
+          _isLoading = false;
+          _isProcessing = false;
+        });
+        return;
+      }
+
+      try {
+        final response = await Supabase.instance.client
+            .from('profiles')
+            .select('id, username, avatar_url')
+            .eq('id', userId)
+            .maybeSingle();
+
+        if (!mounted) return;
+
+        if (response != null) {
+          final username = response['username'] as String? ?? 'کاربر';
+          final avatarUrl = response['avatar_url'] as String?;
+
+          setState(() => _isLoading = false);
+          Navigator.pop(context);
+
+          // رفتن به صفحه اطلاعات مخاطب چت
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ChatPartnerInfoScreen(
+                conversationId: '', // خالی - صفحه خودش هندل می‌کند
+                otherUserId: userId,
+                otherUserName: username,
+                otherUserAvatar: avatarUrl,
+              ),
+            ),
+          );
+        } else {
+          setState(() {
+            _isLoading = false;
+            _isProcessing = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('کاربر یافت نشد'),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: Colors.red[400],
+            ),
+          );
+        }
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+          _isProcessing = false;
+        });
+      }
+      return;
+    }
+
+    // فرمت نامعتبر
+    HapticFeedback.lightImpact();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('کد QR نامعتبر است'),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.orange[400],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
+          // دوربین
           MobileScanner(
             controller: _controller,
             onDetect: _onDetect,
@@ -94,11 +238,22 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.error, color: Colors.white, size: 50),
-                    const SizedBox(height: 10),
+                    const Icon(Icons.error_outline,
+                        color: Colors.white, size: 56),
+                    const SizedBox(height: 16),
                     Text(
                       'خطا در دوربین: ${error.errorCode}',
                       style: const TextStyle(color: Colors.white),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: () => _controller.start(),
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('تلاش مجدد'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black,
+                      ),
                     ),
                   ],
                 ),
@@ -108,76 +263,78 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
 
           // Overlay
           CustomPaint(
-            painter: _ScannerOverlayPainter(),
-            child: Container(),
+            painter: _ScannerOverlayPainter(
+              borderColor: isDark ? Colors.white : Colors.white,
+              scanLinePosition: _animation.value,
+            ),
+            child: const SizedBox.expand(),
           ),
 
-          // Scanning Animation (Laser)
-          AnimatedBuilder(
-            animation: _animation,
-            builder: (context, child) {
-              return Positioned(
-                top: MediaQuery.of(context).size.height * 0.25 +
-                    (MediaQuery.of(context).size.width *
-                        0.7 *
-                        _animation.value),
-                left: MediaQuery.of(context).size.width * 0.15,
-                right: MediaQuery.of(context).size.width * 0.15,
-                child: Container(
-                  height: 2,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.blue.withValues(alpha: 0),
-                        Colors.blue,
-                        Colors.blue.withValues(alpha: 0),
-                      ],
+          // لودینگ اورلی
+          if (_isLoading)
+            Container(
+              color: Colors.black54,
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: Colors.white),
+                    SizedBox(height: 16),
+                    Text(
+                      'در حال بررسی...',
+                      style: TextStyle(color: Colors.white, fontSize: 16),
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.blue.withValues(alpha: 0.5),
-                        blurRadius: 10,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
+                  ],
                 ),
-              );
-            },
-          ),
+              ),
+            ),
 
-          // Header
+          // AppBar
           Positioned(
-            top: 50,
-            left: 20,
-            child: IconButton(
-              icon: const Icon(Icons.close, color: Colors.white, size: 30),
-              onPressed: () => Navigator.pop(context),
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close,
+                          color: Colors.white, size: 28),
+                    ),
+                    const Text(
+                      'اسکن کد QR',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => _controller.toggleTorch(),
+                      icon: ValueListenableBuilder(
+                        valueListenable: _controller,
+                        builder: (context, state, child) {
+                          return Icon(
+                            state.torchState == TorchState.on
+                                ? Icons.flash_on
+                                : Icons.flash_off,
+                            color: Colors.white,
+                            size: 28,
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
 
-          // Flash Button
-          Positioned(
-            top: 50,
-            right: 20,
-            child: ValueListenableBuilder(
-              valueListenable: _controller,
-              builder: (context, state, child) {
-                return IconButton(
-                  icon: Icon(
-                    state.torchState == TorchState.on
-                        ? Icons.flash_on
-                        : Icons.flash_off,
-                    color: Colors.white,
-                    size: 30,
-                  ),
-                  onPressed: () => _controller.toggleTorch(),
-                );
-              },
-            ),
-          ),
-
-          // Bottom Text
+          // راهنما
           Positioned(
             bottom: 100,
             left: 0,
@@ -186,18 +343,34 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
               children: [
                 Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  margin: const EdgeInsets.symmetric(horizontal: 40),
                   decoration: BoxDecoration(
                     color: Colors.black54,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Text(
-                    'کارت ویستا آیدی را اسکن کنید',
+                    'کد QR پروفایل را اسکن کنید',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.white,
-                      fontFamily: 'Vazir',
                       fontSize: 14,
-                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                // دکمه تغییر دوربین
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    onPressed: () => _controller.switchCamera(),
+                    icon: const Icon(
+                      Icons.cameraswitch_rounded,
+                      color: Colors.white,
+                      size: 28,
                     ),
                   ),
                 ),
@@ -210,74 +383,94 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
   }
 }
 
+/// پینتر سفارشی برای اورلی اسکنر
 class _ScannerOverlayPainter extends CustomPainter {
+  final Color borderColor;
+  final double scanLinePosition;
+
+  _ScannerOverlayPainter({
+    required this.borderColor,
+    required this.scanLinePosition,
+  });
+
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.black54;
-    final scanAreaSize = size.width * 0.7;
-    final scanAreaRect = Rect.fromCenter(
-      center: Offset(size.width / 2, size.height / 2 - 50), // Slightly up
-      width: scanAreaSize,
-      height: scanAreaSize,
-    );
+    final double scanAreaSize = size.width * 0.7;
+    final double left = (size.width - scanAreaSize) / 2;
+    final double top = (size.height - scanAreaSize) / 2;
 
-    // Draw background with hole
+    final overlayPaint = Paint()..color = Colors.black.withOpacity(0.5);
+
+    // رسم اورلی تاریک
     canvas.drawPath(
       Path.combine(
         PathOperation.difference,
         Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height)),
         Path()
-          ..addRRect(
-              RRect.fromRectAndRadius(scanAreaRect, const Radius.circular(20))),
+          ..addRRect(RRect.fromRectAndRadius(
+            Rect.fromLTWH(left, top, scanAreaSize, scanAreaSize),
+            const Radius.circular(20),
+          )),
       ),
-      paint,
+      overlayPaint,
     );
 
-    // Draw corners
+    // رسم گوشه‌ها
+    final cornerLength = scanAreaSize * 0.1;
     final cornerPaint = Paint()
-      ..color = Colors.white
+      ..color = borderColor
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 4;
+      ..strokeWidth = 4
+      ..strokeCap = StrokeCap.round;
 
-    final double cornerSize = 20;
+    // بالا چپ
+    canvas.drawLine(
+        Offset(left, top + cornerLength), Offset(left, top + 10), cornerPaint);
+    canvas.drawLine(
+        Offset(left, top), Offset(left + cornerLength, top), cornerPaint);
 
-    // Top Left
-    canvas.drawPath(
-      Path()
-        ..moveTo(scanAreaRect.left, scanAreaRect.top + cornerSize)
-        ..lineTo(scanAreaRect.left, scanAreaRect.top)
-        ..lineTo(scanAreaRect.left + cornerSize, scanAreaRect.top),
-      cornerPaint,
-    );
+    // بالا راست
+    canvas.drawLine(Offset(left + scanAreaSize - cornerLength, top),
+        Offset(left + scanAreaSize, top), cornerPaint);
+    canvas.drawLine(Offset(left + scanAreaSize, top),
+        Offset(left + scanAreaSize, top + cornerLength), cornerPaint);
 
-    // Top Right
-    canvas.drawPath(
-      Path()
-        ..moveTo(scanAreaRect.right - cornerSize, scanAreaRect.top)
-        ..lineTo(scanAreaRect.right, scanAreaRect.top)
-        ..lineTo(scanAreaRect.right, scanAreaRect.top + cornerSize),
-      cornerPaint,
-    );
+    // پایین چپ
+    canvas.drawLine(Offset(left, top + scanAreaSize - cornerLength),
+        Offset(left, top + scanAreaSize), cornerPaint);
+    canvas.drawLine(Offset(left, top + scanAreaSize),
+        Offset(left + cornerLength, top + scanAreaSize), cornerPaint);
 
-    // Bottom Left
-    canvas.drawPath(
-      Path()
-        ..moveTo(scanAreaRect.left, scanAreaRect.bottom - cornerSize)
-        ..lineTo(scanAreaRect.left, scanAreaRect.bottom)
-        ..lineTo(scanAreaRect.left + cornerSize, scanAreaRect.bottom),
-      cornerPaint,
-    );
+    // پایین راست
+    canvas.drawLine(
+        Offset(left + scanAreaSize - cornerLength, top + scanAreaSize),
+        Offset(left + scanAreaSize, top + scanAreaSize),
+        cornerPaint);
+    canvas.drawLine(
+        Offset(left + scanAreaSize, top + scanAreaSize - cornerLength),
+        Offset(left + scanAreaSize, top + scanAreaSize),
+        cornerPaint);
 
-    // Bottom Right
-    canvas.drawPath(
-      Path()
-        ..moveTo(scanAreaRect.right - cornerSize, scanAreaRect.bottom)
-        ..lineTo(scanAreaRect.right, scanAreaRect.bottom)
-        ..lineTo(scanAreaRect.right, scanAreaRect.bottom - cornerSize),
-      cornerPaint,
+    // خط اسکن متحرک
+    final scanLinePaint = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          Colors.white.withOpacity(0),
+          Colors.white.withOpacity(0.8),
+          Colors.white.withOpacity(0),
+        ],
+      ).createShader(Rect.fromLTWH(left, 0, scanAreaSize, 2));
+
+    final scanLineY = top + (scanAreaSize * scanLinePosition);
+    canvas.drawLine(
+      Offset(left + 20, scanLineY),
+      Offset(left + scanAreaSize - 20, scanLineY),
+      scanLinePaint..strokeWidth = 2,
     );
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _ScannerOverlayPainter oldDelegate) {
+    return oldDelegate.scanLinePosition != scanLinePosition;
+  }
 }

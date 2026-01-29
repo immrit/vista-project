@@ -253,7 +253,9 @@ class ChatRepositoryImpl implements ChatRepository {
       isSent: false,
       attachmentUrl: attachmentUrl,
       attachmentType: attachmentType,
-      replyToMessageId: replyToMessageId, // Added support for replies
+      replyToMessageId: replyToMessageId,
+      replyToContent: replyToContent, // ✅ Now passing reply content
+      replyToSenderName: replyToSenderName, // ✅ Now passing reply sender name
     );
 
     try {
@@ -291,6 +293,8 @@ class ChatRepositoryImpl implements ChatRepository {
             'is_pending': false,
             'created_at': now.toUtc().toIso8601String(),
             'reply_to_message_id': replyToMessageId,
+            'reply_to_content': replyToContent,
+            'reply_to_sender_name': replyToSenderName,
           })
           .select()
           .single();
@@ -429,7 +433,16 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Future<ChatResult<void>> deleteConversation(String conversationId) async {
     try {
-      await _supabase.from('conversations').delete().eq('id', conversationId);
+      // 1️⃣ ابتدا از Isar حذف کن (UI فوراً آپدیت میشه چون Stream گوش میده)
+      await _localDataSource.deleteConversation(conversationId);
+      await _localDataSource.clearMessages(conversationId);
+
+      // 2️⃣ سپس از Supabase حذف کن (در background - بدون بلاک کردن UI)
+      _supabase.from('conversations').delete().eq('id', conversationId).then(
+            (_) => null,
+            onError: (e) => print('⚠️ Server delete failed (non-blocking): $e'),
+          );
+
       return ChatResult.success(null);
     } catch (e) {
       return ChatResult.failure(e.toString());
@@ -560,12 +573,44 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Future<ChatResult<void>> editMessage(
       String messageId, String newContent) async {
+    final userId = _currentUserId;
+    if (userId == null) return ChatResult.failure('کاربر وارد نشده است');
+
     try {
-      await _supabase
+      await _ensureAuth();
+
+      // 1. Update on Supabase with is_edited flag
+      final response = await _supabase
           .from('messages')
-          .update({'content': newContent}).eq('id', messageId);
+          .update({
+            'content': newContent,
+            'is_edited': true,
+            'edited_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', messageId)
+          .select()
+          .maybeSingle();
+
+      if (response == null) {
+        return ChatResult.failure('پیام یافت نشد یا امکان ویرایش نیست');
+      }
+
+      // 2. Update local Isar database (just update content, is_edited is stored on server)
+      final existingMessage =
+          await _localDataSource.getMessage(messageId, userId);
+      if (existingMessage != null) {
+        final updatedMessage = existingMessage.copyWith(
+          content: newContent,
+        );
+        await _localDataSource.saveMessage(updatedMessage);
+
+        // 3. Update Unified Cache (UI refresh)
+        await UnifiedMessageCacheService().cacheMessage(updatedMessage);
+      }
+
       return ChatResult.success(null);
     } catch (e) {
+      logInfo('❌ Edit message failed: $e');
       return ChatResult.failure(e.toString());
     }
   }
@@ -703,15 +748,26 @@ class ChatRepositoryImpl implements ChatRepository {
 
   @override
   Future<void> resetUnreadCount(String conversationId) async {
-    try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) return;
+    final userId = _currentUserId;
+    if (userId == null) return;
 
-      await _supabase
+    try {
+      // 1️⃣ ابتدا Isar آپدیت کن (UI فوراً آپدیت میشه چون Stream گوش میده)
+      final conv =
+          await _localDataSource.getConversation(conversationId, userId);
+      if (conv != null) {
+        final updated = conv.copyWith(unreadCount: 0, hasUnreadMessages: false);
+        await _localDataSource.saveConversation(updated);
+      }
+
+      // 2️⃣ سپس Supabase آپدیت کن (در background - بدون بلاک کردن UI)
+      _supabase
           .from('conversation_participants')
           .update({'unread_count': 0})
           .eq('conversation_id', conversationId)
-          .eq('user_id', userId);
+          .eq('user_id', userId)
+          .then((_) => null,
+              onError: (e) => logInfo('⚠️ Server update failed: $e'));
     } catch (e) {
       logInfo('Error resetting unread count: $e');
     }

@@ -32,120 +32,123 @@ class _ChatSettingsGroupPageState extends ConsumerState<ChatSettingsGroupPage> {
         centerTitle: true,
         elevation: 0,
       ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 16.0),
-        children: [
-          // بخش عمومی
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16.0),
-            decoration: BoxDecoration(
-              color: isDark ? colorScheme.surface : Colors.white,
-              borderRadius: BorderRadius.circular(12),
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.symmetric(vertical: 16.0),
+          children: [
+            // بخش عمومی
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16.0),
+              decoration: BoxDecoration(
+                color: isDark ? colorScheme.surface : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  SettingsListItem(
+                    icon: Icons.archive,
+                    iconColor: Colors.orange,
+                    title: 'مکالمات آرشیو شده',
+                    subtitle: 'مشاهده و مدیریت مکالمات آرشیو شده',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              const ArchivedConversationsScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
-            child: Column(
-              children: [
-                SettingsListItem(
-                  icon: Icons.archive,
-                  iconColor: Colors.orange,
-                  title: 'مکالمات آرشیو شده',
-                  subtitle: 'مشاهده و مدیریت مکالمات آرشیو شده',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            const ArchivedConversationsScreen(),
-                      ),
-                    );
-                  },
-                ),
-              ],
+
+            const SizedBox(height: 20),
+
+            // بخش پیام‌ها
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16.0),
+              decoration: BoxDecoration(
+                color: isDark ? colorScheme.surface : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  Consumer(
+                    builder: (context, ref, child) {
+                      final fontSize = ref.watch(messageFontSizeProvider);
+                      final sizeLabel = ref
+                          .read(messageFontSizeProvider.notifier)
+                          .getFontSizeLabel(fontSize);
+
+                      return SettingsListItem(
+                        icon: Icons.text_fields,
+                        iconColor: Colors.teal,
+                        title: 'اندازه فونت پیام‌ها',
+                        subtitle:
+                            'فعلی: $sizeLabel (${fontSize.toStringAsFixed(0)}px)',
+                        onTap: () {
+                          _showFontSizeDialog(context, ref);
+                        },
+                      );
+                    },
+                  ),
+                  _buildDivider(),
+                  Consumer(
+                    builder: (context, ref, child) {
+                      final settings = ref.watch(autoDownloadProvider);
+                      final photoLabel = ref
+                          .read(autoDownloadProvider.notifier)
+                          .getSettingLabel(settings.photos);
+                      final voiceLabel = ref
+                          .read(autoDownloadProvider.notifier)
+                          .getSettingLabel(settings.voices);
+
+                      return SettingsListItem(
+                        icon: Icons.download,
+                        iconColor: Colors.indigo,
+                        title: 'دانلود خودکار رسانه',
+                        subtitle: 'عکس: $photoLabel • وویس: $voiceLabel',
+                        onTap: () {
+                          _showAutoDownloadDialog(context, ref);
+                        },
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
-          ),
 
-          const SizedBox(height: 20),
+            const SizedBox(height: 20),
 
-          // بخش پیام‌ها
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16.0),
-            decoration: BoxDecoration(
-              color: isDark ? colorScheme.surface : Colors.white,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              children: [
-                Consumer(
-                  builder: (context, ref, child) {
-                    final fontSize = ref.watch(messageFontSizeProvider);
-                    final sizeLabel = ref
-                        .read(messageFontSizeProvider.notifier)
-                        .getFontSizeLabel(fontSize);
-
-                    return SettingsListItem(
-                      icon: Icons.text_fields,
-                      iconColor: Colors.teal,
-                      title: 'اندازه فونت پیام‌ها',
-                      subtitle:
-                          'فعلی: $sizeLabel (${fontSize.toStringAsFixed(0)}px)',
-                      onTap: () {
-                        _showFontSizeDialog(context, ref);
-                      },
-                    );
-                  },
-                ),
-                _buildDivider(),
-                Consumer(
-                  builder: (context, ref, child) {
-                    final settings = ref.watch(autoDownloadProvider);
-                    final photoLabel = ref
-                        .read(autoDownloadProvider.notifier)
-                        .getSettingLabel(settings.photos);
-                    final voiceLabel = ref
-                        .read(autoDownloadProvider.notifier)
-                        .getSettingLabel(settings.voices);
-
-                    return SettingsListItem(
-                      icon: Icons.download,
-                      iconColor: Colors.indigo,
-                      title: 'دانلود خودکار رسانه',
-                      subtitle: 'عکس: $photoLabel • وویس: $voiceLabel',
-                      onTap: () {
-                        _showAutoDownloadDialog(context, ref);
-                      },
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          // عنوان بخش ظاهری چت
-          Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                'ظاهر صفحه چت',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+            // عنوان بخش ظاهری چت
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  'ظاهر صفحه چت',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
                 ),
               ),
             ),
-          ),
 
-          // تنظیمات ظاهری چت
-          _buildChatAppearanceCard(context, isDark, colorScheme),
+            // تنظیمات ظاهری چت
+            _buildChatAppearanceCard(context, isDark, colorScheme),
 
-          const SizedBox(height: 20),
+            const SizedBox(height: 20),
 
-          // تنظیمات اپلیکیشن
-          _buildAppSettingsCard(context, isDark, colorScheme),
-        ],
+            // تنظیمات اپلیکیشن
+            _buildAppSettingsCard(context, isDark, colorScheme),
+          ],
+        ),
       ),
     );
   }

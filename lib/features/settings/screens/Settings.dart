@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../utils/const.dart';
+import '../../../utils/vista_dialog.dart';
 import '../../../provider/provider.dart';
 import '../../profile/screens/updatePassword.dart' show ChangePasswordWidget;
 import 'subpages/ThemeSettingsPage.dart';
@@ -28,10 +29,13 @@ class Settings extends ConsumerWidget {
         backgroundColor: isDark ? Colors.black : Colors.white,
         foregroundColor: isDark ? Colors.white : Colors.black,
       ),
-      body: profileAsync.when(
-        data: (profile) => _buildSettingsList(context, ref, profile, isDark),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, __) => const Center(child: Text('خطا در بارگذاری')),
+      body: SafeArea(
+        top: false,
+        child: profileAsync.when(
+          data: (profile) => _buildSettingsList(context, ref, profile, isDark),
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (_, __) => const Center(child: Text('خطا در بارگذاری')),
+        ),
       ),
     );
   }
@@ -288,37 +292,19 @@ class Settings extends ConsumerWidget {
     );
   }
 
-  void _showLogoutDialog(BuildContext context, WidgetRef ref) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('خروج از حساب'),
-        content: const Text('آیا مطمئن هستید که می‌خواهید خارج شوید؟'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('انصراف'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await supabase.auth.signOut();
-              if (context.mounted) {
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  '/login',
-                  (route) => false,
-                );
-              }
-            },
-            child: const Text(
-              'خروج',
-              style: TextStyle(color: Colors.red),
-            ),
-          ),
-        ],
-      ),
-    );
+  void _showLogoutDialog(BuildContext context, WidgetRef ref) async {
+    final confirmed = await VistaDialog.showLogoutDialog(context);
+
+    if (confirmed == true && context.mounted) {
+      await supabase.auth.signOut();
+      if (context.mounted) {
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/login',
+          (route) => false,
+        );
+      }
+    }
   }
 }
 

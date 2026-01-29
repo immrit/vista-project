@@ -4,8 +4,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io';
 
 import '../../../model/message_model.dart';
-import 'package:Vista/utils/time_utils.dart'; // Ensure this matches project structure
+import '../../../provider/provider.dart';
+import 'package:Vista/utils/time_utils.dart';
 
+/// حباب پیام با پشتیبانی از:
+/// - تنظیم اندازه فونت از تنظیمات
+/// - آیکون retry برای پیام‌های ناموفق
+/// - انیمیشن‌های زیبا
 class MessageBubble extends ConsumerWidget {
   final MessageModel message;
   final bool isMe;
@@ -13,21 +18,26 @@ class MessageBubble extends ConsumerWidget {
   final MessageModel? nextMessage;
   final Function(MessageModel)? onLongPress;
   final Function(MessageModel)? onTap;
+  final Function(MessageModel)? onRetry; // ✅ callback برای retry
 
   const MessageBubble({
     super.key,
     required this.message,
-    required this.isMe, // Simplified: pass isMe directly or derive from message
+    required this.isMe,
     this.previousMessage,
     this.nextMessage,
     this.onLongPress,
     this.onTap,
+    this.onRetry,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+
+    // ✅ خواندن تنظیمات فونت از Provider
+    final fontSize = ref.watch(messageFontSizeProvider);
 
     // Radius constants
     const double kBubbleRadius = 22.0;
@@ -42,8 +52,6 @@ class MessageBubble extends ConsumerWidget {
     );
 
     // Color Logic
-    // My Message: Primary Color
-    // Other Message: Card Color or slight grey
     final Color bubbleColor = isMe
         ? theme.primaryColor
         : (isDark ? const Color(0xFF262626) : const Color(0xFFEFEFEF));
@@ -52,84 +60,172 @@ class MessageBubble extends ConsumerWidget {
         isMe ? Colors.white : (isDark ? Colors.white : Colors.black87);
 
     final Color timestampColor = isMe
-        ? Colors.white.withOpacity(0.7)
+        ? Colors.white.withValues(alpha: 0.7)
         : (isDark ? Colors.grey[400]! : Colors.grey[600]!);
+
+    // ✅ بررسی وضعیت پیام
+    final isFailed = message.isFailed == true;
+    final isPending = message.isPending;
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-            horizontal: 12, vertical: 2), // Compact vertical spacing
-        child: InkWell(
-          onLongPress: onLongPress != null ? () => onLongPress!(message) : null,
-          onTap: onTap != null ? () => onTap!(message) : null,
-          borderRadius: borderRadius,
-          child: Container(
-            constraints: BoxConstraints(
-              maxWidth:
-                  MediaQuery.of(context).size.width * 0.75, // Max 75% width
-            ),
-            decoration: BoxDecoration(
-              color: bubbleColor,
-              borderRadius: borderRadius,
-            ),
-            child: Stack(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(
-                      left: 12,
-                      right: 12,
-                      top: 10,
-                      bottom: 24 // Space for timestamp
-                      ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Content
-                      _buildContent(context, textColor),
-                    ],
-                  ),
-                ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            // ✅ آیکون Retry برای پیام‌های ناموفق (سمت چپ حباب)
+            if (isFailed && isMe)
+              Padding(
+                padding: const EdgeInsets.only(right: 8, bottom: 4),
+                child: _buildRetryButton(context),
+              ),
 
-                // Timestamp Overlay
-                Positioned(
-                  bottom: 6,
-                  right: isMe ? 8 : null, // Align rigth for Me
-                  left: isMe
-                      ? null
-                      : 8, // Align left for Others (or keep both right if preferred)
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+            // حباب اصلی
+            Flexible(
+              child: InkWell(
+                onLongPress:
+                    onLongPress != null ? () => onLongPress!(message) : null,
+                onTap: onTap != null ? () => onTap!(message) : null,
+                borderRadius: borderRadius,
+                child: Container(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width * 0.75,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isFailed
+                        ? bubbleColor.withValues(alpha: 0.6)
+                        : bubbleColor,
+                    borderRadius: borderRadius,
+                    // ✅ حاشیه قرمز برای پیام‌های ناموفق
+                    border: isFailed
+                        ? Border.all(
+                            color: Colors.red.withValues(alpha: 0.5), width: 1)
+                        : null,
+                  ),
+                  child: Stack(
                     children: [
-                      Text(
-                        TimeUtils.formatTime(message.createdAt),
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: timestampColor,
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          left: 12,
+                          right: 12,
+                          top: 10,
+                          bottom: 24,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Content with dynamic font size
+                            _buildContent(context, textColor, fontSize),
+                          ],
                         ),
                       ),
-                      if (isMe) ...[
-                        const SizedBox(width: 4),
-                        // Simple checkmark logic (can be expanded)
-                        Icon(
-                          message.isSeen ? Icons.done_all : Icons.check,
-                          size: 12,
-                          color: timestampColor,
+
+                      // Timestamp Overlay
+                      Positioned(
+                        bottom: 6,
+                        right: isMe ? 8 : null,
+                        left: isMe ? null : 8,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // ✅ نمایش خطا اگر پیام ناموفق بود
+                            if (isFailed) ...[
+                              Icon(
+                                Icons.error_outline,
+                                size: 12,
+                                color: Colors.red[400],
+                              ),
+                              const SizedBox(width: 4),
+                            ],
+                            Text(
+                              TimeUtils.formatTime(message.createdAt),
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: timestampColor,
+                              ),
+                            ),
+                            if (isMe && !isFailed) ...[
+                              const SizedBox(width: 4),
+                              _buildStatusIcon(
+                                  isPending, message.isSeen, timestampColor),
+                            ],
+                          ],
                         ),
-                      ]
+                      ),
+
+                      // ✅ نوار پیشرفت آپلود
+                      if (isPending && message.uploadProgress != null)
+                        Positioned(
+                          bottom: 0,
+                          left: 0,
+                          right: 0,
+                          child: ClipRRect(
+                            borderRadius: const BorderRadius.only(
+                              bottomLeft: Radius.circular(kBubbleRadius),
+                              bottomRight: Radius.circular(kBubbleRadius),
+                            ),
+                            child: LinearProgressIndicator(
+                              value: message.uploadProgress,
+                              backgroundColor: Colors.transparent,
+                              valueColor: AlwaysStoppedAnimation(
+                                Colors.white.withValues(alpha: 0.5),
+                              ),
+                              minHeight: 2,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
-              ],
+              ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// ✅ دکمه Retry
+  Widget _buildRetryButton(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onRetry != null ? () => onRetry!(message) : null,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: Colors.red.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.refresh,
+            size: 18,
+            color: Colors.red,
           ),
         ),
       ),
     );
   }
 
-  Widget _buildContent(BuildContext context, Color textColor) {
+  /// ✅ آیکون وضعیت پیام
+  Widget _buildStatusIcon(bool isPending, bool isSeen, Color color) {
+    if (isPending) {
+      return Icon(Icons.access_time, size: 12, color: color);
+    }
+    return Icon(
+      isSeen ? Icons.done_all : Icons.check,
+      size: 12,
+      color: isSeen ? Colors.blue[300] : color,
+    );
+  }
+
+  /// ✅ محتوای پیام با اندازه فونت داینامیک
+  Widget _buildContent(BuildContext context, Color textColor, double fontSize) {
     // 1. Image
     if (message.attachmentType == 'image' ||
         (message.localImagePath != null &&
@@ -137,18 +233,18 @@ class MessageBubble extends ConsumerWidget {
       return _buildImage(context);
     }
 
-    // 2. Text
+    // 2. Text with dynamic font size
     return Text(
       message.content,
       style: TextStyle(
-        fontSize: 16,
+        fontSize: fontSize, // ✅ فونت داینامیک از تنظیمات
         color: textColor,
+        height: 1.4,
       ),
     );
   }
 
   Widget _buildImage(BuildContext context) {
-    // Simplified Image Logic (Local > Network)
     bool hasLocal = message.localImagePath != null &&
         File(message.localImagePath!).existsSync();
 
@@ -170,7 +266,10 @@ class MessageBubble extends ConsumerWidget {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
-      child: imageWidget,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 300),
+        child: imageWidget,
+      ),
     );
   }
 }

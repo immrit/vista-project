@@ -1,6 +1,7 @@
 import 'package:Vista/features/chat/screens/ChatConversationsScreen.dart'
     show ChatConversationsScreen;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:badges/badges.dart' as badges;
 import 'package:Vista/provider/profile_completion_provider.dart';
@@ -15,14 +16,28 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../features/auth/widgets/otp_dialog.dart';
 import '../../../provider/provider.dart';
 
-import '../../../utils/responsive_constants.dart';
-// import 'package:Vista/utils/responsive_constants.dart';
-
-// ✅ Provider تعداد مکالمه‌های خوانده‌نشده (با استفاده از provider بهینه‌شده)
+// ✅ Provider تعداد مکالمه‌های خوانده‌نشده
 final unreadConversationsCountProvider = Provider<int>((ref) {
-  // استفاده از provider بهینه‌شده
   return ref.watch(totalUnreadCountProvider);
 });
+
+/// مسیر آیکون‌های Premium برای Bottom Navigation
+class _NavIcons {
+  static const String basePath = 'lib/utils/images/bottomnavigation';
+
+  static const String homeActive = '$basePath/home.png';
+  static const String homeInactive = '$basePath/home-outline.png';
+
+  static const String search = '$basePath/magnifying-glass.png';
+
+  static const String add = '$basePath/plus.png';
+
+  static const String chatActive = '$basePath/email.png';
+  static const String chatInactive = '$basePath/email-outline.png';
+
+  static const String profileActive = '$basePath/user.png';
+  static const String profileInactive = '$basePath/user-outline.png';
+}
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -35,7 +50,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _selectedIndex = 0;
   DateTime? _lastPressed;
 
-  // لیست صفحات با استفاده از late برای اینیشیالایز تنها یکبار
   late final List<Widget> _tabs;
 
   @override
@@ -43,7 +57,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     _checkProfileCompletion();
     _checkPhoneVerification();
-    // ساخت یکبار صفحات در initState
+
     final currentUser = supabase.auth.currentUser;
     final userId = currentUser?.id ?? '';
     final username = currentUser?.userMetadata?['username'] ??
@@ -51,19 +65,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         'کاربر';
 
     _tabs = [
-      const PublicPostsScreen(), // صفحه پست‌های عمومی
-      const SearchPage(), // صفحه جستجو
-      const AddPublicPostScreen(), // صفحه افزودن پست
-      const ChatConversationsScreen(), // صفحه چت
+      const PublicPostsScreen(),
+      const SearchPage(),
+      const AddPublicPostScreen(),
+      const ChatConversationsScreen(),
       ProfileScreen(
         userId: userId,
         username: username,
-      ), // صفحه پروفایل
+      ),
     ];
   }
 
   void _checkProfileCompletion() {
-    // اجرای غیرمسدودکننده در پس‌زمینه
     Future.microtask(() async {
       try {
         final isComplete = await ref
@@ -71,27 +84,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             .checkProfileCompletion()
             .timeout(const Duration(seconds: 2), onTimeout: () => true);
         if (!isComplete && mounted) {
-          // انتقال به صفحه ویرایش پروفایل با تأخیر کوتاه
           await Future.delayed(const Duration(milliseconds: 500));
           if (mounted) {
             Navigator.pushNamed(context, '/editeProfile');
           }
         }
       } catch (e) {
-        // خطا را نادیده می‌گیریم - کاربر نباید متوجه شود
+        // Ignore errors
       }
     });
   }
 
   void _checkPhoneVerification() async {
-    // اجرای غیرمسدودکننده در پس‌زمینه
     Future.microtask(() async {
       try {
         final prefs = await SharedPreferences.getInstance();
         final lastSkipped =
             prefs.getInt('last_phone_verification_skipped_time');
 
-        // اگر قبلاً رد کرده و کمتر از 15 دقیقه گذشته، مزاحم نشو
         if (lastSkipped != null) {
           final lastSkippedTime =
               DateTime.fromMillisecondsSinceEpoch(lastSkipped);
@@ -104,7 +114,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         final user = supabase.auth.currentUser;
         if (user == null) return;
 
-        // دریافت اطلاعات پروفایل
         final profile = await supabase
             .from('profiles')
             .select('phone')
@@ -113,16 +122,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
         if (profile != null) {
           final phone = profile['phone'] as String?;
-          // اگر شماره تلفن ندارد یا خالی است
           if (phone == null || phone.isEmpty) {
             if (mounted) {
-              await Future.delayed(const Duration(seconds: 1)); // تاخیر کوتاه
+              await Future.delayed(const Duration(seconds: 1));
               _showPhoneVerificationDialog();
             }
           }
         }
       } catch (e) {
-        // خطا را نادیده می‌گیریم
+        // Ignore errors
       }
     });
   }
@@ -133,6 +141,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final phoneController = TextEditingController();
     bool isLoading = false;
     String? errorText;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     showDialog(
       context: context,
@@ -141,30 +151,49 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text(
+              backgroundColor: isDark ? Colors.grey[900] : Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Text(
                 'تایید شماره موبایل',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black,
+                ),
               ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text(
+                  Text(
                     'برای ادامه فعالیت و امنیت بیشتر حساب کاربری، لطفاً شماره موبایل خود را تایید کنید.',
                     textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    ),
                   ),
                   const SizedBox(height: 16),
                   TextField(
                     controller: phoneController,
                     keyboardType: TextInputType.phone,
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black,
+                    ),
                     decoration: InputDecoration(
                       hintText: 'شماره موبایل (مثال: 0912...)',
+                      hintStyle: TextStyle(
+                        color: isDark ? Colors.grey[600] : Colors.grey[400],
+                      ),
                       errorText: errorText,
+                      filled: true,
+                      fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
                       ),
                       contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
+                          horizontal: 16, vertical: 14),
                     ),
                   ),
                 ],
@@ -172,15 +201,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               actions: [
                 TextButton(
                   onPressed: () async {
-                    // ذخیره زمان رد کردن
                     final prefs = await SharedPreferences.getInstance();
                     await prefs.setInt('last_phone_verification_skipped_time',
                         DateTime.now().millisecondsSinceEpoch);
                     Navigator.of(dialogContext).pop();
                   },
-                  child: const Text('بعداً یادآوری کن'),
+                  child: Text(
+                    'بعداً یادآوری کن',
+                    style: TextStyle(
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    ),
+                  ),
                 ),
                 ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isDark ? Colors.white : Colors.black,
+                    foregroundColor: isDark ? Colors.black : Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
                   onPressed: isLoading
                       ? null
                       : () async {
@@ -199,7 +239,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           });
 
                           try {
-                            // ارسال کد
                             await ref
                                 .read(authNotifierProvider.notifier)
                                 .sendOtp(phone);
@@ -209,14 +248,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               isLoading = false;
                             });
 
-                            // بستن این دیالوگ و باز کردن OTP
                             Navigator.of(dialogContext).pop();
 
-                            // نمایش OTP Dialog
                             final verified =
                                 await showOtpDialog(context, ref, phone);
                             if (verified) {
-                              // آپدیت پروفایل با شماره تلفن
                               try {
                                 await supabase.from('profiles').update({
                                   'phone': phone,
@@ -228,11 +264,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                           'شماره موبایل با موفقیت تایید شد')),
                                 );
                               } catch (e) {
-                                // اگر در آپدیت خطا خورد، لااقل می‌دانیم وریفای شده ولی سیو نشده
+                                // Ignore update errors
                               }
-                            } else {
-                              // اگر وریفای نشد، دوباره دیالوگ اول را نشان بده (یا ولش کن تا دفعه بعد)
-                              // فعلاً ولش می‌کنیم تا کاربر اذیت نشود، دفعه بعد (15 دقیقه بعد) دوباره می‌آید
                             }
                           } catch (e) {
                             if (mounted) {
@@ -244,10 +277,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           }
                         },
                   child: isLoading
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: isDark ? Colors.black : Colors.white,
+                          ),
                         )
                       : const Text('ارسال کد'),
                 ),
@@ -259,13 +295,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  // هندل کردن تغییر تب
   void _onItemTapped(int index) {
     if (index == 2) {
       Navigator.of(context).push(
         MaterialPageRoute(builder: (context) => const AddPublicPostScreen()),
       );
     } else {
+      HapticFeedback.selectionClick();
       setState(() {
         _selectedIndex = index;
       });
@@ -286,6 +322,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('برای خروج دوباره دکمه بازگشت را بزنید'),
+            behavior: SnackBarBehavior.floating,
           ),
         );
         return false;
@@ -296,147 +333,199 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // فعال کردن Provider سراسری نوتیفیکیشن چت (در پس‌زمینه)
     ref.watch(globalChatNotificationProvider);
-
-    // ✅ تعداد مکالمه‌های خوانده‌نشده (با provider بهینه‌شده)
     final unreadCount = ref.watch(unreadConversationsCountProvider);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
-        // استفاده از IndexedStack برای حفظ وضعیت صفحات
+        backgroundColor: isDark ? Colors.black : Colors.white,
         body: IndexedStack(index: _selectedIndex, children: _tabs),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _selectedIndex,
-          onDestinationSelected: _onItemTapped,
-          destinations: <NavigationDestination>[
-            NavigationDestination(
-              icon: Image.asset(
-                'lib/utils/images/bottomnavigation/home-outline.png',
-                width: 24,
-                height: 24,
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+        bottomNavigationBar: Container(
+          decoration: BoxDecoration(
+            color: isDark ? Colors.black : Colors.white,
+            border: Border(
+              top: BorderSide(
+                color: isDark ? Colors.grey[900]! : Colors.grey[200]!,
+                width: 0.5,
               ),
-              selectedIcon: Image.asset(
-                'lib/utils/images/bottomnavigation/home.png',
-                width: 24,
-                height: 24,
-                color: Theme.of(context).primaryColor,
-              ),
-              label: '',
             ),
-            NavigationDestination(
-              icon: Image.asset(
-                'lib/utils/images/bottomnavigation/magnifying-glass.png',
-                width: 24,
-                height: 24,
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-              ),
-              selectedIcon: Image.asset(
-                'lib/utils/images/bottomnavigation/magnifying-glass.png',
-                width: 24,
-                height: 24,
-                color: Theme.of(context).primaryColor,
-              ),
-              label: '',
-            ),
-            NavigationDestination(
-              icon: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  shape: BoxShape.rectangle,
-                  color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Icon(
-                  Icons.add,
-                  size: 26,
-                  color: Theme.of(context).primaryColor,
-                ),
-              ),
-              selectedIcon: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Theme.of(context).primaryColor,
-                      Theme.of(context).primaryColor.withValues(alpha: 0.8),
-                    ],
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  // Home
+                  _buildPremiumNavItem(
+                    index: 0,
+                    activeIcon: _NavIcons.homeActive,
+                    inactiveIcon: _NavIcons.homeInactive,
+                    isDark: isDark,
                   ),
-                ),
-                child: const Icon(Icons.add, size: 26, color: Colors.white),
+                  // Search
+                  _buildPremiumNavItem(
+                    index: 1,
+                    activeIcon: _NavIcons.search,
+                    inactiveIcon: _NavIcons.search,
+                    isDark: isDark,
+                  ),
+                  // Add (Center Button)
+                  _buildPremiumAddButton(isDark),
+                  // Chat with Badge
+                  _buildPremiumNavItemWithBadge(
+                    index: 3,
+                    activeIcon: _NavIcons.chatActive,
+                    inactiveIcon: _NavIcons.chatInactive,
+                    badgeCount: unreadCount,
+                    isDark: isDark,
+                  ),
+                  // Profile
+                  _buildPremiumNavItem(
+                    index: 4,
+                    activeIcon: _NavIcons.profileActive,
+                    inactiveIcon: _NavIcons.profileInactive,
+                    isDark: isDark,
+                  ),
+                ],
               ),
-              label: '',
             ),
-            // تب چت با بج نمایش پیام‌های جدید
-            NavigationDestination(
-              icon: _buildMessageBadge(
-                'lib/utils/images/bottomnavigation/email-outline.png',
-                false,
-                unreadCount,
-              ),
-              selectedIcon: _buildMessageBadge(
-                'lib/utils/images/bottomnavigation/email.png',
-                true,
-                unreadCount,
-              ),
-              label: '',
-            ),
-            NavigationDestination(
-              icon: Image.asset(
-                'lib/utils/images/bottomnavigation/user-outline.png',
-                width: 24,
-                height: 24,
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-              ),
-              selectedIcon: Image.asset(
-                'lib/utils/images/bottomnavigation/user.png',
-                width: 24,
-                height: 24,
-                color: Theme.of(context).primaryColor,
-              ),
-              label: '',
-            ),
-          ],
-          elevation: 3,
-          animationDuration: const Duration(milliseconds: 500),
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+          ),
         ),
       ),
     );
   }
 
-  // ✅ تابع بهینه‌شده برای نمایش بج تعداد مکالمه‌های خوانده‌نشده
-  Widget _buildMessageBadge(
-    String iconPath,
-    bool isSelected,
-    int count,
-  ) {
-    return badges.Badge(
-      showBadge: count > 0,
-      badgeContent: Text(
-        count > 9 ? '۹+' : count.toString(),
-        style: AppTextStyles.labelTiny.copyWith(color: Colors.white),
+  /// آیتم ناوبری Premium با آیکون تصویری
+  Widget _buildPremiumNavItem({
+    required int index,
+    required String activeIcon,
+    required String inactiveIcon,
+    required bool isDark,
+  }) {
+    final isSelected = _selectedIndex == index;
+    return GestureDetector(
+      onTap: () => _onItemTapped(index),
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          child: ColorFiltered(
+            colorFilter: ColorFilter.mode(
+              isSelected
+                  ? (isDark ? Colors.white : Colors.black)
+                  : (isDark ? Colors.grey[600]! : Colors.grey[400]!),
+              BlendMode.srcIn,
+            ),
+            child: Image.asset(
+              isSelected ? activeIcon : inactiveIcon,
+              width: 26,
+              height: 26,
+              errorBuilder: (context, error, stackTrace) {
+                // Fallback به آیکون پیش‌فرض اگر تصویر بارگذاری نشد
+                return Icon(
+                  Icons.home_outlined,
+                  size: 26,
+                  color: isSelected
+                      ? (isDark ? Colors.white : Colors.black)
+                      : (isDark ? Colors.grey[600] : Colors.grey[400]),
+                );
+              },
+            ),
+          ),
+        ),
       ),
-      badgeStyle: badges.BadgeStyle(
-        badgeColor: Colors.red,
-        padding: EdgeInsets.all(count > 9 ? 4 : 5),
+    );
+  }
+
+  /// آیتم ناوبری Premium با بَدج
+  Widget _buildPremiumNavItemWithBadge({
+    required int index,
+    required String activeIcon,
+    required String inactiveIcon,
+    required int badgeCount,
+    required bool isDark,
+  }) {
+    final isSelected = _selectedIndex == index;
+    return GestureDetector(
+      onTap: () => _onItemTapped(index),
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: badges.Badge(
+          showBadge: badgeCount > 0,
+          badgeContent: Text(
+            badgeCount > 9 ? '۹+' : badgeCount.toString(),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          badgeStyle: const badges.BadgeStyle(
+            badgeColor: Colors.red,
+            padding: EdgeInsets.all(5),
+          ),
+          position: badges.BadgePosition.topEnd(top: -8, end: -8),
+          child: ColorFiltered(
+            colorFilter: ColorFilter.mode(
+              isSelected
+                  ? (isDark ? Colors.white : Colors.black)
+                  : (isDark ? Colors.grey[600]! : Colors.grey[400]!),
+              BlendMode.srcIn,
+            ),
+            child: Image.asset(
+              isSelected ? activeIcon : inactiveIcon,
+              width: 26,
+              height: 26,
+              errorBuilder: (context, error, stackTrace) {
+                return Icon(
+                  Icons.chat_bubble_outline_rounded,
+                  size: 26,
+                  color: isSelected
+                      ? (isDark ? Colors.white : Colors.black)
+                      : (isDark ? Colors.grey[600] : Colors.grey[400]),
+                );
+              },
+            ),
+          ),
+        ),
       ),
-      position: badges.BadgePosition.topEnd(top: -12, end: -12),
-      child: Image.asset(
-        iconPath,
-        width: 24,
-        height: 24,
-        color: isSelected
-            ? Theme.of(context).primaryColor
-            : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+    );
+  }
+
+  /// دکمه Add ساده و شیک
+  Widget _buildPremiumAddButton(bool isDark) {
+    return GestureDetector(
+      onTap: () => _onItemTapped(2),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white : Colors.black,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: ColorFiltered(
+          colorFilter: ColorFilter.mode(
+            isDark ? Colors.black : Colors.white,
+            BlendMode.srcIn,
+          ),
+          child: Image.asset(
+            _NavIcons.add,
+            width: 24,
+            height: 24,
+            errorBuilder: (context, error, stackTrace) {
+              return Icon(
+                Icons.add_rounded,
+                size: 24,
+                color: isDark ? Colors.black : Colors.white,
+              );
+            },
+          ),
+        ),
       ),
     );
   }

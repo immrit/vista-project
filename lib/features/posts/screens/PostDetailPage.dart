@@ -1326,20 +1326,22 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
 
   Widget _buildCommentInputArea(
       BuildContext context, List<UserModel> mentionNotifier) {
-    return Container(
-      padding:
-          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Directionality(
-          textDirection: TextDirection.rtl,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (mentionNotifier.isNotEmpty)
-                _buildMentionList(mentionNotifier),
-              _buildTextField(),
-            ],
+    return SafeArea(
+      child: Container(
+        padding:
+            EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Directionality(
+            textDirection: TextDirection.rtl,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (mentionNotifier.isNotEmpty)
+                  _buildMentionList(mentionNotifier),
+                _buildTextField(),
+              ],
+            ),
           ),
         ),
       ),

@@ -68,124 +68,127 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
         backgroundColor: isDark ? Colors.black : Colors.white,
         foregroundColor: isDark ? Colors.white : Colors.black,
       ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        children: [
-          // بخش حریم خصوصی
-          const VistaSettingsSection(title: 'حریم خصوصی'),
-          VistaSettingsGroup(
-            children: [
-              // آخرین بازدید
-              VistaSettingsChoice<String>(
-                icon: Icons.access_time_outlined,
-                title: 'آخرین بازدید',
-                value: _lastSeen,
-                options: const [
-                  VistaChoiceOption(value: 'everyone', label: 'همه'),
-                  VistaChoiceOption(value: 'contacts', label: 'فقط مخاطبین'),
-                  VistaChoiceOption(value: 'nobody', label: 'هیچکس'),
-                ],
-                onChanged: (value) {
-                  setState(() => _lastSeen = value);
-                  _saveStringSetting(_keyLastSeen, value);
-                },
-              ),
-              // عکس پروفایل
-              VistaSettingsChoice<String>(
-                icon: Icons.photo_camera_outlined,
-                title: 'عکس پروفایل',
-                value: _profilePhoto,
-                options: const [
-                  VistaChoiceOption(value: 'everyone', label: 'همه'),
-                  VistaChoiceOption(value: 'contacts', label: 'فقط مخاطبین'),
-                  VistaChoiceOption(value: 'nobody', label: 'هیچکس'),
-                ],
-                onChanged: (value) {
-                  setState(() => _profilePhoto = value);
-                  _saveStringSetting(_keyProfilePhoto, value);
-                },
-              ),
-              // پیام‌های فوروارد شده
-              VistaSettingsSwitch(
-                icon: Icons.forward_to_inbox_outlined,
-                title: 'لینک پیام‌های فوروارد شده',
-                subtitle: 'اجازه لینک به پروفایل شما در پیام‌های فوروارد شده',
-                value: _forwardedMessages,
-                onChanged: (value) {
-                  setState(() => _forwardedMessages = value);
-                  _saveBoolSetting(_keyForwardedMessages, value);
-                },
-              ),
-            ],
-          ),
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          children: [
+            // بخش حریم خصوصی
+            const VistaSettingsSection(title: 'حریم خصوصی'),
+            VistaSettingsGroup(
+              children: [
+                // آخرین بازدید
+                VistaSettingsChoice<String>(
+                  icon: Icons.access_time_outlined,
+                  title: 'آخرین بازدید',
+                  value: _lastSeen,
+                  options: const [
+                    VistaChoiceOption(value: 'everyone', label: 'همه'),
+                    VistaChoiceOption(value: 'contacts', label: 'فقط مخاطبین'),
+                    VistaChoiceOption(value: 'nobody', label: 'هیچکس'),
+                  ],
+                  onChanged: (value) {
+                    setState(() => _lastSeen = value);
+                    _saveStringSetting(_keyLastSeen, value);
+                  },
+                ),
+                // عکس پروفایل
+                VistaSettingsChoice<String>(
+                  icon: Icons.photo_camera_outlined,
+                  title: 'عکس پروفایل',
+                  value: _profilePhoto,
+                  options: const [
+                    VistaChoiceOption(value: 'everyone', label: 'همه'),
+                    VistaChoiceOption(value: 'contacts', label: 'فقط مخاطبین'),
+                    VistaChoiceOption(value: 'nobody', label: 'هیچکس'),
+                  ],
+                  onChanged: (value) {
+                    setState(() => _profilePhoto = value);
+                    _saveStringSetting(_keyProfilePhoto, value);
+                  },
+                ),
+                // پیام‌های فوروارد شده
+                VistaSettingsSwitch(
+                  icon: Icons.forward_to_inbox_outlined,
+                  title: 'لینک پیام‌های فوروارد شده',
+                  subtitle: 'اجازه لینک به پروفایل شما در پیام‌های فوروارد شده',
+                  value: _forwardedMessages,
+                  onChanged: (value) {
+                    setState(() => _forwardedMessages = value);
+                    _saveBoolSetting(_keyForwardedMessages, value);
+                  },
+                ),
+              ],
+            ),
 
-          // بخش امنیت
-          const VistaSettingsSection(title: 'امنیت'),
-          VistaSettingsGroup(
-            children: [
-              // نشست‌های فعال
-              VistaSettingsTile(
-                icon: Icons.devices_outlined,
-                title: 'نشست‌های فعال',
-                subtitle: 'مدیریت دستگاه‌های متصل',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const ActiveSessionsScreen(),
+            // بخش امنیت
+            const VistaSettingsSection(title: 'امنیت'),
+            VistaSettingsGroup(
+              children: [
+                // نشست‌های فعال
+                VistaSettingsTile(
+                  icon: Icons.devices_outlined,
+                  title: 'نشست‌های فعال',
+                  subtitle: 'مدیریت دستگاه‌های متصل',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ActiveSessionsScreen(),
+                    ),
                   ),
                 ),
-              ),
-              // تایید دو مرحله‌ای
-              VistaSettingsSwitch(
-                icon: Icons.security_outlined,
-                title: 'تایید دو مرحله‌ای',
-                subtitle: 'افزایش امنیت با رمز دوم',
-                value: _twoStepVerification,
-                onChanged: (value) {
-                  if (value) {
-                    _showTwoStepSetupDialog(isDark);
-                  } else {
-                    setState(() => _twoStepVerification = false);
-                    _saveBoolSetting(_keyTwoStep, false);
-                  }
-                },
-              ),
-            ],
-          ),
+                // تایید دو مرحله‌ای
+                VistaSettingsSwitch(
+                  icon: Icons.security_outlined,
+                  title: 'تایید دو مرحله‌ای',
+                  subtitle: 'افزایش امنیت با رمز دوم',
+                  value: _twoStepVerification,
+                  onChanged: (value) {
+                    if (value) {
+                      _showTwoStepSetupDialog(isDark);
+                    } else {
+                      setState(() => _twoStepVerification = false);
+                      _saveBoolSetting(_keyTwoStep, false);
+                    }
+                  },
+                ),
+              ],
+            ),
 
-          // بخش اتصالات
-          const VistaSettingsSection(title: 'اتصالات'),
-          VistaSettingsGroup(
-            children: [
-              // کاربران مسدود شده
-              VistaSettingsTile(
-                icon: Icons.block_outlined,
-                title: 'کاربران مسدود شده',
-                subtitle: 'مدیریت کاربران مسدود شده',
-                iconColor: Colors.red,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const BlockedUsersPage(),
+            // بخش اتصالات
+            const VistaSettingsSection(title: 'اتصالات'),
+            VistaSettingsGroup(
+              children: [
+                // کاربران مسدود شده
+                VistaSettingsTile(
+                  icon: Icons.block_outlined,
+                  title: 'کاربران مسدود شده',
+                  subtitle: 'مدیریت کاربران مسدود شده',
+                  iconColor: Colors.red,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const BlockedUsersPage(),
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
 
-          // توضیحات
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              'تنظیمات حریم خصوصی شما تعیین می‌کند چه کسانی می‌توانند اطلاعات شما را مشاهده کنند.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                color: isDark ? Colors.grey[600] : Colors.grey[500],
+            // توضیحات
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                'تنظیمات حریم خصوصی شما تعیین می‌کند چه کسانی می‌توانند اطلاعات شما را مشاهده کنند.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark ? Colors.grey[600] : Colors.grey[500],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

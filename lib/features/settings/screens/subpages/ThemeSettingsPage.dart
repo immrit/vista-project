@@ -31,125 +31,129 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
         centerTitle: true,
         elevation: 0,
       ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 16.0),
-        children: [
-          // سوییچ تاریک/روشن با طراحی بهبود یافته
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16.0),
-            decoration: BoxDecoration(
-              color: isDark ? colorScheme.surface : Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isDark ? Colors.grey[700]! : Colors.grey[100]!,
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.symmetric(vertical: 16.0),
+          children: [
+            // سوییچ تاریک/روشن با طراحی بهبود یافته
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16.0),
+              decoration: BoxDecoration(
+                color: isDark ? colorScheme.surface : Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isDark ? Colors.grey[700]! : Colors.grey[100]!,
+                  width: 1,
                 ),
-              ],
-            ),
-            child: SwitchListTile(
-              title: Row(
-                children: [
-                  const Text(
-                    'حالت تاریک',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: brightness == Brightness.dark
-                          ? Colors.grey.withValues(
-                              alpha:
-                                  0.2) // Changed from amber to grey for monochrome
-                          : Colors.grey
-                              .withValues(alpha: 0.2), // Changed from blue
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      brightness == Brightness.dark ? 'شب' : 'روز',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: isDark
-                            ? Colors.white
-                            : Colors.black, // Monochrome text
-                      ),
-                    ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
                 ],
               ),
-              subtitle: Text(
-                brightness == Brightness.dark
-                    ? 'تم تاریک برای استفاده راحت در شب'
-                    : 'تم روشن برای استفاده در روز',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: isDark ? Colors.grey[400] : Colors.grey[700],
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-              value: brightness == Brightness.dark,
-              onChanged: (value) {
-                ref.read(brightnessProvider.notifier).updateBrightness(
-                    value ? Brightness.dark : Brightness.light);
-              },
-              secondary: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: brightness == Brightness.dark
-                        ? [Colors.grey[800]!, Colors.black]
-                        : [Colors.grey[300]!, Colors.white],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
+              child: SwitchListTile(
+                title: Row(
+                  children: [
+                    const Text(
+                      'حالت تاریک',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: brightness == Brightness.dark
+                            ? Colors.grey.withValues(
+                                alpha:
+                                    0.2) // Changed from amber to grey for monochrome
+                            : Colors.grey
+                                .withValues(alpha: 0.2), // Changed from blue
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        brightness == Brightness.dark ? 'شب' : 'روز',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: isDark
+                              ? Colors.white
+                              : Colors.black, // Monochrome text
+                        ),
+                      ),
                     ),
                   ],
                 ),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  child: Icon(
-                    brightness == Brightness.dark
-                        ? Icons.nightlight_round
-                        : Icons.wb_sunny,
-                    key: ValueKey(brightness == Brightness.dark),
-                    color: isDark ? Colors.white : Colors.black,
-                    size: 24,
+                subtitle: Text(
+                  brightness == Brightness.dark
+                      ? 'تم تاریک برای استفاده راحت در شب'
+                      : 'تم روشن برای استفاده در روز',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.grey[400] : Colors.grey[700],
+                    fontStyle: FontStyle.italic,
                   ),
                 ),
+                value: brightness == Brightness.dark,
+                onChanged: (value) {
+                  ref.read(brightnessProvider.notifier).updateBrightness(
+                      value ? Brightness.dark : Brightness.light);
+                },
+                secondary: AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: brightness == Brightness.dark
+                          ? [Colors.grey[800]!, Colors.black]
+                          : [Colors.grey[300]!, Colors.white],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child: Icon(
+                      brightness == Brightness.dark
+                          ? Icons.nightlight_round
+                          : Icons.wb_sunny,
+                      key: ValueKey(brightness == Brightness.dark),
+                      color: isDark ? Colors.white : Colors.black,
+                      size: 24,
+                    ),
+                  ),
+                ),
+                activeThumbColor: isDark ? Colors.white : Colors.black,
+                activeTrackColor: Colors.grey,
               ),
-              activeThumbColor: isDark ? Colors.white : Colors.black,
-              activeTrackColor: Colors.grey,
             ),
-          ),
 
-          const SizedBox(height: 20),
+            const SizedBox(height: 20),
 
-          // REMOVED: Color Selection Container
+            // REMOVED: Color Selection Container
 
-          // تنظیمات عملکرد و انیمیشن
-          _buildPerformanceSettingsCard(context, isDark, colorScheme),
+            // تنظیمات عملکرد و انیمیشن
+            _buildPerformanceSettingsCard(context, isDark, colorScheme),
 
-          const SizedBox(height: 20),
+            const SizedBox(height: 20),
 
-          // تنظیمات دسترسی‌پذیری
-          _buildAccessibilitySettingsCard(context, isDark, colorScheme),
-        ],
+            // تنظیمات دسترسی‌پذیری
+            _buildAccessibilitySettingsCard(context, isDark, colorScheme),
+          ],
+        ),
       ),
     );
   }

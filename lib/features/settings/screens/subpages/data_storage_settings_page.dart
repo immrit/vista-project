@@ -85,110 +85,114 @@ class _DataStorageSettingsPageState extends State<DataStorageSettingsPage> {
         backgroundColor: isDark ? Colors.black : Colors.white,
         foregroundColor: isDark ? Colors.white : Colors.black,
       ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        children: [
-          // بخش دانلود خودکار - داده موبایل
-          const VistaSettingsSection(title: 'دانلود خودکار - داده موبایل'),
-          VistaSettingsGroup(
-            children: [
-              VistaSettingsSwitch(
-                icon: Icons.photo_outlined,
-                title: 'تصاویر',
-                subtitle: 'دانلود خودکار تصاویر با داده موبایل',
-                value: _mobileDataPhotos,
-                onChanged: (value) {
-                  setState(() => _mobileDataPhotos = value);
-                  _saveBoolSetting(_keyMobilePhotos, value);
-                },
-              ),
-              VistaSettingsSwitch(
-                icon: Icons.videocam_outlined,
-                title: 'ویدیوها',
-                subtitle: 'دانلود خودکار ویدیوها با داده موبایل',
-                value: _mobileDataVideos,
-                onChanged: (value) {
-                  setState(() => _mobileDataVideos = value);
-                  _saveBoolSetting(_keyMobileVideos, value);
-                },
-              ),
-            ],
-          ),
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          children: [
+            // بخش دانلود خودکار - داده موبایل
+            const VistaSettingsSection(title: 'دانلود خودکار - داده موبایل'),
+            VistaSettingsGroup(
+              children: [
+                VistaSettingsSwitch(
+                  icon: Icons.photo_outlined,
+                  title: 'تصاویر',
+                  subtitle: 'دانلود خودکار تصاویر با داده موبایل',
+                  value: _mobileDataPhotos,
+                  onChanged: (value) {
+                    setState(() => _mobileDataPhotos = value);
+                    _saveBoolSetting(_keyMobilePhotos, value);
+                  },
+                ),
+                VistaSettingsSwitch(
+                  icon: Icons.videocam_outlined,
+                  title: 'ویدیوها',
+                  subtitle: 'دانلود خودکار ویدیوها با داده موبایل',
+                  value: _mobileDataVideos,
+                  onChanged: (value) {
+                    setState(() => _mobileDataVideos = value);
+                    _saveBoolSetting(_keyMobileVideos, value);
+                  },
+                ),
+              ],
+            ),
 
-          // بخش دانلود خودکار - وای‌فای
-          const VistaSettingsSection(title: 'دانلود خودکار - وای‌فای'),
-          VistaSettingsGroup(
-            children: [
-              VistaSettingsSwitch(
-                icon: Icons.photo_outlined,
-                title: 'تصاویر',
-                subtitle: 'دانلود خودکار تصاویر با وای‌فای',
-                value: _wifiPhotos,
-                onChanged: (value) {
-                  setState(() => _wifiPhotos = value);
-                  _saveBoolSetting(_keyWifiPhotos, value);
-                },
-              ),
-              VistaSettingsSwitch(
-                icon: Icons.videocam_outlined,
-                title: 'ویدیوها',
-                subtitle: 'دانلود خودکار ویدیوها با وای‌فای',
-                value: _wifiVideos,
-                onChanged: (value) {
-                  setState(() => _wifiVideos = value);
-                  _saveBoolSetting(_keyWifiVideos, value);
-                },
-              ),
-            ],
-          ),
+            // بخش دانلود خودکار - وای‌فای
+            const VistaSettingsSection(title: 'دانلود خودکار - وای‌فای'),
+            VistaSettingsGroup(
+              children: [
+                VistaSettingsSwitch(
+                  icon: Icons.photo_outlined,
+                  title: 'تصاویر',
+                  subtitle: 'دانلود خودکار تصاویر با وای‌فای',
+                  value: _wifiPhotos,
+                  onChanged: (value) {
+                    setState(() => _wifiPhotos = value);
+                    _saveBoolSetting(_keyWifiPhotos, value);
+                  },
+                ),
+                VistaSettingsSwitch(
+                  icon: Icons.videocam_outlined,
+                  title: 'ویدیوها',
+                  subtitle: 'دانلود خودکار ویدیوها با وای‌فای',
+                  value: _wifiVideos,
+                  onChanged: (value) {
+                    setState(() => _wifiVideos = value);
+                    _saveBoolSetting(_keyWifiVideos, value);
+                  },
+                ),
+              ],
+            ),
 
-          // بخش کیفیت آپلود
-          const VistaSettingsSection(title: 'کیفیت رسانه'),
-          VistaSettingsGroup(
-            children: [
-              VistaSettingsTile(
-                icon: Icons.high_quality_outlined,
-                title: 'کیفیت آپلود',
-                subtitle: _getQualityLabel(),
-                onTap: () => _showQualitySheet(isDark),
-              ),
-            ],
-          ),
+            // بخش کیفیت آپلود
+            const VistaSettingsSection(title: 'کیفیت رسانه'),
+            VistaSettingsGroup(
+              children: [
+                VistaSettingsTile(
+                  icon: Icons.high_quality_outlined,
+                  title: 'کیفیت آپلود',
+                  subtitle: _getQualityLabel(),
+                  onTap: () => _showQualitySheet(isDark),
+                ),
+              ],
+            ),
 
-          // بخش ذخیره‌سازی
-          const VistaSettingsSection(title: 'ذخیره‌سازی'),
-          VistaSettingsGroup(
-            children: [
-              VistaSettingsTile(
-                icon: Icons.cleaning_services_outlined,
-                title: 'پاکسازی کش',
-                subtitle: 'حذف فایل‌های موقت و آزادسازی فضا',
-                showArrow: false,
-                trailing: _isClearing
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : null,
-                onTap: _isClearing ? null : () => _showClearCacheDialog(isDark),
-              ),
-            ],
-          ),
+            // بخش ذخیره‌سازی
+            const VistaSettingsSection(title: 'ذخیره‌سازی'),
+            VistaSettingsGroup(
+              children: [
+                VistaSettingsTile(
+                  icon: Icons.cleaning_services_outlined,
+                  title: 'پاکسازی کش',
+                  subtitle: 'حذف فایل‌های موقت و آزادسازی فضا',
+                  showArrow: false,
+                  trailing: _isClearing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : null,
+                  onTap:
+                      _isClearing ? null : () => _showClearCacheDialog(isDark),
+                ),
+              ],
+            ),
 
-          // توضیحات
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              'با پاکسازی کش، تصاویر و فایل‌های موقت حذف می‌شوند. این کار فضای ذخیره‌سازی را آزاد می‌کند.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                color: isDark ? Colors.grey[600] : Colors.grey[500],
+            // توضیحات
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                'با پاکسازی کش، تصاویر و فایل‌های موقت حذف می‌شوند. این کار فضای ذخیره‌سازی را آزاد می‌کند.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark ? Colors.grey[600] : Colors.grey[500],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

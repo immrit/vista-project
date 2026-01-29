@@ -7,12 +7,12 @@ part of 'chat_action_controller.dart';
 // **************************************************************************
 
 String _$chatActionControllerHash() =>
-    r'dc464da5f94b91177e44d76ab01affbac05dac61';
+    r'19f626e2d18fc1f515e104e3c6ea4e34de0522b6';
 
 /// See also [ChatActionController].
 @ProviderFor(ChatActionController)
-final chatActionControllerProvider = AutoDisposeNotifierProvider<
-    ChatActionController, AsyncValue<void>>.internal(
+final chatActionControllerProvider =
+    AutoDisposeNotifierProvider<ChatActionController, ChatActionState>.internal(
   ChatActionController.new,
   name: r'chatActionControllerProvider',
   debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
@@ -22,6 +22,6 @@ final chatActionControllerProvider = AutoDisposeNotifierProvider<
   allTransitiveDependencies: null,
 );
 
-typedef _$ChatActionController = AutoDisposeNotifier<AsyncValue<void>>;
+typedef _$ChatActionController = AutoDisposeNotifier<ChatActionState>;
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member

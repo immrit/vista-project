@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:audio_waveforms/audio_waveforms.dart';
@@ -252,59 +253,69 @@ class _VistaChatInputState extends State<VistaChatInput>
           setState(() => _showEmojiPicker = false);
         }
       },
-      child: Container(
-        padding: EdgeInsets.only(
-          left: 12,
-          right: 12,
-          top: 8,
-          bottom: keyboardHeight > 0
-              ? 8
-              : (bottomPadding > 0 ? bottomPadding + 8 : 12),
-        ),
-        decoration: BoxDecoration(
-          color: theme.scaffoldBackgroundColor,
-          border: Border(
-            top: BorderSide(
-              color: isDark ? Colors.white12 : Colors.black12,
-              width: 0.5,
+      child: ClipRRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            padding: EdgeInsets.only(
+              left: 12,
+              right: 12,
+              top: 8,
+              bottom: keyboardHeight > 0
+                  ? 8
+                  : (bottomPadding > 0 ? bottomPadding + 8 : 12),
             ),
-          ),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
-                transitionBuilder: (child, animation) {
-                  return FadeTransition(opacity: animation, child: child);
-                },
-                child: _isRecording
-                    ? _buildRecordingUI(theme, isDark)
-                    : _buildInputUI(theme, isDark),
+            decoration: BoxDecoration(
+              // ✅ رنگ نیمه‌شفاف برای افکت بلوری
+              color: isDark
+                  ? Colors.black.withValues(alpha: 0.5)
+                  : Colors.white.withValues(alpha: 0.7),
+              border: Border(
+                top: BorderSide(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.black.withValues(alpha: 0.05),
+                  width: 0.5,
+                ),
               ),
-              AnimatedSize(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeInOut,
-                child: _showEmojiPicker
-                    ? Container(
-                        margin: const EdgeInsets.only(top: 8),
-                        height: keyboardHeight > 0 ? keyboardHeight : 300,
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? const Color(0xFF1C1C1E)
-                              : const Color(0xFFF0F2F5),
-                        ),
-                        child: VistaEmojiPanel(
-                          controller: _controller,
-                          height: keyboardHeight > 0 ? keyboardHeight : 300,
-                          onGifSelected: widget.onGifSelected,
-                        ),
-                      )
-                    : const SizedBox.shrink(),
+            ),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    transitionBuilder: (child, animation) {
+                      return FadeTransition(opacity: animation, child: child);
+                    },
+                    child: _isRecording
+                        ? _buildRecordingUI(theme, isDark)
+                        : _buildInputUI(theme, isDark),
+                  ),
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeInOut,
+                    child: _showEmojiPicker
+                        ? Container(
+                            margin: const EdgeInsets.only(top: 8),
+                            height: keyboardHeight > 0 ? keyboardHeight : 300,
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? const Color(0xFF1C1C1E)
+                                  : const Color(0xFFF0F2F5),
+                            ),
+                            child: VistaEmojiPanel(
+                              controller: _controller,
+                              height: keyboardHeight > 0 ? keyboardHeight : 300,
+                              onGifSelected: widget.onGifSelected,
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -349,45 +360,57 @@ class _VistaChatInputState extends State<VistaChatInput>
   }
 
   Widget _buildTextField(ThemeData theme, bool isDark) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOut,
-      constraints: BoxConstraints(
-        minHeight: _minHeight,
-        maxHeight: _minHeight + (_lineCount - 1) * _lineHeight,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark ? Colors.white24 : Colors.black12,
-          width: 1,
-        ),
-      ),
-      child: TextField(
-        controller: _controller,
-        focusNode: _focusNode,
-        enabled: widget.enabled,
-        maxLines: _maxLines.toInt(),
-        minLines: 1,
-        textCapitalization: TextCapitalization.sentences,
-        textDirection: TextDirection.rtl,
-        keyboardType: TextInputType.multiline,
-        textInputAction: TextInputAction.newline,
-        style: theme.textTheme.bodyLarge
-            ?.copyWith(fontFamily: 'Vazir', height: 1.5),
-        decoration: InputDecoration(
-          filled: false,
-          fillColor: Colors.transparent,
-          hintText: widget.hint ?? 'پیام...',
-          hintStyle: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.textTheme.bodyMedium?.color?.withOpacity(0.5),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          constraints: BoxConstraints(
+            minHeight: _minHeight,
+            maxHeight: _minHeight + (_lineCount - 1) * _lineHeight,
           ),
-          border: InputBorder.none,
-          isDense: true,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 12,
+          decoration: BoxDecoration(
+            // ✅ پس‌زمینه بلوری یکپارچه
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.08)
+                : Colors.black.withValues(alpha: 0.04),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.15)
+                  : Colors.black.withValues(alpha: 0.08),
+              width: 1,
+            ),
+          ),
+          child: TextField(
+            controller: _controller,
+            focusNode: _focusNode,
+            enabled: widget.enabled,
+            maxLines: _maxLines.toInt(),
+            minLines: 1,
+            textCapitalization: TextCapitalization.sentences,
+            textDirection: TextDirection.rtl,
+            keyboardType: TextInputType.multiline,
+            textInputAction: TextInputAction.newline,
+            style: theme.textTheme.bodyLarge
+                ?.copyWith(fontFamily: 'Vazir', height: 1.5),
+            decoration: InputDecoration(
+              filled: false,
+              fillColor: Colors.transparent,
+              hintText: widget.hint ?? 'پیام...',
+              hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                color:
+                    theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.5),
+              ),
+              border: InputBorder.none,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
+              ),
+            ),
           ),
         ),
       ),

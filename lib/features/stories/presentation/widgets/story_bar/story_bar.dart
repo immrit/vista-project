@@ -6,7 +6,10 @@ import '../../../domain/entities/entities.dart';
 import '../../providers/story_providers.dart';
 import '../../../../../utils/const.dart';
 
-/// نوار استوری‌ها در بالای صفحه اصلی
+/// نوار استوری‌ها با مرتب‌سازی هوشمند
+/// - استوری‌های دیده‌نشده اول
+/// - استوری‌های دیده‌شده آخر
+/// - حلقه گرادیانت برای دیده‌نشده، خاکستری برای دیده‌شده
 class StoryBar extends ConsumerWidget {
   const StoryBar({super.key});
 
@@ -19,9 +22,49 @@ class StoryBar extends ConsumerWidget {
       child: storiesAsync.when(
         loading: () => _buildLoadingState(),
         error: (error, _) => _buildErrorState(context, error.toString(), ref),
-        data: (users) => _buildStoryList(context, users, ref),
+        data: (users) => _buildStoryList(context, _sortStories(users), ref),
       ),
     );
+  }
+
+  /// ✅ مرتب‌سازی هوشمند استوری‌ها
+  /// 1. فیلتر استوری‌های منقضی (>24 ساعت)
+  /// 2. کاربران با استوری دیده‌نشده اول
+  /// 3. کاربران با همه استوری دیده‌شده آخر
+  List<StoryUser> _sortStories(List<StoryUser> users) {
+    final now = DateTime.now();
+
+    // فیلتر و مرتب‌سازی
+    final List<StoryUser> processedUsers = users
+        .map((user) {
+          // فیلتر استوری‌های منقضی
+          final validStories = user.stories.where((story) {
+            final storyAge = now.difference(story.createdAt);
+            return storyAge.inHours < 24;
+          }).toList();
+
+          return user.copyWith(stories: validStories);
+        })
+        .where((user) => user.stories.isNotEmpty) // حذف کاربران بدون استوری
+        .toList();
+
+    // مرتب‌سازی: دیده‌نشده اول، دیده‌شده آخر
+    processedUsers.sort((a, b) {
+      final aHasUnseen = a.hasUnseenStories;
+      final bHasUnseen = b.hasUnseenStories;
+
+      if (aHasUnseen && !bHasUnseen) return -1;
+      if (!aHasUnseen && bHasUnseen) return 1;
+
+      // اگر هر دو یکسان بودند، بر اساس آخرین استوری مرتب کن
+      final aLastStory =
+          a.stories.isNotEmpty ? a.stories.last.createdAt : DateTime(0);
+      final bLastStory =
+          b.stories.isNotEmpty ? b.stories.last.createdAt : DateTime(0);
+      return bLastStory.compareTo(aLastStory); // جدیدتر اول
+    });
+
+    return processedUsers;
   }
 
   Widget _buildLoadingState() {
@@ -38,7 +81,7 @@ class StoryBar extends ConsumerWidget {
                 width: 74,
                 height: 74,
                 decoration: BoxDecoration(
-                  color: Colors.grey.withOpacity(0.2),
+                  color: Colors.grey.withValues(alpha: 0.2),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -47,7 +90,7 @@ class StoryBar extends ConsumerWidget {
                 width: 60,
                 height: 12,
                 decoration: BoxDecoration(
-                  color: Colors.grey.withOpacity(0.2),
+                  color: Colors.grey.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(6),
                 ),
               ),
@@ -59,7 +102,6 @@ class StoryBar extends ConsumerWidget {
   }
 
   Widget _buildErrorState(BuildContext context, String error, WidgetRef ref) {
-    // در حالت خطا فقط دکمه اضافه کردن استوری نمایش می‌دهیم
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -75,13 +117,12 @@ class StoryBar extends ConsumerWidget {
 
   Widget _buildStoryList(
       BuildContext context, List<StoryUser> users, WidgetRef ref) {
-    // Check upload status
     final uploadState = ref.watch(storyUploadProvider);
 
     return ListView.builder(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      itemCount: users.length + 1, // +1 for Add Button or Upload status
+      itemCount: users.length + 1,
       itemBuilder: (context, index) {
         if (index == 0) {
           if (uploadState.isUploading) {
@@ -91,7 +132,8 @@ class StoryBar extends ConsumerWidget {
             onTap: () => _openStoryCreation(context),
           );
         }
-        return StoryRing(
+        return _AnimatedStoryRing(
+          key: ValueKey(users[index - 1].id),
           user: users[index - 1],
           allUsers: users,
           onTap: () => _openStoryViewer(context, users, index - 1),
@@ -106,7 +148,6 @@ class StoryBar extends ConsumerWidget {
 
   void _openStoryViewer(
       BuildContext context, List<StoryUser> users, int initialIndex) {
-    // Smart Navigation: Find first unseen story
     final selectedUser = users[initialIndex];
     int initialStoryIndex = selectedUser.stories.indexWhere((s) => !s.isViewed);
     if (initialStoryIndex == -1) initialStoryIndex = 0;
@@ -123,57 +164,13 @@ class StoryBar extends ConsumerWidget {
   }
 }
 
-class _StoryUploadStatusWidget extends StatelessWidget {
-  const _StoryUploadStatusWidget();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-      child: Column(
-        children: [
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              // Spinning gradient ring
-              SizedBox(
-                width: 74,
-                height: 74,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.redAccent),
-                ),
-              ),
-              // Avatar placeholder
-              Container(
-                width: 66,
-                height: 66,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.grey,
-                ),
-                child: const Icon(Icons.person, color: Colors.white),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'در حال آپلود...',
-            style: TextStyle(fontSize: 10, color: Colors.grey),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// حلقه استوری کاربر
-class StoryRing extends StatelessWidget {
+/// ✅ حلقه استوری با انیمیشن تغییر رنگ
+class _AnimatedStoryRing extends StatefulWidget {
   final StoryUser user;
   final List<StoryUser> allUsers;
   final VoidCallback onTap;
 
-  const StoryRing({
+  const _AnimatedStoryRing({
     super.key,
     required this.user,
     required this.allUsers,
@@ -181,83 +178,150 @@ class StoryRing extends StatelessWidget {
   });
 
   @override
+  State<_AnimatedStoryRing> createState() => _AnimatedStoryRingState();
+}
+
+class _AnimatedStoryRingState extends State<_AnimatedStoryRing>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animController;
+  late Animation<double> _colorAnimation;
+  bool _wasUnseen = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _wasUnseen = widget.user.hasUnseenStories;
+    _animController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+    _colorAnimation = CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeInOut,
+    );
+  }
+
+  @override
+  void didUpdateWidget(_AnimatedStoryRing oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // انیمیشن تغییر از unseen به seen
+    if (_wasUnseen && !widget.user.hasUnseenStories) {
+      _animController.forward();
+      _wasUnseen = false;
+    } else if (!_wasUnseen && widget.user.hasUnseenStories) {
+      _animController.reverse();
+      _wasUnseen = true;
+    }
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final hasUnseenStories = user.hasUnseenStories;
+    final hasUnseenStories = widget.user.hasUnseenStories;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-      child: GestureDetector(
-        onTap: user.stories.isEmpty ? null : onTap,
-        child: Column(
-          children: [
-            // حلقه استوری
-            Container(
-              width: 73,
-              height: 73,
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: hasUnseenStories
-                    ? const LinearGradient(
-                        colors: [
-                          Color(0xFF4A90E2),
-                          Color(0xFF8E44AD),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      )
-                    : null,
-                color: hasUnseenStories
-                    ? null
-                    : (isDarkMode ? Colors.grey[700] : Colors.grey[300]),
-              ),
-              child: Container(
-                padding: const EdgeInsets.all(2.5),
-                decoration: BoxDecoration(
-                  color: isDarkMode ? Colors.black : Colors.white,
-                  shape: BoxShape.circle,
-                ),
-                child: _buildAvatar(),
-              ),
+    return AnimatedBuilder(
+      animation: _colorAnimation,
+      builder: (context, child) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          child: GestureDetector(
+            onTap: widget.user.stories.isEmpty ? null : widget.onTap,
+            child: Column(
+              children: [
+                // ✅ حلقه با انیمیشن رنگ
+                _buildAnimatedRing(isDarkMode, hasUnseenStories),
+                const SizedBox(height: 4),
+                // نام کاربر
+                _buildUsername(isDarkMode, hasUnseenStories),
+              ],
             ),
-            const SizedBox(height: 4),
-            // نام کاربر
-            SizedBox(
-              width: 70,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Flexible(
-                    child: Text(
-                      user.username,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: hasUnseenStories
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                        color: hasUnseenStories
-                            ? (isDarkMode ? Colors.white : Colors.black)
-                            : (isDarkMode ? Colors.white70 : Colors.black54),
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  if (user.isVerified) ...[
-                    const SizedBox(width: 2),
-                    Icon(
-                      Icons.verified,
-                      color: _getVerificationColor(user),
-                      size: 12,
-                    ),
-                  ],
-                ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildAnimatedRing(bool isDarkMode, bool hasUnseenStories) {
+    // ✅ گرادیانت برای دیده‌نشده، خاکستری برای دیده‌شده
+    final gradientColors = hasUnseenStories
+        ? const [
+            Color(0xFFFFFFFF),
+            Color(0xFFB0B0B0)
+          ] // سفید به خاکستری - مونوکروم
+        : [
+            isDarkMode ? Colors.grey[700]! : Colors.grey[400]!,
+            isDarkMode ? Colors.grey[700]! : Colors.grey[400]!,
+          ];
+
+    return Container(
+      width: 73,
+      height: 73,
+      padding: const EdgeInsets.all(2.5),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: gradientColors,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: hasUnseenStories
+            ? [
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                ),
+              ]
+            : null,
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(2.5),
+        decoration: BoxDecoration(
+          color: isDarkMode ? Colors.black : Colors.white,
+          shape: BoxShape.circle,
+        ),
+        child: _buildAvatar(),
+      ),
+    );
+  }
+
+  Widget _buildUsername(bool isDarkMode, bool hasUnseenStories) {
+    return SizedBox(
+      width: 70,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Flexible(
+            child: Text(
+              widget.user.username,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight:
+                    hasUnseenStories ? FontWeight.bold : FontWeight.normal,
+                color: hasUnseenStories
+                    ? (isDarkMode ? Colors.white : Colors.black)
+                    : (isDarkMode ? Colors.white60 : Colors.black45),
               ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+              textAlign: TextAlign.center,
+            ),
+          ),
+          if (widget.user.isVerified) ...[
+            const SizedBox(width: 2),
+            Icon(
+              Icons.verified,
+              color: _getVerificationColor(widget.user),
+              size: 12,
             ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -269,24 +333,80 @@ class StoryRing extends StatelessWidget {
       case StoryVerificationType.blue:
         return Colors.blue;
       case StoryVerificationType.black:
-        return Colors.white; // Or Colors.grey[300] for dark theme
+        return Colors.white;
       case StoryVerificationType.none:
       default:
-        // Fallback to legacy logic
         return user.isPremium ? Colors.amber : Colors.blue;
     }
   }
 
   Widget _buildAvatar() {
     return CircleAvatar(
-      backgroundImage: (user.avatarUrl == null || user.avatarUrl!.isEmpty)
-          ? const AssetImage(defaultAvatarUrl) as ImageProvider
-          : CachedNetworkImageProvider(user.avatarUrl!),
+      backgroundImage:
+          (widget.user.avatarUrl == null || widget.user.avatarUrl!.isEmpty)
+              ? const AssetImage(defaultAvatarUrl) as ImageProvider
+              : CachedNetworkImageProvider(widget.user.avatarUrl!),
     );
   }
 }
 
-/// دکمه اضافه کردن استوری
+/// وضعیت آپلود استوری
+class _StoryUploadStatusWidget extends StatelessWidget {
+  const _StoryUploadStatusWidget();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+      child: Column(
+        children: [
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              // حلقه در حال چرخش
+              SizedBox(
+                width: 74,
+                height: 74,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    isDarkMode ? Colors.white : Colors.black,
+                  ),
+                ),
+              ),
+              // آواتار
+              Container(
+                width: 66,
+                height: 66,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isDarkMode ? Colors.grey[800] : Colors.grey[200],
+                ),
+                child: Icon(
+                  Icons.upload_rounded,
+                  color: isDarkMode ? Colors.white70 : Colors.black54,
+                  size: 28,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'در حال آپلود...',
+            style: TextStyle(
+              fontSize: 10,
+              color: isDarkMode ? Colors.white60 : Colors.black45,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// دکمه اضافه کردن استوری - مونوکروم
 class AddStoryButton extends StatelessWidget {
   final VoidCallback onTap;
 
@@ -308,14 +428,15 @@ class AddStoryButton extends StatelessWidget {
               padding: const EdgeInsets.all(2),
               decoration: BoxDecoration(
                 border: Border.all(
-                  color: isDarkMode ? Colors.white38 : Colors.grey[300]!,
+                  color: isDarkMode ? Colors.white38 : Colors.black26,
                   width: 1.5,
+                  strokeAlign: BorderSide.strokeAlignInside,
                 ),
                 shape: BoxShape.circle,
               ),
               child: Container(
                 decoration: BoxDecoration(
-                  color: isDarkMode ? Colors.grey[800] : Colors.grey[100],
+                  color: isDarkMode ? Colors.grey[900] : Colors.grey[100],
                   shape: BoxShape.circle,
                 ),
                 child: Center(
@@ -323,9 +444,7 @@ class AddStoryButton extends StatelessWidget {
                     width: 28,
                     height: 28,
                     decoration: BoxDecoration(
-                      color: isDarkMode
-                          ? Colors.white
-                          : Theme.of(context).primaryColor,
+                      color: isDarkMode ? Colors.white : Colors.black,
                       shape: BoxShape.circle,
                     ),
                     child: Icon(

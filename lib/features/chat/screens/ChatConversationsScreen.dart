@@ -16,7 +16,7 @@ import '../../../DB/database_file_utils.dart';
 // ✅ ویجت Swipeable برای آیتم مکالمه
 import 'package:Vista/widgets/swipeable_conversation_item.dart';
 // ✅ نشانگر وضعیت شبکه
-import '../../../widgets/animated_network_indicator.dart';
+// ✅ نشانگر وضعیت شبکه
 
 class ChatConversationsScreen extends ConsumerStatefulWidget {
   const ChatConversationsScreen({super.key});
@@ -95,38 +95,90 @@ class _ChatConversationsScreenState
             ? Brightness.dark
             : Brightness.light,
       ),
-      title: Row(
-        children: [
-          // ✅ عنوان با نمایش وضعیت شبکه (مثل تلگرام)
-          NetworkAwareTitle(
-            title: 'پیام‌ها',
-            titleStyle: theme.appBarTheme.titleTextStyle?.copyWith(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                ) ??
-                TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: theme.textTheme.titleLarge?.color,
-                ),
-          ),
-          if (isLoading) ...[
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  theme.primaryColor,
-                ),
-              ),
+      title: Text(
+        'پیام‌ها',
+        style: theme.appBarTheme.titleTextStyle?.copyWith(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+            ) ??
+            TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: theme.textTheme.titleLarge?.color,
             ),
-          ],
-        ],
       ),
       centerTitle: false,
       actions: [
+        // ✅ نشانگر وضعیت اتصال (طبق درخواست کاربر)
+        Consumer(
+          builder: (context, ref, _) {
+            final statusAsync = ref.watch(chatConnectionStatusProvider);
+            return statusAsync.when(
+              data: (status) {
+                Color indicatorColor;
+                switch (status) {
+                  case ConnectionStatus.connected:
+                    indicatorColor = Colors.green;
+                    break;
+                  case ConnectionStatus.connecting:
+                    indicatorColor = Colors.orange;
+                    break;
+                  case ConnectionStatus.disconnected:
+                    indicatorColor = Colors.red;
+                    break;
+                }
+                return Container(
+                  width: 10,
+                  height: 10,
+                  margin: const EdgeInsets.only(
+                      left:
+                          8), // Right side in LTR, Left in RTL (Persian)? Actions are usually at end.
+                  // In RTL (Persian), actions are on the LEFT.
+                  // EdgeInsets.only(left: 8) seems correct for spacing from the edge or next icon?
+                  // Wait, actions are usually [Search, Menu, Gap].
+                  // I should place it BEFORE Search or AFTER Menu?
+                  // User "inside the AppBar actions".
+                  // Let's put it as the first item in actions list so it is rightmost in RTL? No, leftmost in RTL?
+                  // AppBar actions order: start to end. In RTL: Right to Left? No, AppBar actions are usually at the "End" of the bar.
+                  // In RTL, "End" is Left.
+                  // So items are [1, 2, 3] -> displayed [1] [2] [3] from Right to Left? Or Left to Right?
+                  // Flutter AppBar actions: "A list of Widgets to display in a row after the [title] widget."
+                  // Usually [Search, Menu].
+                  // I'll add it to the list.
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: indicatorColor,
+                    boxShadow: [
+                      BoxShadow(
+                        color: indicatorColor.withOpacity(0.4),
+                        blurRadius: 4,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                );
+              },
+              loading: () => const SizedBox(),
+              error: (_, __) => Container(
+                  width: 10,
+                  height: 10,
+                  decoration: const BoxDecoration(
+                      color: Colors.red, shape: BoxShape.circle)),
+            );
+          },
+        ),
+        const SizedBox(width: 12),
+        if (isLoading)
+          SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                theme.primaryColor,
+              ),
+            ),
+          ),
         _buildSearchToggle(theme),
         _buildMoreMenuButton(theme),
         const SizedBox(width: 8),
@@ -258,38 +310,35 @@ class _ChatConversationsScreenState
     );
   }
 
-  // ✅ لیست بهینه‌شده مکالمات با provider جدید
+  // ✅ لیست بهینه‌شده مکالمات با StreamProvider جدید
   Widget _buildUnifiedList(ThemeData theme) {
-    // استفاده از provider بهینه‌شده
-    final state = ref.watch(optimizedConversationsProvider);
+    // استفاده از StreamProvider (مشابه درخواست کاربر)
+    final conversationsAsync = ref.watch(conversationsStreamProvider);
 
-    // بر اساس وضعیت، UI مناسب نمایش بده
-    switch (state.status) {
-      case ConversationsStatus.initial:
-      case ConversationsStatus.loading:
-        if (state.conversations.isEmpty) {
-          return _buildLoadingState(theme);
-        }
-        // اگر در حال لود هستیم ولی داده داریم، داده رو نمایش بده
-        return _buildOptimizedConversationsList(theme, state.conversations);
-
-      case ConversationsStatus.error:
-        if (state.conversations.isNotEmpty) {
-          // اگر خطا داریم ولی داده قبلی موجوده، همون رو نمایش بده
-          return _buildOptimizedConversationsList(theme, state.conversations);
-        }
-        return _buildErrorState(theme, state.errorMessage ?? 'خطای نامشخص');
-
-      case ConversationsStatus.loaded:
-        if (state.conversations.isEmpty) {
+    return conversationsAsync.when(
+      data: (conversations) {
+        if (conversations.isEmpty) {
           return _buildEmptyState(
             theme,
             'هیچ گفتگویی وجود ندارد',
             Icons.chat_bubble_outline_rounded,
           );
         }
-        return _buildOptimizedConversationsList(theme, state.conversations);
-    }
+
+        // ✅ مرتب‌سازی محلی (طبق درخواست کاربر)
+        final sortedConversations = List<ConversationModel>.from(conversations)
+          ..sort((a, b) {
+            final aTime = a.lastMessageTime ?? a.updatedAt;
+            final bTime = b.lastMessageTime ?? b.updatedAt;
+            return bTime.compareTo(aTime);
+          });
+
+        return _buildOptimizedConversationsList(theme, sortedConversations);
+      },
+      loading: () => _buildLoadingState(theme),
+      error: (error, stack) =>
+          _buildErrorState(theme, 'خطا در بارگذاری: $error'),
+    );
   }
 
   // ✅ لیست بهینه با Swipe Actions و گروه‌بندی Pinned

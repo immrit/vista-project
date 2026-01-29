@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/story_enums.dart' hide StoryInteractionType;
 import '../../domain/entities/story_editor_models.dart';
@@ -13,12 +12,15 @@ import '../widgets/drawing_painter.dart';
 import '../widgets/story_sticker_sheet.dart';
 import '../widgets/sticker_factory.dart';
 import '../widgets/glass_layer.dart';
+import '../widgets/editable_story_item.dart';
 import '../../../../provider/provider.dart';
 import '../../../../model/UserModel.dart';
 import '../../../../utils/premium_features_helper.dart';
+import '../../../../utils/const.dart';
+import '../../data/services/story_upload_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// ویرایشگر استوری
+/// ویرایشگر استوری - نسخه بازنویسی شده بدون باگ هلیکوپتری
 class StoryEditorScreen extends ConsumerStatefulWidget {
   final File mediaFile;
   final StoryMediaType mediaType;
@@ -35,8 +37,10 @@ class StoryEditorScreen extends ConsumerStatefulWidget {
 
 class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
   final GlobalKey _canvasKey = GlobalKey();
-  final List<StoryElement> _elements = [];
-  StoryElement? _selectedElement;
+
+  // آیتم‌های جدید (استفاده از مدل بهبود یافته)
+  final List<StoryItem> _items = [];
+  String? _selectedItemId;
 
   // Drawing & Text State
   bool _isDrawing = false;
@@ -54,9 +58,10 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
   double _fontSize = 28;
   final String _fontFamily = 'Vazir';
   final TextAlign _textAlign = TextAlign.center;
+  int _textStyleIndex = 0;
 
-  // Text Re-editing: Element currently being edited (null = new text)
-  StoryElement? _editingElement;
+  // Text Re-editing
+  String? _editingItemId;
   final TextEditingController _textController = TextEditingController();
 
   late ui.Image? _backgroundImage;
@@ -78,6 +83,12 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
     _loadImage();
   }
 
+  @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadImage() async {
     try {
       final data = await widget.mediaFile.readAsBytes();
@@ -92,182 +103,463 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
     }
   }
 
+  void _selectItem(String? itemId) {
+    setState(() {
+      _selectedItemId = itemId;
+    });
+  }
+
+  void _deselectAll() {
+    setState(() {
+      _selectedItemId = null;
+    });
+  }
+
+  void _updateItem(StoryItem updatedItem) {
+    setState(() {
+      final index = _items.indexWhere((item) => item.id == updatedItem.id);
+      if (index != -1) {
+        _items[index] = updatedItem;
+      }
+
+      // Check for trash proximity
+      final screenSize = MediaQuery.of(context).size;
+      final trashY = screenSize.height - 80;
+      final trashX = screenSize.width / 2;
+
+      final dist =
+          (Offset(updatedItem.x, updatedItem.y) - Offset(trashX, trashY))
+              .distance;
+
+      final wasOverTrash = _isOverTrash;
+      _isOverTrash = dist < 120;
+
+      if (_isOverTrash && !wasOverTrash) {
+        HapticFeedback.mediumImpact();
+      }
+
+      // Check for alignment guides
+      final centerX = screenSize.width / 2;
+      final centerY = screenSize.height / 2;
+      const snapThreshold = 15.0;
+
+      _showVerticalGuide = (updatedItem.x - centerX).abs() < snapThreshold;
+      _showHorizontalGuide = (updatedItem.y - centerY).abs() < snapThreshold;
+    });
+  }
+
+  void _deleteItem(String itemId) {
+    setState(() {
+      _items.removeWhere((item) => item.id == itemId);
+      if (_selectedItemId == itemId) {
+        _selectedItemId = null;
+      }
+    });
+    HapticFeedback.heavyImpact();
+  }
+
+  void _addTextItem(String text) {
+    if (text.trim().isEmpty) return;
+
+    final screenSize = MediaQuery.of(context).size;
+
+    final newItem = TextStoryItem(
+      x: screenSize.width / 2,
+      y: screenSize.height / 2,
+      text: text,
+      color: _textColor,
+      fontSize: _fontSize,
+      fontFamily: _fontFamily,
+      textAlign: _textAlign,
+      styleIndex: _textStyleIndex,
+    );
+
+    setState(() {
+      _items.add(newItem);
+      _selectedItemId = newItem.id;
+      _showTextInput = false;
+    });
+  }
+
+  void _updateTextItem(String itemId, String newText) {
+    final index = _items.indexWhere((item) => item.id == itemId);
+    if (index == -1) return;
+
+    final item = _items[index];
+    if (item is TextStoryItem) {
+      setState(() {
+        _items[index] = item.copyWith(
+          text: newText,
+          color: _textColor,
+          fontSize: _fontSize,
+          styleIndex: _textStyleIndex,
+        );
+        _showTextInput = false;
+        _editingItemId = null;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
-        canPop: _elements.isEmpty && _drawingPaths.isEmpty,
-        onPopInvokedWithResult: (didPop, result) async {
-          if (didPop) return;
+      canPop: _items.isEmpty && _drawingPaths.isEmpty,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
 
-          // Show discard changes dialog
-          final shouldDiscard = await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              backgroundColor: Colors.grey[900],
-              title: const Text(
-                'تغییرات ذخیره نشده',
-                style: TextStyle(color: Colors.white, fontFamily: 'Vazir'),
+        final shouldDiscard = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: Colors.grey[900],
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Text(
+              'تغییرات ذخیره نشده',
+              style: TextStyle(color: Colors.white, fontFamily: 'Vazir'),
+            ),
+            content: const Text(
+              'آیا از انصراف مطمئن هستید؟ تغییرات شما از بین خواهد رفت.',
+              style: TextStyle(color: Colors.grey, fontFamily: 'Vazir'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('ادامه ویرایش'),
               ),
-              content: const Text(
-                'آیا از انصراف مطمئن هستید؟ تغییرات شما از بین خواهد رفت.',
-                style: TextStyle(color: Colors.grey, fontFamily: 'Vazir'),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('ادامه ویرایش'),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text(
+                  'انصراف',
+                  style: TextStyle(color: Colors.red),
                 ),
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text(
-                    'انصراف',
-                    style: TextStyle(color: Colors.red),
+              ),
+            ],
+          ),
+        );
+
+        if (shouldDiscard == true && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: GestureDetector(
+          onVerticalDragStart: (details) {
+            _dragStartY = details.globalPosition.dy;
+          },
+          onVerticalDragEnd: (details) {
+            final screenHeight = MediaQuery.of(context).size.height;
+            if (_dragStartY > screenHeight * 0.9) return;
+
+            if (!_isDrawing &&
+                !_isDragging &&
+                (details.primaryVelocity ?? 0) < -300) {
+              _showStickerSheet();
+            }
+          },
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // 1. کانواس اصلی
+              RepaintBoundary(
+                key: _canvasKey,
+                child: GestureDetector(
+                  onPanStart: _isDrawing ? _onDrawStart : null,
+                  onPanUpdate: _isDrawing ? _onDrawUpdate : null,
+                  onPanEnd: _isDrawing ? _onDrawEnd : null,
+                  onTap: _deselectAll,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // تصویر پس‌زمینه
+                      if (_imageLoaded && _backgroundImage != null)
+                        RawImage(
+                          image: _backgroundImage,
+                          fit: BoxFit.cover,
+                        )
+                      else
+                        Container(color: Colors.black),
+
+                      // لایه نقاشی
+                      CustomPaint(
+                        painter: DrawingPainter(
+                          paths: _drawingPaths,
+                          currentPath: _currentPath,
+                        ),
+                        size: Size.infinite,
+                      ),
+
+                      // 2. آیتم‌ها با ویجت جدید
+                      ..._items.map((item) => _buildEditableItem(item)),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          );
+              ),
 
-          if (shouldDiscard == true && context.mounted) {
-            Navigator.pop(context);
-          }
-        },
-        child: Scaffold(
-          backgroundColor: Colors.black,
-          body: GestureDetector(
-            onVerticalDragStart: (details) {
-              _dragStartY = details.globalPosition.dy;
-            },
-            onVerticalDragEnd: (details) {
-              final screenHeight = MediaQuery.of(context).size.height;
-              // Ignore swipes starting from the very bottom edge (system gesture area)
-              if (_dragStartY > screenHeight * 0.9) return;
+              // 3. خطوط راهنما
+              if (_isDragging)
+                AlignmentGuides(
+                  showVertical: _showVerticalGuide,
+                  showHorizontal: _showHorizontalGuide,
+                ),
 
-              // اگر در حال نقاشی نیستیم و حرکت رو به بالا بود
-              // Threshold increased to -300 to avoid accidental triggers
-              if (!_isDrawing &&
-                  (!_isDragging) &&
-                  (details.primaryVelocity ?? 0) < -300) {
-                _showStickerSheet();
-              }
-            },
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // کانواس
-                RepaintBoundary(
-                  key: _canvasKey,
-                  child: GestureDetector(
-                    onPanStart: _isDrawing ? _onDrawStart : null,
-                    onPanUpdate: _isDrawing ? _onDrawUpdate : null,
-                    onPanEnd: _isDrawing ? _onDrawEnd : null,
-                    onTap: () {
-                      if (!_isDrawing) {
-                        setState(() => _selectedElement = null);
-                      }
-                    },
-                    child: Stack(
-                      fit: StackFit.expand,
+              // 4. هدر (فقط وقتی درگ نیست)
+              if (!_isDragging)
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 8,
+                  left: 8,
+                  right: 8,
+                  child: _buildHeader(),
+                ),
+
+              // 5. تولبار
+              if (!_isDragging)
+                Positioned(
+                  right: 16,
+                  top: MediaQuery.of(context).padding.top + 60,
+                  child: _buildToolbar(),
+                ),
+
+              // 6. دکمه تایید
+              if (!_isDragging && !_showTextInput)
+                Positioned(
+                  bottom: MediaQuery.of(context).padding.bottom + 20,
+                  left: 16,
+                  right: 16,
+                  child: _buildBottomActions(),
+                ),
+
+              // 7. سطل زباله
+              if (_isDragging)
+                Positioned(
+                  bottom: 40,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: StoryTrashBin(
+                      isActive: _isDragging,
+                      isHovering: _isOverTrash,
+                    ),
+                  ),
+                ),
+
+              // 8. راهنمای استیکر
+              if (!_isDragging && !_showTextInput)
+                Positioned(
+                  bottom: MediaQuery.of(context).padding.bottom + 8,
+                  left: 0,
+                  right: 0,
+                  child: IgnorePointer(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        // تصویر پس‌زمینه
-                        if (_imageLoaded && _backgroundImage != null)
-                          RawImage(
-                            image: _backgroundImage,
-                            fit: BoxFit.cover,
-                          )
-                        else
-                          Container(color: Colors.black),
-
-                        // لایه نقاشی
-                        CustomPaint(
-                          painter: DrawingPainter(
-                            paths: _drawingPaths,
-                            currentPath: _currentPath,
-                          ),
-                          size: Size.infinite,
+                        Icon(
+                          Icons.keyboard_arrow_up,
+                          color: Colors.white.withOpacity(0.5),
+                          size: 24,
                         ),
-
-                        // المان‌های متنی
-                        ..._elements.map((element) => _buildElement(element)),
+                        Text(
+                          'استیکرها',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.5),
+                            fontSize: 10,
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ),
 
-                // Alignment Guides
-                if (_isDragging) _buildAlignmentGuides(),
+              // 9. ورودی متن
+              if (_showTextInput) _buildTextInputOverlay(),
 
-                // هدر
-                if (!_isDragging)
-                  Positioned(
-                    top: MediaQuery.of(context).padding.top + 8,
-                    left: 8,
-                    right: 8,
-                    child: _buildHeader(),
+              // 10. لودینگ
+              if (_isSaving)
+                Container(
+                  color: Colors.black54,
+                  child: const Center(
+                    child: CircularProgressIndicator(color: Colors.white),
                   ),
-
-                // تولبار
-                if (!_isDragging)
-                  Positioned(
-                    right: 16,
-                    top: MediaQuery.of(context).padding.top + 60,
-                    child: _buildToolbar(),
-                  ),
-
-                // دکمه تایید
-                if (!_isDragging && !_showTextInput)
-                  Positioned(
-                    bottom: MediaQuery.of(context).padding.bottom + 20,
-                    left: 16,
-                    right: 16,
-                    child: _buildBottomActions(),
-                  ),
-
-                // Trash Can Area
-                if (_isDragging) _buildTrashCan(),
-
-                // فلش راهنما برای استیکرها
-                if (!_isDragging && !_showTextInput)
-                  Positioned(
-                    bottom: MediaQuery.of(context).padding.bottom + 8,
-                    left: 0,
-                    right: 0,
-                    child: IgnorePointer(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.keyboard_arrow_up,
-                            color: Colors.white.withOpacity(0.5),
-                            size: 24,
-                          ),
-                          Text(
-                            'استیکرها',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.5),
-                              fontSize: 10,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                // ورودی متن
-                if (_showTextInput) _buildTextInputOverlay(),
-
-                // لودینگ
-                if (_isSaving)
-                  Container(
-                    color: Colors.black54,
-                    child: const Center(
-                      child: CircularProgressIndicator(color: Colors.white),
-                    ),
-                  ),
-              ],
-            ),
+                ),
+            ],
           ),
-        ));
+        ),
+      ),
+    );
+  }
+
+  /// ساخت آیتم قابل ویرایش با gesture engine جدید
+  Widget _buildEditableItem(StoryItem item) {
+    final isSelected = item.id == _selectedItemId;
+
+    return EditableStoryItem(
+      item: item,
+      isSelected: isSelected,
+      isDraggingOverTrash: _isOverTrash && isSelected,
+      onUpdate: _updateItem,
+      onSelect: () => _selectItem(item.id),
+      onDragStart: () {
+        setState(() => _isDragging = true);
+        // Bring to front
+        _items.remove(item);
+        _items.add(item);
+      },
+      onDragEnd: () {
+        if (_isOverTrash) {
+          _deleteItem(item.id);
+        }
+        setState(() {
+          _isDragging = false;
+          _isOverTrash = false;
+          _showVerticalGuide = false;
+          _showHorizontalGuide = false;
+        });
+      },
+      onDoubleTap: () {
+        // ویرایش مجدد متن
+        if (item is TextStoryItem) {
+          setState(() {
+            _editingItemId = item.id;
+            _textController.text = item.text;
+            _textColor = item.color;
+            _fontSize = item.fontSize;
+            _textStyleIndex = item.styleIndex;
+            _showTextInput = true;
+          });
+        }
+      },
+      child: _buildItemContent(item),
+    );
+  }
+
+  /// ساخت محتوای آیتم
+  Widget _buildItemContent(StoryItem item) {
+    if (item is TextStoryItem) {
+      return _buildTextContent(item);
+    } else if (item is StickerStoryItem) {
+      return _buildStickerContent(item);
+    } else if (item is ImageStoryItem) {
+      return _buildImageContent(item);
+    }
+    return const SizedBox();
+  }
+
+  Widget _buildTextContent(TextStoryItem item) {
+    // استایل‌های مختلف متن
+    Widget textWidget = Text(
+      item.text,
+      style: TextStyle(
+        color: item.color,
+        fontSize: item.fontSize,
+        fontFamily: item.fontFamily,
+        fontWeight: FontWeight.bold,
+        shadows: const [
+          Shadow(color: Colors.black54, blurRadius: 4, offset: Offset(1, 1)),
+        ],
+      ),
+      textAlign: item.textAlign,
+    );
+
+    // اعمال استایل‌های مختلف
+    switch (item.styleIndex % 4) {
+      case 1:
+        // پس‌زمینه مشکی
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.7),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            item.text,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: item.fontSize,
+              fontFamily: item.fontFamily,
+              fontWeight: FontWeight.bold,
+            ),
+            textAlign: item.textAlign,
+          ),
+        );
+      case 2:
+        // پس‌زمینه سفید
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            item.text,
+            style: TextStyle(
+              color: Colors.black,
+              fontSize: item.fontSize,
+              fontFamily: item.fontFamily,
+              fontWeight: FontWeight.bold,
+            ),
+            textAlign: item.textAlign,
+          ),
+        );
+      case 3:
+        // متن با Outline
+        return Stack(
+          children: [
+            // Stroke
+            Text(
+              item.text,
+              style: TextStyle(
+                fontSize: item.fontSize,
+                fontFamily: item.fontFamily,
+                fontWeight: FontWeight.bold,
+                foreground: Paint()
+                  ..style = PaintingStyle.stroke
+                  ..strokeWidth = 3
+                  ..color = Colors.black,
+              ),
+              textAlign: item.textAlign,
+            ),
+            // Fill
+            Text(
+              item.text,
+              style: TextStyle(
+                color: item.color,
+                fontSize: item.fontSize,
+                fontFamily: item.fontFamily,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: item.textAlign,
+            ),
+          ],
+        );
+      default:
+        return textWidget;
+    }
+  }
+
+  Widget _buildStickerContent(StickerStoryItem item) {
+    // تبدیل موقت به StoryElement برای سازگاری با StickerFactory
+    final legacyElement = StoryElement(
+      text: '',
+      x: item.x,
+      y: item.y,
+      rotation: item.rotation,
+      scale: item.scale,
+      color: Colors.white,
+      fontSize: 20,
+      interactionType: item.interactionType,
+      interactionData: item.interactionData,
+    );
+
+    return StickerFactory.buildSticker(legacyElement);
+  }
+
+  Widget _buildImageContent(ImageStoryItem item) {
+    return Image.file(
+      File(item.imagePath),
+      width: item.width,
+      height: item.height,
+      fit: BoxFit.cover,
+    );
   }
 
   Widget _buildHeader() {
@@ -278,8 +570,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
           icon: const Icon(Icons.close, color: Colors.white, size: 28),
         ),
         const Spacer(),
-        // Undo
-        if (_drawingPaths.isNotEmpty || _elements.isNotEmpty)
+        if (_drawingPaths.isNotEmpty || _items.isNotEmpty)
           IconButton(
             onPressed: _undo,
             icon: const Icon(Icons.undo, color: Colors.white),
@@ -298,6 +589,8 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
           onTap: () {
             setState(() {
               _isDrawing = false;
+              _editingItemId = null;
+              _textController.clear();
               _showTextInput = true;
             });
           },
@@ -320,7 +613,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
             setState(() {
               _isDrawing = !_isDrawing;
               _showTextInput = false;
-              _selectedElement = null;
+              _selectedItemId = null;
             });
           },
         ),
@@ -353,9 +646,8 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
               : null,
           onTap: _toggleStoryDuration,
           label: _storyDuration == StoryDuration.hours48 ? '48h' : '24h',
-          badge: _storyDuration == StoryDuration.hours48
-              ? Icons.verified
-              : null, // Gold tick if premium selected
+          badge:
+              _storyDuration == StoryDuration.hours48 ? Icons.verified : null,
         ),
       ],
     );
@@ -418,10 +710,8 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
     final isCurrently48 = _storyDuration == StoryDuration.hours48;
 
     if (isCurrently48) {
-      // Switch back to 24h
       setState(() => _storyDuration = StoryDuration.hours24);
     } else {
-      // Check premium to switch to 48h
       final profileData = ref.read(profileProvider).value;
       if (profileData == null) return;
 
@@ -463,8 +753,8 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
     setState(() {
       if (_drawingPaths.isNotEmpty) {
         _drawingPaths.removeLast();
-      } else if (_elements.isNotEmpty) {
-        _elements.removeLast();
+      } else if (_items.isNotEmpty) {
+        _items.removeLast();
       }
     });
   }
@@ -473,7 +763,9 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('انتخاب رنگ'),
+        backgroundColor: Colors.grey[900],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('انتخاب رنگ', style: TextStyle(color: Colors.white)),
         content: SingleChildScrollView(
           child: BlockPicker(
             pickerColor: _drawingColor,
@@ -492,11 +784,13 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
 
     setState(() {
       _isSaving = true;
-      _selectedElement = null;
+      _selectedItemId = null;
     });
 
+    // نمایش loading overlay
+    _showLoadingOverlay();
+
     try {
-      // Small delay to ensure UI updates (selection cleared)
       await Future.delayed(const Duration(milliseconds: 100));
 
       final RenderRepaintBoundary boundary = _canvasKey.currentContext!
@@ -512,26 +806,88 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
 
       final Uint8List pngBytes = byteData.buffer.asUint8List();
 
-      // Save to temp file
       final tempDir = Directory.systemTemp;
       final tempFile = File(
           '${tempDir.path}/story_${DateTime.now().millisecondsSinceEpoch}.png');
       await tempFile.writeAsBytes(pngBytes);
 
+      // آپلود به سرور
+      final uploadResult = await StoryUploadService.uploadMedia(
+        mediaFile: tempFile,
+        type: StoryMediaType.image,
+        onProgress: (progress) {
+          debugPrint('Upload progress: ${(progress * 100).toInt()}%');
+        },
+      );
+
+      if (uploadResult == null) {
+        throw Exception('خطا در آپلود استوری');
+      }
+
+      // ایجاد استوری در دیتابیس
+      final response = await supabase
+          .from('stories')
+          .insert({
+            'user_id': supabase.auth.currentUser!.id,
+            'media_url': uploadResult.url,
+            'media_type': 'image',
+            'duration_type':
+                _storyDuration == StoryDuration.hours24 ? '24h' : '48h',
+            'created_at': DateTime.now().toIso8601String(),
+            'expires_at': DateTime.now()
+                .add(_storyDuration == StoryDuration.hours24
+                    ? const Duration(hours: 24)
+                    : const Duration(hours: 48))
+                .toIso8601String(),
+          })
+          .select()
+          .single();
+
+      debugPrint('Story created: ${response['id']}');
+
+      // پاکسازی فایل موقت
+      try {
+        await tempFile.delete();
+      } catch (_) {}
+
+      // بستن loading
+      _hideLoadingOverlay();
+
       if (mounted) {
-        // Return Map as expected by StoryCreationScreen
-        Navigator.pop(context, {
-          'media': tempFile,
-          'caption': null,
-          'elements': _elements,
-          'duration': _storyDuration,
-        });
+        // نمایش پیام موفقیت
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 12),
+                Text('استوری با موفقیت ارسال شد'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+
+        // بازگشت به صفحه اصلی
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } catch (e) {
+      _hideLoadingOverlay();
       debugPrint('Story Save Error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا در ذخیره: $e')),
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(child: Text('خطا: $e')),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     } finally {
@@ -541,254 +897,43 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
     }
   }
 
-  Widget _buildAlignmentGuides() {
-    return Stack(
-      children: [
-        if (_showVerticalGuide)
-          Center(
-            child: Container(
-              width: 1.5,
-              height: double.infinity,
-              color: Colors.blueAccent,
-            ),
-          ),
-        if (_showHorizontalGuide)
-          Center(
-            child: Container(
-              height: 1.5,
-              width: double.infinity,
-              color: Colors.blueAccent,
-            ),
-          ),
-      ],
-    );
-  }
+  OverlayEntry? _loadingOverlay;
 
-  Widget _buildTrashCan() {
-    return Positioned(
-      bottom: 40,
-      left: 0,
-      right: 0,
-      child: Center(
-        child: AnimatedScale(
-          scale: _isOverTrash ? 1.5 : 1.0,
-          duration: const Duration(milliseconds: 200),
+  void _showLoadingOverlay() {
+    _loadingOverlay = OverlayEntry(
+      builder: (context) => Container(
+        color: Colors.black54,
+        child: Center(
           child: Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(32),
             decoration: BoxDecoration(
-              color:
-                  _isOverTrash ? Colors.red.withOpacity(0.8) : Colors.black54,
-              shape: BoxShape.circle,
-              border: Border.all(
-                  color: _isOverTrash ? Colors.red : Colors.white24, width: 2),
+              color: Colors.grey[900],
+              borderRadius: BorderRadius.circular(16),
             ),
-            child: Icon(
-              Icons.delete_outline,
-              color: Colors.white,
-              size: 32,
+            child: const Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: Colors.white),
+                SizedBox(height: 16),
+                Text(
+                  'در حال ارسال...',
+                  style: TextStyle(color: Colors.white, fontSize: 16),
+                ),
+              ],
             ),
           ),
         ),
       ),
     );
+    Overlay.of(context).insert(_loadingOverlay!);
   }
 
-  Widget _buildElement(StoryElement element) {
-    final isSelected = _selectedElement == element;
-
-    // If over trash, shrink the element to indicate deletion
-    final double displayScale =
-        (_isOverTrash && isSelected) ? 0.0 : element.scale;
-    final double opacity = (_isOverTrash && isSelected) ? 0.5 : 1.0;
-
-    return Positioned(
-      left: element.x,
-      top: element.y,
-      child: GestureDetector(
-        onTap: () {
-          setState(() {
-            // Text Re-editing: If it's a plain text element, open for editing
-            if (element.interactionType == StoryInteractionType.none) {
-              // Open text input with this element's text
-              _editingElement = element;
-              _textController.text = element.text;
-              _textColor = element.color;
-              _fontSize = element.fontSize;
-              _showTextInput = true;
-            } else {
-              // Interactive sticker: toggle style
-              element.styleIndex++;
-            }
-            _selectedElement = element;
-          });
-        },
-        onScaleStart: (details) {
-          setState(() {
-            _selectedElement = element;
-            _isDragging = true;
-
-            // Smart Layering: Bring touched element to front (end of list)
-            if (_elements.contains(element)) {
-              _elements.remove(element);
-              _elements.add(element);
-            }
-          });
-        },
-        onScaleUpdate: (details) {
-          setState(() {
-            final screenSize = MediaQuery.of(context).size;
-            final centerX = screenSize.width / 2;
-            final centerY = screenSize.height / 2;
-
-            // 1. Move
-            double newX = element.x + details.focalPointDelta.dx;
-            double newY = element.y + details.focalPointDelta.dy;
-
-            // 2. Magnetic Snapping Logic
-            // Calculate element's visual center (approximate)
-            // Note: element.x/y is top-left in Stack logic usually,
-            // but we might need to adjust based on widget size.
-            // Assuming x/y is roughly center or we snap the anchor.
-            // Let's assume we snap based on the touch focal point or raw Coordinates
-
-            // Vertical Snap (Center X)
-            // We compare newX (left position) + width/2 approx
-            // Simpler approach: check if newX is close to center-offset
-            // Assuming element is centered at x,y? No, Positioned uses top/left.
-            // Let's use simple threshold on the delta for now.
-
-            // Adjust threshold for snapping
-            const double snapThreshold = 10.0;
-            // const double centerOffset = 0; // Removed as unused
-
-            // Check distance to center X
-            // We need to know element width to center it perfectly,
-            // but as a heuristic we can snap 'near' the center.
-            // Or better: Snap if the *gesture* passes through center
-
-            if ((newX - (centerX - 50)).abs() < snapThreshold) {
-              // 50 is approx half width
-              newX = centerX - 50;
-              if (!_showVerticalGuide) {
-                ui.window.onSemanticsEnabledChanged; // Just a dummy access? No.
-                // HapticFeedback.lightImpact(); // Needs 'package:flutter/services.dart'
-              }
-              _showVerticalGuide = true;
-            } else {
-              _showVerticalGuide = false;
-            }
-
-            // Horizontal Snap (Center Y)
-            if ((newY - centerY).abs() < snapThreshold) {
-              newY = centerY;
-              _showHorizontalGuide = true;
-            } else {
-              _showHorizontalGuide = false;
-            }
-
-            // Boundary Constraints: Keep at least 20px visible on screen
-            const double minVisible = 20.0;
-            const double elementApproxSize = 100.0; // Approximate element size
-            newX = newX.clamp(
-              -elementApproxSize + minVisible,
-              screenSize.width - minVisible,
-            );
-            newY = newY.clamp(
-              -elementApproxSize + minVisible,
-              screenSize.height - minVisible,
-            );
-
-            element.x = newX;
-            element.y = newY;
-
-            // 3. Rotation & Scale
-            element.scale *= details.scale;
-            element.scale = element.scale.clamp(0.3, 5.0);
-
-            // Rotation Snapping (0, 90, 180, 270)
-            double newRotation = element.rotation + details.rotation;
-
-            // Normalize current rotation to nearest 90 deg step
-            // element.rotation is in radians. 90 deg = pi/2 = 1.57 rad
-            const double pi = 3.14159265;
-            const double step = pi / 2;
-
-            double gridRotation = (newRotation / step).round() * step;
-            double diff = (newRotation - gridRotation).abs();
-
-            // Threshold in radians (approx 5 degrees = 0.08 rad)
-            if (diff < 0.1) {
-              if ((element.rotation - gridRotation).abs() > 0.001) {
-                // Only if we haven't already snapped to this value
-                // HapticFeedback.selectionClick(); // Soft heavy click
-              }
-              newRotation = gridRotation;
-            }
-
-            element.rotation = newRotation;
-
-            // 4. Trash Detection
-            // Check distance to bottom center
-            final trashY = screenSize.height - 80;
-            final trashX = screenSize.width / 2;
-
-            // Simple distance check from element (top-left) to trash
-            // Better to use touch position (details.focalPoint)
-            final dist = (details.focalPoint - Offset(trashX, trashY)).distance;
-
-            if (dist < 100) {
-              if (!_isOverTrash) {
-                // HapticFeedback.mediumImpact();
-              }
-              _isOverTrash = true;
-            } else {
-              _isOverTrash = false;
-            }
-          });
-        },
-        onScaleEnd: (details) {
-          if (_isOverTrash) {
-            // Delete
-            setState(() {
-              _elements.remove(element);
-              _selectedElement = null;
-            });
-            // HapticFeedback.heavyImpact();
-          }
-
-          setState(() {
-            _isDragging = false;
-            _isOverTrash = false;
-            _showVerticalGuide = false;
-            _showHorizontalGuide = false;
-          });
-        },
-        child: Transform.rotate(
-          angle: element.rotation,
-          child: Transform.scale(
-            scale: displayScale,
-            child: Opacity(
-              opacity: opacity,
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: isSelected
-                    ? BoxDecoration(
-                        border: Border.all(color: Colors.white, width: 1.5),
-                        borderRadius: BorderRadius.circular(8),
-                      )
-                    : null,
-                child: StickerFactory.buildSticker(element),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+  void _hideLoadingOverlay() {
+    _loadingOverlay?.remove();
+    _loadingOverlay = null;
   }
 
   Widget _buildTextInputOverlay() {
-    final TextEditingController controller = TextEditingController();
-
     return Container(
       color: Colors.black87,
       child: SafeArea(
@@ -800,16 +945,41 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
               child: Row(
                 children: [
                   IconButton(
-                    onPressed: () => setState(() => _showTextInput = false),
+                    onPressed: () {
+                      setState(() {
+                        _showTextInput = false;
+                        _editingItemId = null;
+                      });
+                    },
                     icon: const Icon(Icons.close, color: Colors.white),
                   ),
                   const Spacer(),
-                  // رنگ متن
+                  // تغییر استایل
                   GestureDetector(
-                    onTap: () => _showTextColorPicker(),
+                    onTap: () {
+                      setState(
+                          () => _textStyleIndex = (_textStyleIndex + 1) % 4);
+                    },
                     child: Container(
-                      width: 32,
-                      height: 32,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.white54),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Text(
+                        'استایل',
+                        style: TextStyle(color: Colors.white, fontSize: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // تغییر رنگ
+                  GestureDetector(
+                    onTap: _showTextColorPicker,
+                    child: Container(
+                      width: 28,
+                      height: 28,
                       decoration: BoxDecoration(
                         color: _textColor,
                         shape: BoxShape.circle,
@@ -817,12 +987,15 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 8),
+                  // تایید
                   IconButton(
                     onPressed: () {
-                      if (controller.text.isNotEmpty) {
-                        _addTextElement(controller.text);
-                        setState(() => _showTextInput = false);
+                      final text = _textController.text;
+                      if (_editingItemId != null) {
+                        _updateTextItem(_editingItemId!, text);
+                      } else {
+                        _addTextItem(text);
                       }
                     },
                     icon: const Icon(Icons.check, color: Colors.white),
@@ -835,57 +1008,47 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
             Expanded(
               child: Center(
                 child: Padding(
-                  padding: const EdgeInsets.all(32),
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
                   child: TextField(
-                    controller: controller,
+                    controller: _textController,
                     autofocus: true,
-                    textAlign: _textAlign,
-                    style: _fontFamily == 'Vazir'
-                        ? TextStyle(
-                            fontFamily: _fontFamily,
-                            fontSize: _fontSize,
-                            color: _textColor,
-                          )
-                        : GoogleFonts.getFont(
-                            _fontFamily,
-                            fontSize: _fontSize,
-                            color: _textColor,
-                          ),
+                    textAlign: TextAlign.center,
+                    maxLines: null,
+                    style: TextStyle(
+                      color: _textColor,
+                      fontSize: _fontSize,
+                      fontFamily: _fontFamily,
+                      fontWeight: FontWeight.bold,
+                    ),
                     decoration: const InputDecoration(
                       border: InputBorder.none,
                       hintText: 'متن خود را بنویسید...',
-                      hintStyle: TextStyle(color: Colors.white38),
+                      hintStyle: TextStyle(color: Colors.white54),
                     ),
-                    maxLines: null,
                   ),
                 ),
               ),
             ),
 
-            // تنظیمات
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 16),
+            // اسلایدر سایز فونت
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // سایز فونت
-                  IconButton(
-                    onPressed: () => setState(
-                        () => _fontSize = (_fontSize - 4).clamp(16, 60)),
-                    icon: const Icon(Icons.text_decrease, color: Colors.white),
+                  const Icon(Icons.text_decrease, color: Colors.white54),
+                  Expanded(
+                    child: Slider(
+                      value: _fontSize,
+                      min: 16,
+                      max: 64,
+                      activeColor: Colors.white,
+                      inactiveColor: Colors.white24,
+                      onChanged: (value) {
+                        setState(() => _fontSize = value);
+                      },
+                    ),
                   ),
-                  Slider(
-                    value: _fontSize,
-                    min: 16,
-                    max: 60,
-                    activeColor: Colors.white,
-                    onChanged: (value) => setState(() => _fontSize = value),
-                  ),
-                  IconButton(
-                    onPressed: () => setState(
-                        () => _fontSize = (_fontSize + 4).clamp(16, 60)),
-                    icon: const Icon(Icons.text_increase, color: Colors.white),
-                  ),
+                  const Icon(Icons.text_increase, color: Colors.white54),
                 ],
               ),
             ),
@@ -895,36 +1058,13 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
     );
   }
 
-  void _addTextElement(String text) {
-    final screenSize = MediaQuery.of(context).size;
-    setState(() {
-      if (_editingElement != null) {
-        // Text Re-editing: Update existing element
-        _editingElement!.text = text;
-        _editingElement!.color = _textColor;
-        _editingElement!.fontSize = _fontSize;
-        _editingElement = null; // Clear editing state
-      } else {
-        // Add new text element
-        _elements.add(StoryElement(
-          text: text,
-          x: screenSize.width / 2 - 50,
-          y: screenSize.height / 2 - 20,
-          color: _textColor,
-          fontSize: _fontSize,
-          fontFamily: _fontFamily,
-          textAlign: _textAlign,
-        ));
-      }
-      _textController.clear();
-    });
-  }
-
   void _showTextColorPicker() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('انتخاب رنگ متن'),
+        backgroundColor: Colors.grey[900],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('رنگ متن', style: TextStyle(color: Colors.white)),
         content: SingleChildScrollView(
           child: BlockPicker(
             pickerColor: _textColor,
@@ -938,6 +1078,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
     );
   }
 
+  // Drawing handlers
   void _onDrawStart(DragStartDetails details) {
     setState(() {
       _currentPath = DrawingPath(
@@ -963,47 +1104,48 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
     }
   }
 
-  /// نمایش Bottom Sheet استیکرها
   void _showStickerSheet() {
-    // Capture screen size BEFORE showing the modal to avoid context issues
-    final screenSize = MediaQuery.of(context).size;
-    final centerX = screenSize.width / 2 - 60;
-    final centerY = screenSize.height / 2 - 30;
-
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (sheetContext) => StoryStickerSheet(
-        onStickerSelected: (content) {
+      backgroundColor: Colors.transparent,
+      builder: (context) => StoryStickerSheet(
+        onStickerSelected: (emojiContent) {
+          Navigator.pop(context);
+
+          final screenSize = MediaQuery.of(context).size;
+
+          // ایموجی ساده → تبدیل به TextStoryItem
+          final newItem = TextStoryItem(
+            x: screenSize.width / 2,
+            y: screenSize.height / 2,
+            text: emojiContent,
+            fontSize: 48,
+            color: Colors.white,
+          );
+
           setState(() {
-            _elements.add(StoryElement(
-              text: content,
-              x: centerX + 30, // Adjust for emoji centering
-              y: centerY,
-              rotation: 0,
-              scale: 2.0, // سایز بزرگتر برای استیکر
-              color: Colors.white,
-              fontSize: 48.0, // سایز بزرگ برای استیکر
-              fontFamily: 'Vazir',
-            ));
+            _items.add(newItem);
+            _selectedItemId = newItem.id;
           });
         },
         onInteractiveStickerSelected: (type, data) {
-          if (!mounted) return;
+          Navigator.pop(context);
+
+          final screenSize = MediaQuery.of(context).size;
+
+          // استیکر تعاملی → تبدیل به StickerStoryItem
+          final newItem = StickerStoryItem(
+            x: screenSize.width / 2,
+            y: screenSize.height / 2,
+            stickerPath: '',
+            interactionType: type,
+            interactionData: data,
+          );
+
           setState(() {
-            _elements.add(StoryElement(
-              text: '', // Text not relevant for interactive widgets
-              x: centerX,
-              y: centerY,
-              rotation: 0,
-              scale: 1.0,
-              color: Colors.white,
-              fontSize: 20,
-              fontFamily: 'Vazir',
-              interactionType: type,
-              interactionData: data,
-            ));
+            _items.add(newItem);
+            _selectedItemId = newItem.id;
           });
         },
       ),
