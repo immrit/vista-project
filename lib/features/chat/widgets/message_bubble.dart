@@ -6,6 +6,7 @@ import 'dart:io';
 import '../../../model/message_model.dart';
 import '../../../provider/provider.dart';
 import 'package:Vista/utils/time_utils.dart';
+import '../../../services/telegram_read_receipt_service.dart';
 
 /// حباب پیام با پشتیبانی از:
 /// - تنظیم اندازه فونت از تنظیمات
@@ -149,8 +150,10 @@ class MessageBubble extends ConsumerWidget {
                             ),
                             if (isMe && !isFailed) ...[
                               const SizedBox(width: 4),
-                              _buildStatusIcon(
-                                  isPending, message.isSeen, timestampColor),
+                              if (isMe && !isFailed) ...[
+                                const SizedBox(width: 4),
+                                _buildStatusWidget(timestampColor),
+                              ],
                             ],
                           ],
                         ),
@@ -212,15 +215,24 @@ class MessageBubble extends ConsumerWidget {
     );
   }
 
-  /// ✅ آیکون وضعیت پیام
-  Widget _buildStatusIcon(bool isPending, bool isSeen, Color color) {
-    if (isPending) {
-      return Icon(Icons.access_time, size: 12, color: color);
-    }
-    return Icon(
-      isSeen ? Icons.done_all : Icons.check,
-      size: 12,
-      color: isSeen ? Colors.blue[300] : color,
+  /// ✅ ویجت وضعیت پیام با استفاده از ValueNotifier
+  Widget _buildStatusWidget(Color color) {
+    return ValueListenableBuilder<MessageDeliveryStatus>(
+      valueListenable: message.statusNotifier,
+      builder: (context, status, child) {
+        if (status == MessageDeliveryStatus.pending) {
+          return Icon(Icons.access_time, size: 12, color: color);
+        }
+
+        // determine if seen based on status
+        final isSeen = status == MessageDeliveryStatus.read;
+
+        return Icon(
+          isSeen ? Icons.done_all : Icons.check,
+          size: 12,
+          color: isSeen ? Colors.blue[300] : color,
+        );
+      },
     );
   }
 

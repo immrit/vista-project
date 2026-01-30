@@ -452,15 +452,6 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
                       minHeight: 40,
                       maxHeight: 120,
                     ),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest
-                          .withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: theme.colorScheme.outline.withValues(alpha: 0.2),
-                        width: 1,
-                      ),
-                    ),
                     child: TextField(
                       controller: _commentController,
                       focusNode: _commentFocusNode,
@@ -468,6 +459,9 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
                       textInputAction: TextInputAction.newline,
                       textDirection: getDirection(_commentController.text),
                       decoration: InputDecoration(
+                        filled: true,
+                        fillColor: theme.colorScheme.surfaceContainerHighest
+                            .withValues(alpha: 0.5),
                         hintText: _replyingToCommentId != null
                             ? 'پاسخ خود را بنویسید...'
                             : 'نظر خود را بنویسید...',
@@ -475,7 +469,30 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
                           color: theme.colorScheme.onSurface
                               .withValues(alpha: 0.5),
                         ),
-                        border: InputBorder.none,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide(
+                            color: theme.colorScheme.outline
+                                .withValues(alpha: 0.2),
+                            width: 1,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide(
+                            color: theme.colorScheme.outline
+                                .withValues(alpha: 0.2),
+                            width: 1,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide(
+                            color: theme.colorScheme.outline
+                                .withValues(alpha: 0.2),
+                            width: 1,
+                          ),
+                        ),
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 12,

@@ -13,21 +13,22 @@
 import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../utils/time_utils.dart';
 
 /// وضعیت‌های مختلف کاربر
 enum UserPresenceStatus {
-  online,      // آنلاین (فعال در برنامه)
-  away,        // دور (برنامه در پس‌زمینه)
-  offline,     // آفلاین
-  typing,      // در حال تایپ
-  recording,   // در حال ضبط صدا
+  online, // آنلاین (فعال در برنامه)
+  away, // دور (برنامه در پس‌زمینه)
+  offline, // آفلاین
+  typing, // در حال تایپ
+  recording, // در حال ضبط صدا
 }
 
 /// تنظیمات نمایش آخرین بازدید
 enum LastSeenVisibility {
-  everyone,    // همه
-  myContacts,  // فقط مخاطبین
-  nobody,      // هیچکس
+  everyone, // همه
+  myContacts, // فقط مخاطبین
+  nobody, // هیچکس
 }
 
 /// مدل وضعیت آنلاین کاربر
@@ -76,7 +77,7 @@ class UserPresenceState {
   /// فرمت تقریبی برای حالت مخفی (مثل تلگرام)
   String _getApproximateLastSeen() {
     if (lastOnline == null) return 'آخرین بازدید: اخیراً';
-    
+
     final now = DateTime.now();
     final diff = now.difference(lastOnline!);
 
@@ -93,50 +94,7 @@ class UserPresenceState {
 
   /// فرمت دقیق آخرین بازدید
   String _formatLastSeen() {
-    if (lastOnline == null) return 'آفلاین';
-
-    final now = DateTime.now();
-    final diff = now.difference(lastOnline!);
-
-    if (diff.inSeconds < 30) {
-      return 'همین الان آنلاین بود';
-    } else if (diff.inMinutes < 1) {
-      return 'لحظاتی پیش';
-    } else if (diff.inMinutes < 60) {
-      return '${diff.inMinutes} دقیقه پیش';
-    } else if (diff.inHours < 24) {
-      if (diff.inHours == 1) {
-        return 'یک ساعت پیش';
-      }
-      return '${diff.inHours} ساعت پیش';
-    } else if (diff.inDays == 1) {
-      final hour = lastOnline!.hour;
-      final minute = lastOnline!.minute.toString().padLeft(2, '0');
-      return 'دیروز ساعت $hour:$minute';
-    } else if (diff.inDays < 7) {
-      final weekDay = _getPersianWeekDay(lastOnline!.weekday);
-      final hour = lastOnline!.hour;
-      final minute = lastOnline!.minute.toString().padLeft(2, '0');
-      return '$weekDay ساعت $hour:$minute';
-    } else {
-      final day = lastOnline!.day;
-      final month = _getPersianMonth(lastOnline!.month);
-      return 'آخرین بازدید: $day $month';
-    }
-  }
-
-  String _getPersianWeekDay(int weekday) {
-    const days = ['دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه', 'شنبه', 'یکشنبه'];
-    return days[weekday - 1];
-  }
-
-  String _getPersianMonth(int month) {
-    // تبدیل ساده میلادی به فارسی
-    const months = [
-      'ژانویه', 'فوریه', 'مارس', 'آوریل', 'مه', 'ژوئن',
-      'ژوئیه', 'اوت', 'سپتامبر', 'اکتبر', 'نوامبر', 'دسامبر',
-    ];
-    return months[month - 1];
+    return TimeUtils.formatUserPresence(lastOnline);
   }
 
   UserPresenceState copyWith({
@@ -167,14 +125,14 @@ class UserPresenceService with WidgetsBindingObserver {
   // کشینگ وضعیت کاربران
   final Map<String, UserPresenceState> _presenceCache = {};
   final Map<String, StreamController<UserPresenceState>> _presenceStreams = {};
-  
+
   // Subscription‌های فعال
   final Map<String, RealtimeChannel> _userChannels = {};
-  
+
   // تایمرها
   Timer? _heartbeatTimer;
   Timer? _cleanupTimer;
-  
+
   // وضعیت سرویس
   bool _isInitialized = false;
   bool _isDisposed = false;
@@ -266,16 +224,16 @@ class UserPresenceService with WidgetsBindingObserver {
       // پارس وضعیت
       final isOnline = profileData['is_online'] as bool? ?? false;
       final lastOnlineStr = profileData['last_online'] as String?;
-      final lastOnline = lastOnlineStr != null 
-          ? DateTime.parse(lastOnlineStr).toLocal() 
+      final lastOnline = lastOnlineStr != null
+          ? DateTime.parse(lastOnlineStr).toLocal()
           : null;
 
       // تعیین وضعیت واقعی
       UserPresenceStatus status;
       if (isOnline && lastOnline != null) {
         final diff = DateTime.now().difference(lastOnline);
-        status = diff < _onlineThreshold 
-            ? UserPresenceStatus.online 
+        status = diff < _onlineThreshold
+            ? UserPresenceStatus.online
             : UserPresenceStatus.offline;
       } else {
         status = UserPresenceStatus.offline;
@@ -314,7 +272,8 @@ class UserPresenceService with WidgetsBindingObserver {
             column: 'id',
             value: userId,
           ),
-          callback: (payload) => _handleProfileUpdate(userId, payload.newRecord),
+          callback: (payload) =>
+              _handleProfileUpdate(userId, payload.newRecord),
         )
         // ✅ تغییرات user_settings (last_seen_visibility)
         .onPostgresChanges(
@@ -326,7 +285,8 @@ class UserPresenceService with WidgetsBindingObserver {
             column: 'user_id',
             value: userId,
           ),
-          callback: (payload) => _handleSettingsUpdate(userId, payload.newRecord),
+          callback: (payload) =>
+              _handleSettingsUpdate(userId, payload.newRecord),
         )
         .subscribe();
 
@@ -335,7 +295,8 @@ class UserPresenceService with WidgetsBindingObserver {
   }
 
   /// ✅ پردازش تغییرات تنظیمات حریم خصوصی
-  Future<void> _handleSettingsUpdate(String userId, Map<String, dynamic> data) async {
+  Future<void> _handleSettingsUpdate(
+      String userId, Map<String, dynamic> data) async {
     try {
       final cached = _presenceCache[userId];
       if (cached == null) {
@@ -344,9 +305,10 @@ class UserPresenceService with WidgetsBindingObserver {
       }
 
       // خواندن visibility جدید
-      final visibilityStr = data['last_seen_visibility'] as String? ?? 'everyone';
+      final visibilityStr =
+          data['last_seen_visibility'] as String? ?? 'everyone';
       final newVisibility = _parseVisibility(visibilityStr);
-      
+
       // بررسی مجدد دسترسی با visibility جدید
       final canView = await _checkCanViewLastSeen(userId, newVisibility);
 
@@ -362,7 +324,8 @@ class UserPresenceService with WidgetsBindingObserver {
       _presenceCache[userId] = newState;
       _presenceStreams[userId]?.add(newState);
 
-      debugPrint('🔐 Privacy settings updated: $userId -> $newVisibility (canView: $canView)');
+      debugPrint(
+          '🔐 Privacy settings updated: $userId -> $newVisibility (canView: $canView)');
     } catch (e) {
       debugPrint('❌ Error handling settings update: $e');
     }
@@ -381,7 +344,8 @@ class UserPresenceService with WidgetsBindingObserver {
   }
 
   /// پردازش به‌روزرسانی پروفایل
-  Future<void> _handleProfileUpdate(String userId, Map<String, dynamic> data) async {
+  Future<void> _handleProfileUpdate(
+      String userId, Map<String, dynamic> data) async {
     try {
       final cached = _presenceCache[userId];
       if (cached == null) {
@@ -391,16 +355,16 @@ class UserPresenceService with WidgetsBindingObserver {
 
       final isOnline = data['is_online'] as bool? ?? false;
       final lastOnlineStr = data['last_online'] as String?;
-      final lastOnline = lastOnlineStr != null 
-          ? DateTime.parse(lastOnlineStr).toLocal() 
+      final lastOnline = lastOnlineStr != null
+          ? DateTime.parse(lastOnlineStr).toLocal()
           : cached.lastOnline;
 
       // تعیین وضعیت
       UserPresenceStatus status;
       if (isOnline && lastOnline != null) {
         final diff = DateTime.now().difference(lastOnline);
-        status = diff < _onlineThreshold 
-            ? UserPresenceStatus.online 
+        status = diff < _onlineThreshold
+            ? UserPresenceStatus.online
             : UserPresenceStatus.offline;
       } else {
         status = UserPresenceStatus.offline;
@@ -422,7 +386,7 @@ class UserPresenceService with WidgetsBindingObserver {
 
   /// بررسی اجازه نمایش آخرین بازدید
   Future<bool> _checkCanViewLastSeen(
-    String userId, 
+    String userId,
     LastSeenVisibility visibility,
   ) async {
     if (visibility == LastSeenVisibility.everyone) return true;
@@ -551,7 +515,7 @@ class UserPresenceService with WidgetsBindingObserver {
   void invalidateAllCaches() {
     final userIds = _presenceCache.keys.toList();
     _presenceCache.clear();
-    
+
     // رفرش همه استریم‌های فعال
     for (final userId in userIds) {
       if (_presenceStreams.containsKey(userId)) {
@@ -614,4 +578,3 @@ class UserPresenceService with WidgetsBindingObserver {
     debugPrint('🔴 UserPresenceService disposed');
   }
 }
-

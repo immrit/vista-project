@@ -58,6 +58,7 @@ import '../widgets/unread_messages_divider.dart';
 import '../widgets/floating_date_header.dart';
 import '../widgets/telegram_online_status.dart';
 import '../services/chat_attachment_service.dart';
+import '../../../services/typing_service.dart'; // ✅ سرویس تایپینگ
 import '../widgets/block_report_bottom_sheet.dart';
 import '../services/user_moderation_service.dart';
 import '../services/voice_duration_service.dart';
@@ -144,6 +145,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   bool _isScrolling = false;
   DateTime? _currentVisibleDate;
 
+  // Typing status
+  bool _isOtherUserTyping = false;
+  StreamSubscription<Set<String>>? _typingSubscription;
+
   // ✅ برای جلوگیری از اجرای منطق در build
   String? _lastFirstMessageId;
 
@@ -204,6 +209,50 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     // ✅ شروع گوش دادن به Read Receipts
     _initReadReceipts();
+
+    // ✅ لیسنرهای وضعیت تایپ کردن
+    _initTypingListeners();
+
+    // ✅ تنظیم چت فعال برای جلوگیری از دریافت بج پیام
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref
+            .read(chatRepositoryProvider)
+            .setActiveConversation(widget.args.conversationId);
+      }
+    });
+
+    // ✅ آپدیت فوری بج پیام (اگر پیام خوانده نشده داشتیم)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref
+          .read(chatRepositoryProvider)
+          .resetUnreadCount(widget.args.conversationId);
+    });
+  }
+
+  void _initTypingListeners() {
+    // Listen to typing updates
+    _typingSubscription = TypingService()
+        .getTypingStream(widget.args.conversationId)
+        .listen((typingUsers) {
+      // فقط اگر کاربر مقابل در حال تایپ بود
+      final isTyping = typingUsers.contains(widget.args.otherUserId);
+      if (_isOtherUserTyping != isTyping) {
+        setState(() {
+          _isOtherUserTyping = isTyping;
+        });
+      }
+    });
+
+    // Notify when I am typing
+    _messageController.addListener(() {
+      if (_messageController.text.isNotEmpty && _currentUserProfile != null) {
+        TypingService().startTyping(
+          widget.args.conversationId,
+          _currentUserProfile!.id,
+        );
+      }
+    });
   }
 
   /// راه‌اندازی سرویس Read Receipt
@@ -423,6 +472,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       debugPrint('Error stopping read receipt listener: $e');
     }
 
+    _typingSubscription?.cancel(); // ✅ لغو اشتراک تایپ
+
     for (final sub in _reactionsSubscriptions.values) {
       sub.cancel();
     }
@@ -436,6 +487,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _messageController.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
+
+    // ✅ پاک کردن وضعیت مکالمه فعال
+    ref.read(chatRepositoryProvider).setActiveConversation(null);
+
     super.dispose();
   }
 
@@ -1203,7 +1258,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   // ✅ وضعیت آنلاین به سبک تلگرام - Real-time
                   TelegramOnlineStatus(
                     userId: widget.args.otherUserId,
-                    isTyping: isTyping,
+                    isTyping: _isOtherUserTyping, // استفاده از متغیر صحیح
                     textStyle: TextStyle(
                       color: theme.secondaryTextColor,
                       fontSize: 12,

@@ -9,5 +9,6 @@ Future<void> main() async {
   }, (error, stack) {
     if (error.toString().contains('RealtimeSubscribeException')) return;
     print('⚠️ Global error: $error');
+    print('Stack trace: $stack');
   });
 }

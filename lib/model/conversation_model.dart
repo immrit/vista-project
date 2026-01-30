@@ -31,6 +31,7 @@ class ConversationModel {
   final String? lastMessageSenderId; // شناسه فرستنده آخرین پیام
   final MessageDeliveryStatus
       lastMessageDeliveryStatus; // وضعیت تحویل آخرین پیام
+  final List<String> typingUsers; // ✅ لیست کاربرانی که در حال تایپ هستند
 
   ConversationModel({
     required this.id,
@@ -57,6 +58,7 @@ class ConversationModel {
     this.otherUserCreatedAt, // ✅ تاریخ عضویت کاربر مقابل
     this.isBlocked, // ✅ وضعیت بلاک بودن
     this.isVerified, // ✅ وضعیت تایید شده بودن
+    this.typingUsers = const [], // ✅ مقدار پیش‌فرض برای تایپینگ
   });
 
   factory ConversationModel.fromJson(Map<String, dynamic> json,
@@ -147,6 +149,10 @@ class ConversationModel {
             : null,
         isBlocked: json['is_blocked'] as bool?,
         isVerified: json['is_verified'] as bool?,
+        typingUsers: (json['typing_users'] as List<dynamic>?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            [],
       );
     } catch (e) {
       logInfo('❌ خطا در تبدیل JSON به ConversationModel: $e');
@@ -210,6 +216,7 @@ class ConversationModel {
       'other_user_created_at': otherUserCreatedAt?.toIso8601String(),
       'is_blocked': isBlocked,
       'is_verified': isVerified,
+      'typing_users': typingUsers,
     };
   }
 
@@ -237,6 +244,7 @@ class ConversationModel {
     DateTime? otherUserCreatedAt,
     bool? isBlocked,
     bool? isVerified,
+    List<String>? typingUsers,
   }) {
     return ConversationModel(
       id: id ?? this.id,
@@ -263,6 +271,7 @@ class ConversationModel {
       otherUserCreatedAt: otherUserCreatedAt ?? this.otherUserCreatedAt,
       isBlocked: isBlocked ?? this.isBlocked,
       isVerified: isVerified ?? this.isVerified,
+      typingUsers: typingUsers ?? this.typingUsers,
     );
   }
 
@@ -361,6 +370,7 @@ class ConversationModel {
       isLastMessageFromMe: false,
       lastMessageSenderId: null,
       lastMessageDeliveryStatus: MessageDeliveryStatus.sent,
+      typingUsers: [],
     );
   }
 }

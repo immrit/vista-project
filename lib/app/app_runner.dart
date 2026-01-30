@@ -51,7 +51,7 @@ import 'package:Vista/features/onboarding/screens/Onboarding.dart';
 import 'package:Vista/features/profile/screens/editeProfile.dart';
 import 'package:Vista/features/settings/screens/Settings.dart';
 import 'package:Vista/features/settings/screens/vistaStore/store.dart';
-import 'package:Vista/features/posts/screens/publicPosts.dart';
+import 'package:Vista/features/posts/screens/ExploreFeedScreen.dart';
 import 'package:Vista/features/posts/screens/PostDetailPage.dart';
 import 'package:Vista/features/posts/screens/profileScreen.dart';
 
@@ -435,7 +435,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
               '/settings': (context) =>
                   const SessionMiddleware(child: Settings()),
               '/feed': (context) =>
-                  const SessionMiddleware(child: PublicPostsScreen()),
+                  const SessionMiddleware(child: ExploreFeedScreen()),
               '/verification-store': (context) => VerificationBadgeStore(),
               '/post-detail': (context) {
                 final args = ModalRoute.of(context)?.settings.arguments

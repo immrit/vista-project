@@ -231,4 +231,7 @@ abstract class ChatRepository {
 
   /// بررسی اینکه آیا کاربر جاری توسط کاربر دیگر بلاک شده است یا خیر
   Future<bool> isCurrentUserBlockedBy(String userId);
+
+  /// تنظیم مکالمه فعال فعلی (برای جلوگیری از افزایش unreadCount)
+  void setActiveConversation(String? conversationId);
 }

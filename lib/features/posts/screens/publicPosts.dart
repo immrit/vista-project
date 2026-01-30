@@ -877,6 +877,21 @@ Widget _buildPostItem(
           if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
             const SizedBox(height: 8),
             GestureDetector(
+              onDoubleTap: () async {
+                final isLiked =
+                    ref.read(likeStateProvider)[post.id] ?? post.isLiked;
+                if (!isLiked) {
+                  // Trigger like
+                  ref
+                      .read(likeStateProvider.notifier)
+                      .updateLikeState(post.id, true);
+                  await ref.read(supabaseServiceProvider).toggleLike(
+                        postId: post.id,
+                        ownerId: post.userId,
+                        ref: ref,
+                      );
+                }
+              },
               onTap: () {
                 Navigator.push(
                   context,
@@ -922,76 +937,82 @@ Widget _buildPostItem(
           const SizedBox(height: 8),
 
           // ردیف دکمه‌های لایک، کامنت و اشتراک - با انیمیشن بهبود یافته
-          Row(
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [
-              // دکمه لایک با انیمیشن
-              Consumer(
-                builder: (context, ref, child) {
-                  final isLiked =
-                      ref.watch(likeStateProvider)[post.id] ?? post.isLiked;
-                  final likeCount = post.likeCount +
-                      (isLiked != post.isLiked ? (isLiked ? 1 : -1) : 0);
+          // ردیف دکمه‌های لایک، کامنت و اشتراک - بازگردانی به ظاهر اصلی
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    // دکمه لایک
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final isLiked = ref.watch(likeStateProvider)[post.id] ??
+                            post.isLiked;
+                        final likeCount = post.likeCount +
+                            (isLiked != post.isLiked ? (isLiked ? 1 : -1) : 0);
 
-                  return LikeButton(
-                    key: ValueKey('like_${post.id}'),
-                    isLiked: isLiked,
-                    likeCount: likeCount,
-                    onTap: () async {
-                      // --- اضافه کردن آپدیت optimistic ---
-                      ref
-                          .read(likeStateProvider.notifier)
-                          .updateLikeState(post.id, !isLiked);
-                      try {
-                        await ref.read(supabaseServiceProvider).toggleLike(
-                              postId: post.id,
-                              ownerId: post.userId,
-                              ref: ref,
-                            );
-                      } catch (e) {
-                        // اگر خطا رخ داد، state را به حالت قبل برگردان
-                        if (context.mounted) {
-                          ref
-                              .read(likeStateProvider.notifier)
-                              .updateLikeState(post.id, isLiked);
-                        }
-                      }
-                    },
-                  );
-                },
-              ),
-              const SizedBox(width: 16),
-              // دکمه کامنت با استایل جدید
-              CommentButton(
-                commentCount: post.commentCount,
-                onTap: () {
-                  showCommentsBottomSheet2(context,
-                      postId: post.id, postTitle: post.title!);
-                },
-              ),
-              const SizedBox(width: 16),
-              // دکمه اشتراک‌گذاری با انیمیشن کلیک
-              GestureDetector(
-                onTap: () {
-                  SmartShareService().showShareOptions(post, context);
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
+                        return LikeButton(
+                          key: ValueKey('like_${post.id}'),
+                          isLiked: isLiked,
+                          likeCount: likeCount,
+                          onTap: () async {
+                            // Optimistic update
+                            ref
+                                .read(likeStateProvider.notifier)
+                                .updateLikeState(post.id, !isLiked);
+                            try {
+                              await ref
+                                  .read(supabaseServiceProvider)
+                                  .toggleLike(
+                                    postId: post.id,
+                                    ownerId: post.userId,
+                                    ref: ref,
+                                  );
+                            } catch (e) {
+                              // Revert on failure
+                              if (context.mounted) {
+                                ref
+                                    .read(likeStateProvider.notifier)
+                                    .updateLikeState(post.id, isLiked);
+                              }
+                            }
+                          },
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 20),
+                    // دکمه کامنت
+                    CommentButton(
+                      commentCount: post.commentCount,
+                      onTap: () {
+                        showCommentsBottomSheet2(context,
+                            postId: post.id, postTitle: post.title ?? 'پست');
+                      },
+                    ),
+                  ],
+                ),
+                // دکمه اشتراک‌گذاری
+                GestureDetector(
+                  onTap: () {
+                    SmartShareService().showShareOptions(post, context);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
                     color: Colors.transparent,
-                  ),
-                  child: Image.asset(
-                    'lib/utils/images/component/send.png',
-                    width: 20,
-                    height: 20,
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? Colors.white
-                        : Colors.black87,
+                    child: Image.asset(
+                      'lib/utils/images/component/send.png',
+                      width: 24,
+                      height: 24,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white
+                          : Colors.black87,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           const Divider(),
         ],
@@ -2191,7 +2212,7 @@ void _showReportDialog(BuildContext context, WidgetRef ref, String postId) {
 class LikeButton extends StatefulWidget {
   final bool isLiked;
   final int likeCount;
-  final Function onTap;
+  final VoidCallback onTap;
 
   const LikeButton({
     super.key,
@@ -2207,20 +2228,26 @@ class LikeButton extends StatefulWidget {
 class _LikeButtonState extends State<LikeButton>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation<double> _sizeAnimation;
+  late Animation<double> _scaleAnimation;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
+        duration: const Duration(milliseconds: 200), vsync: this);
+    _scaleAnimation = Tween(begin: 1.0, end: 1.2).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
     );
+  }
 
-    _sizeAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.5), weight: 50),
-      TweenSequenceItem(tween: Tween(begin: 1.5, end: 1.0), weight: 50),
-    ]).animate(_controller);
+  @override
+  void didUpdateWidget(covariant LikeButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isLiked != oldWidget.isLiked) {
+      if (widget.isLiked) {
+        _controller.forward().then((_) => _controller.reverse());
+      }
+    }
   }
 
   @override
@@ -2231,51 +2258,47 @@ class _LikeButtonState extends State<LikeButton>
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        AnimatedBuilder(
-          animation: _sizeAnimation,
-          builder: (context, child) {
-            return Transform.scale(
-              scale: _sizeAnimation.value,
-              child: IconButton(
-                icon: Icon(
-                  widget.isLiked ? Icons.favorite : Icons.favorite_border,
-                  color: widget.isLiked ? Colors.red : null,
-                ),
-                onPressed: () {
-                  if (!widget.isLiked) {
-                    _controller.forward(from: 0.0);
-                  }
-                  widget.onTap();
-                },
-              ),
-            );
-          },
-        ),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          transitionBuilder: (child, animation) {
-            return ScaleTransition(
-              scale: animation,
-              child: child,
-            );
-          },
-          child: Text(
-            widget.likeCount.toString(),
-            key: ValueKey<int>(widget.likeCount),
-            style: TextStyle(
-              fontWeight: widget.isLiked ? FontWeight.bold : FontWeight.normal,
-              color: widget.isLiked ? Colors.red : null,
+    return GestureDetector(
+      onTap: () {
+        widget.onTap();
+        if (!widget.isLiked) {
+          _controller.forward().then((_) => _controller.reverse());
+        }
+      },
+      behavior: HitTestBehavior.opaque,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ScaleTransition(
+            scale: _scaleAnimation,
+            child: Icon(
+              widget.isLiked ? Icons.favorite : Icons.favorite_border,
+              color: widget.isLiked
+                  ? Colors.red
+                  : (Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white
+                      : Colors.black),
+              size: 28,
             ),
           ),
-        ),
-      ],
+          const SizedBox(width: 8),
+          Text(
+            '${widget.likeCount}',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : Colors.black,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-class CommentButton extends StatefulWidget {
+class CommentButton extends StatelessWidget {
   final int commentCount;
   final VoidCallback onTap;
 
@@ -2286,85 +2309,34 @@ class CommentButton extends StatefulWidget {
   });
 
   @override
-  State<CommentButton> createState() => _CommentButtonState();
-}
-
-class _CommentButtonState extends State<CommentButton>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _sizeAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-
-    _sizeAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.5), weight: 50),
-      TweenSequenceItem(tween: Tween(begin: 1.5, end: 1.0), weight: 50),
-    ]).animate(_controller);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        AnimatedBuilder(
-          animation: _sizeAnimation,
-          builder: (context, child) {
-            return Transform.scale(
-              scale: _sizeAnimation.value,
-              child: GestureDetector(
-                onTap: () {
-                  _controller.forward(from: 0.0);
-                  widget.onTap();
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.transparent,
-                  ),
-                  child: Image.asset(
-                    'lib/utils/images/component/comment.png',
-                    width: 20,
-                    height: 20,
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? Colors.white
-                        : Colors.black87,
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          transitionBuilder: (child, animation) {
-            return ScaleTransition(
-              scale: animation,
-              child: child,
-            );
-          },
-          child: Text(
-            widget.commentCount.toString(),
-            key: ValueKey<int>(widget.commentCount),
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Image.asset(
+            'lib/utils/images/component/comment.png',
+            width: 26,
+            height: 26,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white70
+                : Colors.black54,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '$commentCount',
             style: TextStyle(
-              fontWeight:
-                  widget.commentCount > 0 ? FontWeight.bold : FontWeight.normal,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white70
+                  : Colors.black54,
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

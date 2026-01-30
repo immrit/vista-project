@@ -8,7 +8,7 @@ import 'package:Vista/provider/profile_completion_provider.dart';
 import 'package:Vista/utils/const.dart';
 import 'package:Vista/features/posts/screens/AddPost.dart';
 import 'package:Vista/features/posts/screens/profileScreen.dart';
-import 'package:Vista/features/posts/screens/publicPosts.dart';
+import 'package:Vista/features/posts/screens/ExploreFeedScreen.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
 import 'package:Vista/provider/chat_provider.dart';
 import 'package:Vista/provider/optimized_conversations_provider.dart';
@@ -65,7 +65,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         'کاربر';
 
     _tabs = [
-      const PublicPostsScreen(),
+      const ExploreFeedScreen(),
       const SearchPage(),
       const AddPublicPostScreen(),
       const ChatConversationsScreen(),

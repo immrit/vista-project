@@ -48,8 +48,8 @@ class PostService {
   }) async {
     try {
       // استفاده از کوئری JOIN بهینه‌سازی شده برای جلوگیری از N+1 query
-      final response = await _supabase
-          .rpc('get_posts_with_engagement_optimized', params: {
+      final response =
+          await _supabase.rpc('get_posts_with_engagement_optimized', params: {
         'limit_count': limit,
         'offset_count': offset,
       });
@@ -91,10 +91,7 @@ class PostService {
       final postIds = posts.map((p) => p['id']).toList();
 
       final [likesResponse, commentsResponse] = await Future.wait([
-        _supabase
-            .from('likes')
-            .select('post_id')
-            .inFilter('post_id', postIds),
+        _supabase.from('likes').select('post_id').inFilter('post_id', postIds),
         _supabase
             .from('comments')
             .select('post_id')
@@ -138,6 +135,23 @@ class PostService {
     } catch (e) {
       logInfo('خطا در دریافت پست‌ها با روش دسته‌ای: $e');
       rethrow;
+    }
+  }
+
+  /// دریافت هشتگ‌های ترند
+  Future<List<String>> getTrendingTags({int limit = 10}) async {
+    try {
+      final response = await _supabase.rpc('get_trending_tags', params: {
+        'limit_count': limit,
+      });
+
+      if (response == null) return [];
+
+      final List<dynamic> data = response as List<dynamic>;
+      return data.map((tag) => tag['tag'] as String).toList();
+    } catch (e) {
+      logInfo('خطا در دریافت هشتگ‌های ترند: $e');
+      return [];
     }
   }
 }

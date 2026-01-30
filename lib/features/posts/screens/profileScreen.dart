@@ -83,7 +83,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         profileState.id == currentUser.id;
 
     return Scaffold(
-      backgroundColor: isDark ? Colors.black : Colors.white,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: _buildAppBar(profileState, isDark, isCurrentUserProfile),
       body: profileState == null
           ? Center(
@@ -147,8 +147,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
   AppBar _buildAppBar(ProfileModel? profile, bool isDark, bool isOwnProfile) {
     return AppBar(
-      backgroundColor: isDark ? Colors.black : Colors.white,
-      foregroundColor: isDark ? Colors.white : Colors.black,
+      backgroundColor: Theme.of(context).appBarTheme.backgroundColor ??
+          Theme.of(context).scaffoldBackgroundColor,
+      foregroundColor: Theme.of(context).iconTheme.color,
       elevation: 0,
       centerTitle: false,
       title: Row(
@@ -156,10 +157,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         children: [
           Text(
             profile?.username ?? widget.username,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 20,
-            ),
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ) ??
+                const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                ),
           ),
           if (profile?.isVerified == true) ...[
             const SizedBox(width: 4),
@@ -1143,7 +1148,7 @@ class _ProfileTabBarDelegate extends SliverPersistentHeaderDelegate {
 
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? Colors.black : Colors.white,
+        color: Theme.of(context).scaffoldBackgroundColor,
         border: Border(
           top: BorderSide(color: borderColor!, width: 0.5),
           bottom: BorderSide(color: borderColor, width: 0.5),

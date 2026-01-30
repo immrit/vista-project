@@ -43,6 +43,7 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
   Future<void> startUpload({
     required String content,
     required String userId,
+    List<String>? tags, // ✅ Added tags support
     File? image,
     Uint8List? imageBytes,
     String? imageName,
@@ -98,6 +99,7 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
       final postData = {
         'user_id': userId,
         'content': content,
+        'tags': tags ?? [], // ✅ Saving tags to Supabase
         if (imageUrl != null) 'image_url': imageUrl,
         if (videoUrl != null) 'video_url': videoUrl,
         if (musicUrl != null) 'music_url': musicUrl,

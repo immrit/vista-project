@@ -583,10 +583,19 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
         crossAxisAlignment: CrossAxisAlignment.center, // تراز وسط برای دکمه‌ها
         children: [
           // دکمه Attachment
-          _buildIconButton(
-            icon: Icons.attach_file_rounded,
-            onTap: widget.onAttachment,
-            theme: theme,
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            child: SizedBox(
+              width: _hasText ? 0 : null,
+              child: _hasText
+                  ? const SizedBox.shrink()
+                  : _buildIconButton(
+                      icon: Icons.attach_file_rounded,
+                      onTap: widget.onAttachment,
+                      theme: theme,
+                    ),
+            ),
           ),
 
           // دکمه Emoji
@@ -639,46 +648,44 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
 
   Widget _buildTextField(ChatTheme theme) {
     return Focus(
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        // ✅ حذف دکوریشن اضافی چون الان داخل یک جزیره هستیم
-        // فقط اگر بخواهید فیلد متمایز باشد نگه دارید، اما برای استایل تلگرام X معمولا ترنسپرنت بهتر است
-        decoration: const BoxDecoration(
-          color: Colors.transparent,
+      child: TextField(
+        controller: widget.controller,
+        focusNode: widget.focusNode,
+        enabled: widget.enabled,
+        maxLines: 5,
+        minLines: 1,
+        textInputAction: TextInputAction.newline,
+        style: TextStyle(
+          color: theme.textColor,
+          fontSize: 15, // فونت کمی کوچک‌تر
+          fontFamily: 'Vazir',
+          fontFamilyFallback: const [
+            'Apple Color Emoji',
+            'Segoe UI Emoji',
+            'Noto Color Emoji',
+          ],
         ),
-        child: TextField(
-          controller: widget.controller,
-          focusNode: widget.focusNode,
-          enabled: widget.enabled,
-          maxLines: 5,
-          minLines: 1,
-          textInputAction: TextInputAction.newline,
-          style: TextStyle(
-            color: theme.textColor,
-            fontSize: 15, // فونت کمی کوچک‌تر
-            fontFamily: 'Vazir',
-            fontFamilyFallback: const [
-              'Apple Color Emoji',
-              'Segoe UI Emoji',
-              'Noto Color Emoji',
-            ],
+        decoration: InputDecoration(
+          filled: false, // جلوگیری از رنگ پس‌زمینه پیش‌فرض تم
+          hintText: widget.hint ?? 'پیام...',
+          hintStyle: TextStyle(
+            color: theme.secondaryTextColor.withOpacity(0.6),
+            fontSize: 15, // فونت کوچک‌تر
           ),
-          decoration: InputDecoration(
-            hintText: widget.hint ?? 'پیام...',
-            hintStyle: TextStyle(
-              color: theme.secondaryTextColor.withOpacity(0.6),
-              fontSize: 15, // فونت کوچک‌تر
-            ),
-            border: InputBorder.none,
-            // ✅ تنظیم پدینگ برای تراز شدن متن - باریک‌تر و وسط
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 6,
-              vertical: 12, // افزایش vertical برای تراز بهتر با دکمه‌ها
-            ),
-            isDense: true,
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          focusedErrorBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
+          // ✅ تنظیم پدینگ برای تراز شدن متن - باریک‌تر و وسط
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 6,
+            vertical: 12, // افزایش vertical برای تراز بهتر با دکمه‌ها
           ),
-          textDirection: TextDirection.rtl,
+          isDense: true,
         ),
+        textDirection: TextDirection.rtl,
       ),
     );
   }

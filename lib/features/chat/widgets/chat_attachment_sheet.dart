@@ -78,9 +78,17 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
   final ScrollController _galleryScrollController = ScrollController();
 
   // State
-  List<AssetEntity> _recentMedia = [];
+  List<AssetPathEntity> _albums = [];
+  AssetPathEntity? _currentAlbum;
+  List<AssetEntity> _mediaList = [];
   final Set<AssetEntity> _selectedAssets = {};
+
   bool _isLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
+  int _currentPage = 0;
+  static const int _pageSize = 60; // Load 60 images per page
+
   bool _showGallery = true;
   double _sheetHeight = 0.55;
 
@@ -88,7 +96,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
   void initState() {
     super.initState();
     _setupAnimations();
-    _loadRecentMedia();
+    _loadAlbums();
   }
 
   void _setupAnimations() {
@@ -114,16 +122,17 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
     _optionsController.forward();
   }
 
-  Future<void> _loadRecentMedia() async {
+  Future<void> _loadAlbums() async {
     try {
       final permission = await PhotoManager.requestPermissionExtend();
       if (!permission.isAuth) {
-        setState(() => _isLoading = false);
+        if (mounted) setState(() => _isLoading = false);
         return;
       }
 
+      // Fetch albums (Recent is usually first)
       final albums = await PhotoManager.getAssetPathList(
-        type: RequestType.common, // عکس و ویدیو
+        type: RequestType.common,
         filterOption: FilterOptionGroup(
           imageOption: const FilterOption(
             sizeConstraint: SizeConstraint(ignoreSize: true),
@@ -135,24 +144,77 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
       );
 
       if (albums.isEmpty) {
-        setState(() => _isLoading = false);
+        if (mounted) setState(() => _isLoading = false);
         return;
       }
 
-      final recentAlbum = albums.first;
-      final media = await recentAlbum.getAssetListRange(start: 0, end: 50);
+      if (mounted) {
+        setState(() {
+          _albums = albums;
+          _currentAlbum = albums.first;
+        });
+        _loadMedia(refresh: true);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _loadMedia({bool refresh = false}) async {
+    if (_currentAlbum == null) return;
+    if (_isLoadingMore && !refresh) return;
+    if (!_hasMore && !refresh) return;
+
+    if (refresh) {
+      _currentPage = 0;
+      _hasMore = true;
+      _mediaList.clear();
+      _isLoading = true; // Show full loader on refresh
+    } else {
+      _isLoadingMore = true;
+    }
+
+    if (mounted) setState(() {});
+
+    try {
+      final media = await _currentAlbum!.getAssetListPaged(
+        page: _currentPage,
+        size: _pageSize,
+      );
 
       if (mounted) {
         setState(() {
-          _recentMedia = media;
-          _isLoading = false;
+          if (refresh) {
+            _mediaList = media;
+            _isLoading = false;
+          } else {
+            _mediaList.addAll(media);
+            _isLoadingMore = false;
+          }
+
+          if (media.length < _pageSize) {
+            _hasMore = false;
+          } else {
+            _currentPage++;
+          }
         });
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _isLoadingMore = false;
+        });
       }
     }
+  }
+
+  void _onAlbumSelected(AssetPathEntity album) {
+    if (_currentAlbum == album) return;
+    setState(() {
+      _currentAlbum = album;
+    });
+    _loadMedia(refresh: true);
   }
 
   void _toggleSelection(AssetEntity asset) {
@@ -309,7 +371,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
+                color: Colors.black.withValues(alpha: 0.2),
                 blurRadius: 20,
                 offset: const Offset(0, -5),
               ),
@@ -368,14 +430,17 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          // گالری toggle
-          _OptionChip(
-            icon: Icons.photo_library_rounded,
-            label: 'گالری',
-            isSelected: _showGallery,
-            color: Colors.purple,
-            onTap: () => setState(() => _showGallery = true),
-          ),
+          // Album Dropdown / Gallery Toggle
+          if (_showGallery && _currentAlbum != null)
+            _buildAlbumSelector(theme)
+          else
+            _OptionChip(
+              icon: Icons.photo_library_rounded,
+              label: 'گالری',
+              isSelected: _showGallery,
+              color: Colors.purple,
+              onTap: () => setState(() => _showGallery = true),
+            ),
 
           const SizedBox(width: 8),
 
@@ -414,6 +479,104 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
     );
   }
 
+  Widget _buildAlbumSelector(ChatTheme theme) {
+    return InkWell(
+      onTap: () {
+        // Show album selection sheet
+        _showAlbumSelectionSheet(context, theme);
+      },
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: theme.inputBackgroundColor,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: theme.dividerColor),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _currentAlbum?.name ?? 'گالری',
+              style: TextStyle(
+                color: theme.textColor,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.keyboard_arrow_down_rounded,
+                color: theme.secondaryTextColor, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAlbumSelectionSheet(BuildContext context, ChatTheme theme) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: theme.backgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SizedBox(
+          height: MediaQuery.of(context).size.height * 0.5,
+          child: Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: theme.dividerColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: _albums.length,
+                  itemBuilder: (context, index) {
+                    final album = _albums[index];
+                    final isSelected = album == _currentAlbum;
+                    return ListTile(
+                      title: Text(
+                        album.name,
+                        style: TextStyle(
+                          color: isSelected
+                              ? theme.sendButtonColor
+                              : theme.textColor,
+                          fontWeight:
+                              isSelected ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                      trailing: FutureBuilder<int>(
+                        future: album.assetCountAsync,
+                        builder: (context, snapshot) {
+                          return Text(
+                            '${snapshot.data ?? 0}',
+                            style: TextStyle(
+                                color: theme.secondaryTextColor, fontSize: 12),
+                          );
+                        },
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _onAlbumSelected(album);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildGalleryGrid(ChatTheme theme) {
     if (_isLoading) {
       return Center(
@@ -421,7 +584,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
       );
     }
 
-    if (_recentMedia.isEmpty) {
+    if (_mediaList.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -429,7 +592,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
             Icon(
               Icons.photo_library_outlined,
               size: 64,
-              color: theme.secondaryTextColor.withOpacity(0.5),
+              color: theme.secondaryTextColor.withValues(alpha: 0.5),
             ),
             const SizedBox(height: 16),
             Text(
@@ -441,27 +604,48 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
       );
     }
 
-    return GridView.builder(
-      controller: _galleryScrollController,
-      padding: const EdgeInsets.all(4),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 4,
-        mainAxisSpacing: 4,
-      ),
-      itemCount: _recentMedia.length,
-      itemBuilder: (context, index) {
-        final asset = _recentMedia[index];
-        final isSelected = _selectedAssets.contains(asset);
-        final selectionIndex = _selectedAssets.toList().indexOf(asset);
-
-        return _GalleryItem(
-          asset: asset,
-          isSelected: isSelected,
-          selectionIndex: selectionIndex,
-          onTap: () => _toggleSelection(asset),
-        );
+    return NotificationListener<ScrollNotification>(
+      onNotification: (scrollInfo) {
+        if (!_isLoadingMore &&
+            _hasMore &&
+            scrollInfo.metrics.pixels >=
+                scrollInfo.metrics.maxScrollExtent - 200) {
+          _loadMedia();
+        }
+        return false;
       },
+      child: GridView.builder(
+        controller: _galleryScrollController,
+        padding: const EdgeInsets.all(4),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 4,
+          mainAxisSpacing: 4,
+        ),
+        // Add +1 for loading indicator at bottom
+        itemCount: _mediaList.length + (_hasMore ? 1 : 0),
+        itemBuilder: (context, index) {
+          if (index == _mediaList.length) {
+            return Center(
+                child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: theme.sendButtonColor)));
+          }
+
+          final asset = _mediaList[index];
+          final isSelected = _selectedAssets.contains(asset);
+          final selectionIndex = _selectedAssets.toList().indexOf(asset);
+
+          return _GalleryItem(
+            asset: asset,
+            isSelected: isSelected,
+            selectionIndex: selectionIndex,
+            onTap: () => _toggleSelection(asset),
+          );
+        },
+      ),
     );
   }
 
@@ -545,7 +729,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.15),
+                color: color.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Icon(icon, color: color, size: 32),
@@ -646,15 +830,15 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
           gradient: LinearGradient(
             colors: [
               theme.sendButtonColor,
-              theme.sendButtonColor.withBlue(
-                (theme.sendButtonColor.blue + 30).clamp(0, 255),
+              theme.sendButtonColor.withValues(
+                blue: (theme.sendButtonColor.b + 0.12).clamp(0.0, 1.0),
               ),
             ],
           ),
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: theme.sendButtonColor.withOpacity(0.4),
+              color: theme.sendButtonColor.withValues(alpha: 0.4),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -726,8 +910,9 @@ class _OptionChip extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color:
-              isSelected ? color.withOpacity(0.2) : theme.inputBackgroundColor,
+          color: isSelected
+              ? color.withValues(alpha: 0.2)
+              : theme.inputBackgroundColor,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected ? color : theme.dividerColor,

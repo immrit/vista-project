@@ -92,9 +92,23 @@ class ChatRepositoryImpl implements ChatRepository {
     }
   }
 
+  // ✅ Active Conversation Tracking
+  String? _activeConversationId;
+
+  @override
+  void setActiveConversation(String? conversationId) {
+    _activeConversationId = conversationId;
+    debugPrint('📌 Active Conversation set to: $conversationId');
+    if (conversationId != null) {
+      // Clear unread count immediately when entering a chat
+      resetUnreadCount(conversationId);
+    }
+  }
+
   /// This ensures that even if you are not in a chat, the conversation list updates
   /// immediately when a new message arrives.
   void initializeRealtime() {
+    // 1. Listen for NEW MESSAGES & MESSAGE UPDATES (Chained)
     _messagesChannel
         .onPostgresChanges(
           event: PostgresChangeEvent.insert,
@@ -104,14 +118,9 @@ class ChatRepositoryImpl implements ChatRepository {
             final userId = _currentUserId;
             if (userId == null) return;
 
-            // logInfo('Realtime Event: ${payload.eventType}');
-
             final newRecord = payload.newRecord;
-
             final newMessage =
                 MessageModel.fromJson(newRecord, currentUserId: userId);
-
-            // logInfo('Realtime Message ID: ${newMessage.id}');
 
             // ✅ Check if message already exists locally (by ID)
             final existingMessage =
@@ -119,8 +128,6 @@ class ChatRepositoryImpl implements ChatRepository {
 
             if (existingMessage != null) {
               // MERGE: Keep local data, update status to 'sent'
-              // logInfo('Message exists locally. Updating status.');
-
               final updatedMessage = existingMessage.copyWith(
                 isSent: true,
                 isPending: false, // Confirmed on server
@@ -129,7 +136,6 @@ class ChatRepositoryImpl implements ChatRepository {
               await _localDataSource.saveMessage(updatedMessage);
             } else {
               // INSERT: New message from others
-              // logInfo('New message. Inserting.');
               await _localDataSource.saveMessage(newMessage);
             }
 
@@ -139,10 +145,15 @@ class ChatRepositoryImpl implements ChatRepository {
                 await _localDataSource.getConversation(conversationId, userId);
 
             if (existingConv != null) {
-              // Calculate new unread count
-              final newUnreadCount = newMessage.senderId != userId
-                  ? existingConv.unreadCount + 1
-                  : existingConv.unreadCount;
+              // ✅ Active Chat Logic: Don't increment unread if active
+              int newUnreadCount;
+              if (conversationId == _activeConversationId) {
+                newUnreadCount = 0; // User is looking at the chat
+              } else {
+                newUnreadCount = newMessage.senderId != userId
+                    ? existingConv.unreadCount + 1
+                    : existingConv.unreadCount;
+              }
 
               final updatedConv = existingConv.copyWith(
                 lastMessage: newMessage.content,
@@ -154,6 +165,94 @@ class ChatRepositoryImpl implements ChatRepository {
             } else {
               // If conversation doesn't exist locally, fetch it
               _fetchAndSaveConversation(conversationId);
+            }
+          },
+        )
+        // 2. ✅ Listen for MESSAGE UPDATES (Read Receipts / Edits)
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'messages',
+          callback: (payload) async {
+            final userId = _currentUserId;
+            if (userId == null) return;
+
+            final newRecord = payload.newRecord;
+            final messageId = newRecord['id'] as String;
+            final isSeen = newRecord['is_seen'] as bool? ?? false;
+            final isEdited = newRecord['is_edited'] as bool? ?? false;
+            final newContent = newRecord['content'] as String?;
+
+            // Update Local DB
+            final existingMessage =
+                await _localDataSource.getMessage(messageId, userId);
+
+            if (existingMessage != null) {
+              // Only update if something changed
+              if (existingMessage.isSeen != isSeen ||
+                  (isEdited && existingMessage.content != newContent)) {
+                final updatedMessage = existingMessage.copyWith(
+                  isSeen: isSeen,
+                  // If edited, update content too
+                  content: isEdited && newContent != null
+                      ? newContent
+                      : existingMessage.content,
+                  isSent: true, // If updated on server, it must be sent
+                  isDelivered: true, // Likely delivered too if seen/updated
+                );
+
+                await _localDataSource.saveMessage(updatedMessage);
+
+                // Update UI Cache
+                await UnifiedMessageCacheService().cacheMessage(updatedMessage);
+
+                debugPrint('🔄 Message updated: $messageId (Seen: $isSeen)');
+              }
+            }
+          },
+        )
+        .subscribe();
+
+    // 3. ✅ Listen for UNREAD COUNT changes (Multi-device Sync)
+    _supabase
+        .channel('public:conversation_participants')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'conversation_participants',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: _currentUserId ??
+                '', // Filter by current user (might need re-sub on auth change)
+          ),
+          callback: (payload) async {
+            final userId = _currentUserId;
+            if (userId == null) return;
+
+            final newRecord = payload.newRecord;
+            final conversationId = newRecord['conversation_id'] as String;
+            final serverUnreadCount = newRecord['unread_count'] as int;
+
+            // ✅ Active Chat Logic: If active, force logic 0 logic
+            if (conversationId == _activeConversationId &&
+                serverUnreadCount > 0) {
+              // If server says we have unread, but we are active, reset it back!
+              resetUnreadCount(conversationId);
+              return;
+            }
+
+            // Sync to local Isar
+            final existingConv =
+                await _localDataSource.getConversation(conversationId, userId);
+            if (existingConv != null) {
+              final updatedConv = existingConv.copyWith(
+                unreadCount: serverUnreadCount,
+                hasUnreadMessages: serverUnreadCount > 0,
+              );
+              await _localDataSource.saveConversation(updatedConv);
+              debugPrint(
+                  '🔄 Synced unread count for $conversationId: $serverUnreadCount');
             }
           },
         )
