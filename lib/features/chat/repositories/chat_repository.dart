@@ -234,4 +234,10 @@ abstract class ChatRepository {
 
   /// تنظیم مکالمه فعال فعلی (برای جلوگیری از افزایش unreadCount)
   void setActiveConversation(String? conversationId);
+
+  /// ✅ پردازش پیام دریافتی از نوتیفیکیشن (Optimistic Save)
+  ///
+  /// این متد پیام را از payload نوتیفیکیشن استخراج کرده و فوراً در دیتابیس ذخیره می‌کند
+  /// تا هنگام باز شدن صفحه چت، پیام قبلاً موجود باشد.
+  Future<void> handleNotificationMessage(Map<String, dynamic> payload);
 }

@@ -2,7 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:photo_view/photo_view.dart';
-import 'package:photo_view/photo_view_gallery.dart';
+import 'telegram_profile_screen.dart' show GalleryPhotoViewWrapper;
 import 'package:shamsi_date/shamsi_date.dart' as shamsi;
 import 'package:shimmer/shimmer.dart';
 import 'package:intl/intl.dart';
@@ -14,6 +14,8 @@ import '../../../provider/chat_screen_provider.dart';
 // import '../../../features/chat/repositories/chat_repository.dart'; // Unused
 import '../providers/chat_providers.dart';
 import 'ChatMessageSearchScreen.dart';
+import '../../../services/voice_player_service.dart'; // Added
+import '../../../widgets/CustomVideoPlayer.dart'; // Added
 
 class ChatDetailsScreen extends ConsumerStatefulWidget {
   final String conversationId;
@@ -920,6 +922,190 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
 
   Widget _buildMediaItem(
       MessageModel message, int index, List<MessageModel> mediaMessages) {
+    switch (message.attachmentType) {
+      case 'audio':
+        return _buildAudioItem(message);
+      case 'video':
+        return _buildVideoItem(message);
+      case 'image':
+      default:
+        return _buildImageItem(message, index, mediaMessages);
+    }
+  }
+
+  Widget _buildAudioItem(MessageModel message) {
+    return StreamBuilder<VoicePlayerState>(
+      stream: voicePlayerService.playerStateStream,
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final isPlaying =
+            state?.voiceId == message.id && (state?.isPlaying ?? false);
+        final isLoading =
+            state?.voiceId == message.id && (state?.isLoading ?? false);
+
+        return GestureDetector(
+          onTap: () {
+            if (message.attachmentUrl != null) {
+              voicePlayerService.playOrPause(
+                  message.id, message.attachmentUrl!);
+            }
+          },
+          child: Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
+              ),
+            ),
+            child: Stack(
+              children: [
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: isLoading
+                        ? SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          )
+                        : Icon(
+                            isPlaying
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                            color: Theme.of(context).colorScheme.primary,
+                            size: 32,
+                          ),
+                  ),
+                ),
+                Positioned(
+                  bottom: 8,
+                  left: 8,
+                  child: Icon(
+                    Icons.music_note_rounded,
+                    size: 16,
+                    color: Theme.of(context).colorScheme.secondary,
+                  ),
+                ),
+                Positioned(
+                  bottom: 8,
+                  right: 8,
+                  child: Text(
+                    _formatMessageDate(message.createdAt),
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Theme.of(context).textTheme.bodySmall?.color,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildVideoItem(MessageModel message) {
+    return GestureDetector(
+      onTap: () {
+        if (message.attachmentUrl != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => Scaffold(
+                backgroundColor: Colors.black,
+                body: SafeArea(
+                  child: Stack(
+                    children: [
+                      Center(
+                        child: CustomVideoPlayer(
+                          videoUrl: message.attachmentUrl!,
+                          autoplay: true,
+                          showControls: true,
+                        ),
+                      ),
+                      Positioned(
+                        top: 10,
+                        right: 10,
+                        child: IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.black,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Stack(
+          children: [
+            Center(
+              child: Icon(
+                Icons.videocam_rounded,
+                color: Colors.white.withValues(alpha: 0.5),
+                size: 48,
+              ),
+            ),
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.4),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.play_arrow_rounded,
+                  color: Colors.white,
+                  size: 32,
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 6,
+              right: 6,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.7),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _formatMessageDate(message.createdAt),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImageItem(
+      MessageModel message, int index, List<MessageModel> mediaMessages) {
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -1363,51 +1549,4 @@ class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
   }
 }
 
-class GalleryPhotoViewWrapper extends StatelessWidget {
-  final List<MessageModel> galleryItems;
-  final BoxDecoration backgroundDecoration;
-  final int initialIndex;
-  final PageController pageController;
-  final Axis scrollDirection;
-
-  GalleryPhotoViewWrapper({
-    super.key,
-    required this.galleryItems,
-    required this.backgroundDecoration,
-    required this.initialIndex,
-    this.scrollDirection = Axis.horizontal,
-  }) : pageController = PageController(initialPage: initialIndex);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      backgroundColor: Colors.black,
-      body: PhotoViewGallery.builder(
-        scrollPhysics: const BouncingScrollPhysics(),
-        builder: (BuildContext context, int index) {
-          final item = galleryItems[index];
-          return PhotoViewGalleryPageOptions(
-            imageProvider: CachedNetworkImageProvider(item.attachmentUrl!),
-            initialScale: PhotoViewComputedScale.contained,
-            heroAttributes: PhotoViewHeroAttributes(tag: item.id),
-          );
-        },
-        itemCount: galleryItems.length,
-        loadingBuilder: (context, event) => const Center(
-          child: SizedBox(
-            width: 20.0,
-            height: 20.0,
-            child: CircularProgressIndicator(),
-          ),
-        ),
-        backgroundDecoration: backgroundDecoration,
-        pageController: pageController,
-        scrollDirection: scrollDirection,
-      ),
-    );
-  }
-}
+// class GalleryPhotoViewWrapper removed because it is now in telegram_profile_screen.dart

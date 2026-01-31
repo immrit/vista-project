@@ -27,7 +27,7 @@ class EditableStoryItem extends StatefulWidget {
   // But we DO need to add isDraggingOverTrash and onDoubleTap.
 
   const EditableStoryItem({
-    Key? key,
+    super.key,
     required this.item,
     required this.onUpdate,
     required this.onSelect,
@@ -38,7 +38,7 @@ class EditableStoryItem extends StatefulWidget {
     this.onDoubleTap,
     this.isDraggingOverTrash = false,
     this.child,
-  }) : super(key: key);
+  });
 
   @override
   State<EditableStoryItem> createState() => _EditableStoryItemState();

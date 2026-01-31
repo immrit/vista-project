@@ -809,6 +809,99 @@ class ChatRepositoryImpl implements ChatRepository {
     }
   }
 
+  // ✅ پیاده‌سازی handleNotificationMessage
+  @override
+  Future<void> handleNotificationMessage(Map<String, dynamic> payload) async {
+    try {
+      final userId = _currentUserId;
+      if (userId == null) return;
+
+      print('🚀 Optimistic Save: Processing notification payload...');
+
+      // 1. استخراج داده‌ها
+      String? messageId =
+          payload['id']?.toString() ?? payload['message_id']?.toString();
+      final conversationId = payload['conversation_id']?.toString();
+      final content =
+          payload['content']?.toString() ?? payload['body']?.toString();
+      final senderId = payload['sender_id']?.toString();
+
+      if (conversationId == null || content == null || senderId == null) {
+        print(
+            '⚠️ Optimistic Save: Missing critical fields (convId, content, senderId)');
+        return;
+      }
+
+      // تولید ID موقت اگر در پیلود نبود (که معمولاً هست)
+      messageId ??= const Uuid().v4();
+
+      final createdAtStr = payload['created_at']?.toString();
+      final createdAt = createdAtStr != null
+          ? DateTime.tryParse(createdAtStr) ?? DateTime.now()
+          : DateTime.now();
+
+      // 2. ساخت مدل پیام
+      final message = MessageModel(
+        id: messageId,
+        conversationId: conversationId,
+        senderId: senderId,
+        content: content,
+        createdAt: createdAt,
+        isMe: senderId == userId,
+        isSent: true,
+        isPending: false,
+        isDelivered: true,
+        isSeen: false,
+        // سایر فیلدها را می‌توان از payload استخراج کرد در صورت وجود
+        senderName:
+            payload['sender_name']?.toString() ?? payload['title']?.toString(),
+        senderAvatar: payload['sender_avatar']?.toString(),
+        attachmentUrl: payload['attachment_url']?.toString(),
+        attachmentType: payload['attachment_type']?.toString(),
+      );
+
+      // 3. ذخیره در لوکال دیتابیس (Isar)
+      await _localDataSource.saveMessage(message);
+
+      // 4. آپدیت UI (Unified Cache)
+      await UnifiedMessageCacheService().cacheMessage(message);
+
+      // 5. آپدیت متادیتای مکالمه (آخرین پیام و تعداد خوانده نشده)
+      final existingConv =
+          await _localDataSource.getConversation(conversationId, userId);
+
+      if (existingConv != null) {
+        // محاسبه unread count
+        // اگر مکالمه فعال باشد، 0، وگرنه یکی زیاد می‌شود (مگر اینکه از قبل unreadCount در پیلود باشد)
+        int newUnreadCount = existingConv.unreadCount;
+        if (conversationId == _activeConversationId) {
+          newUnreadCount = 0;
+        } else {
+          // اگر خودمان فرستنده نیستیم
+          if (senderId != userId) {
+            newUnreadCount += 1;
+          }
+        }
+
+        final updatedConv = existingConv.copyWith(
+          lastMessage: content,
+          updatedAt: createdAt,
+          unreadCount: newUnreadCount,
+          hasUnreadMessages: newUnreadCount > 0,
+        );
+        await _localDataSource.saveConversation(updatedConv);
+        print('✅ Optimistic Save: Message and Conversation updated.');
+      } else {
+        // اگر مکالمه وجود نداشت، شاید بهتر باشد آن را فچ کنیم
+        // اما برای سرعت فعلاً فقط پیام را ذخیره کردیم.
+        // متد _fetchAndSaveConversation می‌تواند صدا زده شود.
+        _fetchAndSaveConversation(conversationId);
+      }
+    } catch (e) {
+      print('❌ Optimistic Save Failed: $e');
+    }
+  }
+
   @override
   Stream<bool> watchTypingStatus(String conversationId, String userId) async* {
     final controller = StreamController<bool>.broadcast();

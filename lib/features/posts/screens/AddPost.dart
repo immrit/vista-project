@@ -47,7 +47,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   // Tagging State
   final PostService _postService = PostService();
   List<String> _trendingTags = [];
-  List<String> _selectedTags = [];
+  final List<String> _selectedTags = [];
   final TextEditingController _tagController = TextEditingController();
   bool _isLoadingTags = false;
 

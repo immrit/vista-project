@@ -41,7 +41,7 @@ import 'package:Vista/utils/const.dart';
 // Feature Screens (Moved)
 import 'package:Vista/features/home/screens/homeScreen.dart';
 
-import 'package:Vista/features/chat/screens/ChatScreen.dart';
+import 'package:Vista/features/chat/screens/modern_chat_screen.dart';
 import 'package:Vista/features/auth/screens/auth_wizard_screen.dart';
 import 'package:Vista/features/auth/screens/biometric_login_screen.dart';
 import 'package:Vista/features/auth/screens/reset_password_screen.dart';
@@ -475,14 +475,17 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                   final conversation =
                       CacheRepository().getConversationSync(conversationId);
                   return SessionMiddleware(
-                    child: ChatScreen(
-                      conversationId: conversationId,
-                      otherUserId:
-                          otherUserId ?? conversation?.otherUserId ?? '',
-                      otherUserName:
-                          username ?? conversation?.otherUserName ?? 'Unknown',
-                      otherUserAvatar:
-                          avatarUrl ?? conversation?.otherUserAvatar,
+                    child: ModernChatScreen(
+                      args: ChatScreenArgs(
+                        conversationId: conversationId,
+                        otherUserId:
+                            otherUserId ?? conversation?.otherUserId ?? '',
+                        otherUserName: username ??
+                            conversation?.otherUserName ??
+                            'Unknown',
+                        otherUserAvatar:
+                            avatarUrl ?? conversation?.otherUserAvatar,
+                      ),
                     ),
                   );
                 }

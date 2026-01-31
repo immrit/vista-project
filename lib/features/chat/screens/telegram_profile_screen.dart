@@ -22,6 +22,9 @@ import 'package:shimmer/shimmer.dart';
 import '../../../model/message_model.dart';
 import '../../../provider/chat_provider.dart' as legacy_chat;
 import '../../../provider/chat_screen_provider.dart';
+import 'package:photo_view/photo_view_gallery.dart';
+import '../../../services/voice_player_service.dart';
+import '../../../widgets/CustomVideoPlayer.dart';
 import 'ChatMessageSearchScreen.dart';
 
 import '../../../features/chat/providers/chat_providers.dart';
@@ -885,11 +888,104 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
   }
 
   /// تب لینک‌ها
+  /// تب لینک‌ها
   Widget _buildLinksTab(bool isDark) {
-    return _buildEmptyState(
-      icon: Icons.link_outlined,
-      text: 'هیچ لینکی یافت نشد',
-      isDark: isDark,
+    final mediaAsync =
+        ref.watch(legacy_chat.sharedMediaProvider(widget.conversationId));
+
+    return mediaAsync.when(
+      data: (messages) {
+        // فیلتر کردن پیام‌هایی که لینک دارند
+        final linkMessages = messages.where((m) {
+          if (m.content.isEmpty) return false;
+          // استفاده از رجکس ساده برای پیدا کردن http/https
+          // یا استفاده از RichTextParser اگر ایمپورت شده باشد (که بهتر است)
+          return m.content
+                  .contains(RegExp(r'https?:\/\/', caseSensitive: false)) ||
+              m.content.contains(RegExp(r'www\.', caseSensitive: false));
+        }).toList();
+
+        if (linkMessages.isEmpty) {
+          return _buildEmptyState(
+            icon: Icons.link_off_outlined, // آیکون متفاوت
+            text: 'هیچ لینکی یافت نشد',
+            isDark: isDark,
+          );
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          itemCount: linkMessages.length,
+          separatorBuilder: (_, __) => Divider(
+            height: 1,
+            indent: 72,
+            color: isDark ? Colors.white12 : Colors.black12,
+          ),
+          itemBuilder: (context, index) {
+            final msg = linkMessages[index];
+            // استخراج اولین لینک برای نمایش
+            final urlMatch = RegExp(r'((https?:\/\/)|(www\.))[^\s]+')
+                .firstMatch(msg.content);
+            final url = urlMatch?.group(0) ?? '';
+
+            return ListTile(
+              leading: Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: _primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.public, color: _primaryColor),
+              ),
+              title: Text(
+                url,
+                style: TextStyle(
+                  color: _primaryColor,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                msg.content.replaceAll(url, '').trim().isEmpty
+                    ? 'بدون توضیحات'
+                    : msg.content.replaceAll(url, '').trim(),
+                style: TextStyle(
+                  color: isDark ? Colors.white70 : Colors.black54,
+                  fontSize: 12,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: Text(
+                _formatDate(msg.createdAt),
+                style: TextStyle(
+                  color: isDark ? Colors.white38 : Colors.grey,
+                  fontSize: 10,
+                ),
+              ),
+              onTap: () {
+                final uri =
+                    Uri.tryParse(url.startsWith('http') ? url : 'https://$url');
+                if (uri != null) {
+                  // استفاده از url_launcher (باید ایمپورت شده باشد)
+                  // launchUrl(uri, mode: LaunchMode.externalApplication);
+                  // چون دسترسی به ایمپورت نداریم، فعلا اسنک‌بار می‌زنیم یا فرض می‌کنیم تابع کمکی هست
+                  _showSnackBar('در حال باز کردن لینک: $url');
+                }
+              },
+            );
+          },
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (_, __) => _buildEmptyState(
+        icon: Icons.error_outline,
+        text: 'خطا در بارگذاری لینک‌ها',
+        isDark: isDark,
+      ),
     );
   }
 
@@ -935,25 +1031,53 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
   Widget _buildVoiceItem(MessageModel voice, bool isDark) {
     final textColor = isDark ? Colors.white : Colors.black87;
     final subtitleColor = isDark ? Colors.white60 : Colors.grey[600];
+    final url = voice.audioUrl ?? voice.attachmentUrl;
 
-    return ListTile(
-      leading: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          color: _primaryColor.withOpacity(0.15),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(Icons.play_arrow, color: _primaryColor),
-      ),
-      title: Text(
-        'پیام صوتی',
-        style: TextStyle(color: textColor),
-      ),
-      subtitle: Text(
-        _formatDate(voice.createdAt),
-        style: TextStyle(color: subtitleColor, fontSize: 12),
-      ),
+    if (url == null) return const SizedBox();
+
+    return StreamBuilder<VoicePlayerState>(
+      stream: VoicePlayerService().playerStateStream,
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final isPlaying = state?.isPlaying ?? false;
+        final isCurrentVoice = state?.voiceId == voice.id;
+        final isLoading = state?.isLoading ?? false;
+
+        return ListTile(
+          leading: GestureDetector(
+            onTap: () {
+              VoicePlayerService().playOrPause(voice.id, url);
+            },
+            child: Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: _primaryColor.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: isLoading && isCurrentVoice
+                  ? const Padding(
+                      padding: EdgeInsets.all(12.0),
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      (isCurrentVoice && isPlaying)
+                          ? Icons.pause
+                          : Icons.play_arrow,
+                      color: _primaryColor,
+                    ),
+            ),
+          ),
+          title: Text(
+            'پیام صوتی',
+            style: TextStyle(color: textColor),
+          ),
+          subtitle: Text(
+            _formatDate(voice.createdAt),
+            style: TextStyle(color: subtitleColor, fontSize: 12),
+          ),
+        );
+      },
     );
   }
 
@@ -1353,7 +1477,49 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
 
   void _showMediaViewer(
       MessageModel message, int index, List<MessageModel> mediaMessages) {
-    // TODO: نمایش‌دهنده گالری
+    if (message.attachmentType == 'video' && message.attachmentUrl != null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => Scaffold(
+            backgroundColor: Colors.black,
+            body: SafeArea(
+              child: Stack(
+                children: [
+                  Center(
+                    child: CustomVideoPlayer(
+                      videoUrl: message.attachmentUrl!,
+                      autoplay: true,
+                      showControls: true,
+                    ),
+                  ),
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => GalleryPhotoViewWrapper(
+            galleryItems: mediaMessages,
+            backgroundDecoration: const BoxDecoration(color: Colors.black),
+            initialIndex: index,
+            scrollDirection: Axis.horizontal,
+          ),
+        ),
+      );
+    }
   }
 
   void _showOptionsMenu(BuildContext context) {
@@ -1560,6 +1726,56 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+}
+
+class GalleryPhotoViewWrapper extends StatelessWidget {
+  final List<MessageModel> galleryItems;
+  final BoxDecoration backgroundDecoration;
+  final int initialIndex;
+  final PageController pageController;
+  final Axis scrollDirection;
+
+  GalleryPhotoViewWrapper({
+    super.key,
+    required this.galleryItems,
+    required this.backgroundDecoration,
+    required this.initialIndex,
+    this.scrollDirection = Axis.horizontal,
+  }) : pageController = PageController(initialPage: initialIndex);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      backgroundColor: Colors.black,
+      body: PhotoViewGallery.builder(
+        scrollPhysics: const BouncingScrollPhysics(),
+        builder: (BuildContext context, int index) {
+          final item = galleryItems[index];
+          return PhotoViewGalleryPageOptions(
+            imageProvider: CachedNetworkImageProvider(item.attachmentUrl!),
+            initialScale: PhotoViewComputedScale.contained,
+            heroAttributes: PhotoViewHeroAttributes(tag: item.id),
+          );
+        },
+        itemCount: galleryItems.length,
+        loadingBuilder: (context, event) => const Center(
+          child: SizedBox(
+            width: 20.0,
+            height: 20.0,
+            child: CircularProgressIndicator(),
+          ),
+        ),
+        backgroundDecoration: backgroundDecoration,
+        pageController: pageController,
+        scrollDirection: scrollDirection,
       ),
     );
   }

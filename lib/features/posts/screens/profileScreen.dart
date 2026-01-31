@@ -1350,11 +1350,10 @@ class _PostListItem extends ConsumerWidget {
             CircleAvatar(
               radius: 22,
               backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
-              backgroundImage:
-                  post.avatarUrl != null && post.avatarUrl!.isNotEmpty
-                      ? CachedNetworkImageProvider(post.avatarUrl!)
-                      : null,
-              child: post.avatarUrl == null || post.avatarUrl!.isEmpty
+              backgroundImage: post.avatarUrl.isNotEmpty
+                  ? CachedNetworkImageProvider(post.avatarUrl)
+                  : null,
+              child: post.avatarUrl.isEmpty
                   ? Icon(Icons.person,
                       size: 22,
                       color: isDark ? Colors.grey[400] : Colors.grey[600])

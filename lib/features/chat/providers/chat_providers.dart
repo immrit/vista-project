@@ -1,6 +1,5 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'chat_messages_provider.dart';
 import '../repositories/chat_repository.dart';
 import '../repositories/chat_repository_impl.dart';

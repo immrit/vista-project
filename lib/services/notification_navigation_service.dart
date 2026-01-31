@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import '../utils/const.dart';
 import '../model/notificationModel.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../features/chat/providers/chat_providers.dart';
 
 class NotificationNavigationService {
   /// هدایت به صفحه مناسب بر اساس نوع اعلان
@@ -473,6 +475,18 @@ class NotificationNavigationService {
     print('🚀 Navigating to ChatScreen with ID: $conversationId');
 
     try {
+      // ✅ 0. Optimistic Save: ذخیره پیام در دیتابیس قبل از نویگیشن
+      // این کار باعث می‌شود به محض باز شدن چت، پیام در آنجا باشد
+      try {
+        print('⏳ Starting optimistic save for notification message...');
+        final container = ProviderScope.containerOf(context);
+        await container
+            .read(chatRepositoryProvider)
+            .handleNotificationMessage(data);
+      } catch (e) {
+        print('⚠️ Optimistic save warning (non-fatal): $e');
+      }
+
       // استخراج اطلاعات فرستنده برای نمایش سریع
       final senderName = data['sender_name']?.toString() ??
           data['title']?.toString() ??

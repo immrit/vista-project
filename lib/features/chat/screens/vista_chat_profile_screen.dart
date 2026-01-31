@@ -681,7 +681,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
               fontWeight: FontWeight.w400,
             ),
             tabs: const [
-              Tab(text: 'رسانه'),
+              Tab(text: 'پست‌ها'),
               Tab(text: 'فایل‌ها'),
               Tab(text: 'لینک‌ها'),
               Tab(text: 'صدا'),

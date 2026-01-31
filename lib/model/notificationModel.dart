@@ -24,7 +24,7 @@ class NotificationModel extends Equatable {
   final String? openScreen;
   final String? conversationId;
   final String? followerId;
-  
+
   // Getter برای backward compatibility
   String get PostId => postId ?? '';
 
@@ -107,24 +107,25 @@ class NotificationModel extends Equatable {
     }
 
     // استخراج اطلاعات فرستنده
-    final username = data['actor_name'] as String? ?? 
-                     data['username'] as String? ?? 
-                     data['sender_name'] as String? ?? 
-                     'کاربر';
-    
+    final username = data['actor_name'] as String? ??
+        data['username'] as String? ??
+        data['sender_name'] as String? ??
+        'کاربر';
+
     final fullName = data['full_name'] as String? ?? username;
     final avatarUrl = data['avatar_url'] as String?;
 
     // استخراج ID های مرتبط
     final postId = data['post_id'] as String?;
     final commentId = data['comment_id'] as String?;
-    final senderId = data['sender_id'] as String? ?? data['actor_id'] as String? ?? '';
+    final senderId =
+        data['sender_id'] as String? ?? data['actor_id'] as String? ?? '';
 
     // محتوای نوتیفیکیشن و استخراج conversation_id از nested payload
     String content = '';
     String? conversationId;
     String? messageId;
-    
+
     if (data.containsKey('payload')) {
       try {
         final payload = data['payload'];
@@ -146,14 +147,14 @@ class NotificationModel extends Equatable {
         print('⚠️ خطا در parse کردن nested payload: $e');
       }
     }
-    
+
     if (content.isEmpty) {
-      content = data['content'] as String? ?? 
-                data['message'] as String? ?? 
-                notification?.body ?? 
-                '';
+      content = data['content'] as String? ??
+          data['message'] as String? ??
+          notification?.body ??
+          '';
     }
-    
+
     // اگر conversation_id از nested payload نیومد، از data مستقیم بگیر
     conversationId ??= data['conversation_id'] as String?;
 
@@ -168,17 +169,21 @@ class NotificationModel extends Equatable {
     }
 
     return NotificationModel(
-      id: messageId ?? data['notification_id'] ?? data['message_id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      id: messageId ??
+          data['notification_id'] ??
+          data['message_id'] ??
+          DateTime.now().millisecondsSinceEpoch.toString(),
       senderId: senderId,
-      recipientId: data['receiver_id'] as String? ?? data['recipient_id'] as String? ?? '',
+      recipientId: data['receiver_id'] as String? ??
+          data['recipient_id'] as String? ??
+          '',
       content: content,
-      createdAt: data['timestamp'] != null 
-          ? DateTime.parse(data['timestamp']) 
-          : DateTime.now(),
+      createdAt: _parseDate(data['timestamp']),
       type: type,
       username: username,
       fullName: fullName,
-      userIsVerified: data['is_verified'] == 'true' || data['is_verified'] == true,
+      userIsVerified:
+          data['is_verified'] == 'true' || data['is_verified'] == true,
       avatarUrl: avatarUrl ?? data['actor_avatar'] as String?,
       postId: postId,
       commentId: commentId,
@@ -268,7 +273,8 @@ class NotificationModel extends Equatable {
       type: json['type'] ?? '',
       username: json['username'] ?? '',
       fullName: json['full_name'] ?? '',
-      userIsVerified: json['is_verified'] == 'true' || json['is_verified'] == true,
+      userIsVerified:
+          json['is_verified'] == 'true' || json['is_verified'] == true,
       avatarUrl: json['avatar_url'],
       postId: json['post_id'],
       commentId: json['comment_id'],
@@ -290,7 +296,7 @@ class NotificationModel extends Equatable {
   factory NotificationModel.fromMap(Map<String, dynamic> map) {
     // استخراج اطلاعات sender
     final sender = map['sender'] as Map<String, dynamic>?;
-    
+
     // تبدیل verification type
     VerificationType verificationType = VerificationType.none;
     if (sender != null) {
@@ -373,6 +379,34 @@ class NotificationModel extends Equatable {
       conversationId: conversationId ?? this.conversationId,
       followerId: followerId ?? this.followerId,
     );
+  }
+
+  static DateTime _parseDate(dynamic date) {
+    if (date == null) return DateTime.now();
+
+    // 1. اگر عدد باشد (میلی‌ثانیه)
+    if (date is int) {
+      return DateTime.fromMillisecondsSinceEpoch(date);
+    }
+
+    // 2. اگر رشته باشد
+    if (date is String) {
+      // الف: بررسی اگر رشته عددی است (timestamp string)
+      if (RegExp(r'^\d+$').hasMatch(date)) {
+        try {
+          final int timestamp = int.parse(date);
+          return DateTime.fromMillisecondsSinceEpoch(timestamp);
+        } catch (_) {}
+      }
+
+      // ب: فرمت استاندارد ISO
+      try {
+        return DateTime.parse(date);
+      } catch (_) {}
+    }
+
+    // fallback
+    return DateTime.now();
   }
 
   @override

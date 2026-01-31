@@ -14,6 +14,8 @@ import 'media_message_bubble.dart';
 import 'file_message_bubble.dart';
 import '../../../services/telegram_read_receipt_service.dart';
 import '../../../model/message_model.dart';
+import '../../../utils/rich_text_parser.dart';
+import '../../../utils/navigation_helper.dart';
 
 /// وضعیت پیام
 enum MessageStatus {
@@ -503,22 +505,34 @@ class _ImprovedAnimatedMessageBubbleState
           // محتوای متنی
           Flexible(
             child: widget.content.isNotEmpty
-                ? Text(
-                    '${widget.content}\u200F',
+                ? RichText(
                     textDirection: TextDirection.rtl,
                     textAlign: TextAlign.right,
-                    style: TextStyle(
-                      color: widget.isMe
-                          ? theme.myBubbleTextColor
-                          : theme.otherBubbleTextColor,
-                      fontSize: 15,
-                      height: 1.4,
-                      fontFamily: 'Vazir',
-                      fontFamilyFallback: const [
-                        'Apple Color Emoji',
-                        'Segoe UI Emoji',
-                        'Noto Color Emoji',
-                      ],
+                    text: RichTextParser.buildRichText(
+                      text: '${widget.content}\u200F',
+                      baseStyle: TextStyle(
+                        color: widget.isMe
+                            ? theme.myBubbleTextColor
+                            : theme.otherBubbleTextColor,
+                        fontSize: 15,
+                        height: 1.4,
+                        fontFamily: 'Vazir',
+                        fontFamilyFallback: const [
+                          'Apple Color Emoji',
+                          'Segoe UI Emoji',
+                          'Noto Color Emoji',
+                        ],
+                      ),
+                      linkColor: Colors.blueAccent,
+                      mentionColor: Colors.blueAccent,
+                      hashtagColor: Colors.blueAccent,
+                      onMentionTap: (username) {
+                        NavigationHelper.navigateToUserProfile(
+                            context, username);
+                      },
+                      onHashtagTap: (tag) {
+                        NavigationHelper.navigateToHashtagPosts(context, tag);
+                      },
                     ),
                   )
                 : const SizedBox.shrink(),

@@ -19,14 +19,14 @@ class VistaUnifiedChatInput extends ConsumerStatefulWidget {
   final String? hint;
 
   const VistaUnifiedChatInput({
-    Key? key,
+    super.key,
     required this.onSendMessage,
     this.onAttachmentSelected,
     this.onGifSelected,
     this.onAttachPressed,
     this.enabled = true,
     this.hint,
-  }) : super(key: key);
+  });
 
   @override
   ConsumerState<VistaUnifiedChatInput> createState() =>

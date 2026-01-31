@@ -27,21 +27,19 @@ class AnimatedChatInput extends StatefulWidget {
   final VoidCallback onSend;
   final VoidCallback? onAttachment;
   final VoidCallback? onVoice;
-  final ValueChanged<String>? onChanged;
 
-  // Reply
+  // Restored Fields
+  final ValueChanged<String>? onChanged;
   final String? replyToContent;
   final String? replyToSenderName;
   final VoidCallback? onCancelReply;
-
-  // Voice recording
   final Function(File file, int duration)? onVoiceRecorded;
-
-  // GIF
   final Function(String gifUrl)? onGifSelected;
-
-  // ✅ Emoji picker toggle callback
   final ValueChanged<bool>? onEmojiPickerToggled;
+
+  // Autocomplete
+  final Function(String? query, String type)?
+      onAutocomplete; // type: '@' or '#'
 
   // State
   final bool enabled;
@@ -62,6 +60,7 @@ class AnimatedChatInput extends StatefulWidget {
     this.onVoiceRecorded,
     this.onGifSelected,
     this.onEmojiPickerToggled,
+    this.onAutocomplete, // ✅ New callback
     this.enabled = true,
     this.isRecording = false,
     this.hint,
@@ -173,7 +172,51 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
         _sendButtonController.reverse();
       }
     }
+
     widget.onChanged?.call(widget.controller.text);
+    _checkForAutocomplete();
+  }
+
+  void _checkForAutocomplete() {
+    if (widget.onAutocomplete == null) return;
+
+    final text = widget.controller.text;
+    final selection = widget.controller.selection;
+
+    // Safety checks
+    if (!selection.isValid || !selection.isCollapsed) {
+      widget.onAutocomplete!(null, '');
+      return;
+    }
+
+    final cursorPosition = selection.baseOffset;
+    if (cursorPosition <= 0) {
+      widget.onAutocomplete!(null, '');
+      return;
+    }
+
+    // Find the word being typed
+    // Search backwards for space or start of line
+    int start = cursorPosition - 1;
+    while (start >= 0 && text[start] != ' ' && text[start] != '\n') {
+      start--;
+    }
+    start++; // Move back to the first character of the word
+
+    if (start >= cursorPosition) {
+      widget.onAutocomplete!(null, '');
+      return;
+    }
+
+    final word = text.substring(start, cursorPosition);
+
+    if (word.startsWith('@')) {
+      widget.onAutocomplete!(word.substring(1), '@');
+    } else if (word.startsWith('#')) {
+      widget.onAutocomplete!(word.substring(1), '#');
+    } else {
+      widget.onAutocomplete!(null, '');
+    }
   }
 
   @override
@@ -646,7 +689,76 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     );
   }
 
+  /// Detect text direction based on first strong character
+  TextDirection _detectTextDirection(String text) {
+    if (text.isEmpty) return TextDirection.rtl; // Default for Persian app
+
+    // Skip whitespace and find first meaningful character
+    for (int i = 0; i < text.length; i++) {
+      final char = text[i];
+      final code = char.codeUnitAt(0);
+
+      // Skip whitespace
+      if (char == ' ' || char == '\n' || char == '\t') continue;
+
+      // Special characters @ # stay with their following content
+      if (char == '@' || char == '#') {
+        // Look at next char to determine direction
+        if (i + 1 < text.length) {
+          final nextChar = text[i + 1].codeUnitAt(0);
+          // If next char is RTL, use RTL
+          if ((nextChar >= 0x0600 && nextChar <= 0x06FF) || // Arabic
+              (nextChar >= 0x0750 && nextChar <= 0x077F) || // Arabic Supplement
+              (nextChar >= 0xFB50 &&
+                  nextChar <= 0xFDFF) || // Arabic Presentation Forms-A
+              (nextChar >= 0xFE70 && nextChar <= 0xFEFF)) {
+            // Arabic Presentation Forms-B
+            return TextDirection.rtl;
+          }
+          return TextDirection.ltr; // Otherwise LTR
+        }
+        return TextDirection.ltr; // Just @ or # alone - LTR
+      }
+
+      // Numbers - continue to next char
+      if (code >= 0x30 && code <= 0x39) continue; // 0-9
+
+      // Persian/Arabic digits
+      if ((code >= 0x06F0 && code <= 0x06F9) || // Persian digits
+          (code >= 0x0660 && code <= 0x0669)) {
+        // Arabic digits
+        return TextDirection.rtl;
+      }
+
+      // Check for RTL characters (Arabic, Persian, Hebrew, etc.)
+      if ((code >= 0x0600 && code <= 0x06FF) || // Arabic
+          (code >= 0x0750 && code <= 0x077F) || // Arabic Supplement
+          (code >= 0xFB50 && code <= 0xFDFF) || // Arabic Presentation Forms-A
+          (code >= 0xFE70 && code <= 0xFEFF) || // Arabic Presentation Forms-B
+          (code >= 0x0590 && code <= 0x05FF)) {
+        // Hebrew
+        return TextDirection.rtl;
+      }
+
+      // LTR characters (Latin)
+      if ((code >= 0x0041 && code <= 0x005A) || // A-Z
+          (code >= 0x0061 && code <= 0x007A)) {
+        // a-z
+        return TextDirection.ltr;
+      }
+
+      // Other punctuation - continue
+    }
+
+    return TextDirection.rtl; // Default for Persian app
+  }
+
   Widget _buildTextField(ChatTheme theme) {
+    // Get current text direction based on content
+    final textDirection = _detectTextDirection(widget.controller.text);
+    final textAlign =
+        textDirection == TextDirection.rtl ? TextAlign.right : TextAlign.left;
+
     return Focus(
       child: TextField(
         controller: widget.controller,
@@ -655,6 +767,8 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
         maxLines: 5,
         minLines: 1,
         textInputAction: TextInputAction.newline,
+        textDirection: textDirection,
+        textAlign: textAlign,
         style: TextStyle(
           color: theme.textColor,
           fontSize: 15, // فونت کمی کوچک‌تر
@@ -685,7 +799,6 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
           ),
           isDense: true,
         ),
-        textDirection: TextDirection.rtl,
       ),
     );
   }

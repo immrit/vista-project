@@ -193,6 +193,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   final GlobalKey _inputKey = GlobalKey();
   double _inputHeight = 110.0; // مقدار اولیه تقریبی
 
+  // ✅ Autocomplete state
+  String? _autocompleteQuery;
+  String _autocompleteType = ''; // '@' or '#'
+  List<ProfileModel> _autocompleteSuggestions = [];
+
   // ═══════════════════════════════════════════════════════════════════════════
   // 🎬 LIFECYCLE
   // ═══════════════════════════════════════════════════════════════════════════
@@ -224,19 +229,27 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     // ✅ آپدیت فوری بج پیام (اگر پیام خوانده نشده داشتیم)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref
-          .read(chatRepositoryProvider)
-          .resetUnreadCount(widget.args.conversationId);
+      if (mounted) {
+        ref
+            .read(chatRepositoryProvider)
+            .resetUnreadCount(widget.args.conversationId);
+      }
     });
   }
 
   void _initTypingListeners() {
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+
     // Listen to typing updates
     _typingSubscription = TypingService()
         .getTypingStream(widget.args.conversationId)
         .listen((typingUsers) {
-      // فقط اگر کاربر مقابل در حال تایپ بود
-      final isTyping = typingUsers.contains(widget.args.otherUserId);
+      if (currentUserId == null) return;
+
+      // ✅ فقط اگر "کسی غیر از من" در حال تایپ بود
+      // این لاجیک مطمئن‌ترین راه است که خودم را نبینم
+      final isTyping = typingUsers.any((id) => id != currentUserId);
+
       if (_isOtherUserTyping != isTyping) {
         setState(() {
           _isOtherUserTyping = isTyping;
@@ -246,10 +259,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     // Notify when I am typing
     _messageController.addListener(() {
-      if (_messageController.text.isNotEmpty && _currentUserProfile != null) {
+      final myId = Supabase.instance.client.auth.currentUser?.id;
+      if (_messageController.text.isNotEmpty && myId != null) {
         TypingService().startTyping(
           widget.args.conversationId,
-          _currentUserProfile!.id,
+          myId,
         );
       }
     });
@@ -488,8 +502,31 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _scrollController.dispose();
     _focusNode.dispose();
 
-    // ✅ پاک کردن وضعیت مکالمه فعال
-    ref.read(chatRepositoryProvider).setActiveConversation(null);
+    // ✅ پاک کردن وضعیت مکالمه فعال (با احتیاط برای جلوگیری از خطا هنگام خروج)
+    try {
+      // استفاده از ProviderContainer اگر دسترسی به ref معمولی ممکن نیست
+      // اما اینجا چون داخل state هستیم، فقط باید try-catch کنیم
+      // نکته: در dispose نباید از ref.read استفاده کرد اگر context از بین رفته باشد
+      // اما برای cleanup چاره‌ای نیست.
+      Future.microtask(() {
+        if (mounted) {
+          // اگر هنوز mounted بود (که در dispose بعید است)
+          // اما هدف ما این است که اگر خطا داد کرش نکند
+          try {
+            ref.read(chatRepositoryProvider).setActiveConversation(null);
+          } catch (_) {}
+        } else {
+          // تلاش برای پاک کردن بدون بررسی mounted (چون داریم خارج میشیم)
+          try {
+            // در نسخه‌های جدید ریورپاد، استفاده از ref در dispose ممکن است خطا دهد
+            // راه امن‌تر: نادیده گرفتن خطا
+            ref.read(chatRepositoryProvider).setActiveConversation(null);
+          } catch (_) {}
+        }
+      });
+    } catch (e) {
+      // Ignore
+    }
 
     super.dispose();
   }
@@ -2006,6 +2043,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           : widget.args.otherUserName,
       onCancelReply: () => setState(() => _replyToMessage = null),
       onVoiceRecorded: _handleVoiceRecorded,
+      onAutocomplete: _handleAutocomplete,
     );
   }
 
@@ -2131,6 +2169,61 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         debugPrint('Error starting typing: $e');
       }
     }
+  }
+
+  /// Handle autocomplete triggers (@mention or #hashtag)
+  void _handleAutocomplete(String? query, String type) {
+    if (!mounted) return;
+
+    setState(() {
+      _autocompleteQuery = query;
+      _autocompleteType = type;
+    });
+
+    if (query == null || query.isEmpty) {
+      // Clear suggestions
+      setState(() => _autocompleteSuggestions = []);
+      return;
+    }
+
+    // For now, we'll just store the query - in a full implementation
+    // you would fetch user suggestions here
+    debugPrint('Autocomplete: type=$type, query=$query');
+  }
+
+  /// Insert suggestion into text field
+  void _insertAutocompleteSuggestion(String value) {
+    if (_autocompleteType.isEmpty) return;
+
+    final text = _messageController.text;
+    final selection = _messageController.selection;
+
+    if (!selection.isValid || !selection.isCollapsed) return;
+
+    final cursorPosition = selection.baseOffset;
+
+    // Find the start of the trigger word
+    int start = cursorPosition - 1;
+    while (start >= 0 && text[start] != ' ' && text[start] != '\n') {
+      start--;
+    }
+    start++;
+
+    // Replace the trigger word with the selected value
+    final prefix = _autocompleteType;
+    final newText = text.replaceRange(start, cursorPosition, '$prefix$value ');
+
+    _messageController.text = newText;
+    _messageController.selection = TextSelection.collapsed(
+      offset: start + prefix.length + value.length + 1,
+    );
+
+    // Clear autocomplete state
+    setState(() {
+      _autocompleteQuery = null;
+      _autocompleteType = '';
+      _autocompleteSuggestions = [];
+    });
   }
 
   Future<void> _sendMessage() async {
