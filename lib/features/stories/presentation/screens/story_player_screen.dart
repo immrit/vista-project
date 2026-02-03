@@ -242,77 +242,109 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     );
   }
 
+  double _dragOffsetY = 0.0;
+
   @override
   Widget build(BuildContext context) {
+    // Calculate scale based on drag offset (max scale down to 0.8)
+    final double scale =
+        1.0 - (_dragOffsetY.abs() / MediaQuery.of(context).size.height * 0.3);
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor:
+          Colors.black, // Keep background black so it reveals behind
       body: GestureDetector(
         onTapDown: _onTapDown,
         onLongPressStart: _onLongPressStart,
         onLongPressEnd: _onLongPressEnd,
+        onVerticalDragUpdate: (details) {
+          setState(() {
+            _dragOffsetY += details.delta.dy;
+          });
+        },
         onVerticalDragEnd: (details) {
-          if (details.primaryVelocity != null &&
-              details.primaryVelocity! > 300) {
+          // If dragged down significantly or flicked down
+          if (_dragOffsetY > 100 || (details.primaryVelocity ?? 0) > 500) {
             Navigator.of(context).pop();
-          } else if (_isOwnStory &&
-              details.primaryVelocity != null &&
-              details.primaryVelocity! < -300) {
+          } else if (_isOwnStory && (details.primaryVelocity ?? 0) < -500) {
+            // Flick up for own story -> Show Viewers
             _showViewers();
+            setState(() => _dragOffsetY = 0);
+          } else {
+            // Snap back
+            setState(() => _dragOffsetY = 0);
           }
         },
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // محتوای استوری
-            _buildContent(),
+        child: AnimatedContainer(
+          duration: _dragOffsetY == 0
+              ? const Duration(milliseconds: 200)
+              : Duration.zero,
+          transform: Matrix4.translationValues(0, _dragOffsetY, 0)
+            ..scale(scale),
+          transformAlignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(_dragOffsetY == 0 ? 0 : 20),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(_dragOffsetY == 0 ? 0 : 20),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // محتوای استوری
+                _buildContent(),
 
-            // نوار پیشرفت
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 8,
-              left: 8,
-              right: 8,
-              child: StoryProgressBar(
-                storiesCount: _currentUser.stories.length,
-                currentIndex: _currentStoryIndex,
-                controller: _progressController,
-              ),
+                // نوار پیشرفت
+                if (_dragOffsetY == 0) // Hide UI when dragging for cleaner look
+                  Positioned(
+                    top: MediaQuery.of(context).padding.top + 8,
+                    left: 8,
+                    right: 8,
+                    child: StoryProgressBar(
+                      storiesCount: _currentUser.stories.length,
+                      currentIndex: _currentStoryIndex,
+                      controller: _progressController,
+                    ),
+                  ),
+
+                // هدر
+                if (_dragOffsetY == 0) // Hide UI when dragging
+                  Positioned(
+                    top: MediaQuery.of(context).padding.top + 24,
+                    left: 0,
+                    right: 0,
+                    child: StoryHeader(
+                      user: _currentUser,
+                      story: _currentStory,
+                      onClose: () => Navigator.of(context).pop(),
+                      onOptions: () => _showOptions(),
+                    ),
+                  ),
+
+                // اکشن‌ها (پایین صفحه)
+                if (_dragOffsetY == 0) // Hide UI when dragging
+                  Positioned(
+                    bottom: MediaQuery.of(context).padding.bottom + 20,
+                    left: 16,
+                    right: 16,
+                    child: StoryActions(
+                      story: _currentStory,
+                      isOwnStory: _isOwnStory,
+                      onReply: (message) => _replyToStory(message),
+                      onReact: (reaction) => _reactToStory(reaction),
+                      onViewers: _isOwnStory ? _showViewers : null,
+                    ),
+                  ),
+
+                // لودینگ
+                if (_isLoading)
+                  const Center(
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                    ),
+                  ),
+              ],
             ),
-
-            // هدر
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 24,
-              left: 0,
-              right: 0,
-              child: StoryHeader(
-                user: _currentUser,
-                story: _currentStory,
-                onClose: () => Navigator.of(context).pop(),
-                onOptions: () => _showOptions(),
-              ),
-            ),
-
-            // اکشن‌ها (پایین صفحه)
-            Positioned(
-              bottom: MediaQuery.of(context).padding.bottom + 20,
-              left: 16,
-              right: 16,
-              child: StoryActions(
-                story: _currentStory,
-                isOwnStory: _isOwnStory,
-                onReply: (message) => _replyToStory(message),
-                onReact: (reaction) => _reactToStory(reaction),
-                onViewers: _isOwnStory ? _showViewers : null,
-              ),
-            ),
-
-            // لودینگ
-            if (_isLoading)
-              const Center(
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                ),
-              ),
-          ],
+          ),
         ),
       ),
     );

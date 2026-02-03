@@ -176,6 +176,11 @@ const MessageEntitySchema = CollectionSchema(
       id: 31,
       name: r'sharedPostDataJson',
       type: IsarType.string,
+    ),
+    r'storyReplyDataJson': PropertySchema(
+      id: 32,
+      name: r'storyReplyDataJson',
+      type: IsarType.string,
     )
   },
   estimateSize: _messageEntityEstimateSize,
@@ -350,6 +355,12 @@ int _messageEntityEstimateSize(
       bytesCount += 3 + value.length * 3;
     }
   }
+  {
+    final value = object.storyReplyDataJson;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   return bytesCount;
 }
 
@@ -391,6 +402,7 @@ void _messageEntitySerialize(
   writer.writeString(offsets[29], object.replyToSenderName);
   writer.writeString(offsets[30], object.senderId);
   writer.writeString(offsets[31], object.sharedPostDataJson);
+  writer.writeString(offsets[32], object.storyReplyDataJson);
 }
 
 MessageEntity _messageEntityDeserialize(
@@ -433,6 +445,7 @@ MessageEntity _messageEntityDeserialize(
   object.replyToSenderName = reader.readStringOrNull(offsets[29]);
   object.senderId = reader.readString(offsets[30]);
   object.sharedPostDataJson = reader.readStringOrNull(offsets[31]);
+  object.storyReplyDataJson = reader.readStringOrNull(offsets[32]);
   return object;
 }
 
@@ -506,6 +519,8 @@ P _messageEntityDeserializeProp<P>(
     case 30:
       return (reader.readString(offset)) as P;
     case 31:
+      return (reader.readStringOrNull(offset)) as P;
+    case 32:
       return (reader.readStringOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -4417,6 +4432,160 @@ extension MessageEntityQueryFilter
       ));
     });
   }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      storyReplyDataJsonIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'storyReplyDataJson',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      storyReplyDataJsonIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'storyReplyDataJson',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      storyReplyDataJsonEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'storyReplyDataJson',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      storyReplyDataJsonGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'storyReplyDataJson',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      storyReplyDataJsonLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'storyReplyDataJson',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      storyReplyDataJsonBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'storyReplyDataJson',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      storyReplyDataJsonStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'storyReplyDataJson',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      storyReplyDataJsonEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'storyReplyDataJson',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      storyReplyDataJsonContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'storyReplyDataJson',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      storyReplyDataJsonMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'storyReplyDataJson',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      storyReplyDataJsonIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'storyReplyDataJson',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      storyReplyDataJsonIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'storyReplyDataJson',
+        value: '',
+      ));
+    });
+  }
 }
 
 extension MessageEntityQueryObject
@@ -4837,6 +5006,20 @@ extension MessageEntityQuerySortBy
       sortBySharedPostDataJsonDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'sharedPostDataJson', Sort.desc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      sortByStoryReplyDataJson() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'storyReplyDataJson', Sort.asc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      sortByStoryReplyDataJsonDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'storyReplyDataJson', Sort.desc);
     });
   }
 }
@@ -5267,6 +5450,20 @@ extension MessageEntityQuerySortThenBy
       return query.addSortBy(r'sharedPostDataJson', Sort.desc);
     });
   }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      thenByStoryReplyDataJson() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'storyReplyDataJson', Sort.asc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      thenByStoryReplyDataJsonDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'storyReplyDataJson', Sort.desc);
+    });
+  }
 }
 
 extension MessageEntityQueryWhereDistinct
@@ -5500,6 +5697,14 @@ extension MessageEntityQueryWhereDistinct
           caseSensitive: caseSensitive);
     });
   }
+
+  QueryBuilder<MessageEntity, MessageEntity, QDistinct>
+      distinctByStoryReplyDataJson({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'storyReplyDataJson',
+          caseSensitive: caseSensitive);
+    });
+  }
 }
 
 extension MessageEntityQueryProperty
@@ -5716,6 +5921,13 @@ extension MessageEntityQueryProperty
       sharedPostDataJsonProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'sharedPostDataJson');
+    });
+  }
+
+  QueryBuilder<MessageEntity, String?, QQueryOperations>
+      storyReplyDataJsonProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'storyReplyDataJson');
     });
   }
 }

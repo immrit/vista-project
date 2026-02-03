@@ -204,3 +204,4 @@ class PremiumFeaturesHelper {
     return isPostOwner(currentUserId, post);
   }
 }
+

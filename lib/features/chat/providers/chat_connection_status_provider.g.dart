@@ -7,7 +7,7 @@ part of 'chat_connection_status_provider.dart';
 // **************************************************************************
 
 String _$chatConnectionStatusHash() =>
-    r'b6bf0b562730887600a8c2e9a5e01225d3aca5d1';
+    r'73737e9dcff1c6debdc2ed7b22f69eac8493d103';
 
 /// See also [chatConnectionStatus].
 @ProviderFor(chatConnectionStatus)

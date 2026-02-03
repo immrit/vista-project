@@ -72,6 +72,47 @@ class SharedPostData {
   }
 }
 
+/// مدل داده‌های پاسخ به استوری (مشابه دایرکت اینستاگرام)
+class StoryReplyData {
+  final String storyId;
+  final String storyOwnerId;
+  final String storyOwnerUsername;
+  final String storyThumbnailUrl;
+  final String storyMediaType;
+  final DateTime storyCreatedAt;
+
+  const StoryReplyData({
+    required this.storyId,
+    required this.storyOwnerId,
+    required this.storyOwnerUsername,
+    required this.storyThumbnailUrl,
+    required this.storyMediaType,
+    required this.storyCreatedAt,
+  });
+
+  factory StoryReplyData.fromJson(Map<String, dynamic> json) {
+    return StoryReplyData(
+      storyId: json['story_id'] ?? '',
+      storyOwnerId: json['story_owner_id'] ?? '',
+      storyOwnerUsername: json['story_owner_username'] ?? '',
+      storyThumbnailUrl: json['story_thumbnail_url'] ?? '',
+      storyMediaType: json['story_media_type'] ?? 'image',
+      storyCreatedAt: json['story_created_at'] != null
+          ? DateTime.parse(json['story_created_at'])
+          : DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'story_id': storyId,
+        'story_owner_id': storyOwnerId,
+        'story_owner_username': storyOwnerUsername,
+        'story_thumbnail_url': storyThumbnailUrl,
+        'story_media_type': storyMediaType,
+        'story_created_at': storyCreatedAt.toIso8601String(),
+      };
+}
+
 class MessageModel {
   final String id;
   final String conversationId;
@@ -113,8 +154,10 @@ class MessageModel {
   final Map<String, List<String>> reactions;
 
   // فیلدهای جدید برای پشتیبانی از Shared Post
-  final String? messageType; // 'text', 'image', 'video', 'voice', 'sharedPost'
+  final String?
+      messageType; // 'text', 'image', 'video', 'voice', 'sharedPost', 'storyReply'
   final SharedPostData? sharedPostData; // داده‌های پست اشتراک‌گذاری شده
+  final StoryReplyData? storyReplyData; // داده‌های پاسخ به استوری
 
   // فیلدهای حذف پیام (مشابه تلگرام)
   final bool
@@ -148,6 +191,10 @@ class MessageModel {
   /// بررسی اینکه آیا پیام یک پست اشتراک‌گذاری شده است
   bool get isSharedPost =>
       messageType == 'sharedPost' && sharedPostData != null;
+
+  /// بررسی اینکه آیا پیام یک پاسخ به استوری است
+  bool get isStoryReply =>
+      messageType == 'storyReply' && storyReplyData != null;
 
   /// تشخیص اینکه آیا پیام حاوی عکس است
   bool get isImage {
@@ -240,6 +287,28 @@ class MessageModel {
     }
   }
 
+  // پارس کردن story reply data از JSON
+  static StoryReplyData? _parseStoryReplyData(dynamic storyReplyJson) {
+    if (storyReplyJson == null) return null;
+
+    try {
+      Map<String, dynamic> data;
+
+      if (storyReplyJson is String) {
+        data = json.decode(storyReplyJson);
+      } else if (storyReplyJson is Map<String, dynamic>) {
+        data = storyReplyJson;
+      } else {
+        return null;
+      }
+
+      return StoryReplyData.fromJson(data);
+    } catch (e) {
+      print('خطا در پارس کردن story reply data: $e');
+      return null;
+    }
+  }
+
   MessageModel({
     required this.id,
     required this.conversationId,
@@ -275,6 +344,7 @@ class MessageModel {
     this.reactions = const {},
     this.messageType,
     this.sharedPostData,
+    this.storyReplyData,
     this.deletedGlobally = false,
     this.deletedForUserIds = const [],
     this.localImagePath,
@@ -448,6 +518,7 @@ class MessageModel {
       messageType: json['message_type'] as String?,
       // ✅ استفاده از متغیر پارس شده
       sharedPostData: parsedSharedPost,
+      storyReplyData: _parseStoryReplyData(json['story_reply_data']),
       deletedGlobally: json['deleted_globally'] as bool? ?? false,
       deletedForUserIds: (json['deleted_for_user_ids'] as List<dynamic>?)
               ?.map((e) => e.toString())
@@ -552,6 +623,7 @@ class MessageModel {
     Map<String, List<String>>? reactions,
     String? messageType,
     SharedPostData? sharedPostData,
+    StoryReplyData? storyReplyData,
     bool? isForwarded,
     String? originalSenderId,
     String? forwardedFromSenderName,
@@ -594,6 +666,7 @@ class MessageModel {
       reactions: reactions ?? this.reactions,
       messageType: messageType ?? this.messageType,
       sharedPostData: sharedPostData ?? this.sharedPostData,
+      storyReplyData: storyReplyData ?? this.storyReplyData,
       isForwarded: isForwarded ?? this.isForwarded,
       originalSenderId: originalSenderId ?? this.originalSenderId,
       forwardedFromSenderName:
@@ -666,6 +739,8 @@ class MessageModel {
       'message_type': messageType,
       'shared_post_data':
           sharedPostData != null ? json.encode(sharedPostData!.toJson()) : null,
+      'story_reply_data':
+          storyReplyData != null ? json.encode(storyReplyData!.toJson()) : null,
       'is_forwarded': isForwarded,
       'original_sender_id': originalSenderId,
       'forwarded_from_sender_name': forwardedFromSenderName,

@@ -12,6 +12,7 @@ import '../../domain/entities/story_editor_models.dart';
 import '../../domain/repositories/i_story_repository.dart';
 import '../../presentation/providers/story_upload_provider.dart';
 import 'story_editor_screen.dart';
+import 'story_privacy_settings_screen.dart';
 
 /// صفحه ایجاد استوری - مشابه اینستاگرام
 class StoryCreationScreen extends ConsumerStatefulWidget {
@@ -263,6 +264,8 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
               result['elements'] as List<StoryElement>?, // Send elements
           duration:
               (result['duration'] as StoryDuration?) ?? StoryDuration.hours24,
+          privacy: (result['privacy'] as StoryPrivacyType?) ??
+              StoryPrivacyType.everyone,
         );
       }
     }
@@ -274,6 +277,7 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
     String? caption,
     List<StoryElement>? interactiveElements,
     StoryDuration duration = StoryDuration.hours24,
+    StoryPrivacyType privacy = StoryPrivacyType.everyone,
   }) async {
     // بستن صفحه ساخت استوری و برگشتن به خانه
     // آپلود در پس‌زمینه انجام می‌شود (توسط StoryBar نمایش داده می‌شود)
@@ -288,6 +292,7 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
       caption: caption,
       interactiveElements: interactiveElements,
       duration: duration,
+      privacyType: privacy,
     );
 
     ref.read(storyUploadProvider.notifier).uploadStory(params);
@@ -411,7 +416,14 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
 
           // تنظیمات
           IconButton(
-            onPressed: () {},
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const StoryPrivacySettingsScreen(),
+                ),
+              );
+            },
             icon: const Icon(Icons.settings, color: Colors.white),
           ),
         ],

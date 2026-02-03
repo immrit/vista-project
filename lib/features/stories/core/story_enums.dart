@@ -63,6 +63,26 @@ enum StoryUploadStatus {
   error,
 }
 
+/// تنظیمات دسترسی پاسخ به استوری
+enum StoryReplyPermission {
+  everyone, // همه
+  following, // فقط کسانی که فالو می‌کنید
+  off, // غیرفعال
+}
+
+extension StoryReplyPermissionX on StoryReplyPermission {
+  String get persianTitle {
+    switch (this) {
+      case StoryReplyPermission.everyone:
+        return 'همه';
+      case StoryReplyPermission.following:
+        return 'فقط دنبال‌شده‌ها';
+      case StoryReplyPermission.off:
+        return 'غیرفعال';
+    }
+  }
+}
+
 /// Constants
 class StoryConstants {
   StoryConstants._();

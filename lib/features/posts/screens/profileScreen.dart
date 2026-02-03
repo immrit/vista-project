@@ -8,6 +8,7 @@ import '../../../model/publicPostModel.dart';
 import '../../../provider/provider.dart';
 import '../../../DB/profile_cache_service.dart';
 import '../../../utils/const.dart';
+import 'package:Vista/widgets/profile_avatar_widget.dart'; // NEW IMPORT
 
 // Imports for existing functionality
 import '../../../features/chat/screens/modern_chat_screen.dart';
@@ -20,8 +21,15 @@ import 'followers and followings/FollowersScreen.dart';
 import 'followers and followings/FollowingScreen.dart';
 
 // Stories
-import '../../stories/presentation/providers/story_providers.dart';
-import '../../stories/domain/entities/entities.dart';
+import '../../stories/presentation/screens/story_creation_screen.dart'; // Stories Import
+
+// Profile Notes (Status)
+import '../../profile/widgets/content_type_picker_sheet.dart';
+import '../../profile/widgets/note_input_sheet.dart';
+import '../../profile/widgets/thought_bubble_widget.dart';
+import '../../profile/widgets/note_viewer_sheet.dart';
+import '../../profile/providers/profile_note_provider.dart';
+
 import 'package:Vista/utils/comments_bottom_sheet.dart';
 import 'package:flutter/services.dart';
 import 'package:Vista/utils/premium_features_helper.dart';
@@ -572,45 +580,129 @@ class _ProfileHeader extends ConsumerWidget {
     final textColor = isDark ? Colors.white : Colors.black;
     final subtitleColor = isDark ? Colors.grey[400] : Colors.grey[600];
 
+    // Watch profile note for this user
+    final noteAsync = ref.watch(profileNoteProvider(profile.id));
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Avatar & Stats Row
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+          // Avatar & Stats Row with Floating Bubble
+          Stack(
+            clipBehavior: Clip.none,
             children: [
-              // Avatar with Story Ring
-              _ProfileAvatar(profile: profile, isDark: isDark),
-              const SizedBox(width: 28),
-              // Stats
-              Expanded(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _StatItem(
-                      count: _formatCount(profile.postsCount),
-                      label: 'پست',
-                      textColor: textColor,
-                      subtitleColor: subtitleColor!,
+              // 1. Floating Note Bubble (Positioned absolutely)
+              noteAsync.when(
+                data: (note) {
+                  if (note != null && !note.isExpired) {
+                    final isLong = note.content.length > 20;
+                    return Positioned(
+                      // حالت متن بلند: پایین، کنار دکمه پلاس
+                      // حالت متن کوتاه: برمی‌گردیم به سمت راست (left: 55) اما خیلی بالاتر (top: -40)
+                      // تا بالای عدد پست‌ها قرار گیرد و تداخل نکند.
+                      top: isLong ? 65 : -16,
+                      left: isLong ? 70 : 60,
+                      child: ThoughtBubbleWidget(
+                        note: note,
+                        isCurrentUser: isCurrentUser,
+                        tailAtTop: isLong,
+                        onTap: () {
+                          if (isCurrentUser) {
+                            _showNoteInputSheet(context, ref, note.content);
+                          } else {
+                            NoteViewerSheet.show(
+                              context,
+                              note: note,
+                              userProfile: profile,
+                              isCurrentUser: isCurrentUser,
+                            );
+                          }
+                        },
+                      ),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
+              ),
+              // 2. Main Base Layout (Avatar + Stats) - FIXED POSITION
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Avatar with Story Ring
+                  Stack(
+                    children: [
+                      ProfileAvatar(
+                        userId: profile.id,
+                        size: 84,
+                        imageUrl: profile.avatarUrl,
+                        showOnlineStatus: false,
+                      ),
+                      if (isCurrentUser)
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: GestureDetector(
+                            onTap: () => _showContentTypePicker(context, ref),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: Colors.blue,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color:
+                                      Theme.of(context).scaffoldBackgroundColor,
+                                  width: 2,
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.add,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+
+                  const SizedBox(width: 28),
+
+                  // Stats
+                  Expanded(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _StatItem(
+                          count: _formatCount(profile.postsCount),
+                          label: 'پست',
+                          textColor: textColor,
+                          subtitleColor: subtitleColor!,
+                        ),
+                        GestureDetector(
+                          onTap: onFollowersTap,
+                          child: _StatItem(
+                            count: _formatCount(profile.followersCount),
+                            label: 'دنبال‌کننده',
+                            textColor: textColor,
+                            subtitleColor: subtitleColor,
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: onFollowingTap,
+                          child: _StatItem(
+                            count: _formatCount(profile.followingCount),
+                            label: 'دنبال‌شونده',
+                            textColor: textColor,
+                            subtitleColor: subtitleColor,
+                          ),
+                        ),
+                      ],
                     ),
-                    _StatItem(
-                      count: _formatCount(profile.followersCount),
-                      label: 'دنبال‌کننده',
-                      textColor: textColor,
-                      subtitleColor: subtitleColor,
-                      onTap: onFollowersTap,
-                    ),
-                    _StatItem(
-                      count: _formatCount(profile.followingCount),
-                      label: 'دنبال‌شونده',
-                      textColor: textColor,
-                      subtitleColor: subtitleColor,
-                      onTap: onFollowingTap,
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -687,98 +779,37 @@ class _ProfileHeader extends ConsumerWidget {
     }
     return const Icon(Icons.verified, color: Colors.blue, size: 16);
   }
-}
 
-/// آواتار با حلقه استوری
-class _ProfileAvatar extends ConsumerWidget {
-  final ProfileModel profile;
-  final bool isDark;
-
-  const _ProfileAvatar({required this.profile, required this.isDark});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final activeStoriesAsync = ref.watch(activeStoriesProvider);
-
-    return activeStoriesAsync.when(
-      data: (users) {
-        final storyUserIndex = users.indexWhere((u) => u.id == profile.id);
-        final hasStories = storyUserIndex != -1;
-        final storyUser = hasStories ? users[storyUserIndex] : null;
-        final hasUnseenStories = storyUser?.hasUnseenStories ?? false;
-
-        return GestureDetector(
-          onTap: hasStories
-              ? () => _openStoryViewer(context, users, storyUserIndex)
-              : null,
-          child: Container(
-            padding: const EdgeInsets.all(3),
-            decoration: hasStories
-                ? BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: hasUnseenStories
-                        ? const LinearGradient(
-                            colors: [
-                              Color(0xFFE040FB),
-                              Color(0xFFFF5722),
-                              Color(0xFFFFEB3B),
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          )
-                        : null,
-                    color: hasUnseenStories ? null : Colors.grey[400],
-                  )
-                : null,
-            child: Container(
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isDark ? Colors.black : Colors.white,
-              ),
-              child: CircleAvatar(
-                radius: 42,
-                backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
-                backgroundImage: profile.avatarUrl != null
-                    ? CachedNetworkImageProvider(profile.avatarUrl!)
-                    : const AssetImage(defaultAvatarUrl) as ImageProvider,
-              ),
-            ),
+  /// نمایش باتم‌شیت انتخاب نوع محتوا
+  void _showContentTypePicker(BuildContext context, WidgetRef ref) {
+    ContentTypePickerSheet.show(
+      context,
+      onStorySelected: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const StoryCreationScreen(),
           ),
         );
       },
-      loading: () => _buildSimpleAvatar(),
-      error: (_, __) => _buildSimpleAvatar(),
-    );
-  }
-
-  Widget _buildSimpleAvatar() {
-    return CircleAvatar(
-      radius: 42,
-      backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
-      backgroundImage: profile.avatarUrl != null
-          ? CachedNetworkImageProvider(profile.avatarUrl!)
-          : const AssetImage(defaultAvatarUrl) as ImageProvider,
-    );
-  }
-
-  void _openStoryViewer(
-      BuildContext context, List<StoryUser> users, int initialIndex) {
-    final selectedUser = users[initialIndex];
-    int initialStoryIndex = selectedUser.stories.indexWhere((s) => !s.isViewed);
-    if (initialStoryIndex == -1) initialStoryIndex = 0;
-
-    Navigator.pushNamed(
-      context,
-      '/story/view',
-      arguments: {
-        'users': users,
-        'initialIndex': initialIndex,
-        'initialStoryIndex': initialStoryIndex,
+      onNoteSelected: () {
+        _showNoteInputSheet(context, ref, null);
       },
     );
   }
+
+  /// نمایش باتم‌شیت ورود متن وضعیت
+  void _showNoteInputSheet(
+      BuildContext context, WidgetRef ref, String? currentNote) async {
+    final result = await NoteInputSheet.show(context, currentNote: currentNote);
+    if (result == true) {
+      // Refresh the note provider
+      ref.invalidate(profileNoteProvider(profile.id));
+    }
+  }
 }
+
+// End of file
 
 /// آیتم آمار
 class _StatItem extends StatelessWidget {
@@ -786,41 +817,36 @@ class _StatItem extends StatelessWidget {
   final String label;
   final Color textColor;
   final Color subtitleColor;
-  final VoidCallback? onTap;
 
   const _StatItem({
     required this.count,
     required this.label,
     required this.textColor,
     required this.subtitleColor,
-    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            count,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: textColor,
-            ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          count,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: textColor,
           ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              color: subtitleColor,
-            ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            color: subtitleColor,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

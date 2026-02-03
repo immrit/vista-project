@@ -20,6 +20,7 @@ import '../../../provider/MusicProvider.dart';
 import '../../../provider/engagement_posts_provider.dart'; // تغییر به فایل جدید
 import '../../../services/secure_config.dart';
 import 'package:Vista/utils/widgets.dart';
+import 'package:Vista/widgets/profile_avatar_widget.dart'; // Add this import
 import 'package:Vista/widgets/CustomVideoPlayer.dart';
 import 'package:Vista/widgets/ReelsScreen.dart';
 import 'package:Vista/features/music/screens/MiniMusicPlayer.dart';
@@ -323,13 +324,14 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
                           ),
                         ),
                       ),
-                      SliverToBoxAdapter(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          height: 135,
-                          child: const StoryBar(),
-                        ),
-                      )
+// StoryBar removed
+                      // SliverToBoxAdapter(
+                      //   child: Container(
+                      //     padding: const EdgeInsets.symmetric(vertical: 12),
+                      //     height: 135,
+                      //     child: const StoryBar(),
+                      //   ),
+                      // )
                     ],
                     body: const TabBarView(
                       children: [
@@ -740,7 +742,10 @@ Widget _buildPostItem(
           // هدر پست شامل آواتار، نام کاربری، تاریخ و منوهای عملیات
           ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: GestureDetector(
+            leading: ProfileAvatar(
+              userId: post.userId,
+              size: 40,
+              imageUrl: post.avatarUrl,
               onTap: () {
                 Navigator.push(
                   context,
@@ -750,17 +755,6 @@ Widget _buildPostItem(
                   ),
                 );
               },
-              child: CircleAvatar(
-                backgroundImage: post.avatarUrl.isEmpty
-                    ? const AssetImage('lib/utils/images/default-avatar.jpg')
-                        as ImageProvider
-                    : CachedNetworkImageProvider(
-                        post.avatarUrl,
-                        // اضافه کردن گزینه‌های جدید برای بهبود کش کردن
-                        maxWidth: 100,
-                        maxHeight: 100,
-                      ),
-              ),
             ),
             title: GestureDetector(
               onTap: () {

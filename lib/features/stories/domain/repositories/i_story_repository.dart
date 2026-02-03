@@ -150,6 +150,9 @@ abstract class IStoryRepository {
 
   // ========== حریم خصوصی ==========
 
+  /// دریافت لیست دوستان (فالووینگ)
+  Future<StoryResult<List<StoryUser>>> getFriends({String? query});
+
   /// دریافت لیست دوستان نزدیک
   Future<StoryResult<List<String>>> getCloseFriends();
 

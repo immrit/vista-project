@@ -16,8 +16,6 @@ import '../widgets/editable_story_item.dart';
 import '../../../../provider/provider.dart';
 import '../../../../model/UserModel.dart';
 import '../../../../utils/premium_features_helper.dart';
-import '../../../../utils/const.dart';
-import '../../data/services/story_upload_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// ویرایشگر استوری - نسخه بازنویسی شده بدون باگ هلیکوپتری
@@ -59,6 +57,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
   final String _fontFamily = 'Vazir';
   final TextAlign _textAlign = TextAlign.center;
   int _textStyleIndex = 0;
+  TextAnimationType _textAnimationType = TextAnimationType.none;
 
   // Text Re-editing
   String? _editingItemId;
@@ -172,6 +171,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
       fontFamily: _fontFamily,
       textAlign: _textAlign,
       styleIndex: _textStyleIndex,
+      animationType: _textAnimationType,
     );
 
     setState(() {
@@ -193,6 +193,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
           color: _textColor,
           fontSize: _fontSize,
           styleIndex: _textStyleIndex,
+          animationType: _textAnimationType,
         );
         _showTextInput = false;
         _editingItemId = null;
@@ -290,7 +291,11 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
                       ),
 
                       // 2. آیتم‌ها با ویجت جدید
-                      ..._items.map((item) => _buildEditableItem(item)),
+                      ..._items.map((item) => Positioned(
+                            left: 0,
+                            top: 0,
+                            child: _buildEditableItem(item),
+                          )),
                     ],
                   ),
                 ),
@@ -423,7 +428,9 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
             _textController.text = item.text;
             _textColor = item.color;
             _fontSize = item.fontSize;
+            _fontSize = item.fontSize;
             _textStyleIndex = item.styleIndex;
+            _textAnimationType = item.animationType;
             _showTextInput = true;
           });
         }
@@ -445,95 +452,130 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
   }
 
   Widget _buildTextContent(TextStoryItem item) {
-    // استایل‌های مختلف متن
-    Widget textWidget = Text(
-      item.text,
-      style: TextStyle(
-        color: item.color,
-        fontSize: item.fontSize,
-        fontFamily: item.fontFamily,
-        fontWeight: FontWeight.bold,
-        shadows: const [
-          Shadow(color: Colors.black54, blurRadius: 4, offset: Offset(1, 1)),
-        ],
-      ),
-      textAlign: item.textAlign,
+    // 0: Standard (Shadow)
+    // 1: Filled Black
+    // 2: Filled White
+    // 3: Outlined
+    // 4: Neon (New)
+    // 5: Gradient (New)
+
+    final isNeon = item.styleIndex % 6 == 4;
+    final isGradient = item.styleIndex % 6 == 5;
+
+    TextStyle baseStyle = TextStyle(
+      fontSize: item.fontSize,
+      fontFamily: item.fontFamily,
+      fontWeight: FontWeight.bold,
+      color: item.color,
     );
 
-    // اعمال استایل‌های مختلف
-    switch (item.styleIndex % 4) {
-      case 1:
-        // پس‌زمینه مشکی
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.7),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            item.text,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: item.fontSize,
-              fontFamily: item.fontFamily,
-              fontWeight: FontWeight.bold,
-            ),
-            textAlign: item.textAlign,
-          ),
-        );
-      case 2:
-        // پس‌زمینه سفید
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            item.text,
-            style: TextStyle(
-              color: Colors.black,
-              fontSize: item.fontSize,
-              fontFamily: item.fontFamily,
-              fontWeight: FontWeight.bold,
-            ),
-            textAlign: item.textAlign,
-          ),
-        );
-      case 3:
-        // متن با Outline
-        return Stack(
-          children: [
-            // Stroke
-            Text(
-              item.text,
-              style: TextStyle(
-                fontSize: item.fontSize,
-                fontFamily: item.fontFamily,
-                fontWeight: FontWeight.bold,
-                foreground: Paint()
-                  ..style = PaintingStyle.stroke
-                  ..strokeWidth = 3
-                  ..color = Colors.black,
-              ),
-              textAlign: item.textAlign,
-            ),
-            // Fill
-            Text(
-              item.text,
-              style: TextStyle(
-                color: item.color,
-                fontSize: item.fontSize,
-                fontFamily: item.fontFamily,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: item.textAlign,
-            ),
+    if (item.styleIndex % 6 == 0) {
+      // Standard with shadow
+      return Text(
+        item.text,
+        textAlign: item.textAlign,
+        style: baseStyle.copyWith(
+          shadows: const [
+            Shadow(color: Colors.black54, blurRadius: 4, offset: Offset(1, 1)),
           ],
-        );
-      default:
-        return textWidget;
+        ),
+      );
+    } else if (item.styleIndex % 6 == 1) {
+      // Filled Black
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.7),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          item.text,
+          textAlign: item.textAlign,
+          style: baseStyle.copyWith(color: Colors.white),
+        ),
+      );
+    } else if (item.styleIndex % 6 == 2) {
+      // Filled White
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          item.text,
+          textAlign: item.textAlign,
+          style: baseStyle.copyWith(color: Colors.black),
+        ),
+      );
+    } else if (item.styleIndex % 6 == 3) {
+      // Outlined
+      return Stack(
+        children: [
+          Text(
+            item.text,
+            textAlign: item.textAlign,
+            style: baseStyle.copyWith(
+              foreground: Paint()
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 3
+                ..color = Colors.black,
+            ),
+          ),
+          Text(
+            item.text,
+            textAlign: item.textAlign,
+            style: baseStyle,
+          ),
+        ],
+      );
+    } else if (isNeon) {
+      // Neon Style
+      return Text(
+        item.text,
+        textAlign: item.textAlign,
+        style: baseStyle.copyWith(
+          shadows: [
+            Shadow(
+                color: item.color, blurRadius: 15, offset: const Offset(0, 0)),
+            Shadow(
+                color: item.color, blurRadius: 30, offset: const Offset(0, 0)),
+            Shadow(
+                color: item.color, blurRadius: 5, offset: const Offset(0, 0)),
+            const Shadow(
+                color: Colors.black26, blurRadius: 2, offset: Offset(1, 1)),
+          ],
+          color:
+              Colors.white, // Text itself is white, glow is the selected color
+        ),
+      );
+    } else if (isGradient) {
+      // Gradient Background
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              item.color.withOpacity(0.8),
+              item.color.withOpacity(0.4),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),
+        ),
+        child: Text(
+          item.text,
+          textAlign: item.textAlign,
+          style: baseStyle.copyWith(color: Colors.white, shadows: const [
+            Shadow(color: Colors.black26, blurRadius: 2, offset: Offset(0, 1)),
+          ]),
+        ),
+      );
     }
+
+    return Text(item.text, style: baseStyle, textAlign: item.textAlign);
   }
 
   Widget _buildStickerContent(StickerStoryItem item) {
@@ -730,18 +772,62 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
 
   Widget _buildBottomActions() {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Spacer(),
-        ElevatedButton.icon(
-          onPressed: _saveStory,
-          icon: const Icon(Icons.check),
-          label: const Text('ادامه'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.white,
-            foregroundColor: Colors.black,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
+        // Close Friends Button
+        Expanded(
+          child: GestureDetector(
+            onTap: () => _saveStory(privacy: StoryPrivacyType.closeFriends),
+            child: Container(
+              height: 50,
+              decoration: BoxDecoration(
+                color: Colors.green,
+                borderRadius: BorderRadius.circular(25),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.star, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text(
+                    'دوستان نزدیک',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Vazir',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 16),
+        // Your Story Button
+        Expanded(
+          child: GestureDetector(
+            onTap: () => _saveStory(privacy: StoryPrivacyType.everyone),
+            child: Container(
+              height: 50,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(25),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'استوری شما',
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Vazir',
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  Icon(Icons.arrow_forward_ios, color: Colors.black, size: 16),
+                ],
+              ),
             ),
           ),
         ),
@@ -779,7 +865,8 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
     );
   }
 
-  Future<void> _saveStory() async {
+  Future<void> _saveStory(
+      {StoryPrivacyType privacy = StoryPrivacyType.everyone}) async {
     if (_isSaving) return;
 
     setState(() {
@@ -811,66 +898,38 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
           '${tempDir.path}/story_${DateTime.now().millisecondsSinceEpoch}.png');
       await tempFile.writeAsBytes(pngBytes);
 
-      // آپلود به سرور
-      final uploadResult = await StoryUploadService.uploadMedia(
-        mediaFile: tempFile,
-        type: StoryMediaType.image,
-        onProgress: (progress) {
-          debugPrint('Upload progress: ${(progress * 100).toInt()}%');
-        },
-      );
+      final caption =
+          _items.whereType<TextStoryItem>().map((e) => e.text).join('\n');
 
-      if (uploadResult == null) {
-        throw Exception('خطا در آپلود استوری');
-      }
-
-      // ایجاد استوری در دیتابیس
-      final response = await supabase
-          .from('stories')
-          .insert({
-            'user_id': supabase.auth.currentUser!.id,
-            'media_url': uploadResult.url,
-            'media_type': 'image',
-            'duration_type':
-                _storyDuration == StoryDuration.hours24 ? '24h' : '48h',
-            'created_at': DateTime.now().toIso8601String(),
-            'expires_at': DateTime.now()
-                .add(_storyDuration == StoryDuration.hours24
-                    ? const Duration(hours: 24)
-                    : const Duration(hours: 48))
-                .toIso8601String(),
-          })
-          .select()
-          .single();
-
-      debugPrint('Story created: ${response['id']}');
-
-      // پاکسازی فایل موقت
-      try {
-        await tempFile.delete();
-      } catch (_) {}
-
-      // بستن loading
-      _hideLoadingOverlay();
-
+      // Return result to StoryCreationScreen
       if (mounted) {
-        // نمایش پیام موفقیت
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.white),
-                SizedBox(width: 12),
-                Text('استوری با موفقیت ارسال شد'),
-              ],
-            ),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-
-        // بازگشت به صفحه اصلی
-        Navigator.of(context).popUntil((route) => route.isFirst);
+        // Hide loading before popping
+        _hideLoadingOverlay();
+        Navigator.pop(context, {
+          'media': tempFile,
+          'caption': caption.isEmpty ? null : caption,
+          'duration': _storyDuration,
+          'privacy': privacy,
+          'elements': _items
+              .whereType<TextStoryItem>()
+              // Convert text items to legacy elements if needed, or just pass them
+              .map((e) => StoryElement(
+                    text: e.text,
+                    x: e.x,
+                    y: e.y,
+                    color: e.color,
+                    fontSize: e.fontSize,
+                    scale: e.scale,
+                    rotation: e.rotation,
+                    fontFamily: e.fontFamily,
+                    textAlign: e.textAlign,
+                    styleIndex: e.styleIndex,
+                    interactionType: e.animationType != TextAnimationType.none
+                        ? StoryInteractionType.none // Or map animation here
+                        : StoryInteractionType.none,
+                  ))
+              .toList(),
+        });
       }
     } catch (e) {
       _hideLoadingOverlay();
@@ -970,6 +1029,38 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
                       child: const Text(
                         'استایل',
                         style: TextStyle(color: Colors.white, fontSize: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // انیمیشن
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        final currentIndex = TextAnimationType.values
+                            .indexOf(_textAnimationType);
+                        final nextIndex = (currentIndex + 1) %
+                            TextAnimationType.values.length;
+                        _textAnimationType =
+                            TextAnimationType.values[nextIndex];
+                      });
+                    },
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: _textAnimationType == TextAnimationType.none
+                            ? Colors.transparent
+                            : Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                      child: Icon(
+                        Icons.animation,
+                        size: 16,
+                        color: _textAnimationType == TextAnimationType.none
+                            ? Colors.white
+                            : Colors.black,
                       ),
                     ),
                   ),

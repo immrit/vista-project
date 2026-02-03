@@ -310,14 +310,35 @@ class _SearchPageState extends ConsumerState<SearchPage>
 
   Widget _buildUserResults(SearchState state) {
     if (state.userResults.isEmpty) {
+      if (state.isLoading) {
+        return const Center(child: CircularProgressIndicator());
+      }
       return _buildEmptyState('کاربری یافت نشد');
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: state.userResults.length,
-      itemBuilder: (context, index) =>
-          _UserTile(user: state.userResults[index]),
+    return NotificationListener<ScrollNotification>(
+      onNotification: (ScrollNotification scrollInfo) {
+        if (state.hasMoreUsers &&
+            !state.isLoading &&
+            scrollInfo.metrics.pixels >=
+                scrollInfo.metrics.maxScrollExtent - 200) {
+          ref.read(searchProvider.notifier).loadMoreUsers();
+        }
+        return false;
+      },
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        itemCount: state.userResults.length + (state.hasMoreUsers ? 1 : 0),
+        itemBuilder: (context, index) {
+          if (index == state.userResults.length) {
+            return const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            );
+          }
+          return _UserTile(user: state.userResults[index]);
+        },
+      ),
     );
   }
 
@@ -489,12 +510,26 @@ class _UserTile extends StatelessWidget {
               )
             : null,
       ),
-      title: Text(
-        user.fullName.isNotEmpty ? user.fullName : user.username,
-        style: TextStyle(
-          fontWeight: FontWeight.w600,
-          color: isDark ? Colors.white : Colors.black,
-        ),
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(
+              user.fullName.isNotEmpty ? user.fullName : user.username,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (user.hasGoldBadge || user.role == 'premium') ...[
+            const SizedBox(width: 4),
+            const Icon(Icons.verified, color: Color(0xFFFFD700), size: 16),
+          ] else if (user.hasBlueBadge) ...[
+            const SizedBox(width: 4),
+            const Icon(Icons.verified, color: Colors.blue, size: 16),
+          ],
+        ],
       ),
       subtitle: Text(
         '@${user.username}',

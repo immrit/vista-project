@@ -420,22 +420,10 @@ class StoryRepository implements IStoryRepository {
         return StoryResult.failure('کاربر احراز هویت نشده است');
       }
 
-      // دریافت user_id صاحب استوری
-      final storyResponse = await _client
-          .from('stories')
-          .select('user_id')
-          .eq('id', storyId)
-          .single();
-
-      final storyOwnerId = storyResponse['user_id'];
-
-      // ارسال پیام به چت
-      await _client.from('story_replies').insert({
-        'story_id': storyId,
-        'sender_id': currentUserId,
-        'receiver_id': storyOwnerId,
-        'message': message,
-        'created_at': DateTime.now().toIso8601String(),
+      // استفاده از RPC برای ارسال پاسخ به استوری به صورت پیام DM
+      await _client.rpc('send_story_reply', params: {
+        'p_story_id': storyId,
+        'p_message': message,
       });
 
       return StoryResult.success(null);
@@ -638,6 +626,51 @@ class StoryRepository implements IStoryRepository {
   }
 
   // ========== حریم خصوصی ==========
+
+  @override
+  Future<StoryResult<List<StoryUser>>> getFriends({String? query}) async {
+    try {
+      final currentUserId = _client.auth.currentUser?.id;
+      if (currentUserId == null) {
+        return StoryResult.failure('کاربر احراز هویت نشده است');
+      }
+
+      // دریافت لیست فالووینگ
+      final followingResponse = await _client
+          .from('follows')
+          .select('following_id, profiles!following_id(*)')
+          .eq('follower_id', currentUserId);
+
+      // تبدیل به لیست StoryUser
+      final friends = followingResponse.map((item) {
+        final profile = item['profiles'] as Map<String, dynamic>;
+        final userId = item['following_id'] as String;
+
+        return StoryUser.fromMap({
+          'user_id': userId,
+          'username': profile['username'],
+          'avatar_url': profile['avatar_url'],
+          'is_verified': profile['is_verified'] ?? false,
+          'role': profile['role'],
+          'verification_type': profile['verification_type'],
+          'last_story_at': null, // مهم نیست
+        }, stories: []);
+      }).toList();
+
+      // فیلتر جستجو
+      if (query != null && query.isNotEmpty) {
+        final lowerQuery = query.toLowerCase();
+        return StoryResult.success(friends
+            .where((u) => u.username.toLowerCase().contains(lowerQuery))
+            .toList());
+      }
+
+      return StoryResult.success(friends);
+    } catch (e) {
+      logInfo('خطا در دریافت لیست دوستان: $e');
+      return StoryResult.failure('خطا در دریافت لیست دوستان');
+    }
+  }
 
   @override
   Future<StoryResult<List<String>>> getCloseFriends() async {

@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 import '../../domain/entities/entities.dart';
+import '../../core/story_enums.dart';
 
 /// هدر استوری
 class StoryHeader extends StatelessWidget {
@@ -87,12 +88,42 @@ class StoryHeader extends StatelessWidget {
                         ],
                       ],
                     ),
-                    Text(
-                      _getTimeAgo(story.createdAt),
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
-                        fontSize: 12,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          _getTimeAgo(story.createdAt),
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.7),
+                            fontSize: 12,
+                          ),
+                        ),
+                        if (story.privacyType ==
+                            StoryPrivacyType.closeFriends) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.star, color: Colors.white, size: 10),
+                                SizedBox(width: 2),
+                                Text(
+                                  'دوستان نزدیک',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ],
                 ),

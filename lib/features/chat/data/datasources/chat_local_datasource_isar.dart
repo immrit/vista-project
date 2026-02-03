@@ -39,7 +39,84 @@ class ChatLocalDataSourceIsar {
   Future<void> saveMessage(MessageModel message) async {
     final isar = await _dbManager.instance;
     await isar.writeTxn(() async {
+      // 1. Save Message
       await isar.messageEntitys.put(MessageEntity.fromModel(message));
+
+      // 2. Update Conversation Metadata (Last Message & Unread Count)
+      final conversation = await isar.conversationEntitys
+          .filter()
+          .idEqualTo(message.conversationId)
+          .findFirst();
+
+      if (conversation != null) {
+        conversation.lastMessage = message.content; // Or proper snippet
+        conversation.lastMessageTime = message.createdAt;
+        conversation.updatedAt = message.createdAt; // Sort by this
+
+        // If message is NOT from me, increment unread count
+        if (!message.isMe) {
+          // If we are currently in this chat, don't increment (Handled by repo usually, but good to check)
+          // However, repo handles logic. Ideally here we just increment.
+          // But valid 'unread' logic usually depends on if the user has read it.
+          // If isSeen is false and it's not me, increment.
+          if (!message.isSeen) {
+            conversation.unreadCount = (conversation.unreadCount ?? 0) + 1;
+          }
+        }
+
+        // If it IS me, typically unread count doesn't change for ME, but for THEM.
+        // But the conversation list shows MY unread count.
+
+        await isar.conversationEntitys.put(conversation);
+      } else {
+        // If conversation doesn't exist locally, we might want to create a ghost one?
+        // Or wait for 'getConversations'.
+        // For now, let's assume it exists or will be fetched.
+      }
+    });
+  }
+
+  Future<void> resetUnreadCount(String conversationId) async {
+    final isar = await _dbManager.instance;
+    await isar.writeTxn(() async {
+      final conversation = await isar.conversationEntitys
+          .filter()
+          .idEqualTo(conversationId)
+          .findFirst();
+
+      if (conversation != null) {
+        conversation.unreadCount = 0;
+        await isar.conversationEntitys.put(conversation);
+      }
+    });
+  }
+
+  Future<void> markMessagesAsSeenLocally(String conversationId) async {
+    final isar = await _dbManager.instance;
+    await isar.writeTxn(() async {
+      // 1. Update Messages
+      final messages = await isar.messageEntitys
+          .filter()
+          .conversationIdEqualTo(conversationId)
+          .isSeenEqualTo(false) // Find unseen
+          .isMeEqualTo(false) // That are not mine (I see others' messages)
+          .findAll();
+
+      for (var msg in messages) {
+        msg.isSeen = true;
+        await isar.messageEntitys.put(msg);
+      }
+
+      // 2. Reset Unread Count (just to be safe)
+      final conversation = await isar.conversationEntitys
+          .filter()
+          .idEqualTo(conversationId)
+          .findFirst();
+
+      if (conversation != null) {
+        conversation.unreadCount = 0;
+        await isar.conversationEntitys.put(conversation);
+      }
     });
   }
 

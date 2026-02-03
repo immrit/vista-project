@@ -7,6 +7,7 @@
 // 2. اگه بعداً خواستیم backend عوض کنیم، فقط Implementation رو عوض می‌کنیم
 // 3. کد تمیزتر و قابل فهم‌تر بشه
 
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../model/message_model.dart';
 import '../../../model/conversation_model.dart';
 
@@ -240,4 +241,9 @@ abstract class ChatRepository {
   /// این متد پیام را از payload نوتیفیکیشن استخراج کرده و فوراً در دیتابیس ذخیره می‌کند
   /// تا هنگام باز شدن صفحه چت، پیام قبلاً موجود باشد.
   Future<void> handleNotificationMessage(Map<String, dynamic> payload);
+
+  /// وضعیت اتصال ریل‌تایم (برای بهینه‌سازی Polling)
+  Stream<RealtimeSubscribeStatus> get realtimeStatus;
+
+  Future<void> markMessagesAsSeen(String conversationId);
 }

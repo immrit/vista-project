@@ -16,6 +16,8 @@ import 'package:device_info_plus/device_info_plus.dart';
 import '../provider/notification_provider.dart';
 import '../utils/const.dart';
 import 'notification_navigation_service.dart';
+import '../features/chat/data/datasources/chat_local_datasource_isar.dart';
+import '../model/message_model.dart';
 
 @pragma('vm:entry-point')
 void notificationTapBackground(NotificationResponse notificationResponse) {
@@ -213,9 +215,87 @@ class PushNotificationService {
     final type = data['type'];
 
     if (type == 'chat_message') {
+      // ✅ Fallback: Save to Local DB immediately
+      await _saveMessageToLocalDB(data);
       await _showMessagingStyleNotification(data);
     } else {
       await _showStandardNotification(message);
+    }
+  }
+
+  /// ✅ Fallback: Save incoming FCM message to Isar
+  /// This ensures message appears in chat even if Realtime is disconnected.
+  Future<void> _saveMessageToLocalDB(Map<String, dynamic> data) async {
+    try {
+      final conversationId = data['conversation_id']?.toString();
+      final messageId = data['message_id']?.toString();
+      final senderId = data['sender_id']?.toString();
+      final content = data['content']?.toString();
+      final timestamp = data['timestamp']; // Can be String or int
+
+      if (conversationId == null || messageId == null || senderId == null) {
+        return;
+      }
+
+      // Parse timestamp
+      DateTime createdAt = DateTime.now();
+      if (timestamp != null) {
+        if (timestamp is int) {
+          createdAt = DateTime.fromMillisecondsSinceEpoch(timestamp);
+        } else if (timestamp is String) {
+          createdAt = DateTime.tryParse(timestamp) ?? DateTime.now();
+          // Sometimes Supabase sends timestamp as int in string (milliseconds)
+          if (createdAt.year < 2000) {
+            final millis = int.tryParse(timestamp);
+            if (millis != null) {
+              createdAt = DateTime.fromMillisecondsSinceEpoch(millis);
+            }
+          }
+        }
+      }
+
+      final senderName = data['sender_name']?.toString() ?? 'User';
+      // We don't have full profile profile here, but we have enough for the message list
+      // Note: MessageModel usually needs just senderId.
+
+      // Check current user to determine 'isMyMessage'
+      final currentUser = _supabase?.auth.currentUser;
+      final currentUserId = currentUser?.id ?? '';
+
+      // Construct MessageModel
+      // Note: We need to match the JSON structure MessageModel expects, OR use constructor.
+      // MessageModel.fromJson expects database columns usually.
+      // Let's manually construct it to be safe.
+
+      final message = MessageModel(
+        id: messageId,
+        conversationId: conversationId,
+        senderId: senderId,
+        content: content ?? '',
+        createdAt: createdAt,
+        isSeen: false,
+        isSent: true, // It came from server, so it is sent.
+        isDelivered: true,
+        messageType: 'text', // Use 'messageType', not 'type'. Default to text.
+        replyToMessageId: data['reply_to_message_id']?.toString(),
+        // isEdited: false, // Not in constructor
+        // isDeleted: false, // Not in constructor
+        isMe: currentUserId == senderId, // ✅ Required field
+        senderName: senderName,
+        senderAvatar: data['sender_avatar'],
+      );
+
+      logInfo('💾 FCM Fallback: Saving message to Isar: $messageId');
+      final localSource = ChatLocalDataSourceIsar();
+      await localSource.saveMessage(message);
+
+      // We should also update the conversation metadata (unread count etc) logic
+      // But ChatRepositoryImpl handles that complex logic.
+      // Replicating it here might be tricky without access to ChatRepository.
+      // However, saving the message alone triggers the stream listener in ChatScreen
+      // which is the most important part for "seeing the message".
+    } catch (e) {
+      logInfo('❌ FCM Fallback Error: $e');
     }
   }
 

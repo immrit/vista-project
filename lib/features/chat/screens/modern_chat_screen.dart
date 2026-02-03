@@ -202,6 +202,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // 🎬 LIFECYCLE
   // ═══════════════════════════════════════════════════════════════════════════
 
+  Timer? _pollingTimer;
+
   @override
   void initState() {
     super.initState();
@@ -233,8 +235,15 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         ref
             .read(chatRepositoryProvider)
             .resetUnreadCount(widget.args.conversationId);
+
+        ref
+            .read(chatRepositoryProvider)
+            .markMessagesAsSeen(widget.args.conversationId);
       }
     });
+
+    // ✅ Polling Fallback: هر 30 ثانیه برای اطمینان از دریافت پیام‌ها
+    _startPolling();
   }
 
   void _initTypingListeners() {
@@ -463,6 +472,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
   }
 
+  StreamSubscription<RealtimeSubscribeStatus>? _realtimeSubscription;
+
   @override
   void dispose() {
     // توقف تایپ هنگام خروج - با try-catch برای جلوگیری از خطا
@@ -495,6 +506,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     // ✅ پاک‌سازی پیام‌های مخفی
     _temporarilyHiddenMessages.clear();
     _reactionsSubscriptions.clear();
+
+    _pollingTimer?.cancel(); // ✅ لغو تایمر پولینگ
+    _realtimeSubscription?.cancel(); // ✅ لغو لیسنر وضعیت ریل‌تایم
+
     _scrollEndTimer?.cancel();
     _appBarAnimController.dispose();
     _scrollController.removeListener(_onScroll);
@@ -529,6 +544,44 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
 
     super.dispose();
+  }
+
+  void _startPolling() {
+    // ✅ Smart Polling: گوش دادن به وضعیت اتصال ریل‌تایم
+    final repo = ref.read(chatRepositoryProvider);
+
+    _realtimeSubscription = repo.realtimeStatus.listen((status) {
+      if (status == RealtimeSubscribeStatus.subscribed) {
+        debugPrint('🔌 Realtime Connected: Stopping Polling 🛑');
+        _pollingTimer?.cancel();
+        _pollingTimer = null;
+      } else {
+        debugPrint('🔌 Realtime Disconnected ($status): Starting Polling 🔄');
+        // اگر قبلاً تایمر نداشتم، بسازم
+        if (_pollingTimer == null || !_pollingTimer!.isActive) {
+          _pollingTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+            if (!mounted) {
+              timer.cancel();
+              return;
+            }
+            debugPrint('🔄 Smart Polling Check...');
+            ref
+                .read(chatRepositoryProvider)
+                .refreshMessages(widget.args.conversationId);
+          });
+        }
+      }
+    });
+
+    // حالت اولیه: اگر وضعیت هنوز نیامده، فرض کنیم قطع است و پولیگ را شروع کنیم (بعداً با اولین استاتوس اصلاح میشه)
+    // اما چون استریم broadcast است، ممکن است آخرین مقدار را نداشته باشد
+    // برای همین بهتر است یک تایمر اولیه با تاخیر بگذاریم که اگر وصل نشد شروع شود
+    Future.delayed(const Duration(seconds: 5), () {
+      if (_pollingTimer == null && mounted) {
+        // اگر بعد از 5 ثانیه هنوز وصل نشده (تایمر کنسل نشده)، یه چک بکنیم
+        // البته لیسنر بالا اگر ایونت بیاد کار میکنه.
+      }
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

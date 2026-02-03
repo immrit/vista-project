@@ -39,23 +39,28 @@ class _PricingPageState extends ConsumerState<PricingPage> {
   final List<Map<String, dynamic>> _features = [
     {
       'icon': Icons.verified,
-      'title': 'تیک طلایی وریفای',
-      'subtitle': 'نمایش نشان تایید در کنار نام شما برای همه کاربران'
+      'title': 'نشان تایید طلایی',
+      'subtitle': 'نمایش نشان تایید طلایی در کنار نام شما برای همه کاربران'
     },
     {
-      'icon': Icons.speed,
-      'title': 'سرعت دانلود بیشتر',
-      'subtitle': 'بدون محدودیت سرعت در دانلود مدیا و فایل‌ها'
+      'icon': Icons.timelapse,
+      'title': 'استوری‌های ۴۸ ساعته',
+      'subtitle': 'امکان انتشار استوری با ماندگاری ۴۸ ساعت'
     },
     {
-      'icon': Icons.star,
-      'title': 'استیکرهای متحرک اختصاصی',
-      'subtitle': 'دسترسی به مجموعه‌ای از استیکرهای خاص پریمیوم'
+      'icon': Icons.edit_note,
+      'title': 'ویرایش نامحدود پست',
+      'subtitle': 'امکان ویرایش کپشن و مدیای پست‌ها پس از انتشار'
     },
     {
-      'icon': Icons.badge,
-      'title': 'پروفایل متحرک',
-      'subtitle': 'امکان استفاده از ویدیو برای آواتار پروفایل'
+      'icon': Icons.video_collection,
+      'title': 'آپلود ویدیوهای طولانی‌تر',
+      'subtitle': 'امکان آپلود و برش ویدیو تا ۲ دقیقه (بجای ۱ دقیقه)'
+    },
+    {
+      'icon': Icons.trending_up,
+      'title': 'اولویت در جستجو',
+      'subtitle': 'نمایش پروفایل شما در ابتدای لیست جستجو'
     },
     {
       'icon': Icons.block,

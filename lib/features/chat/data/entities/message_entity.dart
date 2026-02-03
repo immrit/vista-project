@@ -52,6 +52,7 @@ class MessageEntity {
   String? messageType; // Added
   String? reactionsJson;
   String? sharedPostDataJson;
+  String? storyReplyDataJson; // Added for story replies
 
   // Deletion
   bool deletedGlobally = false; // Added
@@ -99,6 +100,10 @@ class MessageEntity {
 
     if (model.sharedPostData != null) {
       entity.sharedPostDataJson = jsonEncode(model.sharedPostData!.toJson());
+    }
+
+    if (model.storyReplyData != null) {
+      entity.storyReplyDataJson = jsonEncode(model.storyReplyData!.toJson());
     }
 
     return entity;
@@ -159,6 +164,9 @@ class MessageEntity {
       errorMessage: errorMessage,
       reactions: reactions,
       sharedPostData: sharedPostData,
+      storyReplyData: storyReplyDataJson != null
+          ? StoryReplyData.fromJson(jsonDecode(storyReplyDataJson!))
+          : null,
     );
   }
 }

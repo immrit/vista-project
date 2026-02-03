@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:math' as math;
 import 'package:vector_math/vector_math_64.dart' as vm;
+import 'package:flutter_animate/flutter_animate.dart';
 import '../../domain/entities/story_editor_models.dart';
 
 /// ویجت قابل ویرایش برای آیتم‌های استوری
@@ -18,13 +19,6 @@ class EditableStoryItem extends StatefulWidget {
   final bool isSelected;
   final bool isDraggingOverTrash;
   final Widget? child;
-
-  // child param is ignored but kept for basic compatibility if needed,
-  // though we prefer internal build.
-  // If we want to strictly follow user's "replace content" logic we shouldn't have it,
-  // but to fix the build quickly we might accept it and ignore it?
-  // Better: Don't add child, let's fix the call site.
-  // But we DO need to add isDraggingOverTrash and onDoubleTap.
 
   const EditableStoryItem({
     super.key,
@@ -92,7 +86,54 @@ class _EditableStoryItemState extends State<EditableStoryItem> {
       );
     }
 
-    // Wrap content with border and delete button when selected
+    // Apply Animations if item is TextStoryItem
+    if (widget.item is TextStoryItem) {
+      final textItem = widget.item as TextStoryItem;
+      switch (textItem.animationType) {
+        case TextAnimationType.typewriter:
+          content = content
+              .animate(onPlay: (controller) => controller.repeat(reverse: true))
+              .fadeIn(duration: 500.ms)
+              .scale(begin: const Offset(0.8, 0.8));
+          break;
+        case TextAnimationType.fade:
+          content = content
+              .animate(onPlay: (controller) => controller.repeat(reverse: true))
+              .fadeIn(duration: 800.ms)
+              .then(delay: 200.ms)
+              .fadeOut(duration: 800.ms);
+          break;
+        case TextAnimationType.scale:
+          content = content
+              .animate(onPlay: (controller) => controller.repeat(reverse: true))
+              .scale(
+                  begin: const Offset(1, 1),
+                  end: const Offset(1.1, 1.1),
+                  duration: 1000.ms);
+          break;
+        case TextAnimationType.slide:
+          content = content
+              .animate(onPlay: (controller) => controller.repeat(reverse: true))
+              .slideY(
+                  begin: 0,
+                  end: -0.1,
+                  duration: 800.ms,
+                  curve: Curves.easeInOut);
+          break;
+        case TextAnimationType.none:
+          break;
+      }
+    }
+
+    // Constraint max width to screen width
+    content = ConstrainedBox(
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.of(context).size.width - 40,
+      ),
+      child: content,
+    );
+
+    // Wrap content with border when selected
     Widget framedContent = Stack(
       clipBehavior: Clip.none,
       alignment: Alignment.center,
@@ -103,7 +144,8 @@ class _EditableStoryItemState extends State<EditableStoryItem> {
               ? BoxDecoration(
                   border: Border.all(
                       color: widget.isDraggingOverTrash
-                          ? Colors.red
+                          ? Colors
+                              .transparent // Hide border when over trash for cleaner look
                           : Colors.white,
                       width: 1.5),
                   borderRadius: BorderRadius.circular(14),
@@ -116,41 +158,21 @@ class _EditableStoryItemState extends State<EditableStoryItem> {
                   ],
                 )
               : null,
-          // FittedBox ensures the container shrinks to fit the content tightly
-          child: FittedBox(
-            fit: BoxFit.contain,
-            child: content,
-          ),
+          child: content,
         ),
-        // Delete button (top-left corner) - Only visible when selected
-        if (widget.isSelected)
-          Positioned(
-            top: -12,
-            left: -12,
-            child: GestureDetector(
-              onTap: () {
-                HapticFeedback.mediumImpact();
-                widget.onDelete?.call();
-              },
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black26,
-                      blurRadius: 4,
-                      offset: Offset(0, 2),
-                    )
-                  ],
-                ),
-                child: const Icon(Icons.close, color: Colors.black, size: 18),
-              ),
-            ),
-          ),
       ],
     );
+
+    // Apply Drag-to-Delete visual feedback (Shrink & Fade)
+    if (widget.isDraggingOverTrash) {
+      framedContent = Opacity(
+        opacity: 0.6,
+        child: Transform.scale(
+          scale: 0.7,
+          child: framedContent,
+        ),
+      );
+    }
 
     // Apply transformations and handle gestures
     return Transform(

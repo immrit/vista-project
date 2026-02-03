@@ -248,34 +248,37 @@ class _AnimatedStoryRingState extends State<_AnimatedStoryRing>
   }
 
   Widget _buildAnimatedRing(bool isDarkMode, bool hasUnseenStories) {
-    // ✅ گرادیانت برای دیده‌نشده، خاکستری برای دیده‌شده
+    // ✅ گرادیانت برای دیده‌نشده (رنگ‌های جذاب)، خاکستری برای دیده‌شده
     final gradientColors = hasUnseenStories
         ? const [
-            Color(0xFFFFFFFF),
-            Color(0xFFB0B0B0)
-          ] // سفید به خاکستری - مونوکروم
+            Color(0xFF962FBF), // Purple
+            Color(0xFFD62976), // Pink
+            Color(0xFFFA7E1E), // Orange
+            Color(0xFFFEDA75), // Yellow
+          ]
         : [
-            isDarkMode ? Colors.grey[700]! : Colors.grey[400]!,
-            isDarkMode ? Colors.grey[700]! : Colors.grey[400]!,
+            isDarkMode ? const Color(0xFF424242) : const Color(0xFFE0E0E0),
+            isDarkMode ? const Color(0xFF303030) : const Color(0xFFBDBDBD),
           ];
 
     return Container(
-      width: 73,
-      height: 73,
-      padding: const EdgeInsets.all(2.5),
+      width: 74,
+      height: 74, // Slightly larger to accommodate thinner ring visual
+      padding: const EdgeInsets.all(2.0), // Thinner ring
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: LinearGradient(
           colors: gradientColors,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
         ),
         boxShadow: hasUnseenStories
             ? [
                 BoxShadow(
-                  color: Colors.white.withValues(alpha: 0.3),
-                  blurRadius: 8,
-                  spreadRadius: 1,
+                  color: const Color(0xFFD62976)
+                      .withValues(alpha: 0.2), // Colored shadow
+                  blurRadius: 6,
+                  spreadRadius: 0,
                 ),
               ]
             : null,

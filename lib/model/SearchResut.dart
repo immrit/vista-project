@@ -9,6 +9,8 @@ class SearchState {
   final List<ProfileModel> userResults;
   final String? error;
   final int selectedTab;
+  final int userOffset;
+  final bool hasMoreUsers;
 
   const SearchState({
     this.isLoading = false,
@@ -17,6 +19,8 @@ class SearchState {
     this.userResults = const [],
     this.error,
     this.selectedTab = 0,
+    this.userOffset = 0,
+    this.hasMoreUsers = true,
   });
 
   SearchState copyWith({
@@ -26,6 +30,8 @@ class SearchState {
     List<ProfileModel>? userResults,
     String? error,
     int? selectedTab,
+    int? userOffset,
+    bool? hasMoreUsers,
   }) {
     return SearchState(
       isLoading: isLoading ?? this.isLoading,
@@ -34,6 +40,8 @@ class SearchState {
       userResults: userResults ?? this.userResults,
       error: error ?? this.error,
       selectedTab: selectedTab ?? this.selectedTab,
+      userOffset: userOffset ?? this.userOffset,
+      hasMoreUsers: hasMoreUsers ?? this.hasMoreUsers,
     );
   }
 }

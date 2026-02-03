@@ -107,6 +107,15 @@ abstract class StoryItem {
   }
 }
 
+/// نوع انیمیشن متن
+enum TextAnimationType {
+  none,
+  typewriter,
+  fade,
+  scale,
+  slide,
+}
+
 /// آیتم متنی
 class TextStoryItem extends StoryItem {
   String text;
@@ -116,6 +125,7 @@ class TextStoryItem extends StoryItem {
   String fontFamily;
   TextAlign textAlign;
   int styleIndex;
+  TextAnimationType animationType; // New field
 
   @override
   StoryItemType get type => StoryItemType.text;
@@ -135,6 +145,7 @@ class TextStoryItem extends StoryItem {
     this.fontFamily = 'Vazir',
     this.textAlign = TextAlign.center,
     this.styleIndex = 0,
+    this.animationType = TextAnimationType.none, // Default
   });
 
   @override
@@ -152,6 +163,7 @@ class TextStoryItem extends StoryItem {
     String? fontFamily,
     TextAlign? textAlign,
     int? styleIndex,
+    TextAnimationType? animationType, // New field parameter
   }) {
     return TextStoryItem(
       id: id,
@@ -168,6 +180,7 @@ class TextStoryItem extends StoryItem {
       fontFamily: fontFamily ?? this.fontFamily,
       textAlign: textAlign ?? this.textAlign,
       styleIndex: styleIndex ?? this.styleIndex,
+      animationType: animationType ?? this.animationType,
     );
   }
 
@@ -187,6 +200,7 @@ class TextStoryItem extends StoryItem {
         'font_family': fontFamily,
         'text_align': textAlign.index,
         'style_index': styleIndex,
+        'animation_type': animationType.index, // Added
       };
 
   factory TextStoryItem.fromJson(Map<String, dynamic> json) {
@@ -206,6 +220,9 @@ class TextStoryItem extends StoryItem {
       fontFamily: json['font_family'] as String? ?? 'Vazir',
       textAlign: TextAlign.values[json['text_align'] as int? ?? 2],
       styleIndex: json['style_index'] as int? ?? 0,
+      animationType: json['animation_type'] != null
+          ? TextAnimationType.values[json['animation_type'] as int]
+          : TextAnimationType.none, // Added
     );
   }
 }

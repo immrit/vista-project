@@ -84,5 +84,6 @@ class ChatProviderParams {
 final conversationsStreamProvider =
     StreamProvider<List<ConversationModel>>((ref) {
   final repo = ref.watch(chatRepositoryProvider);
+
   return repo.watchConversations();
 });

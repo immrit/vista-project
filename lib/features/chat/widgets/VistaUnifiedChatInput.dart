@@ -52,6 +52,43 @@ class _VistaUnifiedChatInputState extends ConsumerState<VistaUnifiedChatInput>
   late Animation<double> _pulseAnimation;
   Timer? _recordingTimer;
   int _recordDuration = 0;
+// 1. متغیر جهت متن (پیش‌فرض راست‌چین برای فارسی)
+  TextDirection _textDirection = TextDirection.rtl;
+
+// 2. تابع تشخیص هوشمند جهت
+  void _updateTextDirection(String text) {
+    if (text.isEmpty) {
+      if (_textDirection != TextDirection.rtl) {
+        setState(() => _textDirection = TextDirection.rtl);
+      }
+      return;
+    }
+
+    // حذف کاراکترهای خاص ابتدایی مثل # و @ برای تشخیص زبان واقعی
+    String cleanText = text.trimLeft();
+    if (cleanText.startsWith('#') || cleanText.startsWith('@')) {
+      cleanText = cleanText.substring(1).trimLeft();
+    }
+
+    // اگر بعد از حذف # یا @ متنی نماند، چپ‌چین کن (برای نوشتن یوزرنیم یا تگ)
+    if (cleanText.isEmpty) {
+      if (_textDirection != TextDirection.ltr) {
+        setState(() => _textDirection = TextDirection.ltr);
+      }
+      return;
+    }
+
+    // تشخیص اولین کاراکتر واقعی
+    final firstChar = cleanText.isNotEmpty ? cleanText[0] : '';
+
+    // رنج یونیکد فارسی و عربی
+    final isRtl = RegExp(r'[\u0600-\u06FF]').hasMatch(firstChar);
+    final newDirection = isRtl ? TextDirection.rtl : TextDirection.ltr;
+
+    if (_textDirection != newDirection) {
+      setState(() => _textDirection = newDirection);
+    }
+  }
 
   @override
   void initState() {
@@ -108,7 +145,12 @@ class _VistaUnifiedChatInputState extends ConsumerState<VistaUnifiedChatInput>
   }
 
   void _onTextChanged() {
-    final hasText = _controller.text.trim().isNotEmpty;
+    final text = _controller.text;
+
+    // ✅ اضافه کردن فراخوانی تابع جدید
+    _updateTextDirection(text);
+
+    final hasText = text.trim().isNotEmpty;
     if (hasText != _hasText) {
       setState(() => _hasText = hasText);
     }
@@ -367,13 +409,21 @@ class _VistaUnifiedChatInputState extends ConsumerState<VistaUnifiedChatInput>
             minLines: 1,
             maxLines: 5,
             style: theme.textTheme.bodyMedium,
+            // ✅ تنظیمات جدید جهت متن
+            textDirection: _textDirection,
+            textAlign: _textDirection == TextDirection.rtl
+                ? TextAlign.right
+                : TextAlign.left,
+
             decoration: InputDecoration(
               hintText: widget.hint ?? 'پیام خود را بنویسید...',
               border: InputBorder.none,
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               filled: true,
-              fillColor: Colors.transparent, // ✅ Fix for "Two-Color" bug
+              fillColor: Colors.transparent,
+              // ✅ تراز کردن Hint متناسب با زبان کیبورد کاربر
+              hintTextDirection: TextDirection.rtl,
             ),
           ),
         ),

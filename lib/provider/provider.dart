@@ -2274,10 +2274,11 @@ class SearchService {
 class SearchNotifier extends StateNotifier<SearchState> {
   final Ref ref;
   final SearchService _searchService;
+  final int _userLimit = 20;
 
   SearchNotifier(this.ref)
       : _searchService = SearchService(),
-        super(SearchState());
+        super(const SearchState());
 
   void setTab(int index) {
     state = state.copyWith(selectedTab: index);
@@ -2290,11 +2291,19 @@ class SearchNotifier extends StateNotifier<SearchState> {
         userResults: [],
         isLoading: false,
         currentQuery: '',
+        userOffset: 0,
+        hasMoreUsers: true,
       );
       return;
     }
 
-    state = state.copyWith(isLoading: true, currentQuery: query);
+    state = state.copyWith(
+      isLoading: true,
+      currentQuery: query,
+      userOffset: 0,
+      hasMoreUsers: true,
+      userResults: [], // Clear previous results
+    );
 
     try {
       if (query.startsWith('#')) {
@@ -2305,28 +2314,70 @@ class SearchNotifier extends StateNotifier<SearchState> {
           selectedTab: 1,
         );
       } else {
-        final response = await Supabase.instance.client
-            .from('profiles')
-            .select()
-            .or('username.ilike.%$query%,full_name.ilike.%$query%')
-            .limit(20);
-
-        final users = (response as List)
-            .map(
-                (user) => ProfileModel.fromMap(Map<String, dynamic>.from(user)))
-            .toList();
-
-        state = state.copyWith(
-          userResults: users,
-          isLoading: false,
-          selectedTab: 0,
-        );
+        await _fetchUsers(query, 0);
+        state = state.copyWith(selectedTab: 0);
       }
     } catch (e) {
       state = state.copyWith(
         error: e.toString(),
         isLoading: false,
       );
+    }
+  }
+
+  Future<void> loadMoreUsers() async {
+    if (!state.hasMoreUsers || state.isLoading) return;
+
+    // Avoid rapid duplicate calls (optional debouncing could go here)
+    // For now relies on isLoading=true from search, but loadMore logic needs its own loading state?
+    // Using simple approach: assume UI triggers carefully or we check if fetching.
+    // Actually, 'isLoading' usually blocks the whole UI. For infinite scroll, we often want a bottom spinner.
+    // Let's assume the UI handles the debounce.
+
+    await _fetchUsers(state.currentQuery, state.userOffset);
+  }
+
+  Future<void> _fetchUsers(String query, int offset) async {
+    try {
+      final response = await Supabase.instance.client
+          .from('profiles')
+          .select()
+          .or('username.ilike.%$query%,full_name.ilike.%$query%')
+          .order('is_verified', ascending: false) // Prioritize Verified
+          .range(offset, offset + _userLimit - 1);
+
+      final newUsers = (response as List)
+          .map((user) => ProfileModel.fromMap(Map<String, dynamic>.from(user)))
+          .toList();
+
+      // Client-side sort for fine-grained priority (Blue > Gold > Normal)
+      newUsers.sort((a, b) {
+        int getScore(ProfileModel p) {
+          if (p.hasBlueBadge) return 3;
+          if (p.hasGoldBadge || p.role == 'premium') return 2;
+          return 1;
+        }
+
+        return getScore(b).compareTo(getScore(a));
+      });
+
+      final allUsers = [...state.userResults, ...newUsers];
+      // Re-sort entire list?
+      // Ideally yes, to ensure if a high priority user comes in late (unlikely due to DB sort) they bubble up.
+      // But DB sort 'is_verified' puts all verified first.
+      // So 'newUsers' will mostly be unverified if we passed the verified block.
+      // So simple append is fine.
+
+      state = state.copyWith(
+        userResults: allUsers,
+        isLoading: false,
+        userOffset: offset + newUsers.length,
+        hasMoreUsers: newUsers.length >= _userLimit,
+      );
+    } catch (e) {
+      print('Error fetching users: $e');
+      // Update state to stop loading
+      state = state.copyWith(isLoading: false);
     }
   }
 

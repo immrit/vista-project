@@ -10,6 +10,7 @@ import 'subpages/privacy_security_page.dart';
 import 'subpages/notification_settings_page.dart';
 import 'subpages/data_storage_settings_page.dart';
 import 'subpages/AboutSettingsPage.dart';
+import 'vistaStore/pricing_page.dart';
 
 /// صفحه تنظیمات ساده و تمیز - الهام گرفته از اینستاگرام
 class Settings extends ConsumerWidget {
@@ -51,6 +52,40 @@ class Settings extends ConsumerWidget {
       children: [
         // کارت پروفایل
         _buildProfileCard(context, profile, isDark),
+        const SizedBox(height: 24),
+
+        // بخش ویستا پریمیوم (اضافه شده مجدد)
+        _buildSectionHeader('ویستا پریمیوم', isDark),
+        _buildSettingsGroup(
+          isDark: isDark,
+          children: [
+            _SettingsTile(
+              icon: Icons.star_rounded,
+              title: 'ویستا پریمیوم',
+              iconColor: const Color(0xFF8774E1), // رنگ بنفش پریمیوم
+              titleColor: const Color(0xFF8774E1),
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8774E1).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  'ویژه',
+                  style: TextStyle(
+                    color: Color(0xFF8774E1),
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const PricingPage()),
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 24),
 
         // بخش حساب کاربری
@@ -315,6 +350,7 @@ class _SettingsTile extends StatelessWidget {
   final VoidCallback onTap;
   final Color? titleColor;
   final Color? iconColor;
+  final Widget? trailing;
 
   const _SettingsTile({
     required this.icon,
@@ -322,6 +358,7 @@ class _SettingsTile extends StatelessWidget {
     required this.onTap,
     this.titleColor,
     this.iconColor,
+    this.trailing,
   });
 
   @override
@@ -343,11 +380,12 @@ class _SettingsTile extends StatelessWidget {
           color: titleColor ?? defaultTextColor,
         ),
       ),
-      trailing: Icon(
-        Icons.chevron_left,
-        color: isDark ? Colors.grey[700] : Colors.grey[400],
-        size: 20,
-      ),
+      trailing: trailing ??
+          Icon(
+            Icons.chevron_left,
+            color: isDark ? Colors.grey[700] : Colors.grey[400],
+            size: 20,
+          ),
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
     );
