@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../model/session_model.dart';
+import '../security/secure_kv_store.dart';
 import '../security/logging_utility.dart';
 import '../security/security.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1417,19 +1418,36 @@ class SessionManagerService {
 
   Future<void> _saveSession() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('session_id', _currentSessionId ?? '');
-      await prefs.setString('session_token', _sessionToken ?? '');
+      await SecureKeyValueStore.write('session_id', _currentSessionId ?? '');
+      await SecureKeyValueStore.write('session_token', _sessionToken ?? '');
     } catch (e) {
-      logInfo('❌ خطا در ذخیره نشست: $e');
+      logInfo('? ??? ?? ?????????? ????: $e');
     }
   }
-
   Future<void> _loadSavedSession() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      _currentSessionId = prefs.getString('session_id');
-      _sessionToken = prefs.getString('session_token');
+      _currentSessionId = await SecureKeyValueStore.read('session_id');
+      _sessionToken = await SecureKeyValueStore.read('session_token');
+
+      // Legacy migration from SharedPreferences
+      if ((_currentSessionId == null || _currentSessionId!.isEmpty) ||
+          (_sessionToken == null || _sessionToken!.isEmpty)) {
+        final prefs = await SharedPreferences.getInstance();
+        final legacySessionId = prefs.getString('session_id');
+        final legacySessionToken = prefs.getString('session_token');
+
+        if (legacySessionId != null && legacySessionId.isNotEmpty) {
+          _currentSessionId = legacySessionId;
+          await SecureKeyValueStore.write('session_id', legacySessionId);
+          await prefs.remove('session_id');
+        }
+
+        if (legacySessionToken != null && legacySessionToken.isNotEmpty) {
+          _sessionToken = legacySessionToken;
+          await SecureKeyValueStore.write('session_token', legacySessionToken);
+          await prefs.remove('session_token');
+        }
+      }
 
       if (_currentSessionId != null && _currentSessionId!.isEmpty) {
         _currentSessionId = null;
@@ -1438,20 +1456,22 @@ class SessionManagerService {
         _sessionToken = null;
       }
     } catch (e) {
-      logInfo('❌ خطا در بارگذاری نشست: $e');
+      logInfo('? ??? ?? ???????? ????: $e');
     }
   }
-
   Future<void> _clearSavedSession() async {
     try {
+      await SecureKeyValueStore.delete('session_id');
+      await SecureKeyValueStore.delete('session_token');
+
+      // Legacy cleanup
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('session_id');
       await prefs.remove('session_token');
     } catch (e) {
-      logInfo('❌ خطا در پاک کردن نشست: $e');
+      logInfo('? ??? ?? ??? ???? ????: $e');
     }
   }
-
   Future<List<SessionModel>> getActiveSessions() async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -2186,3 +2206,4 @@ class TerminateSessionResult {
     this.remainingDays,
   });
 }
+

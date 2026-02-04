@@ -425,6 +425,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               isSelected ? activeIcon : inactiveIcon,
               width: 26,
               height: 26,
+              filterQuality: FilterQuality.high,
+              gaplessPlayback: true,
               errorBuilder: (context, error, stackTrace) {
                 // Fallback به آیکون پیش‌فرض اگر تصویر بارگذاری نشد
                 return Icon(
@@ -482,6 +484,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               isSelected ? activeIcon : inactiveIcon,
               width: 26,
               height: 26,
+              filterQuality: FilterQuality.high,
+              gaplessPlayback: true,
               errorBuilder: (context, error, stackTrace) {
                 return Icon(
                   Icons.chat_bubble_outline_rounded,
@@ -517,6 +521,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             _NavIcons.add,
             width: 24,
             height: 24,
+            filterQuality: FilterQuality.high,
+            gaplessPlayback: true,
             errorBuilder: (context, error, stackTrace) {
               return Icon(
                 Icons.add_rounded,

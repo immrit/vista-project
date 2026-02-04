@@ -18,7 +18,7 @@ import '../../../utils/const.dart';
 import '../../../model/MusicModel.dart';
 import '../../../provider/MusicProvider.dart';
 import '../../../provider/engagement_posts_provider.dart'; // تغییر به فایل جدید
-import '../../../services/secure_config.dart';
+import '../../../services/secure_upload_service.dart';
 import 'package:Vista/utils/widgets.dart';
 import 'package:Vista/widgets/profile_avatar_widget.dart'; // Add this import
 import 'package:Vista/widgets/CustomVideoPlayer.dart';
@@ -35,7 +35,6 @@ import 'MusicWaveform.dart';
 import 'notificationScreen.dart';
 import 'profileScreen.dart';
 import 'dart:async';
-import 'package:aws_s3_api/s3-2006-03-01.dart';
 import '../../../utils/premium_features_helper.dart';
 
 class PublicPostsScreen extends ConsumerStatefulWidget {
@@ -1333,26 +1332,14 @@ void showEditPostDialog(
   }
 
   // تابع حذف فایل از آروان کلود
+  // تابع حذف فایل از storage
   Future<void> deleteFileFromArvan(String fileUrl) async {
     try {
       if (fileUrl.contains('storage.389346.ir.cdn.ir')) {
-        final uri = Uri.parse(fileUrl);
-        final key = uri.pathSegments.sublist(1).join('/');
-
-        final s3 = S3(
-          region: SecureConfig.awsRegion,
-          credentials: AwsClientCredentials(
-            accessKey: SecureConfig.awsAccessKey,
-            secretKey: SecureConfig.awsSecretKey,
-          ),
-          endpointUrl: SecureConfig.awsEndpointUrl,
-        );
-
-        await s3.deleteObject(
-          bucket: SecureConfig.awsBucketName,
-          key: key,
-        );
-        logInfo('فایل با موفقیت از آروان کلود حذف شد: $fileUrl');
+        final deleted = await SecureUploadService.deleteByUrl(fileUrl);
+        if (deleted) {
+          logInfo('فایل با موفقیت از آروان کلود حذف شد: $fileUrl');
+        }
       }
     } catch (e) {
       logInfo('خطا در حذف فایل از آروان کلود: $e');

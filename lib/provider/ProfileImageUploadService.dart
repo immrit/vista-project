@@ -3,29 +3,11 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path/path.dart' as path;
-import 'package:aws_s3_api/s3-2006-03-01.dart';
-import '../services/secure_config.dart';
+import '../services/secure_upload_service.dart';
 import '../services/user_friendly_error_handler.dart';
 import '../utils/const.dart';
 
 class ProfileImageUploadService {
-  static S3 get s3 {
-    if (!SecureConfig.isConfigured) {
-      throw Exception(
-          'AWS credentials not properly configured. Please set environment variables.');
-    }
-
-    return S3(
-      region: SecureConfig.awsRegion,
-      credentials: AwsClientCredentials(
-        accessKey: SecureConfig.awsAccessKey,
-        secretKey: SecureConfig.awsSecretKey,
-      ),
-      endpointUrl: SecureConfig.awsEndpointUrl,
-    );
-  }
-
-  static String get bucketName => SecureConfig.awsBucketName;
 
   static String _getContentType(String filePath) {
     final extension = path.extension(filePath).toLowerCase();
@@ -51,6 +33,37 @@ class ProfileImageUploadService {
 
     logInfo('فایل تبدیل شده در مسیر: ${convertedFile.path}');
     return convertedFile;
+  }
+
+  static Future<File?> compressImage(File file) async {
+    try {
+      final extension = path.extension(file.path).toLowerCase();
+      if (extension == '.png') {
+        return file;
+      }
+
+      final img = await FlutterImageCompress.compressWithFile(
+        file.absolute.path,
+        minWidth: 1080,
+        minHeight: 1080,
+        quality: 85,
+        format: CompressFormat.jpeg,
+      );
+
+      if (img == null) {
+        return null;
+      }
+
+      final dir = path.dirname(file.path);
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final compressedFile = File('$dir/compressed_$timestamp.jpg')
+        ..writeAsBytesSync(img);
+
+      return compressedFile;
+    } catch (e) {
+      logInfo('Ø®Ø·Ø§ Ø¯Ø± ÙØ´Ø±Ø¯Ù‡â€ŒØ³Ø§Ø²ÛŒ ØªØµÙˆÛŒØ± Ù¾Ø±ÙˆÙØ§ÛŒÙ„: $e');
+      return null;
+    }
   }
 
   static Future<String?> uploadImage(File file) async {
@@ -87,21 +100,16 @@ class ProfileImageUploadService {
 
       final Uint8List fileBytes = await compressedFile.readAsBytes();
 
-      // همیشه با نوع 'image/jpeg' پس از تبدیل کار می‌کنید
       const contentType = 'image/jpeg';
       logInfo('Content-Type: $contentType');
       logInfo('File size: ${fileBytes.length} bytes');
-
-      await s3.putObject(
-        bucket: bucketName,
-        key: fileName,
-        body: fileBytes,
+      final uploadResult = await SecureUploadService.uploadBytes(
+        bytes: fileBytes,
+        objectKey: fileName,
         contentType: contentType,
-        acl: ObjectCannedACL.publicRead,
       );
 
-      final uploadedUrl =
-          'https://storage.389346.ir.cdn.ir/$bucketName/$fileName';
+      final uploadedUrl = uploadResult.url;
       logInfo('تصویر با موفقیت آپلود شد: $uploadedUrl');
       return uploadedUrl;
     } catch (e) {
@@ -120,6 +128,65 @@ class ProfileImageUploadService {
   }
 
   // متد مخصوص آپلود تصویر در وب (بدون استفاده از File)
+  static Future<String?> uploadImageForRegistration(
+      File file, String userId) async {
+    File? compressedFile;
+    try {
+      if (!await file.exists()) {
+        throw Exception('فایل مورد نظر وجود ندارد');
+      }
+
+      final extension = path.extension(file.path).toLowerCase();
+      logInfo('نوع فایل ورودی: $extension');
+
+      if (extension == '.png') {
+        logInfo('تبدیل فایل PNG به JPEG');
+        compressedFile = await convertPngToJpeg(file);
+        if (compressedFile == null) {
+          throw Exception('تبدیل به JPEG شکست خورد');
+        }
+      } else {
+        compressedFile = await compressImage(file);
+        if (compressedFile == null) {
+          logInfo(
+              'فشرده‌سازی ناموفق بود، استفاده از فایل اصلی');
+          compressedFile = file;
+        }
+      }
+
+      final fileName =
+          'avatars/${userId}_${DateTime.now().millisecondsSinceEpoch}_${path.basename(compressedFile.path)}';
+
+      final Uint8List fileBytes = await compressedFile.readAsBytes();
+
+      const contentType = 'image/jpeg';
+      logInfo('Content-Type: $contentType');
+      logInfo('File size: ${fileBytes.length} bytes');
+      final uploadResult = await SecureUploadService.uploadBytes(
+        bytes: fileBytes,
+        objectKey: fileName,
+        contentType: contentType,
+      );
+
+      final uploadedUrl = uploadResult.url;
+      logInfo('تصویر با موفقیت آپلود شد: $uploadedUrl');
+      return uploadedUrl;
+    } catch (e) {
+      UserFriendlyErrorHandler.logError(e,
+          context: 'profile_image_upload_registration');
+      throw Exception(UserFriendlyErrorHandler.getFriendlyMessage(e,
+          context: 'profile_image_upload_registration'));
+    } finally {
+      if (compressedFile != null && compressedFile.path != file.path) {
+        try {
+          await compressedFile.delete();
+        } catch (e) {
+          logInfo('خطا در حذف فایل موقت: $e');
+        }
+      }
+    }
+  }
+
   static Future<String?> uploadImageWeb(
       Uint8List fileBytes, String fileName) async {
     try {
@@ -140,129 +207,13 @@ class ProfileImageUploadService {
 
       logInfo('Content-Type: $contentType');
       logInfo('File size: ${fileBytes.length} bytes');
-
-      await s3.putObject(
-        bucket: bucketName,
-        key: s3FileName,
-        body: fileBytes,
+      final uploadResult = await SecureUploadService.uploadBytes(
+        bytes: fileBytes,
+        objectKey: s3FileName,
         contentType: contentType,
-        acl: ObjectCannedACL.publicRead,
       );
 
-      final uploadedUrl =
-          'https://storage.389346.ir.cdn.ir/$bucketName/$s3FileName';
-      logInfo('تصویر با موفقیت آپلود شد: $uploadedUrl');
-      return uploadedUrl;
-    } catch (e) {
-      UserFriendlyErrorHandler.logError(e, context: 'profile_image_upload');
-      throw Exception(UserFriendlyErrorHandler.getFriendlyMessage(e,
-          context: 'profile_image_upload'));
-    }
-  }
-
-  static Future<bool> deleteImage(String fileUrl) async {
-    try {
-      final uri = Uri.parse(fileUrl);
-      final key = uri.pathSegments.sublist(1).join('/');
-
-      await s3.deleteObject(
-        bucket: bucketName,
-        key: key,
-      );
-
-      // اگر خطایی رخ نداد، یعنی عملیات موفق بوده
-      return true;
-    } catch (e) {
-      logInfo('خطا در حذف فایل: $e');
-      return false;
-    }
-  }
-
-  static Future<File?> compressImage(File file) async {
-    try {
-      final extension = path.extension(file.path).toLowerCase();
-
-      // اگر فایل PNG است، مستقیماً برگردانده شود
-      if (extension == '.png') {
-        logInfo('فایل PNG شناسایی شد - بدون فشرده‌سازی');
-        return file;
-      }
-
-      logInfo('شروع فشرده‌سازی با فرمت: $extension');
-
-      final img = await FlutterImageCompress.compressWithFile(
-        file.absolute.path,
-        minWidth: 1024,
-        minHeight: 1024,
-        quality: 85,
-        format: CompressFormat.jpeg, // همیشه به JPEG تبدیل می‌کنیم
-      );
-
-      if (img == null) {
-        logInfo('فشرده‌سازی ناموفق بود');
-        return null;
-      }
-
-      final dir = path.dirname(file.path);
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      // همیشه با پسوند jpg ذخیره می‌کنیم
-      final compressedFile = File('$dir/compressed_$timestamp.jpg')
-        ..writeAsBytesSync(img);
-
-      logInfo('فایل فشرده شده در مسیر: ${compressedFile.path}');
-      return compressedFile;
-    } catch (e) {
-      logInfo('خطا در فشرده‌سازی تصویر: $e');
-      return null;
-    }
-  }
-
-  /// آپلود عکس پروفایل در زمان ثبت نام (بدون نیاز به احراز هویت)
-  static Future<String?> uploadImageForRegistration(
-      File file, String tempUserId) async {
-    File? compressedFile;
-    try {
-      if (!await file.exists()) {
-        throw Exception('فایل مورد نظر وجود ندارد');
-      }
-
-      final extension = path.extension(file.path).toLowerCase();
-      logInfo('نوع فایل ورودی (ثبت نام): $extension');
-
-      if (extension == '.png') {
-        logInfo('تبدیل فایل PNG به JPEG');
-        compressedFile = await convertPngToJpeg(file);
-        if (compressedFile == null) {
-          throw Exception('تبدیل به JPEG شکست خورد');
-        }
-      } else {
-        compressedFile = await compressImage(file);
-        if (compressedFile == null) {
-          logInfo('فشرده‌سازی ناموفق بود، استفاده از فایل اصلی');
-          compressedFile = file;
-        }
-      }
-
-      final fileName =
-          'avatars/temp_${tempUserId}_${DateTime.now().millisecondsSinceEpoch}_${path.basename(compressedFile.path)}';
-
-      final Uint8List fileBytes = await compressedFile.readAsBytes();
-
-      // همیشه با نوع 'image/jpeg' پس از تبدیل کار می‌کنید
-      const contentType = 'image/jpeg';
-      logInfo('Content-Type: $contentType');
-      logInfo('File size: ${fileBytes.length} bytes');
-
-      await s3.putObject(
-        bucket: bucketName,
-        key: fileName,
-        body: fileBytes,
-        contentType: contentType,
-        acl: ObjectCannedACL.publicRead,
-      );
-
-      final uploadedUrl =
-          'https://storage.389346.ir.cdn.ir/$bucketName/$fileName';
+      final uploadedUrl = uploadResult.url;
       logInfo('تصویر با موفقیت آپلود شد (ثبت نام): $uploadedUrl');
       return uploadedUrl;
     } catch (e) {
@@ -270,14 +221,20 @@ class ProfileImageUploadService {
           context: 'profile_image_upload_registration');
       throw Exception(UserFriendlyErrorHandler.getFriendlyMessage(e,
           context: 'profile_image_upload_registration'));
-    } finally {
-      if (compressedFile != null && compressedFile.path != file.path) {
-        try {
-          await compressedFile.delete();
-        } catch (e) {
-          logInfo('خطا در حذف فایل موقت: $e');
-        }
+    }
+  }
+  /// حذف تصویر پروفایل
+  static Future<bool> deleteImage(String fileUrl) async {
+    try {
+      final deleted = await SecureUploadService.deleteByUrl(fileUrl);
+      if (!deleted) {
+        throw Exception('Delete failed');
       }
+      return true;
+    } catch (e) {
+      logInfo('خطا در حذف تصویر پروفایل: $e');
+      return false;
     }
   }
 }
+

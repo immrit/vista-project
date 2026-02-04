@@ -353,20 +353,20 @@ class PublicPostsNotifier
       final posts = filteredResponse.map((post) {
         final postLikes = post['likes'] as List? ?? [];
         final comments = post['comments'] as List<dynamic>? ?? [];
+        final profile = (post['profiles'] as Map<String, dynamic>?) ?? {};
 
         return PublicPostModel.fromMap({
           ...post,
           'like_count': postLikes.length,
           'is_liked': postLikes
               .any((like) => like['user_id'] == supabase.auth.currentUser?.id),
-          'username': post['profiles']['username'] ??
-              post['profiles']['full_name'] ??
+          'username': profile['username'] ??
+              profile['full_name'] ??
               'Unknown',
-          'avatar_url': post['profiles']['avatar_url'] ?? '',
-          'is_verified': post['profiles']['is_verified'] ?? false,
+          'avatar_url': profile['avatar_url'] ?? '',
+          'is_verified': profile['is_verified'] ?? false,
           'comment_count': comments.length,
-          'verification_type': post['profiles']
-              ['verification_type'], // اضافه کردن verification_type
+          'verification_type': profile['verification_type'], // اضافه کردن verification_type
         });
       }).toList();
 
@@ -2086,13 +2086,13 @@ class FollowingPostsNotifier
         final likes = List<Map<String, dynamic>>.from(post['likes'] ?? []);
         final comments =
             List<Map<String, dynamic>>.from(post['comments'] ?? []);
-        final profile = post['profiles'] as Map<String, dynamic>;
+        final profile = (post['profiles'] as Map<String, dynamic>?) ?? {};
 
         return PublicPostModel.fromMap({
           ...post,
           'like_count': likes.length,
           'is_liked': likes.any((like) => like['user_id'] == currentUserId),
-          'username': profile['username'],
+          'username': profile['username'] ?? profile['full_name'] ?? 'Unknown',
           'avatar_url': profile['avatar_url'] ?? '',
           'is_verified': profile['is_verified'] ?? false,
           'comment_count': comments.length,
@@ -3199,18 +3199,19 @@ class ProfilePostsNotifier
       final newPosts = postsResponse.map((post) {
         final postLikes = post['likes'] as List? ?? [];
         final comments = post['comments'] as List<dynamic>? ?? [];
+        final profile = (post['profiles'] as Map<String, dynamic>?) ?? {};
 
         return PublicPostModel.fromMap({
           ...post,
           'like_count': postLikes.length,
           'is_liked': postLikes.any((like) => like['user_id'] == currentUserId),
-          'username': post['profiles']['username'] ??
-              post['profiles']['full_name'] ??
+          'username': profile['username'] ??
+              profile['full_name'] ??
               'Unknown',
-          'avatar_url': post['profiles']['avatar_url'] ?? '',
-          'is_verified': post['profiles']['is_verified'] ?? false,
+          'avatar_url': profile['avatar_url'] ?? '',
+          'is_verified': profile['is_verified'] ?? false,
           'comment_count': comments.length,
-          'verification_type': post['profiles']['verification_type'],
+          'verification_type': profile['verification_type'],
         });
       }).toList();
 

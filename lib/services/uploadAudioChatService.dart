@@ -2,32 +2,13 @@ import '../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:path/path.dart' as path;
-import 'package:aws_s3_api/s3-2006-03-01.dart';
-import 'secure_config.dart';
+import 'secure_upload_service.dart';
 import 'user_friendly_error_handler.dart';
 import '../utils/const.dart';
 
 class ChatAudioUploadService {
-  // استفاده از همان تنظیمات S3 موجود
-  static S3 get s3 {
-    if (!SecureConfig.isConfigured) {
-      throw Exception(
-          'AWS credentials not properly configured. Please set environment variables.');
-    }
 
-    return S3(
-      region: SecureConfig.awsRegion,
-      credentials: AwsClientCredentials(
-        accessKey: SecureConfig.awsAccessKey,
-        secretKey: SecureConfig.awsSecretKey,
-      ),
-      endpointUrl: SecureConfig.awsEndpointUrl,
-    );
-  }
-
-  static String get bucketName => SecureConfig.awsBucketName;
-
-  /// آپلود فایل صوتی چت
+  /// Upload chat audio file
   static Future<String?> uploadChatAudio(
     File audioFile,
     String conversationId, {
@@ -35,14 +16,12 @@ class ChatAudioUploadService {
   }) async {
     try {
       if (!await audioFile.exists()) {
-        throw Exception('فایل صوتی مورد نظر وجود ندارد');
+        throw Exception('Audio file not found');
       }
 
       final extension = path.extension(audioFile.path).toLowerCase();
-
-      // بررسی فرمت‌های مجاز صوتی
       if (!_isValidAudioFormat(extension)) {
-        throw Exception('فرمت فایل صوتی پشتیبانی نمی‌شود');
+        throw Exception('Unsupported audio format');
       }
 
       final fileName =
@@ -51,33 +30,18 @@ class ChatAudioUploadService {
       final Uint8List fileBytes = await audioFile.readAsBytes();
       final contentType = _getAudioContentType(extension);
 
-      // پشتیبانی از پیشرفت آپلود
-      if (onProgress != null) {
-        onProgress(0.0);
-        await s3.putObject(
-          bucket: bucketName,
-          key: fileName,
-          body: fileBytes,
-          contentType: contentType,
-          acl: ObjectCannedACL.publicRead,
-        );
-        onProgress(1.0);
-      } else {
-        await s3.putObject(
-          bucket: bucketName,
-          key: fileName,
-          body: fileBytes,
-          contentType: contentType,
-          acl: ObjectCannedACL.publicRead,
-        );
-      }
+      final uploadResult = await SecureUploadService.uploadBytes(
+        bytes: fileBytes,
+        objectKey: fileName,
+        contentType: contentType,
+        onProgress: onProgress,
+      );
 
-      final uploadedUrl =
-          'https://storage.389346.ir.cdn.ir/$bucketName/$fileName';
-      logInfo('فایل صوتی چت با موفقیت آپلود شد: $uploadedUrl');
+      final uploadedUrl = uploadResult.url;
+      logInfo('Chat audio uploaded: $uploadedUrl');
 
       if (uploadedUrl.isEmpty) {
-        throw Exception('لینک آپلود فایل صوتی خالی است!');
+        throw Exception('Upload URL is empty');
       }
 
       return uploadedUrl;
@@ -88,14 +52,14 @@ class ChatAudioUploadService {
     }
   }
 
-  /// آپلود فایل صوتی در وب
+  /// Upload chat audio file (web)
   static Future<String> uploadChatAudioWeb(
     Uint8List fileBytes,
     String fileName,
     String conversationId,
   ) async {
     try {
-      logInfo('شروع آپلود فایل صوتی در وب...');
+      logInfo('Starting web audio upload...');
 
       final sanitizedFileName =
           fileName.replaceAll(RegExp(r'[^\w\s\-\.]'), '_');
@@ -104,25 +68,20 @@ class ChatAudioUploadService {
       final contentType = _getAudioContentType(extension);
 
       final userId = supabase.auth.currentUser?.id;
-      if (userId == null) throw Exception('کاربر احراز هویت نشده');
+      if (userId == null) throw Exception('User not authenticated');
 
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final s3FileName =
           'chats/$conversationId/audio/${userId}_${timestamp}_$sanitizedFileName';
 
-      logInfo('آپلود به S3 با کلید: $s3FileName');
-
-      await s3.putObject(
-        bucket: bucketName,
-        key: s3FileName,
-        body: fileBytes,
+      final uploadResult = await SecureUploadService.uploadBytes(
+        bytes: fileBytes,
+        objectKey: s3FileName,
         contentType: contentType,
-        acl: ObjectCannedACL.publicRead,
       );
 
-      final uploadedUrl =
-          'https://storage.389346.ir.cdn.ir/$bucketName/$s3FileName';
-      logInfo('آپلود فایل صوتی وب موفق: $uploadedUrl');
+      final uploadedUrl = uploadResult.url;
+      logInfo('Web audio upload success: $uploadedUrl');
 
       return uploadedUrl;
     } catch (e) {
@@ -132,31 +91,27 @@ class ChatAudioUploadService {
     }
   }
 
-  /// حذف فایل صوتی چت
+  /// Delete chat audio file
   static Future<bool> deleteChatAudio(String fileUrl) async {
     try {
-      final uri = Uri.parse(fileUrl);
-      final key = uri.pathSegments.sublist(1).join('/');
-
-      await s3.deleteObject(
-        bucket: bucketName,
-        key: key,
-      );
-
+      final deleted = await SecureUploadService.deleteByUrl(fileUrl);
+      if (!deleted) {
+        throw Exception('Delete failed');
+      }
       return true;
     } catch (e) {
-      logInfo('خطا در حذف فایل صوتی چت: $e');
+      logInfo('Error deleting chat audio: $e');
       return false;
     }
   }
 
-  /// بررسی فرمت صوتی معتبر
+  /// Validate audio format
   static bool _isValidAudioFormat(String extension) {
     const validFormats = ['.mp3', '.aac', '.m4a', '.wav', '.ogg'];
     return validFormats.contains(extension);
   }
 
-  /// تعیین Content-Type برای فایل‌های صوتی
+  /// Map content type
   static String _getAudioContentType(String extension) {
     switch (extension) {
       case '.mp3':
@@ -170,7 +125,7 @@ class ChatAudioUploadService {
       case '.ogg':
         return 'audio/ogg';
       default:
-        return 'audio/mpeg'; // پیش‌فرض
+        return 'audio/mpeg';
     }
   }
 }

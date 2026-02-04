@@ -4,10 +4,9 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:video_compress/video_compress.dart';
 import 'package:path/path.dart' as path;
-import 'package:aws_s3_api/s3-2006-03-01.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../../../services/secure_config.dart';
+import '../../../../services/secure_upload_service.dart';
 import '../../../../utils/const.dart';
 import '../../../../security/logging_utility.dart';
 import '../../core/story_enums.dart';
@@ -29,24 +28,7 @@ class StoryMediaUploadResult {
 
 /// سرویس آپلود رسانه استوری (تصویر + ویدیو)
 class StoryUploadService {
-  static const String _storageBaseUrl = 'https://storage.389346.ir.cdn.ir';
   static const _uuid = Uuid();
-
-  static S3 get _s3 {
-    if (!SecureConfig.isConfigured) {
-      throw Exception('AWS credentials not configured');
-    }
-    return S3(
-      region: SecureConfig.awsRegion,
-      credentials: AwsClientCredentials(
-        accessKey: SecureConfig.awsAccessKey,
-        secretKey: SecureConfig.awsSecretKey,
-      ),
-      endpointUrl: SecureConfig.awsEndpointUrl,
-    );
-  }
-
-  static String get _bucketName => SecureConfig.awsBucketName;
 
   /// آپلود رسانه استوری (تصویر یا ویدیو)
   static Future<StoryMediaUploadResult?> uploadMedia({
@@ -112,11 +94,11 @@ class StoryUploadService {
 
       onProgress?.call(0.5);
 
-      await _uploadToS3(fileName, fileBytes, 'image/jpeg');
+      final uploadResult = await _uploadToS3(fileName, fileBytes, 'image/jpeg');
+      final uploadedUrl = uploadResult.url;
 
       onProgress?.call(1.0);
 
-      final uploadedUrl = '$_storageBaseUrl/$_bucketName/$fileName';
       logInfo('تصویر استوری آپلود شد: $uploadedUrl');
 
       return StoryMediaUploadResult(
@@ -177,9 +159,13 @@ class StoryUploadService {
       onProgress?.call(0.5);
 
       // آپلود ویدیو
-      final videoBytes = await compressedInfo.file!.readAsBytes();
       final videoFileName = 'stories/$userId/${timestamp}_${uuid}_video.mp4';
-      await _uploadToS3(videoFileName, videoBytes, 'video/mp4');
+      final videoUpload = await SecureUploadService.uploadFile(
+        file: compressedInfo.file!,
+        objectKey: videoFileName,
+        contentType: 'video/mp4',
+      );
+      final videoUrl = videoUpload.url;
 
       onProgress?.call(0.8);
 
@@ -189,8 +175,8 @@ class StoryUploadService {
         final thumbnailBytes = await thumbnailFile.readAsBytes();
         final thumbnailFileName =
             'stories/$userId/${timestamp}_${uuid}_thumb.jpg';
-        await _uploadToS3(thumbnailFileName, thumbnailBytes, 'image/jpeg');
-        thumbnailUrl = '$_storageBaseUrl/$_bucketName/$thumbnailFileName';
+        final thumbnailUpload = await _uploadToS3(thumbnailFileName, thumbnailBytes, 'image/jpeg');
+        thumbnailUrl = thumbnailUpload.url;
 
         _deleteFileAsync(thumbnailFile);
       }
@@ -201,7 +187,6 @@ class StoryUploadService {
       _deleteFileAsync(compressedInfo.file!);
       await VideoCompress.deleteAllCache();
 
-      final videoUrl = '$_storageBaseUrl/$_bucketName/$videoFileName';
       final durationSeconds = (compressedInfo.duration ?? 0) ~/ 1000;
 
       logInfo('ویدیو استوری آپلود شد: $videoUrl');
@@ -219,15 +204,13 @@ class StoryUploadService {
     }
   }
 
-  /// آپلود به S3
-  static Future<void> _uploadToS3(
+  /// Upload media using secure uploads
+  static Future<UploadResult> _uploadToS3(
       String key, Uint8List data, String contentType) async {
-    await _s3.putObject(
-      bucket: _bucketName,
-      key: key,
-      body: data,
+    return SecureUploadService.uploadBytes(
+      bytes: data,
+      objectKey: key,
       contentType: contentType,
-      acl: ObjectCannedACL.publicRead,
     );
   }
 
@@ -302,22 +285,15 @@ class StoryUploadService {
   }
 
   /// حذف رسانه از S3
+  /// حذف رسانه از storage
   static Future<bool> deleteMedia(String fileUrl) async {
     if (fileUrl.isEmpty) return false;
 
     try {
-      final uri = Uri.parse(fileUrl);
-      if (uri.pathSegments.length <= 1) {
-        throw Exception('آدرس فایل نامعتبر است');
+      final deleted = await SecureUploadService.deleteByUrl(fileUrl);
+      if (!deleted) {
+        throw Exception('Delete failed');
       }
-
-      final key = uri.pathSegments.sublist(1).join('/');
-
-      await _s3.deleteObject(
-        bucket: _bucketName,
-        key: key,
-      );
-
       logInfo('رسانه استوری حذف شد: $fileUrl');
       return true;
     } catch (e) {
@@ -326,3 +302,4 @@ class StoryUploadService {
     }
   }
 }
+

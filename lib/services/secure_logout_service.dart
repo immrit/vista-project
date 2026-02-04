@@ -6,6 +6,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/data/cache/cache_repository.dart';
 import '../features/auth/screens/auth_wizard_screen.dart';
 import '../security/logging_utility.dart';
+import '../security/secure_kv_store.dart';
+import 'advanced_security_service.dart';
 import 'session_manager_service_v2.dart';
 
 /// Service responsible for securely logging out the user and wiping all local data.
@@ -32,6 +34,15 @@ class SecureLogoutService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
       logInfo('✅ SharedPreferences cleared.');
+
+      // 3.1 Clear Secure Storage (tokens/keys)
+      try {
+        await SecureKeyValueStore.deleteAll();
+        await AdvancedSecurityService.clearAllSecurityData();
+        logInfo('✅ Secure storage cleared.');
+      } catch (e) {
+        logWarning('⚠️ Failed to clear secure storage', error: e);
+      }
 
       // 4. Clear File Cache
       try {

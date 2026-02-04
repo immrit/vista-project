@@ -99,7 +99,8 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.light,
+        systemOverlayStyle:
+            isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
         leading: IconButton(
           icon: Container(
             padding: const EdgeInsets.all(8),
@@ -231,6 +232,8 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
 
   Widget _buildLocalPreview() {
     if (_isPdfDocument()) {
+      final shortest = MediaQuery.of(context).size.shortestSide;
+      final iconSize = (shortest * 0.22).clamp(64.0, 96.0);
       // TODO: استفاده از pdf_render یا syncfusion
       return Center(
         child: Column(
@@ -238,7 +241,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
           children: [
             Icon(
               Icons.picture_as_pdf_rounded,
-              size: 80,
+              size: iconSize,
               color: Colors.red.shade400,
             ),
             const SizedBox(height: 24),
@@ -283,6 +286,8 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
   }
 
   Widget _buildDownloadPrompt(ThemeData theme, bool isDark) {
+    final shortest = MediaQuery.of(context).size.shortestSide;
+    final iconSize = (shortest * 0.18).clamp(48.0, 72.0);
     return Container(
       padding: const EdgeInsets.all(32),
       child: Column(
@@ -292,13 +297,13 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: _getFileColor().withOpacity(0.2),
+              color: _getFileColor(theme).withOpacity(0.2),
               shape: BoxShape.circle,
             ),
             child: Icon(
               _getFileIcon(),
-              size: 64,
-              color: _getFileColor(),
+              size: iconSize,
+              color: _getFileColor(theme),
             ),
           ),
           const SizedBox(height: 24),
@@ -445,7 +450,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: _getFileColor().withOpacity(0.2),
+                    color: _getFileColor(theme).withOpacity(0.2),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
@@ -453,7 +458,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: _getFileColor(),
+                      color: _getFileColor(theme),
                     ),
                   ),
                 ),
@@ -497,25 +502,26 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
     }
   }
 
-  Color _getFileColor() {
+  Color _getFileColor(ThemeData theme) {
+    final scheme = theme.colorScheme;
     switch (widget.documentType.toLowerCase()) {
       case 'pdf':
-        return Colors.red;
+        return scheme.error;
       case 'doc':
       case 'docx':
-        return Colors.blue;
+        return scheme.primary;
       case 'xls':
       case 'xlsx':
-        return Colors.green;
+        return scheme.secondary;
       case 'ppt':
       case 'pptx':
-        return Colors.orange;
+        return scheme.tertiary;
       case 'zip':
       case 'rar':
       case '7z':
-        return Colors.purple;
+        return scheme.outline;
       default:
-        return Colors.grey;
+        return theme.hintColor;
     }
   }
 
@@ -648,4 +654,5 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
     }
   }
 }
+
 

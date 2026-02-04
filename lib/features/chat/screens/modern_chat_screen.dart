@@ -67,6 +67,9 @@ import '../../../utils/user_friendly_error_utils.dart';
 import '../models/message_reaction.dart' as reaction_models;
 import 'package:Vista/features/posts/screens/profileScreen.dart';
 import 'package:Vista/features/posts/screens/PostDetailPage.dart';
+import '../../stories/presentation/providers/story_providers.dart';
+import '../../stories/presentation/screens/story_player_screen.dart';
+import '../../stories/domain/entities/entities.dart';
 
 // ✅ Phase 4: Final Integration
 import '../widgets/location_message_widgets.dart';
@@ -2812,6 +2815,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       replyToContent: message.replyToContent,
       replyToSenderName: message.replyToSenderName,
       replyToMessageId: message.replyToMessageId,
+      onStoryReplyTap: (_) {},
       reactions:
           _convertToOldReactionFormat(_messageReactions[message.id] ?? []),
       // ✅ غیرفعال کردن تعاملات در Preview
@@ -2855,6 +2859,119 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       // نمایش Message Info Screen
       _showMessageInfo(message);
     }
+  }
+
+  Future<void> _openStoryReply(StoryReplyData data) async {
+    if (!mounted) return;
+
+    // نمایش لودینگ کوتاه برای جلوگیری از دوبار کلیک
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final repository = ref.read(storyRepositoryProvider);
+
+      final storyResult = await repository.getStoryById(data.storyId);
+      if (!storyResult.isSuccess || storyResult.data == null) {
+        if (mounted) {
+          Navigator.of(context, rootNavigator: true).pop();
+          _showErrorSnackBar('استوری پیدا نشد');
+        }
+        return;
+      }
+
+      final story = storyResult.data!;
+      if (story.isExpired) {
+        if (mounted) {
+          Navigator.of(context, rootNavigator: true).pop();
+          _showErrorSnackBar('استوری منقضی شده');
+        }
+        return;
+      }
+
+      List<Story> stories = [];
+      final userStoriesResult =
+          await repository.getUserStories(data.storyOwnerId);
+      if (userStoriesResult.isSuccess && userStoriesResult.data != null) {
+        stories = userStoriesResult.data!;
+      }
+
+      if (stories.isEmpty) {
+        stories = [story];
+      }
+
+      var index = stories.indexWhere((s) => s.id == story.id);
+      if (index == -1) {
+        stories = [story, ...stories];
+        index = 0;
+      }
+
+      final storyUser = _buildStoryUserForReply(data, stories);
+
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => StoryPlayerScreen(
+              users: [storyUser],
+              initialUserIndex: 0,
+              initialStoryIndex: index,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        _showErrorSnackBar('خطا در باز کردن استوری');
+      }
+    }
+  }
+
+  StoryUser _buildStoryUserForReply(StoryReplyData data, List<Story> stories) {
+    ProfileModel? profile;
+    if (data.storyOwnerId == _currentUserId) {
+      profile = _currentUserProfile;
+    } else if (data.storyOwnerId == widget.args.otherUserId) {
+      profile = _otherUserProfile;
+    }
+
+    StoryVerificationType verificationType = StoryVerificationType.none;
+    if (profile != null) {
+      switch (profile.verificationType) {
+        case VerificationType.blueTick:
+          verificationType = StoryVerificationType.blue;
+          break;
+        case VerificationType.goldTick:
+          verificationType = StoryVerificationType.gold;
+          break;
+        case VerificationType.blackTick:
+          verificationType = StoryVerificationType.black;
+          break;
+        case VerificationType.none:
+          verificationType = StoryVerificationType.none;
+          break;
+      }
+    }
+
+    final username = data.storyOwnerUsername.isNotEmpty
+        ? data.storyOwnerUsername
+        : (profile?.username ?? widget.args.otherUserName);
+
+    return StoryUser(
+      id: data.storyOwnerId,
+      username: username,
+      avatarUrl: profile?.avatarUrl ?? widget.args.otherUserAvatar,
+      isVerified: profile?.isVerified ?? false,
+      isPremium: profile?.role == 'premium',
+      verificationType: verificationType,
+      stories: stories,
+      lastStoryAt:
+          stories.isNotEmpty ? stories.last.createdAt : data.storyCreatedAt,
+    );
   }
 
   void _onAddReaction(MessageModel message, String emoji) {
@@ -3706,6 +3823,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               replyToSenderName: message.replyToSenderName,
               replyToMessageId: message.replyToMessageId,
               onReplyTap: () => _scrollToMessage(message.replyToMessageId),
+              onStoryReplyTap: _openStoryReply,
 
               duration: message.duration,
               reactions: _convertToOldReactionFormat(

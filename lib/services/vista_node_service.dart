@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'session_manager_service_v2.dart';
 import 'package:http/http.dart' as http;
 
 /// سرویس ارتباط با سرور Node.js برای عملیات چت
@@ -6,6 +8,29 @@ import 'package:http/http.dart' as http;
 /// این سرویس مسئول ارسال درخواست‌های حذف پیام به سرور است.
 /// سرور تمام منطق حذف (DB + S3) را انجام می‌دهد.
 class VistaNodeService {
+  static Future<Map<String, String>> _buildAuthHeaders() async {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+    };
+
+    final accessToken = Supabase.instance.client.auth.currentSession?.accessToken;
+    if (accessToken != null && accessToken.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $accessToken';
+    }
+
+    final sessionManager = SessionManagerServiceV2.instance;
+    final sessionId = sessionManager.currentSessionId;
+    final sessionToken = sessionManager.currentSessionToken;
+    if (sessionId != null && sessionId.isNotEmpty) {
+      headers['x-session-id'] = sessionId;
+    }
+    if (sessionToken != null && sessionToken.isNotEmpty) {
+      headers['x-session-token'] = sessionToken;
+    }
+
+    return headers;
+  }
+
   static const String _baseUrl = 'https://function-vista.chbk.dev/api';
   static const Duration _timeout = Duration(seconds: 15);
 
@@ -26,7 +51,7 @@ class VistaNodeService {
       final response = await http
           .post(
             url,
-            headers: {'Content-Type': 'application/json'},
+            headers: await _buildAuthHeaders(),
             body: json.encode({'messageId': messageId}),
           )
           .timeout(_timeout);
@@ -64,7 +89,7 @@ class VistaNodeService {
       final response = await http
           .post(
             url,
-            headers: {'Content-Type': 'application/json'},
+            headers: await _buildAuthHeaders(),
             body: json.encode({'messageIds': messageIds}),
           )
           .timeout(_timeout);
@@ -95,7 +120,7 @@ class VistaNodeService {
       final response = await http
           .post(
             url,
-            headers: {'Content-Type': 'application/json'},
+            headers: await _buildAuthHeaders(),
             body: json.encode({'conversationId': conversationId}),
           )
           .timeout(_timeout);
@@ -140,3 +165,4 @@ class VistaNodeService {
     }
   }
 }
+

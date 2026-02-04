@@ -4,6 +4,7 @@
 //
 
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/services.dart';
 import '../theme/chat_theme.dart';
 import '../../../utils/compat_extensions.dart';
@@ -53,6 +54,7 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
   final String? replyToSenderName;
   final String? replyToMessageId;
   final VoidCallback? onReplyTap;
+  final void Function(StoryReplyData data)? onStoryReplyTap;
 
   // Reactions
   final List<MessageReaction> reactions;
@@ -95,6 +97,7 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
     this.replyToSenderName,
     this.replyToMessageId,
     this.onReplyTap,
+    this.onStoryReplyTap,
     this.reactions = const [],
     this.onAddReaction,
     this.onTap,
@@ -302,6 +305,8 @@ class _ImprovedAnimatedMessageBubbleState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (widget.isForwarded) _buildForwardHeader(theme),
+          if (widget.message?.storyReplyData != null)
+            _buildStoryReplySection(theme),
           if (widget.replyToContent != null) _buildReplySection(theme),
 
           // محتوای اصلی
@@ -418,6 +423,169 @@ class _ImprovedAnimatedMessageBubbleState
         ),
       ),
     );
+  }
+
+  Widget _buildStoryReplySection(ChatTheme theme) {
+    final storyData = widget.message?.storyReplyData;
+    if (storyData == null) return const SizedBox.shrink();
+
+    final isExpired = _isStoryReplyExpired(storyData);
+    final headerText = widget.isMe
+        ? 'پاسخ به استوری ${storyData.storyOwnerUsername}'
+        : 'پاسخ به استوری شما';
+    final secondaryText = isExpired
+        ? 'استوری منقضی شده'
+        : (storyData.storyMediaType == 'video' ? 'ویدیو' : 'تصویر');
+
+    return GestureDetector(
+      onTap:
+          widget.onStoryReplyTap != null ? () => widget.onStoryReplyTap!(storyData) : null,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: widget.isMe
+              ? Colors.white.withOpacity(0.12)
+              : Colors.black.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(10),
+          border: Border(
+            right: BorderSide(
+              color: theme.sendButtonColor,
+              width: 3,
+            ),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildStoryReplyThumbnail(theme, storyData, isExpired),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    headerText,
+                    textDirection: TextDirection.rtl,
+                    style: TextStyle(
+                      color: theme.sendButtonColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    secondaryText,
+                    textDirection: TextDirection.rtl,
+                    style: TextStyle(
+                      color: widget.isMe
+                          ? theme.myBubbleTextColor.withOpacity(0.7)
+                          : theme.otherBubbleTextColor.withOpacity(0.7),
+                      fontSize: 11,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStoryReplyThumbnail(
+      ChatTheme theme, StoryReplyData data, bool isExpired) {
+    final hasThumbnail = data.storyThumbnailUrl.isNotEmpty;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Stack(
+        children: [
+          if (hasThumbnail)
+            CachedNetworkImage(
+              imageUrl: data.storyThumbnailUrl,
+              width: 56,
+              height: 56,
+              fit: BoxFit.cover,
+              placeholder: (context, url) => Container(
+                width: 56,
+                height: 56,
+                color: theme.dividerColor.withOpacity(0.2),
+                child: const Center(
+                  child: SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              ),
+              errorWidget: (context, url, error) => Container(
+                width: 56,
+                height: 56,
+                color: theme.dividerColor.withOpacity(0.2),
+                child: Icon(
+                  data.storyMediaType == 'video'
+                      ? Icons.videocam
+                      : Icons.image,
+                  color: theme.dividerColor.withOpacity(0.6),
+                  size: 24,
+                ),
+              ),
+            )
+          else
+            Container(
+              width: 56,
+              height: 56,
+              color: theme.dividerColor.withOpacity(0.2),
+              child: Icon(
+                data.storyMediaType == 'video' ? Icons.videocam : Icons.image,
+                color: theme.dividerColor.withOpacity(0.6),
+                size: 24,
+              ),
+            ),
+          if (data.storyMediaType == 'video')
+            Positioned(
+              top: 4,
+              right: 4,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Icon(
+                  Icons.play_arrow,
+                  color: Colors.white,
+                  size: 14,
+                ),
+              ),
+            ),
+          if (isExpired)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black45,
+                child: const Center(
+                  child: Icon(
+                    Icons.schedule,
+                    color: Colors.white70,
+                    size: 20,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  bool _isStoryReplyExpired(StoryReplyData data) {
+    final expiresAt = data.storyCreatedAt.add(const Duration(hours: 24));
+    return DateTime.now().isAfter(expiresAt);
   }
 
   Widget _buildContent(ChatTheme theme) {

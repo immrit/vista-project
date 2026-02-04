@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
+import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:logger/logger.dart';
@@ -87,9 +89,12 @@ class AdvancedSecurityService {
   static const String _sessionKey = 'secure_session';
   static const String _deviceFingerprintKey = 'device_fingerprint';
   static const String _encryptionKey = 'encryption_key';
+  static const String _encryptionKeyV2 = 'encryption_key_v2';
   static const String _lastLoginKey = 'last_login';
   static const String _failedAttemptsKey = 'failed_attempts';
   static const String _lockoutUntilKey = 'lockout_until';
+
+  static final Cipher _cipher = AesGcm.with256bits();
 
   // Maximum failed attempts before lockout
   static const int _maxFailedAttempts = 5;
@@ -140,16 +145,36 @@ class AdvancedSecurityService {
   /// Generate encryption key for sensitive data
   static Future<void> _generateEncryptionKey() async {
     try {
-      final existingKey = await _storage.read(key: _encryptionKey);
-      if (existingKey == null) {
-        final key = _generateRandomKey();
-        await _storage.write(key: _encryptionKey, value: key);
-        logger.d('🔑 Encryption key generated');
-      }
+      await _generateLegacyEncryptionKeyIfMissing();
+      await _generateEncryptionKeyV2IfMissing();
+      logger.d('Encryption keys initialized');
     } catch (e) {
-      logger.e('❌ Failed to generate encryption key: $e');
+      logger.e('Failed to generate encryption keys: $e');
       rethrow;
     }
+  }
+
+  static Future<void> _generateLegacyEncryptionKeyIfMissing() async {
+    final existingKey = await _storage.read(key: _encryptionKey);
+    if (existingKey == null) {
+      final key = _generateRandomKey();
+      await _storage.write(key: _encryptionKey, value: key);
+    }
+  }
+
+  static Future<void> _generateEncryptionKeyV2IfMissing() async {
+    final existingKey = await _storage.read(key: _encryptionKeyV2);
+    if (existingKey == null) {
+      final keyBytes = _generateRandomKeyBytes(32);
+      final keyB64 = base64.encode(keyBytes);
+      await _storage.write(key: _encryptionKeyV2, value: keyB64);
+    }
+  }
+
+  static Uint8List _generateRandomKeyBytes(int length) {
+    final random = Random.secure();
+    return Uint8List.fromList(
+        List<int>.generate(length, (_) => random.nextInt(256)));
   }
 
   /// Generate random encryption key
@@ -290,30 +315,22 @@ class AdvancedSecurityService {
   /// Encrypt sensitive data
   static Future<String> _encryptData(String data) async {
     try {
-      // Lazy initialization: اگر کلید وجود نداشت، آن را تولید کن
-      var key = await _storage.read(key: _encryptionKey);
-      if (key == null) {
-        logger.w('⚠️ Encryption key not found, generating new key...');
-        await _generateEncryptionKey();
-        key = await _storage.read(key: _encryptionKey);
-        if (key == null) {
-          throw Exception('Failed to generate encryption key');
-        }
-        logger.d('✅ Encryption key generated successfully');
-      }
+      final key = await _getOrCreateEncryptionKeyV2();
+      final nonce = _generateRandomKeyBytes(12);
+      final secretBox = await _cipher.encrypt(
+        utf8.encode(data),
+        secretKey: key,
+        nonce: nonce,
+      );
 
-      // Simple XOR encryption (in production, use proper encryption)
-      final keyBytes = utf8.encode(key);
-      final dataBytes = utf8.encode(data);
-      final encrypted = <int>[];
+      final encoded = 'v2:'
+          '${base64.encode(secretBox.nonce)}:'
+          '${base64.encode(secretBox.cipherText)}:'
+          '${base64.encode(secretBox.mac.bytes)}';
 
-      for (int i = 0; i < dataBytes.length; i++) {
-        encrypted.add(dataBytes[i] ^ keyBytes[i % keyBytes.length]);
-      }
-
-      return base64.encode(encrypted);
+      return encoded;
     } catch (e) {
-      logger.e('❌ Failed to encrypt data: $e');
+      logger.e('Failed to encrypt data: $e');
       rethrow;
     }
   }
@@ -321,31 +338,75 @@ class AdvancedSecurityService {
   /// Decrypt sensitive data
   static Future<String> _decryptData(String encryptedData) async {
     try {
-      // Lazy initialization: اگر کلید وجود نداشت، آن را تولید کن
-      var key = await _storage.read(key: _encryptionKey);
-      if (key == null) {
-        logger.w('⚠️ Encryption key not found, generating new key...');
-        await _generateEncryptionKey();
-        key = await _storage.read(key: _encryptionKey);
-        if (key == null) {
-          throw Exception('Failed to generate encryption key');
+      if (encryptedData.startsWith('v2:')) {
+        final parts = encryptedData.split(':');
+        if (parts.length != 4) {
+          throw Exception('Invalid encrypted payload');
         }
-        logger.d('✅ Encryption key generated successfully');
+
+        final nonce = base64.decode(parts[1]);
+        final cipherText = base64.decode(parts[2]);
+        final macBytes = base64.decode(parts[3]);
+
+        final secretBox = SecretBox(
+          cipherText,
+          nonce: nonce,
+          mac: Mac(macBytes),
+        );
+
+        final key = await _getOrCreateEncryptionKeyV2();
+        final clearBytes = await _cipher.decrypt(secretBox, secretKey: key);
+        return utf8.decode(clearBytes);
       }
 
-      final keyBytes = utf8.encode(key);
-      final encryptedBytes = base64.decode(encryptedData);
-      final decrypted = <int>[];
-
-      for (int i = 0; i < encryptedBytes.length; i++) {
-        decrypted.add(encryptedBytes[i] ^ keyBytes[i % keyBytes.length]);
-      }
-
-      return utf8.decode(decrypted);
+      // Legacy XOR decryption
+      return _decryptDataLegacyXor(encryptedData);
     } catch (e) {
-      logger.e('❌ Failed to decrypt data: $e');
+      logger.e('Failed to decrypt data: $e');
       rethrow;
     }
+  }
+
+  static Future<SecretKey> _getOrCreateEncryptionKeyV2() async {
+    var keyB64 = await _storage.read(key: _encryptionKeyV2);
+    if (keyB64 == null) {
+      await _generateEncryptionKeyV2IfMissing();
+      keyB64 = await _storage.read(key: _encryptionKeyV2);
+    }
+
+    if (keyB64 == null) {
+      throw Exception('Failed to generate encryption key');
+    }
+
+    var keyBytes = base64.decode(keyB64);
+    if (keyBytes.length != 32) {
+      keyBytes = _generateRandomKeyBytes(32);
+      await _storage.write(key: _encryptionKeyV2, value: base64.encode(keyBytes));
+    }
+
+    return SecretKey(keyBytes);
+  }
+
+  static Future<String> _decryptDataLegacyXor(String encryptedData) async {
+    // Lazy initialization: if key does not exist, generate it
+    var key = await _storage.read(key: _encryptionKey);
+    if (key == null) {
+      await _generateLegacyEncryptionKeyIfMissing();
+      key = await _storage.read(key: _encryptionKey);
+      if (key == null) {
+        throw Exception('Failed to generate legacy encryption key');
+      }
+    }
+
+    final keyBytes = utf8.encode(key);
+    final encryptedBytes = base64.decode(encryptedData);
+    final decrypted = <int>[];
+
+    for (int i = 0; i < encryptedBytes.length; i++) {
+      decrypted.add(encryptedBytes[i] ^ keyBytes[i % keyBytes.length]);
+    }
+
+    return utf8.decode(decrypted);
   }
 
   /// Update last login timestamp
@@ -945,3 +1006,9 @@ class AdvancedSecurityService {
     }
   }
 }
+
+
+
+
+
+

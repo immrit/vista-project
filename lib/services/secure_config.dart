@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import '../security/logging_utility.dart';
 
 /// Secure configuration management for sensitive data
 /// This class handles environment variables and secure storage
@@ -10,7 +11,7 @@ class SecureConfig {
   static const String _awsEndpointEnv = 'AWS_ENDPOINT_URL';
   static const String _awsBucketEnv = 'AWS_BUCKET_NAME';
 
-  // Fallback values for development (should be removed in production)
+  // Development fallback values (debug only)
   static const String _devAccessKey = '4f4716fb-fa84-4ae7-9c8b-34d2a0896cdf';
   static const String _devSecretKey =
       'a6b4db27b4c54bfa46cbc4fd8a4ba2079e2da0cd2800acdc80dd758f8b2c1ec5';
@@ -19,69 +20,104 @@ class SecureConfig {
       'https://coffevista.s3.ir-thr-at1.arvanstorage.ir';
   static const String _devBucket = 'coffevista';
 
-  /// Get AWS Access Key from environment or fallback
+  // Values can be injected at build time via --dart-define
+  static const String _awsAccessKeyDefine =
+      String.fromEnvironment('AWS_ACCESS_KEY_ID');
+  static const String _awsSecretKeyDefine =
+      String.fromEnvironment('AWS_SECRET_ACCESS_KEY');
+  static const String _awsRegionDefine = String.fromEnvironment('AWS_REGION');
+  static const String _awsEndpointDefine =
+      String.fromEnvironment('AWS_ENDPOINT_URL');
+  static const String _awsBucketDefine =
+      String.fromEnvironment('AWS_BUCKET_NAME');
+
+  /// Get AWS Access Key from environment or build-time define
   static String get awsAccessKey {
+    final defineKey = _awsAccessKeyDefine;
+    if (defineKey.isNotEmpty) return defineKey;
+
     final envKey = Platform.environment[_awsAccessKeyEnv];
     if (envKey != null && envKey.isNotEmpty) {
       return envKey;
     }
 
-    // Use development credentials in debug mode
     if (kDebugMode) {
-      print(
-          '⚠️ Using development AWS credentials. Set $_awsAccessKeyEnv environment variable for production.');
+      logInfo(
+          '⚠️ Using development AWS access key. Set $_awsAccessKeyEnv for production.');
       return _devAccessKey;
     }
 
-    // In release mode, use fallback credentials (set via gradle.properties)
-    // This allows the app to work in release builds without external env vars
-    return _devAccessKey;
+    throw Exception('AWS access key not configured');
   }
 
-  /// Get AWS Secret Key from environment or fallback
+  /// Get AWS Secret Key from environment or build-time define
   static String get awsSecretKey {
+    final defineKey = _awsSecretKeyDefine;
+    if (defineKey.isNotEmpty) return defineKey;
+
     final envKey = Platform.environment[_awsSecretKeyEnv];
     if (envKey != null && envKey.isNotEmpty) {
       return envKey;
     }
 
-    // Use development credentials in debug mode
     if (kDebugMode) {
-      print(
-          '⚠️ Using development AWS credentials. Set $_awsSecretKeyEnv environment variable for production.');
+      logInfo(
+          '⚠️ Using development AWS secret key. Set $_awsSecretKeyEnv for production.');
       return _devSecretKey;
     }
 
-    // In release mode, use fallback credentials (set via gradle.properties)
-    // This allows the app to work in release builds without external env vars
-    return _devSecretKey;
+    throw Exception('AWS secret key not configured');
   }
 
-  /// Get AWS Region from environment or fallback
+  /// Get AWS Region from environment or build-time define
   static String get awsRegion {
+    final defineVal = _awsRegionDefine;
+    if (defineVal.isNotEmpty) return defineVal;
+
     final envKey = Platform.environment[_awsRegionEnv];
     if (envKey != null && envKey.isNotEmpty) {
       return envKey;
     }
-    return _devRegion;
+
+    if (kDebugMode) {
+      return _devRegion;
+    }
+
+    throw Exception('AWS region not configured');
   }
 
-  /// Get AWS Endpoint URL from environment or fallback
+  /// Get AWS Endpoint URL from environment or build-time define
   static String get awsEndpointUrl {
+    final defineVal = _awsEndpointDefine;
+    if (defineVal.isNotEmpty) return defineVal;
+
     final envKey = Platform.environment[_awsEndpointEnv];
     if (envKey != null && envKey.isNotEmpty) {
       return envKey;
     }
-    return _devEndpoint;
+
+    if (kDebugMode) {
+      return _devEndpoint;
+    }
+
+    throw Exception('AWS endpoint URL not configured');
   }
 
-  /// Get AWS Bucket Name from environment or fallback
+  /// Get AWS Bucket Name from environment or build-time define
   static String get awsBucketName {
+    final defineVal = _awsBucketDefine;
+    if (defineVal.isNotEmpty) return defineVal;
+
     final envKey = Platform.environment[_awsBucketEnv];
     if (envKey != null && envKey.isNotEmpty) {
       return envKey;
     }
-    return _devBucket;
+
+    if (kDebugMode) {
+      return _devBucket;
+    }
+
+    throw Exception('AWS bucket name not configured');
   }
 
   /// Validate that all required credentials are available
@@ -89,27 +125,37 @@ class SecureConfig {
     try {
       awsAccessKey;
       awsSecretKey;
+      awsRegion;
+      awsEndpointUrl;
+      awsBucketName;
       return true;
-    } catch (e) {
-      // Since we now always provide fallback credentials, this should never fail
+    } catch (_) {
       return false;
     }
   }
 
   /// Get configuration status for debugging
   static Map<String, String> getConfigStatus() {
+    String safeValue(String Function() getter) {
+      try {
+        return getter();
+      } catch (_) {
+        return 'Not set';
+      }
+    }
+
     return {
       'access_key_configured':
           Platform.environment[_awsAccessKeyEnv]?.isNotEmpty == true
               ? 'Yes'
-              : 'No (using dev)',
+              : (kDebugMode ? 'No (using dev)' : 'No'),
       'secret_key_configured':
           Platform.environment[_awsSecretKeyEnv]?.isNotEmpty == true
               ? 'Yes'
-              : 'No (using dev)',
-      'region': awsRegion,
-      'endpoint': awsEndpointUrl,
-      'bucket': awsBucketName,
+              : (kDebugMode ? 'No (using dev)' : 'No'),
+      'region': safeValue(() => awsRegion),
+      'endpoint': safeValue(() => awsEndpointUrl),
+      'bucket': safeValue(() => awsBucketName),
       'is_production': !kDebugMode ? 'Yes' : 'No',
     };
   }

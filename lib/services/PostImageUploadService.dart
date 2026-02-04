@@ -2,32 +2,13 @@ import '../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
-import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
-import 'package:aws_s3_api/s3-2006-03-01.dart';
 import 'cache_manager.dart';
-import 'secure_config.dart';
+import 'secure_upload_service.dart';
 import 'user_friendly_error_handler.dart';
 import '../utils/const.dart';
 
 class PostImageUploadService {
-  static S3 get s3 {
-    if (!SecureConfig.isConfigured) {
-      throw Exception(
-          'AWS credentials not properly configured. Please set environment variables.');
-    }
-
-    return S3(
-      region: SecureConfig.awsRegion,
-      credentials: AwsClientCredentials(
-        accessKey: SecureConfig.awsAccessKey,
-        secretKey: SecureConfig.awsSecretKey,
-      ),
-      endpointUrl: SecureConfig.awsEndpointUrl,
-    );
-  }
-
-  static String get bucketName => SecureConfig.awsBucketName;
 
   static Future<File?> convertPngToJpeg(File file) async {
     final img = await FlutterImageCompress.compressWithFile(
@@ -75,16 +56,13 @@ class PostImageUploadService {
       final Uint8List fileBytes = await compressedFile.readAsBytes();
       const contentType = 'image/jpeg';
 
-      await s3.putObject(
-        bucket: bucketName,
-        key: fileName,
-        body: fileBytes,
+      final uploadResult = await SecureUploadService.uploadBytes(
+        bytes: fileBytes,
+        objectKey: fileName,
         contentType: contentType,
-        acl: ObjectCannedACL.publicRead,
       );
 
-      final uploadedUrl =
-          'https://storage.389346.ir.cdn.ir/$bucketName/$fileName';
+      final uploadedUrl = uploadResult.url;
       logInfo('تصویر پست با موفقیت آپلود شد: $uploadedUrl');
       return uploadedUrl;
     } catch (e) {
@@ -113,16 +91,13 @@ class PostImageUploadService {
       final s3FileName =
           'posts/${userId}_${DateTime.now().millisecondsSinceEpoch}_$fileName';
 
-      await s3.putObject(
-        bucket: bucketName,
-        key: s3FileName,
-        body: fileBytes,
+      final uploadResult = await SecureUploadService.uploadBytes(
+        bytes: fileBytes,
+        objectKey: s3FileName,
         contentType: contentType,
-        acl: ObjectCannedACL.publicRead,
       );
 
-      final uploadedUrl =
-          'https://storage.389346.ir.cdn.ir/$bucketName/$s3FileName';
+      final uploadedUrl = uploadResult.url;
       logInfo('تصویر پست با موفقیت آپلود شد: $uploadedUrl');
       return uploadedUrl;
     } catch (e) {
@@ -134,14 +109,10 @@ class PostImageUploadService {
 
   static Future<bool> deletePostImage(String fileUrl) async {
     try {
-      final uri = Uri.parse(fileUrl);
-      final key = uri.pathSegments.sublist(1).join('/');
-
-      await s3.deleteObject(
-        bucket: bucketName,
-        key: key,
-      );
-
+      final deleted = await SecureUploadService.deleteByUrl(fileUrl);
+      if (!deleted) {
+        throw Exception('Delete failed');
+      }
       return true;
     } catch (e) {
       logInfo('خطا در حذف تصویر پست: $e');
@@ -151,14 +122,10 @@ class PostImageUploadService {
 
   static Future<bool> deleteMusicFile(String fileUrl) async {
     try {
-      final uri = Uri.parse(fileUrl);
-      final key = uri.pathSegments.sublist(1).join('/');
-
-      await s3.deleteObject(
-        bucket: bucketName,
-        key: key,
-      );
-
+      final deleted = await SecureUploadService.deleteByUrl(fileUrl);
+      if (!deleted) {
+        throw Exception('Delete failed');
+      }
       logInfo('فایل موسیقی با موفقیت از آروان حذف شد: $fileUrl');
       return true;
     } catch (e) {
@@ -169,14 +136,10 @@ class PostImageUploadService {
 
   static Future<bool> deleteVideoFile(String fileUrl) async {
     try {
-      final uri = Uri.parse(fileUrl);
-      final key = uri.pathSegments.sublist(1).join('/');
-
-      await s3.deleteObject(
-        bucket: bucketName,
-        key: key,
-      );
-
+      final deleted = await SecureUploadService.deleteByUrl(fileUrl);
+      if (!deleted) {
+        throw Exception('Delete failed');
+      }
       logInfo('فایل ویدیو با موفقیت از آروان حذف شد: $fileUrl');
       return true;
     } catch (e) {
@@ -296,26 +259,13 @@ class PostImageUploadService {
       // ساخت نام منحصر به فرد برای فایل
       final fileName = 'music/${supabase.auth.currentUser!.id}'
           '_${DateTime.now().millisecondsSinceEpoch}$extension';
-
-      // آپلود به آروان
-      await s3.putObject(
-        bucket: bucketName,
-        key: fileName,
-        body: await file.readAsBytes(),
+      final uploadResult = await SecureUploadService.uploadFile(
+        file: file,
+        objectKey: fileName,
         contentType: _getAudioContentType(extension),
-        acl: ObjectCannedACL.publicRead,
-        metadata: {'originalName': path.basename(file.path)},
       );
 
-      final url = 'https://storage.389346.ir.cdn.ir/$bucketName/$fileName';
-      print("Uploaded music file URL: $url"); // اضافه کردن این خط
-
-      // تست دسترسی به فایل
-      final response = await http.head(Uri.parse(url));
-      print(
-          "File access test status code: ${response.statusCode}"); // اضافه کردن این خط
-
-      return url;
+      return uploadResult.url;
     } catch (e) {
       UserFriendlyErrorHandler.logError(e, context: 'audio_upload');
       throw Exception(UserFriendlyErrorHandler.getFriendlyMessage(e,
@@ -356,25 +306,13 @@ class PostImageUploadService {
       // ساخت نام منحصر به فرد برای فایل
       final fileName = 'videos/${supabase.auth.currentUser!.id}'
           '_${DateTime.now().millisecondsSinceEpoch}$extension';
-
-      // آپلود به آروان
-      await s3.putObject(
-        bucket: bucketName,
-        key: fileName,
-        body: await file.readAsBytes(),
+      final uploadResult = await SecureUploadService.uploadFile(
+        file: file,
+        objectKey: fileName,
         contentType: _getVideoContentType(extension),
-        acl: ObjectCannedACL.publicRead,
-        metadata: {'originalName': path.basename(file.path)},
       );
 
-      final url = 'https://storage.389346.ir.cdn.ir/$bucketName/$fileName';
-      print("Uploaded video file URL: $url");
-
-      // تست دسترسی به فایل
-      final response = await http.head(Uri.parse(url));
-      print("File access test status code: ${response.statusCode}");
-
-      return url;
+      return uploadResult.url;
     } catch (e) {
       UserFriendlyErrorHandler.logError(e, context: 'video_upload');
       throw Exception(UserFriendlyErrorHandler.getFriendlyMessage(e,
@@ -400,17 +338,13 @@ class PostImageUploadService {
           '_${DateTime.now().millisecondsSinceEpoch}_$fileName';
 
       // آپلود به آروان
-      await s3.putObject(
-        bucket: bucketName,
-        key: s3FileName,
-        body: fileBytes,
+      final uploadResult = await SecureUploadService.uploadBytes(
+        bytes: fileBytes,
+        objectKey: s3FileName,
         contentType: _getVideoContentType(extension),
-        acl: ObjectCannedACL.publicRead,
       );
 
-      final url = 'https://storage.389346.ir.cdn.ir/$bucketName/$s3FileName';
-      print("Uploaded video file URL: $url");
-
+      final url = uploadResult.url;
       return url;
     } catch (e) {
       UserFriendlyErrorHandler.logError(e, context: 'video_upload');
@@ -436,3 +370,6 @@ class PostImageUploadService {
     }
   }
 }
+
+
+

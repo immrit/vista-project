@@ -47,6 +47,8 @@ class _EnhancedChatBackgroundState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final reduceEffects = MediaQuery.of(context).disableAnimations ||
+        MediaQuery.of(context).accessibleNavigation;
 
     // تشخیص تم مشکی مطلق (AMOLED/Pure Black)
     // در تم مشکی مطلق، scaffoldBackgroundColor معمولاً 0xFF000000 است
@@ -82,7 +84,7 @@ class _EnhancedChatBackgroundState
         // حذف شد - فقط از تصویر محلی استفاده می‌کنیم
 
         // 4️⃣ Pattern Overlay (مثل تلگرام - نقش‌های ظریف)
-        if (widget.enablePattern)
+        if (widget.enablePattern && !reduceEffects)
           Opacity(
             opacity: isDark ? 0.03 : 0.05,
             child: _buildDefaultPattern(isDark),
@@ -90,7 +92,7 @@ class _EnhancedChatBackgroundState
 
         // 5️⃣ Blur Effect (با رعایت شرط‌ها: تنظیمات + نه تم مشکی)
         // ✅ بلور در هر دو تم روشن و تاریک اعمال می‌شود
-        if (shouldApplyBlur)
+        if (shouldApplyBlur && !reduceEffects)
           ClipRect(
             child: BackdropFilter(
               filter: ImageFilter.blur(
@@ -232,3 +234,4 @@ class _MessagePatternPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+

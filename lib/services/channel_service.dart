@@ -1,5 +1,6 @@
 import '../security/logging_utility.dart';
 import 'package:Vista/services/secure_config.dart';
+import 'package:Vista/services/secure_upload_service.dart';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -64,28 +65,16 @@ class ChannelService {
   }
 
   // 🗑️ حذف تصویر از آروان کلود
+  // Delete image from storage
   Future<bool> _deleteImageFromArvan(String imageUrl) async {
     try {
-      final String bucketName = SecureConfig.awsBucketName;
-      const String endpoint = 'https://s3.ir-thr-at1.arvanstorage.ir';
-
-      // استخراج نام فایل از URL
-      final uri = Uri.parse(imageUrl);
-      final fileName = uri.pathSegments.skip(1).join('/'); // حذف bucket name
-
-      // ساخت URL برای حذف
-      final deleteUri = Uri.parse('$endpoint/$bucketName/$fileName');
-
-      // ارسال درخواست DELETE
-      final response = await http.delete(deleteUri);
-
-      if (response.statusCode == 204 || response.statusCode == 200) {
+      final deleted = await SecureUploadService.deleteByUrl(imageUrl);
+      if (deleted) {
         logInfo('تصویر با موفقیت حذف شد');
         return true;
-      } else {
-        logInfo('خطا در حذف تصویر: ${response.statusCode}');
-        return false;
       }
+      logInfo('خطا در حذف تصویر: delete failed');
+      return false;
     } catch (e) {
       logInfo('خطا در حذف تصویر از آروان: $e');
       return false;

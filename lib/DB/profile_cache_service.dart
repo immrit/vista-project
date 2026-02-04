@@ -217,16 +217,20 @@ class ProfileCacheService {
       for (var postData in postsResponse) {
         final postLikes = postData['likes'] as List? ?? [];
         final comments = postData['comments'] as List? ?? [];
+        final profile =
+            (postData['profiles'] as Map<String, dynamic>?) ?? const {};
 
         final postModel = PublicPostModel.fromMap({
           ...postData,
           'like_count': postLikes.length,
           'is_liked': postLikes.any((like) => like['user_id'] == currentUserId),
-          'username': postData['profiles']['username'] ?? 'Unknown',
-          'avatar_url': postData['profiles']['avatar_url'] ?? '',
-          'is_verified': postData['profiles']['is_verified'] ?? false,
+          'username': profile['username'] ??
+              profile['full_name'] ??
+              'Unknown',
+          'avatar_url': profile['avatar_url'] ?? '',
+          'is_verified': profile['is_verified'] ?? false,
           'comment_count': comments.length,
-          'verification_type': postData['profiles']['verification_type'],
+          'verification_type': profile['verification_type'],
         });
 
         postEntities.add(PostEntity.fromModel(postModel));

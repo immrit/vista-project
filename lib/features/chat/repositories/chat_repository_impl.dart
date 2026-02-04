@@ -59,7 +59,7 @@ class ChatRepositoryImpl implements ChatRepository {
       // 2. ریست کردن شمارنده پیام‌های ناخوانده (کد قبلی شما)
       await resetUnreadCount(conversationId);
     } catch (e) {
-      print('Error marking messages as seen: $e');
+      logWarning('Error marking messages as seen', error: e);
     }
   }
 
@@ -88,6 +88,26 @@ class ChatRepositoryImpl implements ChatRepository {
       } catch (e) {
         throw Exception('User not authenticated. Please login again.');
       }
+    }
+  }
+
+  Future<bool> _isConversationParticipant(
+      String conversationId, String userId) async {
+    try {
+      final response = await _supabase
+          .from('conversation_participants')
+          .select('id')
+          .eq('conversation_id', conversationId)
+          .eq('user_id', userId)
+          .limit(1);
+      return response.isNotEmpty;
+    } catch (e, stack) {
+      logWarning(
+        'Failed to verify conversation participant for $conversationId',
+        error: e,
+        stackTrace: stack,
+      );
+      return false;
     }
   }
 
@@ -129,7 +149,7 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   void setActiveConversation(String? conversationId) {
     _activeConversationId = conversationId;
-    debugPrint('📌 Active Conversation set to: $conversationId');
+    logInfo('Active conversation set to: $conversationId');
     if (conversationId != null) {
       // Clear unread count immediately when entering a chat
       resetUnreadCount(conversationId);
@@ -149,22 +169,39 @@ class ChatRepositoryImpl implements ChatRepository {
             try {
               final userId = _currentUserId;
               if (userId == null) {
-                print('❌ Realtime Error: User ID is null');
+                logWarning('Realtime: userId is null');
                 return;
               }
 
-              print('📥 Realtime: New Message Event Received');
+              logDebug('Realtime: new message event received');
               final newRecord = payload.newRecord;
-              // Add robustness: check for nulls
               if (newRecord.isEmpty) {
-                print('❌ Realtime Error: Empty record');
+                logWarning('Realtime message payload is empty');
                 return;
+              }
+
+              final conversationId = newRecord['conversation_id'] as String?;
+              if (conversationId == null || conversationId.isEmpty) {
+                logWarning('Realtime message missing conversation_id');
+                return;
+              }
+
+              final existingConv =
+                  await _localDataSource.getConversation(conversationId, userId);
+              if (existingConv == null) {
+                final isParticipant = await _isConversationParticipant(
+                    conversationId, userId);
+                if (!isParticipant) {
+                  logWarning(
+                      'Skipping realtime message for non-member conversation: $conversationId');
+                  return;
+                }
               }
 
               final newMessage =
                   MessageModel.fromJson(newRecord, currentUserId: userId);
 
-              print('✅ Parsed Message: ${newMessage.id}');
+              logDebug('Realtime message parsed: ${newMessage.id}');
 
               // ✅ Check if message already exists locally (by ID)
               final existingMessage =
@@ -172,7 +209,7 @@ class ChatRepositoryImpl implements ChatRepository {
 
               if (existingMessage != null) {
                 // MERGE: Keep local data, update status to 'sent'
-                print('🔄 Merging existing message: ${newMessage.id}');
+                logDebug('Merging existing message: ${newMessage.id}');
                 final updatedMessage = existingMessage.copyWith(
                   isSent: true,
                   isPending: false, // Confirmed on server
@@ -182,27 +219,28 @@ class ChatRepositoryImpl implements ChatRepository {
                 await _localDataSource.saveMessage(updatedMessage);
               } else {
                 // INSERT: New message from others
-                print('🆕 New message from others: ${newMessage.id}');
+                logDebug('New message from others: ${newMessage.id}');
                 await _localDataSource.saveMessage(newMessage);
               }
 
               // 2. Update Conversation Metadata (Unread Count, Last Message)
-              final conversationId = newMessage.conversationId;
-              final existingConv = await _localDataSource.getConversation(
-                  conversationId, userId);
+              final existingConvForUpdate =
+                  existingConv ??
+                      await _localDataSource.getConversation(
+                          conversationId, userId);
 
-              if (existingConv != null) {
+              if (existingConvForUpdate != null) {
                 // ✅ Active Chat Logic: Don't increment unread if active
                 int newUnreadCount;
                 if (conversationId == _activeConversationId) {
                   newUnreadCount = 0; // User is looking at the chat
                 } else {
                   newUnreadCount = newMessage.senderId != userId
-                      ? existingConv.unreadCount + 1
-                      : existingConv.unreadCount;
+                      ? existingConvForUpdate.unreadCount + 1
+                      : existingConvForUpdate.unreadCount;
                 }
 
-                final updatedConv = existingConv.copyWith(
+                final updatedConv = existingConvForUpdate.copyWith(
                   lastMessage: newMessage.content,
                   updatedAt: newMessage.createdAt,
                   unreadCount: newUnreadCount,
@@ -211,13 +249,11 @@ class ChatRepositoryImpl implements ChatRepository {
                 await _localDataSource.saveConversation(updatedConv);
               } else {
                 // If conversation doesn't exist locally, fetch it
-                print(
-                    '⚠️ Conversation not found locally, fetching: $conversationId');
+                logInfo('Conversation not found locally, fetching: $conversationId');
                 _fetchAndSaveConversation(conversationId);
               }
             } catch (e, stack) {
-              print('❌ Error in Realtime Message Callback: $e');
-              print(stack);
+              logError('Error in realtime message callback', error: e, stackTrace: stack);
             }
           },
         )
@@ -233,6 +269,24 @@ class ChatRepositoryImpl implements ChatRepository {
 
               final newRecord = payload.newRecord;
               final messageId = newRecord['id'] as String;
+              final conversationId = newRecord['conversation_id'] as String?;
+              if (conversationId == null || conversationId.isEmpty) {
+                logWarning('Realtime update missing conversation_id for message $messageId');
+                return;
+              }
+
+              final existingConv = await _localDataSource.getConversation(
+                  conversationId, userId);
+              if (existingConv == null) {
+                final isParticipant = await _isConversationParticipant(
+                    conversationId, userId);
+                if (!isParticipant) {
+                  logWarning(
+                      'Skipping realtime update for non-member conversation: $conversationId');
+                  return;
+                }
+              }
+
               final isSeen = newRecord['is_seen'] as bool? ?? false;
               final isEdited = newRecord['is_edited'] as bool? ?? false;
               final newContent = newRecord['content'] as String?;
@@ -261,21 +315,21 @@ class ChatRepositoryImpl implements ChatRepository {
                   await UnifiedMessageCacheService()
                       .cacheMessage(updatedMessage);
 
-                  debugPrint('🔄 Message updated: $messageId (Seen: $isSeen)');
+                  logDebug('Message updated: $messageId (Seen: $isSeen)');
                 }
               }
             } catch (e) {
-              print('❌ Error in Realtime Update Callback: $e');
+              logError('Error in realtime update callback', error: e);
             }
           },
         )
         .subscribe((status, error) {
-      print('🔌 Realtime Subscription Status: $status');
+      logInfo('Realtime subscription status: $status');
       // ✅ Update status stream
       _realtimeStatusController.add(status);
 
       if (error != null) {
-        print('❌ Realtime Subscription Error: $error');
+        logError('Realtime subscription error', error: error);
       }
     });
 
@@ -320,17 +374,16 @@ class ChatRepositoryImpl implements ChatRepository {
                     hasUnreadMessages: serverUnreadCount > 0,
                   );
                   await _localDataSource.saveConversation(updatedConv);
-                  debugPrint(
-                      '🔄 Synced unread count for $conversationId: $serverUnreadCount');
+                  logDebug('Synced unread count for $conversationId: $serverUnreadCount');
                 }
               } catch (e) {
-                print('❌ Error in Realtime Unread Callback: $e');
+                logError('Error in realtime unread callback', error: e);
               }
             },
           )
           .subscribe();
     } else {
-      print('⚠️ Skipping conversation_participants subscription: No User ID');
+      logWarning('Skipping conversation_participants subscription: no user id');
     }
   }
 
@@ -349,21 +402,21 @@ class ChatRepositoryImpl implements ChatRepository {
       final conv = ConversationModel.fromJson(response, currentUserId: userId);
       await _localDataSource.saveConversation(conv);
     } catch (e) {
-      print('Error fetching new conversation: $e');
+      logError('Error fetching new conversation', error: e);
     }
   }
 
   @override
   Stream<List<ConversationModel>> watchConversations() async* {
     final userId = _currentUserId;
-    print('DEBUG: watchConversations called. userId: $userId');
+    logDebug('watchConversations called. userId: $userId');
     if (userId == null) {
-      print('DEBUG: userId is null, returning empty stream.');
+      logWarning('watchConversations: userId is null');
       return;
     }
 
     // Kick off background sync, but immediately return local stream
-    print('DEBUG: Triggering _syncConversations');
+    logDebug('Triggering _syncConversations');
     _syncConversations();
     yield* _localDataSource.watchConversations(userId);
   }
@@ -543,7 +596,7 @@ class ChatRepositoryImpl implements ChatRepository {
       // این خط باعث می‌شود پیام‌هایی که در سرور نیستند، از لوکال هم پاک شوند.
       await _localDataSource.reconcileMessages(conversationId, serverMessages);
     } catch (e) {
-      print('Sync Error: $e');
+      logError('Sync messages error', error: e);
       // در صورت خطای شبکه، دیتای لوکال دست نخورده باقی می‌ماند (Offline First)
     }
   }
@@ -562,7 +615,7 @@ class ChatRepositoryImpl implements ChatRepository {
 
       await _localDataSource.saveConversations(conversations);
     } catch (e) {
-      print('Sync conversations error: $e');
+      logError('Sync conversations error', error: e);
     }
   }
 
@@ -614,7 +667,7 @@ class ChatRepositoryImpl implements ChatRepository {
       // 2️⃣ سپس از Supabase حذف کن (در background - بدون بلاک کردن UI)
       _supabase.from('conversations').delete().eq('id', conversationId).then(
             (_) => null,
-            onError: (e) => print('⚠️ Server delete failed (non-blocking): $e'),
+            onError: (e) => logWarning('Server delete failed (non-blocking)', error: e),
           );
 
       return ChatResult.success(null);
@@ -659,7 +712,7 @@ class ChatRepositoryImpl implements ChatRepository {
             params: {'chat_id_in': conversationId},
           ).onError((error, stackTrace) {
             // اگر RPC وجود نداشت، fallback به حذف مستقیم
-            print('⚠️ RPC not available, using direct delete: $error');
+            logWarning('RPC not available, using direct delete', error: error);
           });
 
           // Fallback: حذف مستقیم از جدول messages
@@ -668,19 +721,18 @@ class ChatRepositoryImpl implements ChatRepository {
                 .from('messages')
                 .delete()
                 .eq('conversation_id', conversationId);
-            print('✅ Chat cleared for everyone: $conversationId');
+            logInfo('Chat cleared for everyone: $conversationId');
           } catch (e) {
             // اگر RPC موفق بود، این خطا طبیعی است
-            print('⚠️ Direct delete attempted (may already be cleared): $e');
+            logWarning('Direct delete attempted (may already be cleared)', error: e);
           }
         } catch (e) {
-          print(
-              '⚠️ Server clear error (non-fatal), but local cleanup completed: $e');
+          logWarning('Server clear error (non-fatal), but local cleanup completed', error: e);
         }
       } else {
         // پاکسازی یک‌طرفه - فقط لوکال پاک شده است
         // در آینده می‌توانید یک flag در conversation_participants مثل cleared_history_at اضافه کنید
-        print('✅ Chat cleared locally for user: $userId');
+        logInfo('Chat cleared locally for user: $userId');
       }
 
       return ChatResult.success(null);
@@ -697,8 +749,7 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<ChatResult<void>> deleteMessage(String messageId,
       {bool forEveryone = false}) async {
     try {
-      print(
-          '🗑️ [Repo] Delete requested: $messageId, forEveryone: $forEveryone');
+      logInfo('Delete requested: $messageId, forEveryone: $forEveryone');
       await _ensureAuth();
 
       final userId = _currentUserId;
@@ -711,14 +762,14 @@ class ChatRepositoryImpl implements ChatRepository {
             await _localDataSource.getMessage(messageId, userId);
         conversationId = localMessage?.conversationId;
       } catch (e) {
-        print('⚠️ [Repo] Could not get conversationId: $e');
+        logWarning('Could not get conversationId', error: e);
       }
 
       // 2. ارسال به سرور (سرور خودش S3 و DB را مدیریت می‌کند)
       if (forEveryone) {
-        print('🌐 [Repo] Calling Node Service...');
+        logInfo('Calling node service for deletion');
         await VistaNodeService.deleteMessage(messageId);
-        print('✅ [Repo] Server deletion successful.');
+        logInfo('Server deletion successful');
       } else {
         // حذف یک‌طرفه: فقط در hidden_messages ذخیره کن
         await _supabase.from('hidden_messages').upsert({
@@ -726,11 +777,11 @@ class ChatRepositoryImpl implements ChatRepository {
           'user_id': userId,
           'hidden_at': DateTime.now().toUtc().toIso8601String(),
         });
-        print('✅ [Repo] Message hidden for user.');
+        logInfo('Message hidden for user');
       }
 
       // 3. پاکسازی کش لوکال
-      print('🧹 [Repo] Cleaning up local cache...');
+      logDebug('Cleaning up local cache');
       await _localDataSource.deleteMessage(messageId);
       if (conversationId != null) {
         await UnifiedMessageCacheService()
@@ -739,7 +790,7 @@ class ChatRepositoryImpl implements ChatRepository {
 
       return ChatResult.success(null);
     } catch (e) {
-      print('❌ [Repo] Delete failed: $e');
+      logError('Delete failed', error: e);
       return ChatResult.failure(e.toString());
     }
   }
@@ -847,7 +898,7 @@ class ChatRepositoryImpl implements ChatRepository {
       );
       return ChatResult.success(null);
     } catch (e) {
-      print('❌ Toggle reaction failed: $e');
+      logError('Toggle reaction failed', error: e);
       return ChatResult.failure(e.toString());
     }
   }
@@ -880,7 +931,7 @@ class ChatRepositoryImpl implements ChatRepository {
         'timestamp': DateTime.now().toIso8601String()
       });
     } catch (e) {
-      print('typing error: $e');
+      logWarning('Typing indicator error', error: e);
     }
   }
 
@@ -891,7 +942,7 @@ class ChatRepositoryImpl implements ChatRepository {
       final userId = _currentUserId;
       if (userId == null) return;
 
-      print('🚀 Optimistic Save: Processing notification payload...');
+      logDebug('Optimistic save: processing notification payload');
 
       // 1. استخراج داده‌ها
       String? messageId =
@@ -902,9 +953,20 @@ class ChatRepositoryImpl implements ChatRepository {
       final senderId = payload['sender_id']?.toString();
 
       if (conversationId == null || content == null || senderId == null) {
-        print(
-            '⚠️ Optimistic Save: Missing critical fields (convId, content, senderId)');
+        logWarning('Optimistic save: missing critical fields');
         return;
+      }
+
+      final existingConvForNotification =
+          await _localDataSource.getConversation(conversationId, userId);
+      if (existingConvForNotification == null) {
+        final isParticipant = await _isConversationParticipant(
+            conversationId, userId);
+        if (!isParticipant) {
+          logWarning(
+              'Skipping notification for non-member conversation: $conversationId');
+          return;
+        }
       }
 
       // تولید ID موقت اگر در پیلود نبود (که معمولاً هست)
@@ -965,7 +1027,7 @@ class ChatRepositoryImpl implements ChatRepository {
           hasUnreadMessages: newUnreadCount > 0,
         );
         await _localDataSource.saveConversation(updatedConv);
-        print('✅ Optimistic Save: Message and Conversation updated.');
+        logDebug('Optimistic save: message and conversation updated');
       } else {
         // اگر مکالمه وجود نداشت، شاید بهتر باشد آن را فچ کنیم
         // اما برای سرعت فعلاً فقط پیام را ذخیره کردیم.
@@ -973,7 +1035,7 @@ class ChatRepositoryImpl implements ChatRepository {
         _fetchAndSaveConversation(conversationId);
       }
     } catch (e) {
-      print('❌ Optimistic Save Failed: $e');
+      logError('Optimistic save failed', error: e);
     }
   }
 

@@ -177,6 +177,15 @@ extension PostgrestFilterBuilderExtensions on PostgrestFilterBuilder {
   }
 }
 
+
+bool _isSecureUrl(String url) {
+  try {
+    final uri = Uri.parse(url);
+    return uri.scheme == 'https';
+  } catch (_) {
+    return false;
+  }
+}
 Future<bool> checkSupabaseConnectivity() async {
   try {
     await Supabase.instance.client.from('profiles').select().limit(1).timeout(
@@ -227,6 +236,11 @@ Future<void> initializeSupabaseWithFailover() async {
     try {
       logInfo(
           '🔄 Attempting Supabase initialization with Direct URL: $supabaseDirectUrl');
+
+      if (!_isSecureUrl(supabaseDirectUrl)) {
+        logInfo('Direct URL is not HTTPS. Skipping insecure fallback.');
+        return;
+      }
 
       await Supabase.initialize(
         url: supabaseDirectUrl,
@@ -321,3 +335,8 @@ void _logSessionStatus() {
     print('⚠️ Error checking session status: $e');
   }
 }
+
+
+
+
+

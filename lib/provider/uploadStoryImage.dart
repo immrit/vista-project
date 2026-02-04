@@ -7,6 +7,7 @@ import 'package:path/path.dart' as path;
 import 'package:aws_s3_api/s3-2006-03-01.dart';
 import 'package:uuid/uuid.dart';
 import '../services/secure_config.dart';
+import '../services/secure_upload_service.dart';
 import '../utils/const.dart';
 
 class StoryImageUploadService {
@@ -28,7 +29,6 @@ class StoryImageUploadService {
   }
 
   static String get bucketName => SecureConfig.awsBucketName;
-  static const String storageBaseUrl = 'https://storage.389346.ir.cdn.ir';
 
   /// آپلود تصویر استوری (پشتیبانی از وب و موبایل)
   static Future<String?> uploadStoryImage(dynamic imageData) async {
@@ -84,11 +84,13 @@ class StoryImageUploadService {
         }
       }
 
-      // آپلود فایل به S3
-      await _uploadToS3(fileName, fileBytes);
+      final uploadResult = await SecureUploadService.uploadBytes(
+        bytes: fileBytes,
+        objectKey: fileName,
+        contentType: 'image/jpeg',
+      );
 
-      // ایجاد آدرس عمومی فایل
-      final uploadedUrl = '$storageBaseUrl/$bucketName/$fileName';
+      final uploadedUrl = uploadResult.url;
       logInfo('تصویر استوری با موفقیت آپلود شد: $uploadedUrl');
 
       return uploadedUrl;
@@ -98,21 +100,6 @@ class StoryImageUploadService {
     }
   }
 
-  /// آپلود فایل به S3
-  static Future<void> _uploadToS3(String key, Uint8List data) async {
-    try {
-      await s3.putObject(
-        bucket: bucketName,
-        key: key,
-        body: data,
-        contentType: 'image/jpeg',
-        acl: ObjectCannedACL.publicRead,
-      );
-    } catch (e) {
-      logInfo('خطا در آپلود به S3: $e');
-      throw Exception('خطا در آپلود به سرور: $e');
-    }
-  }
 
   /// بهینه‌سازی داده‌های تصویر (برای وب)
   static Future<Uint8List> _optimizeImageBytes(Uint8List bytes) async {
@@ -191,23 +178,15 @@ class StoryImageUploadService {
   }
 
   /// حذف تصویر استوری از فضای ذخیره‌سازی
+  /// حذف تصویر استوری از فضای ذخیره‌سازی
   static Future<bool> deleteStoryImage(String fileUrl) async {
     if (fileUrl.isEmpty) return false;
 
     try {
-      final uri = Uri.parse(fileUrl);
-
-      // استخراج مسیر فایل از URL
-      if (uri.pathSegments.length <= 1) {
-        throw Exception('آدرس فایل نامعتبر است');
+      final deleted = await SecureUploadService.deleteByUrl(fileUrl);
+      if (!deleted) {
+        throw Exception('Delete failed');
       }
-
-      final key = uri.pathSegments.sublist(1).join('/');
-
-      await s3.deleteObject(
-        bucket: bucketName,
-        key: key,
-      );
 
       logInfo('تصویر استوری با موفقیت حذف شد: $fileUrl');
       return true;
@@ -249,3 +228,7 @@ class StoryImageUploadService {
     }
   }
 }
+
+
+
+

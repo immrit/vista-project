@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../model/session_model.dart';
+import '../security/secure_kv_store.dart';
 import '../security/logging_utility.dart';
 import '../security/security.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1256,17 +1257,17 @@ class SessionManagerServiceV2 {
       logInfo('⚠️ [_getCurrentLocation] ipapi.co failed: $e');
     }
 
-    // تلاش دوم: استفاده از ip-api.com (fallback)
+    // تلاش دوم: استفاده از ipwho.is (fallback)
     try {
-      logInfo('📡 [_getCurrentLocation] Trying ip-api.com as fallback...');
+      logInfo('📡 [_getCurrentLocation] Trying ipwho.is as fallback...');
       final result = await _getLocationFromIpApiCom();
       if (result != null) {
         logInfo(
-            '✅ [_getCurrentLocation] Successfully got location from ip-api.com');
+            '✅ [_getCurrentLocation] Successfully got location from ipwho.is');
         return result;
       }
     } catch (e) {
-      logInfo('⚠️ [_getCurrentLocation] ip-api.com also failed: $e');
+      logInfo('⚠️ [_getCurrentLocation] ipwho.is also failed: $e');
     }
 
     logInfo(
@@ -1341,7 +1342,7 @@ class SessionManagerServiceV2 {
       final response = await http
           .get(
         Uri.parse(
-            'http://ip-api.com/json/?fields=status,message,city,country,regionName,lat,lon'),
+            'http://ipwho.is/json/?fields=status,message,city,country,regionName,lat,lon'),
       )
           .timeout(
         const Duration(seconds: 10),
@@ -1467,4 +1468,7 @@ class TerminateSessionResult {
     this.remainingDays,
   });
 }
+
+
+
 
