@@ -1,12 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../model/session_model.dart';
-import '../services/session_manager_service.dart';
+import '../services/session_manager_service_v2.dart';
 
-// Provider برای SessionManagerService
+// Provider برای SessionManagerServiceV2
 // استفاده از singleton instance برای اطمینان از یکسان بودن instance
-final sessionManagerProvider = Provider<SessionManagerService>((ref) {
-  return SessionManagerService.instance;
+final sessionManagerProvider = Provider<SessionManagerServiceV2>((ref) {
+  return SessionManagerServiceV2.instance;
 });
 
 // Provider برای لیست نشست‌های فعال

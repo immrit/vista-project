@@ -8,7 +8,7 @@ import '../../../model/publicPostModel.dart';
 
 // Import Providers
 import '../../../provider/provider.dart';
-import '../../../provider/engagement_posts_provider.dart';
+import '../../../provider/personalized_feed_provider.dart';
 
 // Import Screens (for navigation)
 import 'PostDetailPage.dart';
@@ -17,12 +17,19 @@ import 'profileScreen.dart';
 import 'package:Vista/features/posts/widgets/standard_edit_post_dialog.dart';
 import 'package:flutter/services.dart';
 import '../../../services/smart_share_service.dart';
+import '../../../services/vista_node_service.dart';
 import 'package:Vista/utils/premium_features_helper.dart';
 import 'package:Vista/utils/comments_bottom_sheet.dart';
+import '../widgets/post_action_buttons.dart';
+import '../widgets/hashtag_rich_text.dart';
+import 'package:Vista/features/search/screens/searchPage.dart';
 
 // -----------------------------------------------------------------------------
 // SCREEN
 // -----------------------------------------------------------------------------
+
+/// Tracks which author ids are currently being followed (in-flight) from the feed UI.
+final _feedFollowLoadingProvider = StateProvider<Set<String>>((ref) => <String>{});
 
 class ExploreFeedScreen extends ConsumerStatefulWidget {
   const ExploreFeedScreen({super.key});
@@ -59,8 +66,13 @@ class _ExploreFeedScreenState extends ConsumerState<ExploreFeedScreen> {
                 snap: true,
                 pinned: true, // Keep the tab bar pinned
                 elevation: 0,
-                title: const Icon(Icons.all_inclusive,
-                    size: 32), // Logo placeholder (Vista/Threads style)
+                title: Image.asset(
+                  isDark
+                      ? 'lib/utils/images/logo/logo-white.png'
+                      : 'lib/utils/images/logo/black-logo.png',
+                  height: 35,
+                  fit: BoxFit.cover,
+                ),
                 centerTitle: true,
                 bottom: TabBar(
                   indicatorColor: textColor,
@@ -101,7 +113,8 @@ class _ForYouTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // استفاده از پرووایدر اصلی (engagementPostsProvider) که لاجیک لایک/کامنت صحیح دارد
-    final feedAsync = ref.watch(engagementPostsProvider);
+    final feedAsync = ref.watch(personalizedFeedProvider);
+    final notifier = ref.read(personalizedFeedProvider.notifier);
 
     return feedAsync.when(
       data: (posts) {
@@ -110,19 +123,26 @@ class _ForYouTab extends ConsumerWidget {
         }
         return RefreshIndicator(
           onRefresh: () async =>
-              ref.read(engagementPostsProvider.notifier).refreshPosts(),
-          child: ListView.separated(
+              ref.read(personalizedFeedProvider.notifier).refreshPosts(),
+          child: ListView.builder(
             cacheExtent: 1000, // Optimize rendering
             padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: posts.length,
-            separatorBuilder: (ctx, idx) =>
-                const Divider(height: 0.5, thickness: 0.5),
+            itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
             itemBuilder: (context, index) {
+              if (index == posts.length) {
+                notifier.loadMorePosts();
+                return const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+
               final post = posts[index];
-              return ProviderScope(
-                // Provide specific post overrides if needed, basically creating a scoped item
-                overrides: [],
-                child: _ThreadPostItem(post: post, isForYou: true),
+              return Column(
+                children: [
+                  _ThreadPostItem(post: post, isForYou: true),
+                  const Divider(height: 0.5, thickness: 0.5),
+                ],
               );
             },
           ),
@@ -141,6 +161,7 @@ class _FollowingTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // استفاده از پرووایدر اصلی (fetchFollowingPostsProvider)
     final feedAsync = ref.watch(fetchFollowingPostsProvider);
+    final notifier = ref.read(fetchFollowingPostsProvider.notifier);
 
     return feedAsync.when(
       data: (posts) {
@@ -150,15 +171,26 @@ class _FollowingTab extends ConsumerWidget {
         return RefreshIndicator(
           onRefresh: () async =>
               ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
-          child: ListView.separated(
+          child: ListView.builder(
             cacheExtent: 1000,
             padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: posts.length,
-            separatorBuilder: (ctx, idx) =>
-                const Divider(height: 0.5, thickness: 0.5),
+            itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
             itemBuilder: (context, index) {
+              if (index == posts.length) {
+                notifier.loadMorePosts();
+                return const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+
               final post = posts[index];
-              return _ThreadPostItem(post: post, isForYou: false);
+              return Column(
+                children: [
+                  _ThreadPostItem(post: post, isForYou: false),
+                  const Divider(height: 0.5, thickness: 0.5),
+                ],
+              );
             },
           ),
         );
@@ -184,24 +216,35 @@ class _ThreadPostItem extends ConsumerWidget {
 
   const _ThreadPostItem({required this.post, required this.isForYou});
 
-  String _formatCount(int count) {
-    if (count < 1000) return '$count';
-    if (count < 1000000) return '${(count / 1000).toStringAsFixed(1)}k';
-    return '${(count / 1000000).toStringAsFixed(1)}M';
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final hasImage = post.imageUrl != null && post.imageUrl!.isNotEmpty;
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+
+    final followStatus = post.authorFollowStatus;
+    final shouldShowFollowButton = isForYou &&
+        currentUserId != null &&
+        post.userId.isNotEmpty &&
+        post.userId != currentUserId &&
+        (followStatus == 'none' || followStatus == 'requested');
+
+    final followLoading = ref.watch(_feedFollowLoadingProvider);
+    final isFollowBusy = followLoading.contains(post.userId);
 
     // استفاده از GestureDetector به جای InkWell برای حذف افکت ریپل از کل پست
     return GestureDetector(
       behavior: HitTestBehavior.opaque, // اطمینان از کلیک‌پذیری کل محدوده
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => PostDetailsPage(postId: post.id)),
-      ),
+      onTap: () {
+        VistaNodeService.trackFeedEvent(
+          postId: post.id,
+          eventType: 'open',
+        );
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => PostDetailsPage(postId: post.id)),
+        );
+      },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Column(
@@ -242,32 +285,168 @@ class _ThreadPostItem extends ConsumerWidget {
                     children: [
                       // هدر: نام کاربر و زمان
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Flexible(
-                            child: Text(
-                              post.username,
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
-                                color: isDark ? Colors.white : Colors.black,
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    post.username,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                      color: isDark ? Colors.white : Colors.black,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (post.isVerified) ...[
+                                  const SizedBox(width: 4),
+                                  const Icon(Icons.verified,
+                                      size: 14, color: Colors.blue),
+                                ],
+                                const SizedBox(width: 6),
+                                Text(
+                                  '• ${_getTimeAgo(post.createdAt)}',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: isDark
+                                        ? Colors.grey[400]
+                                        : Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (shouldShowFollowButton)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: SizedBox(
+                                width: 112,
+                                height: 28,
+                                child: followStatus == 'requested'
+                                    ? OutlinedButton(
+                                        onPressed: null,
+                                        style: OutlinedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 10),
+                                          side: BorderSide(
+                                            color: isDark
+                                                ? Colors.white24
+                                                : Colors.black26,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(14),
+                                          ),
+                                          visualDensity:
+                                              VisualDensity.compact,
+                                          tapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                          textStyle: const TextStyle(
+                                            fontFamily: 'Vazirmatn',
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                        child: const Center(
+                                          child: FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            child: Text('درخواست شد'),
+                                          ),
+                                        ),
+                                      )
+                                    : FilledButton(
+                                        onPressed: isFollowBusy
+                                            ? null
+                                            : () async {
+                                                final targetId = post.userId;
+                                                if (targetId.isEmpty ||
+                                                    targetId ==
+                                                        currentUserId) {
+                                                  return;
+                                                }
+
+                                                ref
+                                                    .read(
+                                                        _feedFollowLoadingProvider
+                                                            .notifier)
+                                                    .update((s) =>
+                                                        {...s, targetId});
+
+                                                try {
+                                                  final status = await ref
+                                                      .read(
+                                                          supabaseServiceProvider)
+                                                      .followUserQuick(
+                                                          targetUserId:
+                                                              targetId);
+                                                  ref
+                                                      .read(
+                                                          personalizedFeedProvider
+                                                              .notifier)
+                                                      .setAuthorFollowStatus(
+                                                          targetId, status);
+                                                } catch (e) {
+                                                  if (context.mounted) {
+                                                    ScaffoldMessenger.of(
+                                                            context)
+                                                        .showSnackBar(
+                                                      SnackBar(
+                                                        content: Text(
+                                                            'خطا در دنبال کردن: $e'),
+                                                      ),
+                                                    );
+                                                  }
+                                                } finally {
+                                                  ref
+                                                      .read(
+                                                          _feedFollowLoadingProvider
+                                                              .notifier)
+                                                      .update((s) {
+                                                    final next = {...s};
+                                                    next.remove(targetId);
+                                                    return next;
+                                                  });
+                                                }
+                                              },
+                                        style: FilledButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 10),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(14),
+                                          ),
+                                          visualDensity:
+                                              VisualDensity.compact,
+                                          tapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                          textStyle: const TextStyle(
+                                            fontFamily: 'Vazirmatn',
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                        child: isFollowBusy
+                                            ? const SizedBox(
+                                                height: 14,
+                                                width: 14,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  color: Colors.white,
+                                                ),
+                                              )
+                                            : const Center(
+                                                child: FittedBox(
+                                                  fit: BoxFit.scaleDown,
+                                                  child: Text('دنبال کردن'),
+                                                ),
+                                              ),
+                                      ),
                               ),
-                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                          if (post.isVerified) ...[
-                            const SizedBox(width: 4),
-                            Icon(Icons.verified, size: 14, color: Colors.blue),
-                          ],
-                          const SizedBox(width: 6),
-                          Text(
-                            '• ${_getTimeAgo(post.createdAt)}',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color:
-                                  isDark ? Colors.grey[400] : Colors.grey[600],
-                            ),
-                          ),
-                          // منو از اینجا حذف شد و به پایین منتقل شد
                         ],
                       ),
 
@@ -277,15 +456,28 @@ class _ThreadPostItem extends ConsumerWidget {
                       if (post.content.isNotEmpty) ...[
                         Directionality(
                           textDirection: _getTextDirection(post.content),
-                          child: Text(
-                            post.content,
+                          child: HashtagRichText(
+                            text: post.content,
                             style: TextStyle(
                               fontSize: 15,
                               height: 1.4,
                               color: isDark ? Colors.white70 : Colors.black87,
                             ),
+                            hashtagStyle: const TextStyle(
+                              color: Colors.blue,
+                              fontWeight: FontWeight.w700,
+                            ),
                             maxLines: 6,
                             overflow: TextOverflow.ellipsis,
+                            onHashtagTap: (tag) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      SearchPage(initialHashtag: '#$tag'),
+                                ),
+                              );
+                            },
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -339,7 +531,9 @@ class _ThreadPostItem extends ConsumerWidget {
                                       ? (isLiked ? 1 : -1)
                                       : 0);
 
-                              return GestureDetector(
+                              return PostLikeButton(
+                                isLiked: isLiked,
+                                likeCount: likeCount,
                                 onTap: () async {
                                   ref
                                       .read(likeStateProvider.notifier)
@@ -352,7 +546,7 @@ class _ThreadPostItem extends ConsumerWidget {
                                           ownerId: post.userId,
                                           ref: ref,
                                         );
-                                  } catch (e) {
+                                  } catch (_) {
                                     if (context.mounted) {
                                       ref
                                           .read(likeStateProvider.notifier)
@@ -360,41 +554,18 @@ class _ThreadPostItem extends ConsumerWidget {
                                     }
                                   }
                                 },
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      isLiked
-                                          ? Icons.favorite
-                                          : Icons.favorite_border,
-                                      size: 20,
-                                      color: isLiked
-                                          ? Colors.red
-                                          : (isDark
-                                              ? Colors.grey[400]
-                                              : Colors.grey[600]),
-                                    ),
-                                    if (likeCount > 0) ...[
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        _formatCount(likeCount),
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: isDark
-                                              ? Colors.grey[400]
-                                              : Colors.grey[600],
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
                               );
                             },
                           ),
-                          const SizedBox(width: 24),
+                          const SizedBox(width: 16),
                           // دکمه کامنت
-                          GestureDetector(
-                            // نمایش باتم شیت کامنت‌ها
+                          PostCommentButton(
+                            commentCount: post.commentCount,
                             onTap: () {
+                              VistaNodeService.trackFeedEvent(
+                                postId: post.id,
+                                eventType: 'comment',
+                              );
                               showCommentsBottomSheet2(
                                 context,
                                 postId: post.id,
@@ -407,36 +578,18 @@ class _ThreadPostItem extends ConsumerWidget {
                                     : 'پست',
                               );
                             },
-                            child: Row(
-                              children: [
-                                Image.asset(
-                                  'lib/utils/images/component/comment.png',
-                                  width: 20,
-                                  height: 20,
-                                  color: isDark
-                                      ? Colors.grey[400]
-                                      : Colors.grey[600],
-                                ),
-                                if (post.commentCount > 0) ...[
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    _formatCount(post.commentCount),
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: isDark
-                                          ? Colors.grey[400]
-                                          : Colors.grey[600],
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
                           ),
-                          const SizedBox(width: 24),
+                          const SizedBox(width: 16),
                           // دکمه اشتراک‌گذاری
                           GestureDetector(
-                            onTap: () => SmartShareService()
-                                .showShareOptions(post, context),
+                            onTap: () {
+                              VistaNodeService.trackFeedEvent(
+                                postId: post.id,
+                                eventType: 'share',
+                              );
+                              SmartShareService()
+                                  .showShareOptions(post, context);
+                            },
                             child: Image.asset(
                               'lib/utils/images/component/send.png',
                               width: 20,
@@ -519,6 +672,19 @@ class _ThreadPostItem extends ConsumerWidget {
               ),
             ];
 
+            // Personalization control (Twitter/Threads style): "show less like this"
+            items.add(const PopupMenuItem<String>(
+              value: 'not_interested',
+              child: Row(
+                children: [
+                  Icon(Icons.remove_circle_outline,
+                      color: Colors.grey, size: 20),
+                  SizedBox(width: 8),
+                  Text('مهم نیست / کمتر نشون بده'),
+                ],
+              ),
+            ));
+
             if (isCurrentUserPost || isBlueTick) {
               items.add(const PopupMenuItem<String>(
                 value: 'delete',
@@ -586,6 +752,13 @@ class _ThreadPostItem extends ConsumerWidget {
                   ),
                 );
               }
+            } else if (value == 'not_interested') {
+              VistaNodeService.trackFeedEvent(
+                postId: post.id,
+                eventType: 'not_interested',
+              );
+              // ignore: unused_result
+              ref.refresh(personalizedFeedProvider);
             } else if (value == 'delete') {
               _showDeleteConfirmation(context, ref, post);
             } else if (value == 'edit') {
@@ -597,7 +770,7 @@ class _ThreadPostItem extends ConsumerWidget {
                   onSuccess: () {
                     // رفرش کردن پرووایدرها
                     // ignore: unused_result
-                    ref.refresh(engagementPostsProvider);
+                    ref.refresh(personalizedFeedProvider);
                     // ignore: unused_result
                     ref.refresh(fetchFollowingPostsProvider);
                   },
@@ -609,7 +782,7 @@ class _ThreadPostItem extends ConsumerWidget {
                   post: post,
                   onSuccess: () {
                     // ignore: unused_result
-                    ref.refresh(engagementPostsProvider);
+                    ref.refresh(personalizedFeedProvider);
                     // ignore: unused_result
                     ref.refresh(fetchFollowingPostsProvider);
                   },
@@ -675,7 +848,7 @@ class _ThreadPostItem extends ConsumerWidget {
                     .deletePost(ref, post.id);
                 // Refresh feeds
                 // ignore: unused_result
-                ref.refresh(engagementPostsProvider);
+                ref.refresh(personalizedFeedProvider);
                 // ignore: unused_result
                 ref.refresh(fetchFollowingPostsProvider);
 

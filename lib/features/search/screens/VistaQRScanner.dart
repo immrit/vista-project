@@ -4,6 +4,8 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../chat/screens/ChatPartnerInfoScreen.dart';
+import '../../chat/screens/modern_chat_screen.dart';
+import '../../chat/services/group_service.dart';
 import '../../posts/screens/profileScreen.dart';
 
 /// اسکنر پیشرفته ویستا برای اسکن QR کدهای پروفایل
@@ -209,6 +211,69 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
       return;
     }
 
+    // بررسی فرمت گروه (vista://group یا https://cafevista.ir/group)
+    if (code.startsWith('vista://group/') ||
+        code.startsWith('https://cafevista.ir/group/') ||
+        code.startsWith('http://cafevista.ir/group/')) {
+      setState(() {
+        _isProcessing = true;
+        _isLoading = true;
+      });
+
+      HapticFeedback.mediumImpact();
+
+      final inviteCode = code
+          .replaceFirst('vista://group/', '')
+          .replaceFirst('https://cafevista.ir/group/', '')
+          .replaceFirst('http://cafevista.ir/group/', '');
+      if (inviteCode.isEmpty) {
+        setState(() {
+          _isLoading = false;
+          _isProcessing = false;
+        });
+        return;
+      }
+
+      try {
+        final service = GroupService();
+        final conversationId = await service.joinByInvite(inviteCode);
+        final info = await service.fetchGroupInfo(conversationId);
+
+        if (!mounted) return;
+
+        setState(() => _isLoading = false);
+        Navigator.pop(context);
+
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ModernChatScreen(
+              args: ChatScreenArgs(
+                conversationId: conversationId,
+                otherUserId: '',
+                otherUserName: info?['name'] as String? ?? 'گروه',
+                otherUserAvatar: info?['image'] as String?,
+              ),
+            ),
+          ),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+          _isProcessing = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_mapGroupInviteError(e)),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.red[400],
+          ),
+        );
+      }
+      return;
+    }
+
     // فرمت نامعتبر
     HapticFeedback.lightImpact();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -218,6 +283,20 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
         backgroundColor: Colors.orange[400],
       ),
     );
+  }
+
+  String _mapGroupInviteError(Object error) {
+    final msg = error.toString();
+    if (msg.contains('invalid_invite')) {
+      return 'لینک دعوت معتبر نیست یا غیرفعال شده است';
+    }
+    if (msg.contains('max_members_exceeded')) {
+      return 'ظرفیت گروه تکمیل است';
+    }
+    if (msg.contains('unauthorized')) {
+      return 'برای ورود ابتدا وارد حساب شوید';
+    }
+    return 'خطا در پیوستن به گروه';
   }
 
   @override

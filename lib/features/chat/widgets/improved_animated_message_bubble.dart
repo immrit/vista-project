@@ -64,10 +64,16 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
   final void Function(BuildContext context, MessageModel message)? onTap;
   final void Function(BuildContext context, MessageModel message)? onLongPress;
   final VoidCallback? onDoubleTap;
+  final Function(String)? onLinkTap;
 
   // Animation
   final bool animate;
   final int index;
+
+  // Group display
+  final String? senderName;
+  final bool showSenderNameInBubble;
+  final bool compactWithAvatar;
 
   // Grouping
   final bool isFirstInGroup;
@@ -103,8 +109,12 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
     this.onTap,
     this.onLongPress,
     this.onDoubleTap,
+    this.onLinkTap,
     this.animate = true,
     this.index = 0,
+    this.senderName,
+    this.showSenderNameInBubble = false,
+    this.compactWithAvatar = false,
     this.isFirstInGroup = true,
     this.isLastInGroup = true,
     this.attachmentUrl,
@@ -254,7 +264,7 @@ class _ImprovedAnimatedMessageBubbleState
               onDoubleTap: widget.onDoubleTap,
               child: Padding(
                 padding: EdgeInsets.only(
-                  left: widget.isMe ? 60 : 12,
+                  left: widget.isMe ? 60 : (widget.compactWithAvatar ? 6 : 12),
                   right: widget.isMe ? 12 : 60,
                   bottom: widget.isLastInGroup ? 4 : 1.5,
                   top: widget.isFirstInGroup ? 4 : 1.5,
@@ -298,12 +308,14 @@ class _ImprovedAnimatedMessageBubbleState
       clipBehavior: isMedia ? Clip.antiAlias : Clip.none,
       decoration: BoxDecoration(
         color: widget.isMe ? theme.myBubbleColor : theme.otherBubbleColor,
-        borderRadius: _getBorderRadius(),
+        borderRadius: _getBorderRadius(theme),
         // ✅ سایه حذف شد برای پرفورمنس
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (_shouldShowSenderName())
+            _buildSenderName(theme, widget.senderName!.trim()),
           if (widget.isForwarded) _buildForwardHeader(theme),
           if (widget.message?.storyReplyData != null)
             _buildStoryReplySection(theme),
@@ -356,25 +368,32 @@ class _ImprovedAnimatedMessageBubbleState
     );
   }
 
-  BorderRadius _getBorderRadius() {
-    const radius = Radius.circular(18);
-    const smallRadius = Radius.circular(4);
+  bool _shouldShowSenderName() {
+    if (widget.isMe || !widget.showSenderNameInBubble) return false;
+    final name = widget.senderName?.trim();
+    return name != null && name.isNotEmpty;
+  }
 
-    if (widget.isMe) {
-      return BorderRadius.only(
-        topLeft: radius,
-        topRight: widget.isFirstInGroup ? radius : smallRadius,
-        bottomLeft: radius,
-        bottomRight: widget.isLastInGroup ? radius : smallRadius,
-      );
-    } else {
-      return BorderRadius.only(
-        topLeft: widget.isFirstInGroup ? radius : smallRadius,
-        topRight: radius,
-        bottomLeft: widget.isLastInGroup ? radius : smallRadius,
-        bottomRight: radius,
-      );
-    }
+  Widget _buildSenderName(ChatTheme theme, String name) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 2),
+      child: Text(
+        name,
+        style: TextStyle(
+          color: theme.sendButtonColor,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  BorderRadius _getBorderRadius(ChatTheme theme) {
+    return theme.bubbleBorderRadius(
+      isMe: widget.isMe,
+      isFirstInGroup: widget.isFirstInGroup,
+      isLastInGroup: widget.isLastInGroup,
+    );
   }
 
   Widget _buildReplySection(ChatTheme theme) {
@@ -438,8 +457,9 @@ class _ImprovedAnimatedMessageBubbleState
         : (storyData.storyMediaType == 'video' ? 'ویدیو' : 'تصویر');
 
     return GestureDetector(
-      onTap:
-          widget.onStoryReplyTap != null ? () => widget.onStoryReplyTap!(storyData) : null,
+      onTap: widget.onStoryReplyTap != null
+          ? () => widget.onStoryReplyTap!(storyData)
+          : null,
       child: Container(
         margin: const EdgeInsets.fromLTRB(8, 8, 8, 4),
         padding: const EdgeInsets.all(8),
@@ -529,9 +549,7 @@ class _ImprovedAnimatedMessageBubbleState
                 height: 56,
                 color: theme.dividerColor.withOpacity(0.2),
                 child: Icon(
-                  data.storyMediaType == 'video'
-                      ? Icons.videocam
-                      : Icons.image,
+                  data.storyMediaType == 'video' ? Icons.videocam : Icons.image,
                   color: theme.dividerColor.withOpacity(0.6),
                   size: 24,
                 ),
@@ -701,6 +719,7 @@ class _ImprovedAnimatedMessageBubbleState
                       onHashtagTap: (tag) {
                         NavigationHelper.navigateToHashtagPosts(context, tag);
                       },
+                      onLinkTap: widget.onLinkTap,
                     ),
                   )
                 : const SizedBox.shrink(),

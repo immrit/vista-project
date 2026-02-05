@@ -4,7 +4,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../model/message_model.dart';
-import '../../../DB/unified_message_cache_service.dart'; // ✅ Added
+
 import '../../../model/conversation_model.dart';
 import '../data/datasources/chat_local_datasource_isar.dart';
 import '../services/message_reactions_service.dart'; // ✅ اضافه شد
@@ -15,6 +15,8 @@ import 'chat_repository.dart';
 
 /// A local-first ChatRepository implementation using Isar.
 class ChatRepositoryImpl implements ChatRepository {
+  static const String _messageSelectWithProfiles =
+      '*, profiles!sender_id(username, full_name, avatar_url)';
   final ChatLocalDataSourceIsar _localDataSource;
   final SupabaseClient _supabase;
   final String? _injectedCurrentUserId;
@@ -186,11 +188,11 @@ class ChatRepositoryImpl implements ChatRepository {
                 return;
               }
 
-              final existingConv =
-                  await _localDataSource.getConversation(conversationId, userId);
+              final existingConv = await _localDataSource.getConversation(
+                  conversationId, userId);
               if (existingConv == null) {
-                final isParticipant = await _isConversationParticipant(
-                    conversationId, userId);
+                final isParticipant =
+                    await _isConversationParticipant(conversationId, userId);
                 if (!isParticipant) {
                   logWarning(
                       'Skipping realtime message for non-member conversation: $conversationId');
@@ -224,10 +226,9 @@ class ChatRepositoryImpl implements ChatRepository {
               }
 
               // 2. Update Conversation Metadata (Unread Count, Last Message)
-              final existingConvForUpdate =
-                  existingConv ??
-                      await _localDataSource.getConversation(
-                          conversationId, userId);
+              final existingConvForUpdate = existingConv ??
+                  await _localDataSource.getConversation(
+                      conversationId, userId);
 
               if (existingConvForUpdate != null) {
                 // ✅ Active Chat Logic: Don't increment unread if active
@@ -249,11 +250,13 @@ class ChatRepositoryImpl implements ChatRepository {
                 await _localDataSource.saveConversation(updatedConv);
               } else {
                 // If conversation doesn't exist locally, fetch it
-                logInfo('Conversation not found locally, fetching: $conversationId');
+                logInfo(
+                    'Conversation not found locally, fetching: $conversationId');
                 _fetchAndSaveConversation(conversationId);
               }
             } catch (e, stack) {
-              logError('Error in realtime message callback', error: e, stackTrace: stack);
+              logError('Error in realtime message callback',
+                  error: e, stackTrace: stack);
             }
           },
         )
@@ -271,15 +274,16 @@ class ChatRepositoryImpl implements ChatRepository {
               final messageId = newRecord['id'] as String;
               final conversationId = newRecord['conversation_id'] as String?;
               if (conversationId == null || conversationId.isEmpty) {
-                logWarning('Realtime update missing conversation_id for message $messageId');
+                logWarning(
+                    'Realtime update missing conversation_id for message $messageId');
                 return;
               }
 
               final existingConv = await _localDataSource.getConversation(
                   conversationId, userId);
               if (existingConv == null) {
-                final isParticipant = await _isConversationParticipant(
-                    conversationId, userId);
+                final isParticipant =
+                    await _isConversationParticipant(conversationId, userId);
                 if (!isParticipant) {
                   logWarning(
                       'Skipping realtime update for non-member conversation: $conversationId');
@@ -310,10 +314,6 @@ class ChatRepositoryImpl implements ChatRepository {
                   );
 
                   await _localDataSource.saveMessage(updatedMessage);
-
-                  // Update UI Cache
-                  await UnifiedMessageCacheService()
-                      .cacheMessage(updatedMessage);
 
                   logDebug('Message updated: $messageId (Seen: $isSeen)');
                 }
@@ -374,7 +374,8 @@ class ChatRepositoryImpl implements ChatRepository {
                     hasUnreadMessages: serverUnreadCount > 0,
                   );
                   await _localDataSource.saveConversation(updatedConv);
-                  logDebug('Synced unread count for $conversationId: $serverUnreadCount');
+                  logDebug(
+                      'Synced unread count for $conversationId: $serverUnreadCount');
                 }
               } catch (e) {
                 logError('Error in realtime unread callback', error: e);
@@ -489,9 +490,6 @@ class ChatRepositoryImpl implements ChatRepository {
       // 1. Save Optimistic Message to Local DB
       await _localDataSource.saveMessage(messageModel);
 
-      // 2. Update Unified Cache (UI Update)
-      await UnifiedMessageCacheService().cacheMessage(messageModel);
-
       // 3. Update Conversation Metadata (Optimistic)
       final existingConv =
           await _localDataSource.getConversation(conversationId, userId);
@@ -523,7 +521,7 @@ class ChatRepositoryImpl implements ChatRepository {
             'reply_to_content': replyToContent,
             'reply_to_sender_name': replyToSenderName,
           })
-          .select()
+          .select(_messageSelectWithProfiles)
           .single();
 
       final serverMessage =
@@ -532,9 +530,6 @@ class ChatRepositoryImpl implements ChatRepository {
       // 5. Update Local DB w/ Server Response (mark as sent)
       // No delete needed! Just update.
       await _localDataSource.saveMessage(serverMessage);
-
-      // 6. Update Unified Cache (Confirmed)
-      await UnifiedMessageCacheService().cacheMessage(serverMessage);
 
       // 7. Sync Conversation Metadata (Confirmed)
       if (existingConv != null) {
@@ -551,9 +546,13 @@ class ChatRepositoryImpl implements ChatRepository {
       final failedMessage =
           messageModel.copyWith(isPending: false, isFailed: true);
       await _localDataSource.saveMessage(failedMessage);
-      await UnifiedMessageCacheService()
-          .cacheMessage(failedMessage); // Update UI
-      return ChatResult.failure(e.toString());
+      final err = e.toString();
+      final isPrivacyDenied = err.contains('messages_insert_respect_message_privacy') ||
+          err.contains('row-level security') ||
+          err.contains('violates row level security') ||
+          err.contains('violates row-level security');
+      return ChatResult.failure(
+          isPrivacyDenied ? 'این کاربر دریافت پیام را محدود کرده است' : err);
     }
   }
 
@@ -567,7 +566,7 @@ class ChatRepositoryImpl implements ChatRepository {
       // تلگرام هم همیشه یک "Snapshot" از آخرین وضعیت می‌گیرد.
       final response = await _supabase
           .from('messages')
-          .select()
+          .select(_messageSelectWithProfiles)
           .eq('conversation_id', conversationId)
           .order('created_at', ascending: false)
           .limit(50);
@@ -667,7 +666,8 @@ class ChatRepositoryImpl implements ChatRepository {
       // 2️⃣ سپس از Supabase حذف کن (در background - بدون بلاک کردن UI)
       _supabase.from('conversations').delete().eq('id', conversationId).then(
             (_) => null,
-            onError: (e) => logWarning('Server delete failed (non-blocking)', error: e),
+            onError: (e) =>
+                logWarning('Server delete failed (non-blocking)', error: e),
           );
 
       return ChatResult.success(null);
@@ -724,10 +724,13 @@ class ChatRepositoryImpl implements ChatRepository {
             logInfo('Chat cleared for everyone: $conversationId');
           } catch (e) {
             // اگر RPC موفق بود، این خطا طبیعی است
-            logWarning('Direct delete attempted (may already be cleared)', error: e);
+            logWarning('Direct delete attempted (may already be cleared)',
+                error: e);
           }
         } catch (e) {
-          logWarning('Server clear error (non-fatal), but local cleanup completed', error: e);
+          logWarning(
+              'Server clear error (non-fatal), but local cleanup completed',
+              error: e);
         }
       } else {
         // پاکسازی یک‌طرفه - فقط لوکال پاک شده است
@@ -755,15 +758,9 @@ class ChatRepositoryImpl implements ChatRepository {
       final userId = _currentUserId;
       if (userId == null) return ChatResult.failure('کاربر وارد نشده است');
 
-      // 1. دریافت conversationId برای پاکسازی کش
-      String? conversationId;
-      try {
-        final localMessage =
-            await _localDataSource.getMessage(messageId, userId);
-        conversationId = localMessage?.conversationId;
-      } catch (e) {
-        logWarning('Could not get conversationId', error: e);
-      }
+      // 1. دریافت conversationId برای پاکسازی کش (اگر نیاز بود)
+      // در حال حاضر با حذف UnifiedMessageCacheService نیازی به conversationId نیست
+      // مگر اینکه برای لاگ یا منطق دیگری بخواهیم.
 
       // 2. ارسال به سرور (سرور خودش S3 و DB را مدیریت می‌کند)
       if (forEveryone) {
@@ -783,10 +780,6 @@ class ChatRepositoryImpl implements ChatRepository {
       // 3. پاکسازی کش لوکال
       logDebug('Cleaning up local cache');
       await _localDataSource.deleteMessage(messageId);
-      if (conversationId != null) {
-        await UnifiedMessageCacheService()
-            .deleteMessage(messageId, conversationId);
-      }
 
       return ChatResult.success(null);
     } catch (e) {
@@ -813,7 +806,7 @@ class ChatRepositoryImpl implements ChatRepository {
             'edited_at': DateTime.now().toUtc().toIso8601String(),
           })
           .eq('id', messageId)
-          .select()
+          .select(_messageSelectWithProfiles)
           .maybeSingle();
 
       if (response == null) {
@@ -829,8 +822,7 @@ class ChatRepositoryImpl implements ChatRepository {
         );
         await _localDataSource.saveMessage(updatedMessage);
 
-        // 3. Update Unified Cache (UI refresh)
-        await UnifiedMessageCacheService().cacheMessage(updatedMessage);
+        await _localDataSource.saveMessage(updatedMessage);
       }
 
       return ChatResult.success(null);
@@ -846,7 +838,7 @@ class ChatRepositoryImpl implements ChatRepository {
     try {
       final response = await _supabase
           .from('messages')
-          .select('*')
+          .select(_messageSelectWithProfiles)
           .eq('conversation_id', conversationId)
           .ilike('content', '%$query%')
           .order('created_at', ascending: false)
@@ -868,7 +860,7 @@ class ChatRepositoryImpl implements ChatRepository {
     try {
       final response = await _supabase
           .from('messages')
-          .select('*')
+          .select(_messageSelectWithProfiles)
           .eq('conversation_id', conversationId)
           .lt('created_at', oldestMessageDate.toUtc().toIso8601String())
           .order('created_at', ascending: false)
@@ -960,8 +952,8 @@ class ChatRepositoryImpl implements ChatRepository {
       final existingConvForNotification =
           await _localDataSource.getConversation(conversationId, userId);
       if (existingConvForNotification == null) {
-        final isParticipant = await _isConversationParticipant(
-            conversationId, userId);
+        final isParticipant =
+            await _isConversationParticipant(conversationId, userId);
         if (!isParticipant) {
           logWarning(
               'Skipping notification for non-member conversation: $conversationId');
@@ -1000,8 +992,8 @@ class ChatRepositoryImpl implements ChatRepository {
       // 3. ذخیره در لوکال دیتابیس (Isar)
       await _localDataSource.saveMessage(message);
 
-      // 4. آپدیت UI (Unified Cache)
-      await UnifiedMessageCacheService().cacheMessage(message);
+      // 4. آپدیت UI (حذف شده - Unified Cache)
+      // await UnifiedMessageCacheService().cacheMessage(message);
 
       // 5. آپدیت متادیتای مکالمه (آخرین پیام و تعداد خوانده نشده)
       final existingConv =

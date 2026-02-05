@@ -198,6 +198,7 @@ class SettingsCacheService {
           'allow_follow_requests': true,
           'show_last_seen': true,
           'allow_profile_views': true,
+          'group_add_privacy': 'everyone',
           'blocked_users': [],
           'restricted_users': [],
         };

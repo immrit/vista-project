@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../../services/session_manager_service.dart';
+import '../../services/session_manager_service_v2.dart';
 
 final supabase = Supabase.instance.client;
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -105,7 +105,7 @@ class SupabaseHttpClient extends http.BaseClient {
 
   void _attachSessionHeaders(http.BaseRequest request) {
     try {
-      final sessionManager = SessionManagerService();
+      final sessionManager = SessionManagerServiceV2.instance;
       final sessionId = sessionManager.currentSessionId;
       final sessionToken = sessionManager.currentSessionToken;
 

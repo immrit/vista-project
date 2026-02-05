@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 
@@ -29,6 +29,7 @@ import '../model/UserModel.dart';
 import 'package:Vista/utils/themes.dart';
 import '../services/user_friendly_error_handler.dart';
 import '../services/auth_navigation_service.dart';
+import '../services/vista_node_service.dart';
 import 'session_provider.dart';
 // Import security provider
 
@@ -116,12 +117,12 @@ final deleteNoteProvider =
 });
 
 final themeProvider = StateProvider<ThemeData>((ref) {
-  // بررسی حالت پلتفرم و انتخاب تم متناسب
+  // Ø¨Ø±Ø±Ø³ÛŒ Ø­Ø§Ù„Øª Ù¾Ù„ØªÙØ±Ù… Ùˆ Ø§Ù†ØªØ®Ø§Ø¨ ØªÙ… Ù…ØªÙ†Ø§Ø³Ø¨
   final platformBrightness = PlatformDispatcher.instance.platformBrightness;
 
   return platformBrightness == Brightness.dark
-      ? VistaThemes.darkTheme // اگر گوشی در حالت تیره است
-      : VistaThemes.lightTheme; // اگر گوشی در حالت روشن است
+      ? VistaThemes.darkTheme // Ø§Ú¯Ø± Ú¯ÙˆØ´ÛŒ Ø¯Ø± Ø­Ø§Ù„Øª ØªÛŒØ±Ù‡ Ø§Ø³Øª
+      : VistaThemes.lightTheme; // Ø§Ú¯Ø± Ú¯ÙˆØ´ÛŒ Ø¯Ø± Ø­Ø§Ù„Øª Ø±ÙˆØ´Ù† Ø§Ø³Øª
 });
 
 final isLoadingProvider = StateProvider<bool>((ref) => false);
@@ -135,7 +136,7 @@ final fetchPublicPosts = FutureProvider<List<PublicPostModel>>((ref) async {
   }
 
   try {
-    // دریافت لیست کاربران دنبال شده توسط کاربر فعلی
+    // Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ø¯Ù†Ø¨Ø§Ù„ Ø´Ø¯Ù‡ ØªÙˆØ³Ø· Ú©Ø§Ø±Ø¨Ø± ÙØ¹Ù„ÛŒ
     final followingResponse = await supabase
         .from('follows')
         .select('following_id')
@@ -164,11 +165,11 @@ final fetchPublicPosts = FutureProvider<List<PublicPostModel>>((ref) async {
 
     final postsData = response as List<dynamic>;
 
-    // دریافت لیست کاربرانی که پست دارند
+    // Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª Ú©Ø§Ø±Ø¨Ø±Ø§Ù†ÛŒ Ú©Ù‡ Ù¾Ø³Øª Ø¯Ø§Ø±Ù†Ø¯
     final userIds =
         postsData.map((post) => post['user_id'] as String).toSet().toList();
 
-    // دریافت تنظیمات حریم خصوصی برای این کاربران
+    // Ø¯Ø±ÛŒØ§ÙØª ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø­Ø±ÛŒÙ… Ø®ØµÙˆØµÛŒ Ø¨Ø±Ø§ÛŒ Ø§ÛŒÙ† Ú©Ø§Ø±Ø¨Ø±Ø§Ù†
     final userSettingsResponse = await supabase
         .from('user_settings')
         .select('user_id, is_private')
@@ -179,22 +180,22 @@ final fetchPublicPosts = FutureProvider<List<PublicPostModel>>((ref) async {
         setting['user_id'] as String: setting['is_private'] as bool? ?? false
     };
 
-    // فیلتر کردن پست‌ها - فقط پست‌های عمومی یا پست‌های کاربران دنبال شده
+    // ÙÛŒÙ„ØªØ± Ú©Ø±Ø¯Ù† Ù¾Ø³Øªâ€ŒÙ‡Ø§ - ÙÙ‚Ø· Ù¾Ø³Øªâ€ŒÙ‡Ø§ÛŒ Ø¹Ù…ÙˆÙ…ÛŒ ÛŒØ§ Ù¾Ø³Øªâ€ŒÙ‡Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ø¯Ù†Ø¨Ø§Ù„ Ø´Ø¯Ù‡
     final filteredPosts = postsData.where((post) {
       final postUserId = post['user_id'] as String;
       final isPrivate = userSettingsMap[postUserId] ?? false;
 
-      // اگر پست متعلق به خود کاربر است، همیشه نمایش داده شود
+      // Ø§Ú¯Ø± Ù¾Ø³Øª Ù…ØªØ¹Ù„Ù‚ Ø¨Ù‡ Ø®ÙˆØ¯ Ú©Ø§Ø±Ø¨Ø± Ø§Ø³ØªØŒ Ù‡Ù…ÛŒØ´Ù‡ Ù†Ù…Ø§ÛŒØ´ Ø¯Ø§Ø¯Ù‡ Ø´ÙˆØ¯
       if (postUserId == userId) {
         return true;
       }
 
-      // اگر پست متعلق به کاربر دنبال شده است، همیشه نمایش داده شود
+      // Ø§Ú¯Ø± Ù¾Ø³Øª Ù…ØªØ¹Ù„Ù‚ Ø¨Ù‡ Ú©Ø§Ø±Ø¨Ø± Ø¯Ù†Ø¨Ø§Ù„ Ø´Ø¯Ù‡ Ø§Ø³ØªØŒ Ù‡Ù…ÛŒØ´Ù‡ Ù†Ù…Ø§ÛŒØ´ Ø¯Ø§Ø¯Ù‡ Ø´ÙˆØ¯
       if (followingIds.contains(postUserId)) {
         return true;
       }
 
-      // اگر پست متعلق به کاربر دنبال نشده است، فقط اگر عمومی باشد نمایش داده شود
+      // Ø§Ú¯Ø± Ù¾Ø³Øª Ù…ØªØ¹Ù„Ù‚ Ø¨Ù‡ Ú©Ø§Ø±Ø¨Ø± Ø¯Ù†Ø¨Ø§Ù„ Ù†Ø´Ø¯Ù‡ Ø§Ø³ØªØŒ ÙÙ‚Ø· Ø§Ú¯Ø± Ø¹Ù…ÙˆÙ…ÛŒ Ø¨Ø§Ø´Ø¯ Ù†Ù…Ø§ÛŒØ´ Ø¯Ø§Ø¯Ù‡ Ø´ÙˆØ¯
       return !isPrivate;
     }).toList();
 
@@ -206,7 +207,7 @@ final fetchPublicPosts = FutureProvider<List<PublicPostModel>>((ref) async {
           'Unknown';
       final isVerified = profile['is_verified'] as bool? ?? false;
 
-      // تغییر از likes به likes
+      // ØªØºÛŒÛŒØ± Ø§Ø² likes Ø¨Ù‡ likes
       final likes = e['likes'] as List<dynamic>? ?? [];
       final likeCount = likes.length;
       final isLiked = likes.any((like) => like['user_id'] == userId);
@@ -223,7 +224,7 @@ final fetchPublicPosts = FutureProvider<List<PublicPostModel>>((ref) async {
         'is_verified': isVerified,
         'comment_count': commentCount,
         'verification_type':
-            profile['verification_type'], // اضافه کردن verification_type
+            profile['verification_type'], // Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† verification_type
       });
     }).toList();
   } catch (e) {
@@ -239,7 +240,7 @@ final postsProvider = StateProvider<List<PublicPostModel>>((ref) {
 class PublicPostsNotifier
     extends StateNotifier<AsyncValue<List<PublicPostModel>>> {
   final SupabaseClient supabase;
-  final int _limit = 15; // افزایش تعداد آیتم‌های لود شده در یک صفحه
+  final int _limit = 15; // Ø§ÙØ²Ø§ÛŒØ´ ØªØ¹Ø¯Ø§Ø¯ Ø¢ÛŒØªÙ…â€ŒÙ‡Ø§ÛŒ Ù„ÙˆØ¯ Ø´Ø¯Ù‡ Ø¯Ø± ÛŒÚ© ØµÙØ­Ù‡
   int _offset = 0;
   bool _hasMore = true;
   bool _isLoading = false;
@@ -262,7 +263,7 @@ class PublicPostsNotifier
     _isLoading = true;
 
     try {
-      // اضافه کردن تأخیر کوتاه برای جلوگیری از درخواست‌های مکرر به سرور
+      // Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† ØªØ£Ø®ÛŒØ± Ú©ÙˆØªØ§Ù‡ Ø¨Ø±Ø§ÛŒ Ø¬Ù„ÙˆÚ¯ÛŒØ±ÛŒ Ø§Ø² Ø¯Ø±Ø®ÙˆØ§Ø³Øªâ€ŒÙ‡Ø§ÛŒ Ù…Ú©Ø±Ø± Ø¨Ù‡ Ø³Ø±ÙˆØ±
       if (_offset > 0) {
         await Future.delayed(const Duration(milliseconds: 300));
       }
@@ -274,7 +275,7 @@ class PublicPostsNotifier
         return;
       }
 
-      // دریافت لیست کاربران دنبال شده توسط کاربر فعلی
+      // Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ø¯Ù†Ø¨Ø§Ù„ Ø´Ø¯Ù‡ ØªÙˆØ³Ø· Ú©Ø§Ø±Ø¨Ø± ÙØ¹Ù„ÛŒ
       final followingResponse = await supabase
           .from('follows')
           .select('following_id')
@@ -311,14 +312,14 @@ class PublicPostsNotifier
         return;
       }
 
-      // فیلتر کردن پست‌ها - فقط پست‌های عمومی یا پست‌های کاربران دنبال شده
+      // ÙÛŒÙ„ØªØ± Ú©Ø±Ø¯Ù† Ù¾Ø³Øªâ€ŒÙ‡Ø§ - ÙÙ‚Ø· Ù¾Ø³Øªâ€ŒÙ‡Ø§ÛŒ Ø¹Ù…ÙˆÙ…ÛŒ ÛŒØ§ Ù¾Ø³Øªâ€ŒÙ‡Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ø¯Ù†Ø¨Ø§Ù„ Ø´Ø¯Ù‡
       final postsList = response as List<dynamic>;
 
-      // دریافت لیست کاربرانی که پست دارند
+      // Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª Ú©Ø§Ø±Ø¨Ø±Ø§Ù†ÛŒ Ú©Ù‡ Ù¾Ø³Øª Ø¯Ø§Ø±Ù†Ø¯
       final userIds =
           postsList.map((post) => post['user_id'] as String).toSet().toList();
 
-      // دریافت تنظیمات حریم خصوصی برای این کاربران
+      // Ø¯Ø±ÛŒØ§ÙØª ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø­Ø±ÛŒÙ… Ø®ØµÙˆØµÛŒ Ø¨Ø±Ø§ÛŒ Ø§ÛŒÙ† Ú©Ø§Ø±Ø¨Ø±Ø§Ù†
       final userSettingsResponse = await supabase
           .from('user_settings')
           .select('user_id, is_private')
@@ -333,17 +334,17 @@ class PublicPostsNotifier
         final postUserId = post['user_id'] as String;
         final isPrivate = userSettingsMap[postUserId] ?? false;
 
-        // اگر پست متعلق به خود کاربر است، همیشه نمایش داده شود
+        // Ø§Ú¯Ø± Ù¾Ø³Øª Ù…ØªØ¹Ù„Ù‚ Ø¨Ù‡ Ø®ÙˆØ¯ Ú©Ø§Ø±Ø¨Ø± Ø§Ø³ØªØŒ Ù‡Ù…ÛŒØ´Ù‡ Ù†Ù…Ø§ÛŒØ´ Ø¯Ø§Ø¯Ù‡ Ø´ÙˆØ¯
         if (postUserId == userId) {
           return true;
         }
 
-        // اگر پست متعلق به کاربر دنبال شده است، همیشه نمایش داده شود
+        // Ø§Ú¯Ø± Ù¾Ø³Øª Ù…ØªØ¹Ù„Ù‚ Ø¨Ù‡ Ú©Ø§Ø±Ø¨Ø± Ø¯Ù†Ø¨Ø§Ù„ Ø´Ø¯Ù‡ Ø§Ø³ØªØŒ Ù‡Ù…ÛŒØ´Ù‡ Ù†Ù…Ø§ÛŒØ´ Ø¯Ø§Ø¯Ù‡ Ø´ÙˆØ¯
         if (followingIds.contains(postUserId)) {
           return true;
         }
 
-        // اگر پست متعلق به کاربر دنبال نشده است، فقط اگر عمومی باشد نمایش داده شود
+        // Ø§Ú¯Ø± Ù¾Ø³Øª Ù…ØªØ¹Ù„Ù‚ Ø¨Ù‡ Ú©Ø§Ø±Ø¨Ø± Ø¯Ù†Ø¨Ø§Ù„ Ù†Ø´Ø¯Ù‡ Ø§Ø³ØªØŒ ÙÙ‚Ø· Ø§Ú¯Ø± Ø¹Ù…ÙˆÙ…ÛŒ Ø¨Ø§Ø´Ø¯ Ù†Ù…Ø§ÛŒØ´ Ø¯Ø§Ø¯Ù‡ Ø´ÙˆØ¯
         return !isPrivate;
       }).toList();
 
@@ -366,12 +367,12 @@ class PublicPostsNotifier
           'avatar_url': profile['avatar_url'] ?? '',
           'is_verified': profile['is_verified'] ?? false,
           'comment_count': comments.length,
-          'verification_type': profile['verification_type'], // اضافه کردن verification_type
+          'verification_type': profile['verification_type'], // Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† verification_type
         });
       }).toList();
 
-      // اگر state.value null است، posts را به عنوان لیست جدید قرار می‌دهیم
-      // در غیر این صورت، posts را به لیست موجود اضافه می‌کنیم
+      // Ø§Ú¯Ø± state.value null Ø§Ø³ØªØŒ posts Ø±Ø§ Ø¨Ù‡ Ø¹Ù†ÙˆØ§Ù† Ù„ÛŒØ³Øª Ø¬Ø¯ÛŒØ¯ Ù‚Ø±Ø§Ø± Ù…ÛŒâ€ŒØ¯Ù‡ÛŒÙ…
+      // Ø¯Ø± ØºÛŒØ± Ø§ÛŒÙ† ØµÙˆØ±ØªØŒ posts Ø±Ø§ Ø¨Ù‡ Ù„ÛŒØ³Øª Ù…ÙˆØ¬ÙˆØ¯ Ø§Ø¶Ø§ÙÙ‡ Ù…ÛŒâ€ŒÚ©Ù†ÛŒÙ…
       final currentPosts = state.value ?? [];
       state = AsyncValue.data([...currentPosts, ...posts]);
     } catch (e, stackTrace) {
@@ -385,10 +386,10 @@ class PublicPostsNotifier
     }
   }
 
-  // متد برای بررسی اینکه آیا پست‌های بیشتری وجود دارد یا خیر
+  // Ù…ØªØ¯ Ø¨Ø±Ø§ÛŒ Ø¨Ø±Ø±Ø³ÛŒ Ø§ÛŒÙ†Ú©Ù‡ Ø¢ÛŒØ§ Ù¾Ø³Øªâ€ŒÙ‡Ø§ÛŒ Ø¨ÛŒØ´ØªØ±ÛŒ ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø±Ø¯ ÛŒØ§ Ø®ÛŒØ±
   bool hasMorePosts() => _hasMore;
 
-  // متد برای بررسی اینکه آیا در حال بارگذاری هستیم یا خیر
+  // Ù…ØªØ¯ Ø¨Ø±Ø§ÛŒ Ø¨Ø±Ø±Ø³ÛŒ Ø§ÛŒÙ†Ú©Ù‡ Ø¢ÛŒØ§ Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Ù‡Ø³ØªÛŒÙ… ÛŒØ§ Ø®ÛŒØ±
   bool isLoading() => _isLoading;
 
   Future<void> refreshPosts() async {
@@ -434,18 +435,18 @@ class PublicPostsNotifier
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return;
 
-    // ✅ بررسی امنیتی: بررسی اینکه نشست هنوز معتبر است
+    // âœ… Ø¨Ø±Ø±Ø³ÛŒ Ø§Ù…Ù†ÛŒØªÛŒ: Ø¨Ø±Ø±Ø³ÛŒ Ø§ÛŒÙ†Ú©Ù‡ Ù†Ø´Ø³Øª Ù‡Ù†ÙˆØ² Ù…Ø¹ØªØ¨Ø± Ø§Ø³Øª
     try {
       final sessionManager = ref.read(sessionManagerProvider);
       final isSessionValid = await sessionManager.isSessionStillValid();
       if (!isSessionValid) {
         debugPrint(
-            '❌ Session is no longer valid, cannot perform like operation');
-        throw Exception('نشست شما منقضی شده است. لطفاً دوباره وارد شوید.');
+            'âŒ Session is no longer valid, cannot perform like operation');
+        throw Exception('Ù†Ø´Ø³Øª Ø´Ù…Ø§ Ù…Ù†Ù‚Ø¶ÛŒ Ø´Ø¯Ù‡ Ø§Ø³Øª. Ù„Ø·ÙØ§Ù‹ Ø¯ÙˆØ¨Ø§Ø±Ù‡ ÙˆØ§Ø±Ø¯ Ø´ÙˆÛŒØ¯.');
       }
     } catch (e) {
-      debugPrint('❌ Error checking session validity: $e');
-      // اگر خطای network است، ادامه بده
+      debugPrint('âŒ Error checking session validity: $e');
+      // Ø§Ú¯Ø± Ø®Ø·Ø§ÛŒ network Ø§Ø³ØªØŒ Ø§Ø¯Ø§Ù…Ù‡ Ø¨Ø¯Ù‡
       final errorString = e.toString().toLowerCase();
       if (!errorString.contains('network') &&
           !errorString.contains('timeout') &&
@@ -455,7 +456,7 @@ class PublicPostsNotifier
     }
 
     try {
-      // 1. آپدیت Optimistic در UI قبل از درخواست به سرور
+      // 1. Ø¢Ù¾Ø¯ÛŒØª Optimistic Ø¯Ø± UI Ù‚Ø¨Ù„ Ø§Ø² Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø¨Ù‡ Ø³Ø±ÙˆØ±
       final currentPosts =
           ref.read(publicPostsProvider.notifier).state.value ?? [];
       final postIndex = currentPosts.indexWhere((post) => post.id == postId);
@@ -465,7 +466,7 @@ class PublicPostsNotifier
         currentPost = currentPosts[postIndex];
         final newIsLiked = !currentPost.isLiked;
 
-        // آپدیت state در همه provider های مرتبط
+        // Ø¢Ù¾Ø¯ÛŒØª state Ø¯Ø± Ù‡Ù…Ù‡ provider Ù‡Ø§ÛŒ Ù…Ø±ØªØ¨Ø·
         ref
             .read(likeStateProvider.notifier)
             .updateLikeState(postId, newIsLiked);
@@ -486,7 +487,7 @@ class PublicPostsNotifier
         }
       }
 
-      // 2. درخواست به سرور
+      // 2. Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø¨Ù‡ Ø³Ø±ÙˆØ±
       if (currentPost != null && !currentPost.isLiked) {
         await supabase.from('likes').insert({
           'post_id': postId,
@@ -501,7 +502,7 @@ class PublicPostsNotifier
             .eq('user_id', userId);
       }
     } catch (e) {
-      // در صورت خطا، برگرداندن state به حالت قبل
+      // Ø¯Ø± ØµÙˆØ±Øª Ø®Ø·Ø§ØŒ Ø¨Ø±Ú¯Ø±Ø¯Ø§Ù†Ø¯Ù† state Ø¨Ù‡ Ø­Ø§Ù„Øª Ù‚Ø¨Ù„
       ref.invalidate(publicPostsProvider);
       ref.invalidate(likeStateProvider);
       debugPrint('Error in toggleLike: $e');
@@ -516,7 +517,7 @@ final publicPostsProvider = StateNotifierProvider<PublicPostsNotifier,
   return PublicPostsNotifier(supabase);
 });
 
-// سرویس Supabase برای مدیریت لایک‌ها
+// Ø³Ø±ÙˆÛŒØ³ Supabase Ø¨Ø±Ø§ÛŒ Ù…Ø¯ÛŒØ±ÛŒØª Ù„Ø§ÛŒÚ©â€ŒÙ‡Ø§
 class SupabaseService {
   final SupabaseClient supabase;
 
@@ -536,7 +537,7 @@ class SupabaseService {
 
       return response;
     } catch (e) {
-      print('خطا در بررسی لایک موجود: $e');
+      print('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø±Ø±Ø³ÛŒ Ù„Ø§ÛŒÚ© Ù…ÙˆØ¬ÙˆØ¯: $e');
       rethrow;
     }
   }
@@ -561,7 +562,7 @@ class SupabaseService {
   //         .map((post) => PublicPostModel.fromMap(post as Map<String, dynamic>))
   //         .toList();
   //   } catch (e) {
-  //     throw Exception('خطا در جستجوی پست‌ها: $e');
+  //     throw Exception('Ø®Ø·Ø§ Ø¯Ø± Ø¬Ø³ØªØ¬ÙˆÛŒ Ù¾Ø³Øªâ€ŒÙ‡Ø§: $e');
   //   }
   // }
   Future<void> toggleLike({
@@ -570,20 +571,20 @@ class SupabaseService {
     required WidgetRef ref,
   }) async {
     try {
-      // اعتبارسنجی ورودی‌ها
+      // Ø§Ø¹ØªØ¨Ø§Ø±Ø³Ù†Ø¬ÛŒ ÙˆØ±ÙˆØ¯ÛŒâ€ŒÙ‡Ø§
       if (postId.isEmpty || ownerId.isEmpty) {
-        throw ArgumentError('شناسه‌های ورودی نمی‌توانند خالی باشند');
+        throw ArgumentError('Ø´Ù†Ø§Ø³Ù‡â€ŒÙ‡Ø§ÛŒ ÙˆØ±ÙˆØ¯ÛŒ Ù†Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ù†Ø¯ Ø®Ø§Ù„ÛŒ Ø¨Ø§Ø´Ù†Ø¯');
       }
 
       final userId = _validateUser();
 
-      // اعتبارسنجی UUID ها
+      // Ø§Ø¹ØªØ¨Ø§Ø±Ø³Ù†Ø¬ÛŒ UUID Ù‡Ø§
       [postId, ownerId, userId].forEach(_validateUUID);
 
-      // بررسی وضعیت فعلی لایک
+      // Ø¨Ø±Ø±Ø³ÛŒ ÙˆØ¶Ø¹ÛŒØª ÙØ¹Ù„ÛŒ Ù„Ø§ÛŒÚ©
       final existingLike = await _checkExistingLike(postId, userId);
 
-      // اعمال تغییرات در دیتابیس
+      // Ø§Ø¹Ù…Ø§Ù„ ØªØºÛŒÛŒØ±Ø§Øª Ø¯Ø± Ø¯ÛŒØªØ§Ø¨ÛŒØ³
       if (existingLike == null) {
         await supabase.from('likes').insert({
           'post_id': postId,
@@ -591,32 +592,153 @@ class SupabaseService {
           'owner_id': ownerId,
           'created_at': DateTime.now().toIso8601String(),
         });
+        // Best-effort personalization signal
+        unawaited(VistaNodeService.trackFeedEvent(
+          postId: postId,
+          eventType: 'like',
+        ));
       } else {
         await supabase
             .from('likes')
             .delete()
             .eq('post_id', postId)
             .eq('user_id', userId);
+        // Best-effort personalization signal
+        unawaited(VistaNodeService.trackFeedEvent(
+          postId: postId,
+          eventType: 'unlike',
+        ));
       }
 
-      // بروزرسانی UI
+      // Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ UI
       ref.invalidate(fetchPublicPosts);
     } on AuthException catch (e) {
-      print('خطای احراز هویت: ${e.message}');
+      print('Ø®Ø·Ø§ÛŒ Ø§Ø­Ø±Ø§Ø² Ù‡ÙˆÛŒØª: ${e.message}');
       rethrow;
     } on ArgumentError catch (e) {
-      print('خطای اعتبارسنجی: ${e.message}');
+      print('Ø®Ø·Ø§ÛŒ Ø§Ø¹ØªØ¨Ø§Ø±Ø³Ù†Ø¬ÛŒ: ${e.message}');
       rethrow;
     } catch (e) {
-      print('خطا در toggleLike: $e');
+      print('Ø®Ø·Ø§ Ø¯Ø± toggleLike: $e');
       rethrow;
     }
+  }
+
+  /// Quick follow action used in the "For You" feed follow button.
+  ///
+  /// Returns:
+  /// - 'following'  => follow row exists/created
+  /// - 'requested'  => follow request created (private account)
+  /// - 'none'       => no action (e.g. self) or request not possible
+  Future<String> followUserQuick({required String targetUserId}) async {
+    final currentUserId = supabase.auth.currentUser?.id;
+    if (currentUserId == null) {
+      throw const AuthException('Not authenticated');
+    }
+    if (targetUserId.isEmpty || targetUserId == currentUserId) {
+      return 'none';
+    }
+
+    // Already following?
+    try {
+      final existing = await supabase
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', currentUserId)
+          .eq('following_id', targetUserId)
+          .maybeSingle();
+      if (existing != null) return 'following';
+    } catch (_) {
+      // If RLS blocks the select, we still attempt insert below.
+    }
+
+    // Check privacy (default to public if not available)
+    bool isPrivate = false;
+    try {
+      final settings = await supabase
+          .from('user_settings')
+          .select('is_private')
+          .eq('user_id', targetUserId)
+          .maybeSingle();
+      isPrivate = (settings?['is_private'] as bool?) ?? false;
+    } catch (_) {
+      isPrivate = false;
+    }
+
+    if (isPrivate) {
+      // If already requested, return requested.
+      try {
+        final existingReq = await supabase
+            .from('follow_requests')
+            .select('id, status')
+            .eq('requester_id', currentUserId)
+            .eq('recipient_id', targetUserId)
+            .maybeSingle();
+        if (existingReq != null &&
+            (existingReq['status'] as String?) == 'pending') {
+          return 'requested';
+        }
+      } catch (_) {
+        // ignore and try insert
+      }
+
+      try {
+        await supabase.from('follow_requests').insert({
+          'requester_id': currentUserId,
+          'recipient_id': targetUserId,
+          'status': 'pending',
+          'created_at': DateTime.now().toIso8601String(),
+        });
+      } catch (_) {
+        // Likely duplicate constraint or RLS; treat as requested for UI purposes.
+        return 'requested';
+      }
+
+      // Best-effort notification
+      try {
+        await supabase.from('notifications').insert({
+          'recipient_id': targetUserId,
+          'sender_id': currentUserId,
+          'type': 'follow_request',
+          'content': 'Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø¯Ù†Ø¨Ø§Ù„ Ú©Ø±Ø¯Ù† Ø¬Ø¯ÛŒØ¯',
+          'created_at': DateTime.now().toIso8601String(),
+          'is_read': false,
+        });
+      } catch (_) {}
+
+      return 'requested';
+    }
+
+    try {
+      await supabase.from('follows').insert({
+        'follower_id': currentUserId,
+        'following_id': targetUserId,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+    } catch (_) {
+      // If the row already exists, treat it as following.
+      return 'following';
+    }
+
+    // Best-effort notification
+    try {
+      await supabase.from('notifications').insert({
+        'recipient_id': targetUserId,
+        'sender_id': currentUserId,
+        'type': 'follow',
+        'content': 'Ø¯Ù†Ø¨Ø§Ù„â€ŒÚ©Ù†Ù†Ø¯Ù‡ Ø¬Ø¯ÛŒØ¯',
+        'created_at': DateTime.now().toIso8601String(),
+        'is_read': false,
+      });
+    } catch (_) {}
+
+    return 'following';
   }
 
   String _validateUser() {
     final user = supabase.auth.currentUser;
     if (user == null) {
-      throw const AuthException('کاربر احراز هویت نشده است');
+      throw const AuthException('Ú©Ø§Ø±Ø¨Ø± Ø§Ø­Ø±Ø§Ø² Ù‡ÙˆÛŒØª Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
     }
     return user.id;
   }
@@ -631,19 +753,19 @@ class SupabaseService {
   //         .eq('user_id', userId)
   //         .maybeSingle();
   //   } catch (e) {
-  //     print('خطا در بررسی لایک موجود: $e');
+  //     print('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø±Ø±Ø³ÛŒ Ù„Ø§ÛŒÚ© Ù…ÙˆØ¬ÙˆØ¯: $e');
   //     return null;
   //   }
   // }
 
-  // متد اعتبارسنجی UUID
+  // Ù…ØªØ¯ Ø§Ø¹ØªØ¨Ø§Ø±Ø³Ù†Ø¬ÛŒ UUID
   void _validateUUID(String uuid) {
     final uuidRegex = RegExp(
         r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
         caseSensitive: false);
 
     if (uuid.isEmpty || !uuidRegex.hasMatch(uuid)) {
-      throw ArgumentError('شناسه نامعتبر: $uuid');
+      throw ArgumentError('Ø´Ù†Ø§Ø³Ù‡ Ù†Ø§Ù…Ø¹ØªØ¨Ø±: $uuid');
     }
   }
 
@@ -654,9 +776,9 @@ class SupabaseService {
     String? additionalDetails,
   }) async {
     try {
-      // بررسی اعتبار شناسه‌ها
+      // Ø¨Ø±Ø±Ø³ÛŒ Ø§Ø¹ØªØ¨Ø§Ø± Ø´Ù†Ø§Ø³Ù‡â€ŒÙ‡Ø§
       if (postId.isEmpty || reportedUserId.isEmpty) {
-        throw ArgumentError('شناسه‌ها نمی‌توانند خالی باشند');
+        throw ArgumentError('Ø´Ù†Ø§Ø³Ù‡â€ŒÙ‡Ø§ Ù†Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ù†Ø¯ Ø®Ø§Ù„ÛŒ Ø¨Ø§Ø´Ù†Ø¯');
       }
 
       _validateUUID(postId);
@@ -675,7 +797,7 @@ class SupabaseService {
         'status': 'pending'
       });
     } catch (e) {
-      print('خطا در ثبت گزارش: $e');
+      print('Ø®Ø·Ø§ Ø¯Ø± Ø«Ø¨Øª Ú¯Ø²Ø§Ø±Ø´: $e');
       rethrow;
     }
   }
@@ -683,13 +805,13 @@ class SupabaseService {
   Future<void> deletePost(WidgetRef ref, String postId) async {
     try {
       if (postId.isEmpty) {
-        throw ArgumentError('شناسه پست نمی‌تواند خالی باشد');
+        throw ArgumentError('Ø´Ù†Ø§Ø³Ù‡ Ù¾Ø³Øª Ù†Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ø¯ Ø®Ø§Ù„ÛŒ Ø¨Ø§Ø´Ø¯');
       }
 
       _validateUUID(postId);
       final userId = _validateUser();
 
-      // دریافت اطلاعات پست برای پیدا کردن URL های فایل‌ها
+      // Ø¯Ø±ÛŒØ§ÙØª Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ù¾Ø³Øª Ø¨Ø±Ø§ÛŒ Ù¾ÛŒØ¯Ø§ Ú©Ø±Ø¯Ù† URL Ù‡Ø§ÛŒ ÙØ§ÛŒÙ„â€ŒÙ‡Ø§
       final post = await supabase
           .from('posts')
           .select('image_url, music_url  , video_url  ')
@@ -697,7 +819,7 @@ class SupabaseService {
           .maybeSingle();
 
       if (post == null) {
-        throw Exception('پست یافت نشد');
+        throw Exception('Ù¾Ø³Øª ÛŒØ§ÙØª Ù†Ø´Ø¯');
       }
 
       final mediaUrls = [
@@ -706,32 +828,32 @@ class SupabaseService {
         post['video_url'],
       ].where((url) => url != null && url.isNotEmpty).toList();
 
-      // حذف تمام فایل‌ها از آروان کلاود
+      // Ø­Ø°Ù ØªÙ…Ø§Ù… ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ Ø§Ø² Ø¢Ø±ÙˆØ§Ù† Ú©Ù„Ø§ÙˆØ¯
       for (String url in mediaUrls) {
         final bool deleted = await _deleteMediaWithRetry(url);
         if (!deleted) {
-          print('هشدار: حذف فایل $url از آروان کلاود ناموفق بود');
+          print('Ù‡Ø´Ø¯Ø§Ø±: Ø­Ø°Ù ÙØ§ÛŒÙ„ $url Ø§Ø² Ø¢Ø±ÙˆØ§Ù† Ú©Ù„Ø§ÙˆØ¯ Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯');
         }
       }
 
-      // حذف داده‌های مرتبط از دیتابیس به ترتیب
+      // Ø­Ø°Ù Ø¯Ø§Ø¯Ù‡â€ŒÙ‡Ø§ÛŒ Ù…Ø±ØªØ¨Ø· Ø§Ø² Ø¯ÛŒØªØ§Ø¨ÛŒØ³ Ø¨Ù‡ ØªØ±ØªÛŒØ¨
       await Future.wait([
-        // حذف لایک‌ها
+        // Ø­Ø°Ù Ù„Ø§ÛŒÚ©â€ŒÙ‡Ø§
         supabase.from('likes').delete().eq('post_id', postId),
-        // حذف کامنت‌ها
+        // Ø­Ø°Ù Ú©Ø§Ù…Ù†Øªâ€ŒÙ‡Ø§
         supabase.from('comments').delete().eq('post_id', postId),
-        // حذف نوتیفیکیشن‌ها
+        // Ø­Ø°Ù Ù†ÙˆØªÛŒÙÛŒÚ©ÛŒØ´Ù†â€ŒÙ‡Ø§
         supabase.from('notifications').delete().eq('post_id', postId),
-        // حذف بازدیدهای استوری
+        // Ø­Ø°Ù Ø¨Ø§Ø²Ø¯ÛŒØ¯Ù‡Ø§ÛŒ Ø§Ø³ØªÙˆØ±ÛŒ
         supabase.from('story_views').delete().eq('story_id', postId),
       ]);
 
-      // حذف پست
+      // Ø­Ø°Ù Ù¾Ø³Øª
       await supabase.from('posts').delete().eq('id', postId);
 
-      // بروزرسانی UI
+      // Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ UI
       ref.invalidate(fetchPublicPosts);
-      // پیدا کردن owner واقعی پست برای invalidation صحیح صفحه پروفایل
+      // Ù¾ÛŒØ¯Ø§ Ú©Ø±Ø¯Ù† owner ÙˆØ§Ù‚Ø¹ÛŒ Ù¾Ø³Øª Ø¨Ø±Ø§ÛŒ invalidation ØµØ­ÛŒØ­ ØµÙØ­Ù‡ Ù¾Ø±ÙˆÙØ§ÛŒÙ„
       try {
         final postOwner = await supabase
             .from('posts')
@@ -749,9 +871,9 @@ class SupabaseService {
         ref.invalidate(userProfileProvider(userId));
       }
 
-      print('پست و تمام فایل‌های مرتبط با موفقیت حذف شدند.');
+      print('Ù¾Ø³Øª Ùˆ ØªÙ…Ø§Ù… ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ÛŒ Ù…Ø±ØªØ¨Ø· Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø­Ø°Ù Ø´Ø¯Ù†Ø¯.');
     } catch (e) {
-      print('خطا در حذف پست: $e');
+      print('Ø®Ø·Ø§ Ø¯Ø± Ø­Ø°Ù Ù¾Ø³Øª: $e');
       rethrow;
     }
   }
@@ -760,7 +882,7 @@ class SupabaseService {
       {int maxAttempts = 3}) async {
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        // استفاده از متد جدید که خودش نوع فایل رو تشخیص می‌ده و متد مناسب رو فراخوانی می‌کنه
+        // Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø§Ø² Ù…ØªØ¯ Ø¬Ø¯ÛŒØ¯ Ú©Ù‡ Ø®ÙˆØ¯Ø´ Ù†ÙˆØ¹ ÙØ§ÛŒÙ„ Ø±Ùˆ ØªØ´Ø®ÛŒØµ Ù…ÛŒâ€ŒØ¯Ù‡ Ùˆ Ù…ØªØ¯ Ù…Ù†Ø§Ø³Ø¨ Ø±Ùˆ ÙØ±Ø§Ø®ÙˆØ§Ù†ÛŒ Ù…ÛŒâ€ŒÚ©Ù†Ù‡
         final bool success =
             await PostImageUploadService.deleteMediaFile(mediaUrl);
         if (success) return true;
@@ -769,7 +891,7 @@ class SupabaseService {
           await Future.delayed(Duration(seconds: attempt));
         }
       } catch (e) {
-        print('تلاش $attempt: خطا در حذف فایل: $e');
+        print('ØªÙ„Ø§Ø´ $attempt: Ø®Ø·Ø§ Ø¯Ø± Ø­Ø°Ù ÙØ§ÛŒÙ„: $e');
         if (attempt == maxAttempts) return false;
         await Future.delayed(Duration(seconds: attempt));
       }
@@ -789,7 +911,7 @@ class SupabaseService {
   //         await Future.delayed(Duration(seconds: attempt));
   //       }
   //     } catch (e) {
-  //       print('تلاش $attempt: خطا در حذف مدیا: $e');
+  //       print('ØªÙ„Ø§Ø´ $attempt: Ø®Ø·Ø§ Ø¯Ø± Ø­Ø°Ù Ù…Ø¯ÛŒØ§: $e');
   //       if (attempt == maxAttempts) return false;
   //       await Future.delayed(Duration(seconds: attempt));
   //     }
@@ -822,7 +944,7 @@ class SupabaseService {
 
   Future<List<ProfileModel>> fetchFollowing(String userId) async {
     final response = await supabase
-        .from('follows') // جدول دنبال‌شده‌ها
+        .from('follows') // Ø¬Ø¯ÙˆÙ„ Ø¯Ù†Ø¨Ø§Ù„â€ŒØ´Ø¯Ù‡â€ŒÙ‡Ø§
         .select('''
         profiles!follows_following_id_fkey (
           id, username, full_name, avatar_url, email, bio, 
@@ -831,10 +953,10 @@ class SupabaseService {
         )
       ''').eq('follower_id', userId);
 
-    // تبدیل داده به مدل پروفایل
+    // ØªØ¨Ø¯ÛŒÙ„ Ø¯Ø§Ø¯Ù‡ Ø¨Ù‡ Ù…Ø¯Ù„ Ù¾Ø±ÙˆÙØ§ÛŒÙ„
     final List data = response;
     return data.map((item) {
-      final profileMap = item['profiles']; // بررسی وجود داده‌های پروفایل
+      final profileMap = item['profiles']; // Ø¨Ø±Ø±Ø³ÛŒ ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø¯Ù‡â€ŒÙ‡Ø§ÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„
       if (profileMap == null) {
         throw Exception('Missing profile data');
       }
@@ -842,31 +964,31 @@ class SupabaseService {
     }).toList();
   }
 
-  // اضافه کن: متد چک آنلاین بودن که روی وب همیشه true برمی‌گرداند
+  // Ø§Ø¶Ø§ÙÙ‡ Ú©Ù†: Ù…ØªØ¯ Ú†Ú© Ø¢Ù†Ù„Ø§ÛŒÙ† Ø¨ÙˆØ¯Ù† Ú©Ù‡ Ø±ÙˆÛŒ ÙˆØ¨ Ù‡Ù…ÛŒØ´Ù‡ true Ø¨Ø±Ù…ÛŒâ€ŒÚ¯Ø±Ø¯Ø§Ù†Ø¯
   Future<bool> isDeviceOnline() async {
     if (kIsWeb) {
-      // روی وب همیشه آنلاین فرض کن
+      // Ø±ÙˆÛŒ ÙˆØ¨ Ù‡Ù…ÛŒØ´Ù‡ Ø¢Ù†Ù„Ø§ÛŒÙ† ÙØ±Ø¶ Ú©Ù†
       return true;
     }
-    // اگر نیاز به چک آنلاین بودن داری، اینجا قرار بده (مثلاً با http.get یا connectivity_plus)
-    // یا فقط return true;
+    // Ø§Ú¯Ø± Ù†ÛŒØ§Ø² Ø¨Ù‡ Ú†Ú© Ø¢Ù†Ù„Ø§ÛŒÙ† Ø¨ÙˆØ¯Ù† Ø¯Ø§Ø±ÛŒØŒ Ø§ÛŒÙ†Ø¬Ø§ Ù‚Ø±Ø§Ø± Ø¨Ø¯Ù‡ (Ù…Ø«Ù„Ø§Ù‹ Ø¨Ø§ http.get ÛŒØ§ connectivity_plus)
+    // ÛŒØ§ ÙÙ‚Ø· return true;
     return true;
   }
 }
 
-// Provider برای سرویس Supabase
+// Provider Ø¨Ø±Ø§ÛŒ Ø³Ø±ÙˆÛŒØ³ Supabase
 
 final supabaseServiceProvider = Provider<SupabaseService>((ref) {
   final supabase = Supabase.instance.client;
   return SupabaseService(supabase);
 });
 
-//Provider برای سرویس و Notifier
+//Provider Ø¨Ø±Ø§ÛŒ Ø³Ø±ÙˆÛŒØ³ Ùˆ Notifier
 
 // class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
 //   NotificationsNotifier() : super([]);
 
-//   // متد حذف تمامی اعلان‌ها
+//   // Ù…ØªØ¯ Ø­Ø°Ù ØªÙ…Ø§Ù…ÛŒ Ø§Ø¹Ù„Ø§Ù†â€ŒÙ‡Ø§
 //   Future<void> deleteAllNotifications() async {
 //     try {
 //       final userId = supabase.auth.currentUser?.id;
@@ -875,10 +997,10 @@ final supabaseServiceProvider = Provider<SupabaseService>((ref) {
 //         throw Exception("User not logged in");
 //       }
 
-//       // حذف تمامی اعلان‌های کاربر فعلی
+//       // Ø­Ø°Ù ØªÙ…Ø§Ù…ÛŒ Ø§Ø¹Ù„Ø§Ù†â€ŒÙ‡Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø± ÙØ¹Ù„ÛŒ
 //       await supabase.from('notifications').delete().eq('recipient_id', userId);
 
-//       // بروزرسانی وضعیت (حذف همه اعلان‌ها از لیست)
+//       // Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ ÙˆØ¶Ø¹ÛŒØª (Ø­Ø°Ù Ù‡Ù…Ù‡ Ø§Ø¹Ù„Ø§Ù†â€ŒÙ‡Ø§ Ø§Ø² Ù„ÛŒØ³Øª)
 //       state = [];
 //     } catch (e) {
 //       print("Error deleting notifications: $e");
@@ -887,7 +1009,7 @@ final supabaseServiceProvider = Provider<SupabaseService>((ref) {
 //   }
 
 //   Future<void> fetchNotifications() async {
-//     final userId = supabase.auth.currentUser?.id; // گرفتن شناسه کاربر فعلی
+//     final userId = supabase.auth.currentUser?.id; // Ú¯Ø±ÙØªÙ† Ø´Ù†Ø§Ø³Ù‡ Ú©Ø§Ø±Ø¨Ø± ÙØ¹Ù„ÛŒ
 
 //     if (userId == null) {
 //       throw Exception("User not logged in");
@@ -897,7 +1019,7 @@ final supabaseServiceProvider = Provider<SupabaseService>((ref) {
 //         .from('notifications')
 //         .select(
 //             '*, sender:profiles!notifications_sender_id_fkey(username, avatar_url , is_verified)')
-//         .eq('recipient_id', userId) // استفاده از شناسه کاربر فعلی
+//         .eq('recipient_id', userId) // Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø§Ø² Ø´Ù†Ø§Ø³Ù‡ Ú©Ø§Ø±Ø¨Ø± ÙØ¹Ù„ÛŒ
 //         .order('created_at', ascending: false);
 
 //     final notifications =
@@ -912,14 +1034,14 @@ final supabaseServiceProvider = Provider<SupabaseService>((ref) {
 //   return NotificationsNotifier()..fetchNotifications();
 // });
 
-// سرویس Supabase برای گزارش پست‌ها
+// Ø³Ø±ÙˆÛŒØ³ Supabase Ø¨Ø±Ø§ÛŒ Ú¯Ø²Ø§Ø±Ø´ Ù¾Ø³Øªâ€ŒÙ‡Ø§
 
-// تعریف پازنده برای SupabaseClient
+// ØªØ¹Ø±ÛŒÙ Ù¾Ø§Ø²Ù†Ø¯Ù‡ Ø¨Ø±Ø§ÛŒ SupabaseClient
 final supabaseClientProvider = Provider<SupabaseClient>((ref) {
   return Supabase.instance.client;
 });
 
-// تعریف پرووایدر سرویس گزارش
+// ØªØ¹Ø±ÛŒÙ Ù¾Ø±ÙˆÙˆØ§ÛŒØ¯Ø± Ø³Ø±ÙˆÛŒØ³ Ú¯Ø²Ø§Ø±Ø´
 final reportServiceProvider = Provider<ReportService>((ref) {
   final client = ref.watch(supabaseClientProvider);
   return ReportService(client);
@@ -953,14 +1075,14 @@ class ReportService {
 class ProfileService {
   final _supabase = Supabase.instance.client;
 
-  // دریافت پروفایل کاربر فعلی
+  // Ø¯Ø±ÛŒØ§ÙØª Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ú©Ø§Ø±Ø¨Ø± ÙØ¹Ù„ÛŒ
   Future<UserModel?> getCurrentUserProfile() async {
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) return null;
 
       final response = await _supabase
-          .from('profiles') // نام جدول پروفایل
+          .from('profiles') // Ù†Ø§Ù… Ø¬Ø¯ÙˆÙ„ Ù¾Ø±ÙˆÙØ§ÛŒÙ„
           .select('*')
           .eq('id', user.id)
           .maybeSingle();
@@ -976,7 +1098,7 @@ class ProfileService {
     }
   }
 
-  // دریافت پروفایل با شناسه
+  // Ø¯Ø±ÛŒØ§ÙØª Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø¨Ø§ Ø´Ù†Ø§Ø³Ù‡
   Future<UserModel?> getProfileById(String userId) async {
     try {
       final response = await _supabase
@@ -997,39 +1119,39 @@ class ProfileService {
   }
 }
 
-// Provider برای سرویس پروفایل
+// Provider Ø¨Ø±Ø§ÛŒ Ø³Ø±ÙˆÛŒØ³ Ù¾Ø±ÙˆÙØ§ÛŒÙ„
 final profileServiceProvider = Provider<ProfileService>((ref) {
   return ProfileService();
 });
 
-// Provider برای پروفایل کاربر فعلی
+// Provider Ø¨Ø±Ø§ÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ú©Ø§Ø±Ø¨Ø± ÙØ¹Ù„ÛŒ
 final currentUserProfileProvider = FutureProvider<UserModel?>((ref) {
   final profileService = ref.watch(profileServiceProvider);
   return profileService.getCurrentUserProfile();
 });
 
-// Provider برای پروفایل با شناسه خاص
+// Provider Ø¨Ø±Ø§ÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø¨Ø§ Ø´Ù†Ø§Ø³Ù‡ Ø®Ø§Øµ
 final profileByIdProvider =
     FutureProvider.family<UserModel?, String>((ref, userId) {
   final profileService = ref.watch(profileServiceProvider);
   return profileService.getProfileById(userId);
 });
 
-// مثال استفاده در ویجت
+// Ù…Ø«Ø§Ù„ Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø¯Ø± ÙˆÛŒØ¬Øª
 class ProfileWidget extends ConsumerWidget {
   const ProfileWidget({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // دریافت پروفایل کاربر فعلی
+    // Ø¯Ø±ÛŒØ§ÙØª Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ú©Ø§Ø±Ø¨Ø± ÙØ¹Ù„ÛŒ
     final currentProfileAsync = ref.watch(currentUserProfileProvider);
 
     return currentProfileAsync.when(
       loading: () => const CircularProgressIndicator(),
-      error: (error, stack) => const Text('خطا در بارگذاری پروفایل'),
+      error: (error, stack) => const Text('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„'),
       data: (profile) {
         if (profile == null) {
-          return const Text('کاربر وارد نشده است');
+          return const Text('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
         }
         return Column(
           children: [
@@ -1043,7 +1165,7 @@ class ProfileWidget extends ConsumerWidget {
   }
 }
 
-// مثال دریافت پروفایل با شناسه خاص
+// Ù…Ø«Ø§Ù„ Ø¯Ø±ÛŒØ§ÙØª Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø¨Ø§ Ø´Ù†Ø§Ø³Ù‡ Ø®Ø§Øµ
 class OtherProfileWidget extends ConsumerWidget {
   final String userId;
 
@@ -1055,10 +1177,10 @@ class OtherProfileWidget extends ConsumerWidget {
 
     return profileAsync.when(
       loading: () => const CircularProgressIndicator(),
-      error: (error, stack) => const Text('خطا در بارگذاری پروفایل'),
+      error: (error, stack) => const Text('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„'),
       data: (profile) {
         if (profile == null) {
-          return const Text('پروفایل یافت نشد');
+          return const Text('Ù¾Ø±ÙˆÙØ§ÛŒÙ„ ÛŒØ§ÙØª Ù†Ø´Ø¯');
         }
         return Column(
           children: [
@@ -1089,13 +1211,13 @@ class CommentService {
     try {
       final currentUser = _supabase.auth.currentUser;
       if (currentUser == null) {
-        throw Exception('کاربر وارد سیستم نشده است');
+        throw Exception('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ø³ÛŒØ³ØªÙ… Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
       }
 
       final response = await _supabase.from('comments').insert({
         'post_id': postId,
-        'owner_id': currentUser.id, // تغییر از user_id به owner_id
-        'user_id': postOwnerId, // صاحب پست
+        'owner_id': currentUser.id, // ØªØºÛŒÛŒØ± Ø§Ø² user_id Ø¨Ù‡ owner_id
+        'user_id': postOwnerId, // ØµØ§Ø­Ø¨ Ù¾Ø³Øª
         'content': content,
         'parent_comment_id': parentCommentId,
       }).select('''
@@ -1109,17 +1231,17 @@ class CommentService {
         ''').maybeSingle();
 
       if (response == null) {
-        throw Exception('خطا در ایجاد کامنت - پاسخ خالی است');
+        throw Exception('Ø®Ø·Ø§ Ø¯Ø± Ø§ÛŒØ¬Ø§Ø¯ Ú©Ø§Ù…Ù†Øª - Ù¾Ø§Ø³Ø® Ø®Ø§Ù„ÛŒ Ø§Ø³Øª');
       }
 
       return CommentModel.fromMap(response);
     } catch (e) {
-      print('خطا در ارسال کامنت: $e');
+      print('Ø®Ø·Ø§ Ø¯Ø± Ø§Ø±Ø³Ø§Ù„ Ú©Ø§Ù…Ù†Øª: $e');
       rethrow;
     }
   }
 
-// تغییر متد fetchComments برای دریافت کامنت‌های فرزند
+// ØªØºÛŒÛŒØ± Ù…ØªØ¯ fetchComments Ø¨Ø±Ø§ÛŒ Ø¯Ø±ÛŒØ§ÙØª Ú©Ø§Ù…Ù†Øªâ€ŒÙ‡Ø§ÛŒ ÙØ±Ø²Ù†Ø¯
   Future<List<CommentModel>> fetchComments(String postId) async {
     try {
       final response = await _supabase.from('comments').select('''
@@ -1132,7 +1254,7 @@ class CommentService {
         ''').eq('post_id', postId).order('created_at', ascending: false);
 
       if (response.isEmpty) {
-        return []; // اگر پاسخی دریافت نشد، لیست خالی برگردانید
+        return []; // Ø§Ú¯Ø± Ù¾Ø§Ø³Ø®ÛŒ Ø¯Ø±ÛŒØ§ÙØª Ù†Ø´Ø¯ØŒ Ù„ÛŒØ³Øª Ø®Ø§Ù„ÛŒ Ø¨Ø±Ú¯Ø±Ø¯Ø§Ù†ÛŒØ¯
       }
 
       List<CommentModel> comments =
@@ -1141,32 +1263,32 @@ class CommentService {
       _organizeComments(comments);
       return comments;
     } catch (e) {
-      print('خطا در واکشی کامنت‌ها: $e');
+      print('Ø®Ø·Ø§ Ø¯Ø± ÙˆØ§Ú©Ø´ÛŒ Ú©Ø§Ù…Ù†Øªâ€ŒÙ‡Ø§: $e');
       return [];
     }
   }
 
-// متد کمکی برای مرتب‌سازی کامنت‌ها
+// Ù…ØªØ¯ Ú©Ù…Ú©ÛŒ Ø¨Ø±Ø§ÛŒ Ù…Ø±ØªØ¨â€ŒØ³Ø§Ø²ÛŒ Ú©Ø§Ù…Ù†Øªâ€ŒÙ‡Ø§
   void _organizeComments(List<CommentModel> comments) {
     final Map<String, CommentModel> commentMap = {};
 
-    // ایجاد نقشه از کامنت‌ها بر اساس شناسه
+    // Ø§ÛŒØ¬Ø§Ø¯ Ù†Ù‚Ø´Ù‡ Ø§Ø² Ú©Ø§Ù…Ù†Øªâ€ŒÙ‡Ø§ Ø¨Ø± Ø§Ø³Ø§Ø³ Ø´Ù†Ø§Ø³Ù‡
     for (var comment in comments) {
       commentMap[comment.id] = comment;
-      comment.replies = []; // مقداردهی اولیه برای replies
+      comment.replies = []; // Ù…Ù‚Ø¯Ø§Ø±Ø¯Ù‡ÛŒ Ø§ÙˆÙ„ÛŒÙ‡ Ø¨Ø±Ø§ÛŒ replies
     }
 
-    // اضافه کردن کامنت‌های فرزند به والدین و حذف آنها از لیست اصلی
+    // Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† Ú©Ø§Ù…Ù†Øªâ€ŒÙ‡Ø§ÛŒ ÙØ±Ø²Ù†Ø¯ Ø¨Ù‡ ÙˆØ§Ù„Ø¯ÛŒÙ† Ùˆ Ø­Ø°Ù Ø¢Ù†Ù‡Ø§ Ø§Ø² Ù„ÛŒØ³Øª Ø§ØµÙ„ÛŒ
     comments.removeWhere((comment) {
       if (comment.parentCommentId != null) {
         final parentComment = commentMap[comment.parentCommentId];
         if (parentComment != null) {
           parentComment.replies = parentComment.replies ?? [];
           parentComment.replies.add(comment);
-          return true; // حذف ریپلای از لیست اصلی
+          return true; // Ø­Ø°Ù Ø±ÛŒÙ¾Ù„Ø§ÛŒ Ø§Ø² Ù„ÛŒØ³Øª Ø§ØµÙ„ÛŒ
         }
       }
-      return false; // کامنت اصلی حذف نمی‌شود
+      return false; // Ú©Ø§Ù…Ù†Øª Ø§ØµÙ„ÛŒ Ø­Ø°Ù Ù†Ù…ÛŒâ€ŒØ´ÙˆØ¯
     });
   }
 
@@ -1212,10 +1334,10 @@ class CommentService {
     try {
       final currentUser = _supabase.auth.currentUser;
       if (currentUser == null) {
-        throw Exception('کاربر وارد سیستم نشده است');
+        throw Exception('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ø³ÛŒØ³ØªÙ… Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
       }
 
-      // درج منشن‌ها در جدول comment_mentions
+      // Ø¯Ø±Ø¬ Ù…Ù†Ø´Ù†â€ŒÙ‡Ø§ Ø¯Ø± Ø¬Ø¯ÙˆÙ„ comment_mentions
       final mentions = mentionedUserIds
           .map((userId) => {
                 'comment_id': commentId,
@@ -1226,13 +1348,13 @@ class CommentService {
 
       await _supabase.from('comment_mentions').insert(mentions);
     } catch (e) {
-      print('خطا در اضافه کردن منشن به کامنت: $e');
+      print('Ø®Ø·Ø§ Ø¯Ø± Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† Ù…Ù†Ø´Ù† Ø¨Ù‡ Ú©Ø§Ù…Ù†Øª: $e');
       rethrow;
     }
   }
 }
 
-// Provider برای جستجوی کاربران
+// Provider Ø¨Ø±Ø§ÛŒ Ø¬Ø³ØªØ¬ÙˆÛŒ Ú©Ø§Ø±Ø¨Ø±Ø§Ù†
 final mentionableUsersProvider =
     FutureProvider.family<List<UserModel>, String>((ref, query) {
   final commentService = ref.watch(commentServiceProvider);
@@ -1256,7 +1378,7 @@ class CommentNotifier extends StateNotifier<AsyncValue<void>> {
   final CommentService _commentService;
   final TextEditingController contentController = TextEditingController();
 
-  // اضافه کردن یک فلگ برای جلوگیری از ارسال مکرر
+  // Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† ÛŒÚ© ÙÙ„Ú¯ Ø¨Ø±Ø§ÛŒ Ø¬Ù„ÙˆÚ¯ÛŒØ±ÛŒ Ø§Ø² Ø§Ø±Ø³Ø§Ù„ Ù…Ú©Ø±Ø±
   bool _isSubmitting = false;
 
   CommentNotifier(this._commentService) : super(const AsyncValue.data(null));
@@ -1268,19 +1390,19 @@ class CommentNotifier extends StateNotifier<AsyncValue<void>> {
       String? parentCommentId,
       List<String> mentionedUserIds = const [],
       required WidgetRef ref}) async {
-    // جلوگیری از ارسال مکرر
+    // Ø¬Ù„ÙˆÚ¯ÛŒØ±ÛŒ Ø§Ø² Ø§Ø±Ø³Ø§Ù„ Ù…Ú©Ø±Ø±
     if (_isSubmitting) return;
 
     final trimmedContent = content.trim();
 
     if (trimmedContent.isEmpty) return;
 
-    // تنظیم فلگ ارسال
+    // ØªÙ†Ø¸ÛŒÙ… ÙÙ„Ú¯ Ø§Ø±Ø³Ø§Ù„
     _isSubmitting = true;
     state = const AsyncValue.loading();
 
     try {
-      // افزودن کامنت با مشخصات کامل
+      // Ø§ÙØ²ÙˆØ¯Ù† Ú©Ø§Ù…Ù†Øª Ø¨Ø§ Ù…Ø´Ø®ØµØ§Øª Ú©Ø§Ù…Ù„
       final comment = await _commentService.addComment(
         postId: postId,
         content: trimmedContent,
@@ -1288,7 +1410,7 @@ class CommentNotifier extends StateNotifier<AsyncValue<void>> {
         parentCommentId: parentCommentId,
       );
 
-      // اگر منشن‌هایی وجود دارد، آنها را اضافه کنید
+      // Ø§Ú¯Ø± Ù…Ù†Ø´Ù†â€ŒÙ‡Ø§ÛŒÛŒ ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø±Ø¯ØŒ Ø¢Ù†Ù‡Ø§ Ø±Ø§ Ø§Ø¶Ø§ÙÙ‡ Ú©Ù†ÛŒØ¯
       if (mentionedUserIds.isNotEmpty) {
         await _commentService.addMentionToComment(
           commentId: comment.id,
@@ -1296,35 +1418,35 @@ class CommentNotifier extends StateNotifier<AsyncValue<void>> {
         );
       }
 
-      // پاک کردن کنترلر
+      // Ù¾Ø§Ú© Ú©Ø±Ø¯Ù† Ú©Ù†ØªØ±Ù„Ø±
       contentController.clear();
 
-      // بروزرسانی استیت کامنت‌ها
+      // Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø§Ø³ØªÛŒØª Ú©Ø§Ù…Ù†Øªâ€ŒÙ‡Ø§
       await _updateCommentsState(postId, comment, parentCommentId, ref);
 
       state = const AsyncValue.data(null);
     } catch (error) {
       state = AsyncValue.error(error, StackTrace.current);
     } finally {
-      // بازنشانی فلگ ارسال
+      // Ø¨Ø§Ø²Ù†Ø´Ø§Ù†ÛŒ ÙÙ„Ú¯ Ø§Ø±Ø³Ø§Ù„
       _isSubmitting = false;
     }
   }
 
-  // متد جدید برای بروزرسانی استیت کامنت‌ها
+  // Ù…ØªØ¯ Ø¬Ø¯ÛŒØ¯ Ø¨Ø±Ø§ÛŒ Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø§Ø³ØªÛŒØª Ú©Ø§Ù…Ù†Øªâ€ŒÙ‡Ø§
   Future<void> _updateCommentsState(
     String postId,
     CommentModel newComment,
     String? parentCommentId,
     WidgetRef ref,
   ) async {
-    // دریافت پروایدر کامنت‌ها برای پست مورد نظر
+    // Ø¯Ø±ÛŒØ§ÙØª Ù¾Ø±ÙˆØ§ÛŒØ¯Ø± Ú©Ø§Ù…Ù†Øªâ€ŒÙ‡Ø§ Ø¨Ø±Ø§ÛŒ Ù¾Ø³Øª Ù…ÙˆØ±Ø¯ Ù†Ø¸Ø±
     final commentsProvider =
         StateNotifierProvider<CommentsNotifier, List<CommentModel>>((ref) {
       return CommentsNotifier(_commentService);
     });
 
-    // بروزرسانی استیت کامنت‌ها
+    // Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø§Ø³ØªÛŒØª Ú©Ø§Ù…Ù†Øªâ€ŒÙ‡Ø§
     ref.read(commentsProvider.notifier).addComment(
           postId: postId,
           comment: newComment,
@@ -1340,7 +1462,7 @@ class CommentNotifier extends StateNotifier<AsyncValue<void>> {
         .maybeSingle();
 
     if (response == null) {
-      throw Exception('پست یافت نشد');
+      throw Exception('Ù¾Ø³Øª ÛŒØ§ÙØª Ù†Ø´Ø¯');
     }
 
     return response['user_id'] as String;
@@ -1353,7 +1475,7 @@ class CommentNotifier extends StateNotifier<AsyncValue<void>> {
       await _commentService.deleteComment(commentId);
       state = const AsyncValue.data(null);
 
-      // بروزرسانی استیت کامنت‌ها برای پست مشخص
+      // Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø§Ø³ØªÛŒØª Ú©Ø§Ù…Ù†Øªâ€ŒÙ‡Ø§ Ø¨Ø±Ø§ÛŒ Ù¾Ø³Øª Ù…Ø´Ø®Øµ
       ref.read(commentsProvider(commentId));
     } catch (error) {
       state = AsyncValue.error(error, StackTrace.current);
@@ -1361,7 +1483,7 @@ class CommentNotifier extends StateNotifier<AsyncValue<void>> {
   }
 }
 
-// نوتیفایر جدید برای مدیریت کامنت‌ها
+// Ù†ÙˆØªÛŒÙØ§ÛŒØ± Ø¬Ø¯ÛŒØ¯ Ø¨Ø±Ø§ÛŒ Ù…Ø¯ÛŒØ±ÛŒØª Ú©Ø§Ù…Ù†Øªâ€ŒÙ‡Ø§
 class CommentsNotifier extends StateNotifier<List<CommentModel>> {
   final CommentService _commentService;
 
@@ -1373,7 +1495,7 @@ class CommentsNotifier extends StateNotifier<List<CommentModel>> {
     String? parentCommentId,
   }) {
     if (parentCommentId != null) {
-      // پیدا کردن کامنت والد و اضافه کردن ریپلای
+      // Ù¾ÛŒØ¯Ø§ Ú©Ø±Ø¯Ù† Ú©Ø§Ù…Ù†Øª ÙˆØ§Ù„Ø¯ Ùˆ Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† Ø±ÛŒÙ¾Ù„Ø§ÛŒ
       state = state.map((existingComment) {
         if (existingComment.id == parentCommentId) {
           final updatedReplies = [...(existingComment.replies), comment];
@@ -1384,8 +1506,8 @@ class CommentsNotifier extends StateNotifier<List<CommentModel>> {
         return existingComment;
       }).toList();
     } else {
-      // اگر کامنت اصلی است، به لیست اضافه می‌شود
-      // جلوگیری از تکرار
+      // Ø§Ú¯Ø± Ú©Ø§Ù…Ù†Øª Ø§ØµÙ„ÛŒ Ø§Ø³ØªØŒ Ø¨Ù‡ Ù„ÛŒØ³Øª Ø§Ø¶Ø§ÙÙ‡ Ù…ÛŒâ€ŒØ´ÙˆØ¯
+      // Ø¬Ù„ÙˆÚ¯ÛŒØ±ÛŒ Ø§Ø² ØªÚ©Ø±Ø§Ø±
       if (!state.any((existingComment) => existingComment.id == comment.id)) {
         state = [...state, comment];
       }
@@ -1394,10 +1516,10 @@ class CommentsNotifier extends StateNotifier<List<CommentModel>> {
 
   void removeComment(String commentId) {
     state = state.where((comment) {
-      // حذف کامنت اصلی
+      // Ø­Ø°Ù Ú©Ø§Ù…Ù†Øª Ø§ØµÙ„ÛŒ
       if (comment.id == commentId) return false;
 
-      // حذف ریپلای‌های مربوط به کامنت
+      // Ø­Ø°Ù Ø±ÛŒÙ¾Ù„Ø§ÛŒâ€ŒÙ‡Ø§ÛŒ Ù…Ø±Ø¨ÙˆØ· Ø¨Ù‡ Ú©Ø§Ù…Ù†Øª
       comment.replies =
           comment.replies.where((reply) => reply.id != commentId).toList();
 
@@ -1406,7 +1528,7 @@ class CommentsNotifier extends StateNotifier<List<CommentModel>> {
   }
 }
 
-// پروایدر جدید برای کامنت‌ها
+// Ù¾Ø±ÙˆØ§ÛŒØ¯Ø± Ø¬Ø¯ÛŒØ¯ Ø¨Ø±Ø§ÛŒ Ú©Ø§Ù…Ù†Øªâ€ŒÙ‡Ø§
 // final commentsProvider = StateNotifierProvider<CommentsNotifier, List<CommentModel>>((ref) {
 //   final commentService = ref.read(commentServiceProvider);
 //   return CommentsNotifier(commentService);
@@ -1428,28 +1550,28 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
     try {
       final supabase = Supabase.instance.client;
 
-      // ✅ بررسی کامل نشست با تلاش برای recovery
+      // âœ… Ø¨Ø±Ø±Ø³ÛŒ Ú©Ø§Ù…Ù„ Ù†Ø´Ø³Øª Ø¨Ø§ ØªÙ„Ø§Ø´ Ø¨Ø±Ø§ÛŒ recovery
       final isAuthenticated = await AuthNavigationService.ensureAuthenticated(
-        message: 'برای مشاهده پروفایل ابتدا وارد شوید',
+        message: 'Ø¨Ø±Ø§ÛŒ Ù…Ø´Ø§Ù‡Ø¯Ù‡ Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø§Ø¨ØªØ¯Ø§ ÙˆØ§Ø±Ø¯ Ø´ÙˆÛŒØ¯',
       );
 
       if (!isAuthenticated) {
-        print('⚠️ ProfileNotifier: نشست معتبر نیست');
+        print('âš ï¸ ProfileNotifier: Ù†Ø´Ø³Øª Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª');
         return;
       }
 
       final currentUserId = supabase.auth.currentUser?.id;
       if (currentUserId == null) {
-        print('⚠️ ProfileNotifier: کاربر یافت نشد بعد از verify');
+        print('âš ï¸ ProfileNotifier: Ú©Ø§Ø±Ø¨Ø± ÛŒØ§ÙØª Ù†Ø´Ø¯ Ø¨Ø¹Ø¯ Ø§Ø² verify');
         return;
       }
 
       try {
-        // دریافت پروفایل (مدیریت کش و سرور با خود سرویس است)
+        // Ø¯Ø±ÛŒØ§ÙØª Ù¾Ø±ÙˆÙØ§ÛŒÙ„ (Ù…Ø¯ÛŒØ±ÛŒØª Ú©Ø´ Ùˆ Ø³Ø±ÙˆØ± Ø¨Ø§ Ø®ÙˆØ¯ Ø³Ø±ÙˆÛŒØ³ Ø§Ø³Øª)
         final profile = await _profileCache.getProfile(userId);
         final posts = await _profileCache.getUserPosts(userId);
 
-        // بررسی وضعیت فالو (به‌روزرسانی از سرور برای اطمینان)
+        // Ø¨Ø±Ø±Ø³ÛŒ ÙˆØ¶Ø¹ÛŒØª ÙØ§Ù„Ùˆ (Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø§Ø² Ø³Ø±ÙˆØ± Ø¨Ø±Ø§ÛŒ Ø§Ø·Ù…ÛŒÙ†Ø§Ù†)
         bool isFollowed = profile.isFollowed;
         try {
           final followStatusResponse = await supabase
@@ -1468,15 +1590,15 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
           isFollowed: isFollowed,
         );
       } catch (e) {
-        print('❌ Error fetching profile in Notifier: $e');
+        print('âŒ Error fetching profile in Notifier: $e');
 
-        // تلاش برای خواندن کش اگر خطا رخ داد (مثلاً آفلاین)
+        // ØªÙ„Ø§Ø´ Ø¨Ø±Ø§ÛŒ Ø®ÙˆØ§Ù†Ø¯Ù† Ú©Ø´ Ø§Ú¯Ø± Ø®Ø·Ø§ Ø±Ø® Ø¯Ø§Ø¯ (Ù…Ø«Ù„Ø§Ù‹ Ø¢ÙÙ„Ø§ÛŒÙ†)
         try {
           final cachedProfile = await _profileCache.getCachedProfile(userId);
           if (cachedProfile != null) {
             final cachedPosts = await _profileCache.getCachedPosts(userId);
             state = cachedProfile.copyWith(posts: cachedPosts);
-            print('📱 Using cached profile due to error');
+            print('ðŸ“± Using cached profile due to error');
             return;
           }
         } catch (_) {}
@@ -1484,39 +1606,39 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
         rethrow;
       }
     } catch (e, stackTrace) {
-      print('❌ Error in fetchProfile: $e');
+      print('âŒ Error in fetchProfile: $e');
       UserFriendlyErrorHandler.logError(e,
           context: 'profile_fetch', stackTrace: stackTrace);
     }
   }
 
-  /// اضافه کردن پست جدید به کش
+  /// Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† Ù¾Ø³Øª Ø¬Ø¯ÛŒØ¯ Ø¨Ù‡ Ú©Ø´
   Future<void> addPostToCache(PublicPostModel post) async {
     try {
       await _profileCache.addPostToCache(post.userId, post);
-      print('✅ Added post to cache: ${post.id}');
+      print('âœ… Added post to cache: ${post.id}');
     } catch (e) {
-      print('⚠️ Failed to add post to cache: $e');
+      print('âš ï¸ Failed to add post to cache: $e');
     }
   }
 
-  /// حذف پست از کش
+  /// Ø­Ø°Ù Ù¾Ø³Øª Ø§Ø² Ú©Ø´
   Future<void> removePostFromCache(String userId, String postId) async {
     try {
       await _profileCache.removePostFromCache(userId, postId);
-      print('✅ Removed post from cache: $postId');
+      print('âœ… Removed post from cache: $postId');
     } catch (e) {
-      print('⚠️ Failed to remove post from cache: $e');
+      print('âš ï¸ Failed to remove post from cache: $e');
     }
   }
 
-  /// پاک کردن کش کاربر
+  /// Ù¾Ø§Ú© Ú©Ø±Ø¯Ù† Ú©Ø´ Ú©Ø§Ø±Ø¨Ø±
   Future<void> clearUserCache(String userId) async {
     try {
       await _profileCache.clearUserCache(userId);
-      print('✅ Cleared cache for user: $userId');
+      print('âœ… Cleared cache for user: $userId');
     } catch (e) {
-      print('⚠️ Failed to clear user cache: $e');
+      print('âš ï¸ Failed to clear user cache: $e');
     }
   }
 
@@ -1529,7 +1651,7 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
 
     try {
       if (state!.isFollowed) {
-        // حذف فالو
+        // Ø­Ø°Ù ÙØ§Ù„Ùˆ
         await Future.wait([
           supabase
               .from('follows')
@@ -1548,7 +1670,7 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
           followersCount: state!.followersCount - 1,
         );
       } else {
-        // بررسی اینکه آیا پیج خصوصی است یا نه
+        // Ø¨Ø±Ø±Ø³ÛŒ Ø§ÛŒÙ†Ú©Ù‡ Ø¢ÛŒØ§ Ù¾ÛŒØ¬ Ø®ØµÙˆØµÛŒ Ø§Ø³Øª ÛŒØ§ Ù†Ù‡
         final userSettings = await supabase
             .from('user_settings')
             .select('is_private')
@@ -1556,11 +1678,11 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
             .maybeSingle();
 
         final isPrivate = (userSettings?['is_private'] as bool?) ?? false;
-        print('🔍 بررسی تنظیمات کاربر $userId: isPrivate = $isPrivate');
+        print('ðŸ” Ø¨Ø±Ø±Ø³ÛŒ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ú©Ø§Ø±Ø¨Ø± $userId: isPrivate = $isPrivate');
 
         if (isPrivate) {
-          print('🔒 پیج خصوصی - بررسی درخواست‌های موجود');
-          // برای پیج‌های خصوصی: ایجاد درخواست فالو
+          print('ðŸ”’ Ù¾ÛŒØ¬ Ø®ØµÙˆØµÛŒ - Ø¨Ø±Ø±Ø³ÛŒ Ø¯Ø±Ø®ÙˆØ§Ø³Øªâ€ŒÙ‡Ø§ÛŒ Ù…ÙˆØ¬ÙˆØ¯');
+          // Ø¨Ø±Ø§ÛŒ Ù¾ÛŒØ¬â€ŒÙ‡Ø§ÛŒ Ø®ØµÙˆØµÛŒ: Ø§ÛŒØ¬Ø§Ø¯ Ø¯Ø±Ø®ÙˆØ§Ø³Øª ÙØ§Ù„Ùˆ
           final existingRequest = await supabase
               .from('follow_requests')
               .select('id, status')
@@ -1568,40 +1690,40 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
               .eq('recipient_id', userId)
               .maybeSingle();
 
-          print('🔍 بررسی درخواست موجود: $existingRequest');
-          print('🔍 وضعیت درخواست: ${existingRequest?['status']}');
+          print('ðŸ” Ø¨Ø±Ø±Ø³ÛŒ Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù…ÙˆØ¬ÙˆØ¯: $existingRequest');
+          print('ðŸ” ÙˆØ¶Ø¹ÛŒØª Ø¯Ø±Ø®ÙˆØ§Ø³Øª: ${existingRequest?['status']}');
 
           if (existingRequest == null) {
-            // اگر درخواست قبلی وجود ندارد، درخواست جدید ایجاد کن
-            print('🆕 ایجاد درخواست جدید برای کاربر: $userId');
+            // Ø§Ú¯Ø± Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù‚Ø¨Ù„ÛŒ ÙˆØ¬ÙˆØ¯ Ù†Ø¯Ø§Ø±Ø¯ØŒ Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø¬Ø¯ÛŒØ¯ Ø§ÛŒØ¬Ø§Ø¯ Ú©Ù†
+            print('ðŸ†• Ø§ÛŒØ¬Ø§Ø¯ Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø¬Ø¯ÛŒØ¯ Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±: $userId');
             await supabase.from('follow_requests').insert({
               'requester_id': currentUserId,
               'recipient_id': userId,
               'status': 'pending',
               'created_at': DateTime.now().toIso8601String(),
             });
-            // اعلان برای کاربر هدف
+            // Ø§Ø¹Ù„Ø§Ù† Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø± Ù‡Ø¯Ù
             await supabase.from('notifications').insert({
               'recipient_id': userId,
               'sender_id': currentUserId,
               'type': 'follow_request',
-              'content': 'درخواست دنبال کردن جدید',
+              'content': 'Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø¯Ù†Ø¨Ø§Ù„ Ú©Ø±Ø¯Ù† Ø¬Ø¯ÛŒØ¯',
               'created_at': DateTime.now().toIso8601String(),
               'is_read': false,
             });
 
-            print('✅ درخواست جدید ایجاد شد');
+            print('âœ… Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø¬Ø¯ÛŒØ¯ Ø§ÛŒØ¬Ø§Ø¯ Ø´Ø¯');
 
-            // به‌روزرسانی state برای نشان دادن وضعیت pending
+            // Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ state Ø¨Ø±Ø§ÛŒ Ù†Ø´Ø§Ù† Ø¯Ø§Ø¯Ù† ÙˆØ¶Ø¹ÛŒØª pending
             state = state!.copyWith(
-              isFollowed: false, // هنوز دنبال نشده
-              followersCount: state!.followersCount, // تعداد تغییر نمی‌کند
+              isFollowed: false, // Ù‡Ù†ÙˆØ² Ø¯Ù†Ø¨Ø§Ù„ Ù†Ø´Ø¯Ù‡
+              followersCount: state!.followersCount, // ØªØ¹Ø¯Ø§Ø¯ ØªØºÛŒÛŒØ± Ù†Ù…ÛŒâ€ŒÚ©Ù†Ø¯
             );
 
-            print('🔄 State به‌روزرسانی شد: isFollowed=${state!.isFollowed}');
+            print('ðŸ”„ State Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø´Ø¯: isFollowed=${state!.isFollowed}');
           } else if (existingRequest['status'] == 'pending') {
-            // اگر درخواست pending وجود دارد، آن را لغو کن
-            print('🔄 لغو درخواست pending برای کاربر: $userId');
+            // Ø§Ú¯Ø± Ø¯Ø±Ø®ÙˆØ§Ø³Øª pending ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø±Ø¯ØŒ Ø¢Ù† Ø±Ø§ Ù„ØºÙˆ Ú©Ù†
+            print('ðŸ”„ Ù„ØºÙˆ Ø¯Ø±Ø®ÙˆØ§Ø³Øª pending Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±: $userId');
 
             await supabase
                 .from('follow_requests')
@@ -1609,24 +1731,24 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
                 .eq('requester_id', currentUserId)
                 .eq('recipient_id', userId);
 
-            // حذف اعلان مربوطه
+            // Ø­Ø°Ù Ø§Ø¹Ù„Ø§Ù† Ù…Ø±Ø¨ÙˆØ·Ù‡
             await supabase.from('notifications').delete().match({
               'recipient_id': userId,
               'sender_id': currentUserId,
               'type': 'follow_request',
             });
 
-            print('✅ درخواست pending لغو شد');
+            print('âœ… Ø¯Ø±Ø®ÙˆØ§Ø³Øª pending Ù„ØºÙˆ Ø´Ø¯');
 
-            // به‌روزرسانی state
+            // Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ state
             state = state!.copyWith(
               isFollowed: false,
               followersCount: state!.followersCount,
             );
           } else if (existingRequest['status'] == 'rejected') {
-            // اگر درخواست قبلی رد شده، وضعیت را به pending تغییر ده
+            // Ø§Ú¯Ø± Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù‚Ø¨Ù„ÛŒ Ø±Ø¯ Ø´Ø¯Ù‡ØŒ ÙˆØ¶Ø¹ÛŒØª Ø±Ø§ Ø¨Ù‡ pending ØªØºÛŒÛŒØ± Ø¯Ù‡
             print(
-                '🔄 تغییر وضعیت درخواست رد شده به pending برای کاربر: $userId');
+                'ðŸ”„ ØªØºÛŒÛŒØ± ÙˆØ¶Ø¹ÛŒØª Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø±Ø¯ Ø´Ø¯Ù‡ Ø¨Ù‡ pending Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±: $userId');
             await supabase
                 .from('follow_requests')
                 .update({
@@ -1635,26 +1757,26 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
                 })
                 .eq('requester_id', currentUserId)
                 .eq('recipient_id', userId);
-            // اعلان جدید برای کاربر هدف
+            // Ø§Ø¹Ù„Ø§Ù† Ø¬Ø¯ÛŒØ¯ Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø± Ù‡Ø¯Ù
             await supabase.from('notifications').insert({
               'recipient_id': userId,
               'sender_id': currentUserId,
               'type': 'follow_request',
-              'content': 'درخواست دنبال کردن جدید',
+              'content': 'Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø¯Ù†Ø¨Ø§Ù„ Ú©Ø±Ø¯Ù† Ø¬Ø¯ÛŒØ¯',
               'created_at': DateTime.now().toIso8601String(),
               'is_read': false,
             });
 
-            print('✅ درخواست رد شده به pending تغییر کرد');
+            print('âœ… Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø±Ø¯ Ø´Ø¯Ù‡ Ø¨Ù‡ pending ØªØºÛŒÛŒØ± Ú©Ø±Ø¯');
 
-            // به‌روزرسانی state برای نشان دادن وضعیت pending
+            // Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ state Ø¨Ø±Ø§ÛŒ Ù†Ø´Ø§Ù† Ø¯Ø§Ø¯Ù† ÙˆØ¶Ø¹ÛŒØª pending
             state = state!.copyWith(
-              isFollowed: false, // هنوز دنبال نشده
-              followersCount: state!.followersCount, // تعداد تغییر نمی‌کند
+              isFollowed: false, // Ù‡Ù†ÙˆØ² Ø¯Ù†Ø¨Ø§Ù„ Ù†Ø´Ø¯Ù‡
+              followersCount: state!.followersCount, // ØªØ¹Ø¯Ø§Ø¯ ØªØºÛŒÛŒØ± Ù†Ù…ÛŒâ€ŒÚ©Ù†Ø¯
             );
           } else if (existingRequest['status'] == 'pending') {
-            // اگر درخواست قبلی pending است، آن را لغو کن
-            print('🔄 لغو درخواست pending برای کاربر: $userId');
+            // Ø§Ú¯Ø± Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù‚Ø¨Ù„ÛŒ pending Ø§Ø³ØªØŒ Ø¢Ù† Ø±Ø§ Ù„ØºÙˆ Ú©Ù†
+            print('ðŸ”„ Ù„ØºÙˆ Ø¯Ø±Ø®ÙˆØ§Ø³Øª pending Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±: $userId');
 
             await supabase
                 .from('follow_requests')
@@ -1662,24 +1784,24 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
                 .eq('requester_id', currentUserId)
                 .eq('recipient_id', userId);
 
-            // حذف اعلان مربوطه
+            // Ø­Ø°Ù Ø§Ø¹Ù„Ø§Ù† Ù…Ø±Ø¨ÙˆØ·Ù‡
             await supabase.from('notifications').delete().match({
               'recipient_id': userId,
               'sender_id': currentUserId,
               'type': 'follow_request',
             });
 
-            print('✅ درخواست pending لغو شد');
+            print('âœ… Ø¯Ø±Ø®ÙˆØ§Ø³Øª pending Ù„ØºÙˆ Ø´Ø¯');
 
-            // به‌روزرسانی state
+            // Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ state
             state = state!.copyWith(
               isFollowed: false,
               followersCount: state!.followersCount,
             );
           } else if (existingRequest['status'] == 'accepted') {
-            // اگر قبلاً درخواست پذیرفته شده، بررسی کنیم آیا رابطه فالو وجود دارد
+            // Ø§Ú¯Ø± Ù‚Ø¨Ù„Ø§Ù‹ Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù¾Ø°ÛŒØ±ÙØªÙ‡ Ø´Ø¯Ù‡ØŒ Ø¨Ø±Ø±Ø³ÛŒ Ú©Ù†ÛŒÙ… Ø¢ÛŒØ§ Ø±Ø§Ø¨Ø·Ù‡ ÙØ§Ù„Ùˆ ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø±Ø¯
             print(
-                '✅ درخواست قبلاً پذیرفته شده است. بررسی رابطه فالو برای کاربر: $userId');
+                'âœ… Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù‚Ø¨Ù„Ø§Ù‹ Ù¾Ø°ÛŒØ±ÙØªÙ‡ Ø´Ø¯Ù‡ Ø§Ø³Øª. Ø¨Ø±Ø±Ø³ÛŒ Ø±Ø§Ø¨Ø·Ù‡ ÙØ§Ù„Ùˆ Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±: $userId');
 
             final existingFollow = await supabase
                 .from('follows')
@@ -1689,46 +1811,46 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
                 .maybeSingle();
 
             if (existingFollow != null) {
-              print('✅ رابطه فالو وجود دارد - کاربر می‌تواند محتوا را ببیند');
+              print('âœ… Ø±Ø§Ø¨Ø·Ù‡ ÙØ§Ù„Ùˆ ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø±Ø¯ - Ú©Ø§Ø±Ø¨Ø± Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ø¯ Ù…Ø­ØªÙˆØ§ Ø±Ø§ Ø¨Ø¨ÛŒÙ†Ø¯');
               state = state!.copyWith(
                 isFollowed: true,
                 followersCount: state!.followersCount,
               );
             } else {
               print(
-                  '⚠️ درخواست accepted اما رابطه فالو وجود ندارد - این حالت نادرست است');
-              // در این حالت، کاربر باید منتظر بماند تا صاحب پیج درخواست را دوباره تایید کند
+                  'âš ï¸ Ø¯Ø±Ø®ÙˆØ§Ø³Øª accepted Ø§Ù…Ø§ Ø±Ø§Ø¨Ø·Ù‡ ÙØ§Ù„Ùˆ ÙˆØ¬ÙˆØ¯ Ù†Ø¯Ø§Ø±Ø¯ - Ø§ÛŒÙ† Ø­Ø§Ù„Øª Ù†Ø§Ø¯Ø±Ø³Øª Ø§Ø³Øª');
+              // Ø¯Ø± Ø§ÛŒÙ† Ø­Ø§Ù„ØªØŒ Ú©Ø§Ø±Ø¨Ø± Ø¨Ø§ÛŒØ¯ Ù…Ù†ØªØ¸Ø± Ø¨Ù…Ø§Ù†Ø¯ ØªØ§ ØµØ§Ø­Ø¨ Ù¾ÛŒØ¬ Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø±Ø§ Ø¯ÙˆØ¨Ø§Ø±Ù‡ ØªØ§ÛŒÛŒØ¯ Ú©Ù†Ø¯
               state = state!.copyWith(
                 isFollowed: false,
                 followersCount: state!.followersCount,
               );
             }
           } else {
-            print('⚠️ وضعیت درخواست ناشناخته: ${existingRequest['status']}');
+            print('âš ï¸ ÙˆØ¶Ø¹ÛŒØª Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù†Ø§Ø´Ù†Ø§Ø®ØªÙ‡: ${existingRequest['status']}');
           }
         } else {
-          // برای پیج‌های عمومی: مستقیماً فالو کن
-          print('🆕 فالو مستقیم برای پیج عمومی: $userId');
-          print('❌ خطا: پیج عمومی نباید به این قسمت برسد!');
+          // Ø¨Ø±Ø§ÛŒ Ù¾ÛŒØ¬â€ŒÙ‡Ø§ÛŒ Ø¹Ù…ÙˆÙ…ÛŒ: Ù…Ø³ØªÙ‚ÛŒÙ…Ø§Ù‹ ÙØ§Ù„Ùˆ Ú©Ù†
+          print('ðŸ†• ÙØ§Ù„Ùˆ Ù…Ø³ØªÙ‚ÛŒÙ… Ø¨Ø±Ø§ÛŒ Ù¾ÛŒØ¬ Ø¹Ù…ÙˆÙ…ÛŒ: $userId');
+          print('âŒ Ø®Ø·Ø§: Ù¾ÛŒØ¬ Ø¹Ù…ÙˆÙ…ÛŒ Ù†Ø¨Ø§ÛŒØ¯ Ø¨Ù‡ Ø§ÛŒÙ† Ù‚Ø³Ù…Øª Ø¨Ø±Ø³Ø¯!');
           await supabase.from('follows').insert({
             'follower_id': currentUserId,
             'following_id': userId,
             'created_at': DateTime.now().toIso8601String(),
           });
 
-          // اعلان برای کاربر هدف
+          // Ø§Ø¹Ù„Ø§Ù† Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø± Ù‡Ø¯Ù
           await supabase.from('notifications').insert({
             'recipient_id': userId,
             'sender_id': currentUserId,
             'type': 'follow',
-            'content': 'شما را دنبال کرد',
+            'content': 'Ø´Ù…Ø§ Ø±Ø§ Ø¯Ù†Ø¨Ø§Ù„ Ú©Ø±Ø¯',
             'created_at': DateTime.now().toIso8601String(),
             'is_read': false,
           });
 
-          print('✅ فالو مستقیم انجام شد');
+          print('âœ… ÙØ§Ù„Ùˆ Ù…Ø³ØªÙ‚ÛŒÙ… Ø§Ù†Ø¬Ø§Ù… Ø´Ø¯');
 
-          // به‌روزرسانی state
+          // Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ state
           state = state!.copyWith(
             isFollowed: true,
             followersCount: state!.followersCount + 1,
@@ -1736,8 +1858,8 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
         }
       }
     } catch (e) {
-      print('❌ خطا در تغییر وضعیت فالو: $e');
-      rethrow; // دوباره خطا را پرتاب کن تا در UI نمایش داده شود
+      print('âŒ Ø®Ø·Ø§ Ø¯Ø± ØªØºÛŒÛŒØ± ÙˆØ¶Ø¹ÛŒØª ÙØ§Ù„Ùˆ: $e');
+      rethrow; // Ø¯ÙˆØ¨Ø§Ø±Ù‡ Ø®Ø·Ø§ Ø±Ø§ Ù¾Ø±ØªØ§Ø¨ Ú©Ù† ØªØ§ Ø¯Ø± UI Ù†Ù…Ø§ÛŒØ´ Ø¯Ø§Ø¯Ù‡ Ø´ÙˆØ¯
     }
   }
 
@@ -1766,7 +1888,7 @@ final userProfileProvider =
   (ref, userId) => ProfileNotifier(ref)..fetchProfile(userId),
 );
 
-// بررسی در حال انتظار بودن درخواست دنبال کردن
+// Ø¨Ø±Ø±Ø³ÛŒ Ø¯Ø± Ø­Ø§Ù„ Ø§Ù†ØªØ¸Ø§Ø± Ø¨ÙˆØ¯Ù† Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø¯Ù†Ø¨Ø§Ù„ Ú©Ø±Ø¯Ù†
 final followRequestPendingProvider =
     FutureProvider.family<bool, String>((ref, targetUserId) async {
   try {
@@ -1774,7 +1896,7 @@ final followRequestPendingProvider =
     final currentUserId = supabase.auth.currentUser?.id;
     if (currentUserId == null) return false;
     print(
-        '🔍 بررسی درخواست pending برای کاربر $targetUserId توسط $currentUserId');
+        'ðŸ” Ø¨Ø±Ø±Ø³ÛŒ Ø¯Ø±Ø®ÙˆØ§Ø³Øª pending Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø± $targetUserId ØªÙˆØ³Ø· $currentUserId');
     final res = await supabase
         .from('follow_requests')
         .select('id, status')
@@ -1782,12 +1904,12 @@ final followRequestPendingProvider =
         .eq('recipient_id', targetUserId)
         .eq('status', 'pending')
         .maybeSingle();
-    print('🔍 نتیجه بررسی درخواست pending: $res');
+    print('ðŸ” Ù†ØªÛŒØ¬Ù‡ Ø¨Ø±Ø±Ø³ÛŒ Ø¯Ø±Ø®ÙˆØ§Ø³Øª pending: $res');
     final isPending = res != null;
-    print('🔍 isPending: $isPending');
+    print('ðŸ” isPending: $isPending');
     return isPending;
   } catch (e) {
-    print('خطا در بررسی وضعیت درخواست دنبال کردن: $e');
+    print('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø±Ø±Ø³ÛŒ ÙˆØ¶Ø¹ÛŒØª Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø¯Ù†Ø¨Ø§Ù„ Ú©Ø±Ø¯Ù†: $e');
     return false;
   }
 });
@@ -1810,10 +1932,10 @@ final postProvider =
       ''').eq('id', postId).maybeSingle();
 
   if (response == null) {
-    throw Exception('پستی با این شناسه یافت نشد.');
+    throw Exception('Ù¾Ø³ØªÛŒ Ø¨Ø§ Ø§ÛŒÙ† Ø´Ù†Ø§Ø³Ù‡ ÛŒØ§ÙØª Ù†Ø´Ø¯.');
   }
 
-  print('Post Response: $response'); // برای دیباگ
+  print('Post Response: $response'); // Ø¨Ø±Ø§ÛŒ Ø¯ÛŒØ¨Ø§Ú¯
 
   final likes = response['likes'] as List<dynamic>? ?? [];
   final likeCount = likes.length;
@@ -1829,8 +1951,8 @@ final postProvider =
         'Unknown',
     'avatar_url': response['profiles']?['avatar_url'] ?? '',
     'is_verified': response['profiles']?['is_verified'] ?? false,
-    'image_url': response['image_url'], // اضافه کردن image_url
-    'music_url': response['music_url'], // اضافه کردن music_url
+    'image_url': response['image_url'], // Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† image_url
+    'music_url': response['music_url'], // Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† music_url
   });
 });
 
@@ -1846,12 +1968,12 @@ class ReportCommentService {
     String? additionalDetails,
   }) async {
     try {
-      // ارسال گزارش به جدول comment_reports
+      // Ø§Ø±Ø³Ø§Ù„ Ú¯Ø²Ø§Ø±Ø´ Ø¨Ù‡ Ø¬Ø¯ÙˆÙ„ comment_reports
       await supabase.from('comment_reports').insert({
         'comment_id': commentId,
         'reporter_id': reporterId,
-        'reason': reason, // دلیل گزارش
-        'additional_details': additionalDetails, // توضیحات اضافی
+        'reason': reason, // Ø¯Ù„ÛŒÙ„ Ú¯Ø²Ø§Ø±Ø´
+        'additional_details': additionalDetails, // ØªÙˆØ¶ÛŒØ­Ø§Øª Ø§Ø¶Ø§ÙÛŒ
         'reported_at': DateTime.now().toUtc().toIso8601String(),
       });
     } catch (e) {
@@ -1860,7 +1982,7 @@ class ReportCommentService {
   }
 }
 
-// ارائه‌دهنده سرویس گزارش کامنت‌ها
+// Ø§Ø±Ø§Ø¦Ù‡â€ŒØ¯Ù‡Ù†Ø¯Ù‡ Ø³Ø±ÙˆÛŒØ³ Ú¯Ø²Ø§Ø±Ø´ Ú©Ø§Ù…Ù†Øªâ€ŒÙ‡Ø§
 final reportCommentServiceProvider = Provider<ReportCommentService>((ref) {
   final supabase = ref.watch(supabaseClientProvider);
   return ReportCommentService(supabase);
@@ -1880,12 +2002,12 @@ class ReportProfileService {
     String? additionalDetails,
   }) async {
     try {
-      // ارسال گزارش به جدول profile_reports
+      // Ø§Ø±Ø³Ø§Ù„ Ú¯Ø²Ø§Ø±Ø´ Ø¨Ù‡ Ø¬Ø¯ÙˆÙ„ profile_reports
       await supabase.from('profile_reports').insert({
         'profile_id': userId,
         'reporter_id': reporterId,
-        'reason': reason, // دلیل گزارش
-        'additional_details': additionalDetails, // توضیحات اضافی
+        'reason': reason, // Ø¯Ù„ÛŒÙ„ Ú¯Ø²Ø§Ø±Ø´
+        'additional_details': additionalDetails, // ØªÙˆØ¶ÛŒØ­Ø§Øª Ø§Ø¶Ø§ÙÛŒ
         'reported_at': DateTime.now().toUtc().toIso8601String(),
       });
     } catch (e) {
@@ -1894,7 +2016,7 @@ class ReportProfileService {
   }
 }
 
-// ارائه‌دهنده سرویس گزارش پروفایل‌ها
+// Ø§Ø±Ø§Ø¦Ù‡â€ŒØ¯Ù‡Ù†Ø¯Ù‡ Ø³Ø±ÙˆÛŒØ³ Ú¯Ø²Ø§Ø±Ø´ Ù¾Ø±ÙˆÙØ§ÛŒÙ„â€ŒÙ‡Ø§
 final reportProfileServiceProvider = Provider<ReportProfileService>((ref) {
   final supabase = ref.watch(supabaseClientProvider);
   return ReportProfileService(supabase);
@@ -1906,7 +2028,7 @@ final mentionUsersProvider = FutureProvider<List<UserModel>>((ref) async {
   try {
     final supabase = Supabase.instance.client;
 
-    // واکشی کاربران با اطلاعات کامل
+    // ÙˆØ§Ú©Ø´ÛŒ Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ø¨Ø§ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ú©Ø§Ù…Ù„
     final response = await supabase
         .from('profiles')
         .select('id, username, avatar_url, is_verified, verification_type')
@@ -1916,7 +2038,7 @@ final mentionUsersProvider = FutureProvider<List<UserModel>>((ref) async {
         .map((userData) => UserModel.fromMap(userData))
         .toList();
   } catch (e) {
-    print('خطا در دریافت کاربران برای منشن: $e');
+    print('Ø®Ø·Ø§ Ø¯Ø± Ø¯Ø±ÛŒØ§ÙØª Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ø¨Ø±Ø§ÛŒ Ù…Ù†Ø´Ù†: $e');
     return [];
   }
 });
@@ -1939,12 +2061,12 @@ class MentionService {
           .map((userData) => UserModel.fromMap(userData))
           .toList();
     } catch (e) {
-      print('خطا در جستجوی کاربران: $e');
+      print('Ø®Ø·Ø§ Ø¯Ø± Ø¬Ø³ØªØ¬ÙˆÛŒ Ú©Ø§Ø±Ø¨Ø±Ø§Ù†: $e');
       return [];
     }
   }
 
-  // متد اضافه کردن منشن به کامنت
+  // Ù…ØªØ¯ Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† Ù…Ù†Ø´Ù† Ø¨Ù‡ Ú©Ø§Ù…Ù†Øª
   Future<void> addMentionToComment({
     required String commentId,
     required List<String> mentionedUserIds,
@@ -1957,7 +2079,7 @@ class MentionService {
               })
           .toList());
     } catch (e) {
-      print('خطا در ثبت منشن‌ها: $e');
+      print('Ø®Ø·Ø§ Ø¯Ø± Ø«Ø¨Øª Ù…Ù†Ø´Ù†â€ŒÙ‡Ø§: $e');
       rethrow;
     }
   }
@@ -1980,7 +2102,7 @@ class MentionNotifier extends StateNotifier<List<UserModel>> {
       state = users;
     } catch (e) {
       state = [];
-      print('خطا در جستجوی کاربران: $e');
+      print('Ø®Ø·Ø§ Ø¯Ø± Ø¬Ø³ØªØ¬ÙˆÛŒ Ú©Ø§Ø±Ø¨Ø±Ø§Ù†: $e');
     }
   }
 
@@ -2020,6 +2142,10 @@ class FollowingPostsNotifier
   final int _limit = 10;
   int _offset = 0;
   bool _hasMore = true;
+  bool _isLoading = false;
+
+  bool hasMorePosts() => _hasMore;
+  bool isLoading() => _isLoading;
 
   FollowingPostsNotifier(this.supabase) : super(const AsyncValue.loading()) {
     _loadInitialPosts();
@@ -2033,7 +2159,8 @@ class FollowingPostsNotifier
   }
 
   Future<void> _loadMorePosts() async {
-    if (!_hasMore) return;
+    if (!_hasMore || _isLoading) return;
+    _isLoading = true;
 
     try {
       final currentUserId = supabase.auth.currentUser?.id;
@@ -2097,25 +2224,27 @@ class FollowingPostsNotifier
           'is_verified': profile['is_verified'] ?? false,
           'comment_count': comments.length,
           'verification_type':
-              profile['verification_type'], // اضافه کردن verification_type
+              profile['verification_type'], // Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† verification_type
         });
       }).toList();
 
       state = AsyncValue.data([...?state.value, ...posts]);
     } catch (e, stackTrace) {
-      String errorMessage = 'خطا در بارگذاری پست‌ها';
+      String errorMessage = 'Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Ù¾Ø³Øªâ€ŒÙ‡Ø§';
 
       if (e is PostgrestException) {
         errorMessage =
-            'خطا در ارتباط با سرور. لطفا اتصال اینترنت خود را بررسی کنید';
+            'Ø®Ø·Ø§ Ø¯Ø± Ø§Ø±ØªØ¨Ø§Ø· Ø¨Ø§ Ø³Ø±ÙˆØ±. Ù„Ø·ÙØ§ Ø§ØªØµØ§Ù„ Ø§ÛŒÙ†ØªØ±Ù†Øª Ø®ÙˆØ¯ Ø±Ø§ Ø¨Ø±Ø±Ø³ÛŒ Ú©Ù†ÛŒØ¯';
       } else if (e is TimeoutException) {
         errorMessage =
-            'زمان پاسخگویی سرور به پایان رسید. لطفا دوباره تلاش کنید';
+            'Ø²Ù…Ø§Ù† Ù¾Ø§Ø³Ø®Ú¯ÙˆÛŒÛŒ Ø³Ø±ÙˆØ± Ø¨Ù‡ Ù¾Ø§ÛŒØ§Ù† Ø±Ø³ÛŒØ¯. Ù„Ø·ÙØ§ Ø¯ÙˆØ¨Ø§Ø±Ù‡ ØªÙ„Ø§Ø´ Ú©Ù†ÛŒØ¯';
       } else if (e is AuthException) {
-        errorMessage = 'لطفا دوباره وارد حساب کاربری خود شوید';
+        errorMessage = 'Ù„Ø·ÙØ§ Ø¯ÙˆØ¨Ø§Ø±Ù‡ ÙˆØ§Ø±Ø¯ Ø­Ø³Ø§Ø¨ Ú©Ø§Ø±Ø¨Ø±ÛŒ Ø®ÙˆØ¯ Ø´ÙˆÛŒØ¯';
       }
 
       state = AsyncValue.error(errorMessage, stackTrace);
+    } finally {
+      _isLoading = false;
     }
   }
 
@@ -2137,7 +2266,7 @@ class FollowingPostsNotifier
     final ownerId = post.userId;
 
     try {
-      // ابتدا وضعیت لایک را در UI تغییر می‌دهیم
+      // Ø§Ø¨ØªØ¯Ø§ ÙˆØ¶Ø¹ÛŒØª Ù„Ø§ÛŒÚ© Ø±Ø§ Ø¯Ø± UI ØªØºÛŒÛŒØ± Ù…ÛŒâ€ŒØ¯Ù‡ÛŒÙ…
       final updatedPost = post.copyWith(
         isLiked: !post.isLiked,
         likeCount: post.isLiked ? post.likeCount - 1 : post.likeCount + 1,
@@ -2147,14 +2276,14 @@ class FollowingPostsNotifier
       updatedPosts[postIndex] = updatedPost;
       state = AsyncValue.data(updatedPosts);
 
-      // سپس درخواست به سرور ارسال می‌کنیم
+      // Ø³Ù¾Ø³ Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø¨Ù‡ Ø³Ø±ÙˆØ± Ø§Ø±Ø³Ø§Ù„ Ù…ÛŒâ€ŒÚ©Ù†ÛŒÙ…
       await supabase.functions.invoke('toggle-like', body: {
         'post_id': postId,
         'owner_id': ownerId,
       });
     } catch (e) {
-      print('خطا در لایک کردن پست: $e');
-      // در صورت خطا، وضعیت قبلی را برمی‌گردانیم
+      print('Ø®Ø·Ø§ Ø¯Ø± Ù„Ø§ÛŒÚ© Ú©Ø±Ø¯Ù† Ù¾Ø³Øª: $e');
+      // Ø¯Ø± ØµÙˆØ±Øª Ø®Ø·Ø§ØŒ ÙˆØ¶Ø¹ÛŒØª Ù‚Ø¨Ù„ÛŒ Ø±Ø§ Ø¨Ø±Ù…ÛŒâ€ŒÚ¯Ø±Ø¯Ø§Ù†ÛŒÙ…
       state = AsyncValue.data(currentPosts);
     }
   }
@@ -2225,19 +2354,16 @@ class SearchService {
 
   Future<List<PublicPostModel>> searchHashtag(String hashtag) async {
     try {
-      // نرمال‌سازی هشتگ
-      String searchTerm = hashtag.trim();
-      if (!searchTerm.startsWith('#')) {
-        searchTerm = '#$searchTerm';
-      }
+      // Normalize hashtag to match `posts.tags` (no '#', lowercase, no whitespace).
+      String raw = hashtag.trim();
+      raw = raw.replaceFirst(RegExp(r'^#+'), '');
+      raw = raw.replaceAll(RegExp(r'\s+'), '');
+      final tag = raw.toLowerCase();
+      if (tag.isEmpty) return [];
 
-      // کوئری به دیتابیس
-      final response = await _supabase
-          .from('posts')
-          .select('''
-            id,
-            content,
-            created_at,
+      // Primary: search by `tags` array (correct + fast with GIN).
+      final response1 = await _supabase.from('posts').select('''
+            *,
             profiles (
               id,
               username,
@@ -2246,23 +2372,56 @@ class SearchService {
               is_verified,
               verification_type
             )
-          ''')
-          .ilike('content', '%$searchTerm%')
-          .order('created_at', ascending: false);
+          ''').eq('status', 'published').contains('tags', [tag]).order(
+            'created_at',
+            ascending: false,
+          ).limit(60);
 
-      print('Hashtag search response: $response');
+      final rows = <Map<String, dynamic>>[];
+      rows.addAll(List<Map<String, dynamic>>.from(response1 as List<dynamic>));
 
-      return (response as List<dynamic>)
-          .map((post) {
-            try {
-              return PublicPostModel.fromMap(post as Map<String, dynamic>);
-            } catch (e) {
-              print('Error parsing post: $e');
-              return null;
-            }
-          })
-          .whereType<PublicPostModel>()
-          .toList();
+      // Back-compat: if some older posts don't have `tags`, also match by content.
+      if (rows.length < 40) {
+        final response2 = await _supabase
+            .from('posts')
+            .select('''
+              *,
+              profiles (
+                id,
+                username,
+                full_name,
+                avatar_url,
+                is_verified,
+                verification_type
+              )
+            ''')
+            .eq('status', 'published')
+            .ilike('content', '%#${tag}%')
+            .order('created_at', ascending: false)
+            .limit(60);
+
+        final seenIds = rows
+            .map((r) => r['id']?.toString())
+            .whereType<String>()
+            .toSet();
+        for (final r in List<Map<String, dynamic>>.from(response2 as List)) {
+          final id = r['id']?.toString();
+          if (id == null || seenIds.contains(id)) continue;
+          rows.add(r);
+        }
+      }
+
+      return rows.map((post) {
+        // Map DB counters to the model contract keys used in the UI.
+        final likeCount = (post['likes_count'] as num?)?.toInt() ?? 0;
+        final commentCount = (post['comments_count'] as num?)?.toInt() ?? 0;
+        return PublicPostModel.fromMap({
+          ...post,
+          'like_count': likeCount,
+          'comment_count': commentCount,
+          'is_liked': false,
+        });
+      }).toList();
     } catch (e) {
       print('Error in searchHashtag: $e');
       return [];
@@ -2386,7 +2545,7 @@ class SearchNotifier extends StateNotifier<SearchState> {
   }
 }
 
-// پروایدر
+// Ù¾Ø±ÙˆØ§ÛŒØ¯Ø±
 final searchProvider =
     StateNotifierProvider<SearchNotifier, SearchState>((ref) {
   return SearchNotifier(ref);
@@ -2415,7 +2574,7 @@ class StoryControllerNotifier extends StateNotifier<int> {
   void previousStory() => state--;
   void setCurrentIndex(int index) => state = index;
 
-  // اضافه کردن این متد
+  // Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† Ø§ÛŒÙ† Ù…ØªØ¯
   void reset() => state = 0;
 }
 
@@ -2434,7 +2593,7 @@ final viewsCountProvider =
       .maybeSingle();
 
   if (response == null) {
-    return 0; // اگر view وجود نداشت، 0 برمی‌گردانیم
+    return 0; // Ø§Ú¯Ø± view ÙˆØ¬ÙˆØ¯ Ù†Ø¯Ø§Ø´ØªØŒ 0 Ø¨Ø±Ù…ÛŒâ€ŒÚ¯Ø±Ø¯Ø§Ù†ÛŒÙ…
   }
 
   return response['view_count'] as int;
@@ -2451,7 +2610,7 @@ final hasNewNotificationProvider = FutureProvider<bool>((ref) async {
       .eq('recipient_id', userId)
       .eq('is_read', false);
 
-  print('Has new notification: ${response.isNotEmpty}'); // اینجا چاپ می‌شود
+  print('Has new notification: ${response.isNotEmpty}'); // Ø§ÛŒÙ†Ø¬Ø§ Ú†Ø§Ù¾ Ù…ÛŒâ€ŒØ´ÙˆØ¯
   return response.isNotEmpty;
 });
 
@@ -2470,26 +2629,26 @@ final currentUserProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
 final userSettingsByIdProvider =
     FutureProvider.family<Map<String, dynamic>?, String>((ref, userId) async {
   try {
-    print('🔧 دریافت تنظیمات کاربر: $userId');
+    print('ðŸ”§ Ø¯Ø±ÛŒØ§ÙØª ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ú©Ø§Ø±Ø¨Ø±: $userId');
 
-    // استفاده از SettingsCacheService برای کش کردن تنظیمات
+    // Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø§Ø² SettingsCacheService Ø¨Ø±Ø§ÛŒ Ú©Ø´ Ú©Ø±Ø¯Ù† ØªÙ†Ø¸ÛŒÙ…Ø§Øª
     final settingsCache = SettingsCacheService();
 
-    // ابتدا بررسی کش - اگر موجود بود و معتبر بود، از آن استفاده کن
+    // Ø§Ø¨ØªØ¯Ø§ Ø¨Ø±Ø±Ø³ÛŒ Ú©Ø´ - Ø§Ú¯Ø± Ù…ÙˆØ¬ÙˆØ¯ Ø¨ÙˆØ¯ Ùˆ Ù…Ø¹ØªØ¨Ø± Ø¨ÙˆØ¯ØŒ Ø§Ø² Ø¢Ù† Ø§Ø³ØªÙØ§Ø¯Ù‡ Ú©Ù†
     final cachedSettings = settingsCache.getCachedUserSettings(userId);
     if (cachedSettings != null) {
-      print('🔧 استفاده از تنظیمات کش شده برای کاربر: $userId');
+      print('ðŸ”§ Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø§Ø² ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ú©Ø´ Ø´Ø¯Ù‡ Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±: $userId');
       return cachedSettings;
     }
 
-    // اگر در کش نبود، از سرور دریافت کن و کش کن
-    print('🔧 دریافت تنظیمات از سرور برای کاربر: $userId');
+    // Ø§Ú¯Ø± Ø¯Ø± Ú©Ø´ Ù†Ø¨ÙˆØ¯ØŒ Ø§Ø² Ø³Ø±ÙˆØ± Ø¯Ø±ÛŒØ§ÙØª Ú©Ù† Ùˆ Ú©Ø´ Ú©Ù†
+    print('ðŸ”§ Ø¯Ø±ÛŒØ§ÙØª ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø§Ø² Ø³Ø±ÙˆØ± Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±: $userId');
     await settingsCache.cacheUserSettings(userId);
 
-    // دوباره از کش بخوان
+    // Ø¯ÙˆØ¨Ø§Ø±Ù‡ Ø§Ø² Ú©Ø´ Ø¨Ø®ÙˆØ§Ù†
     final settings = settingsCache.getCachedUserSettings(userId);
-    print('🔧 تنظیمات دریافت شده: $settings');
-    print('🔧 allow_profile_zoom: ${settings?['allow_profile_zoom']}');
+    print('ðŸ”§ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ø±ÛŒØ§ÙØª Ø´Ø¯Ù‡: $settings');
+    print('ðŸ”§ allow_profile_zoom: ${settings?['allow_profile_zoom']}');
     return settings;
   } catch (e) {
     debugPrint('Error fetching user_settings for $userId: $e');
@@ -2636,7 +2795,7 @@ class PlaybackState {
 class ReelsNotifier extends StateNotifier<List<PublicPostModel>> {
   ReelsNotifier() : super([]);
 
-  // این متد برای آپدیت یک ریلز خاص در لیست
+  // Ø§ÛŒÙ† Ù…ØªØ¯ Ø¨Ø±Ø§ÛŒ Ø¢Ù¾Ø¯ÛŒØª ÛŒÚ© Ø±ÛŒÙ„Ø² Ø®Ø§Øµ Ø¯Ø± Ù„ÛŒØ³Øª
   void updateReel(PublicPostModel updatedReel) {
     state = [
       for (final reel in state)
@@ -2644,10 +2803,10 @@ class ReelsNotifier extends StateNotifier<List<PublicPostModel>> {
     ];
   }
 
-  // متدهای دیگر (fetch, loadMore, ...) اختیاری
+  // Ù…ØªØ¯Ù‡Ø§ÛŒ Ø¯ÛŒÚ¯Ø± (fetch, loadMore, ...) Ø§Ø®ØªÛŒØ§Ø±ÛŒ
 }
 
-// provider سراسری ریلزها
+// provider Ø³Ø±Ø§Ø³Ø±ÛŒ Ø±ÛŒÙ„Ø²Ù‡Ø§
 final likeStateProvider =
     StateNotifierProvider<LikeStateNotifier, Map<String, bool>>((ref) {
   return LikeStateNotifier();
@@ -2667,36 +2826,36 @@ class LikeStateNotifier extends StateNotifier<Map<String, bool>> {
 
 // Provider to get the current user's UserModel based on profileProvider
 final userProvider = Provider<UserModel?>((ref) {
-  // به profileProvider گوش می‌دهیم تا داده‌های پروفایل را دریافت کنیم
+  // Ø¨Ù‡ profileProvider Ú¯ÙˆØ´ Ù…ÛŒâ€ŒØ¯Ù‡ÛŒÙ… ØªØ§ Ø¯Ø§Ø¯Ù‡â€ŒÙ‡Ø§ÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø±Ø§ Ø¯Ø±ÛŒØ§ÙØª Ú©Ù†ÛŒÙ…
   final profileDataAsync = ref
-      .watch(profileProvider); // این یک AsyncValue<Map<String, dynamic>?> است
+      .watch(profileProvider); // Ø§ÛŒÙ† ÛŒÚ© AsyncValue<Map<String, dynamic>?> Ø§Ø³Øª
 
-  // با استفاده از .when وضعیت‌های مختلف profileDataAsync (داده، لودینگ، خطا) را مدیریت می‌کنیم
+  // Ø¨Ø§ Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø§Ø² .when ÙˆØ¶Ø¹ÛŒØªâ€ŒÙ‡Ø§ÛŒ Ù…Ø®ØªÙ„Ù profileDataAsync (Ø¯Ø§Ø¯Ù‡ØŒ Ù„ÙˆØ¯ÛŒÙ†Ú¯ØŒ Ø®Ø·Ø§) Ø±Ø§ Ù…Ø¯ÛŒØ±ÛŒØª Ù…ÛŒâ€ŒÚ©Ù†ÛŒÙ…
   return profileDataAsync.when(
     data: (dataMap) {
-      // dataMap همان Map<String, dynamic>? است که از profileProvider می‌آید
+      // dataMap Ù‡Ù…Ø§Ù† Map<String, dynamic>? Ø§Ø³Øª Ú©Ù‡ Ø§Ø² profileProvider Ù…ÛŒâ€ŒØ¢ÛŒØ¯
       if (dataMap != null) {
         try {
-          // داده‌های map را به UserModel تبدیل می‌کنیم
+          // Ø¯Ø§Ø¯Ù‡â€ŒÙ‡Ø§ÛŒ map Ø±Ø§ Ø¨Ù‡ UserModel ØªØ¨Ø¯ÛŒÙ„ Ù…ÛŒâ€ŒÚ©Ù†ÛŒÙ…
           return UserModel.fromMap(dataMap);
         } catch (e, stackTrace) {
-          // اگر در تبدیل map به UserModel خطایی رخ دهد (مثلاً فیلدهای مورد نیاز وجود نداشته باشند)
-          debugPrint('خطا در تبدیل اطلاعات پروفایل به UserModel: $e');
+          // Ø§Ú¯Ø± Ø¯Ø± ØªØ¨Ø¯ÛŒÙ„ map Ø¨Ù‡ UserModel Ø®Ø·Ø§ÛŒÛŒ Ø±Ø® Ø¯Ù‡Ø¯ (Ù…Ø«Ù„Ø§Ù‹ ÙÛŒÙ„Ø¯Ù‡Ø§ÛŒ Ù…ÙˆØ±Ø¯ Ù†ÛŒØ§Ø² ÙˆØ¬ÙˆØ¯ Ù†Ø¯Ø§Ø´ØªÙ‡ Ø¨Ø§Ø´Ù†Ø¯)
+          debugPrint('Ø®Ø·Ø§ Ø¯Ø± ØªØ¨Ø¯ÛŒÙ„ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø¨Ù‡ UserModel: $e');
           debugPrint('StackTrace: $stackTrace');
-          debugPrint('اطلاعات پروفایل دریافتی: $dataMap');
-          return null; // در صورت خطا، null برمی‌گردانیم
+          debugPrint('Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø¯Ø±ÛŒØ§ÙØªÛŒ: $dataMap');
+          return null; // Ø¯Ø± ØµÙˆØ±Øª Ø®Ø·Ø§ØŒ null Ø¨Ø±Ù…ÛŒâ€ŒÚ¯Ø±Ø¯Ø§Ù†ÛŒÙ…
         }
       }
-      return null; // اگر dataMap خود null باشد (مثلاً پروفایل پیدا نشده)
+      return null; // Ø§Ú¯Ø± dataMap Ø®ÙˆØ¯ null Ø¨Ø§Ø´Ø¯ (Ù…Ø«Ù„Ø§Ù‹ Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ù¾ÛŒØ¯Ø§ Ù†Ø´Ø¯Ù‡)
     },
     loading: () {
-      // اگر profileProvider در حال بارگذاری اطلاعات باشد
+      // Ø§Ú¯Ø± profileProvider Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ø¨Ø§Ø´Ø¯
       return null;
     },
     error: (error, stackTrace) {
-      // اگر خطایی در profileProvider رخ داده باشد
+      // Ø§Ú¯Ø± Ø®Ø·Ø§ÛŒÛŒ Ø¯Ø± profileProvider Ø±Ø® Ø¯Ø§Ø¯Ù‡ Ø¨Ø§Ø´Ø¯
       debugPrint(
-          'خطا در profileProvider هنگام تلاش برای خواندن توسط userProvider: $error');
+          'Ø®Ø·Ø§ Ø¯Ø± profileProvider Ù‡Ù†Ú¯Ø§Ù… ØªÙ„Ø§Ø´ Ø¨Ø±Ø§ÛŒ Ø®ÙˆØ§Ù†Ø¯Ù† ØªÙˆØ³Ø· userProvider: $error');
       debugPrint('StackTrace: $stackTrace');
       return null;
     },
@@ -2724,7 +2883,7 @@ class AutoPlayNotifier extends StateNotifier<bool> {
     state = _videoAutoplayService.shouldAutoPlay();
   }
 
-  // متد برای به‌روزرسانی وضعیت پس از تغییر حالت کم‌مصرف
+  // Ù…ØªØ¯ Ø¨Ø±Ø§ÛŒ Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ ÙˆØ¶Ø¹ÛŒØª Ù¾Ø³ Ø§Ø² ØªØºÛŒÛŒØ± Ø­Ø§Ù„Øª Ú©Ù…â€ŒÙ…ØµØ±Ù
   void refresh() async {
     await _videoAutoplayService.loadSettings();
     state = _videoAutoplayService.shouldAutoPlay();
@@ -2744,7 +2903,7 @@ class MessageFontSizeNotifier extends StateNotifier<double> {
       _isar = await IsarDatabaseManager().instance;
       _loadFontSize();
     } catch (e) {
-      debugPrint('خطا در باز کردن دیتابیس تنظیمات: $e');
+      debugPrint('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø² Ú©Ø±Ø¯Ù† Ø¯ÛŒØªØ§Ø¨ÛŒØ³ ØªÙ†Ø¸ÛŒÙ…Ø§Øª: $e');
     }
   }
 
@@ -2756,7 +2915,7 @@ class MessageFontSizeNotifier extends StateNotifier<double> {
         state = settings.messageFontSize!;
       }
     } catch (e) {
-      debugPrint('خطا در بارگذاری اندازه فونت: $e');
+      debugPrint('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Ø§Ù†Ø¯Ø§Ø²Ù‡ ÙÙˆÙ†Øª: $e');
     }
   }
 
@@ -2778,17 +2937,17 @@ class MessageFontSizeNotifier extends StateNotifier<double> {
         await _isar!.appSettingsEntitys.put(settings);
       });
     } catch (e) {
-      debugPrint('خطا در ذخیره اندازه فونت: $e');
+      debugPrint('Ø®Ø·Ø§ Ø¯Ø± Ø°Ø®ÛŒØ±Ù‡ Ø§Ù†Ø¯Ø§Ø²Ù‡ ÙÙˆÙ†Øª: $e');
     }
   }
 
   String getFontSizeLabel(double size) {
-    if (size <= 11.0) return 'خیلی کوچک';
-    if (size <= 13.0) return 'کوچک';
-    if (size <= 15.0) return 'متوسط';
-    if (size <= 17.0) return 'بزرگ';
-    if (size <= 20.0) return 'خیلی بزرگ';
-    return 'بسیار بزرگ';
+    if (size <= 11.0) return 'Ø®ÛŒÙ„ÛŒ Ú©ÙˆÚ†Ú©';
+    if (size <= 13.0) return 'Ú©ÙˆÚ†Ú©';
+    if (size <= 15.0) return 'Ù…ØªÙˆØ³Ø·';
+    if (size <= 17.0) return 'Ø¨Ø²Ø±Ú¯';
+    if (size <= 20.0) return 'Ø®ÛŒÙ„ÛŒ Ø¨Ø²Ø±Ú¯';
+    return 'Ø¨Ø³ÛŒØ§Ø± Ø¨Ø²Ø±Ú¯';
   }
 }
 
@@ -2844,7 +3003,7 @@ class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
       _isar = await IsarDatabaseManager().instance;
       _loadSettings();
     } catch (e) {
-      debugPrint('خطا در باز کردن دیتابیس تنظیمات: $e');
+      debugPrint('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø² Ú©Ø±Ø¯Ù† Ø¯ÛŒØªØ§Ø¨ÛŒØ³ ØªÙ†Ø¸ÛŒÙ…Ø§Øª: $e');
     }
   }
 
@@ -2859,7 +3018,7 @@ class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
         );
       }
     } catch (e) {
-      debugPrint('خطا در بارگذاری تنظیمات دانلود خودکار: $e');
+      debugPrint('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ø§Ù†Ù„ÙˆØ¯ Ø®ÙˆØ¯Ú©Ø§Ø±: $e');
     }
   }
 
@@ -2867,7 +3026,7 @@ class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
     state = state.copyWith(photos: setting);
     await _saveSettings();
 
-    // اعمال تنظیمات جدید
+    // Ø§Ø¹Ù…Ø§Ù„ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¬Ø¯ÛŒØ¯
     await _applyAutoDownloadSettings();
   }
 
@@ -2875,13 +3034,13 @@ class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
     state = state.copyWith(voices: setting);
     await _saveSettings();
 
-    // اعمال تنظیمات جدید
+    // Ø§Ø¹Ù…Ø§Ù„ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¬Ø¯ÛŒØ¯
     await _applyAutoDownloadSettings();
   }
 
   Future<void> _applyAutoDownloadSettings() async {
     try {
-      // پاکسازی کش قدیمی در صورت تغییر تنظیمات
+      // Ù¾Ø§Ú©Ø³Ø§Ø²ÛŒ Ú©Ø´ Ù‚Ø¯ÛŒÙ…ÛŒ Ø¯Ø± ØµÙˆØ±Øª ØªØºÛŒÛŒØ± ØªÙ†Ø¸ÛŒÙ…Ø§Øª
       if (state.photos == 'never') {
         await _clearPhotoCache();
       }
@@ -2890,9 +3049,9 @@ class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
       }
 
       print(
-          '✅ Auto download settings applied: Photos=${state.photos}, Voices=${state.voices}');
+          'âœ… Auto download settings applied: Photos=${state.photos}, Voices=${state.voices}');
     } catch (e) {
-      debugPrint('خطا در اعمال تنظیمات دانلود خودکار: $e');
+      debugPrint('Ø®Ø·Ø§ Ø¯Ø± Ø§Ø¹Ù…Ø§Ù„ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ø§Ù†Ù„ÙˆØ¯ Ø®ÙˆØ¯Ú©Ø§Ø±: $e');
     }
   }
 
@@ -2902,19 +3061,19 @@ class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
       final chatImagesDir = Directory('${appDir.path}/chat_images');
       if (await chatImagesDir.exists()) {
         await chatImagesDir.delete(recursive: true);
-        print('🧹 Photo cache cleared');
+        print('ðŸ§¹ Photo cache cleared');
       }
     } catch (e) {
-      debugPrint('خطا در پاکسازی کش عکس‌ها: $e');
+      debugPrint('Ø®Ø·Ø§ Ø¯Ø± Ù¾Ø§Ú©Ø³Ø§Ø²ÛŒ Ú©Ø´ Ø¹Ú©Ø³â€ŒÙ‡Ø§: $e');
     }
   }
 
   Future<void> _clearVoiceCache() async {
     try {
       // TODO: Import VoiceCacheService and clear cache
-      print('🧹 Voice cache cleared');
+      print('ðŸ§¹ Voice cache cleared');
     } catch (e) {
-      debugPrint('خطا در پاکسازی کش وویس‌ها: $e');
+      debugPrint('Ø®Ø·Ø§ Ø¯Ø± Ù¾Ø§Ú©Ø³Ø§Ø²ÛŒ Ú©Ø´ ÙˆÙˆÛŒØ³â€ŒÙ‡Ø§: $e');
     }
   }
 
@@ -2937,20 +3096,20 @@ class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
         await _isar!.appSettingsEntitys.put(settings);
       });
     } catch (e) {
-      debugPrint('خطا در ذخیره تنظیمات دانلود خودکار: $e');
+      debugPrint('Ø®Ø·Ø§ Ø¯Ø± Ø°Ø®ÛŒØ±Ù‡ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ø§Ù†Ù„ÙˆØ¯ Ø®ÙˆØ¯Ú©Ø§Ø±: $e');
     }
   }
 
   String getSettingLabel(String setting) {
     switch (setting) {
       case 'always':
-        return 'همیشه';
+        return 'Ù‡Ù…ÛŒØ´Ù‡';
       case 'wifi':
-        return 'فقط Wi-Fi';
+        return 'ÙÙ‚Ø· Wi-Fi';
       case 'never':
-        return 'هرگز';
+        return 'Ù‡Ø±Ú¯Ø²';
       default:
-        return 'نامشخص';
+        return 'Ù†Ø§Ù…Ø´Ø®Øµ';
     }
   }
 }
@@ -3013,7 +3172,7 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
       _isar = await IsarDatabaseManager().instance;
       _loadSettings();
     } catch (e) {
-      debugPrint('خطا در باز کردن دیتابیس تنظیمات: $e');
+      debugPrint('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø² Ú©Ø±Ø¯Ù† Ø¯ÛŒØªØ§Ø¨ÛŒØ³ ØªÙ†Ø¸ÛŒÙ…Ø§Øª: $e');
     }
   }
 
@@ -3029,7 +3188,7 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
         );
       }
     } catch (e) {
-      debugPrint('خطا در بارگذاری تنظیمات عملکرد: $e');
+      debugPrint('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¹Ù…Ù„Ú©Ø±Ø¯: $e');
     }
   }
 
@@ -3037,7 +3196,7 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
     state = state.copyWith(batterySaverMode: enabled);
     await _saveSettings();
 
-    // اعمال تنظیمات حالت کم‌مصرف
+    // Ø§Ø¹Ù…Ø§Ù„ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø­Ø§Ù„Øª Ú©Ù…â€ŒÙ…ØµØ±Ù
     // Note: Services are updated below directly
     // if (enabled) {
     //   await _applyBatterySaverMode();
@@ -3045,28 +3204,28 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
     //   await _disableBatterySaverMode();
     // }
 
-    // به‌روزرسانی سرویس انیمیشن
+    // Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø³Ø±ÙˆÛŒØ³ Ø§Ù†ÛŒÙ…ÛŒØ´Ù†
     final animationService = AnimationControllerService();
     await animationService.setBatterySaverMode(enabled);
 
-    // به‌روزرسانی سرویس پخش خودکار ویدیو
+    // Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø³Ø±ÙˆÛŒØ³ Ù¾Ø®Ø´ Ø®ÙˆØ¯Ú©Ø§Ø± ÙˆÛŒØ¯ÛŒÙˆ
     final videoAutoplayService = VideoAutoplayService();
     await videoAutoplayService.setBatterySaverMode(enabled);
 
-    // به‌روزرسانی سرویس کیفیت تصاویر
+    // Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø³Ø±ÙˆÛŒØ³ Ú©ÛŒÙÛŒØª ØªØµØ§ÙˆÛŒØ±
     final imageQualityService = ImageQualityService();
     await imageQualityService.setBatterySaverMode(enabled);
 
-    // به‌روزرسانی autoPlayProvider (از طریق ProviderContainer)
-    // این کار در StorageAndMemorySettingsPage انجام می‌شود
+    // Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ autoPlayProvider (Ø§Ø² Ø·Ø±ÛŒÙ‚ ProviderContainer)
+    // Ø§ÛŒÙ† Ú©Ø§Ø± Ø¯Ø± StorageAndMemorySettingsPage Ø§Ù†Ø¬Ø§Ù… Ù…ÛŒâ€ŒØ´ÙˆØ¯
   }
 
   Future<void> updateSmartCache(bool enabled) async {
     state = state.copyWith(smartCache: enabled);
     await _saveSettings();
 
-    // اعمال تنظیمات کش هوشمند
-    // اعمال تنظیمات کش هوشمند
+    // Ø§Ø¹Ù…Ø§Ù„ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ú©Ø´ Ù‡ÙˆØ´Ù…Ù†Ø¯
+    // Ø§Ø¹Ù…Ø§Ù„ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ú©Ø´ Ù‡ÙˆØ´Ù…Ù†Ø¯
     if (enabled) {
       await CacheRepository().optimize();
     }
@@ -3098,7 +3257,7 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
         await _isar!.appSettingsEntitys.put(settings);
       });
     } catch (e) {
-      debugPrint('خطا در ذخیره تنظیمات عملکرد: $e');
+      debugPrint('Ø®Ø·Ø§ Ø¯Ø± Ø°Ø®ÛŒØ±Ù‡ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¹Ù…Ù„Ú©Ø±Ø¯: $e');
     }
   }
 
@@ -3114,20 +3273,20 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
 
   String getBatterySaverDescription() {
     return state.batterySaverMode
-        ? 'فعال - کاهش مصرف باتری تا 30%'
-        : 'غیرفعال - عملکرد کامل';
+        ? 'ÙØ¹Ø§Ù„ - Ú©Ø§Ù‡Ø´ Ù…ØµØ±Ù Ø¨Ø§ØªØ±ÛŒ ØªØ§ 30%'
+        : 'ØºÛŒØ±ÙØ¹Ø§Ù„ - Ø¹Ù…Ù„Ú©Ø±Ø¯ Ú©Ø§Ù…Ù„';
   }
 
   String getSmartCacheDescription() {
     return state.smartCache
-        ? 'فعال - پاکسازی خودکار کش قدیمی'
-        : 'غیرفعال - کش کامل';
+        ? 'ÙØ¹Ø§Ù„ - Ù¾Ø§Ú©Ø³Ø§Ø²ÛŒ Ø®ÙˆØ¯Ú©Ø§Ø± Ú©Ø´ Ù‚Ø¯ÛŒÙ…ÛŒ'
+        : 'ØºÛŒØ±ÙØ¹Ø§Ù„ - Ú©Ø´ Ú©Ø§Ù…Ù„';
   }
 
   String getPreloadingDescription() {
     return state.messagePreloading
-        ? 'فعال - بارگذاری سریع‌تر پیام‌ها'
-        : 'غیرفعال - صرفه‌جویی در مصرف داده';
+        ? 'ÙØ¹Ø§Ù„ - Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Ø³Ø±ÛŒØ¹â€ŒØªØ± Ù¾ÛŒØ§Ù…â€ŒÙ‡Ø§'
+        : 'ØºÛŒØ±ÙØ¹Ø§Ù„ - ØµØ±ÙÙ‡â€ŒØ¬ÙˆÛŒÛŒ Ø¯Ø± Ù…ØµØ±Ù Ø¯Ø§Ø¯Ù‡';
   }
 }
 
@@ -3136,12 +3295,12 @@ final performanceProvider =
   return PerformanceNotifier();
 });
 
-// Provider برای lazy loading پست‌های پروفایل
+// Provider Ø¨Ø±Ø§ÛŒ lazy loading Ù¾Ø³Øªâ€ŒÙ‡Ø§ÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„
 class ProfilePostsNotifier
     extends StateNotifier<AsyncValue<List<PublicPostModel>>> {
   final SupabaseClient supabase;
   final String userId;
-  final int _limit = 30; // نمایش اولیه بیشتر برای پروفایل‌ها
+  final int _limit = 30; // Ù†Ù…Ø§ÛŒØ´ Ø§ÙˆÙ„ÛŒÙ‡ Ø¨ÛŒØ´ØªØ± Ø¨Ø±Ø§ÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„â€ŒÙ‡Ø§
   int _offset = 0;
   bool _hasMore = true;
   bool _isLoading = false;
@@ -3216,7 +3375,7 @@ class ProfilePostsNotifier
       }).toList();
 
       _allPosts.addAll(newPosts);
-      _offset += postsResponse.length; // مطابق تعداد واقعی دریافتی
+      _offset += postsResponse.length; // Ù…Ø·Ø§Ø¨Ù‚ ØªØ¹Ø¯Ø§Ø¯ ÙˆØ§Ù‚Ø¹ÛŒ Ø¯Ø±ÛŒØ§ÙØªÛŒ
       _hasMore = postsResponse.length == _limit;
 
       state = AsyncValue.data(_allPosts);

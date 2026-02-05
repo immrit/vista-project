@@ -27,6 +27,7 @@ import '../../../DB/profile_cache_service.dart';
 import '../../../model/ProfileModel.dart';
 import '../../../model/message_model.dart';
 import '../../../utils/compat_extensions.dart';
+import '../../../utils/time_utils.dart';
 import '../providers/chat_providers.dart';
 
 // ✅ Theme & Widgets
@@ -75,6 +76,7 @@ import '../../stories/domain/entities/entities.dart';
 import '../widgets/location_message_widgets.dart';
 import '../widgets/contact_card_widgets.dart';
 import 'telegram_profile_screen.dart';
+import 'group_details_screen.dart';
 import 'document_preview_screen.dart';
 import '../screens/message_info_screen.dart';
 // TODO: Use CompleteDeletionService for delete with undo
@@ -92,12 +94,14 @@ class ChatScreenArgs {
   final String otherUserName;
   final String? otherUserAvatar;
   final String otherUserId;
+  final bool isGroup;
 
   const ChatScreenArgs({
     required this.conversationId,
     required this.otherUserName,
     this.otherUserAvatar,
     required this.otherUserId,
+    this.isGroup = false,
   });
 }
 
@@ -1844,29 +1848,31 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     // چون لیست reverse است:
     // - index کمتر = پیام جدیدتر (پایین صفحه)
     // - index بیشتر = پیام قدیمی‌تر (بالای صفحه)
+    final hasBelow = index > 0;
+    final belowMessage = hasBelow ? messages[index - 1] : null;
+    final hasAbove = index < messages.length - 1;
+    final aboveMessage = hasAbove ? messages[index + 1] : null;
 
-    // بررسی پیام قبلی (جدیدتر - پایین‌تر)
-    final hasPrevious = index > 0;
-    final previousMessage = hasPrevious ? messages[index - 1] : null;
-    final isFirstInGroup = !hasPrevious ||
-        previousMessage!.senderId != currentMessage.senderId ||
-        _isTimeDifferenceSignificant(
-            currentMessage.createdAt, previousMessage.createdAt);
+    final bool sameAsAbove = hasAbove &&
+        TimeUtils.isInSameGroup(
+          currentMessage.createdAt,
+          aboveMessage!.createdAt,
+          currentMessage.senderId,
+          aboveMessage.senderId,
+        );
 
-    // بررسی پیام بعدی (قدیمی‌تر - بالاتر)
-    final hasNext = index < messages.length - 1;
-    final nextMessage = hasNext ? messages[index + 1] : null;
-    final isLastInGroup = !hasNext ||
-        nextMessage!.senderId != currentMessage.senderId ||
-        _isTimeDifferenceSignificant(
-            nextMessage.createdAt, currentMessage.createdAt);
+    final bool sameAsBelow = hasBelow &&
+        TimeUtils.isInSameGroup(
+          belowMessage!.createdAt,
+          currentMessage.createdAt,
+          belowMessage.senderId,
+          currentMessage.senderId,
+        );
+
+    final isFirstInGroup = !sameAsAbove;
+    final isLastInGroup = !sameAsBelow;
 
     return (isFirstInGroup, isLastInGroup);
-  }
-
-  /// آیا فاصله زمانی بین دو پیام بیش از 5 دقیقه است؟
-  bool _isTimeDifferenceSignificant(DateTime time1, DateTime time2) {
-    return time1.difference(time2).abs() > const Duration(minutes: 5);
   }
 
   MessageStatus _getMessageStatus(MessageModel message) {
@@ -2518,6 +2524,19 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   /// Navigate to Chat Details Screen
   void _navigateToChatDetails() async {
+    // اگر گروه است به صفحه جزئیات گروه برو
+    if (widget.args.isGroup || widget.args.otherUserId.isEmpty) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => GroupDetailsScreen(
+            conversationId: widget.args.conversationId,
+          ),
+        ),
+      );
+      return;
+    }
+
+    // چت خصوصی
     final result = await Navigator.of(context).push<String?>(
       MaterialPageRoute(
         builder: (context) => VistaChatProfileScreen(

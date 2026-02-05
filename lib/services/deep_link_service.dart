@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:app_links/app_links.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../features/chat/services/group_service.dart';
 
 // Provider برای مدیریت وضعیت deep link
 final deepLinkProvider =
@@ -78,6 +79,10 @@ class DeepLinkService {
         final username = pathSegments[1];
         logInfo('Navigating to profile: $username');
         _navigateToProfile(username, navigatorKey);
+      } else if (path.startsWith('/group/') && pathSegments.length >= 2) {
+        final code = pathSegments[1];
+        logInfo('Navigating to group via invite: $code');
+        Future.microtask(() => _handleGroupInvite(code, navigatorKey));
       } else if (path == '/feed') {
         logInfo('Navigating to feed');
         _navigateToFeed(navigatorKey);
@@ -110,6 +115,27 @@ class DeepLinkService {
   // Navigation مشترک برای فید
   void _navigateToFeed(GlobalKey<NavigatorState> navigatorKey) {
     navigatorKey.currentState?.pushNamed('/feed');
+  }
+
+  Future<void> _handleGroupInvite(
+      String inviteCode, GlobalKey<NavigatorState> navigatorKey) async {
+    try {
+      final service = GroupService();
+      final conversationId = await service.joinByInvite(inviteCode);
+      final info = await service.fetchGroupInfo(conversationId);
+
+      navigatorKey.currentState?.pushNamed(
+        '/chat',
+        arguments: {
+          'conversationId': conversationId,
+          'otherUserId': '',
+          'username': info?['name'] as String? ?? 'گروه',
+          'avatarUrl': info?['image'] as String?,
+        },
+      );
+    } catch (e) {
+      logInfo('Group invite error: $e');
+    }
   }
 
   // تست deep link (برای development)

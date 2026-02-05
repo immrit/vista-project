@@ -17,8 +17,8 @@ import 'package:Vista/features/profile/screens/editeProfile.dart';
 import 'package:Vista/features/settings/screens/Settings.dart';
 import 'package:Vista/features/profile/widgets/vista_id_card.dart';
 import 'package:Vista/model/UserModel.dart' as user_model;
-import 'followers and followings/FollowersScreen.dart';
-import 'followers and followings/FollowingScreen.dart';
+import 'followers_and_followings/FollowersScreen.dart';
+import 'followers_and_followings/FollowingScreen.dart';
 
 // Stories
 import '../../stories/presentation/screens/story_creation_screen.dart'; // Stories Import
@@ -35,6 +35,8 @@ import 'package:flutter/services.dart';
 import 'package:Vista/utils/premium_features_helper.dart';
 import 'package:Vista/features/posts/widgets/standard_edit_post_dialog.dart';
 import 'package:Vista/features/posts/screens/PostDetailPage.dart';
+import 'package:Vista/features/search/screens/searchPage.dart';
+import 'package:Vista/features/posts/widgets/hashtag_rich_text.dart';
 
 /// صفحه پروفایل ویستا - طراحی مدرن Instagram/Threads
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -462,6 +464,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     setState(() => _isStartingConversation = true);
 
     try {
+      final myId = supabase.auth.currentUser?.id;
+      if (myId != null && myId != userId) {
+        try {
+          final res = await supabase.rpc(
+            'can_message_user',
+            params: {'target_user_id': userId},
+          );
+          final canMessage = res == true;
+          if (!canMessage && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('این کاربر دریافت پیام را محدود کرده است'),
+                backgroundColor: Colors.red,
+              ),
+            );
+            return;
+          }
+        } catch (_) {
+          // If the RPC isn't deployed yet (or fails), fall back to existing flow.
+        }
+      }
+
       if (mounted) {
         Navigator.push(
           context,
@@ -1422,15 +1446,28 @@ class _PostListItem extends ConsumerWidget {
                   if (post.content.isNotEmpty) ...[
                     Directionality(
                       textDirection: _getTextDirection(post.content),
-                      child: Text(
-                        post.content,
+                      child: HashtagRichText(
+                        text: post.content,
                         style: TextStyle(
                           fontSize: 15,
                           height: 1.4,
                           color: isDark ? Colors.white70 : Colors.black87,
                         ),
+                        hashtagStyle: const TextStyle(
+                          color: Colors.blue,
+                          fontWeight: FontWeight.w700,
+                        ),
                         maxLines: 6,
                         overflow: TextOverflow.ellipsis,
+                        onHashtagTap: (tag) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  SearchPage(initialHashtag: '#$tag'),
+                            ),
+                          );
+                        },
                       ),
                     ),
                     const SizedBox(height: 10),

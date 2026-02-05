@@ -683,6 +683,148 @@ class SessionManagerServiceV2 {
     }
   }
 
+  /// بررسی اینکه نشست فعلی هنوز معتبر است (برای گارد قبل از عملیات حساس).
+  ///
+  /// رفتار:
+  /// - اگر session لوکال یا session Supabase وجود نداشته باشد => نامعتبر
+  /// - در غیر این صورت => بررسی سریع (و در صورت نیاز DB)
+  Future<bool> isSessionStillValid() async {
+    if (_currentSessionId == null) return false;
+
+    final supabaseSession = _supabase.auth.currentSession;
+    if (supabaseSession == null) return false;
+
+    return _quickSessionCheck();
+  }
+
+  /// تلاش برای پیدا کردن session فعلی در دیتابیس (برای سازگاری با UIهای قدیمی).
+  ///
+  /// استراتژی (مشابه v1):
+  /// 1) اگر `session_token` داریم، دقیق‌ترین روش: match روی `user_id + session_token`
+  /// 2) اگر deviceId داریم: match روی `device_info.device_id` با جدیدترین `last_activity`
+  /// 3) fallback: اعتبارسنجی `_currentSessionId` اگر هنوز وجود دارد
+  Future<String?> findCurrentSessionId() async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) {
+        logInfo('⚠️ User not authenticated, cannot find session');
+        return _currentSessionId;
+      }
+
+      // 1) Try by session token (most accurate)
+      if (_sessionToken != null && _sessionToken!.isNotEmpty) {
+        final tokenResponse = await _supabase
+            .from('active_sessions')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('session_token', _sessionToken!)
+            .eq('is_active', true)
+            .maybeSingle();
+
+        if (tokenResponse != null) {
+          final foundSessionId = tokenResponse['id'] as String?;
+          if (foundSessionId != null && foundSessionId.isNotEmpty) {
+            if (foundSessionId != _currentSessionId) {
+              logInfo(
+                  '🔄 Updating session ID: $_currentSessionId -> $foundSessionId');
+              _currentSessionId = foundSessionId;
+              await _saveSession();
+            }
+            return foundSessionId;
+          }
+        }
+      }
+
+      // 2) Try by device ID
+      final deviceInfo = await _getDeviceInfo();
+      final deviceId = deviceInfo.deviceId;
+      if (deviceId != null && deviceId.isNotEmpty) {
+        final sessions = await _supabase
+            .from('active_sessions')
+            .select('id, device_info, last_activity')
+            .eq('user_id', userId)
+            .eq('is_active', true)
+            .order('last_activity', ascending: false)
+            .limit(20);
+
+        Map<String, dynamic>? _asMap(dynamic v) {
+          if (v == null) return null;
+          if (v is Map<String, dynamic>) return v;
+          if (v is Map) {
+            return v.map((k, val) => MapEntry(k.toString(), val));
+          }
+          if (v is String) {
+            try {
+              final decoded = json.decode(v);
+              if (decoded is Map<String, dynamic>) return decoded;
+              if (decoded is Map) {
+                return decoded.map((k, val) => MapEntry(k.toString(), val));
+              }
+            } catch (_) {}
+          }
+          return null;
+        }
+
+        String? bestMatchSessionId;
+        DateTime? bestMatchTime;
+
+        for (final session in (sessions as List<dynamic>)) {
+          final map = (session as Map?)?.cast<String, dynamic>();
+          if (map == null) continue;
+
+          final deviceInfoRaw = map['device_info'];
+          final sessionDeviceInfo = _asMap(deviceInfoRaw);
+          final sessionDeviceId = sessionDeviceInfo?['device_id'] as String?;
+          if (sessionDeviceId == null || sessionDeviceId != deviceId) continue;
+
+          final lastActivityStr = map['last_activity'] as String?;
+          if (lastActivityStr != null) {
+            try {
+              final lastActivity = DateTime.parse(lastActivityStr);
+              if (bestMatchTime == null || lastActivity.isAfter(bestMatchTime)) {
+                bestMatchTime = lastActivity;
+                bestMatchSessionId = map['id'] as String?;
+              }
+            } catch (_) {
+              bestMatchSessionId ??= map['id'] as String?;
+            }
+          } else {
+            bestMatchSessionId ??= map['id'] as String?;
+          }
+        }
+
+        if (bestMatchSessionId != null && bestMatchSessionId!.isNotEmpty) {
+          logInfo('✅ Found session by device ID: $bestMatchSessionId');
+          _currentSessionId = bestMatchSessionId;
+          await _saveSession();
+          return bestMatchSessionId;
+        }
+      }
+
+      // 3) Fallback: validate existing session id
+      if (_currentSessionId != null) {
+        try {
+          final existing = await _supabase
+              .from('active_sessions')
+              .select('id')
+              .eq('id', _currentSessionId!)
+              .eq('is_active', true)
+              .maybeSingle();
+          if (existing != null) return _currentSessionId;
+        } catch (_) {
+          // network issues => trust local value
+          return _currentSessionId;
+        }
+      }
+
+      logInfo('⚠️ Could not find current session ID');
+      return null;
+    } catch (e) {
+      logInfo('⚠️ Error finding current session ID: $e');
+      return _currentSessionId;
+    }
+  }
+
   void _registerSessionInBackground() {
     Future.delayed(const Duration(seconds: 10), () async {
       if (_supabase.auth.currentSession != null && _currentSessionId == null) {

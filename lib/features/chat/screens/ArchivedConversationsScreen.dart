@@ -164,6 +164,7 @@ class ArchivedConversationsScreen extends ConsumerWidget {
             otherUserName: conversation.otherUserName ?? 'VISTA USER',
             otherUserAvatar: conversation.otherUserAvatar,
             otherUserId: conversation.otherUserId ?? '',
+            isGroup: conversation.isGroup,
           ),
         ),
       ),

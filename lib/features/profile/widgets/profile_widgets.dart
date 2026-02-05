@@ -4,5 +4,4 @@
 library;
 
 export 'profile_header_widget.dart';
-export 'profile_action_bar.dart';
 export 'profile_content_tabs.dart';

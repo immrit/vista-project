@@ -38,6 +38,7 @@ class _HashtagAutocompleteFieldState extends State<HashtagAutocompleteField> {
   final LayerLink _layerLink = LayerLink();
   OverlayEntry? _overlayEntry;
   List<Map<String, dynamic>> _suggestions = [];
+  List<Map<String, dynamic>> _trending = [];
   bool _isLoading = false;
   Timer? _debounceTimer;
   String? _currentHashtagQuery;
@@ -51,6 +52,8 @@ class _HashtagAutocompleteFieldState extends State<HashtagAutocompleteField> {
     super.initState();
     widget.controller.addListener(_onTextChanged);
     _focusNode.addListener(_onFocusChanged);
+    // Warm cache for fast "just typed #" suggestions (Instagram-like).
+    unawaited(_loadTrendingTags());
   }
 
   @override
@@ -114,11 +117,47 @@ class _HashtagAutocompleteFieldState extends State<HashtagAutocompleteField> {
     }
   }
 
+  Future<void> _loadTrendingTags() async {
+    try {
+      final resp = await Supabase.instance.client.rpc('get_trending_tags', params: {
+        'limit_count': 20,
+        'days_back': 30,
+      });
+
+      if (resp is List) {
+        final list = <Map<String, dynamic>>[];
+        for (final row in resp) {
+          if (row is! Map) continue;
+          final tag = row['tag']?.toString() ?? '';
+          if (tag.isEmpty) continue;
+          final usage = (row['post_count'] is num) ? (row['post_count'] as num).toInt() : 0;
+          list.add({'tag': tag, 'usage_count': usage});
+        }
+        if (mounted) {
+          setState(() => _trending = list);
+        } else {
+          _trending = list;
+        }
+      }
+    } catch (_) {
+      // ignore – trending is best-effort for UX only
+    }
+  }
+
   /// جستجوی هشتگ از Supabase
   Future<void> _searchHashtags(String keyword) async {
+    // If user just typed '#', show trending tags instead of an empty dropdown.
     if (keyword.isEmpty) {
-      setState(() => _suggestions = []);
-      _removeOverlay();
+      if (_trending.isEmpty) {
+        await _loadTrendingTags();
+      }
+      if (!mounted) return;
+      setState(() => _suggestions = _trending);
+      if (_suggestions.isNotEmpty) {
+        _showOverlay();
+      } else {
+        _removeOverlay();
+      }
       return;
     }
 
@@ -136,13 +175,42 @@ class _HashtagAutocompleteFieldState extends State<HashtagAutocompleteField> {
         if (_suggestions.isNotEmpty) {
           _showOverlay();
         } else {
-          _removeOverlay();
+          // fallback: filter trending cache if search RPC returns nothing
+          if (_trending.isEmpty) {
+            await _loadTrendingTags();
+          }
+          final k = keyword.toLowerCase();
+          final filtered = _trending
+              .where((m) => (m['tag']?.toString().toLowerCase() ?? '').startsWith(k))
+              .toList();
+          if (mounted) {
+            setState(() => _suggestions = filtered);
+          } else {
+            _suggestions = filtered;
+          }
+          if (_suggestions.isNotEmpty) {
+            _showOverlay();
+          } else {
+            _removeOverlay();
+          }
         }
       }
     } catch (e) {
-      debugPrint('Error searching hashtags: $e');
-      setState(() => _suggestions = []);
-      _removeOverlay();
+      // If the RPC doesn't exist or network is flaky, fall back to trending cache.
+      if (_trending.isEmpty) {
+        await _loadTrendingTags();
+      }
+      final k = keyword.toLowerCase();
+      final filtered = _trending
+          .where((m) => (m['tag']?.toString().toLowerCase() ?? '').startsWith(k))
+          .toList();
+      if (!mounted) return;
+      setState(() => _suggestions = filtered);
+      if (_suggestions.isNotEmpty) {
+        _showOverlay();
+      } else {
+        _removeOverlay();
+      }
     } finally {
       setState(() => _isLoading = false);
     }

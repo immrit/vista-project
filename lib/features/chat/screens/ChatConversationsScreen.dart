@@ -12,6 +12,7 @@ import '../../../features/chat/providers/chat_providers.dart';
 import 'ArchivedConversationsScreen.dart';
 // ✅ استفاده از صفحه چت جدید
 import '../../../features/chat/screens/modern_chat_screen.dart';
+import '../../../features/chat/screens/new_message_screen.dart';
 import '../../../DB/database_file_utils.dart';
 // ✅ ویجت Swipeable برای آیتم مکالمه
 import 'package:Vista/widgets/swipeable_conversation_item.dart';
@@ -71,6 +72,7 @@ class _ChatConversationsScreenState
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: _buildAppBar(theme),
+      floatingActionButton: _buildComposeFab(theme),
       body: Column(
         children: [
           if (_isSearchVisible) _buildSearchSection(theme),
@@ -198,6 +200,21 @@ class _ChatConversationsScreenState
       ),
       onPressed: _toggleSearch,
       tooltip: _isSearchVisible ? 'بستن جستجو' : 'جستجو',
+    );
+  }
+
+  Widget _buildComposeFab(ThemeData theme) {
+    return FloatingActionButton(
+      onPressed: _openNewMessageScreen,
+      backgroundColor: theme.colorScheme.primary,
+      child: const Icon(Icons.edit),
+    );
+  }
+
+  Future<void> _openNewMessageScreen() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const NewMessageScreen()),
     );
   }
 
@@ -536,6 +553,7 @@ class _ChatConversationsScreenState
             otherUserName: conversation.otherUserName ?? 'VISTA USER',
             otherUserAvatar: conversation.otherUserAvatar,
             otherUserId: conversation.otherUserId ?? '',
+            isGroup: conversation.isGroup,
           ),
         ),
       ),
@@ -692,7 +710,7 @@ class _ChatConversationsScreenState
             const SizedBox(height: 8),
             Text(
               _searchQuery.isEmpty
-                  ? 'با دکمه + پیام جدید شروع کنید'
+                  ? 'با دکمه مداد پیام جدید شروع کنید'
                   : 'عبارت دیگری را امتحان کنید',
               style: TextStyle(
                 fontSize: 14,

@@ -231,8 +231,8 @@ class TimeUtils {
 
     final timeDiff = getTimeDifference(currentMessage, previousMessage);
 
-    // اگر بیش از 5 دقیقه فاصله باشد، فاصله بیشتری بده
-    return timeDiff.inMinutes > 5;
+    // اگر بیش از 15 دقیقه فاصله باشد، فاصله بیشتری بده
+    return timeDiff.inMinutes > 15;
   }
 
   // تشخیص گروه‌بندی پیام‌ها (برای حذف avatar تکراری)
@@ -247,8 +247,8 @@ class TimeUtils {
 
     final timeDiff = getTimeDifference(currentMessage, previousMessage);
 
-    // اگر کمتر از 2 دقیقه فاصله باشد و فرستنده یکی باشد، در یک گروه هستند
-    return timeDiff.inMinutes < 2;
+    // اگر کمتر از 15 دقیقه فاصله باشد و فرستنده یکی باشد، در یک گروه هستند
+    return timeDiff.inMinutes < 15;
   }
 
   // بررسی هم‌روز بودن
@@ -444,7 +444,7 @@ class TimeUtils {
     bool isMe,
   ) {
     const double defaultRadius = 18.0;
-    const double smallRadius = 4.0;
+    const double smallRadius = 6.0; // TelegramX-style merged corner radius
 
     bool isFirstInGroup = previousMessageTime == null ||
         previousSenderId != currentSenderId ||
@@ -456,20 +456,21 @@ class TimeUtils {
         !isInSameGroup(nextMessageTime, currentMessageTime, nextSenderId ?? '',
             currentSenderId);
 
+    final bool topMerged = !isFirstInGroup;
+    final bool bottomMerged = !isLastInGroup;
+
     if (isMe) {
       return BorderRadius.only(
         topLeft: const Radius.circular(defaultRadius),
-        topRight: Radius.circular(isFirstInGroup ? defaultRadius : smallRadius),
+        topRight: Radius.circular(topMerged ? smallRadius : defaultRadius),
         bottomLeft: const Radius.circular(defaultRadius),
-        bottomRight:
-            Radius.circular(isLastInGroup ? defaultRadius : smallRadius),
+        bottomRight: Radius.circular(bottomMerged ? smallRadius : defaultRadius),
       );
     } else {
       return BorderRadius.only(
-        topLeft: Radius.circular(isFirstInGroup ? defaultRadius : smallRadius),
+        topLeft: Radius.circular(topMerged ? smallRadius : defaultRadius),
         topRight: const Radius.circular(defaultRadius),
-        bottomLeft:
-            Radius.circular(isLastInGroup ? defaultRadius : smallRadius),
+        bottomLeft: Radius.circular(bottomMerged ? smallRadius : defaultRadius),
         bottomRight: const Radius.circular(defaultRadius),
       );
     }

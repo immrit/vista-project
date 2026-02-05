@@ -474,17 +474,22 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                 if (conversationId != null) {
                   final conversation =
                       CacheRepository().getConversationSync(conversationId);
+                  final effectiveOtherUserId =
+                      otherUserId ?? conversation?.otherUserId ?? '';
+                  // If otherUserId is empty (e.g. deep-link group invite), treat as group.
+                  final effectiveIsGroup =
+                      conversation?.isGroup ?? effectiveOtherUserId.isEmpty;
                   return SessionMiddleware(
                     child: ModernChatScreen(
                       args: ChatScreenArgs(
                         conversationId: conversationId,
-                        otherUserId:
-                            otherUserId ?? conversation?.otherUserId ?? '',
+                        otherUserId: effectiveOtherUserId,
                         otherUserName: username ??
                             conversation?.otherUserName ??
                             'Unknown',
                         otherUserAvatar:
                             avatarUrl ?? conversation?.otherUserAvatar,
+                        isGroup: effectiveIsGroup,
                       ),
                     ),
                   );

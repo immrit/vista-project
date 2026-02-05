@@ -14,6 +14,12 @@ class PublicPostModel {
   final String avatarUrl;
   final Map<String, dynamic>? profiles; // افزودن فیلد profiles
   final List<String> hashtags;
+
+  // Personalized feed diagnostics (optional; present when Node feed is used)
+  final String? feedSource; // personal | following | trending | own | fallback
+  final double? feedScore; // returned only when debug=true
+  final String authorFollowStatus; // following | requested | none | unknown
+
   int likeCount;
   bool isLiked;
   final bool isVerified;
@@ -46,6 +52,9 @@ class PublicPostModel {
     List<String>? hashtags,
     this.musicUrl,
     this.title,
+    this.feedSource,
+    this.feedScore,
+    this.authorFollowStatus = 'unknown',
     // پارامترهای مربوط به ناظر
     this.moderatorId,
     this.moderatorUsername,
@@ -55,11 +64,11 @@ class PublicPostModel {
 
   // متد استاتیک برای استخراج هشتگ‌ها از متن
   static List<String> _extractHashtags(String text) {
-    final hashtagRegExp = RegExp(r'#\w+');
-    return hashtagRegExp
-        .allMatches(text)
-        .map((match) => match.group(0)!)
-        .toList();
+    // Keep tags without leading '#'
+    final hashtagRegExp = RegExp(r'#([\\p{L}\\p{N}_]+)', unicode: true);
+    return _normalizeTagList(
+      hashtagRegExp.allMatches(text).map((m) => m.group(1)),
+    );
   }
 
   // متد سازنده از Map
@@ -85,6 +94,11 @@ class PublicPostModel {
       hashtags: _parseHashtags(map),
       musicUrl: _parseString(map, 'music_url', defaultValue: null),
       title: _parseString(map, 'title'),
+      feedSource: _parseString(map, 'feed_source', defaultValue: null),
+      feedScore: _parseDouble(map, 'feed_score', defaultValue: null),
+      authorFollowStatus:
+          _parseString(map, 'author_follow_status', defaultValue: 'unknown') ??
+              'unknown',
       moderatorId: _parseString(map, 'moderator_id'),
       moderatorUsername: _parseString(map, 'moderator_username'),
       moderatedAt: _parseDateTime(map, 'moderated_at'),
@@ -105,6 +119,21 @@ class PublicPostModel {
   static int _parseInt(Map<String, dynamic> map, String key,
       {int defaultValue = 0}) {
     return (map[key] is num) ? (map[key] as num).toInt() : defaultValue;
+  }
+
+  static double? _parseDouble(
+    Map<String, dynamic> map,
+    String key, {
+    double? defaultValue,
+  }) {
+    final v = map[key];
+    if (v == null) return defaultValue;
+    if (v is num) return v.toDouble();
+    try {
+      return double.parse(v.toString());
+    } catch (_) {
+      return defaultValue;
+    }
   }
 
   static bool _parseBool(Map<String, dynamic> map, String key,
@@ -146,10 +175,38 @@ class PublicPostModel {
   }
 
   static List<String> _parseHashtags(Map<String, dynamic> map) {
-    if (map['hashtags'] != null) {
-      return List<String>.from(map['hashtags']);
+    // Preferred source: DB column `tags` (text[]).
+    final tags = map['tags'];
+    if (tags is List) {
+      return _normalizeTagList(tags);
     }
+
+    // Legacy/alternate source: `hashtags` (array-like).
+    final hashtags = map['hashtags'];
+    if (hashtags is List) {
+      return _normalizeTagList(hashtags);
+    }
+
+    // Fallback: parse from content.
     return _extractHashtags(_parseString(map, 'content') ?? '');
+  }
+
+  static List<String> _normalizeTagList(Iterable<dynamic> raw) {
+    final out = <String>[];
+    final seen = <String>{};
+
+    for (final item in raw) {
+      if (item == null) continue;
+      var s = item.toString().trim();
+      if (s.isEmpty) continue;
+      if (s.startsWith('#')) s = s.replaceFirst(RegExp(r'^#+'), '');
+      s = s.trim();
+      if (s.isEmpty) continue;
+      final key = s.toLowerCase();
+      if (seen.add(key)) out.add(s);
+    }
+
+    return out;
   }
 
   // متد تبدیل به Map
@@ -173,8 +230,12 @@ class PublicPostModel {
       'is_liked': isLiked,
       'comment_count': commentCount,
       'hashtags': hashtags,
+      'tags': hashtags,
       'music_url': musicUrl,
       'title': title,
+      'feed_source': feedSource,
+      'feed_score': feedScore,
+      'author_follow_status': authorFollowStatus,
       'moderator_id': moderatorId,
       'moderator_username': moderatorUsername,
       'moderated_at': moderatedAt?.toIso8601String(),
@@ -206,6 +267,9 @@ class PublicPostModel {
     List<String>? hashtags,
     String? musicUrl,
     String? title,
+    String? feedSource,
+    double? feedScore,
+    String? authorFollowStatus,
     // پارامترهای مربوط به ناظر
     String? moderatorId,
     String? moderatorUsername,
@@ -231,6 +295,9 @@ class PublicPostModel {
       hashtags: hashtags ?? this.hashtags,
       musicUrl: musicUrl ?? this.musicUrl,
       title: title ?? this.title,
+      feedSource: feedSource ?? this.feedSource,
+      feedScore: feedScore ?? this.feedScore,
+      authorFollowStatus: authorFollowStatus ?? this.authorFollowStatus,
       moderatorId: moderatorId ?? this.moderatorId,
       moderatorUsername: moderatorUsername ?? this.moderatorUsername,
       moderatedAt: moderatedAt ?? this.moderatedAt,
@@ -259,6 +326,9 @@ class PublicPostModel {
       hashtags: $hashtags,
       musicUrl: $musicUrl,
       title: $title,
+      feedSource: $feedSource,
+      feedScore: $feedScore,
+      authorFollowStatus: $authorFollowStatus,
       moderatorId: $moderatorId,
       moderatorUsername: $moderatorUsername,
       moderatedAt: $moderatedAt,

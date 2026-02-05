@@ -171,6 +171,7 @@ class _ConversationContent extends StatelessWidget {
                     lastMessageTime: conversation.lastMessageTime,
                     unreadCount: conversation.unreadCount,
                     isMuted: conversation.isMuted,
+                    isGroup: _isGroupConversation(),
                     // ✅ استفاده از مقدار واقعی از مدل
                     isLastMessageFromMe: conversation.isLastMessageFromMe,
                     // ✅ نوع پیام برای نمایش آیکون مناسب
@@ -194,6 +195,11 @@ class _ConversationContent extends StatelessWidget {
       return 'VISTA USER';
     }
     return name;
+  }
+
+  bool _isGroupConversation() {
+    final otherId = conversation.otherUserId;
+    return otherId == null || otherId.isEmpty;
   }
 
   String _getLastMessage() {
@@ -412,6 +418,7 @@ class _ContentWidget extends StatelessWidget {
   final DateTime? lastMessageTime;
   final int unreadCount;
   final bool isMuted;
+  final bool isGroup;
   final bool isLastMessageFromMe;
   final String? lastMessageType;
   final MessageDeliveryStatus lastMessageDeliveryStatus;
@@ -422,6 +429,7 @@ class _ContentWidget extends StatelessWidget {
     required this.lastMessageTime,
     required this.unreadCount,
     required this.isMuted,
+    this.isGroup = false,
     this.isLastMessageFromMe = false,
     this.lastMessageType,
     this.lastMessageDeliveryStatus = MessageDeliveryStatus.sent,
@@ -448,15 +456,30 @@ class _ContentWidget extends StatelessWidget {
               const SizedBox(width: 4),
             ],
             Expanded(
-              child: Text(
-                displayName,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: hasUnread ? FontWeight.w600 : FontWeight.w500,
-                  color: theme.textTheme.titleMedium?.color,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              child: Row(
+                children: [
+                  if (isGroup) ...[
+                    Icon(
+                      Icons.group_rounded,
+                      size: 14,
+                      color: theme.hintColor.withValues(alpha: 0.7),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  Expanded(
+                    child: Text(
+                      displayName,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight:
+                            hasUnread ? FontWeight.w600 : FontWeight.w500,
+                        color: theme.textTheme.titleMedium?.color,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
             ),
             if (lastMessageTime != null) ...[

@@ -17,7 +17,6 @@ import '../../../provider/provider.dart';
 import 'package:Vista/widgets/YourVideoTrimmerPage.dart';
 import '../../../../features/posts/providers/post_upload_provider.dart';
 import '../widgets/hashtag_autocomplete_field.dart';
-import '../../../../services/post_service.dart';
 
 class AddPublicPostScreen extends ConsumerStatefulWidget {
   const AddPublicPostScreen({super.key});
@@ -44,53 +43,10 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   VideoPlayerController? _videoPlayerController; // کنترلر ویدیو
   dynamic _html;
 
-  // Tagging State
-  final PostService _postService = PostService();
-  List<String> _trendingTags = [];
-  final List<String> _selectedTags = [];
-  final TextEditingController _tagController = TextEditingController();
-  bool _isLoadingTags = false;
-
   @override
   void initState() {
     super.initState();
-    _loadTrendingTags();
     // ... existing initState logic if any
-  }
-
-  Future<void> _loadTrendingTags() async {
-    setState(() => _isLoadingTags = true);
-    try {
-      final tags = await _postService.getTrendingTags(limit: 10);
-      if (mounted) {
-        setState(() {
-          _trendingTags = tags;
-        });
-      }
-    } catch (e) {
-      logDebug('Error loading trending tags: $e');
-    } finally {
-      if (mounted) {
-        setState(() => _isLoadingTags = false);
-      }
-    }
-  }
-
-  void _addTag(String tag) {
-    // Remove # if present for storage/display consistency
-    final cleanTag = tag.trim().replaceAll('#', '');
-    if (cleanTag.isNotEmpty && !_selectedTags.contains(cleanTag)) {
-      setState(() {
-        _selectedTags.add(cleanTag);
-      });
-      _tagController.clear();
-    }
-  }
-
-  void _removeTag(String tag) {
-    setState(() {
-      _selectedTags.remove(tag);
-    });
   }
 
   // ... (keeping existing initState and other methods)
@@ -477,6 +433,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
 
   Future<void> _addPost() async {
     final content = contentController.text.trim();
+    final tags = _extractTagsFromContent(content);
 
     if (content.isEmpty &&
         _selectedImage == null &&
@@ -517,7 +474,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
             music: _selectedMusic,
             musicName: _musicFileName,
             videoThumbnail: _videoThumbnail,
-            tags: _selectedTags, // Passing selected tags
+            tags: tags, // Tags are derived from #hashtags inside the post text.
           );
 
       if (mounted) {
@@ -553,7 +510,6 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   @override
   void dispose() {
     contentController.dispose();
-    _tagController.dispose();
     _focusNode.dispose();
     _videoPlayerController?.dispose(); // آزادسازی کنترلر ویدیو
     super.dispose();
@@ -616,10 +572,8 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
 
                         const SizedBox(height: 16),
 
-                        // بخش تگ‌ها
-                        _buildTagsSection(textColor, secondaryTextColor,
-                            cardColor, isDarkMode),
-
+                        // هشتگ‌ها داخل متن پست با # نوشته می‌شوند (مثل اینستاگرام)
+                        // و در لحظه پیشنهاد هشتگ‌های موجود نمایش داده می‌شود.
                         const SizedBox(height: 16),
 
 // اضافه کردن ویجت پیش‌نمایش ویدیو
@@ -822,6 +776,27 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       ),
       hintStyle: TextStyle(color: secondaryTextColor),
     );
+  }
+
+  /// Extract tags from post content (#hashtags) for storing in `posts.tags`.
+  ///
+  /// - Strips leading '#'
+  /// - Keeps Persian/Latin letters, digits, underscore
+  /// - De-dupes case-insensitively
+  List<String> _extractTagsFromContent(String text) {
+    final reg = RegExp(r'#([\u0600-\u06FF\w_]+)', unicode: true);
+    final seen = <String>{};
+    final out = <String>[];
+
+    for (final m in reg.allMatches(text)) {
+      final raw = m.group(1);
+      if (raw == null) continue;
+      final t = raw.trim();
+      if (t.isEmpty) continue;
+      final key = t.toLowerCase();
+      if (seen.add(key)) out.add(t);
+    }
+    return out;
   }
 
   Widget _buildImagePreview(bool isDarkMode) {
@@ -1240,112 +1215,5 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     );
   }
 
-  Widget _buildTagsSection(Color textColor, Color secondaryTextColor,
-      Color cardColor, bool isDarkMode) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Selected Tags
-        if (_selectedTags.isNotEmpty) ...[
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _selectedTags.map((tag) {
-              return Chip(
-                label: Text('#$tag',
-                    style: TextStyle(
-                        color: isDarkMode ? Colors.white : Colors.black)),
-                backgroundColor:
-                    isDarkMode ? Colors.grey[800] : Colors.grey[100],
-                deleteIcon: const Icon(Icons.close, size: 18),
-                onDeleted: () => _removeTag(tag),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 12),
-        ],
 
-        // Tag Input
-        TextField(
-          controller: _tagController,
-          decoration: InputDecoration(
-            hintText: 'افزودن موضوع (مثلاً: تکنولوژی)...',
-            hintStyle: TextStyle(color: secondaryTextColor),
-            prefixIcon: Icon(Icons.tag, color: secondaryTextColor),
-            suffixIcon: IconButton(
-              icon: const Icon(Icons.add_circle, color: Colors.blue),
-              onPressed: () => _addTag(_tagController.text),
-            ),
-            filled: true,
-            fillColor: cardColor,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          ),
-          style: TextStyle(color: textColor),
-          onSubmitted: _addTag,
-        ),
-
-        const SizedBox(height: 16),
-
-        // Trending Tags
-        if (_isLoadingTags)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8.0),
-            child: Center(
-                child: SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2))),
-          )
-        else if (_trendingTags.isNotEmpty) ...[
-          Text(
-            'موضوعات داغ',
-            style: TextStyle(
-              color: textColor,
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            child: Row(
-              children: _trendingTags.map((tag) {
-                final isSelected = _selectedTags.contains(tag);
-                return Padding(
-                  padding: const EdgeInsets.only(left: 8.0),
-                  child: ActionChip(
-                    label: Text('#$tag'),
-                    labelStyle: TextStyle(
-                      color: isSelected
-                          ? Colors.white
-                          : (isDarkMode ? Colors.white70 : Colors.black87),
-                      fontSize: 12,
-                    ),
-                    backgroundColor: isSelected
-                        ? Colors.blue
-                        : (isDarkMode ? Colors.grey[800] : Colors.grey[200]),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20)),
-                    onPressed: () {
-                      if (isSelected) {
-                        _removeTag(tag);
-                      } else {
-                        _addTag(tag);
-                      }
-                    },
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
 }

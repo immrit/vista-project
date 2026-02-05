@@ -18,7 +18,9 @@ import '../../../utils/const.dart';
 import '../../../model/MusicModel.dart';
 import '../../../provider/MusicProvider.dart';
 import '../../../provider/engagement_posts_provider.dart'; // تغییر به فایل جدید
+import '../../../provider/personalized_feed_provider.dart';
 import '../../../services/secure_upload_service.dart';
+import '../../../services/vista_node_service.dart';
 import 'package:Vista/utils/widgets.dart';
 import 'package:Vista/widgets/profile_avatar_widget.dart'; // Add this import
 import 'package:Vista/widgets/CustomVideoPlayer.dart';
@@ -402,8 +404,8 @@ class _AllPostsPaginatedTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final postsAsync = ref.watch(engagementPostsProvider);
-    final notifier = ref.watch(engagementPostsProvider.notifier);
+    final postsAsync = ref.watch(personalizedFeedProvider);
+    final notifier = ref.watch(personalizedFeedProvider.notifier);
 
     return Column(
       children: [
@@ -411,7 +413,7 @@ class _AllPostsPaginatedTab extends ConsumerWidget {
         Expanded(
           child: RefreshIndicator(
             onRefresh: () async =>
-                ref.read(engagementPostsProvider.notifier).refreshPosts(),
+                ref.read(personalizedFeedProvider.notifier).refreshPosts(),
             child: postsAsync.when(
               loading: () => _buildPostsSkeletonList(),
               error: (error, stack) => Center(
@@ -438,7 +440,7 @@ class _AllPostsPaginatedTab extends ConsumerWidget {
                     const SizedBox(height: 24),
                     ElevatedButton.icon(
                       onPressed: () {
-                        ref.refresh(engagementPostsProvider);
+                        ref.refresh(personalizedFeedProvider);
                         ref.refresh(fetchFollowingPostsProvider);
                         ref.refresh(activeStoriesProvider);
                         ref.refresh(commentNotifierProvider);
@@ -989,6 +991,10 @@ Widget _buildPostItem(
                 // دکمه اشتراک‌گذاری
                 GestureDetector(
                   onTap: () {
+                    VistaNodeService.trackFeedEvent(
+                      postId: post.id,
+                      eventType: 'share',
+                    );
                     SmartShareService().showShareOptions(post, context);
                   },
                   child: Container(
@@ -1787,7 +1793,7 @@ void showEditPostDialog(
                               .eq('id', post.id);
 
                           // رفرش همه provider های مربوطه
-                          ref.invalidate(engagementPostsProvider);
+                          ref.invalidate(personalizedFeedProvider);
                           ref.invalidate(fetchFollowingPostsProvider);
 
                           if (context.mounted) {
@@ -2002,7 +2008,7 @@ Widget _buildPostActions(
                 ref: ref,
                 post: post,
                 onSuccess: () {
-                  ref.invalidate(engagementPostsProvider);
+                  ref.invalidate(personalizedFeedProvider);
                   ref.invalidate(fetchFollowingPostsProvider);
                 },
               );
@@ -2143,7 +2149,7 @@ void _showDeleteConfirmation(
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('پست با موفقیت حذف شد')),
                   );
-                  ref.read(engagementPostsProvider.notifier).refreshPosts();
+                  ref.read(personalizedFeedProvider.notifier).refreshPosts();
                 }
               } catch (e) {
                 if (context.mounted) {

@@ -7,6 +7,7 @@ import '../../../model/message_model.dart';
 import '../../../provider/provider.dart';
 import 'package:Vista/utils/time_utils.dart';
 import '../../../services/telegram_read_receipt_service.dart';
+import '../theme/chat_theme.dart';
 
 /// حباب پیام با پشتیبانی از:
 /// - تنظیم اندازه فونت از تنظیمات
@@ -40,16 +41,31 @@ class MessageBubble extends ConsumerWidget {
     // ✅ خواندن تنظیمات فونت از Provider
     final fontSize = ref.watch(messageFontSizeProvider);
 
-    // Radius constants
-    const double kBubbleRadius = 22.0;
-    const double kSharpRadius = 4.0;
+    final chatTheme = context.chatTheme;
+    final previous = previousMessage;
+    final next = nextMessage;
 
-    // Determine Border Radius based on isMe
-    final BorderRadius borderRadius = BorderRadius.only(
-      topLeft: const Radius.circular(kBubbleRadius),
-      topRight: const Radius.circular(kBubbleRadius),
-      bottomLeft: Radius.circular(isMe ? kBubbleRadius : kSharpRadius),
-      bottomRight: Radius.circular(isMe ? kSharpRadius : kBubbleRadius),
+    final bool isFirstInGroup = previous == null ||
+        !TimeUtils.isInSameGroup(
+          message.createdAt,
+          previous.createdAt,
+          message.senderId,
+          previous.senderId,
+        );
+
+    final bool isLastInGroup = next == null ||
+        !TimeUtils.isInSameGroup(
+          next.createdAt,
+          message.createdAt,
+          next.senderId,
+          message.senderId,
+        );
+
+    // TelegramX-style bubble corners (merged corners are sharper)
+    final BorderRadius borderRadius = chatTheme.bubbleBorderRadius(
+      isMe: isMe,
+      isFirstInGroup: isFirstInGroup,
+      isLastInGroup: isLastInGroup,
     );
 
     // Color Logic
@@ -166,9 +182,9 @@ class MessageBubble extends ConsumerWidget {
                           left: 0,
                           right: 0,
                           child: ClipRRect(
-                            borderRadius: const BorderRadius.only(
-                              bottomLeft: Radius.circular(kBubbleRadius),
-                              bottomRight: Radius.circular(kBubbleRadius),
+                            borderRadius: BorderRadius.only(
+                              bottomLeft: borderRadius.bottomLeft,
+                              bottomRight: borderRadius.bottomRight,
                             ),
                             child: LinearProgressIndicator(
                               value: message.uploadProgress,

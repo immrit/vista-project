@@ -5,7 +5,7 @@ import 'package:timeago/timeago.dart' as timeago;
 
 import 'package:Vista/model/session_model.dart';
 import 'package:Vista/provider/session_provider.dart';
-import 'package:Vista/services/session_manager_service.dart';
+import 'package:Vista/services/session_manager_service_v2.dart';
 
 /// صفحه نشست‌های فعال - طراحی مدرن Security Hub
 class ActiveSessionsScreen extends ConsumerStatefulWidget {
@@ -40,7 +40,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
 
   Future<void> _resolveCurrentSession(
     List<SessionModel> sessions,
-    SessionManagerService sessionManager,
+    SessionManagerServiceV2 sessionManager,
     String? currentSessionId,
   ) async {
     if (_isResolvingSession) return;
@@ -296,7 +296,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
 
   Widget _buildOtherSessionsList(
     List<SessionModel> sessions,
-    SessionManagerService sessionManager,
+    SessionManagerServiceV2 sessionManager,
     bool isDark,
   ) {
     return Container(
@@ -325,7 +325,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
 
   Widget _buildSessionTile(
     SessionModel session,
-    SessionManagerService sessionManager,
+    SessionManagerServiceV2 sessionManager,
     bool isDark,
   ) {
     return ListTile(
@@ -412,7 +412,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
 
   Widget _buildTerminateAllButton(
     List<SessionModel> sessions,
-    SessionManagerService sessionManager,
+    SessionManagerServiceV2 sessionManager,
     bool isDark,
   ) {
     return OutlinedButton.icon(
@@ -520,7 +520,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
 
   Future<void> _terminateSession(
     SessionModel session,
-    SessionManagerService sessionManager,
+    SessionManagerServiceV2 sessionManager,
   ) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -546,7 +546,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
 
   Future<void> _terminateAllSessions(
     List<SessionModel> sessions,
-    SessionManagerService sessionManager,
+    SessionManagerServiceV2 sessionManager,
   ) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -573,7 +573,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
 
   void _showSessionDetails(
     SessionModel session,
-    SessionManagerService sessionManager,
+    SessionManagerServiceV2 sessionManager,
     bool isDark,
   ) {
     showModalBottomSheet(

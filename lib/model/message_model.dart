@@ -438,8 +438,28 @@ class MessageModel {
 
   factory MessageModel.fromJson(Map<String, dynamic> json,
       {required String currentUserId}) {
+    Map<String, dynamic>? _extractProfile(dynamic raw) {
+      if (raw is Map<String, dynamic>) {
+        return raw;
+      }
+      if (raw is List && raw.isNotEmpty) {
+        final first = raw.first;
+        if (first is Map<String, dynamic>) {
+          return first;
+        }
+      }
+      return null;
+    }
+
     String conversationId =
         json['conversation_id'] ?? json['conversations_id'] ?? '';
+
+    final profile = _extractProfile(json['profiles']);
+    final profileUsername = profile?['username']?.toString().trim() ?? '';
+    final profileFullName = profile?['full_name']?.toString().trim() ?? '';
+    final profileName =
+        profileFullName.isNotEmpty ? profileFullName : profileUsername;
+    final profileAvatar = profile?['avatar_url']?.toString().trim();
 
     // ✅ بهینه‌سازی: پارس کردن دیتا همینجا (فقط یکبار)
     SharedPostData? parsedSharedPost =
@@ -493,8 +513,15 @@ class MessageModel {
       attachmentType: json['attachment_type'],
       attachmentFileName: json['attachment_file_name'] as String?,
       duration: json['duration'] as int?,
-      senderName: json['sender_name'],
-      senderAvatar: json['sender_avatar'],
+      senderName: (json['sender_name'] as String?)?.trim().isNotEmpty == true
+          ? (json['sender_name'] as String?)?.trim()
+          : (profileName.isNotEmpty ? profileName : null),
+      senderAvatar:
+          (json['sender_avatar'] as String?)?.trim().isNotEmpty == true
+              ? (json['sender_avatar'] as String?)?.trim()
+              : (profileAvatar != null && profileAvatar.isNotEmpty
+                  ? profileAvatar
+                  : null),
       isMe: json['sender_id'] == currentUserId,
       replyToMessageId: json['reply_to_message_id'],
       replyToContent: json['reply_to_content'],

@@ -157,6 +157,14 @@ class _PrivacySettingsPageState extends ConsumerState<PrivacySettingsPage> {
           ),
           _buildDivider(),
           PrivacySettingsItem(
+            icon: Icons.group_add_outlined,
+            iconColor: Colors.teal,
+            title: 'اضافه شدن به گروه',
+            subtitle: 'کنترل اینکه چه کسانی می‌توانند شما را به گروه اضافه کنند',
+            onTap: () => _showGroupAddPrivacyDialog(context, ref),
+          ),
+          _buildDivider(),
+          PrivacySettingsItem(
             icon: Icons.visibility,
             iconColor: Colors.green,
             title: 'آخرین بازدید',
@@ -426,6 +434,132 @@ class _PrivacySettingsPageState extends ConsumerState<PrivacySettingsPage> {
         _upsertUserSetting(context, ref, 'message_privacy', value);
       }
     });
+  }
+
+  void _showGroupAddPrivacyDialog(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF2D2D2D) : Colors.white,
+        title: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: Colors.teal,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.group_add_outlined,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'اضافه شدن به گروه',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        content: Consumer(
+          builder: (context, ref, _) {
+            final settingsAsync = ref.watch(privacySettingsProvider(userId));
+            final currentValue =
+                settingsAsync.value?['group_add_privacy'] as String? ??
+                    'everyone';
+            final options = const [
+              {'value': 'nobody', 'title': 'هیچکس', 'desc': 'هیچ‌کس نتواند شما را اضافه کند'},
+              {
+                'value': 'following',
+                'title': 'فقط دنبال‌کننده‌ها',
+                'desc': 'فقط افرادی که شما را دنبال می‌کنند'
+              },
+              {'value': 'everyone', 'title': 'همه', 'desc': 'همه بتوانند شما را اضافه کنند'},
+            ];
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: options.map((opt) {
+                final isSelected = currentValue == opt['value'];
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? (isDark
+                            ? Colors.teal.withOpacity(0.2)
+                            : Colors.teal.withOpacity(0.1))
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isSelected
+                          ? Colors.teal
+                          : (isDark ? Colors.grey[700]! : Colors.grey[300]!),
+                      width: isSelected ? 2 : 1,
+                    ),
+                  ),
+                  child: ListTile(
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    leading: Icon(
+                      isSelected
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_unchecked,
+                      color: isSelected
+                          ? Colors.teal
+                          : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                    ),
+                    title: Text(
+                      opt['title'] as String,
+                      style: TextStyle(
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.w400,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                    subtitle: Text(
+                      opt['desc'] as String,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      ),
+                    ),
+                    onTap: () async {
+                      final merged = {
+                        ...?settingsAsync.value,
+                        'group_add_privacy': opt['value'],
+                      };
+                      await ref
+                          .read(privacySettingsProvider(userId).notifier)
+                          .updateSettings(merged);
+                      if (context.mounted) {
+                        Navigator.pop(context);
+                      }
+                    },
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'انصراف',
+              style: TextStyle(
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showLastSeenDialog(BuildContext context, WidgetRef ref) {

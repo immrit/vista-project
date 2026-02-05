@@ -35,6 +35,7 @@ class ConversationEntity {
   bool isLastMessageFromMe = false;
   String? lastMessageSenderId;
   String? lastMessageDeliveryStatus; // Stored as String
+  String? type; // ✅ نوع مکالمه: private, group
 
   // Profile data
   bool? allowProfileZoom;
@@ -65,6 +66,7 @@ class ConversationEntity {
       ..isLastMessageFromMe = model.isLastMessageFromMe
       ..lastMessageSenderId = model.lastMessageSenderId
       ..lastMessageDeliveryStatus = model.lastMessageDeliveryStatus.name
+      ..type = model.type // ✅ ذخیره تایپ
       ..allowProfileZoom = model.allowProfileZoom
       ..otherUserBio = model.otherUserBio
       ..otherUserCreatedAt = model.otherUserCreatedAt
@@ -97,6 +99,7 @@ class ConversationEntity {
       otherUserCreatedAt: otherUserCreatedAt,
       isBlocked: isBlocked,
       isVerified: isVerified,
+      type: type ?? 'private', // ✅ بازیابی تایپ
     );
   }
 

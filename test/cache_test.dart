@@ -57,14 +57,15 @@ void main() {
 
     test('should handle battery saver mode logic', () {
       // Test battery saver mode logic
-      bool batterySaverMode = true;
       int normalMaxSize = 500;
       int batterySaverMaxSize = 200;
 
-      int maxSize = batterySaverMode ? batterySaverMaxSize : normalMaxSize;
+      int computeMaxSize({required bool batterySaverMode}) =>
+          batterySaverMode ? batterySaverMaxSize : normalMaxSize;
 
-      expect(maxSize, equals(200));
-      expect(maxSize, lessThan(normalMaxSize));
+      expect(computeMaxSize(batterySaverMode: true), equals(200));
+      expect(computeMaxSize(batterySaverMode: true), lessThan(normalMaxSize));
+      expect(computeMaxSize(batterySaverMode: false), equals(500));
     });
 
     test('should validate cache statistics structure', () {

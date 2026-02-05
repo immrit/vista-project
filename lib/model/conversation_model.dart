@@ -32,6 +32,9 @@ class ConversationModel {
   final MessageDeliveryStatus
       lastMessageDeliveryStatus; // وضعیت تحویل آخرین پیام
   final List<String> typingUsers; // ✅ لیست کاربرانی که در حال تایپ هستند
+  final String type; // ✅ نوع مکالمه: private, group, channel
+
+  bool get isGroup => type == 'group'; // ✅ گتر برای تشخیص گروه
 
   ConversationModel({
     required this.id,
@@ -59,6 +62,7 @@ class ConversationModel {
     this.isBlocked, // ✅ وضعیت بلاک بودن
     this.isVerified, // ✅ وضعیت تایید شده بودن
     this.typingUsers = const [], // ✅ مقدار پیش‌فرض برای تایپینگ
+    this.type = 'private', // ✅ مقدار پیش‌فرض نوع مکالمه
   });
 
   factory ConversationModel.fromJson(Map<String, dynamic> json,
@@ -120,6 +124,13 @@ class ConversationModel {
         }
       }
 
+      final conversationType = json['type'] as String?;
+      if (conversationType == 'group') {
+        otherUserName = (json['name'] as String?) ?? 'گروه';
+        otherUserAvatar = json['image'] as String?;
+        otherUserId = null;
+      }
+
       return ConversationModel(
         id: json['id'] as String,
         createdAt: DateTime.parse(json['created_at'] as String),
@@ -153,6 +164,7 @@ class ConversationModel {
                 ?.map((e) => e.toString())
                 .toList() ??
             [],
+        type: conversationType ?? 'private', // ✅ ذخیره نوع مکالمه
       );
     } catch (e) {
       logInfo('❌ خطا در تبدیل JSON به ConversationModel: $e');
@@ -217,6 +229,7 @@ class ConversationModel {
       'is_blocked': isBlocked,
       'is_verified': isVerified,
       'typing_users': typingUsers,
+      'type': type, // ✅ افزودن به خروجی JSON
     };
   }
 
@@ -245,6 +258,7 @@ class ConversationModel {
     bool? isBlocked,
     bool? isVerified,
     List<String>? typingUsers,
+    String? type,
   }) {
     return ConversationModel(
       id: id ?? this.id,
@@ -272,6 +286,7 @@ class ConversationModel {
       isBlocked: isBlocked ?? this.isBlocked,
       isVerified: isVerified ?? this.isVerified,
       typingUsers: typingUsers ?? this.typingUsers,
+      type: type ?? this.type,
     );
   }
 
@@ -371,6 +386,7 @@ class ConversationModel {
       lastMessageSenderId: null,
       lastMessageDeliveryStatus: MessageDeliveryStatus.sent,
       typingUsers: [],
+      type: 'private',
     );
   }
 }

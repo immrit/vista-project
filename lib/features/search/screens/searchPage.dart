@@ -9,6 +9,7 @@ import 'package:Vista/model/SearchResut.dart';
 // import 'package:Vista/model/publicPostModel.dart'; // Removed unused import
 import 'package:Vista/provider/provider.dart';
 import 'package:Vista/features/posts/screens/profileScreen.dart';
+import 'package:Vista/features/posts/screens/PostDetailPage.dart';
 import 'package:Vista/features/search/screens/VistaQRScanner.dart';
 import 'dart:async';
 
@@ -299,6 +300,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
         if (hashtags.isNotEmpty) ...[
           _buildSectionHeader('پست‌ها'),
           ...hashtags.take(5).map((post) => _PostTile(
+                postId: post.id,
                 imageUrl: post.imageUrl,
                 content: post.content,
                 username: post.username ?? '',
@@ -353,6 +355,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
       itemBuilder: (context, index) {
         final post = state.hashtagResults[index];
         return _PostTile(
+          postId: post.id,
           imageUrl: post.imageUrl,
           content: post.content,
           username: post.username ?? '',
@@ -556,11 +559,13 @@ class _UserTile extends StatelessWidget {
 
 /// ویجت تایل پست
 class _PostTile extends StatelessWidget {
+  final String postId;
   final String? imageUrl;
   final String content;
   final String username;
 
   const _PostTile({
+    required this.postId,
     this.imageUrl,
     required this.content,
     required this.username,
@@ -571,6 +576,12 @@ class _PostTile extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return ListTile(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => PostDetailsPage(postId: postId)),
+        );
+      },
       leading: Container(
         width: 48,
         height: 48,
