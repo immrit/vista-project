@@ -1,4 +1,5 @@
 import '../../../security/logging_utility.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -23,6 +24,8 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
   bool _obscureNewPassword = true;
   bool _obscureConfirmPassword = true;
   String? _email;
+  int _resendCountdown = 0;
+  Timer? _resendTimer;
 
   late AnimationController _fadeController;
   late AnimationController _scaleController;
@@ -38,8 +41,10 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
       final args =
           ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
       _email = args?['email'] as String?;
-      logInfo('📨 ایمیل دریافتی از صفحه قبلی: $_email');
-      logInfo('📨 Arguments کامل: $args');
+      // Avoid logging user inputs (email/token) in auth flows.
+      if (_email != null && _email!.isNotEmpty) {
+        _startResendCountdown(30);
+      }
     });
 
     _fadeController = AnimationController(
@@ -79,7 +84,45 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
     _confirmPasswordController.dispose();
     _fadeController.dispose();
     _scaleController.dispose();
+    _resendTimer?.cancel();
     super.dispose();
+  }
+
+  void _startResendCountdown(int seconds) {
+    _resendTimer?.cancel();
+    setState(() => _resendCountdown = seconds);
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_resendCountdown <= 1) {
+        timer.cancel();
+        setState(() => _resendCountdown = 0);
+      } else {
+        setState(() => _resendCountdown -= 1);
+      }
+    });
+  }
+
+  Future<void> _resendCode() async {
+    final email = _email;
+    if (email == null || email.isEmpty) {
+      _showErrorSnackBar('ایمیل یافت نشد. لطفاً دوباره تلاش کنید');
+      return;
+    }
+    if (_resendCountdown > 0) return;
+
+    try {
+      _startResendCountdown(60);
+      await supabase.auth.resetPasswordForEmail(
+        email,
+        redirectTo: 'vista://auth/reset-password',
+      );
+      _showSuccessSnackBar(
+          'اگر حسابی با این ایمیل وجود داشته باشد، کد بازنشانی ارسال می‌شود');
+    } catch (_) {
+      _showErrorSnackBar('خطا در ارسال مجدد کد. لطفاً دوباره تلاش کنید');
+      // Allow retry sooner if the request failed immediately.
+      _startResendCountdown(0);
+    }
   }
 
   Future<void> _resetPassword() async {
@@ -111,8 +154,6 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
 
     if (_newPasswordController.text != _confirmPasswordController.text) {
       logInfo('❌ رمزها یکسان نیستند');
-      logInfo('رمز جدید: ${_newPasswordController.text}');
-      logInfo('رمز تایید: ${_confirmPasswordController.text}');
       _showErrorSnackBar('رمز عبور و تایید آن یکسان نیستند');
       return;
     }
@@ -123,10 +164,7 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
 
     try {
       logInfo('🔍 شروع تغییر رمزعبور');
-      logInfo('📧 ایمیل: $_email');
-      logInfo('🔑 کد وارد شده: ${_codeController.text.trim()}');
-      logInfo('🔒 رمز جدید: ${_newPasswordController.text.trim()}');
-      logInfo('✅ رمز تایید: ${_confirmPasswordController.text.trim()}');
+      logInfo('🔐 Recovery verify شروع شد (کد/رمز در لاگ چاپ نمی‌شود)');
 
       // در Supabase، برای بازیابی رمزعبور، باید از verifyOTP استفاده کنیم
       // این method کد بازیابی رو تایید می‌کنه و session موقت ایجاد می‌کنه
@@ -162,9 +200,7 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
         throw Exception('کد بازیابی نامعتبر است');
       }
     } catch (error) {
-      logInfo('🚨 خطای تغییر رمزعبور: $error');
-      logInfo('🚨 نوع خطا: ${error.runtimeType}');
-      logInfo('🚨 جزئیات خطا: ${error.toString()}');
+      logInfo('🚨 خطای تغییر رمزعبور: ${error.runtimeType}');
 
       String errorMessage = 'خطا در تغییر رمز عبور';
 
@@ -550,6 +586,28 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
                           ),
 
                           SizedBox(height: 32.h),
+
+                          if (_resendCountdown > 0)
+                            Text(
+                              'ارسال مجدد کد در $_resendCountdown ثانیه',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 14.sp,
+                                color: isDark ? Colors.white70 : Colors.black87,
+                              ),
+                            )
+                          else
+                            TextButton(
+                              onPressed: _isLoading ? null : _resendCode,
+                              child: Text(
+                                'ارسال مجدد کد',
+                                style: TextStyle(
+                                  color: const Color(0xFF4A80F0),
+                                  fontSize: 16.sp,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
 
                           // Back Button
                           TextButton(

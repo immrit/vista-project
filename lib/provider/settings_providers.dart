@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../DB/settings_cache_service.dart';
 import '../DB/advanced_settings_service.dart';
+import '../features/settings/privacy/privacy_settings_repository.dart';
 import '../utils/const.dart';
 
 /// Provider برای تنظیمات کاربر با قابلیت آفلاین
@@ -24,6 +25,64 @@ final privacySettingsProvider = StateNotifierProvider.family<
     String>((ref, userId) {
   return PrivacySettingsNotifier(userId);
 });
+
+/// Repository provider (canonical: user_settings, mirrored: privacy_settings for compatibility)
+final privacySettingsRepositoryProvider =
+    Provider<PrivacySettingsRepository>((ref) {
+  return PrivacySettingsRepository();
+});
+
+/// Provider for merged privacy settings (user_settings overrides privacy_settings).
+final mergedPrivacySettingsProvider = StateNotifierProvider.family<
+    MergedPrivacySettingsNotifier,
+    AsyncValue<Map<String, dynamic>>,
+    String>((ref, userId) {
+  final repo = ref.watch(privacySettingsRepositoryProvider);
+  return MergedPrivacySettingsNotifier(repo, userId);
+});
+
+class MergedPrivacySettingsNotifier
+    extends StateNotifier<AsyncValue<Map<String, dynamic>>> {
+  final PrivacySettingsRepository _repo;
+  final String userId;
+
+  MergedPrivacySettingsNotifier(this._repo, this.userId)
+      : super(const AsyncValue.loading()) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      state = const AsyncValue.loading();
+      final settings = await _repo.getMergedPrivacySettings(userId);
+      state = AsyncValue.data(settings);
+    } catch (e) {
+      state = AsyncValue.error(e, StackTrace.current);
+    }
+  }
+
+  Future<void> refresh() async => _load();
+
+  Future<void> updateSetting(String key, dynamic value) async {
+    await updateSettings({key: value});
+  }
+
+  Future<void> updateSettings(Map<String, dynamic> patch) async {
+    try {
+      final current =
+          state.value ?? await _repo.getMergedPrivacySettings(userId);
+      final optimistic = {...current, ...patch};
+      state = AsyncValue.data(optimistic);
+
+      await _repo.updateSettings(userId, patch);
+
+      final latest = await _repo.getMergedPrivacySettings(userId);
+      state = AsyncValue.data(latest);
+    } catch (e) {
+      state = AsyncValue.error(e, StackTrace.current);
+    }
+  }
+}
 
 /// Provider برای تنظیمات اعلان‌ها با قابلیت آفلاین
 final notificationSettingsProvider = StateNotifierProvider.family<

@@ -178,11 +178,24 @@ class ProfileCacheService {
       final currentUser = supabase.auth.currentUser;
       if (currentUser == null) return;
 
+      final isSelf = currentUser.id == userId;
+
       // 1. دریافت پروفایل
-      final profileResponse = await supabase.from('profiles').select('''
+      final profileColumns = isSelf
+          ? '''
             id, username, full_name, avatar_url, email, bio, created_at,
             is_verified, verification_type, account_type, role
-          ''').eq('id', userId).single();
+          '''
+          : '''
+            id, username, full_name, avatar_url, bio, created_at,
+            is_verified, verification_type
+          ''';
+
+      final profileResponse = await supabase
+          .from('profiles')
+          .select(profileColumns)
+          .eq('id', userId)
+          .single();
 
       final followersCount =
           await supabase.from('follows').count().eq('following_id', userId);
@@ -224,9 +237,7 @@ class ProfileCacheService {
           ...postData,
           'like_count': postLikes.length,
           'is_liked': postLikes.any((like) => like['user_id'] == currentUserId),
-          'username': profile['username'] ??
-              profile['full_name'] ??
-              'Unknown',
+          'username': profile['username'] ?? profile['full_name'] ?? 'Unknown',
           'avatar_url': profile['avatar_url'] ?? '',
           'is_verified': profile['is_verified'] ?? false,
           'comment_count': comments.length,

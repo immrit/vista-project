@@ -5,6 +5,10 @@
 *.swp
 *.sql
 *.zip
+
+# Track Supabase migrations (even though we ignore generic *.sql files above)
+!supabase/migrations/*.sql
+!supabase/migrations/**/*.sql
 .DS_Store
 .atom/
 .buildlog/

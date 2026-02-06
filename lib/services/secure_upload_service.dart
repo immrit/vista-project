@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -213,7 +212,8 @@ class SignedUrlService {
       'Content-Type': 'application/json',
     };
 
-    final accessToken = Supabase.instance.client.auth.currentSession?.accessToken;
+    final accessToken =
+        Supabase.instance.client.auth.currentSession?.accessToken;
     if (accessToken != null && accessToken.isNotEmpty) {
       headers['Authorization'] = 'Bearer $accessToken';
     }
@@ -594,4 +594,3 @@ class SecureUploadService {
     return segments.first;
   }
 }
-

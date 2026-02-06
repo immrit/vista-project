@@ -46,6 +46,8 @@ import 'package:Vista/features/auth/screens/auth_wizard_screen.dart';
 import 'package:Vista/features/auth/screens/biometric_login_screen.dart';
 import 'package:Vista/features/auth/screens/reset_password_screen.dart';
 import 'package:Vista/features/auth/screens/password_reset_code_screen.dart';
+import 'package:Vista/features/auth/screens/password_reset_sms_screen.dart';
+import 'package:Vista/features/auth/screens/password_recovery_confirm_screen.dart';
 import 'package:Vista/features/auth/widgets/session_auth_wrapper.dart'; // Import SessionAuthWrapper
 import 'package:Vista/features/onboarding/screens/Onboarding.dart';
 import 'package:Vista/features/profile/screens/editeProfile.dart';
@@ -424,6 +426,10 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
               '/reset-password': (context) => const ResetPasswordScreen(),
               '/reset-password-code': (context) =>
                   const PasswordResetCodeScreen(),
+              '/reset-password-sms': (context) =>
+                  const PasswordResetSmsScreen(),
+              '/reset-password-confirm': (context) =>
+                  const PasswordRecoveryConfirmScreen(),
               '/biometric-login': (context) => BiometricLoginScreen(
                     onSuccess: () =>
                         Navigator.pushReplacementNamed(context, '/home'),

@@ -5,7 +5,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../../../model/ProfileModel.dart';
 import '../../../../utils/const.dart';
 import '../data/models/profile_note_model.dart';
-import '../providers/profile_note_provider.dart';
 import 'note_input_sheet.dart';
 
 /// باتم‌شیت نمایش متن کامل وضعیت

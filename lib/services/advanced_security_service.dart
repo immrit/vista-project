@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
@@ -381,7 +380,8 @@ class AdvancedSecurityService {
     var keyBytes = base64.decode(keyB64);
     if (keyBytes.length != 32) {
       keyBytes = _generateRandomKeyBytes(32);
-      await _storage.write(key: _encryptionKeyV2, value: base64.encode(keyBytes));
+      await _storage.write(
+          key: _encryptionKeyV2, value: base64.encode(keyBytes));
     }
 
     return SecretKey(keyBytes);
@@ -1006,9 +1006,3 @@ class AdvancedSecurityService {
     }
   }
 }
-
-
-
-
-
-

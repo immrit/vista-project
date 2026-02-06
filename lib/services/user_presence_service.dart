@@ -415,7 +415,7 @@ class UserPresenceService with WidgetsBindingObserver {
       return results[0] != null && results[1] != null;
     } catch (e) {
       debugPrint('❌ Error checking follow status: $e');
-      return true; // در صورت خطا، اجازه بده
+      return false; // deny-by-default on error
     }
   }
 

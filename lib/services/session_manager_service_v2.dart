@@ -747,7 +747,7 @@ class SessionManagerServiceV2 {
             .order('last_activity', ascending: false)
             .limit(20);
 
-        Map<String, dynamic>? _asMap(dynamic v) {
+        Map<String, dynamic>? asMap(dynamic v) {
           if (v == null) return null;
           if (v is Map<String, dynamic>) return v;
           if (v is Map) {
@@ -773,7 +773,7 @@ class SessionManagerServiceV2 {
           if (map == null) continue;
 
           final deviceInfoRaw = map['device_info'];
-          final sessionDeviceInfo = _asMap(deviceInfoRaw);
+          final sessionDeviceInfo = asMap(deviceInfoRaw);
           final sessionDeviceId = sessionDeviceInfo?['device_id'] as String?;
           if (sessionDeviceId == null || sessionDeviceId != deviceId) continue;
 
@@ -781,7 +781,8 @@ class SessionManagerServiceV2 {
           if (lastActivityStr != null) {
             try {
               final lastActivity = DateTime.parse(lastActivityStr);
-              if (bestMatchTime == null || lastActivity.isAfter(bestMatchTime)) {
+              if (bestMatchTime == null ||
+                  lastActivity.isAfter(bestMatchTime)) {
                 bestMatchTime = lastActivity;
                 bestMatchSessionId = map['id'] as String?;
               }
@@ -793,7 +794,7 @@ class SessionManagerServiceV2 {
           }
         }
 
-        if (bestMatchSessionId != null && bestMatchSessionId!.isNotEmpty) {
+        if (bestMatchSessionId != null && bestMatchSessionId.isNotEmpty) {
           logInfo('✅ Found session by device ID: $bestMatchSessionId');
           _currentSessionId = bestMatchSessionId;
           await _saveSession();
@@ -1610,7 +1611,3 @@ class TerminateSessionResult {
     this.remainingDays,
   });
 }
-
-
-
-

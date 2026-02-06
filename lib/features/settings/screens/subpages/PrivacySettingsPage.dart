@@ -160,7 +160,8 @@ class _PrivacySettingsPageState extends ConsumerState<PrivacySettingsPage> {
             icon: Icons.group_add_outlined,
             iconColor: Colors.teal,
             title: 'اضافه شدن به گروه',
-            subtitle: 'کنترل اینکه چه کسانی می‌توانند شما را به گروه اضافه کنند',
+            subtitle:
+                'کنترل اینکه چه کسانی می‌توانند شما را به گروه اضافه کنند',
             onTap: () => _showGroupAddPrivacyDialog(context, ref),
           ),
           _buildDivider(),
@@ -303,6 +304,15 @@ class _PrivacySettingsPageState extends ConsumerState<PrivacySettingsPage> {
         setting: value,
         'updated_at': DateTime.now().toIso8601String(),
       });
+
+      // Mirror a subset into `privacy_settings` for backward compatibility.
+      if (setting == 'is_private' || setting == 'group_add_privacy') {
+        await Supabase.instance.client.from('privacy_settings').upsert({
+          'user_id': user.id,
+          setting: value,
+          'updated_at': DateTime.now().toIso8601String(),
+        });
+      }
 
       final _ = ref.refresh(currentUserSettingsProvider);
 
@@ -469,18 +479,27 @@ class _PrivacySettingsPageState extends ConsumerState<PrivacySettingsPage> {
         ),
         content: Consumer(
           builder: (context, ref, _) {
-            final settingsAsync = ref.watch(privacySettingsProvider(userId));
+            final settingsAsync =
+                ref.watch(mergedPrivacySettingsProvider(userId));
             final currentValue =
                 settingsAsync.value?['group_add_privacy'] as String? ??
                     'everyone';
             final options = const [
-              {'value': 'nobody', 'title': 'هیچکس', 'desc': 'هیچ‌کس نتواند شما را اضافه کند'},
+              {
+                'value': 'nobody',
+                'title': 'هیچکس',
+                'desc': 'هیچ‌کس نتواند شما را اضافه کند'
+              },
               {
                 'value': 'following',
                 'title': 'فقط دنبال‌کننده‌ها',
                 'desc': 'فقط افرادی که شما را دنبال می‌کنند'
               },
-              {'value': 'everyone', 'title': 'همه', 'desc': 'همه بتوانند شما را اضافه کنند'},
+              {
+                'value': 'everyone',
+                'title': 'همه',
+                'desc': 'همه بتوانند شما را اضافه کنند'
+              },
             ];
 
             return Column(
@@ -530,13 +549,9 @@ class _PrivacySettingsPageState extends ConsumerState<PrivacySettingsPage> {
                       ),
                     ),
                     onTap: () async {
-                      final merged = {
-                        ...?settingsAsync.value,
-                        'group_add_privacy': opt['value'],
-                      };
                       await ref
-                          .read(privacySettingsProvider(userId).notifier)
-                          .updateSettings(merged);
+                          .read(mergedPrivacySettingsProvider(userId).notifier)
+                          .updateSetting('group_add_privacy', opt['value']);
                       if (context.mounted) {
                         Navigator.pop(context);
                       }

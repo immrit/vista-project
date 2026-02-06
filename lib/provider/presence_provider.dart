@@ -20,32 +20,34 @@ final _supabase = Supabase.instance.client;
 /// پرووایدر سرویس Presence
 final presenceServiceProvider = Provider<UserPresenceService>((ref) {
   final service = UserPresenceService();
-  
+
   // راه‌اندازی سرویس
   service.initialize();
-  
+
   ref.onDispose(() {
     service.dispose();
   });
-  
+
   return service;
 });
 
 /// استریم وضعیت آنلاین یک کاربر
-final userPresenceStreamProvider = StreamProvider.family
-    .autoDispose<UserPresenceState, String>((ref, userId) {
+final userPresenceStreamProvider =
+    StreamProvider.family.autoDispose<UserPresenceState, String>((ref, userId) {
   final presenceService = ref.watch(presenceServiceProvider);
   return presenceService.watchUserPresence(userId);
 });
 
 /// وضعیت کش شده یک کاربر (برای دسترسی سریع)
-final cachedPresenceProvider = Provider.family<UserPresenceState?, String>((ref, userId) {
+final cachedPresenceProvider =
+    Provider.family<UserPresenceState?, String>((ref, userId) {
   final presenceService = ref.watch(presenceServiceProvider);
   return presenceService.getCachedPresence(userId);
 });
 
 /// آیا کاربر آنلاین است؟ (ساده شده)
-final isUserOnlineProvider = Provider.family.autoDispose<bool, String>((ref, userId) {
+final isUserOnlineProvider =
+    Provider.family.autoDispose<bool, String>((ref, userId) {
   final presenceAsync = ref.watch(userPresenceStreamProvider(userId));
   return presenceAsync.maybeWhen(
     data: (state) => state.isOnline,
@@ -54,7 +56,8 @@ final isUserOnlineProvider = Provider.family.autoDispose<bool, String>((ref, use
 });
 
 /// متن وضعیت کاربر
-final userStatusTextProvider = Provider.family.autoDispose<String, String>((ref, userId) {
+final userStatusTextProvider =
+    Provider.family.autoDispose<String, String>((ref, userId) {
   final presenceAsync = ref.watch(userPresenceStreamProvider(userId));
   return presenceAsync.maybeWhen(
     data: (state) => state.displayText,
@@ -100,16 +103,17 @@ class ChatHeaderPresenceState {
 }
 
 /// پرووایدر ترکیبی برای هدر چت
-final chatHeaderPresenceProvider = Provider.family
-    .autoDispose<ChatHeaderPresenceState, ({String userId, String conversationId})>((ref, params) {
+final chatHeaderPresenceProvider = Provider.family.autoDispose<
+    ChatHeaderPresenceState,
+    ({String userId, String conversationId})>((ref, params) {
   // وضعیت آنلاین
   final presenceAsync = ref.watch(userPresenceStreamProvider(params.userId));
-  
+
   // وضعیت تایپ (از typing_provider موجود)
   // اینجا فقط placeholder است - باید با typing_provider یکپارچه شود
   const isTyping = false;
   const isRecording = false;
-  
+
   return presenceAsync.when(
     data: (presence) => ChatHeaderPresenceState(
       presence: presence,
@@ -122,7 +126,8 @@ final chatHeaderPresenceProvider = Provider.family
 });
 
 /// پرووایدر برای آخرین بازدید با رعایت حریم خصوصی
-final lastSeenProvider = FutureProvider.family<DateTime?, String>((ref, userId) async {
+final lastSeenProvider =
+    FutureProvider.family<DateTime?, String>((ref, userId) async {
   final currentUserId = _supabase.auth.currentUser?.id;
   if (currentUserId == null) return null;
 
@@ -134,7 +139,8 @@ final lastSeenProvider = FutureProvider.family<DateTime?, String>((ref, userId) 
         .eq('user_id', userId)
         .maybeSingle();
 
-    final visibility = settings?['last_seen_visibility'] as String? ?? 'everyone';
+    final visibility =
+        settings?['last_seen_visibility'] as String? ?? 'everyone';
 
     // بررسی دسترسی
     if (visibility == 'nobody') return null;
@@ -167,7 +173,9 @@ final lastSeenProvider = FutureProvider.family<DateTime?, String>((ref, userId) 
         .maybeSingle();
 
     final lastOnlineStr = profile?['last_online'] as String?;
-    return lastOnlineStr != null ? DateTime.parse(lastOnlineStr).toLocal() : null;
+    return lastOnlineStr != null
+        ? DateTime.parse(lastOnlineStr).toLocal()
+        : null;
   } catch (e) {
     debugPrint('❌ Error getting last seen: $e');
     return null;
@@ -175,7 +183,8 @@ final lastSeenProvider = FutureProvider.family<DateTime?, String>((ref, userId) 
 });
 
 /// آیا می‌توانیم آخرین بازدید را ببینیم؟
-final canViewLastSeenProvider = FutureProvider.family<bool, String>((ref, userId) async {
+final canViewLastSeenProvider =
+    FutureProvider.family<bool, String>((ref, userId) async {
   final currentUserId = _supabase.auth.currentUser?.id;
   if (currentUserId == null) return false;
 
@@ -186,7 +195,8 @@ final canViewLastSeenProvider = FutureProvider.family<bool, String>((ref, userId
         .eq('user_id', userId)
         .maybeSingle();
 
-    final visibility = settings?['last_seen_visibility'] as String? ?? 'everyone';
+    final visibility =
+        settings?['last_seen_visibility'] as String? ?? 'everyone';
 
     if (visibility == 'everyone') return true;
     if (visibility == 'nobody') return false;
@@ -210,7 +220,7 @@ final canViewLastSeenProvider = FutureProvider.family<bool, String>((ref, userId
     return results[0] != null && results[1] != null;
   } catch (e) {
     debugPrint('❌ Error checking can view last seen: $e');
-    return true; // در صورت خطا اجازه بده
+    return false; // deny-by-default on error
   }
 });
 
@@ -269,7 +279,7 @@ class CurrentUserPresenceNotifier extends StateNotifier<UserPresenceStatus> {
 }
 
 final currentUserPresenceProvider =
-    StateNotifierProvider<CurrentUserPresenceNotifier, UserPresenceStatus>((ref) {
+    StateNotifierProvider<CurrentUserPresenceNotifier, UserPresenceStatus>(
+        (ref) {
   return CurrentUserPresenceNotifier(ref);
 });
-

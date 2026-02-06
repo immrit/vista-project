@@ -438,7 +438,7 @@ class MessageModel {
 
   factory MessageModel.fromJson(Map<String, dynamic> json,
       {required String currentUserId}) {
-    Map<String, dynamic>? _extractProfile(dynamic raw) {
+    Map<String, dynamic>? extractProfile(dynamic raw) {
       if (raw is Map<String, dynamic>) {
         return raw;
       }
@@ -454,7 +454,7 @@ class MessageModel {
     String conversationId =
         json['conversation_id'] ?? json['conversations_id'] ?? '';
 
-    final profile = _extractProfile(json['profiles']);
+    final profile = extractProfile(json['profiles']);
     final profileUsername = profile?['username']?.toString().trim() ?? '';
     final profileFullName = profile?['full_name']?.toString().trim() ?? '';
     final profileName =

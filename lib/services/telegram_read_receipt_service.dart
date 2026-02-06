@@ -16,11 +16,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// وضعیت تحویل پیام - مثل تلگرام
 enum MessageDeliveryStatus {
-  pending,    // ⏳ در انتظار ارسال (ساعت)
-  sent,       // ✓ ارسال شده به سرور (یک تیک خاکستری)
-  delivered,  // ✓✓ تحویل به دستگاه گیرنده (دو تیک خاکستری)
-  read,       // ✓✓ خوانده شده (دو تیک آبی)
-  failed,     // ❌ خطا در ارسال
+  pending, // ⏳ در انتظار ارسال (ساعت)
+  sent, // ✓ ارسال شده به سرور (یک تیک خاکستری)
+  delivered, // ✓✓ تحویل به دستگاه گیرنده (دو تیک خاکستری)
+  read, // ✓✓ خوانده شده (دو تیک آبی)
+  failed, // ❌ خطا در ارسال
 }
 
 /// اطلاعات کامل وضعیت پیام
@@ -57,13 +57,13 @@ class MessageStatusInfo {
 
 /// Callback برای آپدیت وضعیت آخرین پیام در لیست مکالمات
 typedef LastMessageStatusCallback = void Function(
-  String conversationId, 
+  String conversationId,
   MessageDeliveryStatus status,
 );
 
 /// سرویس مدیریت Read Receipts - Telegram Style
 class TelegramReadReceiptService {
-  static final TelegramReadReceiptService _instance = 
+  static final TelegramReadReceiptService _instance =
       TelegramReadReceiptService._internal();
   factory TelegramReadReceiptService() => _instance;
   TelegramReadReceiptService._internal();
@@ -71,21 +71,21 @@ class TelegramReadReceiptService {
   final _supabase = Supabase.instance.client;
 
   // استریم‌های Real-time
-  final _statusUpdatesController = 
+  final _statusUpdatesController =
       StreamController<Map<String, MessageStatusInfo>>.broadcast();
-  
+
   // ✅ Callback برای آپدیت لیست مکالمات
   LastMessageStatusCallback? onLastMessageStatusChanged;
-  
+
   // کش وضعیت پیام‌ها
   final Map<String, MessageStatusInfo> _statusCache = {};
-  
+
   // ✅ کش آخرین پیام هر مکالمه
   final Map<String, String> _lastMessageIds = {};
-  
+
   // Subscription‌های فعال
   final Map<String, RealtimeChannel> _conversationChannels = {};
-  
+
   // صف پیام‌هایی که باید خوانده شوند (برای batch)
   final Set<String> _pendingReadQueue = {};
   Timer? _batchReadTimer;
@@ -98,7 +98,7 @@ class TelegramReadReceiptService {
   String? get _currentUserId => _supabase.auth.currentUser?.id;
 
   /// استریم به‌روزرسانی‌های وضعیت
-  Stream<Map<String, MessageStatusInfo>> get statusUpdates => 
+  Stream<Map<String, MessageStatusInfo>> get statusUpdates =>
       _statusUpdatesController.stream;
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -108,7 +108,7 @@ class TelegramReadReceiptService {
   /// شروع گوش دادن به تغییرات یک مکالمه
   void startListening(String conversationId) {
     if (_conversationChannels.containsKey(conversationId)) return;
-    
+
     _currentConversationId = conversationId;
 
     final channel = _supabase
@@ -137,14 +137,14 @@ class TelegramReadReceiptService {
       final messageId = data['id'] as String;
       final senderId = data['sender_id'] as String?;
       final conversationId = data['conversation_id'] as String?;
-      
+
       // فقط پیام‌های خودم را بررسی کن (برای نمایش تیک)
       if (senderId != _currentUserId) return;
 
       final isSent = data['is_sent'] as bool? ?? false;
       final isDelivered = data['is_delivered'] as bool? ?? false;
       final isSeen = data['is_seen'] as bool? ?? false;
-      
+
       final deliveredAtStr = data['delivered_at'] as String?;
       final seenAtStr = data['seen_at'] as String?;
 
@@ -162,12 +162,10 @@ class TelegramReadReceiptService {
       final statusInfo = MessageStatusInfo(
         messageId: messageId,
         status: status,
-        deliveredAt: deliveredAtStr != null 
-            ? DateTime.parse(deliveredAtStr).toLocal() 
+        deliveredAt: deliveredAtStr != null
+            ? DateTime.parse(deliveredAtStr).toLocal()
             : null,
-        seenAt: seenAtStr != null 
-            ? DateTime.parse(seenAtStr).toLocal() 
-            : null,
+        seenAt: seenAtStr != null ? DateTime.parse(seenAtStr).toLocal() : null,
       );
 
       _statusCache[messageId] = statusInfo;
@@ -178,7 +176,8 @@ class TelegramReadReceiptService {
         final lastMessageId = _lastMessageIds[conversationId];
         if (lastMessageId == messageId && onLastMessageStatusChanged != null) {
           onLastMessageStatusChanged!(conversationId, status);
-          debugPrint('📬 Last message status updated: $conversationId -> $status');
+          debugPrint(
+              '📬 Last message status updated: $conversationId -> $status');
         }
       }
 
@@ -195,7 +194,7 @@ class TelegramReadReceiptService {
       _supabase.removeChannel(channel);
       debugPrint('📴 ReadReceipt: Stopped listening to $conversationId');
     }
-    
+
     if (_currentConversationId == conversationId) {
       _currentConversationId = null;
       _flushPendingReads();
@@ -229,7 +228,7 @@ class TelegramReadReceiptService {
 
     // استفاده از کش
     final now = DateTime.now();
-    if (_sendReadReceiptsEnabled != null && 
+    if (_sendReadReceiptsEnabled != null &&
         _settingsLastChecked != null &&
         now.difference(_settingsLastChecked!) < _settingsCacheDuration) {
       return _sendReadReceiptsEnabled!;
@@ -242,13 +241,16 @@ class TelegramReadReceiptService {
           .eq('user_id', userId)
           .maybeSingle();
 
-      _sendReadReceiptsEnabled = settings?['send_read_receipts'] as bool? ?? true;
+      _sendReadReceiptsEnabled =
+          settings?['send_read_receipts'] as bool? ?? true;
       _settingsLastChecked = now;
-      
+
       return _sendReadReceiptsEnabled!;
     } catch (e) {
       debugPrint('❌ Error checking read receipt settings: $e');
-      return true; // پیش‌فرض: فعال
+      // On error: prefer last known value; otherwise default to enabled.
+      if (_sendReadReceiptsEnabled != null) return _sendReadReceiptsEnabled!;
+      return true;
     }
   }
 
@@ -268,12 +270,14 @@ class TelegramReadReceiptService {
     if (userId == null) return;
 
     try {
-      await _supabase.from('messages').update({
-        'is_delivered': true,
-        'delivered_at': DateTime.now().toUtc().toIso8601String(),
-      })
-      .eq('id', messageId)
-      .neq('sender_id', userId); // فقط پیام‌های دریافتی
+      await _supabase
+          .from('messages')
+          .update({
+            'is_delivered': true,
+            'delivered_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', messageId)
+          .neq('sender_id', userId); // فقط پیام‌های دریافتی
 
       debugPrint('✅ Marked as delivered: $messageId');
     } catch (e) {
@@ -313,16 +317,18 @@ class TelegramReadReceiptService {
 
     try {
       final now = DateTime.now().toUtc().toIso8601String();
-      
-      await _supabase.from('messages').update({
-        'is_delivered': true,
-        'is_seen': true,
-        'delivered_at': now,
-        'seen_at': now,
-      })
-      .inFilter('id', messageIds)
-      .neq('sender_id', userId)
-      .eq('is_seen', false);
+
+      await _supabase
+          .from('messages')
+          .update({
+            'is_delivered': true,
+            'is_seen': true,
+            'delivered_at': now,
+            'seen_at': now,
+          })
+          .inFilter('id', messageIds)
+          .neq('sender_id', userId)
+          .eq('is_seen', false);
 
       debugPrint('✅ Batch marked as read: ${messageIds.length} messages');
 
@@ -351,16 +357,18 @@ class TelegramReadReceiptService {
 
     try {
       final now = DateTime.now().toUtc().toIso8601String();
-      
-      await _supabase.from('messages').update({
-        'is_delivered': true,
-        'is_seen': true,
-        'delivered_at': now,
-        'seen_at': now,
-      })
-      .eq('conversation_id', conversationId)
-      .neq('sender_id', userId)
-      .eq('is_seen', false);
+
+      await _supabase
+          .from('messages')
+          .update({
+            'is_delivered': true,
+            'is_seen': true,
+            'delivered_at': now,
+            'seen_at': now,
+          })
+          .eq('conversation_id', conversationId)
+          .neq('sender_id', userId)
+          .eq('is_seen', false);
 
       debugPrint('✅ All messages marked as read in $conversationId');
     } catch (e) {
@@ -394,7 +402,8 @@ class TelegramReadReceiptService {
     try {
       final response = await _supabase
           .from('messages')
-          .select('id, is_sent, is_delivered, is_seen, created_at, delivered_at, seen_at')
+          .select(
+              'id, is_sent, is_delivered, is_seen, created_at, delivered_at, seen_at')
           .eq('id', messageId)
           .maybeSingle();
 
@@ -432,7 +441,8 @@ class TelegramReadReceiptService {
       try {
         final response = await _supabase
             .from('messages')
-            .select('id, is_sent, is_delivered, is_seen, created_at, delivered_at, seen_at')
+            .select(
+                'id, is_sent, is_delivered, is_seen, created_at, delivered_at, seen_at')
             .inFilter('id', uncachedIds);
 
         for (final data in response as List) {
@@ -472,8 +482,11 @@ class TelegramReadReceiptService {
     return MessageStatusInfo(
       messageId: messageId,
       status: status,
-      sentAt: createdAtStr != null ? DateTime.parse(createdAtStr).toLocal() : null,
-      deliveredAt: deliveredAtStr != null ? DateTime.parse(deliveredAtStr).toLocal() : null,
+      sentAt:
+          createdAtStr != null ? DateTime.parse(createdAtStr).toLocal() : null,
+      deliveredAt: deliveredAtStr != null
+          ? DateTime.parse(deliveredAtStr).toLocal()
+          : null,
       seenAt: seenAtStr != null ? DateTime.parse(seenAtStr).toLocal() : null,
     );
   }
@@ -513,8 +526,8 @@ class TelegramReadReceiptService {
         .eq('conversation_id', conversationId)
         .map((messages) {
           return messages
-              .where((m) => 
-                  m['sender_id'] != userId && 
+              .where((m) =>
+                  m['sender_id'] != userId &&
                   (m['is_seen'] == false || m['is_seen'] == null))
               .length;
         });
@@ -545,4 +558,3 @@ class TelegramReadReceiptService {
     debugPrint('🔴 TelegramReadReceiptService disposed');
   }
 }
-

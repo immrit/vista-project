@@ -524,6 +524,23 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
                         strokeWidth: 2, color: Colors.white))
                 : const Text("ورود"),
           ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: _isLoading
+                ? null
+                : () {
+                    final prefill = _sanitizeInput(_inputController.text);
+                    Navigator.pushNamed(
+                      context,
+                      '/reset-password',
+                      arguments: {
+                        'prefill': prefill,
+                        'method': _isPhoneInput ? 'sms' : 'email',
+                      },
+                    );
+                  },
+            child: const Text('فراموشی رمزعبور؟'),
+          ),
           const Spacer(flex: 2),
         ],
       ),

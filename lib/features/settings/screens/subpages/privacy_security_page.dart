@@ -8,6 +8,7 @@ import 'BlockedUsersPage.dart';
 import '../../../../provider/provider.dart';
 import '../../../../provider/settings_providers.dart';
 import '../../../../model/messagePrivacyModel.dart';
+import '../../../../services/telegram_read_receipt_service.dart';
 
 /// صفحه تنظیمات حریم خصوصی و امنیت - طراحی مدرن و یکپارچه
 class PrivacySecurityPage extends ConsumerStatefulWidget {
@@ -56,14 +57,22 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
     await prefs.setBool(key, value);
   }
 
+  void _showComingSoon(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.blueGrey,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final userId = Supabase.instance.client.auth.currentUser?.id;
-    final privacySettingsAsync = userId != null
-        ? ref.watch(privacySettingsProvider(userId))
-        : const AsyncValue.data(null);
-    final userSettingsAsync = ref.watch(currentUserSettingsProvider);
+    final settingsAsync = userId != null
+        ? ref.watch(mergedPrivacySettingsProvider(userId))
+        : const AsyncValue.data(<String, dynamic>{});
 
     return Scaffold(
       backgroundColor: isDark ? Colors.black : const Color(0xFFF5F5F5),
@@ -86,64 +95,87 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
                 VistaSettingsSwitch(
                   icon: Icons.lock_outline,
                   title: 'قفل کردن پیج',
-                  subtitle:
-                      'فقط دنبال‌کننده‌ها می‌توانند محتوای شما را ببینند',
-                  value:
-                      (userSettingsAsync.value?['is_private'] as bool?) ?? false,
+                  subtitle: 'فقط دنبال‌کننده‌ها می‌توانند محتوای شما را ببینند',
+                  value: (settingsAsync.value?['is_private'] as bool?) ?? false,
                   onChanged: (value) {
-                    _upsertUserSetting('is_private', value);
-
                     final uid = userId;
-                    if (uid != null) {
-                      _updatePrivacySetting(
-                        uid,
-                        privacySettingsAsync.value ?? const <String, dynamic>{},
-                        {'is_private': value},
-                      );
-                    }
+                    if (uid == null) return;
+                    ref
+                        .read(mergedPrivacySettingsProvider(uid).notifier)
+                        .updateSetting('is_private', value);
                   },
                 ),
                 // اجازه بزرگنمایی پروفایل
                 VistaSettingsSwitch(
                   icon: Icons.zoom_in,
                   title: 'اجازه بزرگنمایی پروفایل',
-                  subtitle:
-                      'دیگران بتوانند عکس پروفایل شما را بزرگنمایی کنند',
-                  value: userSettingsAsync.value?['allow_profile_zoom'] as bool? ??
+                  subtitle: 'دیگران بتوانند عکس پروفایل شما را بزرگنمایی کنند',
+                  value: settingsAsync.value?['allow_profile_zoom'] as bool? ??
                       true,
-                  onChanged: (value) =>
-                      _upsertUserSetting('allow_profile_zoom', value),
+                  onChanged: (value) {
+                    final uid = userId;
+                    if (uid == null) return;
+                    ref
+                        .read(mergedPrivacySettingsProvider(uid).notifier)
+                        .updateSetting('allow_profile_zoom', value);
+                  },
                 ),
                 // آخرین بازدید
                 VistaSettingsChoice<String>(
                   icon: Icons.access_time_outlined,
                   title: 'آخرین بازدید',
-                  value: (userSettingsAsync.value?['last_seen_visibility']
+                  value: (settingsAsync.value?['last_seen_visibility']
                           as String?) ??
                       'everyone',
                   options: const [
                     VistaChoiceOption(value: 'everyone', label: 'همه'),
-                    VistaChoiceOption(value: 'my_contacts', label: 'فقط مخاطبین'),
+                    VistaChoiceOption(
+                        value: 'my_contacts', label: 'فقط مخاطبین'),
                     VistaChoiceOption(value: 'nobody', label: 'هیچکس'),
                   ],
-                  onChanged: (value) =>
-                      _upsertUserSetting('last_seen_visibility', value),
+                  onChanged: (value) {
+                    final uid = userId;
+                    if (uid == null) return;
+                    ref
+                        .read(mergedPrivacySettingsProvider(uid).notifier)
+                        .updateSetting('last_seen_visibility', value);
+                  },
                 ),
                 // عکس پروفایل
                 VistaSettingsChoice<String>(
                   icon: Icons.chat_bubble_outline,
                   title: 'پیام‌ها',
-                  value:
-                      (userSettingsAsync.value?['message_privacy'] as String?) ??
-                          MessagePrivacyLevel.everyone.value,
+                  value: (settingsAsync.value?['message_privacy'] as String?) ??
+                      MessagePrivacyLevel.everyone.value,
                   options: const [
                     VistaChoiceOption(value: 'everyone', label: 'همه'),
                     VistaChoiceOption(
                         value: 'followers', label: 'فقط دنبال‌کننده‌ها'),
                     VistaChoiceOption(value: 'nobody', label: 'هیچکس'),
                   ],
-                  onChanged: (value) =>
-                      _upsertUserSetting('message_privacy', value),
+                  onChanged: (value) {
+                    final uid = userId;
+                    if (uid == null) return;
+                    ref
+                        .read(mergedPrivacySettingsProvider(uid).notifier)
+                        .updateSetting('message_privacy', value);
+                  },
+                ),
+                VistaSettingsSwitch(
+                  icon: Icons.done_all,
+                  title: 'ارسال تیک خوانده‌شدن',
+                  subtitle: 'اگر خاموش باشد، تیک خوانده‌شدن ارسال نمی‌شود',
+                  value:
+                      (settingsAsync.value?['send_read_receipts'] as bool?) ??
+                          true,
+                  onChanged: (value) {
+                    final uid = userId;
+                    if (uid == null) return;
+                    ref
+                        .read(mergedPrivacySettingsProvider(uid).notifier)
+                        .updateSetting('send_read_receipts', value);
+                    TelegramReadReceiptService().invalidateSettingsCache();
+                  },
                 ),
                 VistaSettingsChoice<String>(
                   icon: Icons.photo_camera_outlined,
@@ -155,28 +187,26 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
                     VistaChoiceOption(value: 'nobody', label: 'هیچکس'),
                   ],
                   onChanged: (value) {
-                    setState(() => _profilePhoto = value);
-                    _saveStringSetting(_keyProfilePhoto, value);
+                    _showComingSoon(
+                        'این گزینه هنوز در همه بخش‌های برنامه اعمال نشده است');
                   },
                 ),
                 // پیام‌های فوروارد شده
                 VistaSettingsSwitch(
                   icon: Icons.forward_to_inbox_outlined,
                   title: 'لینک پیام‌های فوروارد شده',
-                  subtitle: 'اجازه لینک به پروفایل شما در پیام‌های فوروارد شده',
+                  subtitle:
+                      'به‌زودی (این گزینه هنوز در همه بخش‌های برنامه اعمال نشده است)',
                   value: _forwardedMessages,
-                  onChanged: (value) {
-                    setState(() => _forwardedMessages = value);
-                    _saveBoolSetting(_keyForwardedMessages, value);
-                  },
+                  onChanged: null,
                 ),
                 // اجازه اضافه شدن به گروه
                 VistaSettingsChoice<String>(
                   icon: Icons.group_add_outlined,
                   title: 'اضافه شدن به گروه',
-                  value: (privacySettingsAsync.value?['group_add_privacy']
-                          as String?) ??
-                      'everyone',
+                  value:
+                      (settingsAsync.value?['group_add_privacy'] as String?) ??
+                          'everyone',
                   options: const [
                     VistaChoiceOption(value: 'nobody', label: 'هیچکس'),
                     VistaChoiceOption(
@@ -184,12 +214,11 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
                     VistaChoiceOption(value: 'everyone', label: 'همه'),
                   ],
                   onChanged: (value) {
-                    if (userId == null) return;
-                    _updatePrivacySetting(
-                      userId,
-                      privacySettingsAsync.value ?? {},
-                      {'group_add_privacy': value},
-                    );
+                    final uid = userId;
+                    if (uid == null) return;
+                    ref
+                        .read(mergedPrivacySettingsProvider(uid).notifier)
+                        .updateSetting('group_add_privacy', value);
                   },
                 ),
               ],

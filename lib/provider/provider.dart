@@ -223,8 +223,8 @@ final fetchPublicPosts = FutureProvider<List<PublicPostModel>>((ref) async {
         'avatar_url': avatarUrl,
         'is_verified': isVerified,
         'comment_count': commentCount,
-        'verification_type':
-            profile['verification_type'], // Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† verification_type
+        'verification_type': profile[
+            'verification_type'], // Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† verification_type
       });
     }).toList();
   } catch (e) {
@@ -240,7 +240,8 @@ final postsProvider = StateProvider<List<PublicPostModel>>((ref) {
 class PublicPostsNotifier
     extends StateNotifier<AsyncValue<List<PublicPostModel>>> {
   final SupabaseClient supabase;
-  final int _limit = 15; // Ø§ÙØ²Ø§ÛŒØ´ ØªØ¹Ø¯Ø§Ø¯ Ø¢ÛŒØªÙ…â€ŒÙ‡Ø§ÛŒ Ù„ÙˆØ¯ Ø´Ø¯Ù‡ Ø¯Ø± ÛŒÚ© ØµÙØ­Ù‡
+  final int _limit =
+      15; // Ø§ÙØ²Ø§ÛŒØ´ ØªØ¹Ø¯Ø§Ø¯ Ø¢ÛŒØªÙ…â€ŒÙ‡Ø§ÛŒ Ù„ÙˆØ¯ Ø´Ø¯Ù‡ Ø¯Ø± ÛŒÚ© ØµÙØ­Ù‡
   int _offset = 0;
   bool _hasMore = true;
   bool _isLoading = false;
@@ -361,13 +362,12 @@ class PublicPostsNotifier
           'like_count': postLikes.length,
           'is_liked': postLikes
               .any((like) => like['user_id'] == supabase.auth.currentUser?.id),
-          'username': profile['username'] ??
-              profile['full_name'] ??
-              'Unknown',
+          'username': profile['username'] ?? profile['full_name'] ?? 'Unknown',
           'avatar_url': profile['avatar_url'] ?? '',
           'is_verified': profile['is_verified'] ?? false,
           'comment_count': comments.length,
-          'verification_type': profile['verification_type'], // Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† verification_type
+          'verification_type': profile[
+              'verification_type'], // Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† verification_type
         });
       }).toList();
 
@@ -442,7 +442,8 @@ class PublicPostsNotifier
       if (!isSessionValid) {
         debugPrint(
             'âŒ Session is no longer valid, cannot perform like operation');
-        throw Exception('Ù†Ø´Ø³Øª Ø´Ù…Ø§ Ù…Ù†Ù‚Ø¶ÛŒ Ø´Ø¯Ù‡ Ø§Ø³Øª. Ù„Ø·ÙØ§Ù‹ Ø¯ÙˆØ¨Ø§Ø±Ù‡ ÙˆØ§Ø±Ø¯ Ø´ÙˆÛŒØ¯.');
+        throw Exception(
+            'Ù†Ø´Ø³Øª Ø´Ù…Ø§ Ù…Ù†Ù‚Ø¶ÛŒ Ø´Ø¯Ù‡ Ø§Ø³Øª. Ù„Ø·ÙØ§Ù‹ Ø¯ÙˆØ¨Ø§Ø±Ù‡ ÙˆØ§Ø±Ø¯ Ø´ÙˆÛŒØ¯.');
       }
     } catch (e) {
       debugPrint('âŒ Error checking session validity: $e');
@@ -573,7 +574,8 @@ class SupabaseService {
     try {
       // Ø§Ø¹ØªØ¨Ø§Ø±Ø³Ù†Ø¬ÛŒ ÙˆØ±ÙˆØ¯ÛŒâ€ŒÙ‡Ø§
       if (postId.isEmpty || ownerId.isEmpty) {
-        throw ArgumentError('Ø´Ù†Ø§Ø³Ù‡â€ŒÙ‡Ø§ÛŒ ÙˆØ±ÙˆØ¯ÛŒ Ù†Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ù†Ø¯ Ø®Ø§Ù„ÛŒ Ø¨Ø§Ø´Ù†Ø¯');
+        throw ArgumentError(
+            'Ø´Ù†Ø§Ø³Ù‡â€ŒÙ‡Ø§ÛŒ ÙˆØ±ÙˆØ¯ÛŒ Ù†Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ù†Ø¯ Ø®Ø§Ù„ÛŒ Ø¨Ø§Ø´Ù†Ø¯');
       }
 
       final userId = _validateUser();
@@ -738,7 +740,8 @@ class SupabaseService {
   String _validateUser() {
     final user = supabase.auth.currentUser;
     if (user == null) {
-      throw const AuthException('Ú©Ø§Ø±Ø¨Ø± Ø§Ø­Ø±Ø§Ø² Ù‡ÙˆÛŒØª Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
+      throw const AuthException(
+          'Ú©Ø§Ø±Ø¨Ø± Ø§Ø­Ø±Ø§Ø² Ù‡ÙˆÛŒØª Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
     }
     return user.id;
   }
@@ -778,7 +781,8 @@ class SupabaseService {
     try {
       // Ø¨Ø±Ø±Ø³ÛŒ Ø§Ø¹ØªØ¨Ø§Ø± Ø´Ù†Ø§Ø³Ù‡â€ŒÙ‡Ø§
       if (postId.isEmpty || reportedUserId.isEmpty) {
-        throw ArgumentError('Ø´Ù†Ø§Ø³Ù‡â€ŒÙ‡Ø§ Ù†Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ù†Ø¯ Ø®Ø§Ù„ÛŒ Ø¨Ø§Ø´Ù†Ø¯');
+        throw ArgumentError(
+            'Ø´Ù†Ø§Ø³Ù‡â€ŒÙ‡Ø§ Ù†Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ù†Ø¯ Ø®Ø§Ù„ÛŒ Ø¨Ø§Ø´Ù†Ø¯');
       }
 
       _validateUUID(postId);
@@ -805,7 +809,8 @@ class SupabaseService {
   Future<void> deletePost(WidgetRef ref, String postId) async {
     try {
       if (postId.isEmpty) {
-        throw ArgumentError('Ø´Ù†Ø§Ø³Ù‡ Ù¾Ø³Øª Ù†Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ø¯ Ø®Ø§Ù„ÛŒ Ø¨Ø§Ø´Ø¯');
+        throw ArgumentError(
+            'Ø´Ù†Ø§Ø³Ù‡ Ù¾Ø³Øª Ù†Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ø¯ Ø®Ø§Ù„ÛŒ Ø¨Ø§Ø´Ø¯');
       }
 
       _validateUUID(postId);
@@ -832,7 +837,8 @@ class SupabaseService {
       for (String url in mediaUrls) {
         final bool deleted = await _deleteMediaWithRetry(url);
         if (!deleted) {
-          print('Ù‡Ø´Ø¯Ø§Ø±: Ø­Ø°Ù ÙØ§ÛŒÙ„ $url Ø§Ø² Ø¢Ø±ÙˆØ§Ù† Ú©Ù„Ø§ÙˆØ¯ Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯');
+          print(
+              'Ù‡Ø´Ø¯Ø§Ø±: Ø­Ø°Ù ÙØ§ÛŒÙ„ $url Ø§Ø² Ø¢Ø±ÙˆØ§Ù† Ú©Ù„Ø§ÙˆØ¯ Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯');
         }
       }
 
@@ -871,7 +877,8 @@ class SupabaseService {
         ref.invalidate(userProfileProvider(userId));
       }
 
-      print('Ù¾Ø³Øª Ùˆ ØªÙ…Ø§Ù… ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ÛŒ Ù…Ø±ØªØ¨Ø· Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø­Ø°Ù Ø´Ø¯Ù†Ø¯.');
+      print(
+          'Ù¾Ø³Øª Ùˆ ØªÙ…Ø§Ù… ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ÛŒ Ù…Ø±ØªØ¨Ø· Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø­Ø°Ù Ø´Ø¯Ù†Ø¯.');
     } catch (e) {
       print('Ø®Ø·Ø§ Ø¯Ø± Ø­Ø°Ù Ù¾Ø³Øª: $e');
       rethrow;
@@ -956,7 +963,8 @@ class SupabaseService {
     // ØªØ¨Ø¯ÛŒÙ„ Ø¯Ø§Ø¯Ù‡ Ø¨Ù‡ Ù…Ø¯Ù„ Ù¾Ø±ÙˆÙØ§ÛŒÙ„
     final List data = response;
     return data.map((item) {
-      final profileMap = item['profiles']; // Ø¨Ø±Ø±Ø³ÛŒ ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø¯Ù‡â€ŒÙ‡Ø§ÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„
+      final profileMap = item[
+          'profiles']; // Ø¨Ø±Ø±Ø³ÛŒ ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø¯Ù‡â€ŒÙ‡Ø§ÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„
       if (profileMap == null) {
         throw Exception('Missing profile data');
       }
@@ -1148,7 +1156,8 @@ class ProfileWidget extends ConsumerWidget {
 
     return currentProfileAsync.when(
       loading: () => const CircularProgressIndicator(),
-      error: (error, stack) => const Text('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„'),
+      error: (error, stack) =>
+          const Text('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„'),
       data: (profile) {
         if (profile == null) {
           return const Text('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
@@ -1177,7 +1186,8 @@ class OtherProfileWidget extends ConsumerWidget {
 
     return profileAsync.when(
       loading: () => const CircularProgressIndicator(),
-      error: (error, stack) => const Text('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„'),
+      error: (error, stack) =>
+          const Text('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„'),
       data: (profile) {
         if (profile == null) {
           return const Text('Ù¾Ø±ÙˆÙØ§ÛŒÙ„ ÛŒØ§ÙØª Ù†Ø´Ø¯');
@@ -1231,7 +1241,8 @@ class CommentService {
         ''').maybeSingle();
 
       if (response == null) {
-        throw Exception('Ø®Ø·Ø§ Ø¯Ø± Ø§ÛŒØ¬Ø§Ø¯ Ú©Ø§Ù…Ù†Øª - Ù¾Ø§Ø³Ø® Ø®Ø§Ù„ÛŒ Ø§Ø³Øª');
+        throw Exception(
+            'Ø®Ø·Ø§ Ø¯Ø± Ø§ÛŒØ¬Ø§Ø¯ Ú©Ø§Ù…Ù†Øª - Ù¾Ø§Ø³Ø® Ø®Ø§Ù„ÛŒ Ø§Ø³Øª');
       }
 
       return CommentModel.fromMap(response);
@@ -1552,7 +1563,8 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
 
       // âœ… Ø¨Ø±Ø±Ø³ÛŒ Ú©Ø§Ù…Ù„ Ù†Ø´Ø³Øª Ø¨Ø§ ØªÙ„Ø§Ø´ Ø¨Ø±Ø§ÛŒ recovery
       final isAuthenticated = await AuthNavigationService.ensureAuthenticated(
-        message: 'Ø¨Ø±Ø§ÛŒ Ù…Ø´Ø§Ù‡Ø¯Ù‡ Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø§Ø¨ØªØ¯Ø§ ÙˆØ§Ø±Ø¯ Ø´ÙˆÛŒØ¯',
+        message:
+            'Ø¨Ø±Ø§ÛŒ Ù…Ø´Ø§Ù‡Ø¯Ù‡ Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø§Ø¨ØªØ¯Ø§ ÙˆØ§Ø±Ø¯ Ø´ÙˆÛŒØ¯',
       );
 
       if (!isAuthenticated) {
@@ -1562,7 +1574,8 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
 
       final currentUserId = supabase.auth.currentUser?.id;
       if (currentUserId == null) {
-        print('âš ï¸ ProfileNotifier: Ú©Ø§Ø±Ø¨Ø± ÛŒØ§ÙØª Ù†Ø´Ø¯ Ø¨Ø¹Ø¯ Ø§Ø² verify');
+        print(
+            'âš ï¸ ProfileNotifier: Ú©Ø§Ø±Ø¨Ø± ÛŒØ§ÙØª Ù†Ø´Ø¯ Ø¨Ø¹Ø¯ Ø§Ø² verify');
         return;
       }
 
@@ -1678,10 +1691,12 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
             .maybeSingle();
 
         final isPrivate = (userSettings?['is_private'] as bool?) ?? false;
-        print('ðŸ” Ø¨Ø±Ø±Ø³ÛŒ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ú©Ø§Ø±Ø¨Ø± $userId: isPrivate = $isPrivate');
+        print(
+            'ðŸ” Ø¨Ø±Ø±Ø³ÛŒ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ú©Ø§Ø±Ø¨Ø± $userId: isPrivate = $isPrivate');
 
         if (isPrivate) {
-          print('ðŸ”’ Ù¾ÛŒØ¬ Ø®ØµÙˆØµÛŒ - Ø¨Ø±Ø±Ø³ÛŒ Ø¯Ø±Ø®ÙˆØ§Ø³Øªâ€ŒÙ‡Ø§ÛŒ Ù…ÙˆØ¬ÙˆØ¯');
+          print(
+              'ðŸ”’ Ù¾ÛŒØ¬ Ø®ØµÙˆØµÛŒ - Ø¨Ø±Ø±Ø³ÛŒ Ø¯Ø±Ø®ÙˆØ§Ø³Øªâ€ŒÙ‡Ø§ÛŒ Ù…ÙˆØ¬ÙˆØ¯');
           // Ø¨Ø±Ø§ÛŒ Ù¾ÛŒØ¬â€ŒÙ‡Ø§ÛŒ Ø®ØµÙˆØµÛŒ: Ø§ÛŒØ¬Ø§Ø¯ Ø¯Ø±Ø®ÙˆØ§Ø³Øª ÙØ§Ù„Ùˆ
           final existingRequest = await supabase
               .from('follow_requests')
@@ -1691,11 +1706,13 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
               .maybeSingle();
 
           print('ðŸ” Ø¨Ø±Ø±Ø³ÛŒ Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù…ÙˆØ¬ÙˆØ¯: $existingRequest');
-          print('ðŸ” ÙˆØ¶Ø¹ÛŒØª Ø¯Ø±Ø®ÙˆØ§Ø³Øª: ${existingRequest?['status']}');
+          print(
+              'ðŸ” ÙˆØ¶Ø¹ÛŒØª Ø¯Ø±Ø®ÙˆØ§Ø³Øª: ${existingRequest?['status']}');
 
           if (existingRequest == null) {
             // Ø§Ú¯Ø± Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù‚Ø¨Ù„ÛŒ ÙˆØ¬ÙˆØ¯ Ù†Ø¯Ø§Ø±Ø¯ØŒ Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø¬Ø¯ÛŒØ¯ Ø§ÛŒØ¬Ø§Ø¯ Ú©Ù†
-            print('ðŸ†• Ø§ÛŒØ¬Ø§Ø¯ Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø¬Ø¯ÛŒØ¯ Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±: $userId');
+            print(
+                'ðŸ†• Ø§ÛŒØ¬Ø§Ø¯ Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø¬Ø¯ÛŒØ¯ Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±: $userId');
             await supabase.from('follow_requests').insert({
               'requester_id': currentUserId,
               'recipient_id': userId,
@@ -1717,13 +1734,16 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
             // Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ state Ø¨Ø±Ø§ÛŒ Ù†Ø´Ø§Ù† Ø¯Ø§Ø¯Ù† ÙˆØ¶Ø¹ÛŒØª pending
             state = state!.copyWith(
               isFollowed: false, // Ù‡Ù†ÙˆØ² Ø¯Ù†Ø¨Ø§Ù„ Ù†Ø´Ø¯Ù‡
-              followersCount: state!.followersCount, // ØªØ¹Ø¯Ø§Ø¯ ØªØºÛŒÛŒØ± Ù†Ù…ÛŒâ€ŒÚ©Ù†Ø¯
+              followersCount: state!
+                  .followersCount, // ØªØ¹Ø¯Ø§Ø¯ ØªØºÛŒÛŒØ± Ù†Ù…ÛŒâ€ŒÚ©Ù†Ø¯
             );
 
-            print('ðŸ”„ State Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø´Ø¯: isFollowed=${state!.isFollowed}');
+            print(
+                'ðŸ”„ State Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø´Ø¯: isFollowed=${state!.isFollowed}');
           } else if (existingRequest['status'] == 'pending') {
             // Ø§Ú¯Ø± Ø¯Ø±Ø®ÙˆØ§Ø³Øª pending ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø±Ø¯ØŒ Ø¢Ù† Ø±Ø§ Ù„ØºÙˆ Ú©Ù†
-            print('ðŸ”„ Ù„ØºÙˆ Ø¯Ø±Ø®ÙˆØ§Ø³Øª pending Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±: $userId');
+            print(
+                'ðŸ”„ Ù„ØºÙˆ Ø¯Ø±Ø®ÙˆØ§Ø³Øª pending Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±: $userId');
 
             await supabase
                 .from('follow_requests')
@@ -1767,16 +1787,19 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
               'is_read': false,
             });
 
-            print('âœ… Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø±Ø¯ Ø´Ø¯Ù‡ Ø¨Ù‡ pending ØªØºÛŒÛŒØ± Ú©Ø±Ø¯');
+            print(
+                'âœ… Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø±Ø¯ Ø´Ø¯Ù‡ Ø¨Ù‡ pending ØªØºÛŒÛŒØ± Ú©Ø±Ø¯');
 
             // Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ state Ø¨Ø±Ø§ÛŒ Ù†Ø´Ø§Ù† Ø¯Ø§Ø¯Ù† ÙˆØ¶Ø¹ÛŒØª pending
             state = state!.copyWith(
               isFollowed: false, // Ù‡Ù†ÙˆØ² Ø¯Ù†Ø¨Ø§Ù„ Ù†Ø´Ø¯Ù‡
-              followersCount: state!.followersCount, // ØªØ¹Ø¯Ø§Ø¯ ØªØºÛŒÛŒØ± Ù†Ù…ÛŒâ€ŒÚ©Ù†Ø¯
+              followersCount: state!
+                  .followersCount, // ØªØ¹Ø¯Ø§Ø¯ ØªØºÛŒÛŒØ± Ù†Ù…ÛŒâ€ŒÚ©Ù†Ø¯
             );
           } else if (existingRequest['status'] == 'pending') {
             // Ø§Ú¯Ø± Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù‚Ø¨Ù„ÛŒ pending Ø§Ø³ØªØŒ Ø¢Ù† Ø±Ø§ Ù„ØºÙˆ Ú©Ù†
-            print('ðŸ”„ Ù„ØºÙˆ Ø¯Ø±Ø®ÙˆØ§Ø³Øª pending Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±: $userId');
+            print(
+                'ðŸ”„ Ù„ØºÙˆ Ø¯Ø±Ø®ÙˆØ§Ø³Øª pending Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±: $userId');
 
             await supabase
                 .from('follow_requests')
@@ -1811,7 +1834,8 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
                 .maybeSingle();
 
             if (existingFollow != null) {
-              print('âœ… Ø±Ø§Ø¨Ø·Ù‡ ÙØ§Ù„Ùˆ ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø±Ø¯ - Ú©Ø§Ø±Ø¨Ø± Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ø¯ Ù…Ø­ØªÙˆØ§ Ø±Ø§ Ø¨Ø¨ÛŒÙ†Ø¯');
+              print(
+                  'âœ… Ø±Ø§Ø¨Ø·Ù‡ ÙØ§Ù„Ùˆ ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø±Ø¯ - Ú©Ø§Ø±Ø¨Ø± Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ø¯ Ù…Ø­ØªÙˆØ§ Ø±Ø§ Ø¨Ø¨ÛŒÙ†Ø¯');
               state = state!.copyWith(
                 isFollowed: true,
                 followersCount: state!.followersCount,
@@ -1826,12 +1850,15 @@ class ProfileNotifier extends StateNotifier<ProfileModel?> {
               );
             }
           } else {
-            print('âš ï¸ ÙˆØ¶Ø¹ÛŒØª Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù†Ø§Ø´Ù†Ø§Ø®ØªÙ‡: ${existingRequest['status']}');
+            print(
+                'âš ï¸ ÙˆØ¶Ø¹ÛŒØª Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù†Ø§Ø´Ù†Ø§Ø®ØªÙ‡: ${existingRequest['status']}');
           }
         } else {
           // Ø¨Ø±Ø§ÛŒ Ù¾ÛŒØ¬â€ŒÙ‡Ø§ÛŒ Ø¹Ù…ÙˆÙ…ÛŒ: Ù…Ø³ØªÙ‚ÛŒÙ…Ø§Ù‹ ÙØ§Ù„Ùˆ Ú©Ù†
-          print('ðŸ†• ÙØ§Ù„Ùˆ Ù…Ø³ØªÙ‚ÛŒÙ… Ø¨Ø±Ø§ÛŒ Ù¾ÛŒØ¬ Ø¹Ù…ÙˆÙ…ÛŒ: $userId');
-          print('âŒ Ø®Ø·Ø§: Ù¾ÛŒØ¬ Ø¹Ù…ÙˆÙ…ÛŒ Ù†Ø¨Ø§ÛŒØ¯ Ø¨Ù‡ Ø§ÛŒÙ† Ù‚Ø³Ù…Øª Ø¨Ø±Ø³Ø¯!');
+          print(
+              'ðŸ†• ÙØ§Ù„Ùˆ Ù…Ø³ØªÙ‚ÛŒÙ… Ø¨Ø±Ø§ÛŒ Ù¾ÛŒØ¬ Ø¹Ù…ÙˆÙ…ÛŒ: $userId');
+          print(
+              'âŒ Ø®Ø·Ø§: Ù¾ÛŒØ¬ Ø¹Ù…ÙˆÙ…ÛŒ Ù†Ø¨Ø§ÛŒØ¯ Ø¨Ù‡ Ø§ÛŒÙ† Ù‚Ø³Ù…Øª Ø¨Ø±Ø³Ø¯!');
           await supabase.from('follows').insert({
             'follower_id': currentUserId,
             'following_id': userId,
@@ -1909,7 +1936,8 @@ final followRequestPendingProvider =
     print('ðŸ” isPending: $isPending');
     return isPending;
   } catch (e) {
-    print('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø±Ø±Ø³ÛŒ ÙˆØ¶Ø¹ÛŒØª Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø¯Ù†Ø¨Ø§Ù„ Ú©Ø±Ø¯Ù†: $e');
+    print(
+        'Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø±Ø±Ø³ÛŒ ÙˆØ¶Ø¹ÛŒØª Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø¯Ù†Ø¨Ø§Ù„ Ú©Ø±Ø¯Ù†: $e');
     return false;
   }
 });
@@ -2223,8 +2251,8 @@ class FollowingPostsNotifier
           'avatar_url': profile['avatar_url'] ?? '',
           'is_verified': profile['is_verified'] ?? false,
           'comment_count': comments.length,
-          'verification_type':
-              profile['verification_type'], // Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† verification_type
+          'verification_type': profile[
+              'verification_type'], // Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† verification_type
         });
       }).toList();
 
@@ -2239,7 +2267,8 @@ class FollowingPostsNotifier
         errorMessage =
             'Ø²Ù…Ø§Ù† Ù¾Ø§Ø³Ø®Ú¯ÙˆÛŒÛŒ Ø³Ø±ÙˆØ± Ø¨Ù‡ Ù¾Ø§ÛŒØ§Ù† Ø±Ø³ÛŒØ¯. Ù„Ø·ÙØ§ Ø¯ÙˆØ¨Ø§Ø±Ù‡ ØªÙ„Ø§Ø´ Ú©Ù†ÛŒØ¯';
       } else if (e is AuthException) {
-        errorMessage = 'Ù„Ø·ÙØ§ Ø¯ÙˆØ¨Ø§Ø±Ù‡ ÙˆØ§Ø±Ø¯ Ø­Ø³Ø§Ø¨ Ú©Ø§Ø±Ø¨Ø±ÛŒ Ø®ÙˆØ¯ Ø´ÙˆÛŒØ¯';
+        errorMessage =
+            'Ù„Ø·ÙØ§ Ø¯ÙˆØ¨Ø§Ø±Ù‡ ÙˆØ§Ø±Ø¯ Ø­Ø³Ø§Ø¨ Ú©Ø§Ø±Ø¨Ø±ÛŒ Ø®ÙˆØ¯ Ø´ÙˆÛŒØ¯';
       }
 
       state = AsyncValue.error(errorMessage, stackTrace);
@@ -2362,7 +2391,9 @@ class SearchService {
       if (tag.isEmpty) return [];
 
       // Primary: search by `tags` array (correct + fast with GIN).
-      final response1 = await _supabase.from('posts').select('''
+      final response1 = await _supabase
+          .from('posts')
+          .select('''
             *,
             profiles (
               id,
@@ -2372,10 +2403,14 @@ class SearchService {
               is_verified,
               verification_type
             )
-          ''').eq('status', 'published').contains('tags', [tag]).order(
+          ''')
+          .eq('status', 'published')
+          .contains('tags', [tag])
+          .order(
             'created_at',
             ascending: false,
-          ).limit(60);
+          )
+          .limit(60);
 
       final rows = <Map<String, dynamic>>[];
       rows.addAll(List<Map<String, dynamic>>.from(response1 as List<dynamic>));
@@ -2396,14 +2431,12 @@ class SearchService {
               )
             ''')
             .eq('status', 'published')
-            .ilike('content', '%#${tag}%')
+            .ilike('content', '%#$tag%')
             .order('created_at', ascending: false)
             .limit(60);
 
-        final seenIds = rows
-            .map((r) => r['id']?.toString())
-            .whereType<String>()
-            .toSet();
+        final seenIds =
+            rows.map((r) => r['id']?.toString()).whereType<String>().toSet();
         for (final r in List<Map<String, dynamic>>.from(response2 as List)) {
           final id = r['id']?.toString();
           if (id == null || seenIds.contains(id)) continue;
@@ -2610,7 +2643,8 @@ final hasNewNotificationProvider = FutureProvider<bool>((ref) async {
       .eq('recipient_id', userId)
       .eq('is_read', false);
 
-  print('Has new notification: ${response.isNotEmpty}'); // Ø§ÛŒÙ†Ø¬Ø§ Ú†Ø§Ù¾ Ù…ÛŒâ€ŒØ´ÙˆØ¯
+  print(
+      'Has new notification: ${response.isNotEmpty}'); // Ø§ÛŒÙ†Ø¬Ø§ Ú†Ø§Ù¾ Ù…ÛŒâ€ŒØ´ÙˆØ¯
   return response.isNotEmpty;
 });
 
@@ -2637,12 +2671,14 @@ final userSettingsByIdProvider =
     // Ø§Ø¨ØªØ¯Ø§ Ø¨Ø±Ø±Ø³ÛŒ Ú©Ø´ - Ø§Ú¯Ø± Ù…ÙˆØ¬ÙˆØ¯ Ø¨ÙˆØ¯ Ùˆ Ù…Ø¹ØªØ¨Ø± Ø¨ÙˆØ¯ØŒ Ø§Ø² Ø¢Ù† Ø§Ø³ØªÙØ§Ø¯Ù‡ Ú©Ù†
     final cachedSettings = settingsCache.getCachedUserSettings(userId);
     if (cachedSettings != null) {
-      print('ðŸ”§ Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø§Ø² ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ú©Ø´ Ø´Ø¯Ù‡ Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±: $userId');
+      print(
+          'ðŸ”§ Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø§Ø² ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ú©Ø´ Ø´Ø¯Ù‡ Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±: $userId');
       return cachedSettings;
     }
 
     // Ø§Ú¯Ø± Ø¯Ø± Ú©Ø´ Ù†Ø¨ÙˆØ¯ØŒ Ø§Ø² Ø³Ø±ÙˆØ± Ø¯Ø±ÛŒØ§ÙØª Ú©Ù† Ùˆ Ú©Ø´ Ú©Ù†
-    print('ðŸ”§ Ø¯Ø±ÛŒØ§ÙØª ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø§Ø² Ø³Ø±ÙˆØ± Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±: $userId');
+    print(
+        'ðŸ”§ Ø¯Ø±ÛŒØ§ÙØª ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø§Ø² Ø³Ø±ÙˆØ± Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±: $userId');
     await settingsCache.cacheUserSettings(userId);
 
     // Ø¯ÙˆØ¨Ø§Ø±Ù‡ Ø§Ø² Ú©Ø´ Ø¨Ø®ÙˆØ§Ù†
@@ -2827,8 +2863,8 @@ class LikeStateNotifier extends StateNotifier<Map<String, bool>> {
 // Provider to get the current user's UserModel based on profileProvider
 final userProvider = Provider<UserModel?>((ref) {
   // Ø¨Ù‡ profileProvider Ú¯ÙˆØ´ Ù…ÛŒâ€ŒØ¯Ù‡ÛŒÙ… ØªØ§ Ø¯Ø§Ø¯Ù‡â€ŒÙ‡Ø§ÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø±Ø§ Ø¯Ø±ÛŒØ§ÙØª Ú©Ù†ÛŒÙ…
-  final profileDataAsync = ref
-      .watch(profileProvider); // Ø§ÛŒÙ† ÛŒÚ© AsyncValue<Map<String, dynamic>?> Ø§Ø³Øª
+  final profileDataAsync = ref.watch(
+      profileProvider); // Ø§ÛŒÙ† ÛŒÚ© AsyncValue<Map<String, dynamic>?> Ø§Ø³Øª
 
   // Ø¨Ø§ Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø§Ø² .when ÙˆØ¶Ø¹ÛŒØªâ€ŒÙ‡Ø§ÛŒ Ù…Ø®ØªÙ„Ù profileDataAsync (Ø¯Ø§Ø¯Ù‡ØŒ Ù„ÙˆØ¯ÛŒÙ†Ú¯ØŒ Ø®Ø·Ø§) Ø±Ø§ Ù…Ø¯ÛŒØ±ÛŒØª Ù…ÛŒâ€ŒÚ©Ù†ÛŒÙ…
   return profileDataAsync.when(
@@ -2840,7 +2876,8 @@ final userProvider = Provider<UserModel?>((ref) {
           return UserModel.fromMap(dataMap);
         } catch (e, stackTrace) {
           // Ø§Ú¯Ø± Ø¯Ø± ØªØ¨Ø¯ÛŒÙ„ map Ø¨Ù‡ UserModel Ø®Ø·Ø§ÛŒÛŒ Ø±Ø® Ø¯Ù‡Ø¯ (Ù…Ø«Ù„Ø§Ù‹ ÙÛŒÙ„Ø¯Ù‡Ø§ÛŒ Ù…ÙˆØ±Ø¯ Ù†ÛŒØ§Ø² ÙˆØ¬ÙˆØ¯ Ù†Ø¯Ø§Ø´ØªÙ‡ Ø¨Ø§Ø´Ù†Ø¯)
-          debugPrint('Ø®Ø·Ø§ Ø¯Ø± ØªØ¨Ø¯ÛŒÙ„ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø¨Ù‡ UserModel: $e');
+          debugPrint(
+              'Ø®Ø·Ø§ Ø¯Ø± ØªØ¨Ø¯ÛŒÙ„ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø¨Ù‡ UserModel: $e');
           debugPrint('StackTrace: $stackTrace');
           debugPrint('Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø¯Ø±ÛŒØ§ÙØªÛŒ: $dataMap');
           return null; // Ø¯Ø± ØµÙˆØ±Øª Ø®Ø·Ø§ØŒ null Ø¨Ø±Ù…ÛŒâ€ŒÚ¯Ø±Ø¯Ø§Ù†ÛŒÙ…
@@ -2903,7 +2940,8 @@ class MessageFontSizeNotifier extends StateNotifier<double> {
       _isar = await IsarDatabaseManager().instance;
       _loadFontSize();
     } catch (e) {
-      debugPrint('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø² Ú©Ø±Ø¯Ù† Ø¯ÛŒØªØ§Ø¨ÛŒØ³ ØªÙ†Ø¸ÛŒÙ…Ø§Øª: $e');
+      debugPrint(
+          'Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø² Ú©Ø±Ø¯Ù† Ø¯ÛŒØªØ§Ø¨ÛŒØ³ ØªÙ†Ø¸ÛŒÙ…Ø§Øª: $e');
     }
   }
 
@@ -3003,7 +3041,8 @@ class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
       _isar = await IsarDatabaseManager().instance;
       _loadSettings();
     } catch (e) {
-      debugPrint('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø² Ú©Ø±Ø¯Ù† Ø¯ÛŒØªØ§Ø¨ÛŒØ³ ØªÙ†Ø¸ÛŒÙ…Ø§Øª: $e');
+      debugPrint(
+          'Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø² Ú©Ø±Ø¯Ù† Ø¯ÛŒØªØ§Ø¨ÛŒØ³ ØªÙ†Ø¸ÛŒÙ…Ø§Øª: $e');
     }
   }
 
@@ -3018,7 +3057,8 @@ class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
         );
       }
     } catch (e) {
-      debugPrint('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ø§Ù†Ù„ÙˆØ¯ Ø®ÙˆØ¯Ú©Ø§Ø±: $e');
+      debugPrint(
+          'Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ø§Ù†Ù„ÙˆØ¯ Ø®ÙˆØ¯Ú©Ø§Ø±: $e');
     }
   }
 
@@ -3051,7 +3091,8 @@ class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
       print(
           'âœ… Auto download settings applied: Photos=${state.photos}, Voices=${state.voices}');
     } catch (e) {
-      debugPrint('Ø®Ø·Ø§ Ø¯Ø± Ø§Ø¹Ù…Ø§Ù„ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ø§Ù†Ù„ÙˆØ¯ Ø®ÙˆØ¯Ú©Ø§Ø±: $e');
+      debugPrint(
+          'Ø®Ø·Ø§ Ø¯Ø± Ø§Ø¹Ù…Ø§Ù„ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ø§Ù†Ù„ÙˆØ¯ Ø®ÙˆØ¯Ú©Ø§Ø±: $e');
     }
   }
 
@@ -3096,7 +3137,8 @@ class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
         await _isar!.appSettingsEntitys.put(settings);
       });
     } catch (e) {
-      debugPrint('Ø®Ø·Ø§ Ø¯Ø± Ø°Ø®ÛŒØ±Ù‡ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ø§Ù†Ù„ÙˆØ¯ Ø®ÙˆØ¯Ú©Ø§Ø±: $e');
+      debugPrint(
+          'Ø®Ø·Ø§ Ø¯Ø± Ø°Ø®ÛŒØ±Ù‡ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ø§Ù†Ù„ÙˆØ¯ Ø®ÙˆØ¯Ú©Ø§Ø±: $e');
     }
   }
 
@@ -3172,7 +3214,8 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
       _isar = await IsarDatabaseManager().instance;
       _loadSettings();
     } catch (e) {
-      debugPrint('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø² Ú©Ø±Ø¯Ù† Ø¯ÛŒØªØ§Ø¨ÛŒØ³ ØªÙ†Ø¸ÛŒÙ…Ø§Øª: $e');
+      debugPrint(
+          'Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø² Ú©Ø±Ø¯Ù† Ø¯ÛŒØªØ§Ø¨ÛŒØ³ ØªÙ†Ø¸ÛŒÙ…Ø§Øª: $e');
     }
   }
 
@@ -3188,7 +3231,8 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
         );
       }
     } catch (e) {
-      debugPrint('Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¹Ù…Ù„Ú©Ø±Ø¯: $e');
+      debugPrint(
+          'Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¹Ù…Ù„Ú©Ø±Ø¯: $e');
     }
   }
 
@@ -3300,7 +3344,8 @@ class ProfilePostsNotifier
     extends StateNotifier<AsyncValue<List<PublicPostModel>>> {
   final SupabaseClient supabase;
   final String userId;
-  final int _limit = 30; // Ù†Ù…Ø§ÛŒØ´ Ø§ÙˆÙ„ÛŒÙ‡ Ø¨ÛŒØ´ØªØ± Ø¨Ø±Ø§ÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„â€ŒÙ‡Ø§
+  final int _limit =
+      30; // Ù†Ù…Ø§ÛŒØ´ Ø§ÙˆÙ„ÛŒÙ‡ Ø¨ÛŒØ´ØªØ± Ø¨Ø±Ø§ÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„â€ŒÙ‡Ø§
   int _offset = 0;
   bool _hasMore = true;
   bool _isLoading = false;
@@ -3364,9 +3409,7 @@ class ProfilePostsNotifier
           ...post,
           'like_count': postLikes.length,
           'is_liked': postLikes.any((like) => like['user_id'] == currentUserId),
-          'username': profile['username'] ??
-              profile['full_name'] ??
-              'Unknown',
+          'username': profile['username'] ?? profile['full_name'] ?? 'Unknown',
           'avatar_url': profile['avatar_url'] ?? '',
           'is_verified': profile['is_verified'] ?? false,
           'comment_count': comments.length,
@@ -3375,7 +3418,8 @@ class ProfilePostsNotifier
       }).toList();
 
       _allPosts.addAll(newPosts);
-      _offset += postsResponse.length; // Ù…Ø·Ø§Ø¨Ù‚ ØªØ¹Ø¯Ø§Ø¯ ÙˆØ§Ù‚Ø¹ÛŒ Ø¯Ø±ÛŒØ§ÙØªÛŒ
+      _offset += postsResponse
+          .length; // Ù…Ø·Ø§Ø¨Ù‚ ØªØ¹Ø¯Ø§Ø¯ ÙˆØ§Ù‚Ø¹ÛŒ Ø¯Ø±ÛŒØ§ÙØªÛŒ
       _hasMore = postsResponse.length == _limit;
 
       state = AsyncValue.data(_allPosts);
