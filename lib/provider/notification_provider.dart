@@ -4,11 +4,12 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import '../../../model/notificationModel.dart';
+import '../model/notificationModel.dart';
 import '../utils/const.dart';
+import '../services/local_notification_center.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-    FlutterLocalNotificationsPlugin();
+    LocalNotificationCenter.plugin;
 
 final userIdProvider = Provider<String?>((ref) {
   return supabase.auth.currentUser?.id;
@@ -16,7 +17,47 @@ final userIdProvider = Provider<String?>((ref) {
 
 const int _kPageSize = 20;
 
+enum FollowRequestActionState { success, alreadyHandled, failed }
+
+class FollowRequestActionResult {
+  const FollowRequestActionResult(this.state, this.message);
+
+  final FollowRequestActionState state;
+  final String message;
+
+  bool get isSuccess => state == FollowRequestActionState.success;
+}
+
+bool notificationTypeMatchesFilter(
+    String notificationType, String? filterType) {
+  if (filterType == null || filterType == 'all') return true;
+
+  final canonicalType = NotificationModel.canonicalType(notificationType);
+  final canonicalFilter = NotificationModel.canonicalType(filterType);
+
+  switch (canonicalFilter) {
+    case 'follow':
+      return canonicalType == 'follow' ||
+          canonicalType == 'follow_request' ||
+          canonicalType == 'follow_request_accepted';
+    case 'comment':
+      return canonicalType == 'comment';
+    case 'comment_reply':
+      return canonicalType == 'comment_reply';
+    case 'follow_request':
+      return canonicalType == 'follow_request';
+    case 'daily_suggestion_digest':
+      return canonicalType == 'daily_suggestion_digest' ||
+          canonicalType == 'suggest_follow' ||
+          canonicalType == 'suggest_post';
+    default:
+      return canonicalType == canonicalFilter;
+  }
+}
+
 class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
+  static const bool _showRealtimeLocalNotifications = false;
+
   NotificationsNotifier(this._ref) : super([]) {
     _userId = _ref.read(userIdProvider);
     if (_userId != null) {
@@ -186,7 +227,9 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
               // بررسی تکراری نبودن اعلان
               if (!state.any((n) => n.id == notif.id)) {
                 state = [notif, ...state];
-                await _showLocalNotification(notif);
+                if (_showRealtimeLocalNotifications) {
+                  await _showLocalNotification(notif);
+                }
                 logInfo('✅ اعلان جدید به لیست اضافه شد: ${notif.type}');
               } else {
                 logInfo('⚠️ اعلان تکراری نادیده گرفته شد: ${notif.id}');
@@ -202,7 +245,9 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
                 final notif = NotificationModel.fromMap(payload.newRecord);
                 if (!state.any((n) => n.id == notif.id)) {
                   state = [notif, ...state];
-                  await _showLocalNotification(notif);
+                  if (_showRealtimeLocalNotifications) {
+                    await _showLocalNotification(notif);
+                  }
                 }
               } catch (fallbackError) {
                 logInfo('❌ خطا در fallback اعلان: $fallbackError');
@@ -255,19 +300,18 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
   Future<void> _showLocalNotification(NotificationModel notif) async {
     String? title, body;
     final senderUsername = notif.username.isNotEmpty ? notif.username : 'کاربر';
+    final notificationType = NotificationModel.canonicalType(notif.type);
 
-    switch (notif.type) {
+    switch (notificationType) {
       case 'like':
-      case 'post_like':
         title = 'لایک جدید';
         body = '$senderUsername پست شما را لایک کرد';
         break;
       case 'comment':
-      case 'post_comment':
         title = 'نظر جدید';
         body = '$senderUsername: ${_filterLinksFromText(notif.content)}';
         break;
-      case 'reply_comment':
+      case 'comment_reply':
         title = 'پاسخ به نظر شما';
         body = '$senderUsername: ${_filterLinksFromText(notif.content)}';
         break;
@@ -297,6 +341,24 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
         title = 'منشن جدید';
         body = '$senderUsername شما را منشن کرد';
         break;
+      case 'suggest_follow':
+        title = 'پیشنهاد دنبال‌کردن';
+        body = notif.content.isNotEmpty
+            ? notif.content
+            : 'چند کاربر جدید برای دنبال‌کردن پیشنهاد شد';
+        break;
+      case 'suggest_post':
+        title = 'پیشنهاد پست';
+        body = notif.content.isNotEmpty
+            ? notif.content
+            : 'یک پست جدید پیشنهادی برای شما آماده است';
+        break;
+      case 'daily_suggestion_digest':
+        title = 'پیشنهادهای امروز';
+        body = notif.content.isNotEmpty
+            ? notif.content
+            : 'پیشنهادهای روزانه شما آماده است';
+        break;
       default:
         title = 'اعلان';
         body = notif.content;
@@ -324,8 +386,8 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
       body,
       NotificationDetails(
         android: AndroidNotificationDetails(
-          'social_notifications',
-          'اعلان‌های شبکه اجتماعی',
+          'social_notify',
+          'فعالیت‌های اجتماعی',
           channelDescription: 'اعلان رویدادهای اجتماعی',
           importance: Importance.high,
           priority: Priority.high,
@@ -445,7 +507,9 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
     if (_isDisposed) return; // ✅ چک کردن dispose
     try {
       final notif = state.firstWhere(
-        (n) => n.id == notificationId && n.type == 'follow_request',
+        (n) =>
+            n.id == notificationId &&
+            NotificationModel.canonicalType(n.type) == 'follow_request',
         orElse: () => NotificationModel.empty(),
       );
       if (notif.id.isEmpty) return;
@@ -455,6 +519,218 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
       }
     } catch (e) {
       logInfo('خطا در حذف اعلان درخواست دنبال کردن: $e');
+    }
+  }
+
+  Future<void> _cleanupFollowRequestNotifications({
+    required String requesterId,
+    required String recipientId,
+    String? notificationId,
+  }) async {
+    if (_isDisposed) return;
+
+    final idsToDelete = <String>{};
+    if (notificationId != null && notificationId.isNotEmpty) {
+      idsToDelete.add(notificationId);
+    }
+
+    try {
+      final response = await supabase
+          .from('notifications')
+          .select('id')
+          .eq('recipient_id', recipientId)
+          .eq('sender_id', requesterId)
+          .eq('type', 'follow_request');
+
+      for (final row in (response as List<dynamic>)) {
+        final id = row['id']?.toString();
+        if (id != null && id.isNotEmpty) {
+          idsToDelete.add(id);
+        }
+      }
+
+      if (idsToDelete.isNotEmpty) {
+        await supabase
+            .from('notifications')
+            .delete()
+            .inFilter('id', idsToDelete.toList(growable: false));
+      }
+    } catch (e) {
+      logInfo('خطا در پاکسازی اعلان‌های follow request: $e');
+      if (notificationId != null && notificationId.isNotEmpty) {
+        try {
+          await supabase
+              .from('notifications')
+              .delete()
+              .eq('id', notificationId);
+          idsToDelete.add(notificationId);
+        } catch (_) {}
+      }
+    }
+
+    if (!_isDisposed) {
+      state = state.where((n) {
+        if (idsToDelete.contains(n.id)) return false;
+
+        final isMatchingPair =
+            NotificationModel.canonicalType(n.type) == 'follow_request' &&
+                n.senderId == requesterId &&
+                n.recipientId == recipientId;
+        return !isMatchingPair;
+      }).toList(growable: false);
+    }
+  }
+
+  Future<FollowRequestActionResult> respondToFollowRequest({
+    required String requesterId,
+    required bool accept,
+    String? notificationId,
+  }) async {
+    if (_isDisposed) {
+      return const FollowRequestActionResult(
+        FollowRequestActionState.failed,
+        'سیستم اعلان در دسترس نیست',
+      );
+    }
+
+    final userId = _userId ?? supabase.auth.currentUser?.id;
+    if (userId == null) {
+      return const FollowRequestActionResult(
+        FollowRequestActionState.failed,
+        'ابتدا وارد حساب کاربری شوید',
+      );
+    }
+    if (requesterId.isEmpty) {
+      return const FollowRequestActionResult(
+        FollowRequestActionState.failed,
+        'شناسه درخواست نامعتبر است',
+      );
+    }
+    if (requesterId == userId) {
+      return const FollowRequestActionResult(
+        FollowRequestActionState.failed,
+        'شما نمی‌توانید درخواست خودتان را مدیریت کنید',
+      );
+    }
+
+    try {
+      final request = await supabase
+          .from('follow_requests')
+          .select('id, status')
+          .eq('requester_id', requesterId)
+          .eq('recipient_id', userId)
+          .maybeSingle();
+
+      if (request == null) {
+        await _cleanupFollowRequestNotifications(
+          requesterId: requesterId,
+          recipientId: userId,
+          notificationId: notificationId,
+        );
+        return const FollowRequestActionResult(
+          FollowRequestActionState.alreadyHandled,
+          'این درخواست قبلا مدیریت شده است',
+        );
+      }
+
+      final requestId = request['id']?.toString();
+      if (requestId == null || requestId.isEmpty) {
+        return const FollowRequestActionResult(
+          FollowRequestActionState.failed,
+          'شناسه درخواست معتبر نیست',
+        );
+      }
+
+      final status = (request['status'] as String? ?? '').toLowerCase().trim();
+      if (status != 'pending') {
+        await _cleanupFollowRequestNotifications(
+          requesterId: requesterId,
+          recipientId: userId,
+          notificationId: notificationId,
+        );
+        return FollowRequestActionResult(
+          FollowRequestActionState.alreadyHandled,
+          'این درخواست در وضعیت "$status" قرار دارد',
+        );
+      }
+
+      if (accept) {
+        await supabase.from('follows').upsert(
+          {
+            'follower_id': requesterId,
+            'following_id': userId,
+            'created_at': DateTime.now().toIso8601String(),
+          },
+          onConflict: 'follower_id,following_id',
+        );
+
+        final updated = await supabase
+            .from('follow_requests')
+            .update({'status': 'accepted'})
+            .eq('id', requestId)
+            .eq('status', 'pending')
+            .select('id')
+            .maybeSingle();
+
+        if (updated == null) {
+          await _cleanupFollowRequestNotifications(
+            requesterId: requesterId,
+            recipientId: userId,
+            notificationId: notificationId,
+          );
+          return const FollowRequestActionResult(
+            FollowRequestActionState.alreadyHandled,
+            'این درخواست قبلا مدیریت شده است',
+          );
+        }
+
+        try {
+          await supabase.from('notifications').insert({
+            'recipient_id': requesterId,
+            'sender_id': userId,
+            'type': 'follow_request_accepted',
+            'content': 'درخواست دنبال کردن شما پذیرفته شد',
+            'created_at': DateTime.now().toIso8601String(),
+            'is_read': false,
+          });
+        } catch (_) {}
+      } else {
+        final updated = await supabase
+            .from('follow_requests')
+            .update({'status': 'rejected'})
+            .eq('id', requestId)
+            .eq('status', 'pending')
+            .select('id')
+            .maybeSingle();
+
+        if (updated == null) {
+          await _cleanupFollowRequestNotifications(
+            requesterId: requesterId,
+            recipientId: userId,
+            notificationId: notificationId,
+          );
+          return const FollowRequestActionResult(
+            FollowRequestActionState.alreadyHandled,
+            'این درخواست قبلا مدیریت شده است',
+          );
+        }
+      }
+
+      await _cleanupFollowRequestNotifications(
+        requesterId: requesterId,
+        recipientId: userId,
+        notificationId: notificationId,
+      );
+
+      return FollowRequestActionResult(
+        FollowRequestActionState.success,
+        accept ? 'درخواست با موفقیت پذیرفته شد' : 'درخواست رد شد',
+      );
+    } catch (e) {
+      return FollowRequestActionResult(
+        FollowRequestActionState.failed,
+        'خطا در پردازش درخواست: $e',
+      );
     }
   }
 
@@ -533,7 +809,10 @@ final notificationCountByTypeProvider =
   final notifications = ref.watch(notificationsProvider);
   if (type == null || type == 'all') return notifications.length;
   return notifications
-      .where((notification) => notification.type == type)
+      .where((notification) => notificationTypeMatchesFilter(
+            notification.type,
+            type,
+          ))
       .length;
 });
 
@@ -543,6 +822,20 @@ final filteredNotificationsProvider =
   final notifications = ref.watch(notificationsProvider);
   if (type == null || type == 'all') return notifications;
   return notifications
-      .where((notification) => notification.type == type)
+      .where((notification) => notificationTypeMatchesFilter(
+            notification.type,
+            type,
+          ))
       .toList();
+});
+
+final unreadNotificationCountByFilterProvider =
+    Provider.family<int, String?>((ref, type) {
+  final notifications = ref.watch(notificationsProvider);
+  if (type == null || type == 'all') {
+    return notifications.where((n) => !n.isRead).length;
+  }
+  return notifications
+      .where((n) => !n.isRead && notificationTypeMatchesFilter(n.type, type))
+      .length;
 });

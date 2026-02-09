@@ -16,6 +16,8 @@ import 'package:device_info_plus/device_info_plus.dart';
 import '../provider/notification_provider.dart';
 import '../utils/const.dart';
 import 'notification_navigation_service.dart';
+import 'current_chat_tracker.dart';
+import 'local_notification_center.dart';
 import '../features/chat/data/datasources/chat_local_datasource_isar.dart';
 import '../model/message_model.dart';
 
@@ -38,8 +40,12 @@ class PushNotificationService {
   final Ref? ref;
   PushNotificationService(this.ref);
 
+  static FlutterLocalNotificationsPlugin get notificationsPlugin =>
+      LocalNotificationCenter.plugin;
+
   final _firebaseMessaging = FirebaseMessaging.instance;
-  final _flutterLocalNotifications = FlutterLocalNotificationsPlugin();
+  final _flutterLocalNotifications = LocalNotificationCenter.plugin;
+  final Map<String, DateTime> _recentForegroundEvents = {};
 
   // ✅ Getter امن برای Supabase (ممکن است در بک‌گراند initialize نشده باشد)
   SupabaseClient? get _supabase {
@@ -56,6 +62,40 @@ class PushNotificationService {
   StreamSubscription<AuthState>? _authStateSubscription;
 
   bool _isInitialized = false; // جلوگیری از initialize چندگانه
+
+  bool _isRecentDuplicate(RemoteMessage message) {
+    final data = message.data;
+    final eventId =
+        data['event_id']?.toString() ?? data['notification_id']?.toString();
+    final fallback = data['message_id']?.toString() ?? message.messageId;
+    final key = eventId ?? fallback;
+    if (key == null || key.isEmpty) return false;
+
+    final now = DateTime.now();
+    _recentForegroundEvents.removeWhere(
+      (_, timestamp) => now.difference(timestamp) > const Duration(minutes: 2),
+    );
+    final existing = _recentForegroundEvents[key];
+    if (existing != null &&
+        now.difference(existing) < const Duration(seconds: 10)) {
+      return true;
+    }
+    _recentForegroundEvents[key] = now;
+    return false;
+  }
+
+  bool _isChatForActiveConversation(Map<String, dynamic> data) {
+    final type = data['type']?.toString();
+    if (type != 'chat_message' && type != 'message') return false;
+    final conversationId = data['conversation_id']?.toString();
+    if (conversationId == null || conversationId.isEmpty) return false;
+    return CurrentChatTracker.instance.isConversationActive(conversationId);
+  }
+
+  Future<void> cancelConversationNotification(String conversationId) async {
+    if (conversationId.isEmpty) return;
+    await _flutterLocalNotifications.cancel(conversationId.hashCode);
+  }
 
   /// ✅ تابع Initialize که هم در Foreground و هم Background استفاده می‌شود
   Future<void> _ensureInitialized() async {
@@ -78,6 +118,10 @@ class PushNotificationService {
 
     _isInitialized = true;
     logInfo('✅ Notification plugin initialized');
+  }
+
+  Future<void> ensureLocalNotificationsInitialized() async {
+    await _ensureInitialized();
   }
 
   /// هندلر مرکزی کلیک روی اعلان (برای Foreground)
@@ -104,6 +148,9 @@ class PushNotificationService {
         }
         // ۳. کلیک عادی (باز کردن چت)
         else {
+          if (conversationId != null) {
+            cancelConversationNotification(conversationId.toString());
+          }
           final navContext = navigatorKey.currentContext;
           if (navContext != null) {
             NotificationNavigationService.handleFCMPayload(
@@ -149,7 +196,7 @@ class PushNotificationService {
       );
 
       // کانال چت (حیاتی برای نمایش درست در اندروید 8+)
-      const androidChannel = AndroidNotificationChannel(
+      const chatChannel = AndroidNotificationChannel(
         'chat_messages',
         'پیام‌های چت',
         description: 'اعلان برای پیام‌های دریافتی',
@@ -159,10 +206,25 @@ class PushNotificationService {
         showBadge: true,
       );
 
+      const socialChannel = AndroidNotificationChannel(
+        'social_notify',
+        'فعالیت‌های اجتماعی',
+        description: 'اعلان‌های اجتماعی (لایک، کامنت، فالو و ...)',
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+        showBadge: true,
+      );
+
       await _flutterLocalNotifications
           .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(androidChannel);
+          ?.createNotificationChannel(chatChannel);
+
+      await _flutterLocalNotifications
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(socialChannel);
 
       // ✅ Initialize کردن پلاگین (یکپارچه برای foreground و background)
       await _ensureInitialized();
@@ -175,12 +237,20 @@ class PushNotificationService {
 
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         logInfo('📱 Foreground Message: ${message.data}');
+        if (_isRecentDuplicate(message)) {
+          logInfo('⚠️ Duplicate FCM ignored in foreground');
+          return;
+        }
         _notifications.add(message);
 
-        if (message.notification == null && message.data.isNotEmpty) {
-          _showNotification(message);
-        } else if (message.notification != null) {
-          _showNotification(message);
+        if (_isChatForActiveConversation(message.data)) {
+          logInfo('🔕 Chat notification suppressed for active conversation');
+        } else {
+          if (message.notification == null && message.data.isNotEmpty) {
+            _showNotification(message);
+          } else if (message.notification != null) {
+            _showNotification(message);
+          }
         }
 
         if (ref != null) {
@@ -215,6 +285,9 @@ class PushNotificationService {
     final type = data['type'];
 
     if (type == 'chat_message') {
+      if (_isChatForActiveConversation(data)) {
+        return;
+      }
       // ✅ Fallback: Save to Local DB immediately
       await _saveMessageToLocalDB(data);
       await _showMessagingStyleNotification(data);
@@ -305,6 +378,7 @@ class PushNotificationService {
     final String? conversationId = data['conversation_id']?.toString();
 
     if (conversationId == null || conversationId.isEmpty) return;
+    if (_isChatForActiveConversation(data)) return;
 
     final int notificationId = conversationId.hashCode;
     final String groupKey = conversationId;
@@ -397,7 +471,8 @@ class PushNotificationService {
     final data = message.data;
     final notification = message.notification;
 
-    final String? imageUrl = data['post_image'];
+    final String? imageUrl =
+        data['post_image'] ?? data['image_url'] ?? data['post_image_url'];
     ByteArrayAndroidBitmap? bigPicture;
     if (imageUrl != null && imageUrl.isNotEmpty) {
       // ✅ دانلود هوشمند تصویر پست
@@ -637,6 +712,14 @@ class PushNotificationService {
   void _addNotificationToProvider(RemoteMessage message) {
     try {
       if (ref != null) {
+        final type = message.data['type']?.toString() ?? '';
+        if (type == 'chat_message' || type == 'message') {
+          return;
+        }
+        if ((message.data['notification_id']?.toString().isEmpty ?? true) &&
+            (message.data['id']?.toString().isEmpty ?? true)) {
+          return;
+        }
         final notifier = ref!.read(notificationsProvider.notifier);
         notifier.addNotificationFromPush(message);
         logInfo(

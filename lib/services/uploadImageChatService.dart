@@ -45,8 +45,8 @@ class ChatImageUploadService {
       }
 
       final fileSize = await file.length();
-      if (fileSize > 5 * 1024 * 1024) {
-        throw Exception('حجم تصویر باید کمتر از ۵ مگابایت باشد');
+      if (fileSize > 50 * 1024 * 1024) {
+        throw Exception('Image size must be at most 50MB');
       }
 
       final extension = path.extension(file.path).toLowerCase();
@@ -164,5 +164,6 @@ class ChatImageUploadService {
     await cacheManager.emptyCache();
   }
 }
+
 
 

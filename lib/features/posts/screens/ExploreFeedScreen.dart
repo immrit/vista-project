@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:badges/badges.dart' as badges;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // Import Models
@@ -9,9 +10,11 @@ import '../../../model/publicPostModel.dart';
 // Import Providers
 import '../../../provider/provider.dart';
 import '../../../provider/personalized_feed_provider.dart';
+import '../../../provider/notification_provider.dart';
 
 // Import Screens (for navigation)
 import 'PostDetailPage.dart';
+import 'notificationScreen.dart';
 import 'profileScreen.dart';
 
 import 'package:Vista/features/posts/widgets/standard_edit_post_dialog.dart';
@@ -29,7 +32,8 @@ import 'package:Vista/features/search/screens/searchPage.dart';
 // -----------------------------------------------------------------------------
 
 /// Tracks which author ids are currently being followed (in-flight) from the feed UI.
-final _feedFollowLoadingProvider = StateProvider<Set<String>>((ref) => <String>{});
+final _feedFollowLoadingProvider =
+    StateProvider<Set<String>>((ref) => <String>{});
 
 class ExploreFeedScreen extends ConsumerStatefulWidget {
   const ExploreFeedScreen({super.key});
@@ -74,6 +78,22 @@ class _ExploreFeedScreenState extends ConsumerState<ExploreFeedScreen> {
                   fit: BoxFit.cover,
                 ),
                 centerTitle: true,
+                actions: [
+                  IconButton(
+                    tooltip: 'اعلان‌ها',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const NotificationsPage(),
+                        ),
+                      );
+                    },
+                    icon: _buildNotificationBadge(
+                      iconColor: textColor,
+                    ),
+                  ),
+                ],
                 bottom: TabBar(
                   indicatorColor: textColor,
                   indicatorSize: TabBarIndicatorSize.label,
@@ -85,7 +105,7 @@ class _ExploreFeedScreenState extends ConsumerState<ExploreFeedScreen> {
                       fontSize: 16),
                   tabs: const [
                     Tab(text: "برای شما"),
-                    Tab(text: "دنبالکنندگان"),
+                    Tab(text: "دنبال شده ها"),
                   ],
                 ),
               ),
@@ -98,6 +118,30 @@ class _ExploreFeedScreenState extends ConsumerState<ExploreFeedScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildNotificationBadge({required Color iconColor}) {
+    final unreadCount = ref.watch(unreadNotificationCountProvider);
+    return badges.Badge(
+      showBadge: unreadCount > 0,
+      badgeStyle: const badges.BadgeStyle(
+        badgeColor: Colors.red,
+        padding: EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+      ),
+      badgeContent: Text(
+        unreadCount > 99 ? '99+' : unreadCount.toString(),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      position: badges.BadgePosition.topEnd(top: -8, end: -8),
+      child: Icon(
+        Icons.notifications_none_rounded,
+        color: iconColor,
       ),
     );
   }
@@ -296,7 +340,8 @@ class _ThreadPostItem extends ConsumerWidget {
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 15,
-                                      color: isDark ? Colors.white : Colors.black,
+                                      color:
+                                          isDark ? Colors.white : Colors.black,
                                     ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -340,8 +385,7 @@ class _ThreadPostItem extends ConsumerWidget {
                                             borderRadius:
                                                 BorderRadius.circular(14),
                                           ),
-                                          visualDensity:
-                                              VisualDensity.compact,
+                                          visualDensity: VisualDensity.compact,
                                           tapTargetSize:
                                               MaterialTapTargetSize.shrinkWrap,
                                           textStyle: const TextStyle(
@@ -363,8 +407,7 @@ class _ThreadPostItem extends ConsumerWidget {
                                             : () async {
                                                 final targetId = post.userId;
                                                 if (targetId.isEmpty ||
-                                                    targetId ==
-                                                        currentUserId) {
+                                                    targetId == currentUserId) {
                                                   return;
                                                 }
 
@@ -418,8 +461,7 @@ class _ThreadPostItem extends ConsumerWidget {
                                             borderRadius:
                                                 BorderRadius.circular(14),
                                           ),
-                                          visualDensity:
-                                              VisualDensity.compact,
+                                          visualDensity: VisualDensity.compact,
                                           tapTargetSize:
                                               MaterialTapTargetSize.shrinkWrap,
                                           textStyle: const TextStyle(

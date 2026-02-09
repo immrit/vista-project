@@ -24,6 +24,8 @@ class NotificationModel extends Equatable {
   final String? openScreen;
   final String? conversationId;
   final String? followerId;
+  final String? deeplink;
+  final Map<String, dynamic>? metadata;
 
   // Getter برای backward compatibility
   String get PostId => postId ?? '';
@@ -47,6 +49,8 @@ class NotificationModel extends Equatable {
     this.openScreen,
     this.conversationId,
     this.followerId,
+    this.deeplink,
+    this.metadata,
   });
 
   factory NotificationModel.empty() {
@@ -73,6 +77,30 @@ class NotificationModel extends Equatable {
   bool get hasGoldBadge => verificationType == VerificationType.goldTick;
   bool get hasBlackBadge => verificationType == VerificationType.blackTick;
 
+  /// Canonicalize notification types from legacy/server variants.
+  static String canonicalType(String? rawType) {
+    final type = (rawType ?? '').trim().toLowerCase();
+    switch (type) {
+      case 'post_like':
+        return 'like';
+      case 'new_comment':
+      case 'post_comment':
+        return 'comment';
+      case 'reply_comment':
+        return 'comment_reply';
+      case 'new_message':
+        return 'message';
+      case 'message_reaction':
+        return 'reaction';
+      case 'suggested_follow':
+        return 'suggest_follow';
+      case 'suggested_post':
+        return 'suggest_post';
+      default:
+        return type;
+    }
+  }
+
   /// Factory method برای ایجاد NotificationModel از FCM RemoteMessage
   factory NotificationModel.fromFCM(RemoteMessage message) {
     final data = message.data;
@@ -92,6 +120,9 @@ class NotificationModel extends Equatable {
         case 'post_comment':
           type = 'comment';
           break;
+        case 'reply_comment':
+          type = 'comment_reply';
+          break;
         case 'follow':
           type = 'follow';
           break;
@@ -105,6 +136,8 @@ class NotificationModel extends Equatable {
           type = oldType ?? 'unknown';
       }
     }
+
+    type = canonicalType(type);
 
     // استخراج اطلاعات فرستنده
     final username = data['actor_name'] as String? ??
@@ -125,6 +158,7 @@ class NotificationModel extends Equatable {
     String content = '';
     String? conversationId;
     String? messageId;
+    Map<String, dynamic>? metadata;
 
     if (data.containsKey('payload')) {
       try {
@@ -146,6 +180,20 @@ class NotificationModel extends Equatable {
       } catch (e) {
         print('⚠️ خطا در parse کردن nested payload: $e');
       }
+    }
+
+    if (data.containsKey('metadata')) {
+      try {
+        final dynamic raw = data['metadata'];
+        if (raw is Map<String, dynamic>) {
+          metadata = raw;
+        } else if (raw is String && raw.isNotEmpty) {
+          final decoded = jsonDecode(raw);
+          if (decoded is Map<String, dynamic>) {
+            metadata = decoded;
+          }
+        }
+      } catch (_) {}
     }
 
     if (content.isEmpty) {
@@ -193,6 +241,8 @@ class NotificationModel extends Equatable {
       openScreen: data['open_screen'] as String?,
       conversationId: conversationId, // ✅ استفاده از extracted value
       followerId: data['follower_id'] as String?,
+      deeplink: data['deeplink'] as String?,
+      metadata: metadata,
     );
   }
 
@@ -208,6 +258,8 @@ class NotificationModel extends Equatable {
       'comment_id': commentId,
       'parent_comment_id': parentCommentId,
       'is_read': isRead,
+      'deeplink': deeplink,
+      'metadata': metadata,
       'sender': {
         'username': username,
         'full_name': fullName,
@@ -252,6 +304,8 @@ class NotificationModel extends Equatable {
       'created_at': createdAt.toIso8601String(),
       'is_read': isRead,
       'open_screen': openScreen,
+      'deeplink': deeplink,
+      'metadata': metadata,
     };
   }
 
@@ -270,7 +324,7 @@ class NotificationModel extends Equatable {
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
           : DateTime.now(),
-      type: json['type'] ?? '',
+      type: canonicalType(json['type']?.toString()),
       username: json['username'] ?? '',
       fullName: json['full_name'] ?? '',
       userIsVerified:
@@ -290,6 +344,12 @@ class NotificationModel extends Equatable {
       openScreen: json['open_screen'],
       conversationId: json['conversation_id'],
       followerId: json['follower_id'],
+      deeplink: json['deeplink'],
+      metadata: json['metadata'] is Map<String, dynamic>
+          ? json['metadata'] as Map<String, dynamic>
+          : json['metadata'] is Map
+              ? Map<String, dynamic>.from(json['metadata'] as Map)
+              : null,
     );
   }
 
@@ -322,7 +382,7 @@ class NotificationModel extends Equatable {
       createdAt: map['created_at'] != null
           ? DateTime.parse(map['created_at'] as String)
           : DateTime.now(),
-      type: map['type'] as String? ?? '',
+      type: canonicalType(map['type']?.toString()),
       username: sender?['username'] as String? ?? '',
       fullName: sender?['full_name'] as String? ?? '',
       userIsVerified: sender?['is_verified'] as bool? ?? false,
@@ -335,6 +395,12 @@ class NotificationModel extends Equatable {
       openScreen: map['open_screen'] as String?,
       conversationId: map['conversation_id'] as String?,
       followerId: map['follower_id'] as String?,
+      deeplink: map['deeplink'] as String?,
+      metadata: map['metadata'] is Map<String, dynamic>
+          ? map['metadata'] as Map<String, dynamic>
+          : map['metadata'] is Map
+              ? Map<String, dynamic>.from(map['metadata'] as Map)
+              : null,
     );
   }
 
@@ -358,6 +424,8 @@ class NotificationModel extends Equatable {
     String? openScreen,
     String? conversationId,
     String? followerId,
+    String? deeplink,
+    Map<String, dynamic>? metadata,
   }) {
     return NotificationModel(
       id: id ?? this.id,
@@ -378,6 +446,8 @@ class NotificationModel extends Equatable {
       openScreen: openScreen ?? this.openScreen,
       conversationId: conversationId ?? this.conversationId,
       followerId: followerId ?? this.followerId,
+      deeplink: deeplink ?? this.deeplink,
+      metadata: metadata ?? this.metadata,
     );
   }
 
@@ -429,5 +499,7 @@ class NotificationModel extends Equatable {
         openScreen,
         conversationId,
         followerId,
+        deeplink,
+        metadata,
       ];
 }

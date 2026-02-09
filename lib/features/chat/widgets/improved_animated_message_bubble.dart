@@ -674,6 +674,7 @@ class _ImprovedAnimatedMessageBubbleState
     // 4. File message (Fallback for other attachment types)
     if (widget.attachmentUrl != null && widget.attachmentUrl!.isNotEmpty) {
       return FileMessageBubble(
+        messageId: widget.messageId,
         fileUrl: widget.attachmentUrl!,
         fileName: widget.attachmentFileName ?? 'File',
         isMe: widget.isMe,

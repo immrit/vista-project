@@ -55,7 +55,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
   late AnimationController _progressController;
 
   // State
-  final bool _isInitialized = false;
+  bool _isInitialized = false;
   bool _isDownloading = false;
   bool _isPlaying = false;
   final double _downloadProgress =
@@ -84,6 +84,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
 
     if (widget.durationSeconds != null) {
       _totalDuration = Duration(seconds: widget.durationSeconds!);
+      _isInitialized = true;
     }
   }
 
@@ -163,6 +164,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
                 : Duration.zero);
         // if the service is preparing this voice id, consider it initialized/loading
         _isDownloading = relevant && state.isLoading;
+        _isInitialized = relevant || _totalDuration > Duration.zero;
       });
 
       if (_isPlaying) {

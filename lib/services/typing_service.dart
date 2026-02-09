@@ -8,11 +8,20 @@ class TypingService {
   factory TypingService() => _instance;
   TypingService._internal();
 
+  static const Duration _typingTimeout = Duration(seconds: 3);
+  static const Duration _typingSyncThrottle = Duration(seconds: 1);
+
   // تایمرها برای مدیریت typing indicators
   final Map<String, Timer> _typingTimers = {};
 
   // وضعیت تایپ کاربران در مکالمات مختلف
   final Map<String, Set<String>> _typingUsers = {};
+
+  // آخرین زمان sync برای throttle کردن write های سرور
+  final Map<String, DateTime> _lastTypingSyncAt = {};
+
+  // آخرین payload ارسال شده به سرور برای dedupe
+  final Map<String, String> _lastSyncedPayload = {};
 
   // Stream controllers برای real-time updates
   final Map<String, StreamController<Set<String>>> _typingStreams = {};
@@ -20,60 +29,77 @@ class TypingService {
   /// شروع تایپ کردن در یک مکالمه
   Future<void> startTyping(String conversationId, String userId) async {
     try {
-      // لغو تایمر قبلی اگر وجود دارد
       _typingTimers[conversationId]?.cancel();
 
-      // اضافه کردن کاربر به لیست تایپ‌کنندگان
       _typingUsers[conversationId] ??= {};
-      _typingUsers[conversationId]!.add(userId);
+      final users = _typingUsers[conversationId]!;
+      final wasTypingBefore = users.contains(userId);
+      users.add(userId);
 
-      // ارسال typing indicator به سرور (Supabase realtime)
-      await supabase.from('conversations').update({
-        'typing_users': _typingUsers[conversationId]!.toList(),
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', conversationId);
-
-      // بروزرسانی stream محلی
       _notifyTypingUpdate(conversationId);
 
-      // تنظیم تایمر برای حذف خودکار بعد از ۳ ثانیه
-      _typingTimers[conversationId] = Timer(const Duration(seconds: 3), () {
+      final now = DateTime.now();
+      final lastSync = _lastTypingSyncAt[conversationId];
+      final shouldThrottle = wasTypingBefore &&
+          lastSync != null &&
+          now.difference(lastSync) < _typingSyncThrottle;
+
+      if (!shouldThrottle) {
+        await _syncTypingUsers(conversationId, users);
+        _lastTypingSyncAt[conversationId] = now;
+      }
+
+      _typingTimers[conversationId] = Timer(_typingTimeout, () {
         stopTyping(conversationId, userId);
       });
     } catch (e) {
-      logInfo('⚠️ خطا در شروع تایپ: $e');
+      logInfo('Error starting typing indicator: $e');
     }
   }
 
   /// متوقف کردن تایپ کردن در یک مکالمه
   Future<void> stopTyping(String conversationId, String userId) async {
     try {
-      // لغو تایمر
-      _typingTimers[conversationId]?.cancel();
+      _typingTimers.remove(conversationId)?.cancel();
 
-      // حذف کاربر از لیست تایپ‌کنندگان
-      _typingUsers[conversationId]?.remove(userId);
+      final users = _typingUsers[conversationId];
+      if (users == null) return;
 
-      // ارسال بروزرسانی به سرور
-      if (_typingUsers[conversationId]?.isNotEmpty ?? false) {
-        await supabase.from('conversations').update({
-          'typing_users': _typingUsers[conversationId]!.toList(),
-          'updated_at': DateTime.now().toIso8601String(),
-        }).eq('id', conversationId);
+      users.remove(userId);
+
+      if (users.isNotEmpty) {
+        await _syncTypingUsers(conversationId, users);
+        _lastTypingSyncAt[conversationId] = DateTime.now();
       } else {
-        // اگر هیچ‌کس تایپ نمی‌کند، لیست را خالی کن
-        await supabase.from('conversations').update({
-          'typing_users': [],
-          'updated_at': DateTime.now().toIso8601String(),
-        }).eq('id', conversationId);
+        await _syncTypingUsers(conversationId, const <String>{});
         _typingUsers.remove(conversationId);
+        _lastTypingSyncAt.remove(conversationId);
+        _lastSyncedPayload.remove(conversationId);
       }
 
-      // بروزرسانی stream محلی
       _notifyTypingUpdate(conversationId);
     } catch (e) {
-      logInfo('⚠️ خطا در متوقف کردن تایپ: $e');
+      logInfo('Error stopping typing indicator: $e');
     }
+  }
+
+  Future<void> _syncTypingUsers(
+    String conversationId,
+    Set<String> typingUsers,
+  ) async {
+    final payload = typingUsers.toList()..sort();
+    final payloadKey = payload.join(',');
+
+    if (_lastSyncedPayload[conversationId] == payloadKey) {
+      return;
+    }
+
+    await supabase.from('conversations').update({
+      'typing_users': payload,
+      'updated_at': DateTime.now().toIso8601String(),
+    }).eq('id', conversationId);
+
+    _lastSyncedPayload[conversationId] = payloadKey;
   }
 
   /// دریافت کاربران در حال تایپ در یک مکالمه
@@ -103,6 +129,8 @@ class TypingService {
       timer.cancel();
     }
     _typingTimers.clear();
+    _lastTypingSyncAt.clear();
+    _lastSyncedPayload.clear();
     for (var controller in _typingStreams.values) {
       controller.close();
     }

@@ -38,6 +38,12 @@ class _PricingPageState extends ConsumerState<PricingPage> {
 
   final List<Map<String, dynamic>> _features = [
     {
+      'icon': Icons.upload_file,
+      'title': 'Send Files Up To 50MB',
+      'subtitle':
+          'Premium users can send image/PDF/MP3 files up to 50MB (regular users: 10MB).'
+    },
+    {
       'icon': Icons.verified,
       'title': 'نشان تایید طلایی',
       'subtitle': 'نمایش نشان تایید طلایی در کنار نام شما برای همه کاربران'
@@ -427,3 +433,4 @@ class _PricingPageState extends ConsumerState<PricingPage> {
     );
   }
 }
+

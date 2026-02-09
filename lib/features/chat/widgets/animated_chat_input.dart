@@ -36,6 +36,7 @@ class AnimatedChatInput extends StatefulWidget {
   final Function(File file, int duration)? onVoiceRecorded;
   final Function(String gifUrl)? onGifSelected;
   final ValueChanged<bool>? onEmojiPickerToggled;
+  final ValueChanged<double>? onHeightChanged;
 
   // Autocomplete
   final Function(String? query, String type)?
@@ -45,6 +46,7 @@ class AnimatedChatInput extends StatefulWidget {
   final bool enabled;
   final bool isRecording;
   final String? hint;
+  final bool reduceEffects;
 
   const AnimatedChatInput({
     super.key,
@@ -60,10 +62,12 @@ class AnimatedChatInput extends StatefulWidget {
     this.onVoiceRecorded,
     this.onGifSelected,
     this.onEmojiPickerToggled,
+    this.onHeightChanged,
     this.onAutocomplete, // ✅ New callback
     this.enabled = true,
     this.isRecording = false,
     this.hint,
+    this.reduceEffects = false,
   });
 
   @override
@@ -93,6 +97,8 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   bool _showEmojiPicker = false;
 
   bool _hasText = false;
+  double _lastReportedHeight = 0.0;
+  bool _heightReportScheduled = false;
 
   @override
   void initState() {
@@ -335,10 +341,32 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     }
   }
 
+  void _reportHeightIfNeeded() {
+    if (widget.onHeightChanged == null || _heightReportScheduled) return;
+    _heightReportScheduled = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _heightReportScheduled = false;
+      if (!mounted) return;
+      final renderBox = context.findRenderObject() as RenderBox?;
+      if (renderBox == null || !renderBox.hasSize) return;
+
+      final newHeight = renderBox.size.height;
+      if ((newHeight - _lastReportedHeight).abs() >= 1.0) {
+        _lastReportedHeight = newHeight;
+        widget.onHeightChanged!(newHeight);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final shouldReduceEffects = widget.reduceEffects ||
+        MediaQuery.of(context).disableAnimations ||
+        MediaQuery.of(context).accessibleNavigation;
+    _reportHeightIfNeeded();
 
     // دریافت safe area برای پدینگ داخلی خود جزیره
     // توجه: ما در صفحه اصلی این ویجت را بالای کیبورد قرار می‌دهیم،
@@ -365,43 +393,60 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(24),
                 // سایه بسیار ملایم و سبک
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(isDark ? 0.2 : 0.08),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+                boxShadow: shouldReduceEffects
+                    ? const []
+                    : [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(isDark ? 0.2 : 0.08),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(24),
-                child: BackdropFilter(
-                  // 💎 افکت شیشه‌ای بهینه شده
-                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      // رنگ پس‌زمینه نیمه‌شفاف
-                      color: theme.inputBackgroundColor.withOpacity(0.75),
-                      border: Border.all(
-                        color: theme.inputBorderColor.withOpacity(0.3),
-                        width: 0.5,
+                child: shouldReduceEffects
+                    ? Container(
+                        decoration: BoxDecoration(
+                          color: theme.inputBackgroundColor.withOpacity(0.9),
+                          border: Border.all(
+                            color: theme.inputBorderColor.withOpacity(0.25),
+                            width: 0.5,
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildReplyPreview(theme),
+                            if (_isRecording)
+                              _buildRecordingOverlay(theme)
+                            else
+                              _buildInputRow(theme),
+                          ],
+                        ),
+                      )
+                    : BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: theme.inputBackgroundColor.withOpacity(0.75),
+                            border: Border.all(
+                              color: theme.inputBorderColor.withOpacity(0.3),
+                              width: 0.5,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildReplyPreview(theme),
+                              if (_isRecording)
+                                _buildRecordingOverlay(theme)
+                              else
+                                _buildInputRow(theme),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Reply Preview
-                        _buildReplyPreview(theme),
-
-                        // Input Row or Recording
-                        if (_isRecording)
-                          _buildRecordingOverlay(theme)
-                        else
-                          _buildInputRow(theme),
-                      ],
-                    ),
-                  ),
-                ),
               ),
             ),
 

@@ -1,52 +1,25 @@
-// lib/features/chat/widgets/document_upload_sheet.dart
-//
-// Bottom Sheet برای آپلود اسناد و فایل‌ها
-//
-// ویژگی‌ها:
-// ✅ انتخاب فایل با UI زیبا
-// ✅ پیش‌نمایش فایل
-// ✅ Progress indicator
-// ✅ کپشن برای فایل
-// ✅ انیمیشن‌های روان
-//
-
 import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:file_picker/file_picker.dart';
-import '../../../services/toast_service.dart';
 
-/// نوع فایل‌های پشتیبانی شده
+import '../../../model/ProfileModel.dart';
+import '../../../services/toast_service.dart';
+import '../services/upload_policy_service.dart';
+
 enum DocumentType {
-  pdf('PDF', ['pdf'], '📄'),
-  word('Word', ['doc', 'docx'], '📝'),
-  excel('Excel', ['xls', 'xlsx'], '📊'),
-  powerpoint('PowerPoint', ['ppt', 'pptx'], '📽️'),
-  text('Text', ['txt', 'md'], '📃'),
-  archive('Archive', ['zip', 'rar', '7z'], '🗜️'),
-  audio('Audio', ['mp3', 'wav', 'aac', 'm4a'], '🎵'),
-  video('Video', ['mp4', 'mov', 'avi', 'm4a'], '🎥'),
-  image('Image', ['jpg', 'jpeg', 'png', 'gif', 'webp'], '🖼️'),
-  other('Other', [], '📎');
+  pdf('PDF', '📄'),
+  audio('MP3', '🎵'),
+  image('Image', '🖼️'),
+  other('File', '📎');
 
   final String displayName;
-  final List<String> extensions;
   final String emoji;
 
-  const DocumentType(this.displayName, this.extensions, this.emoji);
-
-  static DocumentType fromExtension(String ext) {
-    final extension = ext.toLowerCase().replaceAll('.', '');
-    for (final type in DocumentType.values) {
-      if (type.extensions.contains(extension)) {
-        return type;
-      }
-    }
-    return DocumentType.other;
-  }
+  const DocumentType(this.displayName, this.emoji);
 }
 
-/// نتیجه انتخاب فایل
 class DocumentSelectionResult {
   final File file;
   final String caption;
@@ -59,26 +32,28 @@ class DocumentSelectionResult {
   });
 }
 
-/// Bottom Sheet برای آپلود سند
 class DocumentUploadSheet extends StatefulWidget {
   final String? initialCaption;
+  final ProfileModel? profile;
 
   const DocumentUploadSheet({
     super.key,
     this.initialCaption,
+    this.profile,
   });
 
-  /// نمایش Bottom Sheet
   static Future<DocumentSelectionResult?> show({
     required BuildContext context,
     String? initialCaption,
+    ProfileModel? profile,
   }) {
     return showModalBottomSheet<DocumentSelectionResult>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => DocumentUploadSheet(
+      builder: (_) => DocumentUploadSheet(
         initialCaption: initialCaption,
+        profile: profile,
       ),
     );
   }
@@ -89,22 +64,20 @@ class DocumentUploadSheet extends StatefulWidget {
 
 class _DocumentUploadSheetState extends State<DocumentUploadSheet>
     with SingleTickerProviderStateMixin {
-  late AnimationController _animController;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
-
   final _captionController = TextEditingController();
-  // final _documentService = DocumentHandlerService(); // Removed
+  final UploadPolicyService _uploadPolicy = const UploadPolicyService();
 
-  // Constants
-  static const int maxFileSizeInBytes = 100 * 1024 * 1024; // 100 MB
-  static const int maxFileSizeInMB = 100;
+  late final AnimationController _animController;
+  late final Animation<double> _fadeAnimation;
+  late final Animation<Offset> _slideAnimation;
 
   File? _selectedFile;
   String? _fileName;
   int? _fileSize;
   DocumentType? _fileType;
-  final bool _isLoading = false;
+
+  int get _maxBytes => _uploadPolicy.maxBytesFor(widget.profile);
+  int get _maxMb => _maxBytes ~/ (1024 * 1024);
 
   @override
   void initState() {
@@ -112,28 +85,18 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
     if (widget.initialCaption != null) {
       _captionController.text = widget.initialCaption!;
     }
-    _setupAnimations();
-  }
-
-  void _setupAnimations() {
     _animController = AnimationController(
-      duration: const Duration(milliseconds: 400),
+      duration: const Duration(milliseconds: 350),
       vsync: this,
     );
-
-    _fadeAnimation = CurvedAnimation(
-      parent: _animController,
-      curve: Curves.easeOut,
-    );
-
+    _fadeAnimation =
+        CurvedAnimation(parent: _animController, curve: Curves.easeOut);
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, 0.3),
       end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _animController,
-      curve: Curves.easeOutCubic,
-    ));
-
+    ).animate(
+      CurvedAnimation(parent: _animController, curve: Curves.easeOutCubic),
+    );
     _animController.forward();
   }
 
@@ -156,9 +119,7 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
         child: Container(
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(24),
-            ),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: SafeArea(
             child: Padding(
@@ -169,11 +130,8 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _buildHeader(theme),
-                  if (_selectedFile == null)
-                    _buildFileSelector(theme, isDark)
-                  else
-                    _buildFilePreview(theme, isDark),
-                  if (_selectedFile != null) _buildCaptionInput(theme, isDark),
+                  _buildFilePicker(theme, isDark),
+                  if (_selectedFile != null) _buildCaption(theme, isDark),
                   _buildActions(theme),
                 ],
               ),
@@ -196,255 +154,98 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
             borderRadius: BorderRadius.circular(2),
           ),
         ),
-        const SizedBox(height: 20),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: theme.primaryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.upload_file_rounded,
-                  color: theme.primaryColor,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'آپلود فایل',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: theme.textTheme.titleLarge?.color,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _selectedFile == null
-                          ? 'انتخاب فایل از دستگاه'
-                          : 'فایل آماده ارسال',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: theme.hintColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: Icon(Icons.close_rounded, color: theme.hintColor),
-              ),
-            ],
+        const SizedBox(height: 16),
+        ListTile(
+          leading: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: theme.primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(Icons.upload_file_rounded, color: theme.primaryColor),
+          ),
+          title: const Text('ارسال فایل'),
+          subtitle: Text('فقط Image / PDF / MP3 تا $_maxMb مگابایت'),
+          trailing: IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.close_rounded),
           ),
         ),
-        const SizedBox(height: 16),
         Divider(height: 1, color: theme.dividerColor),
       ],
     );
   }
 
-  Widget _buildFileSelector(ThemeData theme, bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        children: [
-          // انتخاب از دستگاه
-          _buildFileSelectorButton(
-            theme: theme,
-            isDark: isDark,
-            icon: Icons.insert_drive_file_rounded,
-            title: 'انتخاب از دستگاه',
-            subtitle: 'PDF, Word, Excel, و سایر فایل‌ها',
-            color: Colors.blue,
-            onTap: _pickFile,
-          ),
-          const SizedBox(height: 12),
-          // محدودیت‌ها
-          Container(
+  Widget _buildFilePicker(ThemeData theme, bool isDark) {
+    if (_selectedFile == null) {
+      return Padding(
+        padding: const EdgeInsets.all(20),
+        child: InkWell(
+          onTap: _pickFile,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: theme.primaryColor.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: theme.primaryColor.withOpacity(0.2),
-              ),
+              color: theme.primaryColor.withOpacity(isDark ? 0.1 : 0.06),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: theme.primaryColor.withOpacity(0.25)),
             ),
             child: Row(
               children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  color: theme.primaryColor,
-                  size: 20,
-                ),
+                Icon(Icons.folder_open_rounded, color: theme.primaryColor),
                 const SizedBox(width: 12),
-                Expanded(
+                const Expanded(
                   child: Text(
-                    'حداکثر حجم: 100 مگابایت',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: theme.primaryColor,
-                    ),
+                    'انتخاب فایل از دستگاه',
+                    style: TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),
+                const Icon(Icons.chevron_right_rounded),
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      );
+    }
 
-  Widget _buildFileSelectorButton({
-    required ThemeData theme,
-    required bool isDark,
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+    return Padding(
+      padding: const EdgeInsets.all(20),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: color.withOpacity(isDark ? 0.1 : 0.05),
+          color: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade50,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: color.withOpacity(0.3),
-          ),
+          border: Border.all(color: theme.dividerColor.withOpacity(0.35)),
         ),
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: color, size: 24),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: theme.textTheme.titleLarge?.color,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: theme.hintColor,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: theme.hintColor,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFilePreview(ThemeData theme, bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade50,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: theme.dividerColor.withOpacity(0.3),
-          ),
-        ),
-        child: Row(
-          children: [
-            // آیکون فایل
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: _getFileColor().withOpacity(0.1),
+                color: theme.primaryColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Text(
-                _fileType?.emoji ?? '📎',
-                style: const TextStyle(fontSize: 32),
-              ),
+              child: Text(_fileType?.emoji ?? '📎', style: const TextStyle(fontSize: 26)),
             ),
-            const SizedBox(width: 16),
-            // اطلاعات فایل
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _fileName ?? 'فایل',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: theme.textTheme.titleLarge?.color,
-                    ),
+                    _fileName ?? 'File',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _getFileColor().withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          _fileType?.displayName ?? 'File',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: _getFileColor(),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _formatBytes(_fileSize ?? 0),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: theme.hintColor,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    '${_fileType?.displayName ?? 'File'} • ${_formatBytes(_fileSize ?? 0)}',
+                    style: TextStyle(fontSize: 12, color: theme.hintColor),
                   ),
                 ],
               ),
             ),
-            // دکمه حذف
             IconButton(
               onPressed: () {
                 HapticFeedback.lightImpact();
@@ -455,10 +256,7 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
                   _fileType = null;
                 });
               },
-              icon: Icon(
-                Icons.close_rounded,
-                color: theme.hintColor,
-              ),
+              icon: const Icon(Icons.close_rounded),
             ),
           ],
         ),
@@ -466,14 +264,13 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
     );
   }
 
-  Widget _buildCaptionInput(ThemeData theme, bool isDark) {
+  Widget _buildCaption(ThemeData theme, bool isDark) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
       child: TextField(
         controller: _captionController,
         maxLines: 3,
         maxLength: 200,
-        textInputAction: TextInputAction.done,
         decoration: InputDecoration(
           hintText: 'کپشن فایل (اختیاری)...',
           filled: true,
@@ -482,101 +279,34 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide.none,
           ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(
-              color: theme.dividerColor.withOpacity(0.3),
-            ),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(
-              color: theme.primaryColor,
-              width: 2,
-            ),
-          ),
-          prefixIcon: Icon(
-            Icons.edit_note_rounded,
-            color: theme.hintColor,
-          ),
+          prefixIcon: Icon(Icons.edit_note_rounded, color: theme.hintColor),
         ),
       ),
     );
   }
 
   Widget _buildActions(ThemeData theme) {
+    final canSend = _selectedFile != null;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(
-            color: theme.dividerColor.withOpacity(0.3),
-          ),
-        ),
+        border: Border(top: BorderSide(color: theme.dividerColor.withOpacity(0.3))),
       ),
       child: Row(
         children: [
-          if (_selectedFile != null) ...[
-            Expanded(
-              child: OutlinedButton(
-                onPressed: _isLoading
-                    ? null
-                    : () {
-                        HapticFeedback.lightImpact();
-                        setState(() {
-                          _selectedFile = null;
-                          _fileName = null;
-                          _fileSize = null;
-                          _fileType = null;
-                        });
-                      },
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text('تغییر فایل'),
-              ),
+          Expanded(
+            child: OutlinedButton(
+              onPressed: canSend ? _pickFile : null,
+              child: const Text('تغییر فایل'),
             ),
-            const SizedBox(width: 12),
-          ],
+          ),
+          const SizedBox(width: 12),
           Expanded(
             flex: 2,
-            child: ElevatedButton(
-              onPressed:
-                  _selectedFile == null || _isLoading ? null : _handleSend,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: theme.primaryColor,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 0,
-              ),
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.send_rounded, size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          _selectedFile == null ? 'انتخاب فایل' : 'ارسال',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
+            child: ElevatedButton.icon(
+              onPressed: canSend ? _send : null,
+              icon: const Icon(Icons.send_rounded),
+              label: Text(canSend ? 'ارسال' : 'انتخاب فایل'),
             ),
           ),
         ],
@@ -587,85 +317,75 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
   Future<void> _pickFile() async {
     try {
       HapticFeedback.lightImpact();
-
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.any,
+        type: FileType.custom,
         allowMultiple: false,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'pdf', 'mp3'],
       );
-
-      if (result == null || result.files.isEmpty) return;
+      if (result == null || result.files.isEmpty || result.files.first.path == null) {
+        return;
+      }
 
       final file = File(result.files.first.path!);
-      final fileName = result.files.first.name;
-      final fileSize = await file.length();
+      final validation = _uploadPolicy.validateFile(
+        file: file,
+        profile: widget.profile,
+        mode: ChatSendMode.file,
+      );
 
-      // بررسی حجم
-      if (fileSize > maxFileSizeInBytes) {
+      if (!validation.isAllowed) {
         if (!mounted) return;
         ToastService.showErrorToast(
           context,
-          'حجم فایل بیش از $maxFileSizeInMB مگابایت است',
+          validation.error ?? 'فایل مجاز نیست',
         );
         return;
       }
 
-      // تشخیص نوع
-      final extension = fileName.split('.').last;
-      final fileType = DocumentType.fromExtension(extension);
+      final fileName = result.files.first.name;
+      final fileSize = await file.length();
+      final type = _typeFromAttachment(validation.attachmentType);
 
       setState(() {
         _selectedFile = file;
         _fileName = fileName;
         _fileSize = fileSize;
-        _fileType = fileType;
+        _fileType = type;
       });
-
       HapticFeedback.mediumImpact();
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       ToastService.showErrorToast(context, 'خطا در انتخاب فایل');
     }
   }
 
-  void _handleSend() {
-    if (_selectedFile == null) return;
+  DocumentType _typeFromAttachment(String? attachmentType) {
+    switch (attachmentType) {
+      case 'image':
+        return DocumentType.image;
+      case 'pdf':
+        return DocumentType.pdf;
+      case 'mp3':
+        return DocumentType.audio;
+      default:
+        return DocumentType.other;
+    }
+  }
 
+  void _send() {
+    final file = _selectedFile;
+    if (file == null) return;
     HapticFeedback.mediumImpact();
-
     Navigator.pop(
       context,
       DocumentSelectionResult(
-        file: _selectedFile!,
+        file: file,
         caption: _captionController.text.trim(),
         type: _fileType ?? DocumentType.other,
       ),
     );
   }
 
-  Color _getFileColor() {
-    switch (_fileType) {
-      case DocumentType.pdf:
-        return Colors.red;
-      case DocumentType.word:
-        return Colors.blue;
-      case DocumentType.excel:
-        return Colors.green;
-      case DocumentType.powerpoint:
-        return Colors.orange;
-      case DocumentType.image:
-        return Colors.purple;
-      case DocumentType.video:
-        return Colors.pink;
-      case DocumentType.audio:
-        return Colors.teal;
-      case DocumentType.archive:
-        return Colors.amber;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  /// فرمت کردن حجم فایل
   String _formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';

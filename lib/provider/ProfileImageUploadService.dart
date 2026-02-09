@@ -61,7 +61,7 @@ class ProfileImageUploadService {
 
       return compressedFile;
     } catch (e) {
-      logInfo('Ø®Ø·Ø§ Ø¯Ø± ÙØ´Ø±Ø¯Ù‡â€ŒØ³Ø§Ø²ÛŒ ØªØµÙˆÛŒØ± Ù¾Ø±ÙˆÙØ§ÛŒÙ„: $e');
+      logInfo('خطا در فشرده‌سازی تصویر پروفایل: $e');
       return null;
     }
   }
@@ -237,4 +237,3 @@ class ProfileImageUploadService {
     }
   }
 }
-

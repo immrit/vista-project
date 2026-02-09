@@ -140,7 +140,7 @@ class _PrivacySettingsPageState extends ConsumerState<PrivacySettingsPage> {
               icon: Icons.lock,
               iconColor: Colors.deepPurple,
               title: 'حساب خصوصی',
-              subtitle: 'فقط دنبالکنندگان تایید شده محتوای شما را میبینند',
+              subtitle: 'فقط دنبال شده ها تایید شده محتوای شما را میبینند',
               value: isPrivate,
               onChanged: (bool next) async {
                 await _upsertUserSetting(context, ref, 'is_private', next);

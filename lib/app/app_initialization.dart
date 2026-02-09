@@ -8,6 +8,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:Vista/firebase_options.dart';
 import 'package:Vista/services/PushNotificationService.dart';
+import 'package:Vista/services/local_notification_center.dart';
 import 'package:Vista/utils/const.dart';
 import 'package:Vista/services/session_manager_service_v2.dart';
 import 'package:Vista/DB/isar_database_manager.dart';
@@ -38,8 +39,8 @@ void notificationTapBackground(NotificationResponse notificationResponse) {
 }
 
 class AppInitialization {
-  static final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-      FlutterLocalNotificationsPlugin();
+  static FlutterLocalNotificationsPlugin get flutterLocalNotificationsPlugin =>
+      LocalNotificationCenter.plugin;
 
   static Future<void> loadDeferredServices() async {
     // Placeholder for deferred services initialization
@@ -68,6 +69,8 @@ class AppInitialization {
         onTimeout: () => throw TimeoutException('Supabase init timeout'),
       ),
     ]);
+
+    await PushNotificationService(null).ensureLocalNotificationsInitialized();
 
     // 🚀 PHASE 2: Data layer (Parallel)
     // Supabase is ready now. SessionManager needs Supabase.

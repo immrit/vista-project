@@ -10,7 +10,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../model/session_model.dart';
-import '../security/secure_kv_store.dart';
 import '../security/logging_utility.dart';
 import '../security/security.dart';
 import 'package:shared_preferences/shared_preferences.dart';

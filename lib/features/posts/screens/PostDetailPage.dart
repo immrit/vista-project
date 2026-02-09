@@ -22,53 +22,6 @@ import '../../../provider/MusicProvider.dart';
 import 'MusicWaveform.dart';
 import '../../../utils/premium_features_helper.dart';
 
-// Provider برای مدیریت پست جزئیات
-final postDetailProvider =
-    FutureProvider.family<PublicPostModel?, String>((ref, postId) async {
-  try {
-    final response = await supabase.from('posts').select('''
-          *,
-          profiles!posts_user_id_fkey (
-            id,
-            username,
-            full_name,
-            avatar_url,
-            is_verified,
-            verification_type
-          ),
-          likes!posts_likes_post_id_fkey (user_id),
-          comments!posts_comments_post_id_fkey (id)
-        ''').eq('id', postId).maybeSingle();
-
-    if (response == null) {
-      return null; // پست یافت نشد
-    }
-
-    // محاسبه مقادیر مشتق‌شده برای مدل پست
-    final profile = response['profiles'] as Map<String, dynamic>? ?? {};
-    final likes = response['likes'] as List<dynamic>? ?? [];
-    final likeCount = likes.length;
-    final isLiked =
-        likes.any((like) => like['user_id'] == supabase.auth.currentUser?.id);
-    final comments = response['comments'] as List<dynamic>? ?? [];
-    final commentCount = comments.length;
-
-    return PublicPostModel.fromMap({
-      ...response,
-      'like_count': likeCount,
-      'is_liked': isLiked,
-      'comment_count': commentCount,
-      'username': profile['username'] ?? profile['full_name'] ?? 'Unknown',
-      'avatar_url': profile['avatar_url'] ?? '',
-      'is_verified': profile['is_verified'] ?? false,
-      'verification_type': profile['verification_type'],
-    });
-  } catch (e) {
-    logInfo('Error fetching post: $e');
-    throw Exception('خطا در بارگذاری پست: $e');
-  }
-});
-
 class PostDetailsPage extends ConsumerStatefulWidget {
   const PostDetailsPage({super.key, required this.postId});
 
@@ -407,16 +360,12 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
     );
   }
 
-  Widget _buildPostDetails(BuildContext context, dynamic post) {
-    final jalaliDate = Jalali.fromDateTime(post.createdAt.toLocal());
-    final formattedDate =
-        '${jalaliDate.year}/${jalaliDate.month}/${jalaliDate.day}';
-
+  Widget _buildPostDetails(BuildContext context, PublicPostModel post) {
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildPostCard(post, formattedDate),
+          _buildPostCard(post),
           const SizedBox(height: 16),
           _buildCommentsSection(),
         ],
@@ -497,7 +446,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
     );
   }
 
-  Widget _buildPostCard(dynamic post, String formattedDate) {
+  Widget _buildPostCard(PublicPostModel post) {
     return Card(
       margin: const EdgeInsets.all(10),
       child: Padding(
@@ -517,8 +466,8 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
               Wrap(
                 spacing: 8,
                 children: post.hashtags
-                    .map(
-                      (tag) => GestureDetector(
+                    .map<Widget>(
+                      (String tag) => GestureDetector(
                         onTap: () {
                           Navigator.push(
                             context,
@@ -538,7 +487,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                         ),
                       ),
                     )
-                    .toList(),
+                    .toList(growable: false),
               ),
             ],
             _buildPostImages(post),
@@ -607,7 +556,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
     );
   }
 
-  Widget _buildPostHeader(dynamic post) {
+  Widget _buildPostHeader(PublicPostModel post) {
     return Row(
       children: [
         CircleAvatar(
@@ -642,7 +591,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
     );
   }
 
-  Widget _buildPostActionsMenu(dynamic post) {
+  Widget _buildPostActionsMenu(PublicPostModel post) {
     return Consumer(
       builder: (context, ref, child) {
         final profileAsync = ref.watch(profileProvider);
@@ -900,7 +849,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
     return '${jalaliDate.year}/${jalaliDate.month}/${jalaliDate.day}';
   }
 
-  Widget _buildLikeRow(dynamic post) {
+  Widget _buildLikeRow(PublicPostModel post) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.start,
       children: [

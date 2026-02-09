@@ -8,6 +8,8 @@ import '../../../provider/provider.dart';
 import 'package:Vista/utils/time_utils.dart';
 import '../../../services/telegram_read_receipt_service.dart';
 import '../theme/chat_theme.dart';
+import 'file_message_bubble.dart';
+import 'media_message_bubble.dart';
 
 /// حباب پیام با پشتیبانی از:
 /// - تنظیم اندازه فونت از تنظیمات
@@ -254,14 +256,40 @@ class MessageBubble extends ConsumerWidget {
 
   /// ✅ محتوای پیام با اندازه فونت داینامیک
   Widget _buildContent(BuildContext context, Color textColor, double fontSize) {
-    // 1. Image
+    // 1. Video
+    if (message.isVideo && message.attachmentUrl != null) {
+      return MediaMessageBubble(
+        message: message,
+        mediaUrl: message.attachmentUrl!,
+        mediaType: MediaType.video,
+        isMe: isMe,
+        time: message.createdAt,
+      );
+    }
+
+    // 2. File (PDF, Documents, etc)
+    if ((message.attachmentType == 'file' || 
+         message.attachmentType?.startsWith('audio') == true ||
+         _isFileExtension(message.attachmentType)) &&
+        message.attachmentUrl != null) {
+      return FileMessageBubble(
+        messageId: message.id,
+        fileUrl: message.attachmentUrl!,
+        fileName: message.attachmentFileName ?? 'File',
+        fileSizeBytes: null,
+        isMe: isMe,
+        time: message.createdAt,
+      );
+    }
+
+    // 3. Image
     if (message.attachmentType == 'image' ||
         (message.localImagePath != null &&
             message.localImagePath!.isNotEmpty)) {
       return _buildImage(context);
     }
 
-    // 2. Text with dynamic font size
+    // 4. Text with dynamic font size
     return Text(
       message.content,
       style: TextStyle(
@@ -270,6 +298,14 @@ class MessageBubble extends ConsumerWidget {
         height: 1.4,
       ),
     );
+  }
+
+  /// Helper method to check if attachment type is a file type
+  bool _isFileExtension(String? ext) {
+    if (ext == null) return false;
+    final fileExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'zip', 
+                            'mp3', 'wav', 'aac', 'ogg', 'm4a', 'flac'];
+    return fileExtensions.any((e) => ext.toLowerCase().contains(e));
   }
 
   Widget _buildImage(BuildContext context) {

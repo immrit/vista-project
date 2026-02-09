@@ -32,22 +32,21 @@ class NotificationNavigationService {
       }
 
       // ✅ Navigation بر اساس نوع
-      switch (notification.type) {
+      final type = NotificationModel.canonicalType(notification.type);
+
+      switch (type) {
         case 'message':
-        case 'new_message':
           print('📬 نوع پیام - شروع navigation به چت');
           print('   ConversationID: ${notification.conversationId}');
           await _navigateToChat(context, notification);
           break;
 
         case 'like':
-        case 'post_like':
           print('❤️ نوع لایک - navigation به پست');
           await _navigateToPost(context, notification.postId);
           break;
 
         case 'comment':
-        case 'post_comment':
           print('💬 نوع کامنت - navigation به کامنت‌ها');
           await _navigateToPostComments(
             context,
@@ -56,7 +55,7 @@ class NotificationNavigationService {
           );
           break;
 
-        case 'reply_comment':
+        case 'comment_reply':
           print('↩️ نوع پاسخ کامنت - navigation به کامنت‌ها');
           await _navigateToCommentReply(
             context,
@@ -74,7 +73,6 @@ class NotificationNavigationService {
           break;
 
         case 'reaction':
-        case 'message_reaction':
           print('😊 نوع reaction - navigation به چت');
           await _navigateToChat(context, notification);
           break;
@@ -89,9 +87,26 @@ class NotificationNavigationService {
           }
           break;
 
+        case 'suggest_follow':
+          await _navigateToSuggestedFollow(context, notification);
+          break;
+
+        case 'suggest_post':
+          await _navigateToSuggestedPost(context, notification);
+          break;
+
+        case 'daily_suggestion_digest':
+          await _navigateToSuggestionDigest(context, notification);
+          break;
+
         default:
           print('⚠️ نوع ناشناخته: ${notification.type}');
-          await _navigateToNotifications(context);
+          final deeplink = notification.deeplink;
+          if (deeplink != null && deeplink.isNotEmpty) {
+            await _navigateByDeepLink(context, deeplink);
+          } else {
+            await _navigateToNotifications(context);
+          }
       }
       print('✅ Navigation completed');
       print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -364,6 +379,104 @@ class NotificationNavigationService {
     }
   }
 
+  static Future<void> _navigateByDeepLink(
+    BuildContext context,
+    String deeplink,
+  ) async {
+    try {
+      final uri = Uri.tryParse(deeplink);
+      if (uri == null) {
+        await _navigateToNotifications(context);
+        return;
+      }
+
+      if (uri.path.contains('/chat')) {
+        final conversationId = uri.queryParameters['conversationId'];
+        if (conversationId != null && conversationId.isNotEmpty) {
+          await _navigateToChatDirectly(
+            context,
+            conversationId,
+            const <String, dynamic>{},
+          );
+          return;
+        }
+      }
+
+      if (uri.path.contains('/post')) {
+        final postId = uri.queryParameters['postId'];
+        if (postId != null && postId.isNotEmpty) {
+          await _navigateToPost(context, postId);
+          return;
+        }
+      }
+
+      await _navigateToNotifications(context);
+    } catch (_) {
+      await _navigateToNotifications(context);
+    }
+  }
+
+  static Future<void> _navigateToSuggestedFollow(
+    BuildContext context,
+    NotificationModel notification,
+  ) async {
+    final metadata = notification.metadata ?? const {};
+    final userId = metadata['user_id']?.toString() ??
+        metadata['suggested_user_id']?.toString() ??
+        notification.senderId;
+    if (userId.isNotEmpty) {
+      await _navigateToProfile(context, userId);
+      return;
+    }
+    await _navigateToNotifications(context);
+  }
+
+  static Future<void> _navigateToSuggestedPost(
+    BuildContext context,
+    NotificationModel notification,
+  ) async {
+    final metadata = notification.metadata ?? const {};
+    final postId =
+        metadata['post_id']?.toString() ?? notification.postId?.toString();
+    if (postId != null && postId.isNotEmpty) {
+      await _navigateToPost(context, postId);
+      return;
+    }
+    await _navigateToNotifications(context);
+  }
+
+  static Future<void> _navigateToSuggestionDigest(
+    BuildContext context,
+    NotificationModel notification,
+  ) async {
+    final metadata = notification.metadata ?? const {};
+    final suggestions = metadata['suggestions'];
+    if (suggestions is List && suggestions.isNotEmpty) {
+      final first = suggestions.first;
+      if (first is Map) {
+        final type = first['type']?.toString();
+        if (type == 'user') {
+          final userId = first['user_id']?.toString();
+          if (userId != null && userId.isNotEmpty) {
+            await _navigateToProfile(context, userId);
+            return;
+          }
+        } else if (type == 'post') {
+          final postId = first['post_id']?.toString();
+          if (postId != null && postId.isNotEmpty) {
+            await _navigateToPost(context, postId);
+            return;
+          }
+        }
+      }
+    }
+    if (notification.deeplink != null && notification.deeplink!.isNotEmpty) {
+      await _navigateByDeepLink(context, notification.deeplink!);
+      return;
+    }
+    await _navigateToNotifications(context);
+  }
+
   /// مدیریت کلیک روی نوتیفیکیشن‌های داخلی (Local)
   static Future<void> handleLocalNotificationPayload({
     required BuildContext context,
@@ -436,12 +549,10 @@ class NotificationNavigationService {
       }
 
       // ۲. اگر ID پیدا شد و نوع پیام چت است، برو به صفحه چت
-      final type = data['type']?.toString() ?? '';
+      final type = NotificationModel.canonicalType(data['type']?.toString());
       if (conversationId != null &&
           conversationId.isNotEmpty &&
-          (type == 'chat_message' ||
-              type == 'message' ||
-              type == 'new_message')) {
+          (type == 'chat_message' || type == 'message')) {
         await _navigateToChatDirectly(context, conversationId, data);
         return;
       }

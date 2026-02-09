@@ -2,6 +2,7 @@
 // Cleaned MediaMessageBubble implementation — syntactically correct and compatible
 // with callers in `improved_animated_message_bubble.dart`.
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:path/path.dart' as p;
 
 import 'full_screen_image_viewer.dart';
 import '../../../services/telegram_read_receipt_service.dart';
@@ -16,6 +18,7 @@ import '../theme/chat_theme.dart';
 import '../../../model/message_model.dart';
 import '../../../services/network_status_service.dart';
 import '../../../provider/settings_providers.dart';
+import '../services/chat_transfer_manager.dart';
 import 'telegram_message_status.dart';
 
 enum MediaType { image, video, gif }
@@ -58,6 +61,10 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
   bool _isFileCached = false;
   bool _isManuallyDownloading = false;
   File? _cachedFile;
+  File? _offlineFile;
+  ChatTransferTask? _transferTask;
+  final ChatTransferManager _transferManager = ChatTransferManager();
+  StreamSubscription<ChatTransferTask?>? _transferSub;
 
   // ✅ تابع دقیق برای تشخیص لینک اینترنتی (جلوگیری از خطای PathNotFound)
   bool get _isNetworkUrl {
@@ -69,6 +76,55 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
   void initState() {
     super.initState();
     _checkCacheStatus();
+    _bindTransferTask();
+  }
+
+  String get _transferMessageId =>
+      widget.message?.id ?? widget.mediaUrl.hashCode.toString();
+
+  String get _mediaFileName {
+    final uri = Uri.tryParse(widget.mediaUrl);
+    final segment =
+        uri?.pathSegments.isNotEmpty == true ? uri!.pathSegments.last : '';
+    final parsedName = segment.isEmpty ? '' : segment;
+    final ext = widget.mediaType == MediaType.video ? '.mp4' : '.jpg';
+    final withExt =
+        parsedName.isEmpty ? 'media_${_transferMessageId}$ext' : parsedName;
+    if (p.extension(withExt).isNotEmpty) return withExt;
+    return '$withExt$ext';
+  }
+
+  Future<void> _bindTransferTask() async {
+    if (!_isNetworkUrl) return;
+    _transferSub?.cancel();
+    _transferSub =
+        _transferManager.watchTask(_transferMessageId).listen((task) {
+      if (!mounted) return;
+      setState(() {
+        _transferTask = task;
+        _isManuallyDownloading = task?.status == TransferTaskStatus.downloading;
+        final localPath = task?.localPath;
+        if (localPath != null && localPath.isNotEmpty) {
+          final file = File(localPath);
+          _offlineFile = file.existsSync() ? file : null;
+          if (_offlineFile != null) {
+            _cachedFile = _offlineFile;
+            _isFileCached = true;
+          }
+        } else {
+          _offlineFile = null;
+        }
+      });
+    });
+
+    final existing =
+        await _transferManager.getLocalFileIfExists(_transferMessageId);
+    if (!mounted || existing == null) return;
+    setState(() {
+      _offlineFile = existing;
+      _cachedFile = existing;
+      _isFileCached = true;
+    });
   }
 
   Future<void> _checkCacheStatus() async {
@@ -160,6 +216,46 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
   }
 
   @override
+  void dispose() {
+    _transferSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _handleTransferAction() async {
+    final status = _transferTask?.status;
+    if (_offlineFile != null && _offlineFile!.existsSync()) {
+      _openFullScreenViewer(
+        widget.message != null
+            ? '${widget.message!.id}_${widget.mediaUrl}'
+            : widget.mediaUrl,
+      );
+      return;
+    }
+    if (status == TransferTaskStatus.downloading) {
+      await _transferManager.pause(_transferTask!.taskId);
+      return;
+    }
+    if (status == TransferTaskStatus.paused ||
+        status == TransferTaskStatus.queued) {
+      if (mounted) setState(() => _isManuallyDownloading = true);
+      await _transferManager.resume(_transferTask!.taskId);
+      return;
+    }
+    if (mounted) setState(() => _isManuallyDownloading = true);
+    await _transferManager.startDownload(
+      _transferMessageId,
+      widget.mediaUrl,
+      _mediaFileName,
+    );
+  }
+
+  Future<void> _cancelTransfer() async {
+    final taskId = _transferTask?.taskId;
+    if (taskId == null) return;
+    await _transferManager.cancel(taskId);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
     final settingsAsync = ref.watch(appSettingsProvider);
@@ -186,9 +282,7 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
     return GestureDetector(
       onTap: () {
         if (!_isFileCached && !shouldDownload && !_isManuallyDownloading) {
-          setState(() {
-            _isManuallyDownloading = true;
-          });
+          unawaited(_handleTransferAction());
         } else {
           _openFullScreenViewer(uniqueHeroTag);
         }
@@ -198,7 +292,8 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
             BoxConstraints(maxWidth: maxWidth, minWidth: 100, maxHeight: 450),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min, // مهم برای جلوگیری از کش آمدن
+          mainAxisSize: MainAxisSize
+              .min, // مهم برای جلوگیری از کش آمدن
           children: [
             Stack(
               alignment: Alignment.center,
@@ -222,6 +317,12 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
                 if (_isManuallyDownloading && !_isFileCached)
                   _buildLoadingIndicator(),
 
+                if (_isNetworkUrl && _transferTask != null)
+                  Positioned(
+                    left: 8,
+                    bottom: 8,
+                    child: _buildTransferControls(),
+                  ),
                 // اگر کپشن نداریم، ساعت را روی عکس نشان بده
                 if (!hasCaption)
                   Positioned(
@@ -240,6 +341,14 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
   }
 
   Widget _buildContent(ChatTheme theme, bool shouldDownload) {
+    if (_offlineFile != null && _offlineFile!.existsSync()) {
+      return Image.file(
+        _offlineFile!,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _buildPlaceholder(theme),
+      );
+    }
+
     if (_cachedFile != null) {
       return Image.file(
         _cachedFile!,
@@ -257,7 +366,10 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
       );
     }
 
-    if (shouldDownload || _isManuallyDownloading) {
+    final transferDownloading =
+        _transferTask?.status == TransferTaskStatus.downloading;
+
+    if (shouldDownload || _isManuallyDownloading || transferDownloading) {
       return _buildNetworkImage(theme);
     }
 
@@ -340,6 +452,74 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
     );
   }
 
+  Widget _buildTransferControls() {
+    final status = _transferTask?.status;
+    if (status == null || status == TransferTaskStatus.completed) {
+      return const SizedBox.shrink();
+    }
+
+    final progress = _transferTask?.progress ?? 0;
+    final isDownloading = status == TransferTaskStatus.downloading;
+    final isPaused = status == TransferTaskStatus.paused;
+    final isQueued = status == TransferTaskStatus.queued;
+    final isFailed = status == TransferTaskStatus.failed;
+
+    final label = isDownloading
+        ? '${(progress * 100).toStringAsFixed(0)}%'
+        : isPaused
+            ? 'ادامه'
+            : isQueued
+                ? 'در صف'
+                : isFailed
+                    ? 'تلاش مجدد'
+                    : 'دانلود';
+
+    final icon = isDownloading
+        ? Icons.pause_rounded
+        : isPaused || isQueued
+            ? Icons.play_arrow_rounded
+            : Icons.refresh_rounded;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.55),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: () => unawaited(_handleTransferAction()),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: Colors.white, size: 14),
+                const SizedBox(width: 4),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (isDownloading || isPaused || isQueued) ...[
+            const SizedBox(width: 8),
+            InkWell(
+              onTap: () => unawaited(_cancelTransfer()),
+              child: const Icon(Icons.close_rounded,
+                  color: Colors.white, size: 14),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildTimestampPill(ChatTheme theme) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -365,8 +545,8 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
 
   Widget _buildCaption(ChatTheme theme) {
     return Container(
-      padding:
-          const EdgeInsets.fromLTRB(10, 8, 10, 24), // پدینگ پایین برای جای ساعت
+      padding: const EdgeInsets.fromLTRB(
+          10, 8, 10, 24), // پدینگ پایین برای جای ساعت
       child: Stack(
         clipBehavior: Clip.none,
         children: [

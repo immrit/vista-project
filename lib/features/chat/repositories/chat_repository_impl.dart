@@ -2,6 +2,7 @@
 
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:isar/isar.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../model/message_model.dart';
 
@@ -11,6 +12,8 @@ import '../services/message_reactions_service.dart'; // ✅ اضافه شد
 import 'package:uuid/uuid.dart';
 import '../../../../services/vista_node_service.dart';
 import '../../../../security/logging_utility.dart'; // Added
+import '../../../DB/isar_database_manager.dart';
+import '../../../DB/entities/deletion_task_entity.dart';
 import 'chat_repository.dart';
 
 /// A local-first ChatRepository implementation using Isar.
@@ -22,6 +25,7 @@ class ChatRepositoryImpl implements ChatRepository {
   final String? _injectedCurrentUserId;
   final RealtimeChannel _messagesChannel;
   late final MessageReactionsService _reactionService;
+  final IsarDatabaseManager _dbManager = IsarDatabaseManager();
 
   // ✅ Controller for Realtime Status
   final _realtimeStatusController =
@@ -202,6 +206,13 @@ class ChatRepositoryImpl implements ChatRepository {
 
               final newMessage =
                   MessageModel.fromJson(newRecord, currentUserId: userId);
+
+              if (await _isMessageTombstoned(
+                conversationId: conversationId,
+                messageId: newMessage.id,
+              )) {
+                return;
+              }
 
               logDebug('Realtime message parsed: ${newMessage.id}');
 
@@ -582,10 +593,12 @@ class ChatRepositoryImpl implements ChatRepository {
       final hiddenIds = (hiddenResponse as List)
           .map((e) => e['message_id'] as String)
           .toSet();
+      final tombstoneIds = await _getTombstoneIds(conversationId);
+      final blockedIds = {...hiddenIds, ...tombstoneIds};
 
       final filteredData = (response as List)
           .where((json) =>
-              !hiddenIds.contains(json['id'] as String)) // فیلتر کردن مخفی‌ها
+              !blockedIds.contains(json['id'] as String))
           .toList();
 
       final serverMessages = await compute(
@@ -616,6 +629,27 @@ class ChatRepositoryImpl implements ChatRepository {
     } catch (e) {
       logError('Sync conversations error', error: e);
     }
+  }
+
+  Future<Set<String>> _getTombstoneIds(String conversationId) async {
+    try {
+      final isar = await _dbManager.instance;
+      final rows = await isar.deletionTaskEntitys
+          .filter()
+          .conversationIdEqualTo(conversationId)
+          .findAll();
+      return rows.map((e) => e.messageId).toSet();
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<bool> _isMessageTombstoned({
+    required String conversationId,
+    required String messageId,
+  }) async {
+    final ids = await _getTombstoneIds(conversationId);
+    return ids.contains(messageId);
   }
 
   // Remaining interface methods (minimal implementations)
@@ -858,6 +892,7 @@ class ChatRepositoryImpl implements ChatRepository {
       required DateTime oldestMessageDate,
       int limit = 50}) async {
     try {
+      final userId = _currentUserId ?? '';
       final response = await _supabase
           .from('messages')
           .select(_messageSelectWithProfiles)
@@ -865,9 +900,24 @@ class ChatRepositoryImpl implements ChatRepository {
           .lt('created_at', oldestMessageDate.toUtc().toIso8601String())
           .order('created_at', ascending: false)
           .limit(limit);
-      final userId = _currentUserId ?? '';
+
+      final hiddenResponse = await _supabase
+          .from('hidden_messages')
+          .select('message_id')
+          .eq('user_id', userId)
+          .eq('conversation_id', conversationId);
+      final hiddenIds = (hiddenResponse as List)
+          .map((e) => e['message_id'] as String)
+          .toSet();
+      final tombstoneIds = await _getTombstoneIds(conversationId);
+      final blockedIds = {...hiddenIds, ...tombstoneIds};
+
+      final filteredData = (response as List)
+          .where((json) => !blockedIds.contains(json['id'] as String))
+          .toList();
+
       final messages = await compute(
-          _parseMessagesIsolate, {'data': response as List, 'userId': userId});
+          _parseMessagesIsolate, {'data': filteredData, 'userId': userId});
       await _localDataSource.saveMessages(messages);
       return ChatResult.success(messages);
     } catch (e) {
@@ -988,6 +1038,13 @@ class ChatRepositoryImpl implements ChatRepository {
         attachmentUrl: payload['attachment_url']?.toString(),
         attachmentType: payload['attachment_type']?.toString(),
       );
+
+      if (await _isMessageTombstoned(
+        conversationId: conversationId,
+        messageId: message.id,
+      )) {
+        return;
+      }
 
       // 3. ذخیره در لوکال دیتابیس (Isar)
       await _localDataSource.saveMessage(message);

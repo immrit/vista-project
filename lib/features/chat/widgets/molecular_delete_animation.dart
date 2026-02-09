@@ -1,8 +1,3 @@
-// lib/features/chat/widgets/molecular_delete_animation.dart
-//
-// انیمیشن حذف پیام با افکت "پودر شدن" (Molecular/Dissolve Effect)
-// استفاده از ShaderMask و ترکیب انیمیشن‌ها برای ایجاد افکت حرفه‌ای
-
 import 'package:flutter/material.dart';
 
 class MolecularDeleteAnimation extends StatefulWidget {
@@ -16,7 +11,7 @@ class MolecularDeleteAnimation extends StatefulWidget {
     required this.child,
     required this.isDeleting,
     required this.onAnimationComplete,
-    this.duration = const Duration(milliseconds: 800),
+    this.duration = const Duration(milliseconds: 260),
   });
 
   @override
@@ -26,20 +21,38 @@ class MolecularDeleteAnimation extends StatefulWidget {
 
 class _MolecularDeleteAnimationState extends State<MolecularDeleteAnimation>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _progress;
+  late final AnimationController _controller;
+  late final Animation<double> _fade;
+  late final Animation<double> _size;
+  late final Animation<Offset> _slide;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
-      vsync: this,
       duration: widget.duration,
+      vsync: this,
     );
-
-    _progress = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeIn,
+    _fade = Tween<double>(begin: 1, end: 0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.75, curve: Curves.easeOut),
+      ),
+    );
+    _size = Tween<double>(begin: 1, end: 0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.12, 1.0, curve: Curves.easeInCubic),
+      ),
+    );
+    _slide = Tween<Offset>(
+      begin: Offset.zero,
+      end: const Offset(0.06, 0.0),
+    ).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.8, curve: Curves.easeOutCubic),
+      ),
     );
 
     _controller.addStatusListener((status) {
@@ -53,7 +66,7 @@ class _MolecularDeleteAnimationState extends State<MolecularDeleteAnimation>
   void didUpdateWidget(covariant MolecularDeleteAnimation oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.isDeleting && !oldWidget.isDeleting) {
-      _controller.forward();
+      _controller.forward(from: 0);
     } else if (!widget.isDeleting && oldWidget.isDeleting) {
       _controller.reset();
     }
@@ -67,49 +80,19 @@ class _MolecularDeleteAnimationState extends State<MolecularDeleteAnimation>
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.isDeleting) {
-      return widget.child;
-    }
+    if (!widget.isDeleting) return widget.child;
 
     return AnimatedBuilder(
-      animation: _progress,
-      builder: (context, child) {
-        // فاز ۱: لرزش قبل از پودر شدن (۱۰۰ میلی‌ثانیه اول)
-        if (_progress.value < 0.1) {
-          final offset = (_progress.value * 50).toInt() % 2 == 0 ? 2.0 : -2.0;
-          return Transform.translate(
-            offset: Offset(offset, 0),
-            child: widget.child,
-          );
-        }
-
-        // فاز ۲: پودر شدن با استفاده از ShaderMask
-        // برای پودر شدن واقعی نیاز به Fragment Shader است، اما اینجا
-        // برای پرفرمنس از ترکیب Fade و Scale و Noise استفاده می‌کنیم.
+      animation: _controller,
+      builder: (_, child) {
         return FadeTransition(
-          opacity: Tween<double>(begin: 1.0, end: 0.0).animate(
-            CurvedAnimation(
-              parent: _controller,
-              curve: const Interval(0.2, 1.0),
-            ),
-          ),
-          child: Transform.scale(
-            scale: 1.0 + (_progress.value * 0.2), // کمی بزرگ شدن هنگام پودر شدن
-            child: ShaderMask(
-              shaderCallback: (rect) {
-                return LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  stops: [0.0, _progress.value, 1.0],
-                  colors: [
-                    Colors.transparent, // قسمت حذف شده
-                    Colors.white.withOpacity(0.5), // مرز پودر شدن
-                    Colors.white, // قسمت باقی مانده
-                  ],
-                ).createShader(rect);
-              },
-              blendMode: BlendMode.dstOut, // حذف پیکسل‌ها
-              child: widget.child,
+          opacity: _fade,
+          child: SlideTransition(
+            position: _slide,
+            child: Align(
+              alignment: Alignment.topCenter,
+              heightFactor: _size.value,
+              child: child,
             ),
           ),
         );

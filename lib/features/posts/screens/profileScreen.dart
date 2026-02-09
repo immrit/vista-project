@@ -447,6 +447,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     try {
       final notifier = ref.read(userProfileProvider(userId).notifier);
       await notifier.toggleFollow(userId);
+      ref.invalidate(followRequestPendingProvider(userId));
+      ref.invalidate(userProfileProvider(userId));
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

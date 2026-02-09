@@ -26,8 +26,8 @@ class ChatFileUploadService {
 
       // بررسی حجم فایل - حداکثر 5MB برای PDF
       final fileSize = await file.length();
-      if (fileSize > 5 * 1024 * 1024) {
-        throw Exception('حجم فایل PDF باید کمتر از ۵ مگابایت باشد');
+      if (fileSize > 50 * 1024 * 1024) {
+        throw Exception('PDF size must be at most 50MB');
       }
 
       // بررسی حجم فایل - حداقل 1KB برای جلوگیری از فایل‌های خالی
@@ -79,8 +79,8 @@ class ChatFileUploadService {
 
       // محدودیت حجم معقول برای اسناد غیر PDF (تا 20 مگابایت)
       final fileSize = await file.length();
-      if (fileSize > 20 * 1024 * 1024) {
-        throw Exception('حجم فایل باید کمتر از ۲۰ مگابایت باشد');
+      if (fileSize > 50 * 1024 * 1024) {
+        throw Exception('File size must be at most 50MB');
       }
 
       final extension = path.extension(file.path).toLowerCase();
@@ -238,5 +238,6 @@ class ChatFileUploadService {
     }
   }
 }
+
 
 

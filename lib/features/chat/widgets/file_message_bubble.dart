@@ -1,25 +1,15 @@
-// lib/features/chat/widgets/file_message_bubble.dart
-//
-// ویجت نمایش فایل در حباب پیام - با الهام از تلگرام
-//
-// ویژگی‌ها:
-// ✅ آیکون بر اساس نوع فایل
-// ✅ نمایش نام و سایز فایل
-// ✅ دانلود با progress
-// ✅ باز کردن فایل
-// ✅ انیمیشن‌های روان
-//
-
+import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
+
+import '../services/chat_transfer_manager.dart';
 import '../theme/chat_theme.dart';
 
-/// ویجت نمایش فایل در حباب پیام
 class FileMessageBubble extends StatefulWidget {
+  final String messageId;
   final String fileUrl;
   final String fileName;
   final int? fileSizeBytes;
@@ -28,6 +18,7 @@ class FileMessageBubble extends StatefulWidget {
 
   const FileMessageBubble({
     super.key,
+    required this.messageId,
     required this.fileUrl,
     required this.fileName,
     this.fileSizeBytes,
@@ -39,242 +30,203 @@ class FileMessageBubble extends StatefulWidget {
   State<FileMessageBubble> createState() => _FileMessageBubbleState();
 }
 
-class _FileMessageBubbleState extends State<FileMessageBubble>
-    with SingleTickerProviderStateMixin {
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 🎮 STATE
-  // ═══════════════════════════════════════════════════════════════════════════
+class _FileMessageBubbleState extends State<FileMessageBubble> {
+  final ChatTransferManager _transferManager = ChatTransferManager();
+  StreamSubscription<ChatTransferTask?>? _taskSub;
 
-  bool _isDownloading = false;
-  bool _isDownloaded = false;
-  double _downloadProgress = 0.0;
-  String? _localPath;
-  late AnimationController _iconController;
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 🎬 LIFECYCLE
-  // ═══════════════════════════════════════════════════════════════════════════
+  ChatTransferTask? _task;
+  File? _localFile;
 
   @override
   void initState() {
     super.initState();
-    _iconController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-    _checkIfDownloaded();
+    _bindTask();
   }
 
   @override
   void dispose() {
-    _iconController.dispose();
+    _taskSub?.cancel();
     super.dispose();
   }
 
-  Future<void> _checkIfDownloaded() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final file = File('${dir.path}/downloads/${widget.fileName}');
-    if (file.existsSync()) {
+  Future<void> _bindTask() async {
+    _taskSub?.cancel();
+    _taskSub = _transferManager.watchTask(widget.messageId).listen((task) {
+      if (!mounted) return;
       setState(() {
-        _isDownloaded = true;
-        _localPath = file.path;
+        _task = task;
+        final path = task?.localPath;
+        if (path != null && path.isNotEmpty) {
+          final file = File(path);
+          _localFile = file.existsSync() ? file : null;
+        } else {
+          _localFile = null;
+        }
       });
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 📥 DOWNLOAD
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  Future<void> _downloadFile() async {
-    if (_isDownloading) {
-      // لغو دانلود
-      setState(() {
-        _isDownloading = false;
-        _downloadProgress = 0.0;
-      });
-      return;
-    }
-
-    setState(() {
-      _isDownloading = true;
-      _downloadProgress = 0.0;
     });
 
-    try {
-      final uri = Uri.parse(widget.fileUrl);
-      final request = http.Request('GET', uri);
-      final response = await http.Client().send(request);
-
-      if (response.statusCode != 200) {
-        throw Exception('Download failed');
-      }
-
-      final totalBytes = response.contentLength ?? 0;
-      int downloadedBytes = 0;
-
-      final dir = await getApplicationDocumentsDirectory();
-      final downloadsDir = Directory('${dir.path}/downloads');
-      if (!downloadsDir.existsSync()) {
-        downloadsDir.createSync(recursive: true);
-      }
-
-      final file = File('${downloadsDir.path}/${widget.fileName}');
-      final sink = file.openWrite();
-
-      await for (final chunk in response.stream) {
-        if (!_isDownloading) {
-          await sink.close();
-          await file.delete();
-          return;
-        }
-
-        sink.add(chunk);
-        downloadedBytes += chunk.length;
-
-        if (totalBytes > 0 && mounted) {
-          setState(() {
-            _downloadProgress = downloadedBytes / totalBytes;
-          });
-        }
-      }
-
-      await sink.close();
-
-      if (mounted) {
-        setState(() {
-          _localPath = file.path;
-          _isDownloading = false;
-          _isDownloaded = true;
-        });
-        _iconController.forward();
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isDownloading = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('خطا در دانلود فایل'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+    final file = await _transferManager.getLocalFileIfExists(widget.messageId);
+    if (!mounted) return;
+    if (file != null) {
+      setState(() => _localFile = file);
     }
   }
 
-  Future<void> _openFile() async {
-    if (_localPath == null) {
-      await _downloadFile();
+  Future<void> _onMainAction() async {
+    HapticFeedback.lightImpact();
+    final status = _task?.status;
+
+    if (_localFile != null && _localFile!.existsSync()) {
+      await OpenFilex.open(_localFile!.path);
       return;
     }
 
-    HapticFeedback.lightImpact();
-    await OpenFilex.open(_localPath!);
+    if (status == TransferTaskStatus.downloading) {
+      await _transferManager.pause(_task!.taskId);
+      return;
+    }
+
+    if (status == TransferTaskStatus.paused ||
+        status == TransferTaskStatus.queued) {
+      await _transferManager.resume(_task!.taskId);
+      return;
+    }
+
+    if (status == TransferTaskStatus.failed ||
+        status == TransferTaskStatus.canceled) {
+      await _transferManager.startDownload(
+        widget.messageId,
+        widget.fileUrl,
+        widget.fileName,
+      );
+      return;
+    }
+
+    await _transferManager.startDownload(
+      widget.messageId,
+      widget.fileUrl,
+      widget.fileName,
+    );
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 🔨 BUILD
-  // ═══════════════════════════════════════════════════════════════════════════
+  Future<void> _cancelTransfer() async {
+    final taskId = _task?.taskId;
+    if (taskId == null) return;
+    await _transferManager.cancel(taskId);
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
     final fileExt = _getFileExtension(widget.fileName);
     final fileInfo = _getFileTypeInfo(fileExt);
+    final status = _task?.status;
+    final hasOffline = _localFile != null && _localFile!.existsSync();
+    final progress = _task?.progress ?? 0;
 
-    return GestureDetector(
-      onTap: _openFile,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 260, minWidth: 200),
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // آیکون فایل
-            _buildFileIcon(theme, fileInfo),
-
-            const SizedBox(width: 12),
-
-            // اطلاعات فایل
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // نام فایل
-                  Text(
-                    widget.fileName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: widget.isMe
-                          ? theme.myBubbleTextColor
-                          : theme.textColor,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-
-                  const SizedBox(height: 4),
-
-                  // سایز و وضعیت
-                  Row(
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 285, minWidth: 220),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GestureDetector(
+            onTap: _onMainAction,
+            child: Row(
+              children: [
+                _buildFileIcon(theme, fileInfo, status, progress, hasOffline),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _formatFileSize(widget.fileSizeBytes ?? 0),
+                        widget.fileName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
+                          color: widget.isMe
+                              ? theme.myBubbleTextColor
+                              : theme.textColor,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        _buildSubtitle(status, progress),
+                        style: TextStyle(
+                          fontSize: 12,
                           color: (widget.isMe
                                   ? theme.myBubbleTextColor
                                   : theme.secondaryTextColor)
-                              .withOpacity(0.7),
-                          fontSize: 12,
+                              .withOpacity(0.75),
                         ),
                       ),
-                      if (_isDownloading) ...[
-                        const SizedBox(width: 8),
-                        Text(
-                          '${(_downloadProgress * 100).toInt()}%',
-                          style: TextStyle(
-                            color: widget.isMe
-                                ? theme.myBubbleTextColor
-                                : theme.sendButtonColor,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                      if (_isDownloaded && !_isDownloading) ...[
-                        const SizedBox(width: 8),
-                        Icon(
-                          Icons.check_circle_rounded,
-                          size: 14,
-                          color: widget.isMe
-                              ? Colors.white.withOpacity(0.8)
-                              : Colors.green,
-                        ),
-                      ],
                     ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              if (status == TransferTaskStatus.downloading ||
+                  status == TransferTaskStatus.paused ||
+                  status == TransferTaskStatus.queued) ...[
+                _buildControlChip(
+                  theme: theme,
+                  icon: status == TransferTaskStatus.downloading
+                      ? Icons.pause_rounded
+                      : Icons.play_arrow_rounded,
+                  label: status == TransferTaskStatus.downloading
+                      ? 'توقف'
+                      : 'ادامه',
+                  onTap: _onMainAction,
+                ),
+                const SizedBox(width: 6),
+                _buildControlChip(
+                  theme: theme,
+                  icon: Icons.close_rounded,
+                  label: 'لغو',
+                  onTap: _cancelTransfer,
+                ),
+              ],
+            ],
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildFileIcon(ChatTheme theme, _FileTypeInfo fileInfo) {
+  Widget _buildFileIcon(
+    ChatTheme theme,
+    _FileTypeInfo fileInfo,
+    TransferTaskStatus? status,
+    double progress,
+    bool hasOffline,
+  ) {
     final iconBgColor = widget.isMe
-        ? Colors.white.withOpacity(0.2)
-        : fileInfo.color.withOpacity(0.1);
-
+        ? Colors.white.withOpacity(0.18)
+        : fileInfo.color.withOpacity(0.12);
     final iconColor = widget.isMe ? Colors.white : fileInfo.color;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
+    IconData icon;
+    if (hasOffline) {
+      icon = Icons.folder_open_rounded;
+    } else if (status == TransferTaskStatus.downloading) {
+      icon = Icons.pause_rounded;
+    } else if (status == TransferTaskStatus.paused) {
+      icon = Icons.play_arrow_rounded;
+    } else if (status == TransferTaskStatus.failed) {
+      icon = Icons.refresh_rounded;
+    } else {
+      icon = fileInfo.icon;
+    }
+
+    return Container(
       width: 48,
       height: 48,
       decoration: BoxDecoration(
@@ -284,43 +236,81 @@ class _FileMessageBubbleState extends State<FileMessageBubble>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // آیکون فایل
-          if (!_isDownloading)
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
-              child: Icon(
-                _isDownloaded ? Icons.folder_open_rounded : fileInfo.icon,
-                key: ValueKey(_isDownloaded),
-                color: iconColor,
-                size: 24,
-              ),
-            ),
-
-          // Progress
-          if (_isDownloading)
-            SizedBox(
-              width: 32,
-              height: 32,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  CircularProgressIndicator(
-                    value: _downloadProgress > 0 ? _downloadProgress : null,
-                    strokeWidth: 2.5,
-                    color: iconColor,
-                    backgroundColor: iconColor.withOpacity(0.2),
-                  ),
-                  Icon(
-                    Icons.close_rounded,
-                    color: iconColor,
-                    size: 16,
-                  ),
-                ],
+          Icon(icon, color: iconColor, size: 24),
+          if (status == TransferTaskStatus.downloading)
+            Positioned.fill(
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: CircularProgressIndicator(
+                  value: progress > 0 ? progress : null,
+                  strokeWidth: 2.5,
+                  color: iconColor,
+                  backgroundColor: iconColor.withOpacity(0.22),
+                ),
               ),
             ),
         ],
       ),
     );
+  }
+
+  Widget _buildControlChip({
+    required ChatTheme theme,
+    required IconData icon,
+    required String label,
+    required Future<void> Function() onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () {
+        unawaited(onTap());
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: widget.isMe
+              ? Colors.white.withOpacity(0.16)
+              : theme.inputBackgroundColor,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon,
+                size: 14, color: widget.isMe ? Colors.white : theme.textColor),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: widget.isMe ? Colors.white : theme.textColor,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _buildSubtitle(TransferTaskStatus? status, double progress) {
+    final sizeText = _formatFileSize(widget.fileSizeBytes ?? 0);
+    if (status == TransferTaskStatus.downloading) {
+      return '$sizeText • ${(progress * 100).toStringAsFixed(0)}%';
+    }
+    if (status == TransferTaskStatus.paused) {
+      return '$sizeText • متوقف شده';
+    }
+    if (status == TransferTaskStatus.queued) {
+      return '$sizeText • در صف دانلود';
+    }
+    if (status == TransferTaskStatus.failed) {
+      return '$sizeText • خطا در دانلود';
+    }
+    if (status == TransferTaskStatus.completed) {
+      return '$sizeText • آماده باز کردن';
+    }
+    return sizeText;
   }
 
   String _getFileExtension(String fileName) {
@@ -330,69 +320,21 @@ class _FileMessageBubbleState extends State<FileMessageBubble>
 
   _FileTypeInfo _getFileTypeInfo(String extension) {
     switch (extension) {
-      // Documents
       case 'pdf':
         return _FileTypeInfo(Icons.picture_as_pdf_rounded, Colors.red);
-      case 'doc':
-      case 'docx':
-        return _FileTypeInfo(Icons.description_rounded, Colors.blue);
-      case 'xls':
-      case 'xlsx':
-        return _FileTypeInfo(Icons.table_chart_rounded, Colors.green);
-      case 'ppt':
-      case 'pptx':
-        return _FileTypeInfo(Icons.slideshow_rounded, Colors.orange);
-      case 'txt':
-        return _FileTypeInfo(Icons.text_snippet_rounded, Colors.grey);
-
-      // Archives
-      case 'zip':
-      case 'rar':
-      case '7z':
-      case 'tar':
-      case 'gz':
-        return _FileTypeInfo(Icons.folder_zip_rounded, Colors.amber);
-
-      // Code
-      case 'json':
-      case 'xml':
-      case 'html':
-      case 'css':
-      case 'js':
-      case 'dart':
-      case 'py':
-      case 'java':
-        return _FileTypeInfo(Icons.code_rounded, Colors.purple);
-
-      // Audio
       case 'mp3':
       case 'wav':
       case 'aac':
       case 'ogg':
       case 'm4a':
         return _FileTypeInfo(Icons.audio_file_rounded, Colors.pink);
-
-      // Video
-      case 'mp4':
-      case 'avi':
-      case 'mkv':
-      case 'mov':
-      case 'webm':
-        return _FileTypeInfo(Icons.video_file_rounded, Colors.indigo);
-
-      // Image
       case 'jpg':
       case 'jpeg':
       case 'png':
       case 'gif':
       case 'webp':
-      case 'svg':
+      case 'bmp':
         return _FileTypeInfo(Icons.image_rounded, Colors.teal);
-
-      // APK
-      case 'apk':
-        return _FileTypeInfo(Icons.android_rounded, Colors.lightGreen);
-
       default:
         return _FileTypeInfo(Icons.insert_drive_file_rounded, Colors.blueGrey);
     }
@@ -414,4 +356,3 @@ class _FileTypeInfo {
 
   const _FileTypeInfo(this.icon, this.color);
 }
-

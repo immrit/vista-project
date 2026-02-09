@@ -1,35 +1,21 @@
-// lib/features/chat/widgets/chat_attachment_sheet.dart
-//
-// Bottom Sheet انتخاب پیوست - با الهام از تلگرام
-//
-// ویژگی‌ها:
-// ✅ گرید گالری با انتخاب چندتایی
-// ✅ پیش‌نمایش انتخاب‌شده‌ها
-// ✅ دوربین، فایل، موقعیت
-// ✅ انیمیشن‌های روان
-// ✅ کپشن برای عکس
-//
-
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:photo_manager/photo_manager.dart';
+
+import '../../../model/ProfileModel.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 import '../theme/chat_theme.dart';
 import 'document_upload_sheet.dart';
-import '../../../utils/user_friendly_error_utils.dart';
 
-/// نوع پیوست
 enum ChatAttachmentType {
   gallery,
   camera,
-  video,
   file,
-  location,
-  contact,
 }
 
-/// نتیجه انتخاب
 class AttachmentSelection {
   final ChatAttachmentType type;
   final List<File> files;
@@ -42,25 +28,29 @@ class AttachmentSelection {
   });
 }
 
-/// Bottom Sheet انتخاب پیوست
 class ChatAttachmentSheet extends StatefulWidget {
   final Function(AttachmentSelection) onSelected;
+  final ProfileModel? currentUserProfile;
 
   const ChatAttachmentSheet({
     super.key,
     required this.onSelected,
+    this.currentUserProfile,
   });
 
-  /// نمایش sheet
   static Future<void> show(
     BuildContext context, {
     required Function(AttachmentSelection) onSelected,
+    ProfileModel? currentUserProfile,
   }) {
     return showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => ChatAttachmentSheet(onSelected: onSelected),
+      builder: (_) => ChatAttachmentSheet(
+        onSelected: onSelected,
+        currentUserProfile: currentUserProfile,
+      ),
     );
   }
 
@@ -70,14 +60,11 @@ class ChatAttachmentSheet extends StatefulWidget {
 
 class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
     with TickerProviderStateMixin {
-  // Controllers
-  late AnimationController _slideController;
-  late AnimationController _optionsController;
-  late Animation<Offset> _slideAnimation;
+  late final AnimationController _slideController;
+  late final Animation<Offset> _slideAnimation;
   final TextEditingController _captionController = TextEditingController();
   final ScrollController _galleryScrollController = ScrollController();
 
-  // State
   List<AssetPathEntity> _albums = [];
   AssetPathEntity? _currentAlbum;
   List<AssetEntity> _mediaList = [];
@@ -87,7 +74,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
   bool _isLoadingMore = false;
   bool _hasMore = true;
   int _currentPage = 0;
-  static const int _pageSize = 60; // Load 60 images per page
+  static const int _pageSize = 60;
 
   bool _showGallery = true;
   double _sheetHeight = 0.55;
@@ -95,31 +82,26 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
   @override
   void initState() {
     super.initState();
-    _setupAnimations();
-    _loadAlbums();
-  }
-
-  void _setupAnimations() {
     _slideController = AnimationController(
-      duration: const Duration(milliseconds: 350),
+      duration: const Duration(milliseconds: 300),
       vsync: this,
     );
-
-    _optionsController = AnimationController(
-      duration: const Duration(milliseconds: 200),
-      vsync: this,
-    );
-
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, 1),
       end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _slideController,
-      curve: Curves.easeOutCubic,
-    ));
-
+    ).animate(
+      CurvedAnimation(parent: _slideController, curve: Curves.easeOutCubic),
+    );
     _slideController.forward();
-    _optionsController.forward();
+    _loadAlbums();
+  }
+
+  @override
+  void dispose() {
+    _slideController.dispose();
+    _captionController.dispose();
+    _galleryScrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadAlbums() async {
@@ -130,32 +112,27 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
         return;
       }
 
-      // Fetch albums (Recent is usually first)
       final albums = await PhotoManager.getAssetPathList(
-        type: RequestType.common,
+        type: RequestType.image,
         filterOption: FilterOptionGroup(
           imageOption: const FilterOption(
             sizeConstraint: SizeConstraint(ignoreSize: true),
           ),
-          videoOption: const FilterOption(
-            durationConstraint: DurationConstraint(max: Duration(minutes: 5)),
-          ),
         ),
       );
 
+      if (!mounted) return;
       if (albums.isEmpty) {
-        if (mounted) setState(() => _isLoading = false);
+        setState(() => _isLoading = false);
         return;
       }
 
-      if (mounted) {
-        setState(() {
-          _albums = albums;
-          _currentAlbum = albums.first;
-        });
-        _loadMedia(refresh: true);
-      }
-    } catch (e) {
+      setState(() {
+        _albums = albums;
+        _currentAlbum = albums.first;
+      });
+      await _loadMedia(refresh: true);
+    } catch (_) {
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -169,11 +146,10 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
       _currentPage = 0;
       _hasMore = true;
       _mediaList.clear();
-      _isLoading = true; // Show full loader on refresh
+      _isLoading = true;
     } else {
       _isLoadingMore = true;
     }
-
     if (mounted) setState(() {});
 
     try {
@@ -181,40 +157,28 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
         page: _currentPage,
         size: _pageSize,
       );
-
-      if (mounted) {
-        setState(() {
-          if (refresh) {
-            _mediaList = media;
-            _isLoading = false;
-          } else {
-            _mediaList.addAll(media);
-            _isLoadingMore = false;
-          }
-
-          if (media.length < _pageSize) {
-            _hasMore = false;
-          } else {
-            _currentPage++;
-          }
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
+      if (!mounted) return;
+      setState(() {
+        if (refresh) {
+          _mediaList = media;
           _isLoading = false;
+        } else {
+          _mediaList.addAll(media);
           _isLoadingMore = false;
-        });
-      }
+        }
+        if (media.length < _pageSize) {
+          _hasMore = false;
+        } else {
+          _currentPage++;
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _isLoadingMore = false;
+      });
     }
-  }
-
-  void _onAlbumSelected(AssetPathEntity album) {
-    if (_currentAlbum == album) return;
-    setState(() {
-      _currentAlbum = album;
-    });
-    _loadMedia(refresh: true);
   }
 
   void _toggleSelection(AssetEntity asset) {
@@ -222,52 +186,42 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
     setState(() {
       if (_selectedAssets.contains(asset)) {
         _selectedAssets.remove(asset);
+      } else if (_selectedAssets.length < 10) {
+        _selectedAssets.add(asset);
       } else {
-        if (_selectedAssets.length < 10) {
-          _selectedAssets.add(asset);
-        } else {
-          _showMaxSelectionWarning();
-        }
+        UserFriendlyErrorUtils.showErrorSnackBar(
+          context,
+          'حداکثر ۱۰ تصویر می‌توانید انتخاب کنید',
+        );
       }
     });
   }
 
-  void _showMaxSelectionWarning() {
-    UserFriendlyErrorUtils.showErrorSnackBar(
-      context,
-      'حداکثر ۱۰ فایل می‌توانید انتخاب کنید',
-    );
-  }
-
   Future<void> _sendSelected() async {
     if (_selectedAssets.isEmpty) return;
-
     HapticFeedback.mediumImpact();
 
     final files = <File>[];
     for (final asset in _selectedAssets) {
       final file = await asset.file;
-      if (file != null) {
-        files.add(file);
-      }
+      if (file != null) files.add(file);
     }
+    if (files.isEmpty) return;
 
-    if (files.isNotEmpty) {
-      widget.onSelected(AttachmentSelection(
+    widget.onSelected(
+      AttachmentSelection(
         type: ChatAttachmentType.gallery,
         files: files,
-        caption: _captionController.text.trim().isNotEmpty
-            ? _captionController.text.trim()
-            : null,
-      ));
-    }
-
+        caption: _captionController.text.trim().isEmpty
+            ? null
+            : _captionController.text.trim(),
+      ),
+    );
     if (mounted) Navigator.pop(context);
   }
 
   Future<void> _pickFromCamera() async {
     Navigator.pop(context);
-
     final picker = ImagePicker();
     final image = await picker.pickImage(
       source: ImageSource.camera,
@@ -275,74 +229,29 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
       maxWidth: 1920,
       maxHeight: 1920,
     );
-
-    if (image != null) {
-      widget.onSelected(AttachmentSelection(
+    if (image == null) return;
+    widget.onSelected(
+      AttachmentSelection(
         type: ChatAttachmentType.camera,
         files: [File(image.path)],
-      ));
-    }
-  }
-
-  Future<void> _pickVideo() async {
-    Navigator.pop(context);
-
-    final picker = ImagePicker();
-    final video = await picker.pickVideo(
-      source: ImageSource.gallery,
-      maxDuration: const Duration(minutes: 5),
+      ),
     );
-
-    if (video != null) {
-      widget.onSelected(AttachmentSelection(
-        type: ChatAttachmentType.video,
-        files: [File(video.path)],
-      ));
-    }
   }
 
   Future<void> _pickFile() async {
     Navigator.pop(context);
-
-    // استفاده از DocumentUploadSheet برای UI بهتر
     final result = await DocumentUploadSheet.show(
       context: context,
+      profile: widget.currentUserProfile,
     );
-
-    if (result != null) {
-      widget.onSelected(AttachmentSelection(
+    if (result == null) return;
+    widget.onSelected(
+      AttachmentSelection(
         type: ChatAttachmentType.file,
         files: [result.file],
-        caption: result.caption.isNotEmpty ? result.caption : null,
-      ));
-    }
-  }
-
-  Future<void> _showLocation() async {
-    Navigator.pop(context);
-    // Location picker will be handled in ModernChatScreen
-    widget.onSelected(const AttachmentSelection(
-      type: ChatAttachmentType.location,
-      files: [],
-    ));
-  }
-
-  Future<void> _showContact() async {
-    Navigator.pop(context);
-    // Contact picker will be handled in ModernChatScreen
-    widget.onSelected(const AttachmentSelection(
-      type: ChatAttachmentType.contact,
-      files: [],
-    ));
-  }
-
-  @override
-  void dispose() {
-    _slideController.dispose();
-    _optionsController.dispose();
-    _captionController.dispose();
-    _galleryScrollController.dispose();
-    super.dispose();
+        caption: result.caption.isEmpty ? null : result.caption,
+      ),
+    );
   }
 
   @override
@@ -355,7 +264,6 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
       position: _slideAnimation,
       child: GestureDetector(
         onVerticalDragUpdate: (details) {
-          // درگ برای تغییر سایز
           setState(() {
             _sheetHeight -= details.delta.dy / mediaQuery.size.height;
             _sheetHeight = _sheetHeight.clamp(0.4, 0.85);
@@ -366,12 +274,10 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
           constraints: BoxConstraints(maxHeight: maxHeight),
           decoration: BoxDecoration(
             color: theme.backgroundColor,
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(20),
-            ),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.2),
+                color: Colors.black.withOpacity(0.2),
                 blurRadius: 20,
                 offset: const Offset(0, -5),
               ),
@@ -379,23 +285,14 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
           ),
           child: Column(
             children: [
-              // Handle
               _buildHandle(theme),
-
-              // Options row
               _buildOptionsRow(theme),
-
-              // Gallery or options
               Expanded(
                 child: _showGallery
                     ? _buildGalleryGrid(theme)
                     : _buildExpandedOptions(theme),
               ),
-
-              // Selected preview & send
               if (_selectedAssets.isNotEmpty) _buildSelectedPreview(theme),
-
-              // Safe area
               SizedBox(height: mediaQuery.padding.bottom),
             ],
           ),
@@ -411,7 +308,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
           _sheetHeight = _sheetHeight > 0.6 ? 0.55 : 0.85;
         });
       },
-      child: Container(
+      child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Container(
           width: 40,
@@ -426,51 +323,39 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
   }
 
   Widget _buildOptionsRow(ChatTheme theme) {
-    return Container(
+    return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          // Album Dropdown / Gallery Toggle
           if (_showGallery && _currentAlbum != null)
             _buildAlbumSelector(theme)
           else
             _OptionChip(
               icon: Icons.photo_library_rounded,
               label: 'گالری',
-              isSelected: _showGallery,
               color: Colors.purple,
+              isSelected: _showGallery,
               onTap: () => setState(() => _showGallery = true),
             ),
-
           const SizedBox(width: 8),
-
-          // دوربین
           _OptionChip(
             icon: Icons.camera_alt_rounded,
             label: 'دوربین',
             color: Colors.blue,
             onTap: _pickFromCamera,
           ),
-
           const SizedBox(width: 8),
-
-          // فایل
           _OptionChip(
             icon: Icons.insert_drive_file_rounded,
             label: 'فایل',
             color: Colors.orange,
             onTap: _pickFile,
           ),
-
           const Spacer(),
-
-          // Toggle view
           IconButton(
             onPressed: () => setState(() => _showGallery = !_showGallery),
             icon: Icon(
-              _showGallery
-                  ? Icons.grid_view_rounded
-                  : Icons.photo_library_rounded,
+              _showGallery ? Icons.grid_view_rounded : Icons.photo_library_rounded,
               color: theme.iconColor,
             ),
           ),
@@ -481,10 +366,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
 
   Widget _buildAlbumSelector(ChatTheme theme) {
     return InkWell(
-      onTap: () {
-        // Show album selection sheet
-        _showAlbumSelectionSheet(context, theme);
-      },
+      onTap: () => _showAlbumSelectionSheet(context, theme),
       borderRadius: BorderRadius.circular(20),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -503,11 +385,9 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
                 fontWeight: FontWeight.w600,
                 fontSize: 13,
               ),
-              overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(width: 4),
-            Icon(Icons.keyboard_arrow_down_rounded,
-                color: theme.secondaryTextColor, size: 18),
+            Icon(Icons.keyboard_arrow_down_rounded, color: theme.secondaryTextColor, size: 18),
           ],
         ),
       ),
@@ -521,56 +401,31 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) {
+      builder: (_) {
         return SizedBox(
           height: MediaQuery.of(context).size.height * 0.5,
-          child: Column(
-            children: [
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: theme.dividerColor,
-                  borderRadius: BorderRadius.circular(2),
+          child: ListView.builder(
+            itemCount: _albums.length,
+            itemBuilder: (_, index) {
+              final album = _albums[index];
+              final selected = album == _currentAlbum;
+              return ListTile(
+                title: Text(
+                  album.name,
+                  style: TextStyle(
+                    color: selected ? theme.sendButtonColor : theme.textColor,
+                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                  ),
                 ),
-              ),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: _albums.length,
-                  itemBuilder: (context, index) {
-                    final album = _albums[index];
-                    final isSelected = album == _currentAlbum;
-                    return ListTile(
-                      title: Text(
-                        album.name,
-                        style: TextStyle(
-                          color: isSelected
-                              ? theme.sendButtonColor
-                              : theme.textColor,
-                          fontWeight:
-                              isSelected ? FontWeight.bold : FontWeight.normal,
-                        ),
-                      ),
-                      trailing: FutureBuilder<int>(
-                        future: album.assetCountAsync,
-                        builder: (context, snapshot) {
-                          return Text(
-                            '${snapshot.data ?? 0}',
-                            style: TextStyle(
-                                color: theme.secondaryTextColor, fontSize: 12),
-                          );
-                        },
-                      ),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _onAlbumSelected(album);
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _currentAlbum = album;
+                  });
+                  _loadMedia(refresh: true);
+                },
+              );
+            },
           ),
         );
       },
@@ -583,23 +438,11 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
         child: CircularProgressIndicator(color: theme.sendButtonColor),
       );
     }
-
     if (_mediaList.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.photo_library_outlined,
-              size: 64,
-              color: theme.secondaryTextColor.withValues(alpha: 0.5),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'عکسی یافت نشد',
-              style: TextStyle(color: theme.secondaryTextColor),
-            ),
-          ],
+        child: Text(
+          'تصویری یافت نشد',
+          style: TextStyle(color: theme.secondaryTextColor),
         ),
       );
     }
@@ -608,8 +451,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
       onNotification: (scrollInfo) {
         if (!_isLoadingMore &&
             _hasMore &&
-            scrollInfo.metrics.pixels >=
-                scrollInfo.metrics.maxScrollExtent - 200) {
+            scrollInfo.metrics.pixels >= scrollInfo.metrics.maxScrollExtent - 200) {
           _loadMedia();
         }
         return false;
@@ -622,25 +464,26 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
           crossAxisSpacing: 4,
           mainAxisSpacing: 4,
         ),
-        // Add +1 for loading indicator at bottom
         itemCount: _mediaList.length + (_hasMore ? 1 : 0),
-        itemBuilder: (context, index) {
+        itemBuilder: (_, index) {
           if (index == _mediaList.length) {
             return Center(
-                child: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: theme.sendButtonColor)));
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: theme.sendButtonColor,
+                ),
+              ),
+            );
           }
-
           final asset = _mediaList[index];
-          final isSelected = _selectedAssets.contains(asset);
+          final selected = _selectedAssets.contains(asset);
           final selectionIndex = _selectedAssets.toList().indexOf(asset);
-
           return _GalleryItem(
             asset: asset,
-            isSelected: isSelected,
+            isSelected: selected,
             selectionIndex: selectionIndex,
             onTap: () => _toggleSelection(asset),
           );
@@ -652,54 +495,26 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
   Widget _buildExpandedOptions(ChatTheme theme) {
     return Padding(
       padding: const EdgeInsets.all(24),
-      child: Column(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildBigOption(
-                icon: Icons.photo_library_rounded,
-                label: 'گالری',
-                color: Colors.purple,
-                onTap: () => setState(() => _showGallery = true),
-              ),
-              _buildBigOption(
-                icon: Icons.camera_alt_rounded,
-                label: 'دوربین',
-                color: Colors.blue,
-                onTap: _pickFromCamera,
-              ),
-              _buildBigOption(
-                icon: Icons.videocam_rounded,
-                label: 'ویدیو',
-                color: Colors.red,
-                onTap: _pickVideo,
-              ),
-            ],
+          _buildBigOption(
+            icon: Icons.photo_library_rounded,
+            label: 'گالری',
+            color: Colors.purple,
+            onTap: () => setState(() => _showGallery = true),
           ),
-          const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildBigOption(
-                icon: Icons.insert_drive_file_rounded,
-                label: 'فایل',
-                color: Colors.orange,
-                onTap: _pickFile,
-              ),
-              _buildBigOption(
-                icon: Icons.location_on_rounded,
-                label: 'موقعیت',
-                color: Colors.green,
-                onTap: _showLocation,
-              ),
-              _buildBigOption(
-                icon: Icons.contacts_rounded,
-                label: 'مخاطب',
-                color: Colors.orange,
-                onTap: _showContact,
-              ),
-            ],
+          _buildBigOption(
+            icon: Icons.camera_alt_rounded,
+            label: 'دوربین',
+            color: Colors.blue,
+            onTap: _pickFromCamera,
+          ),
+          _buildBigOption(
+            icon: Icons.insert_drive_file_rounded,
+            label: 'فایل',
+            color: Colors.orange,
+            onTap: _pickFile,
           ),
         ],
       ),
@@ -713,7 +528,6 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
     required VoidCallback onTap,
   }) {
     final theme = context.chatTheme;
-
     return InkWell(
       onTap: () {
         HapticFeedback.lightImpact();
@@ -729,19 +543,13 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.15),
+                color: color.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Icon(icon, color: color, size: 32),
             ),
             const SizedBox(height: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: theme.textColor,
-                fontSize: 13,
-              ),
-            ),
+            Text(label, style: TextStyle(color: theme.textColor, fontSize: 13)),
           ],
         ),
       ),
@@ -753,24 +561,20 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: theme.inputBackgroundColor,
-        border: Border(
-          top: BorderSide(color: theme.dividerColor),
-        ),
+        border: Border(top: BorderSide(color: theme.dividerColor)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Preview row
           SizedBox(
             height: 70,
             child: Row(
               children: [
-                // Selected thumbnails
                 Expanded(
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,
                     itemCount: _selectedAssets.length,
-                    itemBuilder: (context, index) {
+                    itemBuilder: (_, index) {
                       final asset = _selectedAssets.elementAt(index);
                       return _SelectedThumbnail(
                         asset: asset,
@@ -779,15 +583,11 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
                     },
                   ),
                 ),
-
-                // Send button
                 const SizedBox(width: 12),
                 _buildSendButton(theme),
               ],
             ),
           ),
-
-          // Caption input
           const SizedBox(height: 8),
           TextField(
             controller: _captionController,
@@ -800,18 +600,6 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(color: theme.dividerColor),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: theme.dividerColor),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: theme.sendButtonColor),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 12,
               ),
             ),
           ),
@@ -827,40 +615,19 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
         width: 56,
         height: 56,
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              theme.sendButtonColor,
-              theme.sendButtonColor.withValues(
-                blue: (theme.sendButtonColor.b + 0.12).clamp(0.0, 1.0),
-              ),
-            ],
-          ),
+          color: theme.sendButtonColor,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: theme.sendButtonColor.withValues(alpha: 0.4),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
         ),
         child: Stack(
           alignment: Alignment.center,
           children: [
-            const Icon(
-              Icons.send_rounded,
-              color: Colors.white,
-              size: 24,
-            ),
+            const Icon(Icons.send_rounded, color: Colors.white, size: 24),
             Positioned(
               top: 4,
               right: 4,
               child: Container(
                 padding: const EdgeInsets.all(4),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                ),
+                decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
                 child: Text(
                   '${_selectedAssets.length}',
                   style: TextStyle(
@@ -878,10 +645,6 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// 🎯 HELPER WIDGETS
-// ═══════════════════════════════════════════════════════════════════════════
-
 class _OptionChip extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -893,26 +656,23 @@ class _OptionChip extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.color,
-    this.isSelected = false,
     required this.onTap,
+    this.isSelected = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
-
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
         onTap();
       },
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+        duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected
-              ? color.withValues(alpha: 0.2)
-              : theme.inputBackgroundColor,
+          color: isSelected ? color.withOpacity(0.2) : theme.inputBackgroundColor,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected ? color : theme.dividerColor,
@@ -922,13 +682,13 @@ class _OptionChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color, size: 18),
+            Icon(icon, size: 18, color: color),
             const SizedBox(width: 6),
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? color : theme.textColor,
                 fontSize: 13,
+                color: isSelected ? color : theme.textColor,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
               ),
             ),
@@ -952,79 +712,34 @@ class _GalleryItem extends StatelessWidget {
     required this.onTap,
   });
 
-  Future<Widget> _buildThumbnail() async {
-    final thumbData = await asset.thumbnailDataWithSize(
-      const ThumbnailSize(200, 200),
-    );
-    if (thumbData != null) {
-      return Image.memory(
-        thumbData,
-        fit: BoxFit.cover,
+  Future<Widget> _buildThumbnail(ChatTheme theme) async {
+    final bytes = await asset.thumbnailDataWithSize(const ThumbnailSize(200, 200));
+    if (bytes == null) {
+      return Container(
+        color: theme.dividerColor,
+        child: Icon(Icons.image_rounded, color: theme.secondaryTextColor),
       );
     }
-    return const SizedBox();
+    return Image.memory(bytes, fit: BoxFit.cover);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
-
     return GestureDetector(
       onTap: onTap,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Thumbnail
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: FutureBuilder<Widget>(
-              future: _buildThumbnail(),
-              builder: (context, snapshot) {
-                if (snapshot.hasData) {
-                  return snapshot.data!;
-                }
-                return Container(
-                  color: theme.dividerColor,
-                  child: Icon(
-                    Icons.image_rounded,
-                    color: theme.secondaryTextColor,
-                  ),
-                );
-              },
+              future: _buildThumbnail(theme),
+              builder: (_, snapshot) => snapshot.data ?? const SizedBox.shrink(),
             ),
           ),
-
-          // Video duration
-          if (asset.type == AssetType.video)
-            Positioned(
-              left: 4,
-              bottom: 4,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.play_arrow, color: Colors.white, size: 12),
-                    const SizedBox(width: 2),
-                    Text(
-                      _formatDuration(asset.videoDuration),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-          // Selection overlay
           AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
+            duration: const Duration(milliseconds: 140),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(4),
               border: Border.all(
@@ -1034,14 +749,10 @@ class _GalleryItem extends StatelessWidget {
               color: isSelected ? Colors.black26 : Colors.transparent,
             ),
           ),
-
-          // Selection badge
-          Positioned(
-            top: 6,
-            right: 6,
-            child: AnimatedScale(
-              scale: isSelected ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 150),
+          if (isSelected)
+            Positioned(
+              top: 6,
+              right: 6,
               child: Container(
                 width: 24,
                 height: 24,
@@ -1062,16 +773,9 @@ class _GalleryItem extends StatelessWidget {
                 ),
               ),
             ),
-          ),
         ],
       ),
     );
-  }
-
-  String _formatDuration(Duration duration) {
-    final mins = duration.inMinutes;
-    final secs = duration.inSeconds % 60;
-    return '$mins:${secs.toString().padLeft(2, '0')}';
   }
 }
 
@@ -1085,66 +789,42 @@ class _SelectedThumbnail extends StatelessWidget {
   });
 
   Future<Widget> _buildThumbnail() async {
-    final thumbData = await asset.thumbnailDataWithSize(
-      const ThumbnailSize(120, 120),
-    );
-    if (thumbData != null) {
-      return Image.memory(
-        thumbData,
-        fit: BoxFit.cover,
-      );
-    }
-    return const SizedBox();
+    final bytes = await asset.thumbnailDataWithSize(const ThumbnailSize(120, 120));
+    if (bytes == null) return const SizedBox.shrink();
+    return Image.memory(bytes, fit: BoxFit.cover);
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = context.chatTheme;
-
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: Stack(
+        clipBehavior: Clip.none,
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: SizedBox(
-              width: 60,
-              height: 60,
+              width: 64,
+              height: 64,
               child: FutureBuilder<Widget>(
                 future: _buildThumbnail(),
-                builder: (context, snapshot) {
-                  if (snapshot.hasData) {
-                    return snapshot.data!;
-                  }
-                  return Container(
-                    color: theme.dividerColor,
-                    child: Icon(
-                      Icons.image_rounded,
-                      color: theme.secondaryTextColor,
-                      size: 20,
-                    ),
-                  );
-                },
+                builder: (_, snap) => snap.data ?? const SizedBox.shrink(),
               ),
             ),
           ),
           Positioned(
-            top: -4,
-            right: -4,
+            top: -6,
+            right: -6,
             child: GestureDetector(
               onTap: onRemove,
               child: Container(
                 width: 20,
                 height: 20,
                 decoration: const BoxDecoration(
-                  color: Colors.red,
+                  color: Colors.black87,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  Icons.close,
-                  color: Colors.white,
-                  size: 14,
-                ),
+                child: const Icon(Icons.close, color: Colors.white, size: 12),
               ),
             ),
           ),
