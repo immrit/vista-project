@@ -134,10 +134,45 @@ abstract class ChatRepository {
     String? attachmentUrl,
     String? attachmentType,
     String? attachmentFileName,
+    String? attachmentMimeType,
+    int? attachmentSizeBytes,
+    String? audioTitle,
+    String? audioArtist,
+    String? audioAlbum,
     int? duration,
     String? replyToMessageId,
     String? replyToContent,
     String? replyToSenderName,
+  });
+
+  /// Create an optimistic pending upload message in local cache.
+  Future<ChatResult<MessageModel>> createPendingMessage({
+    required String conversationId,
+    required String content,
+    required String localId,
+    required String attachmentType,
+    String? attachmentFileName,
+    String? attachmentMimeType,
+    int? attachmentSizeBytes,
+    String? audioTitle,
+    String? audioArtist,
+    String? audioAlbum,
+    String? localFilePath,
+    int? duration,
+  });
+
+  /// Update upload progress for a pending local message.
+  Future<ChatResult<void>> updateUploadProgress(
+      String localId, double progress);
+
+  /// Replace/merge pending upload message with server-confirmed message.
+  Future<ChatResult<void>> markUploadSucceeded(
+      String localId, MessageModel serverMessage);
+
+  /// Mark pending upload message as failed and keep it in chat list.
+  Future<ChatResult<void>> markUploadFailed(
+    String localId, {
+    String? errorMessage,
   });
 
   /// حذف پیام

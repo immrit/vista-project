@@ -9,6 +9,7 @@ import '../../../provider/provider.dart';
 import '../../../DB/profile_cache_service.dart';
 import '../../../utils/const.dart';
 import 'package:Vista/widgets/profile_avatar_widget.dart'; // NEW IMPORT
+import '../providers/saved_posts_provider.dart';
 
 // Imports for existing functionality
 import '../../../features/chat/screens/modern_chat_screen.dart';
@@ -37,6 +38,7 @@ import 'package:Vista/features/posts/widgets/standard_edit_post_dialog.dart';
 import 'package:Vista/features/posts/screens/PostDetailPage.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
 import 'package:Vista/features/posts/widgets/hashtag_rich_text.dart';
+import 'package:Vista/features/posts/widgets/post_music_bubble.dart';
 
 /// صفحه پروفایل ویستا - طراحی مدرن Instagram/Threads
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -199,87 +201,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     );
   }
 
-  Widget _buildDrawer(bool isDark) {
-    return Drawer(
-      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-      child: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.settings,
-                    color: isDark ? Colors.white : Colors.black,
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'تنظیمات',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            ListTile(
-              leading: Icon(Icons.person_outline,
-                  color: isDark ? Colors.grey[400] : Colors.grey[700]),
-              title: Text('ویرایش پروفایل',
-                  style:
-                      TextStyle(color: isDark ? Colors.white : Colors.black)),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const EditProfile()));
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.bookmark_outline,
-                  color: isDark ? Colors.grey[400] : Colors.grey[700]),
-              title: Text('ذخیره شده‌ها',
-                  style:
-                      TextStyle(color: isDark ? Colors.white : Colors.black)),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('به‌زودی...')),
-                );
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.history,
-                  color: isDark ? Colors.grey[400] : Colors.grey[700]),
-              title: Text('فعالیت‌ها',
-                  style:
-                      TextStyle(color: isDark ? Colors.white : Colors.black)),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('به‌زودی...')),
-                );
-              },
-            ),
-            const Spacer(),
-            ListTile(
-              leading: Icon(Icons.logout, color: Colors.red[400]),
-              title: Text('خروج', style: TextStyle(color: Colors.red[400])),
-              onTap: () async {
-                Navigator.pop(context);
-                await supabase.auth.signOut();
-              },
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildVerificationBadge(ProfileModel profile) {
     if (profile.hasBlueBadge) {
       return const Icon(Icons.verified, color: Colors.blue, size: 18);
@@ -355,7 +276,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               );
             }
 
-            return _PostsGridView(posts: posts, isDark: isDark);
+            return _PostsGridView(
+              posts: posts,
+              isDark: isDark,
+              profileId: profile.id,
+            );
           },
           loading: () => Center(
             child: CircularProgressIndicator(
@@ -436,8 +361,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       await ref
           .read(userProfileProvider(widget.userId).notifier)
           .fetchProfile(widget.userId);
+      await ref.read(profilePostsProvider(widget.userId).notifier).refresh();
       ref.invalidate(userProfileProvider(widget.userId));
       ref.invalidate(userSettingsByIdProvider(widget.userId));
+      ref.invalidate(profilePostsProvider(widget.userId));
     } catch (e) {
       // handle error silently
     }
@@ -1354,24 +1281,101 @@ class _EmptyPlaceholder extends StatelessWidget {
 }
 
 /// گرید پست‌ها
-class _PostsGridView extends StatelessWidget {
+class _PostsGridView extends ConsumerStatefulWidget {
   final List<PublicPostModel> posts;
   final bool isDark;
+  final String profileId;
 
-  const _PostsGridView({required this.posts, required this.isDark});
+  const _PostsGridView({
+    required this.posts,
+    required this.isDark,
+    required this.profileId,
+  });
+
+  @override
+  ConsumerState<_PostsGridView> createState() => _PostsGridViewState();
+}
+
+class _PostsGridViewState extends ConsumerState<_PostsGridView> {
+  final ScrollController _scrollController = ScrollController();
+  bool _loadingMore = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients || _loadingMore) return;
+    final threshold = _scrollController.position.maxScrollExtent * 0.75;
+    if (_scrollController.position.pixels >= threshold) {
+      _triggerLoadMore();
+    }
+  }
+
+  Future<void> _triggerLoadMore() async {
+    final notifier = ref.read(profilePostsProvider(widget.profileId).notifier);
+    if (!notifier.hasMore || notifier.isLoading) return;
+    _loadingMore = true;
+    try {
+      await notifier.loadMore();
+    } finally {
+      _loadingMore = false;
+      if (mounted) setState(() {});
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    // Watching provider keeps footer state up to date.
+    ref.watch(profilePostsProvider(widget.profileId));
+    final notifier = ref.read(profilePostsProvider(widget.profileId).notifier);
+    final hasMore = notifier.hasMore;
+    final isLoading = notifier.isLoading;
+
     return ListView.separated(
+      controller: _scrollController,
       padding: EdgeInsets.zero,
-      itemCount: posts.length,
+      itemCount: widget.posts.length + 1,
       separatorBuilder: (context, index) => Divider(
         height: 1,
-        color: isDark ? const Color(0xFF303D4F) : const Color(0xFFE4E6E9),
+        color:
+            widget.isDark ? const Color(0xFF303D4F) : const Color(0xFFE4E6E9),
       ),
       itemBuilder: (context, index) {
-        final post = posts[index];
-        return _PostListItem(post: post, isDark: isDark);
+        if (index == widget.posts.length) {
+          if (isLoading && hasMore) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            );
+          }
+          if (!hasMore && widget.posts.isNotEmpty) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: Text(
+                  'پست دیگری وجود ندارد',
+                  style: TextStyle(
+                    color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            );
+          }
+          return const SizedBox.shrink();
+        }
+        final post = widget.posts[index];
+        return _PostListItem(post: post, isDark: widget.isDark);
       },
     );
   }
@@ -1387,6 +1391,12 @@ class _PostListItem extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final hasImage = post.imageUrl != null && post.imageUrl!.isNotEmpty;
+    final hasMusic = post.musicUrl != null && post.musicUrl!.trim().isNotEmpty;
+    final savedPostIdsAsync = ref.watch(savedPostIdsProvider);
+    final isSaved = savedPostIdsAsync.maybeWhen(
+      data: (ids) => ids.contains(post.id),
+      orElse: () => false,
+    );
 
     return InkWell(
       onTap: () => Navigator.push(
@@ -1422,7 +1432,7 @@ class _PostListItem extends ConsumerWidget {
                     children: [
                       Flexible(
                         child: Text(
-                          post.username ?? 'کاربر',
+                          post.username,
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 15,
@@ -1501,6 +1511,17 @@ class _PostListItem extends ConsumerWidget {
                           ),
                         ),
                       ),
+                    ),
+
+                  if (hasMusic)
+                    PostMusicBubble(
+                      postId: post.id,
+                      musicUrl: post.musicUrl!,
+                      createdAt: post.createdAt,
+                      title: _resolveMusicTitle(),
+                      artist: post.username,
+                      avatarUrl: post.avatarUrl,
+                      margin: const EdgeInsets.only(top: 10, bottom: 2),
                     ),
 
                   const SizedBox(height: 12),
@@ -1613,12 +1634,19 @@ class _PostListItem extends ConsumerWidget {
                       const SizedBox(width: 24),
                       // دکمه ذخیره
                       _buildAction(
-                        icon: Icons.bookmark_border,
+                        icon: isSaved
+                            ? Icons.bookmark_rounded
+                            : Icons.bookmark_border,
                         count: null,
-                        onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('به‌زودی...')),
-                          );
+                        onTap: () async {
+                          final ok = await ref
+                              .read(savedPostIdsProvider.notifier)
+                              .toggle(post.id, post: post);
+                          if (!ok && context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('خطا در ذخیره پست')),
+                            );
+                          }
                         },
                       ),
                       const Spacer(),
@@ -1688,6 +1716,27 @@ class _PostListItem extends ConsumerWidget {
       return '${(count / 1000).toStringAsFixed(1)}K';
     }
     return count.toString();
+  }
+
+  String _resolveMusicTitle() {
+    final direct = post.title?.trim() ?? '';
+    if (direct.isNotEmpty) return direct;
+
+    final url = post.musicUrl?.trim() ?? '';
+    if (url.isEmpty) return 'Music';
+
+    final uri = Uri.tryParse(url);
+    final lastSegment = (uri?.pathSegments.isNotEmpty ?? false)
+        ? uri!.pathSegments.last
+        : url.split('/').last;
+
+    final withoutExtension = lastSegment.replaceFirst(RegExp(r'\.[^.]+$'), '');
+    final normalized = withoutExtension
+        .replaceFirst(RegExp(r'^[^_]+_[0-9]+_'), '')
+        .replaceAll('_', ' ')
+        .trim();
+
+    return normalized.isEmpty ? 'Music' : normalized;
   }
 
   TextDirection _getTextDirection(String text) {
@@ -1948,77 +1997,6 @@ class _ReelsGridView extends StatelessWidget {
         final reel = reels[index];
         return _ReelGridItem(reel: reel, isDark: isDark);
       },
-    );
-  }
-}
-
-/// آیتم گرید پست
-class _PostGridItem extends StatelessWidget {
-  final PublicPostModel post;
-  final bool isDark;
-
-  const _PostGridItem({required this.post, required this.isDark});
-
-  @override
-  Widget build(BuildContext context) {
-    final hasImage = post.imageUrl != null && post.imageUrl!.isNotEmpty;
-    final hasVideo = post.videoUrl != null && post.videoUrl!.isNotEmpty;
-
-    return GestureDetector(
-      onTap: () {
-        // Navigate to post detail
-      },
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (hasImage)
-            CachedNetworkImage(
-              imageUrl: post.imageUrl!,
-              fit: BoxFit.cover,
-              placeholder: (_, __) => Container(
-                color: isDark ? Colors.grey[900] : Colors.grey[200],
-              ),
-              errorWidget: (_, __, ___) => Container(
-                color: isDark ? Colors.grey[900] : Colors.grey[200],
-                child: const Icon(Icons.broken_image),
-              ),
-            )
-          else
-            Container(
-              color: isDark ? Colors.grey[900] : Colors.grey[200],
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(
-                    post.content.length > 50
-                        ? '${post.content.substring(0, 50)}...'
-                        : post.content,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isDark ? Colors.white : Colors.black,
-                    ),
-                    textAlign: TextAlign.center,
-                    maxLines: 4,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-            ),
-
-          // Video indicator
-          if (hasVideo)
-            Positioned(
-              top: 8,
-              right: 8,
-              child: Icon(
-                Icons.play_arrow,
-                color: Colors.white,
-                size: 20,
-                shadows: [Shadow(blurRadius: 4, color: Colors.black54)],
-              ),
-            ),
-        ],
-      ),
     );
   }
 }

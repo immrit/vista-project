@@ -8,12 +8,6 @@ import '../services/user_friendly_error_handler.dart';
 import '../utils/const.dart';
 
 class ProfileImageUploadService {
-
-  static String _getContentType(String filePath) {
-    final extension = path.extension(filePath).toLowerCase();
-    return extension == '.png' ? 'image/png' : 'image/jpeg';
-  }
-
   static Future<File?> convertPngToJpeg(File file) async {
     final img = await FlutterImageCompress.compressWithFile(
       file.absolute.path,
@@ -148,8 +142,7 @@ class ProfileImageUploadService {
       } else {
         compressedFile = await compressImage(file);
         if (compressedFile == null) {
-          logInfo(
-              'فشرده‌سازی ناموفق بود، استفاده از فایل اصلی');
+          logInfo('فشرده‌سازی ناموفق بود، استفاده از فایل اصلی');
           compressedFile = file;
         }
       }
@@ -223,6 +216,7 @@ class ProfileImageUploadService {
           context: 'profile_image_upload_registration'));
     }
   }
+
   /// حذف تصویر پروفایل
   static Future<bool> deleteImage(String fileUrl) async {
     try {

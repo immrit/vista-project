@@ -13,6 +13,7 @@ class FileMessageBubble extends StatefulWidget {
   final String fileUrl;
   final String fileName;
   final int? fileSizeBytes;
+  final String? localFilePath;
   final bool isMe;
   final DateTime time;
 
@@ -22,6 +23,7 @@ class FileMessageBubble extends StatefulWidget {
     required this.fileUrl,
     required this.fileName,
     this.fileSizeBytes,
+    this.localFilePath,
     required this.isMe,
     required this.time,
   });
@@ -50,16 +52,24 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
   }
 
   Future<void> _bindTask() async {
+    final providedLocalPath = widget.localFilePath;
+    if (providedLocalPath != null && providedLocalPath.isNotEmpty) {
+      final providedFile = File(providedLocalPath);
+      if (providedFile.existsSync()) {
+        _localFile = providedFile;
+      }
+    }
+
     _taskSub?.cancel();
     _taskSub = _transferManager.watchTask(widget.messageId).listen((task) {
       if (!mounted) return;
       setState(() {
         _task = task;
-        final path = task?.localPath;
+        final path = task?.localPath ?? widget.localFilePath;
         if (path != null && path.isNotEmpty) {
           final file = File(path);
           _localFile = file.existsSync() ? file : null;
-        } else {
+        } else if ((_localFile?.existsSync() ?? false) == false) {
           _localFile = null;
         }
       });
@@ -69,6 +79,11 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
     if (!mounted) return;
     if (file != null) {
       setState(() => _localFile = file);
+    } else if (providedLocalPath != null && providedLocalPath.isNotEmpty) {
+      final providedFile = File(providedLocalPath);
+      if (providedFile.existsSync()) {
+        setState(() => _localFile = providedFile);
+      }
     }
   }
 
@@ -118,11 +133,15 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
   @override
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
+    final isLightOutgoing = widget.isMe && !theme.isDark;
     final fileExt = _getFileExtension(widget.fileName);
     final fileInfo = _getFileTypeInfo(fileExt);
     final status = _task?.status;
     final hasOffline = _localFile != null && _localFile!.existsSync();
     final progress = _task?.progress ?? 0;
+    final primaryForeground = widget.isMe
+        ? (isLightOutgoing ? const Color(0xFF1E293B) : Colors.white)
+        : theme.textColor;
 
     return Container(
       constraints: const BoxConstraints(maxWidth: 285, minWidth: 220),
@@ -146,20 +165,18 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: widget.isMe
-                              ? theme.myBubbleTextColor
-                              : theme.textColor,
+                          color: primaryForeground,
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(height: 5),
                       Text(
-                        _buildSubtitle(status, progress),
+                        _buildSubtitle(status, progress, hasOffline),
                         style: TextStyle(
                           fontSize: 12,
                           color: (widget.isMe
-                                  ? theme.myBubbleTextColor
+                                  ? primaryForeground
                                   : theme.secondaryTextColor)
                               .withOpacity(0.75),
                         ),
@@ -173,11 +190,13 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
           const SizedBox(height: 10),
           Row(
             children: [
-              if (status == TransferTaskStatus.downloading ||
-                  status == TransferTaskStatus.paused ||
-                  status == TransferTaskStatus.queued) ...[
+              if (!hasOffline &&
+                  (status == TransferTaskStatus.downloading ||
+                      status == TransferTaskStatus.paused ||
+                      status == TransferTaskStatus.queued)) ...[
                 _buildControlChip(
                   theme: theme,
+                  isLightOutgoing: isLightOutgoing,
                   icon: status == TransferTaskStatus.downloading
                       ? Icons.pause_rounded
                       : Icons.play_arrow_rounded,
@@ -189,6 +208,7 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
                 const SizedBox(width: 6),
                 _buildControlChip(
                   theme: theme,
+                  isLightOutgoing: isLightOutgoing,
                   icon: Icons.close_rounded,
                   label: 'لغو',
                   onTap: _cancelTransfer,
@@ -208,10 +228,15 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
     double progress,
     bool hasOffline,
   ) {
+    final isLightOutgoing = widget.isMe && !theme.isDark;
     final iconBgColor = widget.isMe
-        ? Colors.white.withOpacity(0.18)
+        ? (isLightOutgoing
+            ? theme.sendButtonColor.withOpacity(0.14)
+            : Colors.white.withOpacity(0.18))
         : fileInfo.color.withOpacity(0.12);
-    final iconColor = widget.isMe ? Colors.white : fileInfo.color;
+    final iconColor = widget.isMe
+        ? (isLightOutgoing ? theme.sendButtonColor : Colors.white)
+        : fileInfo.color;
 
     IconData icon;
     if (hasOffline) {
@@ -256,10 +281,20 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
 
   Widget _buildControlChip({
     required ChatTheme theme,
+    required bool isLightOutgoing,
     required IconData icon,
     required String label,
     required Future<void> Function() onTap,
   }) {
+    final chipBg = widget.isMe
+        ? (isLightOutgoing
+            ? theme.sendButtonColor.withOpacity(0.12)
+            : Colors.white.withOpacity(0.16))
+        : theme.inputBackgroundColor;
+    final foreground = widget.isMe
+        ? (isLightOutgoing ? theme.sendButtonColor : Colors.white)
+        : theme.textColor;
+
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: () {
@@ -268,23 +303,23 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: widget.isMe
-              ? Colors.white.withOpacity(0.16)
-              : theme.inputBackgroundColor,
+          color: chipBg,
           borderRadius: BorderRadius.circular(14),
+          border: isLightOutgoing
+              ? Border.all(color: theme.sendButtonColor.withOpacity(0.24))
+              : null,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon,
-                size: 14, color: widget.isMe ? Colors.white : theme.textColor),
+            Icon(icon, size: 14, color: foreground),
             const SizedBox(width: 4),
             Text(
               label,
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
-                color: widget.isMe ? Colors.white : theme.textColor,
+                color: foreground,
               ),
             ),
           ],
@@ -293,8 +328,15 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
     );
   }
 
-  String _buildSubtitle(TransferTaskStatus? status, double progress) {
+  String _buildSubtitle(
+    TransferTaskStatus? status,
+    double progress,
+    bool hasOffline,
+  ) {
     final sizeText = _formatFileSize(widget.fileSizeBytes ?? 0);
+    if (hasOffline) {
+      return '$sizeText • آماده باز کردن';
+    }
     if (status == TransferTaskStatus.downloading) {
       return '$sizeText • ${(progress * 100).toStringAsFixed(0)}%';
     }

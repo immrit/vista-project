@@ -6,6 +6,7 @@ import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:logger/logger.dart';
+import 'package:local_auth/local_auth.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../security/logging_utility.dart';
 
@@ -75,6 +76,7 @@ enum LockType {
 }
 
 class AdvancedSecurityService {
+  static final LocalAuthentication _localAuth = LocalAuthentication();
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(
       encryptedSharedPreferences: true,
@@ -190,9 +192,9 @@ class AdvancedSecurityService {
   /// Check if biometric authentication is available
   static Future<bool> isBiometricAvailable() async {
     try {
-      // Simulate biometric availability check
-      // In real implementation, you would use local_auth package
-      return false; // Disabled for now
+      final canCheck = await _localAuth.canCheckBiometrics;
+      final isSupported = await _localAuth.isDeviceSupported();
+      return canCheck || isSupported;
     } catch (e) {
       logger.e('❌ Failed to check biometric availability: $e');
       return false;
@@ -202,9 +204,27 @@ class AdvancedSecurityService {
   /// Get available biometric types
   static Future<List<String>> getAvailableBiometrics() async {
     try {
-      // Simulate biometric types
-      // In real implementation, you would use local_auth package
-      return []; // Disabled for now
+      final biometrics = await _localAuth.getAvailableBiometrics();
+      final mapped = <String>{};
+      for (final type in biometrics) {
+        switch (type) {
+          case BiometricType.face:
+            mapped.add('face');
+            break;
+          case BiometricType.fingerprint:
+          case BiometricType.strong:
+          case BiometricType.weak:
+            mapped.add('fingerprint');
+            break;
+          case BiometricType.iris:
+            mapped.add('iris');
+            break;
+        }
+      }
+      if (mapped.isEmpty) {
+        mapped.add('device_credential');
+      }
+      return mapped.toList();
     } catch (e) {
       logger.e('❌ Failed to get available biometrics: $e');
       return [];
@@ -220,8 +240,16 @@ class AdvancedSecurityService {
         return false;
       }
 
-      // Simulate biometric authentication
-      // In real implementation, you would use local_auth package
+      final authOk = await _localAuth.authenticate(
+        localizedReason: 'برای فعال‌سازی احراز هویت بیومتریک تایید کنید',
+        options: const AuthenticationOptions(
+          biometricOnly: false,
+          stickyAuth: true,
+          useErrorDialogs: true,
+        ),
+      );
+      if (!authOk) return false;
+
       await _storage.write(key: _biometricKey, value: 'true');
       logger.i('✅ Biometric authentication enabled');
       return true;
@@ -262,8 +290,16 @@ class AdvancedSecurityService {
         return false;
       }
 
-      // Simulate biometric authentication
-      // In real implementation, you would use local_auth package
+      final success = await _localAuth.authenticate(
+        localizedReason: 'برای تایید عملیات حساس احراز هویت کنید',
+        options: const AuthenticationOptions(
+          biometricOnly: false,
+          stickyAuth: true,
+          useErrorDialogs: true,
+        ),
+      );
+      if (!success) return false;
+
       await _updateLastLogin();
       logger.i('✅ Biometric authentication successful');
       return true;

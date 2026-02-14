@@ -324,7 +324,6 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(

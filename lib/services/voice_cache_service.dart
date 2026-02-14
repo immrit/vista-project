@@ -18,11 +18,9 @@ class VoiceCacheService {
 
   Directory? _cacheDir;
   Map<String, VoiceCacheInfo> _cacheInfo = {};
-  ProviderContainer? _container;
 
   /// تنظیم ProviderContainer برای دسترسی به providers
   void setProviderContainer(ProviderContainer container) {
-    _container = container;
     print(
         '✅ VoiceCacheService ProviderContainer set for ${container.hashCode}');
   }

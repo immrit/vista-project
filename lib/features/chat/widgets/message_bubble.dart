@@ -268,9 +268,9 @@ class MessageBubble extends ConsumerWidget {
     }
 
     // 2. File (PDF, Documents, etc)
-    if ((message.attachmentType == 'file' || 
-         message.attachmentType?.startsWith('audio') == true ||
-         _isFileExtension(message.attachmentType)) &&
+    if ((message.attachmentType == 'file' ||
+            message.attachmentType?.startsWith('audio') == true ||
+            _isFileExtension(message.attachmentType)) &&
         message.attachmentUrl != null) {
       return FileMessageBubble(
         messageId: message.id,
@@ -303,8 +303,21 @@ class MessageBubble extends ConsumerWidget {
   /// Helper method to check if attachment type is a file type
   bool _isFileExtension(String? ext) {
     if (ext == null) return false;
-    final fileExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'zip', 
-                            'mp3', 'wav', 'aac', 'ogg', 'm4a', 'flac'];
+    final fileExtensions = [
+      'pdf',
+      'doc',
+      'docx',
+      'xls',
+      'xlsx',
+      'txt',
+      'zip',
+      'mp3',
+      'wav',
+      'aac',
+      'ogg',
+      'm4a',
+      'flac'
+    ];
     return fileExtensions.any((e) => ext.toLowerCase().contains(e));
   }
 

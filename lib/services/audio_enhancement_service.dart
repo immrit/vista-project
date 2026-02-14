@@ -102,42 +102,6 @@ class AudioEnhancementService {
     return inputBytes;
   }
 
-  /// کاهش نویز
-  Future<Uint8List> _reduceNoise(Uint8List audioBytes) async {
-    // TODO: پیاده‌سازی کاهش نویز
-    return audioBytes;
-  }
-
-  /// حذف اکو
-  Future<Uint8List> _cancelEcho(Uint8List audioBytes) async {
-    // TODO: پیاده‌سازی حذف اکو
-    return audioBytes;
-  }
-
-  /// تنظیم خودکار gain
-  Future<Uint8List> _autoGain(
-      Uint8List audioBytes, double targetLoudness) async {
-    // TODO: پیاده‌سازی تنظیم خودکار gain
-    return audioBytes;
-  }
-
-  /// فیلتر high-pass
-  Future<Uint8List> _applyHighPassFilter(Uint8List audioBytes) async {
-    // TODO: پیاده‌سازی فیلتر high-pass
-    return audioBytes;
-  }
-
-  /// فشرده‌سازی دینامیک
-  Future<Uint8List> _applyCompression(
-    Uint8List audioBytes,
-    double ratio,
-    double attackTime,
-    double releaseTime,
-  ) async {
-    // TODO: پیاده‌سازی فشرده‌سازی دینامیک
-    return audioBytes;
-  }
-
   /// تحلیل کیفیت صدا
   Future<AudioQualityAnalysis> analyzeAudioQuality(File audioFile) async {
     try {

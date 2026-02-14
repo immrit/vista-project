@@ -398,7 +398,7 @@ class CommentRepository {
 
       // سپس برای هر کامنت، تعداد پاسخ‌ها را دریافت کنیم
       for (int i = 0; i < mainComments.length; i++) {
-        final repliesCount = await _getRepliesCount(mainComments[i].id);
+        await _getRepliesCount(mainComments[i].id);
         // می‌توانید این اطلاعات را در مدل ذخیره کنید
         // یا آن را به عنوان metadata نگه دارید
       }

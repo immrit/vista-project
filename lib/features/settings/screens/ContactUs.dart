@@ -396,16 +396,6 @@ class _ContactUsScreenState extends State<ContactUsScreen> {
     }
   }
 
-  Future<void> _launchURL(String url) async {
-    final Uri uri = Uri.parse(url);
-
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      throw 'امکان باز کردن لینک وجود ندارد: $url';
-    }
-  }
-
   Future<void> _copyToClipboard(
       BuildContext context, String text, String itemName) async {
     await Clipboard.setData(ClipboardData(text: text));

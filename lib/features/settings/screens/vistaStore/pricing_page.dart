@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:Vista/services/BazaarPaymentService.dart';
+import 'package:Vista/services/sensitive_action_guard.dart';
 
 class PricingPage extends ConsumerStatefulWidget {
   const PricingPage({super.key});
@@ -107,6 +108,12 @@ class _PricingPageState extends ConsumerState<PricingPage> {
       _initBazaar();
       return;
     }
+
+    final allowed = await SensitiveActionGuard.verify(
+      context,
+      action: SensitiveAction.payment,
+    );
+    if (!allowed) return;
 
     setState(() => _isLoading = true);
 

@@ -947,7 +947,16 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
           onTap: () {
             if (message.attachmentUrl != null) {
               voicePlayerService.playOrPause(
-                  message.id, message.attachmentUrl!);
+                message.id,
+                message.attachmentUrl!,
+                title:
+                    message.content.trim().isNotEmpty ? message.content : null,
+                artist: message.senderName,
+                artUrl: message.senderAvatar,
+                conversationId: message.conversationId,
+                conversationTitle: widget.otherUserName,
+                attachmentType: message.attachmentType,
+              );
             }
           },
           child: Container(
@@ -1398,103 +1407,6 @@ class _ChatDetailsScreenState extends ConsumerState<ChatDetailsScreen>
         ],
       ),
     );
-  }
-
-  void _showArchiveDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('بایگانی مکالمه'),
-        content: const Text('آیا می‌خواهید این مکالمه را بایگانی کنید؟'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('لغو'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _archiveConversation();
-            },
-            child: const Text('بایگانی'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _archiveConversation() async {
-    try {
-      final repo = ref.read(chatRepositoryProvider);
-      await repo.toggleArchiveConversation(widget.conversationId);
-      _showSnackBar('مکالمه بایگانی شد');
-      Navigator.pop(context);
-    } catch (e) {
-      _showSnackBar('خطا در بایگانی کردن مکالمه');
-    }
-  }
-
-  void _showBlockDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('مسدود کردن کاربر'),
-        content: Text('آیا می‌خواهید ${widget.otherUserName} را مسدود کنید؟'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('لغو'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _blockUser();
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('مسدود کردن'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _blockUser() {
-    _showSnackBar('قابلیت مسدود کردن در حال توسعه');
-  }
-
-  void _showReportDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('گزارش کاربر'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('لطفاً دلیل گزارش ${widget.otherUserName} را انتخاب کنید:'),
-            const SizedBox(height: 16),
-            ...['هرزنامه', 'محتوای نامناسب', 'آزار و اذیت', 'سایر'].map(
-              (reason) => ListTile(
-                title: Text(reason),
-                onTap: () {
-                  Navigator.pop(context);
-                  _reportUser(reason);
-                },
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('لغو'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _reportUser(String reason) {
-    _showSnackBar('گزارش شما ارسال شد');
   }
 
   void _showSnackBar(String message, {bool isError = false}) {

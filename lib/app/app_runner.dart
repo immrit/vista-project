@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -8,8 +7,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_links/app_links.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
-import 'package:device_info_plus/device_info_plus.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 
@@ -197,6 +194,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   StreamSubscription<AuthState>? _authSubscription;
   Timer? _sessionCheckTimer;
   bool _isLoading = false;
+  bool _pushServiceInitialized = false;
 
   final Size viewPort = const Size(428, 926);
 
@@ -218,6 +216,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _appLinks = AppLinks();
     _setupDeepLinkHandling();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializePushServiceOnce();
+    });
 
     final supabase = Supabase.instance.client;
     _authSubscription = supabase.auth.onAuthStateChange.listen((data) async {
@@ -227,6 +228,14 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     _startSessionMonitoring();
     _setupNetworkStateListener();
     _setupSessionTerminationHandler();
+  }
+
+  Future<void> _initializePushServiceOnce() async {
+    if (!mounted || _pushServiceInitialized) return;
+    _pushServiceInitialized = true;
+    try {
+      await ref.read(pushNotificationServiceProvider).init(context);
+    } catch (_) {}
   }
 
   Future<void> processAuthEvent(AuthState data) async {
@@ -247,7 +256,10 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
   Future<void> _handleUserSignIn(Session? session) async {
     if (session == null) return;
-    SessionManagerServiceV2().updateLocationAndIP();
+    final sessionManager = SessionManagerServiceV2();
+    await sessionManager.ensureSessionRegistered();
+    await sessionManager.verifyCurrentSession(forceServer: false);
+    sessionManager.updateLocationAndIP();
     UserPresenceService().initialize();
     try {
       ProfileCacheService().cacheProfileAndPosts(session.user.id);
@@ -269,45 +281,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       await FirebaseMessaging.instance.getAPNSToken();
       final token = await FirebaseMessaging.instance.getToken();
       if (token != null) {
-        await _setFcmToken(token);
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            ref.read(pushNotificationServiceProvider).init(context);
-          }
-        });
+        await ref.read(pushNotificationServiceProvider).saveToken(token: token);
       }
-    } catch (_) {}
-  }
-
-  Future<void> _setFcmToken(String token) async {
-    try {
-      final supabase = Supabase.instance.client;
-      final user = supabase.auth.currentUser;
-      if (user == null) return;
-
-      String deviceType = Platform.isAndroid ? 'android' : 'ios';
-      String deviceModel = 'Vista App';
-      String appVersion = '1.0.0';
-
-      try {
-        final deviceInfo = DeviceInfoPlugin();
-        if (Platform.isAndroid) {
-          final androidInfo = await deviceInfo.androidInfo;
-          deviceModel = '${androidInfo.brand} ${androidInfo.model}';
-        } else if (Platform.isIOS) {
-          final iosInfo = await deviceInfo.iosInfo;
-          deviceModel = '${iosInfo.name} ${iosInfo.model}';
-        }
-        final packageInfo = await PackageInfo.fromPlatform();
-        appVersion = packageInfo.version;
-      } catch (_) {}
-
-      await supabase.rpc('register_device', params: {
-        'p_fcm_token': token,
-        'p_device_type': deviceType,
-        'p_device_model': deviceModel,
-        'p_app_version': appVersion,
-      });
     } catch (_) {}
   }
 

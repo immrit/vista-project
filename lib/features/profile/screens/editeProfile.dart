@@ -78,7 +78,6 @@ class _EditProfileState extends ConsumerState<EditProfile> {
     showDialog(
       context: context,
       builder: (context) {
-        final isDarkMode = Theme.of(context).brightness == Brightness.dark;
         int selectedYear = _selectedDate != null
             ? Jalali.fromDateTime(_selectedDate!).year
             : now.year - 20;
@@ -239,8 +238,6 @@ class _EditProfileState extends ConsumerState<EditProfile> {
 
   // متد برای نمایش دیالوگ
   void _showImageOptions() async {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -599,7 +596,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
           .eq('id', supabase.auth.currentUser!.id);
 
       if (!mounted) return;
-      ref.refresh(profileProvider);
+      ref.invalidate(profileProvider);
 
       String successMessage = 'پروفایل با موفقیت به‌روزرسانی شد';
       if (emailChangeRequested) {

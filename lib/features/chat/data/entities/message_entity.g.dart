@@ -22,165 +22,200 @@ const MessageEntitySchema = CollectionSchema(
       name: r'attachmentFileName',
       type: IsarType.string,
     ),
-    r'attachmentType': PropertySchema(
+    r'attachmentMimeType': PropertySchema(
       id: 1,
+      name: r'attachmentMimeType',
+      type: IsarType.string,
+    ),
+    r'attachmentSizeBytes': PropertySchema(
+      id: 2,
+      name: r'attachmentSizeBytes',
+      type: IsarType.long,
+    ),
+    r'attachmentType': PropertySchema(
+      id: 3,
       name: r'attachmentType',
       type: IsarType.string,
     ),
     r'attachmentUrl': PropertySchema(
-      id: 2,
+      id: 4,
       name: r'attachmentUrl',
       type: IsarType.string,
     ),
+    r'audioAlbum': PropertySchema(
+      id: 5,
+      name: r'audioAlbum',
+      type: IsarType.string,
+    ),
+    r'audioArtist': PropertySchema(
+      id: 6,
+      name: r'audioArtist',
+      type: IsarType.string,
+    ),
+    r'audioTitle': PropertySchema(
+      id: 7,
+      name: r'audioTitle',
+      type: IsarType.string,
+    ),
     r'audioUrl': PropertySchema(
-      id: 3,
+      id: 8,
       name: r'audioUrl',
       type: IsarType.string,
     ),
     r'content': PropertySchema(
-      id: 4,
+      id: 9,
       name: r'content',
       type: IsarType.string,
     ),
     r'conversationId': PropertySchema(
-      id: 5,
+      id: 10,
       name: r'conversationId',
       type: IsarType.string,
     ),
     r'createdAt': PropertySchema(
-      id: 6,
+      id: 11,
       name: r'createdAt',
       type: IsarType.dateTime,
     ),
     r'deletedForUserIds': PropertySchema(
-      id: 7,
+      id: 12,
       name: r'deletedForUserIds',
       type: IsarType.stringList,
     ),
     r'deletedGlobally': PropertySchema(
-      id: 8,
+      id: 13,
       name: r'deletedGlobally',
       type: IsarType.bool,
     ),
     r'duration': PropertySchema(
-      id: 9,
+      id: 14,
       name: r'duration',
       type: IsarType.long,
     ),
     r'errorMessage': PropertySchema(
-      id: 10,
+      id: 15,
       name: r'errorMessage',
       type: IsarType.string,
     ),
     r'forwardedFromSenderName': PropertySchema(
-      id: 11,
+      id: 16,
       name: r'forwardedFromSenderName',
       type: IsarType.string,
     ),
     r'id': PropertySchema(
-      id: 12,
+      id: 17,
       name: r'id',
       type: IsarType.string,
     ),
     r'isDelivered': PropertySchema(
-      id: 13,
+      id: 18,
       name: r'isDelivered',
       type: IsarType.bool,
     ),
     r'isFailed': PropertySchema(
-      id: 14,
+      id: 19,
       name: r'isFailed',
       type: IsarType.bool,
     ),
     r'isForwarded': PropertySchema(
-      id: 15,
+      id: 20,
       name: r'isForwarded',
       type: IsarType.bool,
     ),
     r'isMe': PropertySchema(
-      id: 16,
+      id: 21,
       name: r'isMe',
       type: IsarType.bool,
     ),
     r'isPending': PropertySchema(
-      id: 17,
+      id: 22,
       name: r'isPending',
       type: IsarType.bool,
     ),
     r'isRead': PropertySchema(
-      id: 18,
+      id: 23,
       name: r'isRead',
       type: IsarType.bool,
     ),
     r'isSeen': PropertySchema(
-      id: 19,
+      id: 24,
       name: r'isSeen',
       type: IsarType.bool,
     ),
     r'isSent': PropertySchema(
-      id: 20,
+      id: 25,
       name: r'isSent',
       type: IsarType.bool,
     ),
+    r'isUploading': PropertySchema(
+      id: 26,
+      name: r'isUploading',
+      type: IsarType.bool,
+    ),
     r'localFilePath': PropertySchema(
-      id: 21,
+      id: 27,
       name: r'localFilePath',
       type: IsarType.string,
     ),
     r'localImagePath': PropertySchema(
-      id: 22,
+      id: 28,
       name: r'localImagePath',
       type: IsarType.string,
     ),
     r'messageType': PropertySchema(
-      id: 23,
+      id: 29,
       name: r'messageType',
       type: IsarType.string,
     ),
     r'originalMessageId': PropertySchema(
-      id: 24,
+      id: 30,
       name: r'originalMessageId',
       type: IsarType.string,
     ),
     r'originalSenderId': PropertySchema(
-      id: 25,
+      id: 31,
       name: r'originalSenderId',
       type: IsarType.string,
     ),
     r'reactionsJson': PropertySchema(
-      id: 26,
+      id: 32,
       name: r'reactionsJson',
       type: IsarType.string,
     ),
     r'replyToContent': PropertySchema(
-      id: 27,
+      id: 33,
       name: r'replyToContent',
       type: IsarType.string,
     ),
     r'replyToMessageId': PropertySchema(
-      id: 28,
+      id: 34,
       name: r'replyToMessageId',
       type: IsarType.string,
     ),
     r'replyToSenderName': PropertySchema(
-      id: 29,
+      id: 35,
       name: r'replyToSenderName',
       type: IsarType.string,
     ),
     r'senderId': PropertySchema(
-      id: 30,
+      id: 36,
       name: r'senderId',
       type: IsarType.string,
     ),
     r'sharedPostDataJson': PropertySchema(
-      id: 31,
+      id: 37,
       name: r'sharedPostDataJson',
       type: IsarType.string,
     ),
     r'storyReplyDataJson': PropertySchema(
-      id: 32,
+      id: 38,
       name: r'storyReplyDataJson',
       type: IsarType.string,
+    ),
+    r'uploadProgress': PropertySchema(
+      id: 39,
+      name: r'uploadProgress',
+      type: IsarType.double,
     )
   },
   estimateSize: _messageEntityEstimateSize,
@@ -250,6 +285,12 @@ int _messageEntityEstimateSize(
     }
   }
   {
+    final value = object.attachmentMimeType;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
     final value = object.attachmentType;
     if (value != null) {
       bytesCount += 3 + value.length * 3;
@@ -257,6 +298,24 @@ int _messageEntityEstimateSize(
   }
   {
     final value = object.attachmentUrl;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
+    final value = object.audioAlbum;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
+    final value = object.audioArtist;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
+    final value = object.audioTitle;
     if (value != null) {
       bytesCount += 3 + value.length * 3;
     }
@@ -371,38 +430,45 @@ void _messageEntitySerialize(
   Map<Type, List<int>> allOffsets,
 ) {
   writer.writeString(offsets[0], object.attachmentFileName);
-  writer.writeString(offsets[1], object.attachmentType);
-  writer.writeString(offsets[2], object.attachmentUrl);
-  writer.writeString(offsets[3], object.audioUrl);
-  writer.writeString(offsets[4], object.content);
-  writer.writeString(offsets[5], object.conversationId);
-  writer.writeDateTime(offsets[6], object.createdAt);
-  writer.writeStringList(offsets[7], object.deletedForUserIds);
-  writer.writeBool(offsets[8], object.deletedGlobally);
-  writer.writeLong(offsets[9], object.duration);
-  writer.writeString(offsets[10], object.errorMessage);
-  writer.writeString(offsets[11], object.forwardedFromSenderName);
-  writer.writeString(offsets[12], object.id);
-  writer.writeBool(offsets[13], object.isDelivered);
-  writer.writeBool(offsets[14], object.isFailed);
-  writer.writeBool(offsets[15], object.isForwarded);
-  writer.writeBool(offsets[16], object.isMe);
-  writer.writeBool(offsets[17], object.isPending);
-  writer.writeBool(offsets[18], object.isRead);
-  writer.writeBool(offsets[19], object.isSeen);
-  writer.writeBool(offsets[20], object.isSent);
-  writer.writeString(offsets[21], object.localFilePath);
-  writer.writeString(offsets[22], object.localImagePath);
-  writer.writeString(offsets[23], object.messageType);
-  writer.writeString(offsets[24], object.originalMessageId);
-  writer.writeString(offsets[25], object.originalSenderId);
-  writer.writeString(offsets[26], object.reactionsJson);
-  writer.writeString(offsets[27], object.replyToContent);
-  writer.writeString(offsets[28], object.replyToMessageId);
-  writer.writeString(offsets[29], object.replyToSenderName);
-  writer.writeString(offsets[30], object.senderId);
-  writer.writeString(offsets[31], object.sharedPostDataJson);
-  writer.writeString(offsets[32], object.storyReplyDataJson);
+  writer.writeString(offsets[1], object.attachmentMimeType);
+  writer.writeLong(offsets[2], object.attachmentSizeBytes);
+  writer.writeString(offsets[3], object.attachmentType);
+  writer.writeString(offsets[4], object.attachmentUrl);
+  writer.writeString(offsets[5], object.audioAlbum);
+  writer.writeString(offsets[6], object.audioArtist);
+  writer.writeString(offsets[7], object.audioTitle);
+  writer.writeString(offsets[8], object.audioUrl);
+  writer.writeString(offsets[9], object.content);
+  writer.writeString(offsets[10], object.conversationId);
+  writer.writeDateTime(offsets[11], object.createdAt);
+  writer.writeStringList(offsets[12], object.deletedForUserIds);
+  writer.writeBool(offsets[13], object.deletedGlobally);
+  writer.writeLong(offsets[14], object.duration);
+  writer.writeString(offsets[15], object.errorMessage);
+  writer.writeString(offsets[16], object.forwardedFromSenderName);
+  writer.writeString(offsets[17], object.id);
+  writer.writeBool(offsets[18], object.isDelivered);
+  writer.writeBool(offsets[19], object.isFailed);
+  writer.writeBool(offsets[20], object.isForwarded);
+  writer.writeBool(offsets[21], object.isMe);
+  writer.writeBool(offsets[22], object.isPending);
+  writer.writeBool(offsets[23], object.isRead);
+  writer.writeBool(offsets[24], object.isSeen);
+  writer.writeBool(offsets[25], object.isSent);
+  writer.writeBool(offsets[26], object.isUploading);
+  writer.writeString(offsets[27], object.localFilePath);
+  writer.writeString(offsets[28], object.localImagePath);
+  writer.writeString(offsets[29], object.messageType);
+  writer.writeString(offsets[30], object.originalMessageId);
+  writer.writeString(offsets[31], object.originalSenderId);
+  writer.writeString(offsets[32], object.reactionsJson);
+  writer.writeString(offsets[33], object.replyToContent);
+  writer.writeString(offsets[34], object.replyToMessageId);
+  writer.writeString(offsets[35], object.replyToSenderName);
+  writer.writeString(offsets[36], object.senderId);
+  writer.writeString(offsets[37], object.sharedPostDataJson);
+  writer.writeString(offsets[38], object.storyReplyDataJson);
+  writer.writeDouble(offsets[39], object.uploadProgress);
 }
 
 MessageEntity _messageEntityDeserialize(
@@ -413,39 +479,46 @@ MessageEntity _messageEntityDeserialize(
 ) {
   final object = MessageEntity();
   object.attachmentFileName = reader.readStringOrNull(offsets[0]);
-  object.attachmentType = reader.readStringOrNull(offsets[1]);
-  object.attachmentUrl = reader.readStringOrNull(offsets[2]);
-  object.audioUrl = reader.readStringOrNull(offsets[3]);
-  object.content = reader.readString(offsets[4]);
-  object.conversationId = reader.readString(offsets[5]);
-  object.createdAt = reader.readDateTime(offsets[6]);
-  object.deletedForUserIds = reader.readStringList(offsets[7]);
-  object.deletedGlobally = reader.readBool(offsets[8]);
-  object.duration = reader.readLongOrNull(offsets[9]);
-  object.errorMessage = reader.readStringOrNull(offsets[10]);
-  object.forwardedFromSenderName = reader.readStringOrNull(offsets[11]);
-  object.id = reader.readString(offsets[12]);
-  object.isDelivered = reader.readBool(offsets[13]);
-  object.isFailed = reader.readBoolOrNull(offsets[14]);
-  object.isForwarded = reader.readBool(offsets[15]);
-  object.isMe = reader.readBool(offsets[16]);
-  object.isPending = reader.readBool(offsets[17]);
-  object.isRead = reader.readBool(offsets[18]);
-  object.isSeen = reader.readBool(offsets[19]);
-  object.isSent = reader.readBool(offsets[20]);
+  object.attachmentMimeType = reader.readStringOrNull(offsets[1]);
+  object.attachmentSizeBytes = reader.readLongOrNull(offsets[2]);
+  object.attachmentType = reader.readStringOrNull(offsets[3]);
+  object.attachmentUrl = reader.readStringOrNull(offsets[4]);
+  object.audioAlbum = reader.readStringOrNull(offsets[5]);
+  object.audioArtist = reader.readStringOrNull(offsets[6]);
+  object.audioTitle = reader.readStringOrNull(offsets[7]);
+  object.audioUrl = reader.readStringOrNull(offsets[8]);
+  object.content = reader.readString(offsets[9]);
+  object.conversationId = reader.readString(offsets[10]);
+  object.createdAt = reader.readDateTime(offsets[11]);
+  object.deletedForUserIds = reader.readStringList(offsets[12]);
+  object.deletedGlobally = reader.readBool(offsets[13]);
+  object.duration = reader.readLongOrNull(offsets[14]);
+  object.errorMessage = reader.readStringOrNull(offsets[15]);
+  object.forwardedFromSenderName = reader.readStringOrNull(offsets[16]);
+  object.id = reader.readString(offsets[17]);
+  object.isDelivered = reader.readBool(offsets[18]);
+  object.isFailed = reader.readBoolOrNull(offsets[19]);
+  object.isForwarded = reader.readBool(offsets[20]);
+  object.isMe = reader.readBool(offsets[21]);
+  object.isPending = reader.readBool(offsets[22]);
+  object.isRead = reader.readBool(offsets[23]);
+  object.isSeen = reader.readBool(offsets[24]);
+  object.isSent = reader.readBool(offsets[25]);
+  object.isUploading = reader.readBool(offsets[26]);
   object.isarId = id;
-  object.localFilePath = reader.readStringOrNull(offsets[21]);
-  object.localImagePath = reader.readStringOrNull(offsets[22]);
-  object.messageType = reader.readStringOrNull(offsets[23]);
-  object.originalMessageId = reader.readStringOrNull(offsets[24]);
-  object.originalSenderId = reader.readStringOrNull(offsets[25]);
-  object.reactionsJson = reader.readStringOrNull(offsets[26]);
-  object.replyToContent = reader.readStringOrNull(offsets[27]);
-  object.replyToMessageId = reader.readStringOrNull(offsets[28]);
-  object.replyToSenderName = reader.readStringOrNull(offsets[29]);
-  object.senderId = reader.readString(offsets[30]);
-  object.sharedPostDataJson = reader.readStringOrNull(offsets[31]);
-  object.storyReplyDataJson = reader.readStringOrNull(offsets[32]);
+  object.localFilePath = reader.readStringOrNull(offsets[27]);
+  object.localImagePath = reader.readStringOrNull(offsets[28]);
+  object.messageType = reader.readStringOrNull(offsets[29]);
+  object.originalMessageId = reader.readStringOrNull(offsets[30]);
+  object.originalSenderId = reader.readStringOrNull(offsets[31]);
+  object.reactionsJson = reader.readStringOrNull(offsets[32]);
+  object.replyToContent = reader.readStringOrNull(offsets[33]);
+  object.replyToMessageId = reader.readStringOrNull(offsets[34]);
+  object.replyToSenderName = reader.readStringOrNull(offsets[35]);
+  object.senderId = reader.readString(offsets[36]);
+  object.sharedPostDataJson = reader.readStringOrNull(offsets[37]);
+  object.storyReplyDataJson = reader.readStringOrNull(offsets[38]);
+  object.uploadProgress = reader.readDoubleOrNull(offsets[39]);
   return object;
 }
 
@@ -461,55 +534,55 @@ P _messageEntityDeserializeProp<P>(
     case 1:
       return (reader.readStringOrNull(offset)) as P;
     case 2:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readLongOrNull(offset)) as P;
     case 3:
       return (reader.readStringOrNull(offset)) as P;
     case 4:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 5:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 6:
-      return (reader.readDateTime(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 7:
-      return (reader.readStringList(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 8:
-      return (reader.readBool(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 9:
-      return (reader.readLongOrNull(offset)) as P;
-    case 10:
-      return (reader.readStringOrNull(offset)) as P;
-    case 11:
-      return (reader.readStringOrNull(offset)) as P;
-    case 12:
       return (reader.readString(offset)) as P;
+    case 10:
+      return (reader.readString(offset)) as P;
+    case 11:
+      return (reader.readDateTime(offset)) as P;
+    case 12:
+      return (reader.readStringList(offset)) as P;
     case 13:
       return (reader.readBool(offset)) as P;
     case 14:
-      return (reader.readBoolOrNull(offset)) as P;
+      return (reader.readLongOrNull(offset)) as P;
     case 15:
-      return (reader.readBool(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 16:
-      return (reader.readBool(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 17:
-      return (reader.readBool(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 18:
       return (reader.readBool(offset)) as P;
     case 19:
-      return (reader.readBool(offset)) as P;
+      return (reader.readBoolOrNull(offset)) as P;
     case 20:
       return (reader.readBool(offset)) as P;
     case 21:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 22:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 23:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 24:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 25:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 26:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 27:
       return (reader.readStringOrNull(offset)) as P;
     case 28:
@@ -517,11 +590,25 @@ P _messageEntityDeserializeProp<P>(
     case 29:
       return (reader.readStringOrNull(offset)) as P;
     case 30:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 31:
       return (reader.readStringOrNull(offset)) as P;
     case 32:
       return (reader.readStringOrNull(offset)) as P;
+    case 33:
+      return (reader.readStringOrNull(offset)) as P;
+    case 34:
+      return (reader.readStringOrNull(offset)) as P;
+    case 35:
+      return (reader.readStringOrNull(offset)) as P;
+    case 36:
+      return (reader.readString(offset)) as P;
+    case 37:
+      return (reader.readStringOrNull(offset)) as P;
+    case 38:
+      return (reader.readStringOrNull(offset)) as P;
+    case 39:
+      return (reader.readDoubleOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
   }
@@ -1023,6 +1110,234 @@ extension MessageEntityQueryFilter
   }
 
   QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      attachmentMimeTypeIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'attachmentMimeType',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      attachmentMimeTypeIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'attachmentMimeType',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      attachmentMimeTypeEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'attachmentMimeType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      attachmentMimeTypeGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'attachmentMimeType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      attachmentMimeTypeLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'attachmentMimeType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      attachmentMimeTypeBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'attachmentMimeType',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      attachmentMimeTypeStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'attachmentMimeType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      attachmentMimeTypeEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'attachmentMimeType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      attachmentMimeTypeContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'attachmentMimeType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      attachmentMimeTypeMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'attachmentMimeType',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      attachmentMimeTypeIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'attachmentMimeType',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      attachmentMimeTypeIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'attachmentMimeType',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      attachmentSizeBytesIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'attachmentSizeBytes',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      attachmentSizeBytesIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'attachmentSizeBytes',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      attachmentSizeBytesEqualTo(int? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'attachmentSizeBytes',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      attachmentSizeBytesGreaterThan(
+    int? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'attachmentSizeBytes',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      attachmentSizeBytesLessThan(
+    int? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'attachmentSizeBytes',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      attachmentSizeBytesBetween(
+    int? lower,
+    int? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'attachmentSizeBytes',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
       attachmentTypeIsNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(const FilterCondition.isNull(
@@ -1325,6 +1640,468 @@ extension MessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.greaterThan(
         property: r'attachmentUrl',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioAlbumIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'audioAlbum',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioAlbumIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'audioAlbum',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioAlbumEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'audioAlbum',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioAlbumGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'audioAlbum',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioAlbumLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'audioAlbum',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioAlbumBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'audioAlbum',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioAlbumStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'audioAlbum',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioAlbumEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'audioAlbum',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioAlbumContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'audioAlbum',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioAlbumMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'audioAlbum',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioAlbumIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'audioAlbum',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioAlbumIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'audioAlbum',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioArtistIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'audioArtist',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioArtistIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'audioArtist',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioArtistEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'audioArtist',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioArtistGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'audioArtist',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioArtistLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'audioArtist',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioArtistBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'audioArtist',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioArtistStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'audioArtist',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioArtistEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'audioArtist',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioArtistContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'audioArtist',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioArtistMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'audioArtist',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioArtistIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'audioArtist',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioArtistIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'audioArtist',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioTitleIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'audioTitle',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioTitleIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'audioTitle',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioTitleEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'audioTitle',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioTitleGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'audioTitle',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioTitleLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'audioTitle',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioTitleBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'audioTitle',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioTitleStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'audioTitle',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioTitleEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'audioTitle',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioTitleContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'audioTitle',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioTitleMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'audioTitle',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioTitleIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'audioTitle',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      audioTitleIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'audioTitle',
         value: '',
       ));
     });
@@ -2678,6 +3455,16 @@ extension MessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.equalTo(
         property: r'isSent',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      isUploadingEqualTo(bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'isUploading',
         value: value,
       ));
     });
@@ -4586,6 +5373,90 @@ extension MessageEntityQueryFilter
       ));
     });
   }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      uploadProgressIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'uploadProgress',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      uploadProgressIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'uploadProgress',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      uploadProgressEqualTo(
+    double? value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'uploadProgress',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      uploadProgressGreaterThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'uploadProgress',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      uploadProgressLessThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'uploadProgress',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      uploadProgressBetween(
+    double? lower,
+    double? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'uploadProgress',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
+      ));
+    });
+  }
 }
 
 extension MessageEntityQueryObject
@@ -4607,6 +5478,34 @@ extension MessageEntityQuerySortBy
       sortByAttachmentFileNameDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'attachmentFileName', Sort.desc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      sortByAttachmentMimeType() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'attachmentMimeType', Sort.asc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      sortByAttachmentMimeTypeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'attachmentMimeType', Sort.desc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      sortByAttachmentSizeBytes() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'attachmentSizeBytes', Sort.asc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      sortByAttachmentSizeBytesDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'attachmentSizeBytes', Sort.desc);
     });
   }
 
@@ -4635,6 +5534,45 @@ extension MessageEntityQuerySortBy
       sortByAttachmentUrlDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'attachmentUrl', Sort.desc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy> sortByAudioAlbum() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'audioAlbum', Sort.asc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      sortByAudioAlbumDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'audioAlbum', Sort.desc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy> sortByAudioArtist() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'audioArtist', Sort.asc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      sortByAudioArtistDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'audioArtist', Sort.desc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy> sortByAudioTitle() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'audioTitle', Sort.asc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      sortByAudioTitleDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'audioTitle', Sort.desc);
     });
   }
 
@@ -4857,6 +5795,19 @@ extension MessageEntityQuerySortBy
     });
   }
 
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy> sortByIsUploading() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isUploading', Sort.asc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      sortByIsUploadingDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isUploading', Sort.desc);
+    });
+  }
+
   QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
       sortByLocalFilePath() {
     return QueryBuilder.apply(this, (query) {
@@ -5022,6 +5973,20 @@ extension MessageEntityQuerySortBy
       return query.addSortBy(r'storyReplyDataJson', Sort.desc);
     });
   }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      sortByUploadProgress() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'uploadProgress', Sort.asc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      sortByUploadProgressDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'uploadProgress', Sort.desc);
+    });
+  }
 }
 
 extension MessageEntityQuerySortThenBy
@@ -5037,6 +6002,34 @@ extension MessageEntityQuerySortThenBy
       thenByAttachmentFileNameDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'attachmentFileName', Sort.desc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      thenByAttachmentMimeType() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'attachmentMimeType', Sort.asc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      thenByAttachmentMimeTypeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'attachmentMimeType', Sort.desc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      thenByAttachmentSizeBytes() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'attachmentSizeBytes', Sort.asc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      thenByAttachmentSizeBytesDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'attachmentSizeBytes', Sort.desc);
     });
   }
 
@@ -5065,6 +6058,45 @@ extension MessageEntityQuerySortThenBy
       thenByAttachmentUrlDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'attachmentUrl', Sort.desc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy> thenByAudioAlbum() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'audioAlbum', Sort.asc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      thenByAudioAlbumDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'audioAlbum', Sort.desc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy> thenByAudioArtist() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'audioArtist', Sort.asc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      thenByAudioArtistDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'audioArtist', Sort.desc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy> thenByAudioTitle() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'audioTitle', Sort.asc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      thenByAudioTitleDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'audioTitle', Sort.desc);
     });
   }
 
@@ -5287,6 +6319,19 @@ extension MessageEntityQuerySortThenBy
     });
   }
 
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy> thenByIsUploading() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isUploading', Sort.asc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      thenByIsUploadingDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isUploading', Sort.desc);
+    });
+  }
+
   QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy> thenByIsarId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isarId', Sort.asc);
@@ -5464,6 +6509,20 @@ extension MessageEntityQuerySortThenBy
       return query.addSortBy(r'storyReplyDataJson', Sort.desc);
     });
   }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      thenByUploadProgress() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'uploadProgress', Sort.asc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      thenByUploadProgressDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'uploadProgress', Sort.desc);
+    });
+  }
 }
 
 extension MessageEntityQueryWhereDistinct
@@ -5473,6 +6532,21 @@ extension MessageEntityQueryWhereDistinct
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'attachmentFileName',
           caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QDistinct>
+      distinctByAttachmentMimeType({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'attachmentMimeType',
+          caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QDistinct>
+      distinctByAttachmentSizeBytes() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'attachmentSizeBytes');
     });
   }
 
@@ -5489,6 +6563,27 @@ extension MessageEntityQueryWhereDistinct
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'attachmentUrl',
           caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QDistinct> distinctByAudioAlbum(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'audioAlbum', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QDistinct> distinctByAudioArtist(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'audioArtist', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QDistinct> distinctByAudioTitle(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'audioTitle', caseSensitive: caseSensitive);
     });
   }
 
@@ -5612,6 +6707,13 @@ extension MessageEntityQueryWhereDistinct
     });
   }
 
+  QueryBuilder<MessageEntity, MessageEntity, QDistinct>
+      distinctByIsUploading() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'isUploading');
+    });
+  }
+
   QueryBuilder<MessageEntity, MessageEntity, QDistinct> distinctByLocalFilePath(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -5705,6 +6807,13 @@ extension MessageEntityQueryWhereDistinct
           caseSensitive: caseSensitive);
     });
   }
+
+  QueryBuilder<MessageEntity, MessageEntity, QDistinct>
+      distinctByUploadProgress() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'uploadProgress');
+    });
+  }
 }
 
 extension MessageEntityQueryProperty
@@ -5723,6 +6832,20 @@ extension MessageEntityQueryProperty
   }
 
   QueryBuilder<MessageEntity, String?, QQueryOperations>
+      attachmentMimeTypeProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'attachmentMimeType');
+    });
+  }
+
+  QueryBuilder<MessageEntity, int?, QQueryOperations>
+      attachmentSizeBytesProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'attachmentSizeBytes');
+    });
+  }
+
+  QueryBuilder<MessageEntity, String?, QQueryOperations>
       attachmentTypeProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'attachmentType');
@@ -5733,6 +6856,24 @@ extension MessageEntityQueryProperty
       attachmentUrlProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'attachmentUrl');
+    });
+  }
+
+  QueryBuilder<MessageEntity, String?, QQueryOperations> audioAlbumProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'audioAlbum');
+    });
+  }
+
+  QueryBuilder<MessageEntity, String?, QQueryOperations> audioArtistProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'audioArtist');
+    });
+  }
+
+  QueryBuilder<MessageEntity, String?, QQueryOperations> audioTitleProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'audioTitle');
     });
   }
 
@@ -5849,6 +6990,12 @@ extension MessageEntityQueryProperty
     });
   }
 
+  QueryBuilder<MessageEntity, bool, QQueryOperations> isUploadingProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'isUploading');
+    });
+  }
+
   QueryBuilder<MessageEntity, String?, QQueryOperations>
       localFilePathProperty() {
     return QueryBuilder.apply(this, (query) {
@@ -5928,6 +7075,13 @@ extension MessageEntityQueryProperty
       storyReplyDataJsonProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'storyReplyDataJson');
+    });
+  }
+
+  QueryBuilder<MessageEntity, double?, QQueryOperations>
+      uploadProgressProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'uploadProgress');
     });
   }
 }

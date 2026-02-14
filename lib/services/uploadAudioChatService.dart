@@ -5,50 +5,93 @@ import 'package:path/path.dart' as path;
 import 'secure_upload_service.dart';
 import 'user_friendly_error_handler.dart';
 import '../utils/const.dart';
+import 'upload_object_key_service.dart';
 
 class ChatAudioUploadService {
-
   /// Upload chat audio file
   static Future<String?> uploadChatAudio(
     File audioFile,
     String conversationId, {
     void Function(double progress)? onProgress,
   }) async {
+    _PreparedAudioFile? preparedFile;
     try {
       if (!await audioFile.exists()) {
         throw Exception('Audio file not found');
       }
 
-      final extension = path.extension(audioFile.path).toLowerCase();
-      if (!_isValidAudioFormat(extension)) {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null || userId.isEmpty) {
+        throw Exception('User not authenticated');
+      }
+
+      preparedFile = await _prepareAudioFile(audioFile);
+      await _waitForReadableFile(preparedFile.file);
+      if (!_isValidAudioFormat(preparedFile.extension)) {
         throw Exception('Unsupported audio format');
       }
 
-      final fileName =
-          'chats/$conversationId/audio/${supabase.auth.currentUser!.id}_${DateTime.now().millisecondsSinceEpoch}_${path.basename(audioFile.path)}';
-
-      final Uint8List fileBytes = await audioFile.readAsBytes();
-      final contentType = _getAudioContentType(extension);
-
-      final uploadResult = await SecureUploadService.uploadBytes(
-        bytes: fileBytes,
-        objectKey: fileName,
-        contentType: contentType,
-        onProgress: onProgress,
+      final objectKey = UploadObjectKeyService.buildChatObjectKey(
+        conversationId: conversationId,
+        folder: 'audio',
+        userId: userId,
+        extension: preparedFile.extension,
       );
 
-      final uploadedUrl = uploadResult.url;
-      logInfo('Chat audio uploaded: $uploadedUrl');
+      final Uint8List fileBytes = await preparedFile.file.readAsBytes();
+      final contentTypes = _resolveAudioContentTypes(preparedFile.extension);
 
-      if (uploadedUrl.isEmpty) {
-        throw Exception('Upload URL is empty');
+      Object? lastError;
+      for (final contentType in contentTypes) {
+        try {
+          final uploadResult = await SecureUploadService.uploadBytes(
+            bytes: fileBytes,
+            objectKey: objectKey,
+            contentType: contentType,
+            onProgress: onProgress,
+          );
+
+          final uploadedUrl = uploadResult.url;
+          logInfo('Chat audio uploaded: $uploadedUrl');
+
+          if (uploadedUrl.isEmpty) {
+            throw Exception('Upload URL is empty');
+          }
+
+          return uploadedUrl;
+        } catch (e, st) {
+          lastError = e;
+          logWarning(
+            'Chat audio upload attempt failed (contentType=$contentType)',
+            error: e,
+            stackTrace: st,
+          );
+        }
       }
 
-      return uploadedUrl;
-    } catch (e) {
-      UserFriendlyErrorHandler.logError(e, context: 'audio_upload');
-      throw Exception(UserFriendlyErrorHandler.getFriendlyMessage(e,
-          context: 'audio_upload'));
+      throw Exception(lastError ?? 'Audio upload failed');
+    } catch (e, st) {
+      logError(
+        'Chat audio upload failed',
+        error: e,
+        stackTrace: st,
+      );
+      UserFriendlyErrorHandler.logError(
+        e,
+        context: 'audio_upload',
+        stackTrace: st,
+      );
+      final friendly = UserFriendlyErrorHandler.getFriendlyMessage(e,
+          context: 'audio_upload');
+      throw Exception('$friendly | technical: ${e.runtimeType}: $e');
+    } finally {
+      if (preparedFile?.deleteAfterUpload == true) {
+        try {
+          await preparedFile!.file.delete();
+        } catch (_) {
+          // best-effort cleanup
+        }
+      }
     }
   }
 
@@ -61,33 +104,52 @@ class ChatAudioUploadService {
     try {
       logInfo('Starting web audio upload...');
 
-      final sanitizedFileName =
-          fileName.replaceAll(RegExp(r'[^\w\s\-\.]'), '_');
-
-      final extension = path.extension(sanitizedFileName).toLowerCase();
-      final contentType = _getAudioContentType(extension);
+      final extension = path.extension(fileName).toLowerCase().trim().isEmpty
+          ? '.m4a'
+          : path.extension(fileName).toLowerCase().trim();
 
       final userId = supabase.auth.currentUser?.id;
       if (userId == null) throw Exception('User not authenticated');
 
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final s3FileName =
-          'chats/$conversationId/audio/${userId}_${timestamp}_$sanitizedFileName';
-
-      final uploadResult = await SecureUploadService.uploadBytes(
-        bytes: fileBytes,
-        objectKey: s3FileName,
-        contentType: contentType,
+      final objectKey = UploadObjectKeyService.buildChatObjectKey(
+        conversationId: conversationId,
+        folder: 'audio',
+        userId: userId,
+        extension: extension,
       );
+      final contentTypes = _resolveAudioContentTypes(extension);
 
-      final uploadedUrl = uploadResult.url;
-      logInfo('Web audio upload success: $uploadedUrl');
+      Object? lastError;
+      for (final contentType in contentTypes) {
+        try {
+          final uploadResult = await SecureUploadService.uploadBytes(
+            bytes: fileBytes,
+            objectKey: objectKey,
+            contentType: contentType,
+          );
 
-      return uploadedUrl;
-    } catch (e) {
-      UserFriendlyErrorHandler.logError(e, context: 'audio_upload');
-      throw Exception(UserFriendlyErrorHandler.getFriendlyMessage(e,
-          context: 'audio_upload'));
+          final uploadedUrl = uploadResult.url;
+          logInfo('Web audio upload success: $uploadedUrl');
+          return uploadedUrl;
+        } catch (e, st) {
+          lastError = e;
+          logWarning(
+            'Web audio upload attempt failed (contentType=$contentType)',
+            error: e,
+            stackTrace: st,
+          );
+        }
+      }
+      throw Exception(lastError ?? 'Audio upload failed');
+    } catch (e, st) {
+      UserFriendlyErrorHandler.logError(
+        e,
+        context: 'audio_upload',
+        stackTrace: st,
+      );
+      final friendly = UserFriendlyErrorHandler.getFriendlyMessage(e,
+          context: 'audio_upload');
+      throw Exception('$friendly | technical: ${e.runtimeType}: $e');
     }
   }
 
@@ -107,25 +169,77 @@ class ChatAudioUploadService {
 
   /// Validate audio format
   static bool _isValidAudioFormat(String extension) {
-    const validFormats = ['.mp3', '.aac', '.m4a', '.wav', '.ogg'];
+    const validFormats = ['.mp3', '.aac', '.m4a', '.wav', '.ogg', '.flac'];
     return validFormats.contains(extension);
   }
 
-  /// Map content type
-  static String _getAudioContentType(String extension) {
+  static Future<_PreparedAudioFile> _prepareAudioFile(File audioFile) async {
+    final extension = path.extension(audioFile.path).toLowerCase().trim();
+    if (extension.isNotEmpty) {
+      return _PreparedAudioFile(
+        file: audioFile,
+        extension: extension,
+        deleteAfterUpload: false,
+      );
+    }
+
+    final tempPath = path.join(
+      Directory.systemTemp.path,
+      'voice_${DateTime.now().millisecondsSinceEpoch}.m4a',
+    );
+    final copied = await audioFile.copy(tempPath);
+    return _PreparedAudioFile(
+      file: copied,
+      extension: '.m4a',
+      deleteAfterUpload: true,
+    );
+  }
+
+  static Future<void> _waitForReadableFile(File file) async {
+    const attempts = 8;
+    const pause = Duration(milliseconds: 150);
+
+    for (var i = 0; i < attempts; i++) {
+      if (await file.exists()) {
+        final length = await file.length();
+        if (length > 0) {
+          return;
+        }
+      }
+      await Future.delayed(pause);
+    }
+
+    throw Exception('Audio file is empty or not ready');
+  }
+
+  static List<String> _resolveAudioContentTypes(String extension) {
     switch (extension) {
       case '.mp3':
-        return 'audio/mpeg';
+        return const ['audio/mpeg'];
       case '.aac':
-        return 'audio/aac';
+        return const ['audio/aac', 'audio/mp4'];
       case '.m4a':
-        return 'audio/mp4';
+        return const ['audio/mp4', 'audio/x-m4a', 'audio/aac'];
       case '.wav':
-        return 'audio/wav';
+        return const ['audio/wav', 'audio/x-wav'];
       case '.ogg':
-        return 'audio/ogg';
+        return const ['audio/ogg'];
+      case '.flac':
+        return const ['audio/flac', 'audio/x-flac'];
       default:
-        return 'audio/mpeg';
+        return const ['application/octet-stream'];
     }
   }
+}
+
+class _PreparedAudioFile {
+  final File file;
+  final String extension;
+  final bool deleteAfterUpload;
+
+  const _PreparedAudioFile({
+    required this.file,
+    required this.extension,
+    required this.deleteAfterUpload,
+  });
 }

@@ -176,17 +176,6 @@ class ChannelService {
     }).toList();
   }
 
-  // آپدیت در پس‌زمینه
-  void _refreshChannelsInBackground(String userId) async {
-    try {
-      final channels = await _fetchChannelsFromServer(userId);
-      // Channel cache removed
-      logInfo('کش کانال‌ها در پس‌زمینه آپدیت شد');
-    } catch (e) {
-      logInfo('خطا در آپدیت پس‌زمینه: $e');
-    }
-  }
-
   // دریافت یک کانال خاص
   Future<ChannelModel?> getChannel(String channelId,
       {bool forceRefresh = false}) async {
@@ -235,19 +224,6 @@ class ChannelService {
       // Channel cache removed - no fallback available
 
       rethrow;
-    }
-  }
-
-  // آپدیت کانال در پس‌زمینه
-  void _refreshChannelInBackground(String channelId, String userId) async {
-    try {
-      final channel = await getChannel(channelId, forceRefresh: true);
-      if (channel != null) {
-        // Channel cache removed
-        logInfo('کش کانال $channelId در پس‌زمینه آپدیت شد');
-      }
-    } catch (e) {
-      logInfo('خطا در آپدیت کانال در پس‌زمینه: $e');
     }
   }
 
@@ -520,19 +496,6 @@ class ChannelService {
     }).toList();
   }
 
-  // آپدیت پیام‌ها در پس‌زمینه
-  void _refreshMessagesInBackground(String channelId, int limit) async {
-    try {
-      final userId = _supabase.auth.currentUser!.id;
-      final messages =
-          await _fetchMessagesFromServer(channelId, limit, null, userId);
-      // Channel cache removed
-      logInfo('کش پیام‌ها در پس‌زمینه آپدیت شد');
-    } catch (e) {
-      logInfo('خطا در آپدیت پس‌زمینه پیام‌ها: $e');
-    }
-  }
-
   // ارسال پیام با آپلود تصویر به آروان
 
   Future<ChannelMessageModel> sendMessage({
@@ -603,117 +566,6 @@ class ChannelService {
         },
         currentUserId: userId,
       );
-
-      logInfo('پیام با موفقیت ارسال شد');
-      return message;
-    } catch (e) {
-      logInfo('خطا در ارسال پیام: $e');
-      rethrow;
-    }
-  }
-
-  Future<ChannelMessageModel> _sendMessageLogic({
-    required String channelId,
-    required String content,
-    String? replyToMessageId,
-    File? imageFile,
-  }) async {
-    try {
-      final userId = _supabase.auth.currentUser!.id;
-
-      // بررسی مجوز ارسال پیام
-      final permissions = await getUserPermissions(channelId);
-      if (!permissions['canSendMessage']!) {
-        throw Exception('شما مجاز به ارسال پیام در این کانال نیستید');
-      }
-
-      String? attachmentUrl;
-      String? attachmentType;
-
-      // آپلود تصویر در صورت وجود
-      if (imageFile != null) {
-        try {
-          attachmentUrl =
-              await _uploadImageToArvan(imageFile, 'channel_messages');
-          attachmentType = 'image';
-        } catch (e) {
-          logInfo('خطا در آپلود تصویر: $e');
-          throw Exception('خطا در آپلود تصویر');
-        }
-      }
-
-      // آماده‌سازی داده‌های پیام
-      final messageData = <String, dynamic>{
-        'channel_id': channelId,
-        'sender_id': userId,
-        'content': content,
-        'attachment_url': attachmentUrl,
-        'attachment_type': attachmentType,
-        'created_at': DateTime.now().toIso8601String(),
-      };
-
-      // اضافه کردن reply اگر وجود داشته باشه
-      if (replyToMessageId != null) {
-        messageData['reply_to_message_id'] = replyToMessageId;
-
-        // دریافت اطلاعات پیام مرجع
-        final replyMessage = await _supabase
-            .from('channel_messages')
-            .select('content, sender_id')
-            .eq('id', replyToMessageId)
-            .single();
-
-        // دریافت نام فرستنده پیام مرجع
-        final senderProfile = await _supabase
-            .from('profiles')
-            .select('username, full_name')
-            .eq('id', replyMessage['sender_id'])
-            .single();
-
-        messageData['reply_to_content'] = replyMessage['content'];
-        messageData['reply_to_sender_name'] =
-            senderProfile['username'] ?? senderProfile['full_name'];
-      }
-
-      // ارسال پیام
-      final response = await _supabase
-          .from('channel_messages')
-          .insert(messageData)
-          .select()
-          .single();
-
-      // آپدیت آخرین پیام کانال
-      await _supabase.from('channels').update({
-        'last_message': content,
-        'last_message_time': DateTime.now().toIso8601String(),
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', channelId);
-
-      // دریافت اطلاعات فرستنده
-      final senderProfile = await _supabase
-          .from('profiles')
-          .select(
-              'username, full_name, avatar_url, is_verified, verification_type, is_online, role')
-          .eq('id', userId)
-          .single();
-
-      // اضافه کردن اطلاعات فرستنده به response
-      response['sender_name'] =
-          senderProfile['username'] ?? senderProfile['full_name'];
-      response['sender_avatar'] = senderProfile['avatar_url'];
-      response['sender_verified'] = senderProfile['is_verified'] ?? false;
-      response['sender_verification_type'] = senderProfile['verification_type'];
-      response['sender_online'] = senderProfile['is_online'] ?? false;
-      response['sender_role'] = senderProfile['role'];
-
-      final message =
-          ChannelMessageModel.fromJson(response, currentUserId: userId);
-
-      // اضافه کردن به کش
-      // Channel cache removed
-
-      // آپدیت کش کانال
-      // Channel cache removed
 
       logInfo('پیام با موفقیت ارسال شد');
       return message;
@@ -825,76 +677,6 @@ class ChannelService {
     }
   }
 
-  // 🔍 بررسی مجوز حذف پیام
-  Future<bool> _canDeleteMessage(
-      String messageId, String channelId, String userId) async {
-    try {
-      // گرفتن اطلاعات پیام
-      final messageResponse = await _supabase
-          .from('channel_messages')
-          .select('sender_id, is_deleted')
-          .eq('id', messageId)
-          .eq('channel_id', channelId)
-          .maybeSingle();
-
-      if (messageResponse == null || messageResponse['is_deleted'] == true) {
-        return false; // پیام وجود ندارد یا قبلاً حذف شده
-      }
-
-      // اگر کاربر فرستنده پیام باشه، می‌تونه حذف کنه
-      if (messageResponse['sender_id'] == userId) {
-        return true;
-      }
-
-      // بررسی نقش کاربر در کانال
-      final permissions = await getUserPermissions(channelId);
-      return permissions['canDeleteMessage'] ?? false;
-    } catch (e) {
-      logInfo('خطا در بررسی مجوز حذف: $e');
-      return false;
-    }
-  }
-
-  // 🔍 بررسی مجوز ویرایش پیام
-  Future<bool> _canEditMessage(
-      String messageId, String channelId, String userId) async {
-    try {
-      // گرفتن اطلاعات پیام
-      final messageResponse = await _supabase
-          .from('channel_messages')
-          .select('sender_id, is_deleted, image_url, created_at')
-          .eq('id', messageId)
-          .eq('channel_id', channelId)
-          .maybeSingle();
-
-      if (messageResponse == null || messageResponse['is_deleted'] == true) {
-        return false; // پیام وجود ندارد یا حذف شده
-      }
-
-      // فقط فرستنده می‌تونه پیام رو ویرایش کنه
-      if (messageResponse['sender_id'] != userId) {
-        return false;
-      }
-
-      // پیام‌های عکسی قابل ویرایش نیستند
-      if (messageResponse['image_url'] != null) {
-        return false;
-      }
-
-      // محدودیت زمانی: فقط 48 ساعت بعد از ارسال قابل ویرایش
-      final createdAt = DateTime.parse(messageResponse['created_at']);
-      final timeDifference = DateTime.now().difference(createdAt);
-      if (timeDifference.inHours > 48) {
-        return false;
-      }
-
-      return true;
-    } catch (e) {
-      logInfo('خطا در بررسی مجوز ویرایش: $e');
-      return false;
-    }
-  }
-
   // 📊 آمار پیام‌های حذف شده (برای ادمین)
   Future<Map<String, int>> getChannelDeletedMessagesStats(
       String channelId) async {
@@ -923,35 +705,6 @@ class ChannelService {
       logInfo('خطا در گرفتن آمار: $e');
       rethrow;
     }
-  }
-
-  Future<List<ChannelMessageModel>> _fetchChannelMessages(
-      String channelId) async {
-    final response = await _supabase
-        .from('channel_messages')
-        .select('''
-        id,
-        content,
-        sender_id,
-        channel_id,
-        image_url,
-        reply_to_message_id,
-        created_at,
-        updated_at,
-        profiles!inner(
-          id,
-          username,
-          full_name,
-          avatar_url
-        )
-      ''')
-        .eq('channel_id', channelId)
-        .order('created_at',
-            ascending: true); // ✅ تغییر به false برای جدیدترین اول
-
-    return response.map<ChannelMessageModel>((data) {
-      return ChannelMessageModel.fromJson(data);
-    }).toList();
   }
 
   // جستجو در پیام‌ها

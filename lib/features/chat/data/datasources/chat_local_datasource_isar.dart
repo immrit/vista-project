@@ -8,6 +8,12 @@ import '../entities/conversation_entity.dart';
 class ChatLocalDataSourceIsar {
   final IsarDatabaseManager _dbManager; // Assuming Injection or instantiate
 
+  // ── Throttle state for upload progress ──
+  static final Map<String, int> _lastProgressWriteMs = {};
+  static final Map<String, double> _lastProgressValue = {};
+  static const int _progressThrottleMs = 500; // حداقل فاصله بین write‌ها
+  static const double _progressMinDelta = 0.05; // حداقل تغییر ۵٪
+
   ChatLocalDataSourceIsar({IsarDatabaseManager? dbManager})
       : _dbManager = dbManager ?? IsarDatabaseManager();
 
@@ -29,18 +35,29 @@ class ChatLocalDataSourceIsar {
   Future<void> saveMessages(List<MessageModel> messages) async {
     if (messages.isEmpty) return;
     final isar = await _dbManager.instance;
-    final entities = messages.map(MessageEntity.fromModel).toList();
-
     await isar.writeTxn(() async {
-      await isar.messageEntitys.putAll(entities);
+      for (final message in messages) {
+        final existing = await isar.messageEntitys
+            .filter()
+            .idEqualTo(message.id)
+            .findFirst();
+        final merged =
+            _mergeWithExistingLocalFields(message, existing?.toModel());
+        await isar.messageEntitys.put(MessageEntity.fromModel(merged));
+      }
     });
   }
 
   Future<void> saveMessage(MessageModel message) async {
     final isar = await _dbManager.instance;
     await isar.writeTxn(() async {
+      final existing =
+          await isar.messageEntitys.filter().idEqualTo(message.id).findFirst();
+      final merged =
+          _mergeWithExistingLocalFields(message, existing?.toModel());
+
       // 1. Save Message
-      await isar.messageEntitys.put(MessageEntity.fromModel(message));
+      await isar.messageEntitys.put(MessageEntity.fromModel(merged));
 
       // 2. Update Conversation Metadata (Last Message & Unread Count)
       final conversation = await isar.conversationEntitys
@@ -49,18 +66,18 @@ class ChatLocalDataSourceIsar {
           .findFirst();
 
       if (conversation != null) {
-        conversation.lastMessage = message.content; // Or proper snippet
-        conversation.lastMessageTime = message.createdAt;
-        conversation.updatedAt = message.createdAt; // Sort by this
+        conversation.lastMessage = merged.content; // Or proper snippet
+        conversation.lastMessageTime = merged.createdAt;
+        conversation.updatedAt = merged.createdAt; // Sort by this
 
         // If message is NOT from me, increment unread count
-        if (!message.isMe) {
+        if (!merged.isMe) {
           // If we are currently in this chat, don't increment (Handled by repo usually, but good to check)
           // However, repo handles logic. Ideally here we just increment.
           // But valid 'unread' logic usually depends on if the user has read it.
           // If isSeen is false and it's not me, increment.
-          if (!message.isSeen) {
-            conversation.unreadCount = (conversation.unreadCount ?? 0) + 1;
+          if (!merged.isSeen) {
+            conversation.unreadCount = conversation.unreadCount + 1;
           }
         }
 
@@ -74,6 +91,28 @@ class ChatLocalDataSourceIsar {
         // For now, let's assume it exists or will be fetched.
       }
     });
+  }
+
+  MessageModel _mergeWithExistingLocalFields(
+    MessageModel incoming,
+    MessageModel? existing,
+  ) {
+    if (existing == null) return incoming;
+
+    return incoming.copyWith(
+      attachmentFileName:
+          incoming.attachmentFileName ?? existing.attachmentFileName,
+      attachmentMimeType:
+          incoming.attachmentMimeType ?? existing.attachmentMimeType,
+      attachmentSizeBytes:
+          incoming.attachmentSizeBytes ?? existing.attachmentSizeBytes,
+      audioTitle: incoming.audioTitle ?? existing.audioTitle,
+      audioArtist: incoming.audioArtist ?? existing.audioArtist,
+      audioAlbum: incoming.audioAlbum ?? existing.audioAlbum,
+      duration: incoming.duration ?? existing.duration,
+      localImagePath: incoming.localImagePath ?? existing.localImagePath,
+      localFilePath: incoming.localFilePath ?? existing.localFilePath,
+    );
   }
 
   Future<void> resetUnreadCount(String conversationId) async {
@@ -126,6 +165,63 @@ class ChatLocalDataSourceIsar {
     final entity =
         await isar.messageEntitys.filter().idEqualTo(messageId).findFirst();
     return entity?.toModel();
+  }
+
+  Future<void> updateUploadProgress(String messageId, double progress) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final clamped = progress.clamp(0.0, 1.0).toDouble();
+    final isComplete = clamped >= 1.0;
+
+    // ── Throttle: اجتناب از write بیش از حد ──
+    if (!isComplete) {
+      final lastMs = _lastProgressWriteMs[messageId] ?? 0;
+      final lastVal = _lastProgressValue[messageId] ?? -1.0;
+      final elapsed = now - lastMs;
+      final delta = (clamped - lastVal).abs();
+
+      if (elapsed < _progressThrottleMs && delta < _progressMinDelta) {
+        return; // skip write
+      }
+    }
+
+    _lastProgressWriteMs[messageId] = now;
+    _lastProgressValue[messageId] = clamped;
+
+    final isar = await _dbManager.instance;
+    await isar.writeTxn(() async {
+      final entity =
+          await isar.messageEntitys.filter().idEqualTo(messageId).findFirst();
+      if (entity == null) return;
+      entity.uploadProgress = clamped;
+      entity.isUploading = true;
+      entity.isPending = true;
+      entity.isFailed = false;
+      entity.errorMessage = null;
+      await isar.messageEntitys.put(entity);
+    });
+
+    // پاکسازی state throttle هنگام تکمیل
+    if (isComplete) {
+      _lastProgressWriteMs.remove(messageId);
+      _lastProgressValue.remove(messageId);
+    }
+  }
+
+  Future<void> markUploadFailed(
+    String messageId, {
+    String? errorMessage,
+  }) async {
+    final isar = await _dbManager.instance;
+    await isar.writeTxn(() async {
+      final entity =
+          await isar.messageEntitys.filter().idEqualTo(messageId).findFirst();
+      if (entity == null) return;
+      entity.isUploading = false;
+      entity.isPending = false;
+      entity.isFailed = true;
+      entity.errorMessage = errorMessage;
+      await isar.messageEntitys.put(entity);
+    });
   }
 
   Future<void> deleteMessage(String messageId) async {

@@ -387,27 +387,49 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        resizeToAvoidBottomInset: false, // Prevent background squishing
-        body: Stack(
-          children: [
-            // 1. Background (Fixed)
-            const Positioned.fill(child: RibbonBackground()),
+        resizeToAvoidBottomInset: true,
+        body: GestureDetector(
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: Stack(
+            children: [
+              // 1. Background (Fixed)
+              const Positioned.fill(child: RibbonBackground()),
 
-            // 2. Content (Scrollable/PageView)
-            SafeArea(
-              child: PageView(
-                controller: _pageController,
-                physics: const NeverScrollableScrollPhysics(),
-                children: [
-                  _buildInputSlide(), // Slide 0
-                  _buildPasswordSlide(), // Slide 1
-                  _buildOtpSlide(), // Slide 2
-                ],
+              // 2. Content (Scrollable/PageView)
+              SafeArea(
+                child: PageView(
+                  controller: _pageController,
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: [
+                    _buildInputSlide(), // Slide 0
+                    _buildPasswordSlide(), // Slide 1
+                    _buildOtpSlide(), // Slide 2
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildScrollableSlide({
+    required Widget child,
+    EdgeInsetsGeometry padding =
+        const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: padding,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: child,
+          ),
+        );
+      },
     );
   }
 
@@ -417,13 +439,12 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
         ? 'lib/utils/images/logo/logo-white.png'
         : 'lib/utils/images/logo/black-logo.png';
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+    return _buildScrollableSlide(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Spacer(),
+          const SizedBox(height: 16),
           // Connect Logo with Blend Mask to remove background
           BlendMask(
             blendMode: isDark ? BlendMode.screen : BlendMode.multiply,
@@ -447,6 +468,12 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
             controller: _inputController,
             textAlign: TextAlign.left,
             textDirection: TextDirection.ltr,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) {
+              if (!_isLoading) {
+                _handleInputSubmit();
+              }
+            },
             decoration: const InputDecoration(
               hintText: "شماره موبایل، ایمیل یا نام کاربری",
               hintTextDirection: TextDirection.rtl,
@@ -465,7 +492,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
                         strokeWidth: 2, color: Colors.white))
                 : const Text("ادامه"),
           ),
-          const Spacer(),
+          const SizedBox(height: 20),
           // Footer / Terms
           Text(
             "با ورود به ویستا، قوانین و مقررات را می‌پذیرم.",
@@ -475,16 +502,16 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
                 .bodySmall
                 ?.copyWith(color: Colors.grey),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 8),
         ],
       ),
     );
   }
 
   Widget _buildPasswordSlide() {
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
+    return _buildScrollableSlide(
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const SizedBox(height: 40),
@@ -495,7 +522,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
               onPressed: () => _pageController.jumpToPage(0),
             ),
           ),
-          const Spacer(),
+          const SizedBox(height: 28),
           Text(
             "رمز عبور خود را وارد کنید",
             style: Theme.of(context).textTheme.headlineMedium,
@@ -507,6 +534,12 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
             obscureText: true,
             textAlign: TextAlign.left,
             textDirection: TextDirection.ltr,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) {
+              if (!_isLoading) {
+                _handlePasswordLogin();
+              }
+            },
             decoration: const InputDecoration(
               hintText: "رمز عبور",
               hintTextDirection: TextDirection.rtl,
@@ -541,7 +574,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
                   },
             child: const Text('فراموشی رمزعبور؟'),
           ),
-          const Spacer(flex: 2),
+          const SizedBox(height: 8),
         ],
       ),
     );
@@ -562,9 +595,9 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
       ),
     );
 
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
+    return _buildScrollableSlide(
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const SizedBox(height: 40),
@@ -579,7 +612,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
               },
             ),
           ),
-          const Spacer(),
+          const SizedBox(height: 24),
           Text(
             "کد تایید",
             style: Theme.of(context).textTheme.headlineMedium,
@@ -637,7 +670,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
                         strokeWidth: 2, color: Colors.white))
                 : const Text("تایید"),
           ),
-          const Spacer(flex: 2),
+          const SizedBox(height: 8),
         ],
       ),
     );

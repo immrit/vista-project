@@ -285,6 +285,50 @@ class ChatTransferManager {
     return taskId;
   }
 
+  Future<void> registerCompletedLocalUpload({
+    required String messageId,
+    required String url,
+    required String localPath,
+    required String fileName,
+  }) async {
+    await _ensureInitialized();
+
+    final localFile = File(localPath);
+    if (!localFile.existsSync()) return;
+    final totalBytes = localFile.lengthSync();
+    final sanitizedName = _sanitizeFileName(fileName);
+
+    final existing = _recordForMessage(messageId);
+    if (existing != null) {
+      existing.url = url;
+      existing.fileName = sanitizedName;
+      existing.localPath = localPath;
+      existing.receivedBytes = totalBytes;
+      existing.totalBytes = totalBytes;
+      existing.status = TransferTaskStatus.completed;
+      _touch(existing);
+      return;
+    }
+
+    final taskId =
+        '${messageId}_local_${DateTime.now().millisecondsSinceEpoch}';
+    final row = _TransferTaskRecord(
+      taskId: taskId,
+      messageId: messageId,
+      url: url,
+      fileName: sanitizedName,
+      localPath: localPath,
+      status: TransferTaskStatus.completed,
+      receivedBytes: totalBytes,
+      totalBytes: totalBytes,
+      updatedAt: DateTime.now().toUtc(),
+    );
+
+    _tasksById[taskId] = row;
+    _messageToTaskId[messageId] = taskId;
+    _touch(row);
+  }
+
   Future<void> pause(String taskId) async {
     await _ensureInitialized();
     _pauseRequested.add(taskId);

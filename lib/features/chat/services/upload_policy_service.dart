@@ -55,12 +55,19 @@ class UploadPolicyService {
     'gif',
     'webp',
     'bmp',
+    'heic',
+    'heif',
   };
 
   static const Set<String> _allowedFileExts = {
     ..._imageExts,
     'pdf',
     'mp3',
+    'm4a',
+    'aac',
+    'wav',
+    'ogg',
+    'flac',
   };
 
   int maxBytesFor(ProfileModel? profile) {
@@ -73,15 +80,8 @@ class UploadPolicyService {
     required ChatSendMode mode,
   }) {
     final maxBytes = maxBytesFor(profile);
-    final ext = p.extension(file.path).replaceFirst('.', '').toLowerCase();
+    var ext = p.extension(file.path).replaceFirst('.', '').toLowerCase();
     final bytes = file.lengthSync();
-
-    if (ext.isEmpty) {
-      return AllowedFileResult.rejected(
-        maxBytes: maxBytes,
-        error: 'File type could not be detected.',
-      );
-    }
 
     if (bytes > maxBytes) {
       final maxMb = maxBytes ~/ (1024 * 1024);
@@ -92,9 +92,17 @@ class UploadPolicyService {
     }
 
     final header = _readHeader(file);
+    if (ext.isEmpty) {
+      ext = _inferExtensionByHeader(header);
+      if (ext.isEmpty) {
+        return AllowedFileResult.rejected(
+          maxBytes: maxBytes,
+          error: 'File type could not be detected.',
+        );
+      }
+    }
     final matchesImage = _isImageByExt(ext) && _isImageByHeader(header);
     final matchesPdf = ext == 'pdf' && _isPdfByHeader(header);
-    final matchesMp3 = ext == 'mp3' && _isMp3ByHeader(header);
 
     if (mode == ChatSendMode.gallery || mode == ChatSendMode.camera) {
       if (!matchesImage) {
@@ -112,7 +120,7 @@ class UploadPolicyService {
     if (!_allowedFileExts.contains(ext)) {
       return AllowedFileResult.rejected(
         maxBytes: maxBytes,
-        error: 'Only image, PDF, and MP3 files are allowed.',
+        error: 'Only image, PDF, and audio files are allowed.',
       );
     }
 
@@ -138,20 +146,24 @@ class UploadPolicyService {
       }
       return AllowedFileResult.allowed(
         maxBytes: maxBytes,
-        attachmentType: 'pdf',
+        attachmentType: 'document',
       );
     }
 
-    if (ext == 'mp3') {
-      if (!matchesMp3) {
+    if (_isAudioByExt(ext)) {
+      final matchesAudio = _isAudioByHeader(ext, header);
+      if (!matchesAudio && header.isEmpty) {
         return AllowedFileResult.rejected(
           maxBytes: maxBytes,
-          error: 'MP3 file content is invalid.',
+          error: 'Audio file content is invalid.',
         );
       }
+      // Some valid audio files may not expose a strict magic header
+      // in the first bytes (depending on recorder/exporter/container).
+      // Keep extension whitelist as the primary guard to avoid false rejects.
       return AllowedFileResult.allowed(
         maxBytes: maxBytes,
-        attachmentType: 'mp3',
+        attachmentType: 'audio',
       );
     }
 
@@ -206,6 +218,20 @@ class UploadPolicyService {
     if (header.length >= 2 && header[0] == 0x42 && header[1] == 0x4D) {
       return true; // bmp
     }
+    if (header.length >= 12 &&
+        header[4] == 0x66 &&
+        header[5] == 0x74 &&
+        header[6] == 0x79 &&
+        header[7] == 0x70) {
+      final brand = String.fromCharCodes(header.sublist(8, 12)).toLowerCase();
+      if (brand == 'heic' ||
+          brand == 'heix' ||
+          brand == 'hevc' ||
+          brand == 'heif' ||
+          brand == 'mif1') {
+        return true; // heic/heif
+      }
+    }
     return false;
   }
 
@@ -215,6 +241,56 @@ class UploadPolicyService {
         header[1] == 0x50 &&
         header[2] == 0x44 &&
         header[3] == 0x46;
+  }
+
+  bool _isAudioByExt(String ext) {
+    return const {'mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac'}.contains(ext);
+  }
+
+  bool _isAudioByHeader(String ext, List<int> header) {
+    switch (ext) {
+      case 'mp3':
+        return _isMp3ByHeader(header);
+      case 'wav':
+        return header.length >= 12 &&
+            header[0] == 0x52 &&
+            header[1] == 0x49 &&
+            header[2] == 0x46 &&
+            header[3] == 0x46 &&
+            header[8] == 0x57 &&
+            header[9] == 0x41 &&
+            header[10] == 0x56 &&
+            header[11] == 0x45;
+      case 'ogg':
+        return header.length >= 4 &&
+            header[0] == 0x4F &&
+            header[1] == 0x67 &&
+            header[2] == 0x67 &&
+            header[3] == 0x53;
+      case 'flac':
+        return header.length >= 4 &&
+            header[0] == 0x66 &&
+            header[1] == 0x4C &&
+            header[2] == 0x61 &&
+            header[3] == 0x43;
+      case 'm4a':
+        return header.length >= 8 &&
+            header[4] == 0x66 &&
+            header[5] == 0x74 &&
+            header[6] == 0x79 &&
+            header[7] == 0x70;
+      case 'aac':
+        return (header.length >= 2 &&
+                header[0] == 0xFF &&
+                (header[1] & 0xF0) == 0xF0) ||
+            (header.length >= 8 &&
+                header[4] == 0x66 &&
+                header[5] == 0x74 &&
+                header[6] == 0x79 &&
+                header[7] == 0x70);
+      default:
+        return false;
+    }
   }
 
   bool _isMp3ByHeader(List<int> header) {
@@ -228,5 +304,19 @@ class UploadPolicyService {
       return true; // MPEG frame sync
     }
     return false;
+  }
+
+  String _inferExtensionByHeader(List<int> header) {
+    if (_isPdfByHeader(header)) return 'pdf';
+    if (_isImageByHeader(header)) return 'jpg';
+    if (_isAudioByHeader('mp3', header) ||
+        _isAudioByHeader('aac', header) ||
+        _isAudioByHeader('wav', header) ||
+        _isAudioByHeader('ogg', header) ||
+        _isAudioByHeader('flac', header) ||
+        _isAudioByHeader('m4a', header)) {
+      return 'm4a';
+    }
+    return '';
   }
 }

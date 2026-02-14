@@ -7,6 +7,51 @@ import '../model/publicPostModel.dart';
 import '../security/logging_utility.dart';
 import '../services/vista_node_service.dart';
 
+class FeedDisplayError implements Exception {
+  final String message;
+  final bool retriable;
+  final bool requiresReauth;
+
+  const FeedDisplayError({
+    required this.message,
+    this.retriable = true,
+    this.requiresReauth = false,
+  });
+
+  factory FeedDisplayError.from(Object error) {
+    if (error is NodeApiException) {
+      if (error.kind == NodeErrorKind.auth) {
+        return const FeedDisplayError(
+          message: 'نشست شما منقضی شده است. لطفا دوباره وارد شوید.',
+          retriable: false,
+          requiresReauth: true,
+        );
+      }
+      if (error.kind == NodeErrorKind.network ||
+          error.kind == NodeErrorKind.timeout) {
+        return const FeedDisplayError(
+          message: 'اتصال اینترنت برقرار نیست. لطفا دوباره تلاش کنید.',
+          retriable: true,
+        );
+      }
+      if (error.kind == NodeErrorKind.server) {
+        return const FeedDisplayError(
+          message: 'سرور موقتا در دسترس نیست. کمی بعد دوباره تلاش کنید.',
+          retriable: true,
+        );
+      }
+    }
+
+    return const FeedDisplayError(
+      message: 'بارگذاری پست‌ها با خطا مواجه شد. لطفا دوباره تلاش کنید.',
+      retriable: true,
+    );
+  }
+
+  @override
+  String toString() => message;
+}
+
 /// "For You" feed powered by the Node.js service (function-vista.chbk.dev).
 ///
 /// Pagination model (v1):
@@ -36,9 +81,8 @@ class PersonalizedFeedNotifier
     if (current == null || current.isEmpty) return;
 
     final updated = current
-        .map((p) => p.userId == authorId
-            ? p.copyWith(authorFollowStatus: status)
-            : p)
+        .map((p) =>
+            p.userId == authorId ? p.copyWith(authorFollowStatus: status) : p)
         .toList();
     state = AsyncValue.data(updated);
   }
@@ -146,9 +190,9 @@ class PersonalizedFeedNotifier
         );
       }
     } catch (e, st) {
-      // If the Node service is temporarily down (e.g. 502 from gateway),
-      // fall back to a simple time-based feed from Supabase so UX isn't blocked.
       final msg = e.toString();
+      final uiError = FeedDisplayError.from(e);
+
       final isNodeDown = msg.contains('Feed error 502') ||
           msg.contains('Feed error 503') ||
           msg.contains('Feed error 504') ||
@@ -157,6 +201,9 @@ class PersonalizedFeedNotifier
           msg.contains('Failed host lookup') ||
           msg.contains('Connection closed') ||
           msg.contains('HandshakeException') ||
+          (e is NodeApiException && e.kind == NodeErrorKind.server) ||
+          (e is NodeApiException && e.kind == NodeErrorKind.network) ||
+          (e is NodeApiException && e.kind == NodeErrorKind.timeout) ||
           e is TimeoutException;
 
       if (!_useFallback && isNodeDown) {
@@ -179,10 +226,10 @@ class PersonalizedFeedNotifier
             '[Feed] fallback items=${items.length} hasMore=$_hasMore offset=$_fallbackOffset sources=$sourceCounts',
           );
         } catch (e2, st2) {
-          state = AsyncValue.error(e2, st2);
+          state = AsyncValue.error(FeedDisplayError.from(e2), st2);
         }
       } else {
-        state = AsyncValue.error(e, st);
+        state = AsyncValue.error(uiError, st);
       }
     } finally {
       _isLoading = false;
@@ -197,7 +244,8 @@ class PersonalizedFeedNotifier
     await _loadMore();
   }
 
-  Future<List<PublicPostModel>> _fetchFallbackPosts({required int limit}) async {
+  Future<List<PublicPostModel>> _fetchFallbackPosts(
+      {required int limit}) async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) return const [];
 
@@ -239,7 +287,8 @@ class PersonalizedFeedNotifier
         .order('created_at', ascending: false)
         .range(_fallbackOffset, _fallbackOffset + limit - 1);
 
-    final posts = List<Map<String, dynamic>>.from(postsResponse as List<dynamic>);
+    final posts =
+        List<Map<String, dynamic>>.from(postsResponse as List<dynamic>);
     if (posts.isEmpty) return const [];
 
     final userIds = posts
@@ -310,8 +359,7 @@ class PersonalizedFeedNotifier
         'like_count': postLikes.length,
         'is_liked': postLikes.any((l) => l['user_id'] == userId),
         'comment_count': comments.length,
-        'username':
-            profile['username'] ?? profile['full_name'] ?? 'Unknown',
+        'username': profile['username'] ?? profile['full_name'] ?? 'Unknown',
         'avatar_url': profile['avatar_url'] ?? '',
         'is_verified': profile['is_verified'] ?? false,
         'verification_type': profile['verification_type'],
@@ -345,7 +393,8 @@ class PersonalizedFeedNotifier
         .order('created_at', ascending: false)
         .range(_fallbackOffset, _fallbackOffset + limit - 1);
 
-    final posts = List<Map<String, dynamic>>.from(postsResponse as List<dynamic>);
+    final posts =
+        List<Map<String, dynamic>>.from(postsResponse as List<dynamic>);
     if (posts.isEmpty) return const [];
 
     return posts.map((post) {
@@ -361,8 +410,7 @@ class PersonalizedFeedNotifier
   }
 }
 
-final personalizedFeedProvider =
-    StateNotifierProvider<PersonalizedFeedNotifier, AsyncValue<List<PublicPostModel>>>(
-        (ref) {
+final personalizedFeedProvider = StateNotifierProvider<PersonalizedFeedNotifier,
+    AsyncValue<List<PublicPostModel>>>((ref) {
   return PersonalizedFeedNotifier();
 });

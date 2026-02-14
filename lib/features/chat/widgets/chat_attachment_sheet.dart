@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
 import 'package:photo_manager/photo_manager.dart';
 
 import '../../../model/ProfileModel.dart';
@@ -18,13 +19,33 @@ enum ChatAttachmentType {
 
 class AttachmentSelection {
   final ChatAttachmentType type;
-  final List<File> files;
+  final List<SelectedAttachmentFile> files;
   final String? caption;
 
   const AttachmentSelection({
     required this.type,
     required this.files,
     this.caption,
+  });
+}
+
+class SelectedAttachmentFile {
+  final File file;
+  final String displayFileName;
+  final String? mimeType;
+  final int? sizeBytes;
+  final String? audioTitle;
+  final String? audioArtist;
+  final String? audioAlbum;
+
+  const SelectedAttachmentFile({
+    required this.file,
+    required this.displayFileName,
+    this.mimeType,
+    this.sizeBytes,
+    this.audioTitle,
+    this.audioArtist,
+    this.audioAlbum,
   });
 }
 
@@ -60,6 +81,13 @@ class ChatAttachmentSheet extends StatefulWidget {
 
 class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
     with TickerProviderStateMixin {
+  static const Color _galleryLightColor = Color(0xFF7C3AED);
+  static const Color _galleryDarkColor = Color(0xFFC4B5FD);
+  static const Color _cameraLightColor = Color(0xFF0EA5E9);
+  static const Color _cameraDarkColor = Color(0xFF7DD3FC);
+  static const Color _fileLightColor = Color(0xFFF97316);
+  static const Color _fileDarkColor = Color(0xFFFDBA74);
+
   late final AnimationController _slideController;
   late final Animation<Offset> _slideAnimation;
   final TextEditingController _captionController = TextEditingController();
@@ -201,10 +229,17 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
     if (_selectedAssets.isEmpty) return;
     HapticFeedback.mediumImpact();
 
-    final files = <File>[];
+    final files = <SelectedAttachmentFile>[];
     for (final asset in _selectedAssets) {
       final file = await asset.file;
-      if (file != null) files.add(file);
+      if (file != null) {
+        files.add(
+          SelectedAttachmentFile(
+            file: file,
+            displayFileName: p.basename(file.path),
+          ),
+        );
+      }
     }
     if (files.isEmpty) return;
 
@@ -233,22 +268,42 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
     widget.onSelected(
       AttachmentSelection(
         type: ChatAttachmentType.camera,
-        files: [File(image.path)],
+        files: [
+          SelectedAttachmentFile(
+            file: File(image.path),
+            displayFileName: p.basename(image.path),
+          ),
+        ],
       ),
     );
   }
 
   Future<void> _pickFile() async {
+    final rootContext = Navigator.of(context, rootNavigator: true).context;
+    final onSelected = widget.onSelected;
+    final profile = widget.currentUserProfile;
+
     Navigator.pop(context);
+
     final result = await DocumentUploadSheet.show(
-      context: context,
-      profile: widget.currentUserProfile,
+      context: rootContext,
+      profile: profile,
     );
     if (result == null) return;
-    widget.onSelected(
+    onSelected(
       AttachmentSelection(
         type: ChatAttachmentType.file,
-        files: [result.file],
+        files: [
+          SelectedAttachmentFile(
+            file: result.file,
+            displayFileName: result.displayFileName,
+            mimeType: result.mimeType,
+            sizeBytes: result.sizeBytes,
+            audioTitle: result.audioTitle,
+            audioArtist: result.audioArtist,
+            audioAlbum: result.audioAlbum,
+          ),
+        ],
         caption: result.caption.isEmpty ? null : result.caption,
       ),
     );
@@ -323,6 +378,10 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
   }
 
   Widget _buildOptionsRow(ChatTheme theme) {
+    final galleryColor = theme.isDark ? _galleryDarkColor : _galleryLightColor;
+    final cameraColor = theme.isDark ? _cameraDarkColor : _cameraLightColor;
+    final fileColor = theme.isDark ? _fileDarkColor : _fileLightColor;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
@@ -333,7 +392,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
             _OptionChip(
               icon: Icons.photo_library_rounded,
               label: 'گالری',
-              color: Colors.purple,
+              color: galleryColor,
               isSelected: _showGallery,
               onTap: () => setState(() => _showGallery = true),
             ),
@@ -341,21 +400,23 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
           _OptionChip(
             icon: Icons.camera_alt_rounded,
             label: 'دوربین',
-            color: Colors.blue,
+            color: cameraColor,
             onTap: _pickFromCamera,
           ),
           const SizedBox(width: 8),
           _OptionChip(
             icon: Icons.insert_drive_file_rounded,
             label: 'فایل',
-            color: Colors.orange,
+            color: fileColor,
             onTap: _pickFile,
           ),
           const Spacer(),
           IconButton(
             onPressed: () => setState(() => _showGallery = !_showGallery),
             icon: Icon(
-              _showGallery ? Icons.grid_view_rounded : Icons.photo_library_rounded,
+              _showGallery
+                  ? Icons.grid_view_rounded
+                  : Icons.photo_library_rounded,
               color: theme.iconColor,
             ),
           ),
@@ -387,7 +448,8 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
               ),
             ),
             const SizedBox(width: 4),
-            Icon(Icons.keyboard_arrow_down_rounded, color: theme.secondaryTextColor, size: 18),
+            Icon(Icons.keyboard_arrow_down_rounded,
+                color: theme.secondaryTextColor, size: 18),
           ],
         ),
       ),
@@ -451,7 +513,8 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
       onNotification: (scrollInfo) {
         if (!_isLoadingMore &&
             _hasMore &&
-            scrollInfo.metrics.pixels >= scrollInfo.metrics.maxScrollExtent - 200) {
+            scrollInfo.metrics.pixels >=
+                scrollInfo.metrics.maxScrollExtent - 200) {
           _loadMedia();
         }
         return false;
@@ -493,6 +556,10 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
   }
 
   Widget _buildExpandedOptions(ChatTheme theme) {
+    final galleryColor = theme.isDark ? _galleryDarkColor : _galleryLightColor;
+    final cameraColor = theme.isDark ? _cameraDarkColor : _cameraLightColor;
+    final fileColor = theme.isDark ? _fileDarkColor : _fileLightColor;
+
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Row(
@@ -501,19 +568,19 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
           _buildBigOption(
             icon: Icons.photo_library_rounded,
             label: 'گالری',
-            color: Colors.purple,
+            color: galleryColor,
             onTap: () => setState(() => _showGallery = true),
           ),
           _buildBigOption(
             icon: Icons.camera_alt_rounded,
             label: 'دوربین',
-            color: Colors.blue,
+            color: cameraColor,
             onTap: _pickFromCamera,
           ),
           _buildBigOption(
             icon: Icons.insert_drive_file_rounded,
             label: 'فایل',
-            color: Colors.orange,
+            color: fileColor,
             onTap: _pickFile,
           ),
         ],
@@ -627,7 +694,8 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
               right: 4,
               child: Container(
                 padding: const EdgeInsets.all(4),
-                decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                decoration: const BoxDecoration(
+                    color: Colors.white, shape: BoxShape.circle),
                 child: Text(
                   '${_selectedAssets.length}',
                   style: TextStyle(
@@ -672,7 +740,8 @@ class _OptionChip extends StatelessWidget {
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.2) : theme.inputBackgroundColor,
+          color:
+              isSelected ? color.withOpacity(0.2) : theme.inputBackgroundColor,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected ? color : theme.dividerColor,
@@ -713,7 +782,8 @@ class _GalleryItem extends StatelessWidget {
   });
 
   Future<Widget> _buildThumbnail(ChatTheme theme) async {
-    final bytes = await asset.thumbnailDataWithSize(const ThumbnailSize(200, 200));
+    final bytes =
+        await asset.thumbnailDataWithSize(const ThumbnailSize(200, 200));
     if (bytes == null) {
       return Container(
         color: theme.dividerColor,
@@ -735,7 +805,8 @@ class _GalleryItem extends StatelessWidget {
             borderRadius: BorderRadius.circular(4),
             child: FutureBuilder<Widget>(
               future: _buildThumbnail(theme),
-              builder: (_, snapshot) => snapshot.data ?? const SizedBox.shrink(),
+              builder: (_, snapshot) =>
+                  snapshot.data ?? const SizedBox.shrink(),
             ),
           ),
           AnimatedContainer(
@@ -789,7 +860,8 @@ class _SelectedThumbnail extends StatelessWidget {
   });
 
   Future<Widget> _buildThumbnail() async {
-    final bytes = await asset.thumbnailDataWithSize(const ThumbnailSize(120, 120));
+    final bytes =
+        await asset.thumbnailDataWithSize(const ThumbnailSize(120, 120));
     if (bytes == null) return const SizedBox.shrink();
     return Image.memory(bytes, fit: BoxFit.cover);
   }

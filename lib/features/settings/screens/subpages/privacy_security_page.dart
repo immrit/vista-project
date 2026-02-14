@@ -5,7 +5,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../widgets/vista_settings_widgets.dart';
 import 'ActiveSessionsScreen.dart';
 import 'BlockedUsersPage.dart';
-import '../../../../provider/provider.dart';
 import '../../../../provider/settings_providers.dart';
 import '../../../../model/messagePrivacyModel.dart';
 import '../../../../services/telegram_read_receipt_service.dart';
@@ -45,11 +44,6 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
       _forwardedMessages = prefs.getBool(_keyForwardedMessages) ?? true;
       _twoStepVerification = prefs.getBool(_keyTwoStep) ?? false;
     });
-  }
-
-  Future<void> _saveStringSetting(String key, String value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(key, value);
   }
 
   Future<void> _saveBoolSetting(String key, bool value) async {
@@ -370,29 +364,5 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
         ],
       ),
     );
-  }
-
-  Future<void> _upsertUserSetting(String key, dynamic value) async {
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) return;
-    try {
-      await Supabase.instance.client.from('user_settings').upsert({
-        'user_id': user.id,
-        key: value,
-        'updated_at': DateTime.now().toIso8601String(),
-      });
-      ref.invalidate(currentUserSettingsProvider);
-    } catch (_) {}
-  }
-
-  Future<void> _updatePrivacySetting(
-    String userId,
-    Map<String, dynamic> currentSettings,
-    Map<String, dynamic> updates,
-  ) async {
-    final merged = {...currentSettings, ...updates};
-    await ref
-        .read(privacySettingsProvider(userId).notifier)
-        .updateSettings(merged);
   }
 }

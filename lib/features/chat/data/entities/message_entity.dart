@@ -33,9 +33,16 @@ class MessageEntity {
   String? audioUrl; // Added
   String? attachmentType;
   String? attachmentFileName;
+  String? attachmentMimeType;
+  int? attachmentSizeBytes;
+  String? audioTitle;
+  String? audioArtist;
+  String? audioAlbum;
   int? duration;
   String? localImagePath; // Added
   String? localFilePath; // Added
+  bool isUploading = false;
+  double? uploadProgress;
 
   // Reply
   String? replyToMessageId;
@@ -79,9 +86,16 @@ class MessageEntity {
       ..audioUrl = model.audioUrl
       ..attachmentType = model.attachmentType
       ..attachmentFileName = model.attachmentFileName
+      ..attachmentMimeType = model.attachmentMimeType
+      ..attachmentSizeBytes = model.attachmentSizeBytes
+      ..audioTitle = model.audioTitle
+      ..audioArtist = model.audioArtist
+      ..audioAlbum = model.audioAlbum
       ..duration = model.duration
       ..localImagePath = model.localImagePath
       ..localFilePath = model.localFilePath
+      ..isUploading = model.isUploading
+      ..uploadProgress = model.uploadProgress
       ..replyToMessageId = model.replyToMessageId
       ..replyToSenderName = model.replyToSenderName
       ..replyToContent = model.replyToContent
@@ -148,9 +162,16 @@ class MessageEntity {
       audioUrl: audioUrl,
       attachmentType: attachmentType,
       attachmentFileName: attachmentFileName,
+      attachmentMimeType: attachmentMimeType,
+      attachmentSizeBytes: attachmentSizeBytes,
+      audioTitle: audioTitle,
+      audioArtist: audioArtist,
+      audioAlbum: audioAlbum,
       duration: duration,
       localImagePath: localImagePath,
       localFilePath: localFilePath,
+      isUploading: isUploading,
+      uploadProgress: uploadProgress,
       replyToMessageId: replyToMessageId,
       replyToSenderName: replyToSenderName,
       replyToContent: replyToContent,

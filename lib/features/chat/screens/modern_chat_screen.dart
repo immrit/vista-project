@@ -16,6 +16,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -59,6 +60,9 @@ import '../widgets/unread_messages_divider.dart';
 import '../widgets/floating_date_header.dart';
 import '../widgets/telegram_online_status.dart';
 import '../services/chat_attachment_service.dart';
+import '../services/chat_transfer_manager.dart';
+import '../services/attachment_type_resolver.dart';
+import '../services/audio_metadata_service.dart';
 import '../services/upload_policy_service.dart';
 import '../services/message_tombstone_service.dart';
 import '../../../services/typing_service.dart'; // ✅ سرویس تایپینگ
@@ -76,10 +80,9 @@ import 'package:Vista/features/posts/screens/PostDetailPage.dart';
 import '../../stories/presentation/providers/story_providers.dart';
 import '../../stories/presentation/screens/story_player_screen.dart';
 import '../../stories/domain/entities/entities.dart';
+import 'package:uuid/uuid.dart';
 
 // ✅ Phase 4: Final Integration
-import '../widgets/location_message_widgets.dart';
-import '../widgets/contact_card_widgets.dart';
 import 'telegram_profile_screen.dart';
 import 'group_details_screen.dart';
 import 'document_preview_screen.dart';
@@ -168,7 +171,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // Services
   final _moderationService = UserModerationService();
   final _voiceService = VoiceDurationService();
+  final _audioMetadataService = const AudioMetadataService();
+  final _chatTransferManager = ChatTransferManager();
   final UploadPolicyService _uploadPolicyService = const UploadPolicyService();
+  final AttachmentTypeResolver _attachmentTypeResolver =
+      const AttachmentTypeResolver();
   final MessageTombstoneService _tombstoneService = MessageTombstoneService();
   // TODO: Use CompleteDeletionService for delete with undo
   // final _completeDeletionService = CompleteDeletionService();
@@ -1135,9 +1142,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   void _handleMessageTap(BuildContext itemContext, MessageModel message) {
     if (_isSelectionMode) {
       _toggleMessageSelection(message.id);
-    } else {
-      // تک کلیک روی پیام معمولی -> باز شدن کانتکست منو (مثل تلگرام iOS)
-      _showTelegramContextMenu(itemContext, message);
+      return;
+    }
+
+    // Tap معمولی فقط برای باز کردن جزئیات/پیش‌نمایش مدیا استفاده می‌شود.
+    final hasAttachment =
+        (message.attachmentUrl?.isNotEmpty ?? false) || message.isSharedPost;
+    if (hasAttachment) {
+      _showMessageDetails(message);
     }
   }
 
@@ -1368,17 +1380,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   Widget _buildAppBarTitle(ChatTheme theme) {
-    // دریافت وضعیت تایپ
-    final typingUsersAsync = ref.watch(
-      typingUsersProvider(widget.args.conversationId),
-    );
-
-    // تعیین وضعیت تایپ
-    final isTyping = typingUsersAsync.maybeWhen(
-      data: (users) => users.isNotEmpty,
-      orElse: () => false,
-    );
-
     return InkWell(
       onTap: () {
         _navigateToChatDetails();
@@ -1678,8 +1679,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                             onTap: () {
                               if (_isSelectionMode) {
                                 _toggleMessageSelection(message.id);
-                              } else {
-                                FocusScope.of(context).unfocus();
                               }
                             },
                             onLongPress: () {
@@ -2104,50 +2103,116 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     if (!mounted) return;
 
     final attachmentService = ChatAttachmentService();
+    final chatRepository = ref.read(chatRepositoryProvider);
+    final localId = const Uuid().v4();
+    final fileName = p.basename(audioFile.path);
+    final fileSize = await audioFile.length();
+    final mimeType = _guessMimeTypeFromPath(audioFile.path);
 
     // محاسبه دقیق مدت زمان
     final durationResult = await _voiceService.getAudioDuration(audioFile);
     final finalDuration =
         durationResult.success ? durationResult.durationInSeconds : duration;
 
+    final pending = await chatRepository.createPendingMessage(
+      conversationId: widget.args.conversationId,
+      content: '',
+      localId: localId,
+      attachmentType: 'voice',
+      attachmentFileName: fileName,
+      attachmentMimeType: mimeType,
+      attachmentSizeBytes: fileSize,
+      localFilePath: audioFile.path,
+      duration: finalDuration,
+    );
+    if (!pending.isSuccess) {
+      if (mounted) {
+        _showErrorSnackBar(pending.error ?? 'خطا در ایجاد پیام موقت');
+      }
+      return;
+    }
+    _scrollToBottom();
+
     final result = await attachmentService.uploadVoiceMessage(
       audioFile: audioFile,
       conversationId: widget.args.conversationId,
       duration: finalDuration ?? 0,
+      onProgress: (progress) {
+        unawaited(chatRepository.updateUploadProgress(localId, progress));
+      },
     );
 
     if (!mounted) return;
 
-    if (result.success && result.url != null) {
-      final params = SendMessageParams(
-        conversationId: widget.args.conversationId,
-        content: '',
-        attachmentUrl: result.url,
-        attachmentType: 'voice',
-        attachmentFileName: result.fileName,
-        duration: finalDuration,
+    if (!result.success || result.url == null || result.url!.isEmpty) {
+      final detailedError =
+          _detailedUploadError(result, fallback: 'Voice upload failed');
+      await chatRepository.markUploadFailed(
+        localId,
+        errorMessage: detailedError,
       );
-
-      try {
-        await ref.read(chatActionControllerProvider.notifier).sendMessage(
-              conversationId: params.conversationId,
-              content: params.content,
-              attachmentUrl: params.attachmentUrl,
-              attachmentType: params.attachmentType,
-              replyToMessageId: params.replyToMessageId,
-            );
-        if (mounted) {
-          _scrollToBottom();
-        }
-      } catch (e) {
-        debugPrint('Error sending voice message: $e');
-        if (mounted) {
-          _showErrorSnackBar('خطا در ارسال پیام صوتی');
-        }
-      }
-    } else {
       if (mounted) {
-        _showErrorSnackBar(result.error ?? 'خطا در ارسال پیام صوتی');
+        _showErrorSnackBar(
+          _shortUploadError(result.error, fallback: 'Voice upload failed'),
+        );
+      }
+      return;
+    }
+    await chatRepository.updateUploadProgress(localId, 1.0);
+
+    final params = SendMessageParams(
+      conversationId: widget.args.conversationId,
+      content: '',
+      attachmentUrl: result.url,
+      attachmentType: 'voice',
+      attachmentFileName: result.fileName ?? fileName,
+      attachmentMimeType: mimeType,
+      attachmentSizeBytes: fileSize,
+      duration: finalDuration,
+    );
+
+    try {
+      final sendResult =
+          await ref.read(chatActionControllerProvider.notifier).sendMessage(
+                id: localId,
+                conversationId: params.conversationId,
+                content: params.content,
+                attachmentUrl: params.attachmentUrl,
+                attachmentType: params.attachmentType,
+                attachmentFileName: params.attachmentFileName,
+                attachmentMimeType: params.attachmentMimeType,
+                attachmentSizeBytes: params.attachmentSizeBytes,
+                audioTitle: params.audioTitle,
+                audioArtist: params.audioArtist,
+                audioAlbum: params.audioAlbum,
+                duration: params.duration,
+                replyToMessageId: params.replyToMessageId,
+              );
+      if (!sendResult.isSuccess) {
+        await chatRepository.markUploadFailed(
+          localId,
+          errorMessage: sendResult.error ?? 'ارسال پیام صوتی ناموفق بود',
+        );
+      }
+      await _registerCompletedLocalUpload(
+        messageId: localId,
+        url: result.url!,
+        localPath: audioFile.path,
+        fileName: params.attachmentFileName ?? fileName,
+      );
+      if (mounted) {
+        _scrollToBottom();
+      }
+    } catch (e) {
+      final shortError = _shortUploadError(e.toString(),
+          fallback: 'Voice message send failed');
+      await chatRepository.markUploadFailed(
+        localId,
+        errorMessage: '$shortError | technical: ${e.runtimeType}: $e',
+      );
+      debugPrint('Error sending voice message: $e');
+      if (mounted) {
+        _showErrorSnackBar(shortError);
       }
     }
   }
@@ -2312,9 +2377,16 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     };
 
     final attachmentService = ChatAttachmentService();
+    final chatRepository = ref.read(chatRepositoryProvider);
+    if ((_currentUserId ?? Supabase.instance.client.auth.currentUser?.id) ==
+        null) {
+      _showErrorSnackBar('User id not found');
+      return;
+    }
 
-    for (final file in selection.files) {
+    for (final selected in selection.files) {
       if (!mounted) break;
+      final file = selected.file;
 
       final validation = _uploadPolicyService.validateFile(
         file: file,
@@ -2322,90 +2394,197 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         mode: sendMode,
       );
       if (!validation.isAllowed) {
-        _showErrorSnackBar(validation.error ?? 'فایل مجاز نیست');
+        _showErrorSnackBar(validation.error ?? 'File is not allowed');
         continue;
       }
 
-      String? url;
-      String attachmentType = validation.attachmentType ?? 'file';
+      final attachmentType = _resolveAttachmentType(
+        sendMode: sendMode,
+        file: file,
+        policyType: validation.attachmentType,
+      );
+      final localId = const Uuid().v4();
+      final fileName = selected.displayFileName.trim().isNotEmpty
+          ? selected.displayFileName.trim()
+          : p.basename(file.path);
+      final fileSizeBytes = selected.sizeBytes ?? await file.length();
+      String? attachmentMimeType =
+          selected.mimeType ?? _guessMimeTypeFromPath(file.path);
+      int? durationSeconds;
+      String? audioTitle = selected.audioTitle;
+      String? audioArtist = selected.audioArtist;
+      String? audioAlbum = selected.audioAlbum;
 
-      if (attachmentType == 'image') {
-        url = await _uploadWithProgress(file, 'image', attachmentService);
-      } else {
-        url = await _uploadWithProgress(file, 'file', attachmentService);
+      if (attachmentType == 'audio') {
+        final metadata = await _audioMetadataService.extract(
+          file: file,
+          displayFileName: fileName,
+          mimeTypeHint: attachmentMimeType,
+          sizeBytesHint: fileSizeBytes,
+        );
+        attachmentMimeType = metadata.mimeType ?? attachmentMimeType;
+        durationSeconds = metadata.durationSeconds;
+        audioTitle = audioTitle ?? metadata.title;
+        audioArtist = audioArtist ?? metadata.artist;
+        audioAlbum = audioAlbum ?? metadata.album;
+
+        if (durationSeconds == null) {
+          final durationResult = await _voiceService.getAudioDuration(file);
+          if (durationResult.success) {
+            durationSeconds = durationResult.durationInSeconds;
+          }
+        }
       }
 
-      if (url != null && url.isNotEmpty && mounted) {
-        final params = SendMessageParams(
-          conversationId: widget.args.conversationId,
-          content: selection.caption ?? '',
-          attachmentUrl: url,
-          attachmentType: attachmentType,
-          attachmentFileName: file.path.split('/').last,
-        );
+      final pending = await chatRepository.createPendingMessage(
+        conversationId: widget.args.conversationId,
+        content: selection.caption ?? '',
+        localId: localId,
+        attachmentType: attachmentType,
+        attachmentFileName: fileName,
+        attachmentMimeType: attachmentMimeType,
+        attachmentSizeBytes: fileSizeBytes,
+        audioTitle: audioTitle,
+        audioArtist: audioArtist,
+        audioAlbum: audioAlbum,
+        localFilePath: file.path,
+        duration: durationSeconds,
+      );
+      if (!pending.isSuccess) {
+        _showErrorSnackBar(pending.error ?? 'Failed to create pending message');
+        continue;
+      }
+      _scrollToBottom();
 
-        try {
-          await ref.read(chatActionControllerProvider.notifier).sendMessage(
-                conversationId: params.conversationId,
-                content: params.content,
-                attachmentUrl: params.attachmentUrl,
-                attachmentType: params.attachmentType,
-              );
-          if (mounted) _scrollToBottom();
-        } catch (e) {
-          debugPrint('Error sending attachment: $e');
+      final uploadResult = await _uploadWithProgress(
+        file: file,
+        type: attachmentType,
+        service: attachmentService,
+        localMessageId: localId,
+      );
+
+      if (!uploadResult.success ||
+          uploadResult.url == null ||
+          uploadResult.url!.isEmpty) {
+        final detailedError =
+            _detailedUploadError(uploadResult, fallback: 'Upload failed');
+        await chatRepository.markUploadFailed(
+          localId,
+          errorMessage: detailedError,
+        );
+        if (mounted) {
+          _showErrorSnackBar(
+            _shortUploadError(uploadResult.error, fallback: 'Upload failed'),
+          );
         }
+        continue;
+      }
+      await chatRepository.updateUploadProgress(localId, 1.0);
+
+      final result =
+          await ref.read(chatActionControllerProvider.notifier).sendMessage(
+                id: localId,
+                conversationId: widget.args.conversationId,
+                content: selection.caption ?? '',
+                attachmentUrl: uploadResult.url,
+                attachmentType: attachmentType,
+                attachmentFileName: fileName,
+                attachmentMimeType: attachmentMimeType,
+                attachmentSizeBytes: fileSizeBytes,
+                audioTitle: audioTitle,
+                audioArtist: audioArtist,
+                audioAlbum: audioAlbum,
+                duration: durationSeconds,
+              );
+      if (!result.isSuccess) {
+        await chatRepository.markUploadFailed(
+          localId,
+          errorMessage: result.error ?? 'Message send failed after upload',
+        );
+      } else {
+        await _registerCompletedLocalUpload(
+          messageId: localId,
+          url: uploadResult.url!,
+          localPath: file.path,
+          fileName: fileName,
+        );
       }
     }
   }
 
-  /// آپلود فایل با progress - اصلاح شده
-  /// این متد فایل ورودی را مستقیماً آپلود می‌کند بدون باز کردن picker
-  Future<String?> _uploadWithProgress(
-    File file,
-    String type,
-    ChatAttachmentService service,
-  ) async {
+  String _resolveAttachmentType({
+    required ChatSendMode sendMode,
+    required File file,
+    String? policyType,
+    String? existingType,
+  }) {
+    return _attachmentTypeResolver.resolve(
+      sendMode: sendMode,
+      file: file,
+      policyType: policyType,
+      existingType: existingType,
+    );
+  }
+
+  Future<AttachmentResult> _uploadWithProgress(
+      {required File file,
+      required String type,
+      required ChatAttachmentService service,
+      required String localMessageId}) async {
     try {
       AttachmentResult result;
+      final chatRepository = ref.read(chatRepositoryProvider);
+      void onProgress(double progress) {
+        unawaited(
+            chatRepository.updateUploadProgress(localMessageId, progress));
+      }
 
       switch (type) {
         case 'image':
-          // ✅ اصلاح: به جای pickImageFromGallery از متد جدید uploadImage استفاده کن
           result = await service.uploadImage(
             file: file,
             conversationId: widget.args.conversationId,
-            onProgress:
-                null, // اگر می‌خواهی progress نشان بدی باید callback اضافه کنی
+            onProgress: onProgress,
           );
           break;
-
-        case 'video':
-          // ✅ برای ویدیو از متد جدید uploadVideo استفاده می‌کنیم
-          result = await service.uploadVideo(
-            file: file,
+        case 'audio':
+          result = await service.uploadAudioFile(
+            audioFile: file,
             conversationId: widget.args.conversationId,
-            onProgress: null,
+            onProgress: onProgress,
           );
           break;
-
+        case 'voice':
+          result = await service.uploadAudioFile(
+            audioFile: file,
+            conversationId: widget.args.conversationId,
+            onProgress: onProgress,
+          );
+          break;
         default:
-          // ✅ برای فایل‌های عمومی از متد جدید uploadFile استفاده می‌کنیم
           result = await service.uploadFile(
             file: file,
             conversationId: widget.args.conversationId,
-            onProgress: null,
+            onProgress: onProgress,
           );
           break;
       }
 
-      return result.success ? result.url : null;
+      return result;
     } catch (e) {
-      debugPrint('❌ خطا در آپلود فایل: $e');
-      if (mounted) {
-        _showErrorSnackBar('خطا در آپلود فایل');
-      }
-      return null;
+      debugPrint('Upload error: $e');
+      final technical = '${e.runtimeType}: $e';
+      final stage =
+          RegExp(r'stage=([a-zA-Z0-9_]+)').firstMatch(technical)?.group(1);
+      final code = RegExp(r'code=([A-Z0-9_]+)').firstMatch(technical)?.group(1);
+      return AttachmentResult(
+        success: false,
+        type: _attachmentTypeFromWireType(type),
+        error: _shortUploadError(e.toString(), fallback: 'Upload failed'),
+        errorStage: stage,
+        errorCode: code,
+        technicalError: technical,
+      );
     }
   }
 
@@ -2414,6 +2593,262 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     // TODO: ضبط صدا
   }
 
+  Future<void> _retryFailedUpload(MessageModel message) async {
+    final chatRepository = ref.read(chatRepositoryProvider);
+    final hasCanonicalType =
+        AttachmentTypeResolver.isCanonicalType(message.attachmentType);
+    final existingAttachmentUrl = message.attachmentUrl?.trim();
+    if (existingAttachmentUrl != null && existingAttachmentUrl.isNotEmpty) {
+      await chatRepository.updateUploadProgress(message.id, 1.0);
+      final preservedType = hasCanonicalType
+          ? message.attachmentType
+          : _attachmentTypeResolver.canonicalizeFromType(
+              message.attachmentType,
+            );
+      final resendType = preservedType ?? 'document';
+      final resend =
+          await ref.read(chatActionControllerProvider.notifier).sendMessage(
+                id: message.id,
+                conversationId: message.conversationId,
+                content: message.content,
+                attachmentUrl: existingAttachmentUrl,
+                attachmentType: resendType,
+                attachmentFileName: message.attachmentFileName,
+                attachmentMimeType: message.attachmentMimeType,
+                attachmentSizeBytes: message.attachmentSizeBytes,
+                audioTitle: message.audioTitle,
+                audioArtist: message.audioArtist,
+                audioAlbum: message.audioAlbum,
+                duration: message.duration,
+                replyToMessageId: message.replyToMessageId,
+                replyToContent: message.replyToContent,
+                replyToSenderName: message.replyToSenderName,
+              );
+      if (!resend.isSuccess) {
+        await chatRepository.markUploadFailed(
+          message.id,
+          errorMessage: resend.error ?? 'Message resend failed',
+        );
+      } else if (message.localFilePath != null &&
+          message.localFilePath!.isNotEmpty &&
+          File(message.localFilePath!).existsSync()) {
+        await _registerCompletedLocalUpload(
+          messageId: message.id,
+          url: existingAttachmentUrl,
+          localPath: message.localFilePath!,
+          fileName:
+              message.attachmentFileName ?? p.basename(message.localFilePath!),
+        );
+      }
+      return;
+    }
+
+    final localPath = message.localFilePath;
+    if (localPath == null || localPath.isEmpty) {
+      _showErrorSnackBar('Local file not found for retry');
+      return;
+    }
+
+    final file = File(localPath);
+    if (!await file.exists()) {
+      _showErrorSnackBar('Selected file is missing on device');
+      return;
+    }
+
+    final attachmentService = ChatAttachmentService();
+    await chatRepository.updateUploadProgress(message.id, 0.0);
+
+    final normalizedType = hasCanonicalType
+        ? message.attachmentType!
+        : _resolveAttachmentType(
+            sendMode: ChatSendMode.file,
+            file: file,
+            existingType: message.attachmentType,
+          );
+    final uploadResult = await _uploadWithProgress(
+      file: file,
+      type: normalizedType,
+      service: attachmentService,
+      localMessageId: message.id,
+    );
+
+    if (!uploadResult.success ||
+        uploadResult.url == null ||
+        uploadResult.url!.isEmpty) {
+      final detailedError =
+          _detailedUploadError(uploadResult, fallback: 'Retry failed');
+      await chatRepository.markUploadFailed(
+        message.id,
+        errorMessage: detailedError,
+      );
+      if (mounted) {
+        _showErrorSnackBar(
+          _shortUploadError(uploadResult.error, fallback: 'Retry failed'),
+        );
+      }
+      return;
+    }
+
+    final result =
+        await ref.read(chatActionControllerProvider.notifier).sendMessage(
+              id: message.id,
+              conversationId: message.conversationId,
+              content: message.content,
+              attachmentUrl: uploadResult.url,
+              attachmentType: normalizedType,
+              attachmentFileName:
+                  message.attachmentFileName ?? p.basename(file.path),
+              attachmentMimeType: message.attachmentMimeType ??
+                  _guessMimeTypeFromPath(file.path),
+              attachmentSizeBytes:
+                  message.attachmentSizeBytes ?? await file.length(),
+              audioTitle: message.audioTitle,
+              audioArtist: message.audioArtist,
+              audioAlbum: message.audioAlbum,
+              duration: message.duration,
+              replyToMessageId: message.replyToMessageId,
+              replyToContent: message.replyToContent,
+              replyToSenderName: message.replyToSenderName,
+            );
+
+    if (!result.isSuccess) {
+      await chatRepository.markUploadFailed(
+        message.id,
+        errorMessage: result.error ?? 'Message send failed after retry',
+      );
+    } else {
+      await _registerCompletedLocalUpload(
+        messageId: message.id,
+        url: uploadResult.url!,
+        localPath: file.path,
+        fileName: message.attachmentFileName ?? p.basename(file.path),
+      );
+    }
+  }
+
+  AttachmentType _attachmentTypeFromWireType(String type) {
+    switch (type) {
+      case 'image':
+        return AttachmentType.image;
+      case 'audio':
+        return AttachmentType.audio;
+      case 'voice':
+        return AttachmentType.voice;
+      default:
+        return AttachmentType.file;
+    }
+  }
+
+  String? _guessMimeTypeFromPath(String filePath) {
+    final ext = p.extension(filePath).replaceFirst('.', '').toLowerCase();
+    switch (ext) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      case 'heic':
+      case 'heif':
+        return 'image/heic';
+      case 'pdf':
+        return 'application/pdf';
+      case 'mp3':
+        return 'audio/mpeg';
+      case 'm4a':
+        return 'audio/mp4';
+      case 'aac':
+        return 'audio/aac';
+      case 'wav':
+        return 'audio/wav';
+      case 'ogg':
+        return 'audio/ogg';
+      case 'flac':
+        return 'audio/flac';
+      default:
+        return null;
+    }
+  }
+
+  Future<void> _registerCompletedLocalUpload({
+    required String messageId,
+    required String url,
+    required String localPath,
+    required String fileName,
+  }) async {
+    try {
+      await _chatTransferManager.registerCompletedLocalUpload(
+        messageId: messageId,
+        url: url,
+        localPath: localPath,
+        fileName: fileName,
+      );
+    } catch (e, s) {
+      logWarning(
+        'registerCompletedLocalUpload failed for $messageId',
+        error: e,
+        stackTrace: s,
+      );
+    }
+  }
+
+  String _shortUploadError(String? raw, {required String fallback}) {
+    if (raw == null || raw.trim().isEmpty) {
+      return fallback;
+    }
+
+    var text = raw.trim();
+    if (text.startsWith('Exception:')) {
+      text = text.substring('Exception:'.length).trim();
+    }
+
+    const marker = '| technical:';
+    final markerIndex = text.indexOf(marker);
+    if (markerIndex >= 0) {
+      text = text.substring(0, markerIndex).trim();
+    }
+
+    return text.isEmpty ? fallback : text;
+  }
+
+  String _detailedUploadError(
+    AttachmentResult result, {
+    required String fallback,
+  }) {
+    final short = _shortUploadError(result.error, fallback: fallback);
+    final details = <String>[];
+    if (result.errorStage != null && result.errorStage!.trim().isNotEmpty) {
+      details.add('stage=${result.errorStage!.trim()}');
+    }
+    if (result.errorCode != null && result.errorCode!.trim().isNotEmpty) {
+      details.add('code=${result.errorCode!.trim()}');
+    }
+    final explicitTechnical = result.technicalError?.trim();
+    if (explicitTechnical != null && explicitTechnical.isNotEmpty) {
+      final prefix = details.isEmpty ? '' : '${details.join(' ')} ';
+      return '$short | technical: $prefix$explicitTechnical'.trim();
+    }
+
+    final raw = result.error ?? '';
+    const marker = '| technical:';
+    final markerIndex = raw.indexOf(marker);
+    if (markerIndex >= 0) {
+      final extracted = raw.substring(markerIndex + marker.length).trim();
+      if (extracted.isNotEmpty) {
+        final prefix = details.isEmpty ? '' : '${details.join(' ')} ';
+        return '$short | technical: $prefix$extracted'.trim();
+      }
+    }
+
+    if (details.isNotEmpty) {
+      return '$short | technical: ${details.join(' ')}';
+    }
+
+    return short;
+  }
   // ═══════════════════════════════════════════════════════════════════════════
   // 👆 MESSAGE INTERACTIONS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -2488,13 +2923,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   /// ✅ تابع جدید: نمایش Context Menu به سبک تلگرام
   void _showTelegramContextMenu(
       BuildContext bubbleContext, MessageModel message) async {
-    // 1. Force close keyboard aggressively
-    // استفاده از هر دو روش برای اطمینان از بسته شدن و ماندن در حالت بسته
-    FocusScope.of(context).unfocus();
-    SystemChannels.textInput.invokeMethod('TextInput.hide');
-
-    // کمی صبر بیشتر برای اطمینان از آپدیت شدن State فلاتر
-    await Future.delayed(const Duration(milliseconds: 150));
+    // برای باز شدن منو، فقط فوکوس را آزاد می‌کنیم و از hide اجباری کیبورد اجتناب می‌کنیم.
+    FocusManager.instance.primaryFocus?.unfocus();
+    await Future.delayed(const Duration(milliseconds: 60));
 
     // چک کردن mounted بعد از delay
     if (!mounted) return;
@@ -3744,6 +4175,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               isLastInGroup: isLastInGroup,
               isForwarded: message.isForwarded,
               forwardedFrom: message.forwardedFromSenderName,
+              onRetryUpload: (message.isFailed == true &&
+                      ((message.localFilePath?.isNotEmpty ?? false) ||
+                          (message.attachmentUrl?.isNotEmpty ?? false)))
+                  ? () => _retryFailedUpload(message)
+                  : null,
               message: message,
             ),
     );

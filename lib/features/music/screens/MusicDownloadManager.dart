@@ -243,38 +243,6 @@ class MusicDownloadManagerNotifier
     return true; // برای iOS و سایر پلتفرم‌ها
   }
 
-  Future<Directory?> _getStorageDirectory() async {
-    try {
-      if (Platform.isAndroid) {
-        // ابتدا پوشه Downloads را امتحان می‌کنیم
-        final downloadsDir = Directory('/storage/emulated/0/Download');
-        if (await downloadsDir.exists()) {
-          logDebug('استفاده از پوشه Download');
-          return downloadsDir;
-        }
-
-        // اگر در دسترس نبود، از مسیر اختصاصی برنامه استفاده می‌کنیم
-        final appDir = await getExternalStorageDirectory();
-        if (appDir != null) {
-          logDebug('استفاده از پوشه اختصاصی برنامه: ${appDir.path}');
-          return appDir;
-        }
-      }
-
-      // برای iOS از مسیر Documents استفاده می‌کنیم
-      if (Platform.isIOS) {
-        return await getApplicationDocumentsDirectory();
-      }
-
-      // در نهایت از پوشه موقت استفاده می‌کنیم
-      logDebug('استفاده از پوشه موقت');
-      return await getTemporaryDirectory();
-    } catch (e) {
-      logDebug('خطا در دریافت مسیر ذخیره‌سازی: $e');
-      return await getTemporaryDirectory();
-    }
-  }
-
   // اضافه کردن متد جدید برای بررسی معتبر بودن URL
   Future<bool> _isValidUrl(String url) async {
     try {

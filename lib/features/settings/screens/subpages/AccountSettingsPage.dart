@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:Vista/features/profile/screens/updatePassword.dart';
+import 'package:Vista/services/sensitive_action_guard.dart';
 import 'EmailEditPage.dart';
 import '../widgets/SettingsListItem.dart';
 
@@ -51,7 +52,13 @@ class AccountSettingsPage extends ConsumerWidget {
                     iconColor: Colors.orange,
                     title: 'تغییر رمز عبور',
                     subtitle: 'تنظیم رمز عبور جدید',
-                    onTap: () {
+                    onTap: () async {
+                      final allowed = await SensitiveActionGuard.verify(
+                        context,
+                        action: SensitiveAction.changePassword,
+                      );
+                      if (!context.mounted) return;
+                      if (!allowed) return;
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (context) => ChangePasswordWidget(),

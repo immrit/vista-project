@@ -5,6 +5,7 @@ import '../../../utils/const.dart';
 import '../../../utils/vista_dialog.dart';
 import '../../../provider/provider.dart';
 import '../../profile/screens/updatePassword.dart' show ChangePasswordWidget;
+import '../../posts/screens/saved_posts_screen.dart';
 import 'subpages/ThemeSettingsPage.dart';
 import 'subpages/privacy_security_page.dart';
 import 'subpages/notification_settings_page.dart';
@@ -104,6 +105,14 @@ class Settings extends ConsumerWidget {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => ChangePasswordWidget()),
+              ),
+            ),
+            _SettingsTile(
+              icon: Icons.bookmark_border_rounded,
+              title: 'پست‌های ذخیره‌شده',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SavedPostsScreen()),
               ),
             ),
             _SettingsTile(

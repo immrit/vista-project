@@ -17,7 +17,6 @@ class _OfflineSettingsPageState extends ConsumerState<OfflineSettingsPage> {
   final SettingsCacheService _settingsCache = SettingsCacheService();
   bool _isLoading = true;
   Map<String, dynamic> _appSettings = {};
-  Map<String, dynamic> _userSettings = {};
   Map<String, dynamic> _privacySettings = {};
   Map<String, dynamic> _notificationSettings = {};
 
@@ -38,7 +37,6 @@ class _OfflineSettingsPageState extends ConsumerState<OfflineSettingsPage> {
 
       // بارگذاری تنظیمات از کش
       _appSettings = _settingsCache.getCachedAppSettings();
-      _userSettings = _settingsCache.getCachedUserSettings(currentUserId) ?? {};
       _privacySettings =
           _settingsCache.getCachedPrivacySettings(currentUserId) ?? {};
       _notificationSettings =

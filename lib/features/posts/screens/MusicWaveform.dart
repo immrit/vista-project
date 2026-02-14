@@ -206,17 +206,6 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
     }
   }
 
-  void _handleSeek(TapDownDetails details, BoxConstraints constraints) {
-    final tapPosition = details.localPosition.dx;
-    final fullWidth = constraints.maxWidth;
-    final progress = tapPosition / fullWidth;
-
-    if (widget.duration != null) {
-      final newPosition = widget.duration! * progress;
-      ref.read(musicPlayerProvider.notifier).seek(newPosition);
-    }
-  }
-
   @override
   void didUpdateWidget(MusicWaveform oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -469,7 +458,6 @@ class MusicWaveformPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (waveData.isEmpty) return;
 
-    final barWidth = 2.5;
     final spacing = 2.0;
     final totalBars = waveData.length;
     final availableWidth = size.width;

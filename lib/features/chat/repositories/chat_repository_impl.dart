@@ -463,6 +463,11 @@ class ChatRepositoryImpl implements ChatRepository {
     String? attachmentUrl,
     String? attachmentType,
     String? attachmentFileName,
+    String? attachmentMimeType,
+    int? attachmentSizeBytes,
+    String? audioTitle,
+    String? audioArtist,
+    String? audioAlbum,
     int? duration,
     String? replyToMessageId,
     String? replyToContent,
@@ -480,6 +485,8 @@ class ChatRepositoryImpl implements ChatRepository {
     // ✅ Generate ID client-side (UUID v4)
     final messageId = id ?? const Uuid().v4();
     final now = DateTime.now();
+    final existingLocalMessage =
+        await _localDataSource.getMessage(messageId, userId);
 
     final messageModel = MessageModel(
       id: messageId,
@@ -492,6 +499,20 @@ class ChatRepositoryImpl implements ChatRepository {
       isSent: false,
       attachmentUrl: attachmentUrl,
       attachmentType: attachmentType,
+      attachmentFileName:
+          attachmentFileName ?? existingLocalMessage?.attachmentFileName,
+      attachmentMimeType:
+          attachmentMimeType ?? existingLocalMessage?.attachmentMimeType,
+      attachmentSizeBytes:
+          attachmentSizeBytes ?? existingLocalMessage?.attachmentSizeBytes,
+      audioTitle: audioTitle ?? existingLocalMessage?.audioTitle,
+      audioArtist: audioArtist ?? existingLocalMessage?.audioArtist,
+      audioAlbum: audioAlbum ?? existingLocalMessage?.audioAlbum,
+      duration: duration ?? existingLocalMessage?.duration,
+      localFilePath: existingLocalMessage?.localFilePath,
+      localImagePath: existingLocalMessage?.localImagePath,
+      uploadProgress: existingLocalMessage?.uploadProgress,
+      isUploading: existingLocalMessage?.isUploading ?? false,
       replyToMessageId: replyToMessageId,
       replyToContent: replyToContent, // ✅ Now passing reply content
       replyToSenderName: replyToSenderName, // ✅ Now passing reply sender name
@@ -516,54 +537,237 @@ class ChatRepositoryImpl implements ChatRepository {
       }
 
       // 4. Send to Supabase (using the SAME ID)
-      final response = await _supabase
-          .from('messages')
-          .insert({
-            'id': messageId, // ✅ USE THE SAME ID
-            'conversation_id': conversationId,
-            'sender_id': userId,
-            'content': content,
-            'attachment_url': attachmentUrl,
-            'attachment_type': attachmentType,
-            'is_sent': true,
-            'is_pending': false,
-            'created_at': now.toUtc().toIso8601String(),
-            'reply_to_message_id': replyToMessageId,
-            'reply_to_content': replyToContent,
-            'reply_to_sender_name': replyToSenderName,
-          })
-          .select(_messageSelectWithProfiles)
-          .single();
+      final insertPayload = <String, dynamic>{
+        'id': messageId, // ✅ USE THE SAME ID
+        'conversation_id': conversationId,
+        'sender_id': userId,
+        'content': content,
+        'attachment_url': attachmentUrl,
+        'attachment_type': attachmentType,
+        'attachment_file_name': messageModel.attachmentFileName,
+        'attachment_mime_type': messageModel.attachmentMimeType,
+        'attachment_size_bytes': messageModel.attachmentSizeBytes,
+        'audio_title': messageModel.audioTitle,
+        'audio_artist': messageModel.audioArtist,
+        'audio_album': messageModel.audioAlbum,
+        'duration': messageModel.duration,
+        'is_sent': true,
+        'is_pending': false,
+        'created_at': now.toUtc().toIso8601String(),
+        'reply_to_message_id': replyToMessageId,
+        'reply_to_content': replyToContent,
+        'reply_to_sender_name': replyToSenderName,
+      };
+      final response = await _insertMessageWithMetadataFallback(insertPayload);
 
       final serverMessage =
           MessageModel.fromJson(response, currentUserId: userId);
+      final mergedServerMessage = _mergeUploadMetadata(
+          serverMessage, existingLocalMessage ?? messageModel);
 
       // 5. Update Local DB w/ Server Response (mark as sent)
       // No delete needed! Just update.
-      await _localDataSource.saveMessage(serverMessage);
+      await _localDataSource.saveMessage(mergedServerMessage);
 
       // 7. Sync Conversation Metadata (Confirmed)
       if (existingConv != null) {
         final updatedConv = existingConv.copyWith(
-          lastMessage: serverMessage.content,
-          updatedAt: serverMessage.createdAt,
+          lastMessage: mergedServerMessage.content,
+          updatedAt: mergedServerMessage.createdAt,
         );
         await _localDataSource.saveConversation(updatedConv);
       }
 
-      return ChatResult.success(serverMessage);
+      return ChatResult.success(mergedServerMessage);
     } catch (e) {
       // On Failure: Mark as failed in DB
       final failedMessage =
           messageModel.copyWith(isPending: false, isFailed: true);
       await _localDataSource.saveMessage(failedMessage);
       final err = e.toString();
-      final isPrivacyDenied = err.contains('messages_insert_respect_message_privacy') ||
-          err.contains('row-level security') ||
-          err.contains('violates row level security') ||
-          err.contains('violates row-level security');
+      final isPrivacyDenied =
+          err.contains('messages_insert_respect_message_privacy') ||
+              err.contains('row-level security') ||
+              err.contains('violates row level security') ||
+              err.contains('violates row-level security');
       return ChatResult.failure(
           isPrivacyDenied ? 'این کاربر دریافت پیام را محدود کرده است' : err);
+    }
+  }
+
+  @override
+  Future<ChatResult<MessageModel>> createPendingMessage({
+    required String conversationId,
+    required String content,
+    required String localId,
+    required String attachmentType,
+    String? attachmentFileName,
+    String? attachmentMimeType,
+    int? attachmentSizeBytes,
+    String? audioTitle,
+    String? audioArtist,
+    String? audioAlbum,
+    String? localFilePath,
+    int? duration,
+  }) async {
+    final userId = _currentUserId;
+    if (userId == null) {
+      return ChatResult.failure('کاربر وارد نشده است');
+    }
+
+    try {
+      final pending = MessageModel.temporary(
+        tempId: localId,
+        conversationId: conversationId,
+        senderId: userId,
+        content: content,
+        attachmentType: attachmentType,
+        attachmentFileName: attachmentFileName,
+        attachmentMimeType: attachmentMimeType,
+        attachmentSizeBytes: attachmentSizeBytes,
+        audioTitle: audioTitle,
+        audioArtist: audioArtist,
+        audioAlbum: audioAlbum,
+        localFilePath: localFilePath,
+        duration: duration,
+        uploadProgress: 0.0,
+        isUploading: true,
+      );
+
+      await _localDataSource.saveMessage(pending);
+      return ChatResult.success(pending);
+    } catch (e) {
+      return ChatResult.failure(e.toString());
+    }
+  }
+
+  @override
+  Future<ChatResult<void>> updateUploadProgress(
+      String localId, double progress) async {
+    try {
+      await _localDataSource.updateUploadProgress(localId, progress);
+      return ChatResult.success(null);
+    } catch (e) {
+      return ChatResult.failure(e.toString());
+    }
+  }
+
+  @override
+  Future<ChatResult<void>> markUploadSucceeded(
+      String localId, MessageModel serverMessage) async {
+    try {
+      final userId = _currentUserId;
+      final pending = userId == null
+          ? null
+          : await _localDataSource.getMessage(localId, userId);
+      if (localId != serverMessage.id) {
+        await _localDataSource.deleteMessage(localId);
+      }
+      final normalized = _mergeUploadMetadata(serverMessage, pending).copyWith(
+        isUploading: false,
+        uploadProgress: 1.0,
+        isPending: false,
+        isFailed: false,
+      );
+      await _localDataSource.saveMessage(normalized);
+      return ChatResult.success(null);
+    } catch (e) {
+      return ChatResult.failure(e.toString());
+    }
+  }
+
+  MessageModel _mergeUploadMetadata(
+    MessageModel serverMessage,
+    MessageModel? localMessage,
+  ) {
+    if (localMessage == null) {
+      return serverMessage.copyWith(
+        isUploading: false,
+        uploadProgress: 1.0,
+        isPending: false,
+        isFailed: false,
+      );
+    }
+
+    return serverMessage.copyWith(
+      attachmentFileName:
+          (serverMessage.attachmentFileName?.isNotEmpty ?? false)
+              ? serverMessage.attachmentFileName
+              : localMessage.attachmentFileName,
+      attachmentMimeType:
+          serverMessage.attachmentMimeType ?? localMessage.attachmentMimeType,
+      attachmentSizeBytes:
+          serverMessage.attachmentSizeBytes ?? localMessage.attachmentSizeBytes,
+      audioTitle: (serverMessage.audioTitle?.isNotEmpty ?? false)
+          ? serverMessage.audioTitle
+          : localMessage.audioTitle,
+      audioArtist: (serverMessage.audioArtist?.isNotEmpty ?? false)
+          ? serverMessage.audioArtist
+          : localMessage.audioArtist,
+      audioAlbum: (serverMessage.audioAlbum?.isNotEmpty ?? false)
+          ? serverMessage.audioAlbum
+          : localMessage.audioAlbum,
+      duration: serverMessage.duration ?? localMessage.duration,
+      localFilePath: localMessage.localFilePath,
+      localImagePath: localMessage.localImagePath,
+      isUploading: false,
+      uploadProgress: 1.0,
+      isPending: false,
+      isFailed: false,
+    );
+  }
+
+  Future<Map<String, dynamic>> _insertMessageWithMetadataFallback(
+    Map<String, dynamic> payload,
+  ) async {
+    try {
+      return await _supabase
+          .from('messages')
+          .insert(payload)
+          .select(_messageSelectWithProfiles)
+          .single();
+    } on PostgrestException catch (e) {
+      final details = '${e.message} ${e.details ?? ''} ${e.hint ?? ''}'
+          .toLowerCase();
+      final missingMetadataColumn = details.contains('attachment_mime_type') ||
+          details.contains('attachment_size_bytes') ||
+          details.contains('audio_title') ||
+          details.contains('audio_artist') ||
+          details.contains('audio_album');
+      if (!missingMetadataColumn) rethrow;
+
+      final fallbackPayload = Map<String, dynamic>.from(payload)
+        ..remove('attachment_mime_type')
+        ..remove('attachment_size_bytes')
+        ..remove('audio_title')
+        ..remove('audio_artist')
+        ..remove('audio_album');
+
+      logWarning(
+        'messages metadata columns are missing on server, retrying legacy insert',
+      );
+
+      return await _supabase
+          .from('messages')
+          .insert(fallbackPayload)
+          .select(_messageSelectWithProfiles)
+          .single();
+    }
+  }
+
+  @override
+  Future<ChatResult<void>> markUploadFailed(
+    String localId, {
+    String? errorMessage,
+  }) async {
+    try {
+      await _localDataSource.markUploadFailed(
+        localId,
+        errorMessage: errorMessage,
+      );
+      return ChatResult.success(null);
+    } catch (e) {
+      return ChatResult.failure(e.toString());
     }
   }
 
@@ -597,8 +801,7 @@ class ChatRepositoryImpl implements ChatRepository {
       final blockedIds = {...hiddenIds, ...tombstoneIds};
 
       final filteredData = (response as List)
-          .where((json) =>
-              !blockedIds.contains(json['id'] as String))
+          .where((json) => !blockedIds.contains(json['id'] as String))
           .toList();
 
       final serverMessages = await compute(

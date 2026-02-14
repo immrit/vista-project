@@ -338,7 +338,6 @@ class _AnimatedStoryRingState extends State<_AnimatedStoryRing>
       case StoryVerificationType.black:
         return Colors.white;
       case StoryVerificationType.none:
-      default:
         return user.isPremium ? Colors.amber : Colors.blue;
     }
   }

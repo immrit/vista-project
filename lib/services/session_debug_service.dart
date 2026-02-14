@@ -1,13 +1,15 @@
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SessionDebugService {
   static Future<void> logSessionStatus() async {
     if (!kDebugMode) return;
-    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    print('📊 SESSION DEBUG INFO');
-    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    const sep = '----------------------------------------';
+    print(sep);
+    print('SESSION DEBUG INFO');
+    print(sep);
 
     final supabase = Supabase.instance.client;
     final session = supabase.auth.currentSession;
@@ -17,39 +19,39 @@ class SessionDebugService {
       final expiresAt = session.expiresAt ?? 0;
       final timeUntilExpiry = expiresAt - now;
 
-      print('�... Session Active');
-      print('👤 User: ${session.user.email}');
-      print('🆔 User ID: ${session.user.id}');
-      print('�... Created: ${session.user.createdAt}');
-      print(
-          '⏰ Expires in: ${Duration(seconds: timeUntilExpiry).inMinutes} minutes');
-      final token = session.accessToken;
-      final maskedAccess = token.length > 10
-          ? '${token.substring(0, 6)}...${token.substring(token.length - 4)}'
-          : '***';
-      final refresh = session.refreshToken;
-      final maskedRefresh = (refresh != null && refresh.length > 10)
-          ? '${refresh.substring(0, 6)}...${refresh.substring(refresh.length - 4)}'
-          : 'N/A';
-      print('🔑 Access Token: $maskedAccess');
-      print('🔄 Refresh Token: $maskedRefresh');
-    } else {
-      print('❌ No Active Session');
+      print('Session active');
+      print('User: ${session.user.email}');
+      print('User ID: ${session.user.id}');
+      print('Created: ${session.user.createdAt}');
+      print('Expires in: ${Duration(seconds: timeUntilExpiry).inMinutes} minutes');
 
-      // بررسی SharedPreferences
+      final accessToken = session.accessToken;
+      final maskedAccess = accessToken.length > 10
+          ? '${accessToken.substring(0, 6)}...${accessToken.substring(accessToken.length - 4)}'
+          : '***';
+
+      final refreshToken = session.refreshToken;
+      final maskedRefresh = (refreshToken != null && refreshToken.length > 10)
+          ? '${refreshToken.substring(0, 6)}...${refreshToken.substring(refreshToken.length - 4)}'
+          : 'N/A';
+
+      print('Access Token: $maskedAccess');
+      print('Refresh Token: $maskedRefresh');
+    } else {
+      print('No active session');
+
       final prefs = await SharedPreferences.getInstance();
       final keys = prefs.getKeys();
-      final authKeys =
-          keys.where((k) => k.contains('supabase') || k.contains('auth'));
+      final authKeys = keys.where(
+        (k) => k.contains('supabase') || k.contains('auth'),
+      );
 
-      print('🔍 Auth-related keys in storage:');
-      for (var key in authKeys) {
-        print('  - $key');
+      print('Auth-related keys in storage:');
+      for (final key in authKeys) {
+        print(' - $key');
       }
     }
 
-    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    print('$sep\n');
   }
 }
-
-

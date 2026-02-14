@@ -72,6 +72,14 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
     return url.startsWith('http://') || url.startsWith('https://');
   }
 
+  String? get _preferredLocalPath {
+    final direct = widget.message?.localFilePath;
+    if (direct != null && direct.isNotEmpty) return direct;
+    final image = widget.message?.localImagePath;
+    if (image != null && image.isNotEmpty) return image;
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -89,12 +97,24 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
     final parsedName = segment.isEmpty ? '' : segment;
     final ext = widget.mediaType == MediaType.video ? '.mp4' : '.jpg';
     final withExt =
-        parsedName.isEmpty ? 'media_${_transferMessageId}$ext' : parsedName;
+        parsedName.isEmpty ? 'media_$_transferMessageId$ext' : parsedName;
     if (p.extension(withExt).isNotEmpty) return withExt;
     return '$withExt$ext';
   }
 
   Future<void> _bindTransferTask() async {
+    final preferredLocalPath = _preferredLocalPath;
+    if (preferredLocalPath != null && preferredLocalPath.isNotEmpty) {
+      final localFile = File(preferredLocalPath);
+      if (localFile.existsSync() && mounted) {
+        setState(() {
+          _offlineFile = localFile;
+          _cachedFile = localFile;
+          _isFileCached = true;
+        });
+      }
+    }
+
     if (!_isNetworkUrl) return;
     _transferSub?.cancel();
     _transferSub =
@@ -111,7 +131,7 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
             _cachedFile = _offlineFile;
             _isFileCached = true;
           }
-        } else {
+        } else if ((_offlineFile?.existsSync() ?? false) == false) {
           _offlineFile = null;
         }
       });
@@ -128,6 +148,21 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
   }
 
   Future<void> _checkCacheStatus() async {
+    final preferredLocalPath = _preferredLocalPath;
+    if (preferredLocalPath != null && preferredLocalPath.isNotEmpty) {
+      final localFile = File(preferredLocalPath);
+      if (await localFile.exists()) {
+        if (mounted) {
+          setState(() {
+            _isFileCached = true;
+            _cachedFile = localFile;
+            _offlineFile = localFile;
+          });
+        }
+        return;
+      }
+    }
+
     // 1. اگر لینک اینترنتی نیست، یعنی فایل لوکال است
     if (!_isNetworkUrl) {
       final file = File(widget.mediaUrl);
@@ -292,8 +327,7 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
             BoxConstraints(maxWidth: maxWidth, minWidth: 100, maxHeight: 450),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize
-              .min, // مهم برای جلوگیری از کش آمدن
+          mainAxisSize: MainAxisSize.min, // مهم برای جلوگیری از کش آمدن
           children: [
             Stack(
               alignment: Alignment.center,
@@ -545,8 +579,8 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
 
   Widget _buildCaption(ChatTheme theme) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(
-          10, 8, 10, 24), // پدینگ پایین برای جای ساعت
+      padding:
+          const EdgeInsets.fromLTRB(10, 8, 10, 24), // پدینگ پایین برای جای ساعت
       child: Stack(
         clipBehavior: Clip.none,
         children: [

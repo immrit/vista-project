@@ -12,7 +12,14 @@ import 'package:uuid/uuid.dart';
 import '../model/session_model.dart';
 import '../security/logging_utility.dart';
 import '../security/security.dart';
+import '../security/secure_kv_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+enum SessionVerificationState {
+  verified,
+  pendingVerification,
+  invalid,
+}
 
 /// 🚀 Session Manager V2 - Professional Grade
 ///
@@ -41,6 +48,8 @@ class SessionManagerServiceV2 {
   Timer? _activityTimer;
   Timer? _healthCheckTimer;
   RealtimeChannel? _sessionChannel;
+  SessionVerificationState _verificationState =
+      SessionVerificationState.pendingVerification;
 
   bool _isInitialized = false;
   bool _isRegistering = false;
@@ -48,13 +57,16 @@ class SessionManagerServiceV2 {
   DateTime? _lastActivityUpdate;
 
   bool _isTerminating = false;
+  Future<bool>? _refreshInFlight;
 
   // ✅ Configuration
   static const Duration _activityUpdateInterval =
       Duration(minutes: 3); // هر 3 دقیقه
   static const Duration _healthCheckInterval =
       Duration(minutes: 2); // هر 2 دقیقه
-  static const Duration _sessionExpiry = Duration(days: 90); // 90 روز
+  static const String _sessionIdStorageKey = 'session_manager_v2.session_id';
+  static const String _sessionTokenStorageKey =
+      'session_manager_v2.session_token';
 
   Function()? onSessionTerminated;
 
@@ -62,6 +74,27 @@ class SessionManagerServiceV2 {
   bool get isSessionActive => _currentSessionId != null;
   String? get currentSessionToken => _sessionToken;
   bool get isInBackground => _isInBackground;
+  SessionVerificationState get verificationState => _verificationState;
+
+  bool _hasSupabaseSession({int minRemainingSeconds = 0}) {
+    final session = _supabase.auth.currentSession;
+    if (session == null) return false;
+
+    if (minRemainingSeconds <= 0) return true;
+
+    final expiresAt = session.expiresAt;
+    if (expiresAt == null || expiresAt <= 0) return true;
+
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    return (expiresAt - now) > minRemainingSeconds;
+  }
+
+  void _markSessionPendingAndRecover() {
+    _verificationState = SessionVerificationState.pendingVerification;
+    if (!_isRegistering) {
+      _registerSessionInBackground();
+    }
+  }
 
   /// ═══════════════════════════════════════════════════════════
   /// APP LIFECYCLE HANDLERS
@@ -183,8 +216,6 @@ class SessionManagerServiceV2 {
 
   Future<String?> registerSession() async {
     if (_isRegistering) return _currentSessionId;
-
-    // اگر سشن داریم، دوباره ثبت نکن
     if (_currentSessionId != null) return _currentSessionId;
 
     _isRegistering = true;
@@ -198,16 +229,12 @@ class SessionManagerServiceV2 {
 
       _sessionToken = const Uuid().v4();
       final sessionId = const Uuid().v4();
-
-      // دریافت اطلاعات (با خطا هندلینگ که باعث کرش نشود)
       SessionDeviceInfo? deviceInfo;
       try {
         deviceInfo = await _getDeviceInfo();
       } catch (_) {}
 
       final packageInfo = await PackageInfo.fromPlatform();
-
-      // IP و Location را نادیده می‌گیریم اگر نت نباشد
       String? ipAddress;
       Map<String, dynamic>? locationData;
 
@@ -216,33 +243,44 @@ class SessionManagerServiceV2 {
         locationData = await _getCurrentLocation();
       } catch (_) {}
 
-      final sessionData = {
-        'id': sessionId,
-        'user_id': userId,
-        'session_token': _sessionToken,
-        'device_info': deviceInfo?.toJson() ?? {},
-        'is_active': true,
-        'app_version': packageInfo.version,
-        'platform': _getPlatformName(),
-        'created_at': DateTime.now().toUtc().toIso8601String(),
-        'last_activity': DateTime.now().toUtc().toIso8601String(),
-        // اطلاعات اختیاری که اگر نال باشند مشکلی نیست
-        if (ipAddress != null) 'ip_address': ipAddress,
-        if (locationData != null) ...locationData,
-      };
-
       try {
-        await _supabase.from('active_sessions').insert(sessionData);
+        await _supabase.rpc('register_active_session', params: {
+          'p_session_id': sessionId,
+          'p_session_token': _sessionToken,
+          'p_device_info': deviceInfo?.toJson() ?? {},
+          'p_app_version': packageInfo.version,
+          'p_platform': _getPlatformName(),
+          'p_ip_address': ipAddress,
+          'p_location': locationData?['location'],
+        });
       } catch (e) {
-        // اگر نت نبود و نتوانستیم در دیتابیس ثبت کنیم،
-        // در لوکال ذخیره می‌کنیم و فرض می‌کنیم ثبت شده است.
-        // بعدا در اولین اتصال سینک می‌شود.
-        logInfo(
-            '⚠️ Could not register session on server (Offline?). Proceeding locally.');
+        final msg = e.toString().toLowerCase();
+        final rpcMissing = msg.contains('register_active_session') &&
+            (msg.contains('not found') || msg.contains('does not exist'));
+
+        if (rpcMissing) {
+          await _supabase.from('active_sessions').insert({
+            'id': sessionId,
+            'user_id': userId,
+            'session_token': _sessionToken,
+            'device_info': deviceInfo?.toJson() ?? {},
+            'is_active': true,
+            'app_version': packageInfo.version,
+            'platform': _getPlatformName(),
+            'created_at': DateTime.now().toUtc().toIso8601String(),
+            'last_activity': DateTime.now().toUtc().toIso8601String(),
+            if (ipAddress != null) 'ip_address': ipAddress,
+            if (locationData != null) ...locationData,
+          });
+        } else {
+          logInfo(
+              '⚠️ Could not register session on server (offline or temporary failure). Proceeding locally.');
+        }
       }
 
       _currentSessionId = sessionId;
       await _saveSession();
+      _verificationState = SessionVerificationState.verified;
 
       _startActivityTracking();
       _startHealthCheck();
@@ -252,6 +290,7 @@ class SessionManagerServiceV2 {
       return _currentSessionId;
     } catch (e) {
       logInfo('❌ Error in registerSession: $e');
+      _verificationState = SessionVerificationState.pendingVerification;
       _isRegistering = false;
       return null;
     }
@@ -263,7 +302,10 @@ class SessionManagerServiceV2 {
 
   /// بررسی سریع session (فقط اگر واقعاً لازم باشد)
   Future<bool> _quickSessionCheck() async {
-    if (_currentSessionId == null) return false;
+    if (_currentSessionId == null || _sessionToken == null) {
+      _verificationState = SessionVerificationState.invalid;
+      return false;
+    }
 
     // ✅ اولویت اول: Supabase session
     final supabaseSession = _supabase.auth.currentSession;
@@ -272,6 +314,7 @@ class SessionManagerServiceV2 {
       final expiresAt = supabaseSession.expiresAt ?? 0;
 
       if (expiresAt - now > 300) {
+        _verificationState = SessionVerificationState.verified;
         return true;
       }
     }
@@ -280,25 +323,50 @@ class SessionManagerServiceV2 {
     return await _checkSessionInDatabase();
   }
 
-  /// بررسی session در database با retry logic
-  /// بررسی session در database با retry logic
   Future<bool> _checkSessionInDatabase() async {
-    if (_currentSessionId == null) return false;
+    if (_currentSessionId == null || _sessionToken == null) {
+      _verificationState = SessionVerificationState.invalid;
+      return false;
+    }
 
     int retries = 0;
     const maxRetries = 3;
 
     while (retries < maxRetries) {
       try {
+        try {
+          final rpcResult =
+              await _supabase.rpc('validate_active_session', params: {
+            'p_session_id': _currentSessionId,
+            'p_session_token': _sessionToken,
+          }).timeout(const Duration(seconds: 5));
+
+          if (rpcResult is List && rpcResult.isNotEmpty) {
+            final first = Map<String, dynamic>.from(
+              rpcResult.first as Map,
+            );
+            final valid = first['valid'] == true;
+            _verificationState = valid
+                ? SessionVerificationState.verified
+                : SessionVerificationState.invalid;
+            return valid;
+          }
+        } catch (rpcError) {
+          final msg = rpcError.toString().toLowerCase();
+          final rpcMissing = msg.contains('validate_active_session') &&
+              (msg.contains('not found') || msg.contains('does not exist'));
+          if (!rpcMissing) rethrow;
+        }
+
         final response = await _supabase
             .from('active_sessions')
             .select('is_active, expires_at')
             .eq('id', _currentSessionId!)
             .maybeSingle()
-            .timeout(const Duration(seconds: 5)); // کاهش timeout
+            .timeout(const Duration(seconds: 5));
 
         if (response == null) {
-          // اگر session در دیتابیس نیست، یعنی نامعتبر است
+          _verificationState = SessionVerificationState.invalid;
           return false;
         }
 
@@ -307,13 +375,16 @@ class SessionManagerServiceV2 {
         if (expiresAtStr != null) {
           final expiresAt = DateTime.parse(expiresAtStr);
           if (expiresAt.isBefore(DateTime.now().toUtc())) {
+            _verificationState = SessionVerificationState.invalid;
             return false;
           }
         }
 
+        _verificationState = isActive
+            ? SessionVerificationState.verified
+            : SessionVerificationState.invalid;
         return isActive;
       } catch (e) {
-        // بررسی نوع خطا
         final errorString = e.toString().toLowerCase();
         final isNetworkError = errorString.contains('network') ||
             errorString.contains('timeout') ||
@@ -324,7 +395,7 @@ class SessionManagerServiceV2 {
         if (isNetworkError) {
           logInfo(
               '⚠️ Network error checking session DB ($retries/$maxRetries), trusting local session: $e');
-          // در صورت خطای شبکه، session محلی را معتبر فرض می‌کنیم
+          _verificationState = SessionVerificationState.pendingVerification;
           return true;
         }
 
@@ -335,7 +406,7 @@ class SessionManagerServiceV2 {
       }
     }
 
-    // اگر همه‌ی تلاش‌ها با خطای غیر-شبکه شکست خورد (که بعید است اینجا برسیم چون network error هندل شد)
+    _verificationState = SessionVerificationState.invalid;
     return false;
   }
 
@@ -353,7 +424,7 @@ class SessionManagerServiceV2 {
   }
 
   Future<void> _updateActivity() async {
-    if (_currentSessionId == null) return;
+    if (_currentSessionId == null || _sessionToken == null) return;
     if (_isInBackground) return;
 
     // ✅ Rate limiting - فقط اگر 2 دقیقه از آخرین آپدیت گذشته باشد
@@ -371,16 +442,34 @@ class SessionManagerServiceV2 {
       final ip = await _getIPWithTimeout();
       final locationData = await _getCurrentLocation();
 
-      final updates = {
+      try {
+        final touched = await _supabase.rpc('touch_active_session', params: {
+          'p_session_id': _currentSessionId,
+          'p_session_token': _sessionToken,
+          'p_ip_address': ip,
+          'p_location': locationData['location'],
+        });
+
+        if (touched == true) {
+          _verificationState = SessionVerificationState.verified;
+          return;
+        }
+      } catch (rpcError) {
+        final msg = rpcError.toString().toLowerCase();
+        final rpcMissing = msg.contains('touch_active_session') &&
+            (msg.contains('not found') || msg.contains('does not exist'));
+        if (!rpcMissing) rethrow;
+      }
+
+      final updates = <String, dynamic>{
         'last_activity': DateTime.now().toIso8601String(),
         if (ip != null) 'ip_address': ip,
-        // ذخیره لوکیشن اگر موجود بود
         if (locationData['location'] != null) ...{
           'location': jsonEncode(locationData['location']),
           'location_city': locationData['location_city'],
           'location_country': locationData['location_country'],
           'location_region': locationData['location_region'],
-        }
+        },
       };
 
       await _supabase
@@ -457,34 +546,62 @@ class SessionManagerServiceV2 {
   /// ═══════════════════════════════════════════════════════════
 
   Future<bool> _refreshSessionWithRetry() async {
+    final runningRefresh = _refreshInFlight;
+    if (runningRefresh != null) {
+      return runningRefresh;
+    }
+
+    final refreshFuture = _performSessionRefresh();
+    _refreshInFlight = refreshFuture;
+
+    try {
+      return await refreshFuture;
+    } finally {
+      if (identical(_refreshInFlight, refreshFuture)) {
+        _refreshInFlight = null;
+      }
+    }
+  }
+
+  Future<bool> _performSessionRefresh() async {
     try {
       final response = await _supabase.auth.refreshSession();
-      if (response.session != null) {
+      if (response.session != null ||
+          _hasSupabaseSession(minRemainingSeconds: 30)) {
         return true;
       }
     } on AuthException catch (e) {
-      // 🚨 فقط و فقط اینجا حق داریم کاربر را خارج کنیم
-      // اگر ارور مربوط به "Invalid Refresh Token" باشد.
       final msg = e.message.toLowerCase();
       if (msg.contains('invalid refresh token') ||
           msg.contains('already been used') ||
-          msg.contains('revoked')) {
+          msg.contains('revoked') ||
+          msg.contains('refresh_token_not_found')) {
+        if (_hasSupabaseSession(minRemainingSeconds: 10)) {
+          logInfo(
+              '⚠️ Refresh token error ignored because an active Supabase session still exists.');
+          return true;
+        }
+
+        await Future.delayed(const Duration(milliseconds: 350));
+        if (_hasSupabaseSession(minRemainingSeconds: 10)) {
+          logInfo(
+              '⚠️ Refresh token race detected. Session is healthy after retry window.');
+          return true;
+        }
+
         logInfo('🔴 Fatal Auth Error: Token is invalid. Logging out.');
         await _handleSessionTermination();
         return false;
       }
 
-      // برای سایر ارورهای Auth (مثل timeout یا network)، کاری نمی‌کنیم
       logInfo('⚠️ Auth warning during refresh (Ignored): $e');
     } catch (e) {
-      // خطاهای عمومی شبکه را نادیده می‌گیریم
       logInfo('⚠️ Network error during refresh (Ignored): $e');
     }
 
-    return false; // رفرش نشد، ولی لاگ‌اوت هم نمی‌کنیم
+    return false;
   }
 
-  /// ═══════════════════════════════════════════════════════════
   /// REALTIME LISTENER
   /// ═══════════════════════════════════════════════════════════
 
@@ -535,15 +652,20 @@ class SessionManagerServiceV2 {
     _activityTimer?.cancel();
     _sessionChannel?.unsubscribe();
 
-    // پاک کردن دیتابیس (اگر نت باشد)
+    // Mark current server session terminated when possible.
     if (_currentSessionId != null) {
       try {
-        // 🔒 SECURITY UPDATE: Hard Delete instead of Soft Delete
-        await _supabase
-            .from('active_sessions')
-            .delete() // Changed from update({'is_active': false})
-            .eq('id', _currentSessionId!)
-            .timeout(const Duration(seconds: 3));
+        try {
+          await _supabase.rpc('terminate_session', params: {
+            'target_session_id': _currentSessionId,
+          }).timeout(const Duration(seconds: 3));
+        } catch (_) {
+          await _supabase
+              .from('active_sessions')
+              .update({'is_active': false})
+              .eq('id', _currentSessionId!)
+              .timeout(const Duration(seconds: 3));
+        }
       } catch (_) {}
     }
 
@@ -551,6 +673,7 @@ class SessionManagerServiceV2 {
     await _clearSavedSession();
     _currentSessionId = null;
     _sessionToken = null;
+    _verificationState = SessionVerificationState.invalid;
 
     try {
       await _supabase.auth.signOut();
@@ -568,25 +691,6 @@ class SessionManagerServiceV2 {
   /// ═══════════════════════════════════════════════════════════
   /// UTILITY METHODS
   /// ═══════════════════════════════════════════════════════════
-
-  Future<void> _extendSessionExpiry() async {
-    if (_currentSessionId == null) return;
-
-    try {
-      await _supabase
-          .from('active_sessions')
-          .update({
-            'expires_at':
-                DateTime.now().toUtc().add(_sessionExpiry).toIso8601String(),
-          })
-          .eq('id', _currentSessionId!)
-          .timeout(const Duration(seconds: 5));
-
-      logInfo('✅ Session expiry extended');
-    } catch (e) {
-      logInfo('⚠️ Failed to extend expiry (non-critical): $e');
-    }
-  }
 
   Future<void> _findSessionFromToken() async {
     if (_sessionToken == null) return;
@@ -611,9 +715,19 @@ class SessionManagerServiceV2 {
 
   Future<void> _saveSession() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('session_id', _currentSessionId ?? '');
-      await prefs.setString('session_token', _sessionToken ?? '');
+      if (_currentSessionId == null || _currentSessionId!.isEmpty) {
+        await SecureKeyValueStore.delete(_sessionIdStorageKey);
+      } else {
+        await SecureKeyValueStore.write(
+            _sessionIdStorageKey, _currentSessionId!);
+      }
+
+      if (_sessionToken == null || _sessionToken!.isEmpty) {
+        await SecureKeyValueStore.delete(_sessionTokenStorageKey);
+      } else {
+        await SecureKeyValueStore.write(
+            _sessionTokenStorageKey, _sessionToken!);
+      }
     } catch (e) {
       logInfo('❌ Error saving session: $e');
     }
@@ -621,12 +735,31 @@ class SessionManagerServiceV2 {
 
   Future<void> _loadSavedSession() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      _currentSessionId = prefs.getString('session_id');
-      _sessionToken = prefs.getString('session_token');
+      _currentSessionId = await SecureKeyValueStore.read(_sessionIdStorageKey);
+      _sessionToken = await SecureKeyValueStore.read(_sessionTokenStorageKey);
+
+      if ((_currentSessionId == null || _sessionToken == null) && !kIsWeb) {
+        final prefs = await SharedPreferences.getInstance();
+        final legacySessionId = prefs.getString('session_id');
+        final legacySessionToken = prefs.getString('session_token');
+        if (legacySessionId != null &&
+            legacySessionId.isNotEmpty &&
+            legacySessionToken != null &&
+            legacySessionToken.isNotEmpty) {
+          _currentSessionId = legacySessionId;
+          _sessionToken = legacySessionToken;
+          await _saveSession();
+          await prefs.remove('session_id');
+          await prefs.remove('session_token');
+        }
+      }
 
       if (_currentSessionId?.isEmpty ?? true) _currentSessionId = null;
       if (_sessionToken?.isEmpty ?? true) _sessionToken = null;
+
+      _verificationState = _currentSessionId != null && _sessionToken != null
+          ? SessionVerificationState.pendingVerification
+          : SessionVerificationState.invalid;
     } catch (e) {
       logInfo('❌ Error loading session: $e');
     }
@@ -634,9 +767,8 @@ class SessionManagerServiceV2 {
 
   Future<void> _clearSavedSession() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('session_id');
-      await prefs.remove('session_token');
+      await SecureKeyValueStore.delete(_sessionIdStorageKey);
+      await SecureKeyValueStore.delete(_sessionTokenStorageKey);
     } catch (e) {
       logInfo('❌ Error clearing session: $e');
     }
@@ -648,7 +780,10 @@ class SessionManagerServiceV2 {
 
   Future<bool> ensureSessionRegistered() async {
     final supabaseSession = _supabase.auth.currentSession;
-    if (supabaseSession == null) return false;
+    if (supabaseSession == null) {
+      _verificationState = SessionVerificationState.invalid;
+      return false;
+    }
 
     if (_currentSessionId != null) {
       final isValid = await _quickSessionCheck();
@@ -663,6 +798,7 @@ class SessionManagerServiceV2 {
         onTimeout: () {
           logInfo(
               '⚠️ Session registration timed out (likely offline), proceeding anyway');
+          _verificationState = SessionVerificationState.pendingVerification;
           return null;
         },
       );
@@ -674,10 +810,11 @@ class SessionManagerServiceV2 {
         return true;
       }
 
+      _verificationState = SessionVerificationState.verified;
       return true;
     } catch (e) {
       logInfo('⚠️ Error ensuring session registered: $e');
-      // خطا را نادیده می‌گیریم تا کاربر وارد شود
+      _verificationState = SessionVerificationState.pendingVerification;
       return true;
     }
   }
@@ -688,12 +825,47 @@ class SessionManagerServiceV2 {
   /// - اگر session لوکال یا session Supabase وجود نداشته باشد => نامعتبر
   /// - در غیر این صورت => بررسی سریع (و در صورت نیاز DB)
   Future<bool> isSessionStillValid() async {
-    if (_currentSessionId == null) return false;
-
     final supabaseSession = _supabase.auth.currentSession;
-    if (supabaseSession == null) return false;
+    if (supabaseSession == null) {
+      _verificationState = SessionVerificationState.invalid;
+      return false;
+    }
+
+    if (_currentSessionId == null || _sessionToken == null) {
+      logInfo(
+          '⚠️ Session metadata missing locally while Supabase session exists. Recovering in background.');
+      _markSessionPendingAndRecover();
+      return true;
+    }
 
     return _quickSessionCheck();
+  }
+
+  Future<SessionVerificationState> verifyCurrentSession({
+    bool forceServer = false,
+  }) async {
+    if (!_hasSupabaseSession()) {
+      _verificationState = SessionVerificationState.invalid;
+      return _verificationState;
+    }
+
+    if (_currentSessionId == null || _sessionToken == null) {
+      _markSessionPendingAndRecover();
+      return _verificationState;
+    }
+
+    if (!forceServer) {
+      final quick = await _quickSessionCheck();
+      if (quick) return _verificationState;
+    }
+
+    final ok = await _checkSessionInDatabase();
+    if (!ok) {
+      _verificationState = SessionVerificationState.invalid;
+    } else if (_verificationState == SessionVerificationState.invalid) {
+      _verificationState = SessionVerificationState.verified;
+    }
+    return _verificationState;
   }
 
   /// تلاش برای پیدا کردن session فعلی در دیتابیس (برای سازگاری با UIهای قدیمی).
@@ -843,29 +1015,38 @@ class SessionManagerServiceV2 {
         final ipAddress = await _getIPWithTimeout();
         final locationData = await _getCurrentLocation();
 
-        final updateData = <String, dynamic>{
-          'last_activity': DateTime.now().toUtc().toIso8601String(),
-        };
+        try {
+          await _supabase.rpc('touch_active_session', params: {
+            'p_session_id': _currentSessionId,
+            'p_session_token': _sessionToken,
+            'p_ip_address': ipAddress,
+            'p_location': locationData['location'],
+          }).timeout(const Duration(seconds: 5));
+        } catch (_) {
+          final updateData = <String, dynamic>{
+            'last_activity': DateTime.now().toUtc().toIso8601String(),
+          };
 
-        if (ipAddress != null) updateData['ip_address'] = ipAddress;
-        if (locationData['location_city'] != null) {
-          updateData['location_city'] = locationData['location_city'];
-        }
-        if (locationData['location_country'] != null) {
-          updateData['location_country'] = locationData['location_country'];
-        }
-        if (locationData['location_region'] != null) {
-          updateData['location_region'] = locationData['location_region'];
-        }
-        if (locationData['location'] != null) {
-          updateData['location'] = locationData['location'];
-        }
+          if (ipAddress != null) updateData['ip_address'] = ipAddress;
+          if (locationData['location_city'] != null) {
+            updateData['location_city'] = locationData['location_city'];
+          }
+          if (locationData['location_country'] != null) {
+            updateData['location_country'] = locationData['location_country'];
+          }
+          if (locationData['location_region'] != null) {
+            updateData['location_region'] = locationData['location_region'];
+          }
+          if (locationData['location'] != null) {
+            updateData['location'] = locationData['location'];
+          }
 
-        await _supabase
-            .from('active_sessions')
-            .update(updateData)
-            .eq('id', _currentSessionId!)
-            .timeout(const Duration(seconds: 5));
+          await _supabase
+              .from('active_sessions')
+              .update(updateData)
+              .eq('id', _currentSessionId!)
+              .timeout(const Duration(seconds: 5));
+        }
 
         if (ipAddress != null) {
           await _supabase
@@ -1081,111 +1262,61 @@ class SessionManagerServiceV2 {
   /// خاتمه یک نشست خاص (با بررسی امنیتی)
   Future<TerminateSessionResult> terminateSession(String sessionId) async {
     try {
-      // ✅ بررسی امنیتی: بررسی authentication
       final currentUser = _supabase.auth.currentUser;
       if (currentUser == null) {
-        logInfo('❌ [terminateSession] User not authenticated');
         return TerminateSessionResult(
           success: false,
-          errorMessage: 'کاربر احراز هویت نشده است',
+          errorMessage: 'برای این عملیات باید وارد حساب شوید.',
         );
       }
 
-      // ✅ بررسی امنیتی: بررسی session ID
       if (_currentSessionId == null) {
-        logInfo('❌ [terminateSession] Current session ID is null');
         return TerminateSessionResult(
           success: false,
-          errorMessage: 'نشست فعلی معتبر نیست',
+          errorMessage: 'نشست فعلی معتبر نیست.',
         );
       }
 
-      // ✅ بررسی امنیتی: بررسی مجدد قبل از فراخوانی RPC
-      final canTerminateThis = await _canTerminateSession(sessionId);
-
-      if (!canTerminateThis) {
-        // بررسی قدمت نشست فعلی
-        final response = await _supabase
-            .from('active_sessions')
-            .select('created_at, user_id')
-            .eq('id', _currentSessionId!)
-            .eq('is_active', true)
-            .maybeSingle();
-
-        if (response != null) {
-          // ✅ بررسی امنیتی: مطمئن شویم نشست فعلی متعلق به کاربر فعلی است
-          final sessionUserId = response['user_id'] as String?;
-          if (sessionUserId != currentUser.id) {
-            logInfo(
-                '❌ [terminateSession] Session user_id mismatch - security violation');
-            return TerminateSessionResult(
-              success: false,
-              errorMessage: 'خطای امنیتی: نشست متعلق به شما نیست',
-            );
-          }
-
-          final createdAt = DateTime.parse(response['created_at'] as String);
-          final daysSinceCreation = DateTime.now().difference(createdAt).inDays;
-          final remainingDays = 10 - daysSinceCreation;
-
-          return TerminateSessionResult(
-            success: false,
-            errorMessage: daysSinceCreation >= 10
-                ? 'شما نمی‌توانید این نشست را حذف کنید.'
-                : 'شما نمی‌توانید نشست‌های قدیمی‌تر از خود را حذف کنید. برای حذف نشست‌های قدیمی، باید $remainingDays روز دیگر صبر کنید.',
-            remainingDays: remainingDays > 0 ? remainingDays : null,
-          );
-        }
-      }
-
-      // ✅ بررسی امنیتی نهایی: بررسی مجدد user_id قبل از فراخوانی RPC
       final finalTargetCheck = await _supabase
           .from('active_sessions')
           .select('user_id')
           .eq('id', sessionId)
-          .eq('is_active', true)
           .maybeSingle();
 
       if (finalTargetCheck == null) {
         return TerminateSessionResult(
           success: false,
-          errorMessage: 'نشست مورد نظر یافت نشد',
+          errorMessage: 'نشست موردنظر پیدا نشد.',
         );
       }
 
       final targetUserId = finalTargetCheck['user_id'] as String?;
       if (targetUserId != currentUser.id) {
-        logInfo(
-            '❌ [terminateSession] Target session belongs to different user - security violation');
         return TerminateSessionResult(
           success: false,
-          errorMessage: 'خطای امنیتی: نشست متعلق به شما نیست',
+          errorMessage: 'شما اجازه مدیریت این نشست را ندارید.',
         );
       }
 
-      // فراخوانی RPC function برای خاتمه نشست
       try {
         final result = await _supabase.rpc('terminate_session', params: {
           'target_session_id': sessionId,
         });
 
         if (result == true) {
-          logInfo('✅ [terminateSession] Session terminated successfully');
           return TerminateSessionResult(
             success: true,
           );
         } else {
-          logInfo('⚠️ [terminateSession] RPC returned false');
           return TerminateSessionResult(
             success: false,
-            errorMessage: 'عملیات خاتمه نشست ناموفق بود',
+            errorMessage: 'خاتمه نشست انجام نشد. دوباره تلاش کنید.',
           );
         }
       } catch (e) {
-        logInfo('❌ [terminateSession] RPC error: $e');
         return TerminateSessionResult(
           success: false,
-          errorMessage: 'خطا در خاتمه نشست: $e',
+          errorMessage: 'خطا در ارتباط با سرور نشست.',
         );
       }
     } catch (e, stackTrace) {
@@ -1193,97 +1324,28 @@ class SessionManagerServiceV2 {
       logInfo('📚 [terminateSession] Stack: $stackTrace');
       return TerminateSessionResult(
         success: false,
-        errorMessage: 'خطای غیرمنتظره: $e',
+        errorMessage: 'خطای غیرمنتظره در مدیریت نشست.',
       );
     }
   }
 
-  /// بررسی اینکه آیا می‌تواند یک نشست خاص را حذف کند
-  Future<bool> _canTerminateSession(String targetSessionId) async {
-    if (_currentSessionId == null) return false;
+  Future<int> terminateAllOtherSessions() async {
+    final currentUser = _supabase.auth.currentUser;
+    if (currentUser == null || _currentSessionId == null) {
+      return 0;
+    }
 
     try {
-      // ✅ بررسی امنیتی: دریافت user_id فعلی
-      final currentUser = _supabase.auth.currentUser;
-      if (currentUser == null) {
-        logInfo('❌ [canTerminateSession] User not authenticated');
-        return false;
-      }
+      final result =
+          await _supabase.rpc('terminate_all_other_sessions', params: {
+        'current_session_id': _currentSessionId,
+      });
 
-      // ✅ بررسی امنیتی: دریافت اطلاعات نشست فعلی با user_id
-      final currentResponse = await _supabase
-          .from('active_sessions')
-          .select('created_at, user_id')
-          .eq('id', _currentSessionId!)
-          .eq('is_active', true)
-          .maybeSingle();
-
-      if (currentResponse == null) {
-        logInfo('❌ [canTerminateSession] Current session not found');
-        return false;
-      }
-
-      // ✅ بررسی امنیتی: مطمئن شویم نشست فعلی متعلق به کاربر فعلی است
-      final currentUserId = currentResponse['user_id'] as String?;
-      if (currentUserId != currentUser.id) {
-        logInfo(
-            '❌ [canTerminateSession] Session user_id mismatch - security violation');
-        return false;
-      }
-
-      final currentCreatedAt =
-          DateTime.parse(currentResponse['created_at'] as String);
-      final daysSinceCreation =
-          DateTime.now().difference(currentCreatedAt).inDays;
-
-      // اگر نشست فعلی 10 روز یا بیشتر قدمت دارد، می‌تواند همه را حذف کند
-      if (daysSinceCreation >= 10) {
-        // ✅ اما باید مطمئن شویم که نشست هدف هم متعلق به همان کاربر است
-        final targetResponse = await _supabase
-            .from('active_sessions')
-            .select('user_id')
-            .eq('id', targetSessionId)
-            .eq('is_active', true)
-            .maybeSingle();
-
-        if (targetResponse == null) return false;
-
-        final targetUserId = targetResponse['user_id'] as String?;
-        if (targetUserId != currentUser.id) {
-          logInfo(
-              '❌ [canTerminateSession] Target session belongs to different user - security violation');
-          return false;
-        }
-
-        return true;
-      }
-
-      // ✅ بررسی امنیتی: دریافت اطلاعات نشست مورد نظر با user_id
-      final targetResponse = await _supabase
-          .from('active_sessions')
-          .select('created_at, user_id')
-          .eq('id', targetSessionId)
-          .eq('is_active', true)
-          .maybeSingle();
-
-      if (targetResponse == null) return false;
-
-      // ✅ بررسی امنیتی: مطمئن شویم نشست هدف متعلق به کاربر فعلی است
-      final targetUserId = targetResponse['user_id'] as String?;
-      if (targetUserId != currentUser.id) {
-        logInfo(
-            '❌ [canTerminateSession] Target session belongs to different user - security violation');
-        return false;
-      }
-
-      final targetCreatedAt =
-          DateTime.parse(targetResponse['created_at'] as String);
-
-      // فقط می‌تواند نشست‌های جدیدتر از خودش را حذف کند
-      return targetCreatedAt.isAfter(currentCreatedAt);
+      if (result is int) return result;
+      return int.tryParse('$result') ?? 0;
     } catch (e) {
-      logInfo('❌ خطا در بررسی امکان حذف نشست: $e');
-      return false;
+      logInfo('❌ [terminateAllOtherSessions] Error: $e');
+      return 0;
     }
   }
 

@@ -230,10 +230,7 @@ final channelNotifierProvider =
 
 class EditMessageNotifier
     extends StateNotifier<AsyncValue<ChannelMessageModel?>> {
-  final ChannelService _channelService;
-  final Ref _ref;
-
-  EditMessageNotifier(this._channelService, this._ref)
+  EditMessageNotifier(ChannelService _, Ref __)
       : super(const AsyncValue.data(null));
 
   void resetState() {

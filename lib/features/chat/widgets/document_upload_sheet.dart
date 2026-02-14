@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../../../model/ProfileModel.dart';
 import '../../../services/toast_service.dart';
@@ -10,7 +12,7 @@ import '../services/upload_policy_service.dart';
 
 enum DocumentType {
   pdf('PDF', '📄'),
-  audio('MP3', '🎵'),
+  audio('Audio', '🎵'),
   image('Image', '🖼️'),
   other('File', '📎');
 
@@ -24,11 +26,23 @@ class DocumentSelectionResult {
   final File file;
   final String caption;
   final DocumentType type;
+  final String displayFileName;
+  final String? mimeType;
+  final int? sizeBytes;
+  final String? audioTitle;
+  final String? audioArtist;
+  final String? audioAlbum;
 
   const DocumentSelectionResult({
     required this.file,
     required this.caption,
     required this.type,
+    required this.displayFileName,
+    this.mimeType,
+    this.sizeBytes,
+    this.audioTitle,
+    this.audioArtist,
+    this.audioAlbum,
   });
 }
 
@@ -64,6 +78,10 @@ class DocumentUploadSheet extends StatefulWidget {
 
 class _DocumentUploadSheetState extends State<DocumentUploadSheet>
     with SingleTickerProviderStateMixin {
+  static const Color _lightAccent = Color(0xFF0F6CBD);
+  static const Color _lightSheetBackground = Color(0xFFFCFDFF);
+  static const Color _lightSurface = Color(0xFFF3F7FD);
+
   final _captionController = TextEditingController();
   final UploadPolicyService _uploadPolicy = const UploadPolicyService();
 
@@ -74,6 +92,7 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
   File? _selectedFile;
   String? _fileName;
   int? _fileSize;
+  String? _mimeType;
   DocumentType? _fileType;
 
   int get _maxBytes => _uploadPolicy.maxBytesFor(widget.profile);
@@ -111,6 +130,7 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final accentColor = _accentColor(theme, isDark);
 
     return FadeTransition(
       opacity: _fadeAnimation,
@@ -118,7 +138,7 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
         position: _slideAnimation,
         child: Container(
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+            color: isDark ? const Color(0xFF1A1A1A) : _lightSheetBackground,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: SafeArea(
@@ -129,10 +149,11 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildHeader(theme),
-                  _buildFilePicker(theme, isDark),
-                  if (_selectedFile != null) _buildCaption(theme, isDark),
-                  _buildActions(theme),
+                  _buildHeader(theme, isDark, accentColor),
+                  _buildFilePicker(theme, isDark, accentColor),
+                  if (_selectedFile != null)
+                    _buildCaption(theme, isDark, accentColor),
+                  _buildActions(theme, isDark, accentColor),
                 ],
               ),
             ),
@@ -142,7 +163,7 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
     );
   }
 
-  Widget _buildHeader(ThemeData theme) {
+  Widget _buildHeader(ThemeData theme, bool isDark, Color accentColor) {
     return Column(
       children: [
         const SizedBox(height: 12),
@@ -159,16 +180,16 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
           leading: Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: theme.primaryColor.withOpacity(0.1),
+              color: accentColor.withOpacity(isDark ? 0.2 : 0.14),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(Icons.upload_file_rounded, color: theme.primaryColor),
+            child: Icon(Icons.upload_file_rounded, color: accentColor),
           ),
           title: const Text('ارسال فایل'),
-          subtitle: Text('فقط Image / PDF / MP3 تا $_maxMb مگابایت'),
+          subtitle: Text('Image / PDF / Audio تا $_maxMb مگابایت'),
           trailing: IconButton(
             onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.close_rounded),
+            icon: Icon(Icons.close_rounded, color: theme.iconTheme.color),
           ),
         ),
         Divider(height: 1, color: theme.dividerColor),
@@ -176,7 +197,7 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
     );
   }
 
-  Widget _buildFilePicker(ThemeData theme, bool isDark) {
+  Widget _buildFilePicker(ThemeData theme, bool isDark, Color accentColor) {
     if (_selectedFile == null) {
       return Padding(
         padding: const EdgeInsets.all(20),
@@ -186,13 +207,13 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: theme.primaryColor.withOpacity(isDark ? 0.1 : 0.06),
+              color: accentColor.withOpacity(isDark ? 0.16 : 0.1),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: theme.primaryColor.withOpacity(0.25)),
+              border: Border.all(color: accentColor.withOpacity(0.28)),
             ),
             child: Row(
               children: [
-                Icon(Icons.folder_open_rounded, color: theme.primaryColor),
+                Icon(Icons.folder_open_rounded, color: accentColor),
                 const SizedBox(width: 12),
                 const Expanded(
                   child: Text(
@@ -200,7 +221,7 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),
-                const Icon(Icons.chevron_right_rounded),
+                Icon(Icons.chevron_right_rounded, color: accentColor),
               ],
             ),
           ),
@@ -213,7 +234,7 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade50,
+          color: isDark ? const Color(0xFF2A2A2A) : _lightSurface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: theme.dividerColor.withOpacity(0.35)),
         ),
@@ -222,10 +243,11 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: theme.primaryColor.withOpacity(0.1),
+                color: accentColor.withOpacity(isDark ? 0.2 : 0.14),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Text(_fileType?.emoji ?? '📎', style: const TextStyle(fontSize: 26)),
+              child: Text(_fileType?.emoji ?? '📎',
+                  style: const TextStyle(fontSize: 26)),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -253,10 +275,11 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
                   _selectedFile = null;
                   _fileName = null;
                   _fileSize = null;
+                  _mimeType = null;
                   _fileType = null;
                 });
               },
-              icon: const Icon(Icons.close_rounded),
+              icon: Icon(Icons.close_rounded, color: accentColor),
             ),
           ],
         ),
@@ -264,7 +287,7 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
     );
   }
 
-  Widget _buildCaption(ThemeData theme, bool isDark) {
+  Widget _buildCaption(ThemeData theme, bool isDark, Color accentColor) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
       child: TextField(
@@ -274,29 +297,34 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
         decoration: InputDecoration(
           hintText: 'کپشن فایل (اختیاری)...',
           filled: true,
-          fillColor: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade50,
+          fillColor: isDark ? const Color(0xFF2A2A2A) : _lightSurface,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide.none,
           ),
-          prefixIcon: Icon(Icons.edit_note_rounded, color: theme.hintColor),
+          prefixIcon: Icon(Icons.edit_note_rounded, color: accentColor),
         ),
       ),
     );
   }
 
-  Widget _buildActions(ThemeData theme) {
+  Widget _buildActions(ThemeData theme, bool isDark, Color accentColor) {
     final canSend = _selectedFile != null;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: theme.dividerColor.withOpacity(0.3))),
+        border:
+            Border(top: BorderSide(color: theme.dividerColor.withOpacity(0.3))),
       ),
       child: Row(
         children: [
           Expanded(
             child: OutlinedButton(
               onPressed: canSend ? _pickFile : null,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: accentColor,
+                side: BorderSide(color: accentColor.withOpacity(0.35)),
+              ),
               child: const Text('تغییر فایل'),
             ),
           ),
@@ -305,6 +333,13 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
             flex: 2,
             child: ElevatedButton.icon(
               onPressed: canSend ? _send : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: accentColor,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor:
+                    (isDark ? theme.disabledColor : accentColor)
+                        .withOpacity(0.38),
+              ),
               icon: const Icon(Icons.send_rounded),
               label: Text(canSend ? 'ارسال' : 'انتخاب فایل'),
             ),
@@ -314,19 +349,70 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
     );
   }
 
+  Color _accentColor(ThemeData theme, bool isDark) {
+    if (isDark) {
+      return theme.colorScheme.primary;
+    }
+    if (theme.colorScheme.primary.computeLuminance() > 0.9) {
+      return _lightAccent;
+    }
+    return Color.lerp(_lightAccent, theme.colorScheme.primary, 0.35) ??
+        _lightAccent;
+  }
+
   Future<void> _pickFile() async {
     try {
       HapticFeedback.lightImpact();
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowMultiple: false,
-        allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'pdf', 'mp3'],
+        withData: true,
+        allowedExtensions: [
+          'jpg',
+          'jpeg',
+          'png',
+          'gif',
+          'webp',
+          'bmp',
+          'heic',
+          'heif',
+          'pdf',
+          'mp3',
+          'm4a',
+          'aac',
+          'wav',
+          'ogg',
+          'flac',
+        ],
       );
-      if (result == null || result.files.isEmpty || result.files.first.path == null) {
+      if (result == null || result.files.isEmpty) {
         return;
       }
 
-      final file = File(result.files.first.path!);
+      final picked = result.files.first;
+      File? file;
+      final pickedPath = picked.path;
+      if (pickedPath != null && pickedPath.isNotEmpty) {
+        file = File(pickedPath);
+      } else if (picked.bytes != null && picked.bytes!.isNotEmpty) {
+        final tempDir = await getTemporaryDirectory();
+        final safeName = picked.name.isNotEmpty
+            ? picked.name
+            : 'file_${DateTime.now().millisecondsSinceEpoch}';
+        final tempPath = p.join(
+          tempDir.path,
+          'chat_upload_${DateTime.now().millisecondsSinceEpoch}_$safeName',
+        );
+        file = File(tempPath);
+        await file.writeAsBytes(picked.bytes!, flush: true);
+      }
+
+      if (file == null) {
+        if (!mounted) return;
+        ToastService.showErrorToast(context, 'مسیر فایل قابل دسترس نیست');
+        return;
+      }
+
       final validation = _uploadPolicy.validateFile(
         file: file,
         profile: widget.profile,
@@ -342,14 +428,17 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
         return;
       }
 
-      final fileName = result.files.first.name;
+      final fileName =
+          picked.name.isNotEmpty ? picked.name : p.basename(file.path);
       final fileSize = await file.length();
       final type = _typeFromAttachment(validation.attachmentType);
+      final mimeType = _guessMimeType(fileName);
 
       setState(() {
         _selectedFile = file;
         _fileName = fileName;
         _fileSize = fileSize;
+        _mimeType = mimeType;
         _fileType = type;
       });
       HapticFeedback.mediumImpact();
@@ -363,9 +452,9 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
     switch (attachmentType) {
       case 'image':
         return DocumentType.image;
-      case 'pdf':
+      case 'document':
         return DocumentType.pdf;
-      case 'mp3':
+      case 'audio':
         return DocumentType.audio;
       default:
         return DocumentType.other;
@@ -382,6 +471,9 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
         file: file,
         caption: _captionController.text.trim(),
         type: _fileType ?? DocumentType.other,
+        displayFileName: _fileName ?? p.basename(file.path),
+        mimeType: _mimeType,
+        sizeBytes: _fileSize,
       ),
     );
   }
@@ -390,5 +482,41 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  String? _guessMimeType(String fileName) {
+    final ext = p.extension(fileName).replaceFirst('.', '').toLowerCase();
+    switch (ext) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      case 'bmp':
+        return 'image/bmp';
+      case 'heic':
+      case 'heif':
+        return 'image/heic';
+      case 'pdf':
+        return 'application/pdf';
+      case 'mp3':
+        return 'audio/mpeg';
+      case 'm4a':
+        return 'audio/mp4';
+      case 'aac':
+        return 'audio/aac';
+      case 'wav':
+        return 'audio/wav';
+      case 'ogg':
+        return 'audio/ogg';
+      case 'flac':
+        return 'audio/flac';
+      default:
+        return null;
+    }
   }
 }

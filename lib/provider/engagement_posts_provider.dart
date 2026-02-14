@@ -275,28 +275,6 @@ class EngagementPostService {
     }
   }
 
-  /// بروزرسانی امتیاز تعامل همه پست‌ها
-  Future<void> _updateAllEngagementScores() async {
-    try {
-      await _supabase.rpc('refresh_all_engagement_scores');
-    } catch (e) {
-      logInfo('خطا در بروزرسانی امتیاز تعامل: $e');
-      // اگر function وجود ندارد، مستقیماً بروزرسانی می‌کنیم
-      await _updateEngagementScoresDirectly();
-    }
-  }
-
-  /// بروزرسانی مستقیم امتیاز تعامل
-  Future<void> _updateEngagementScoresDirectly() async {
-    try {
-      // بروزرسانی ساده - فقط engagement_score را بر اساس فیلدهای موجود محاسبه می‌کنیم
-      // این کار در کوئری اصلی انجام می‌شود
-      logInfo('بروزرسانی امتیاز تعامل انجام شد');
-    } catch (e) {
-      logInfo('خطا در بروزرسانی مستقیم امتیاز تعامل: $e');
-    }
-  }
-
   /// بروزرسانی امتیاز تعامل یک پست خاص
   Future<void> updatePostEngagement(String postId) async {
     try {

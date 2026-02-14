@@ -1,10 +1,14 @@
 import '../security/logging_utility.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import '../model/MusicModel.dart';
 import '../services/MusicService.dart';
+import '../app/app_initialization.dart';
+import '../services/shared_audio_player_service.dart';
 
-final audioPlayerProvider = Provider((ref) => AudioPlayer());
+final audioPlayerProvider =
+    Provider<AudioPlayer>((ref) => SharedAudioPlayerService.instance.player);
 
 final musicListProvider =
     StateNotifierProvider<MusicListNotifier, AsyncValue<List<MusicModel>>>(
@@ -54,7 +58,6 @@ class MusicListNotifier extends StateNotifier<AsyncValue<List<MusicModel>>> {
       final currentSongs = state.value ?? [];
       state = AsyncValue.data([...currentSongs, ...moreSongs]);
     } catch (e) {
-      // Handle error but keep current state
       logInfo('Error loading more songs: $e');
     } finally {
       _isLoading = false;
@@ -77,7 +80,6 @@ final musicPlayerProvider =
   return MusicPlayerNotifier(ref);
 });
 
-// اضافه کردن provider های جدید برای کنترل پخش
 final playbackConfigProvider = StateProvider<PlaybackConfig>((ref) {
   return PlaybackConfig(
     volume: 1.0,
@@ -110,36 +112,160 @@ class PlaybackConfig {
   }
 }
 
-// Provider برای مدت زمان کل موسیقی
 final musicDurationProvider = StateProvider<Duration?>((ref) => null);
-
-// Provider برای موقعیت فعلی پخش
 final musicPositionProvider = StateProvider<Duration>((ref) => Duration.zero);
 
 class MusicPlayerNotifier extends StateNotifier<AsyncValue<Duration>> {
   final Ref _ref;
   Duration? _duration;
-  // اضافه کردن لیست پخش
   final List<MusicModel> _playlist = [];
   int _currentIndex = -1;
 
   MusicPlayerNotifier(this._ref) : super(const AsyncValue.data(Duration.zero)) {
     final player = _ref.read(audioPlayerProvider);
-    player.processingStateStream.listen((state) {
-      if (state == ProcessingState.completed) {
-        // وقتی آهنگ تمام می‌شود، به آهنگ بعدی برو
-        playNext();
-      }
-    });
 
     player.positionStream.listen((position) {
       _ref.read(musicPositionProvider.notifier).state = position;
     });
 
     player.durationStream.listen((duration) {
+      _duration = duration;
       _ref.read(musicDurationProvider.notifier).state = duration;
     });
+
+    player.currentIndexStream.listen((index) {
+      _currentIndex = index ?? -1;
+      _syncCurrentTrack();
+    });
+
+    player.playerStateStream.listen((playerState) {
+      _ref.read(isPlayingProvider.notifier).state = playerState.playing;
+      if (playerState.processingState == ProcessingState.completed &&
+          !player.hasNext) {
+        _ref.read(isPlayingProvider.notifier).state = false;
+      }
+    });
   }
+
+  Uri? _resolveArtUri(MusicModel music) {
+    final cover = music.coverUrl?.trim() ?? '';
+    if (cover.isNotEmpty) return Uri.tryParse(cover);
+
+    final avatar = music.avatarUrl.trim();
+    if (avatar.isNotEmpty) return Uri.tryParse(avatar);
+    return null;
+  }
+
+  AudioSource _buildTrackSource(
+    MusicModel music, {
+    required bool includeMediaTag,
+  }) {
+    final title = music.title.trim().isNotEmpty ? music.title : 'Music';
+    final artist =
+        music.artist.trim().isNotEmpty ? music.artist : music.username;
+    final uri = Uri.parse(music.musicUrl);
+
+    if (!includeMediaTag) {
+      return AudioSource.uri(uri);
+    }
+
+    return AudioSource.uri(
+      uri,
+      tag: MediaItem(
+        id: music.id.isNotEmpty ? music.id : music.musicUrl,
+        title: title,
+        artist: artist,
+        album: 'Vista',
+        artUri: _resolveArtUri(music),
+        extras: {
+          'music_url': music.musicUrl,
+          'user_id': music.userId,
+          'username': music.username,
+        },
+      ),
+    );
+  }
+
+  ConcatenatingAudioSource _buildQueueSource({
+    required bool includeMediaTag,
+  }) {
+    return ConcatenatingAudioSource(
+      useLazyPreparation: true,
+      children: _playlist
+          .map((item) =>
+              _buildTrackSource(item, includeMediaTag: includeMediaTag))
+          .toList(growable: false),
+    );
+  }
+
+  Future<bool> _ensureMediaControlsReady() async {
+    if (AppInitialization.isAudioBackgroundReady) return true;
+    var ready = await AppInitialization.ensureAudioBackgroundReady();
+    if (ready) return true;
+    ready =
+        await AppInitialization.ensureAudioBackgroundReady(forceRetry: true);
+    return ready;
+  }
+
+  bool _isAudioHandlerInitError(Object error) {
+    final raw = error.toString();
+    return raw.contains('LateInitializationError') ||
+        raw.contains('_audioHandler') ||
+        error.runtimeType.toString().contains('LateInitializationError');
+  }
+
+  void _syncCurrentTrack() {
+    if (_currentIndex < 0 || _currentIndex >= _playlist.length) {
+      _ref.read(currentlyPlayingProvider.notifier).state =
+          const AsyncValue.data(null);
+      return;
+    }
+
+    _ref.read(currentlyPlayingProvider.notifier).state =
+        AsyncValue.data(_playlist[_currentIndex]);
+  }
+
+  Future<void> _setQueueAndPlay({
+    required int initialIndex,
+    Duration initialPosition = Duration.zero,
+  }) async {
+    if (_playlist.isEmpty) return;
+
+    final player = _ref.read(audioPlayerProvider);
+    final mediaControlsReady = await _ensureMediaControlsReady();
+
+    try {
+      final queue = _buildQueueSource(includeMediaTag: mediaControlsReady);
+      await player.setAudioSource(
+        queue,
+        initialIndex: initialIndex,
+        initialPosition: initialPosition,
+      );
+    } catch (e, st) {
+      if (!_isAudioHandlerInitError(e)) rethrow;
+
+      AppInitialization.disableAudioBackgroundForSession(
+        reason: e,
+        stackTrace: st,
+      );
+
+      final recovered =
+          await AppInitialization.ensureAudioBackgroundReady(forceRetry: true);
+      final fallbackQueue =
+          _buildQueueSource(includeMediaTag: recovered /* false => plain */);
+      await player.setAudioSource(
+        fallbackQueue,
+        initialIndex: initialIndex,
+        initialPosition: initialPosition,
+      );
+    }
+
+    _currentIndex = initialIndex;
+    _syncCurrentTrack();
+    await player.play();
+    _ref.read(isPlayingProvider.notifier).state = true;
+  }
+
   Future<void> stop() async {
     final player = _ref.read(audioPlayerProvider);
     try {
@@ -160,34 +286,28 @@ class MusicPlayerNotifier extends StateNotifier<AsyncValue<Duration>> {
     final player = _ref.read(audioPlayerProvider);
 
     try {
-      // بررسی اینکه آیا این آهنگ قبلاً در پلی‌لیست اضافه شده است
-      int existingIndex =
-          _playlist.indexWhere((m) => m.musicUrl == music.musicUrl);
+      var existingIndex =
+          _playlist.indexWhere((item) => item.musicUrl == music.musicUrl);
 
-      if (existingIndex != -1) {
-        // اگر این آهنگ در حال حاضر درحال پخش است، فقط وضعیت پخش را تغییر دهید
-        if (_currentIndex == existingIndex) {
-          togglePlayPause();
-          return;
-        }
-
-        // در غیر این صورت، به آن آهنگ بروید
-        _currentIndex = existingIndex;
-      } else {
-        // آهنگ را به پلی‌لیست اضافه کنید و آن را بعنوان آهنگ فعلی تنظیم کنید
+      if (existingIndex == -1) {
         _playlist.add(music);
-        _currentIndex = _playlist.length - 1;
+        existingIndex = _playlist.length - 1;
+      } else {
+        _playlist[existingIndex] = music;
       }
 
-      await player.stop();
-      await player.setUrl(music.musicUrl);
-      _duration = player.duration;
+      if (_currentIndex == existingIndex) {
+        if (player.playing) {
+          await player.pause();
+          _ref.read(isPlayingProvider.notifier).state = false;
+        } else {
+          await player.play();
+          _ref.read(isPlayingProvider.notifier).state = true;
+        }
+        return;
+      }
 
-      _ref.read(currentlyPlayingProvider.notifier).state =
-          AsyncValue.data(_playlist[_currentIndex]);
-      _ref.read(isPlayingProvider.notifier).state = true;
-
-      await player.play();
+      await _setQueueAndPlay(initialIndex: existingIndex);
     } catch (e, stack) {
       logInfo('Error playing music: $e');
       state = AsyncValue.error(e, stack);
@@ -196,25 +316,21 @@ class MusicPlayerNotifier extends StateNotifier<AsyncValue<Duration>> {
     }
   }
 
-  // اضافه کردن متد برای پخش آهنگ بعدی
   Future<void> playNext() async {
-    if (_playlist.isEmpty || _currentIndex >= _playlist.length - 1) {
-      return; // پایان پلی‌لیست
-    }
+    if (_playlist.isEmpty) return;
 
-    _currentIndex++;
     final player = _ref.read(audioPlayerProvider);
-
     try {
-      await player.stop();
-      await player.setUrl(_playlist[_currentIndex].musicUrl);
-      _duration = player.duration;
+      if (player.hasNext) {
+        await player.seekToNext();
+        await player.play();
+        return;
+      }
 
-      _ref.read(currentlyPlayingProvider.notifier).state =
-          AsyncValue.data(_playlist[_currentIndex]);
-      _ref.read(isPlayingProvider.notifier).state = true;
-
-      await player.play();
+      if (_currentIndex < _playlist.length - 1) {
+        final nextIndex = _currentIndex + 1;
+        await _setQueueAndPlay(initialIndex: nextIndex);
+      }
     } catch (e, stack) {
       logInfo('Error playing next music: $e');
       state = AsyncValue.error(e, stack);
@@ -222,25 +338,21 @@ class MusicPlayerNotifier extends StateNotifier<AsyncValue<Duration>> {
     }
   }
 
-  // اضافه کردن متد برای پخش آهنگ قبلی
   Future<void> playPrevious() async {
-    if (_playlist.isEmpty || _currentIndex <= 0) {
-      return; // ابتدای پلی‌لیست
-    }
+    if (_playlist.isEmpty) return;
 
-    _currentIndex--;
     final player = _ref.read(audioPlayerProvider);
-
     try {
-      await player.stop();
-      await player.setUrl(_playlist[_currentIndex].musicUrl);
-      _duration = player.duration;
+      if (player.hasPrevious) {
+        await player.seekToPrevious();
+        await player.play();
+        return;
+      }
 
-      _ref.read(currentlyPlayingProvider.notifier).state =
-          AsyncValue.data(_playlist[_currentIndex]);
-      _ref.read(isPlayingProvider.notifier).state = true;
-
-      await player.play();
+      if (_currentIndex > 0) {
+        final previousIndex = _currentIndex - 1;
+        await _setQueueAndPlay(initialIndex: previousIndex);
+      }
     } catch (e, stack) {
       logInfo('Error playing previous music: $e');
       state = AsyncValue.error(e, stack);
@@ -248,25 +360,14 @@ class MusicPlayerNotifier extends StateNotifier<AsyncValue<Duration>> {
     }
   }
 
-  // اضافه کردن متد برای توقف کامل
-  // void stop() async {
-  //   final player = _ref.read(audioPlayerProvider);
-  //   await player.stop();
-  //   _ref.read(isPlayingProvider.notifier).state = false;
-  //   _ref.read(currentlyPlayingProvider.notifier).state =
-  //       const AsyncValue.data(null);
-  // }
-
-  void togglePlayPause() async {
+  Future<void> togglePlayPause() async {
     final player = _ref.read(audioPlayerProvider);
     try {
       if (player.playing) {
         await player.pause();
       } else {
-        // اگر آهنگی در حال پخش نیست، از اولین آهنگ پلی‌لیست شروع کن
         if (_currentIndex == -1 && _playlist.isNotEmpty) {
-          _currentIndex = 0;
-          await playMusic(_playlist[0]);
+          await _setQueueAndPlay(initialIndex: 0);
           return;
         }
         await player.play();
@@ -283,22 +384,22 @@ class MusicPlayerNotifier extends StateNotifier<AsyncValue<Duration>> {
 
   Duration? get duration => _duration;
 
-  void setVolume(double volume) {
-    _ref.read(audioPlayerProvider).setVolume(volume);
+  Future<void> setVolume(double volume) async {
+    await _ref.read(audioPlayerProvider).setVolume(volume);
     final config = _ref.read(playbackConfigProvider);
     _ref.read(playbackConfigProvider.notifier).state =
         config.copyWith(volume: volume);
   }
 
-  void setSpeed(double speed) {
-    _ref.read(audioPlayerProvider).setSpeed(speed);
+  Future<void> setSpeed(double speed) async {
+    await _ref.read(audioPlayerProvider).setSpeed(speed);
     final config = _ref.read(playbackConfigProvider);
     _ref.read(playbackConfigProvider.notifier).state =
         config.copyWith(speed: speed);
   }
 
-  void setLoopMode(LoopMode mode) {
-    _ref.read(audioPlayerProvider).setLoopMode(mode);
+  Future<void> setLoopMode(LoopMode mode) async {
+    await _ref.read(audioPlayerProvider).setLoopMode(mode);
     final config = _ref.read(playbackConfigProvider);
     _ref.read(playbackConfigProvider.notifier).state =
         config.copyWith(loopMode: mode);
@@ -314,7 +415,7 @@ class AudioPlayerNotifier extends StateNotifier<Duration> {
     });
   }
 
-  void playAudio(String url) async {
+  Future<void> playAudio(String url) async {
     try {
       await _player.setUrl(url);
       await _player.play();
@@ -323,16 +424,16 @@ class AudioPlayerNotifier extends StateNotifier<Duration> {
     }
   }
 
-  void togglePlayPause() {
+  Future<void> togglePlayPause() async {
     if (_player.playing) {
-      _player.pause();
+      await _player.pause();
     } else {
-      _player.play();
+      await _player.play();
     }
   }
 
-  void stop() {
-    _player.stop();
+  Future<void> stop() async {
+    await _player.stop();
   }
 
   @override
@@ -349,9 +450,5 @@ final audioPlayerControllerProvider =
 });
 
 final isPlayingProvider = StateProvider<bool>((ref) => false);
-
-// اضافه کردن provider برای لیست پخش
 final playlistProvider = StateProvider<List<MusicModel>>((ref) => []);
-
-// اضافه کردن provider برای شماره آهنگ فعلی
 final currentIndexProvider = StateProvider<int>((ref) => -1);

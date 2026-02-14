@@ -38,8 +38,6 @@ class _SetProfileDataState extends ConsumerState<SetProfileData> {
   final TextEditingController birthDateController = TextEditingController();
 
   File? _imageFile;
-  bool _firstFetch = true;
-  bool _isInitialized = false;
   bool _isLoading = true;
   Timer? _saveTimeoutTimer;
   Jalali? _selectedDate;
@@ -107,8 +105,6 @@ class _SetProfileDataState extends ConsumerState<SetProfileData> {
             }
           }
 
-          _isInitialized = true;
-          _firstFetch = false;
           _isLoading = false;
         });
 
@@ -123,7 +119,6 @@ class _SetProfileDataState extends ConsumerState<SetProfileData> {
         if (mounted) {
           setState(() {
             _isLoading = false;
-            _firstFetch = false;
           });
           _showSnackBar('خطا در دریافت اطلاعات پروفایل: ${e.toString()}',
               isError: true);
@@ -134,7 +129,6 @@ class _SetProfileDataState extends ConsumerState<SetProfileData> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _firstFetch = false;
         });
         _showSnackBar('خطا در دسترسی به اطلاعات کاربر', isError: true);
       }
@@ -514,7 +508,6 @@ class _SetProfileDataState extends ConsumerState<SetProfileData> {
   }
 
   Widget _buildInputFields(bool isDark, Color textColor) {
-    final BorderRadius radius = BorderRadius.circular(12);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -769,9 +762,6 @@ Future<Jalali?> showPersianDatePicker({
   PDatePickerMode initialDatePickerMode = PDatePickerMode.day,
   Widget Function(BuildContext, Widget?)? builder,
 }) async {
-  final now = Jalali.now();
-  initialDate = initialDate;
-
   return showDialog<Jalali>(
     context: context,
     builder: (BuildContext context) {

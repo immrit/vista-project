@@ -123,6 +123,11 @@ class MessageModel {
   final String? audioUrl; // URL فایل صوتی (ویس) - از دیتابیس audio_url
   final String? attachmentType;
   final String? attachmentFileName;
+  final String? attachmentMimeType;
+  final int? attachmentSizeBytes;
+  final String? audioTitle;
+  final String? audioArtist;
+  final String? audioAlbum;
   final int? duration; // مدت زمان فایل صوتی (ثانیه)
   final bool isRead;
   final bool isSent;
@@ -319,6 +324,11 @@ class MessageModel {
     this.audioUrl,
     this.attachmentType,
     this.attachmentFileName,
+    this.attachmentMimeType,
+    this.attachmentSizeBytes,
+    this.audioTitle,
+    this.audioArtist,
+    this.audioAlbum,
     this.duration,
     this.isRead = false,
     this.isSent = true,
@@ -512,6 +522,11 @@ class MessageModel {
       audioUrl: json['audio_url'],
       attachmentType: json['attachment_type'],
       attachmentFileName: json['attachment_file_name'] as String?,
+      attachmentMimeType: json['attachment_mime_type'] as String?,
+      attachmentSizeBytes: (json['attachment_size_bytes'] as num?)?.toInt(),
+      audioTitle: json['audio_title'] as String?,
+      audioArtist: json['audio_artist'] as String?,
+      audioAlbum: json['audio_album'] as String?,
       duration: json['duration'] as int?,
       senderName: (json['sender_name'] as String?)?.trim().isNotEmpty == true
           ? (json['sender_name'] as String?)?.trim()
@@ -569,6 +584,11 @@ class MessageModel {
     String? audioUrl,
     String? attachmentType,
     String? attachmentFileName,
+    String? attachmentMimeType,
+    int? attachmentSizeBytes,
+    String? audioTitle,
+    String? audioArtist,
+    String? audioAlbum,
     int? duration,
     String? replyToMessageId,
     String? replyToContent,
@@ -596,6 +616,11 @@ class MessageModel {
       audioUrl: audioUrl,
       attachmentType: attachmentType,
       attachmentFileName: attachmentFileName,
+      attachmentMimeType: attachmentMimeType,
+      attachmentSizeBytes: attachmentSizeBytes,
+      audioTitle: audioTitle,
+      audioArtist: audioArtist,
+      audioAlbum: audioAlbum,
       duration: duration,
       isRead: false,
       isSent: false,
@@ -629,6 +654,11 @@ class MessageModel {
     String? audioUrl,
     String? attachmentType,
     String? attachmentFileName,
+    String? attachmentMimeType,
+    int? attachmentSizeBytes,
+    String? audioTitle,
+    String? audioArtist,
+    String? audioAlbum,
     int? duration,
     bool? isRead,
     bool? isSent,
@@ -672,6 +702,11 @@ class MessageModel {
       audioUrl: audioUrl ?? this.audioUrl,
       attachmentType: attachmentType ?? this.attachmentType,
       attachmentFileName: attachmentFileName ?? this.attachmentFileName,
+      attachmentMimeType: attachmentMimeType ?? this.attachmentMimeType,
+      attachmentSizeBytes: attachmentSizeBytes ?? this.attachmentSizeBytes,
+      audioTitle: audioTitle ?? this.audioTitle,
+      audioArtist: audioArtist ?? this.audioArtist,
+      audioAlbum: audioAlbum ?? this.audioAlbum,
       duration: duration ?? this.duration,
       isRead: isRead ?? this.isRead,
       isSent: isSent ?? this.isSent,
@@ -745,6 +780,11 @@ class MessageModel {
       'audio_url': audioUrl,
       'attachment_type': attachmentType,
       'attachment_file_name': attachmentFileName,
+      'attachment_mime_type': attachmentMimeType,
+      'attachment_size_bytes': attachmentSizeBytes,
+      'audio_title': audioTitle,
+      'audio_artist': audioArtist,
+      'audio_album': audioAlbum,
       'duration': duration,
       'is_read': isRead,
       'is_sent': isSent,

@@ -51,8 +51,6 @@ class _ChatProfileDetailsState extends ConsumerState<ChatProfileDetails>
     // Providers (using legacy imports as per original file)
     final userProfileAsync =
         ref.watch(legacy_chat.userProfileProvider(widget.otherUserId));
-    final conversationAsync =
-        ref.watch(legacy_chat.conversationProvider(widget.conversationId));
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,

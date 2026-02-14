@@ -7,9 +7,9 @@ import 'cache_manager.dart';
 import 'secure_upload_service.dart';
 import 'user_friendly_error_handler.dart';
 import '../utils/const.dart';
+import 'upload_object_key_service.dart';
 
 class ChatImageUploadService {
-
   /// تبدیل تصاویر PNG به JPEG
   static Future<File?> convertPngToJpeg(File file) async {
     final img = await FlutterImageCompress.compressWithFile(
@@ -66,8 +66,13 @@ class ChatImageUploadService {
         throw Exception('User not authenticated');
       }
 
-      final fileName =
-          'chats/$conversationId/${userId}_${DateTime.now().millisecondsSinceEpoch}_${path.basename(compressedFile.path)}';
+      final normalizedExt = path.extension(compressedFile.path).toLowerCase();
+      final fileName = UploadObjectKeyService.buildChatObjectKey(
+        conversationId: conversationId,
+        folder: 'images',
+        userId: userId,
+        extension: normalizedExt,
+      );
 
       final Uint8List fileBytes = await compressedFile.readAsBytes();
       const contentType = 'image/jpeg';
@@ -86,10 +91,16 @@ class ChatImageUploadService {
       final uploadedUrl = uploadResult.url;
       logInfo('Chat image upload successful: $uploadedUrl');
       return uploadedUrl;
-    } catch (e) {
-      UserFriendlyErrorHandler.logError(e, context: 'image_upload');
-      throw Exception(UserFriendlyErrorHandler.getFriendlyMessage(e,
-          context: 'image_upload'));
+    } catch (e, st) {
+      logError('Chat image upload failed', error: e, stackTrace: st);
+      UserFriendlyErrorHandler.logError(
+        e,
+        context: 'image_upload',
+        stackTrace: st,
+      );
+      final friendly = UserFriendlyErrorHandler.getFriendlyMessage(e,
+          context: 'image_upload');
+      throw Exception('$friendly | technical: ${e.runtimeType}: $e');
     } finally {
       if (compressedFile != null && compressedFile.path != file.path) {
         try {
@@ -164,6 +175,3 @@ class ChatImageUploadService {
     await cacheManager.emptyCache();
   }
 }
-
-
-

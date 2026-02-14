@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 class SessionModel {
   final String id;
   final String userId;
-  final String sessionToken;
+  final String? sessionToken;
   final SessionDeviceInfo deviceInfo;
   final String? ipAddress;
   final DateTime lastActivity;
@@ -17,7 +17,7 @@ class SessionModel {
   SessionModel({
     required this.id,
     required this.userId,
-    required this.sessionToken,
+    this.sessionToken,
     required this.deviceInfo,
     this.ipAddress,
     required this.lastActivity,
@@ -33,13 +33,14 @@ class SessionModel {
     // پردازش location: اگر location به صورت JSON object است، از آن استفاده کن
     // در غیر این صورت، از location_city و location_country استفاده کن
     SessionLocation? location;
-    
+
     if (json['location'] != null) {
       try {
         // اگر location به صورت Map است
         if (json['location'] is Map<String, dynamic>) {
-          location = SessionLocation.fromJson(json['location'] as Map<String, dynamic>);
-        } 
+          location = SessionLocation.fromJson(
+              json['location'] as Map<String, dynamic>);
+        }
         // اگر location به صورت string است (مثل "35.6892,51.3890") - برای backward compatibility
         else if (json['location'] is String) {
           // از location_city و location_country استفاده کن
@@ -78,7 +79,7 @@ class SessionModel {
     return SessionModel(
       id: json['id'] as String,
       userId: json['user_id'] as String,
-      sessionToken: json['session_token'] as String,
+      sessionToken: json['session_token'] as String?,
       deviceInfo: SessionDeviceInfo.fromJson(
         json['device_info'] as Map<String, dynamic>,
       ),
@@ -140,7 +141,8 @@ class SessionModel {
     );
   }
 
-  bool get isCurrentDevice => defaultTargetPlatform == deviceInfo.targetPlatform;
+  bool get isCurrentDevice =>
+      defaultTargetPlatform == deviceInfo.targetPlatform;
 }
 
 class SessionDeviceInfo {
@@ -284,4 +286,3 @@ class SessionLocation {
     return 'نامشخص';
   }
 }
-

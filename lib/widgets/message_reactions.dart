@@ -100,7 +100,6 @@ class AddReactionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     return GestureDetector(
       onTap: onTap,
@@ -135,8 +134,26 @@ class ReactionPickerSheet extends StatelessWidget {
   });
 
   static const List<String> commonReactions = [
-    '❤️', '👍', '👎', '😄', '😢', '😮', '👏', '🔥', '💯', '🎉',
-    '💔', '🤔', '😅', '😂', '😍', '🥰', '😘', '😉', '😎', '🤗',
+    '❤️',
+    '👍',
+    '👎',
+    '😄',
+    '😢',
+    '😮',
+    '👏',
+    '🔥',
+    '💯',
+    '🎉',
+    '💔',
+    '🤔',
+    '😅',
+    '😂',
+    '😍',
+    '🥰',
+    '😘',
+    '😉',
+    '😎',
+    '🤗',
   ];
 
   @override
@@ -195,7 +212,8 @@ class ReactionPickerSheet extends StatelessWidget {
                   },
                   child: Container(
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF2A2A2A) : Colors.grey[100],
+                      color:
+                          isDark ? const Color(0xFF2A2A2A) : Colors.grey[100],
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Center(
@@ -214,4 +232,3 @@ class ReactionPickerSheet extends StatelessWidget {
     );
   }
 }
-

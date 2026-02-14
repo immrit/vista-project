@@ -1,21 +1,54 @@
+import 'dart:async';
 import 'dart:convert';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'session_manager_service_v2.dart';
+import 'dart:io';
+
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../model/publicPostModel.dart';
 import '../security/logging_utility.dart';
+import 'session_manager_service_v2.dart';
 
-/// سرویس ارتباط با سرور Node.js برای عملیات چت
-///
-/// این سرویس مسئول ارسال درخواست‌های حذف پیام به سرور است.
-/// سرور تمام منطق حذف (DB + S3) را انجام می‌دهد.
+enum NodeErrorKind {
+  auth,
+  network,
+  timeout,
+  server,
+  unknown,
+}
+
+class NodeApiException implements Exception {
+  final NodeErrorKind kind;
+  final int? statusCode;
+  final String message;
+  final String? errorCode;
+  final bool retriable;
+
+  const NodeApiException({
+    required this.kind,
+    required this.message,
+    this.statusCode,
+    this.errorCode,
+    this.retriable = false,
+  });
+
+  bool get isAuthFailure => kind == NodeErrorKind.auth;
+
+  @override
+  String toString() => message;
+}
+
 class VistaNodeService {
+  static const String _baseUrl = 'https://function-vista.chbk.dev/api';
+  static const Duration _timeout = Duration(seconds: 15);
+
   static Future<Map<String, String>> _buildAuthHeaders() async {
     final headers = <String, String>{
       'Content-Type': 'application/json',
     };
 
-    final accessToken = Supabase.instance.client.auth.currentSession?.accessToken;
+    final accessToken =
+        Supabase.instance.client.auth.currentSession?.accessToken;
     if (accessToken != null && accessToken.isNotEmpty) {
       headers['Authorization'] = 'Bearer $accessToken';
     }
@@ -23,6 +56,7 @@ class VistaNodeService {
     final sessionManager = SessionManagerServiceV2.instance;
     final sessionId = sessionManager.currentSessionId;
     final sessionToken = sessionManager.currentSessionToken;
+
     if (sessionId != null && sessionId.isNotEmpty) {
       headers['x-session-id'] = sessionId;
     }
@@ -33,50 +67,178 @@ class VistaNodeService {
     return headers;
   }
 
-  static const String _baseUrl = 'https://function-vista.chbk.dev/api';
-  static const Duration _timeout = Duration(seconds: 15);
+  static dynamic _safeDecodeBody(String body) {
+    if (body.isEmpty) return null;
+    try {
+      return json.decode(body);
+    } catch (_) {
+      return null;
+    }
+  }
 
-  // ---------------------------------------------------------------------------
-  // Personalized Feed (Node.js)
-  // ---------------------------------------------------------------------------
+  static NodeApiException _mapHttpError(http.Response response) {
+    final payload = _safeDecodeBody(response.body);
+    String message = 'خطا در ارتباط با سرور.';
+    String? errorCode;
+    bool retriable = false;
 
-  /// Fetch "For You" personalized feed from Node.js.
-  ///
-  /// Expected response shape:
-  /// {
-  ///   "items": [ { ...postMap } ],
-  ///   "hasMore": true
-  /// }
+    if (payload is Map<String, dynamic>) {
+      final payloadMessage = payload['message']?.toString();
+      if (payloadMessage != null && payloadMessage.isNotEmpty) {
+        message = payloadMessage;
+      }
+      errorCode =
+          payload['error_code']?.toString() ?? payload['error']?.toString();
+      retriable = payload['retriable'] == true;
+    }
+
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      return NodeApiException(
+        kind: NodeErrorKind.auth,
+        statusCode: response.statusCode,
+        errorCode: errorCode,
+        retriable: false,
+        message: 'برای ادامه، دوباره وارد حساب شوید.',
+      );
+    }
+
+    if (response.statusCode >= 500) {
+      return NodeApiException(
+        kind: NodeErrorKind.server,
+        statusCode: response.statusCode,
+        errorCode: errorCode,
+        retriable: true,
+        message: message,
+      );
+    }
+
+    return NodeApiException(
+      kind: NodeErrorKind.unknown,
+      statusCode: response.statusCode,
+      errorCode: errorCode,
+      retriable: retriable,
+      message: message,
+    );
+  }
+
+  static Future<bool> _tryRefreshSession() async {
+    try {
+      final refreshed = await Supabase.instance.client.auth.refreshSession();
+      return refreshed.session != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> _handleFinalAuthFailure() async {
+    try {
+      await SessionManagerServiceV2.instance.userLogout();
+    } catch (_) {
+      try {
+        await Supabase.instance.client.auth.signOut();
+      } catch (_) {}
+    }
+  }
+
+  static Future<http.Response> _sendOnce({
+    required String method,
+    required Uri url,
+    Map<String, String>? headers,
+    String? body,
+  }) async {
+    switch (method) {
+      case 'GET':
+        return http.get(url, headers: headers).timeout(_timeout);
+      case 'POST':
+        return http.post(url, headers: headers, body: body).timeout(_timeout);
+      default:
+        throw const NodeApiException(
+          kind: NodeErrorKind.unknown,
+          message: 'Unsupported request method.',
+        );
+    }
+  }
+
+  static Future<Map<String, dynamic>> _sendWithAuthRetry({
+    required String method,
+    required String path,
+    Map<String, dynamic>? body,
+    bool allowAuthRetry = true,
+  }) async {
+    final url = Uri.parse('$_baseUrl$path');
+
+    Future<http.Response> doCall() async {
+      final headers = await _buildAuthHeaders();
+      return _sendOnce(
+        method: method,
+        url: url,
+        headers: headers,
+        body: body == null ? null : json.encode(body),
+      );
+    }
+
+    try {
+      var response = await doCall();
+
+      if (response.statusCode == 401 && allowAuthRetry) {
+        final refreshed = await _tryRefreshSession();
+        if (refreshed) {
+          response = await doCall();
+        }
+      }
+
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        await _handleFinalAuthFailure();
+        throw _mapHttpError(response);
+      }
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw _mapHttpError(response);
+      }
+
+      final decoded = _safeDecodeBody(response.body);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      return <String, dynamic>{};
+    } on TimeoutException {
+      throw const NodeApiException(
+        kind: NodeErrorKind.timeout,
+        message: 'درخواست زمان‌بر شد. لطفا دوباره تلاش کنید.',
+        retriable: true,
+      );
+    } on SocketException {
+      throw const NodeApiException(
+        kind: NodeErrorKind.network,
+        message: 'اتصال اینترنت برقرار نیست.',
+        retriable: true,
+      );
+    } on NodeApiException {
+      rethrow;
+    } catch (e) {
+      logWarning('Node request failed', error: e);
+      throw const NodeApiException(
+        kind: NodeErrorKind.unknown,
+        message: 'خطا در ارتباط با سرور.',
+        retriable: true,
+      );
+    }
+  }
+
   static Future<Map<String, dynamic>> fetchForYouFeed({
     int limit = 15,
     String? before,
     bool? debug,
-  }) async {
-    final url = Uri.parse('$_baseUrl/feed/for-you');
-    final effectiveDebug = debug == true;
-
-    try {
-      final response = await http
-          .post(
-            url,
-            headers: await _buildAuthHeaders(),
-            body: json.encode({
-              'limit': limit,
-              if (before != null && before.isNotEmpty) 'before': before,
-              if (effectiveDebug) 'debug': true,
-            }),
-          )
-          .timeout(_timeout);
-
-      if (response.statusCode != 200) {
-        throw Exception('Feed error ${response.statusCode}: ${response.body}');
-      }
-
-      final data = json.decode(response.body) as Map<String, dynamic>;
-      return data;
-    } catch (e) {
-      rethrow;
-    }
+  }) {
+    return _sendWithAuthRetry(
+      method: 'POST',
+      path: '/feed/for-you',
+      body: {
+        'limit': limit,
+        if (before != null && before.isNotEmpty) 'before': before,
+        if (debug == true) 'debug': true,
+      },
+    );
   }
 
   static Future<List<PublicPostModel>> fetchForYouFeedPosts({
@@ -84,169 +246,89 @@ class VistaNodeService {
     String? before,
     bool? debug,
   }) async {
-    final data = await fetchForYouFeed(limit: limit, before: before, debug: debug);
+    final data =
+        await fetchForYouFeed(limit: limit, before: before, debug: debug);
     final items = (data['items'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
         .toList();
     return items.map((m) => PublicPostModel.fromMap(m)).toList();
   }
 
-  /// Track a feed event (like/open/share/hide/etc).
-  ///
-  /// This is best-effort. We swallow errors by default to avoid degrading UX.
   static Future<void> trackFeedEvent({
     required String postId,
     required String eventType,
     Map<String, dynamic>? meta,
   }) async {
-    final url = Uri.parse('$_baseUrl/feed/event');
-
     try {
-      await http
-          .post(
-            url,
-            headers: await _buildAuthHeaders(),
-            body: json.encode({
-              'postId': postId,
-              'eventType': eventType,
-              if (meta != null) 'meta': meta,
-            }),
-          )
-          .timeout(_timeout);
+      await _sendWithAuthRetry(
+        method: 'POST',
+        path: '/feed/event',
+        body: {
+          'postId': postId,
+          'eventType': eventType,
+          if (meta != null) 'meta': meta,
+        },
+      );
     } catch (_) {
       // best-effort
     }
   }
 
-  /// حذف پیام از طریق سرور Node.js
-  ///
-  /// سرور:
-  /// 1. اطلاعات پیام را از DB می‌خواند
-  /// 2. فایل S3 را (اگر وجود دارد) حذف می‌کند
-  /// 3. رکورد را از DB حذف می‌کند
   static Future<void> deleteMessage(String messageId) async {
-    final url = Uri.parse('$_baseUrl/chat/delete-message');
-
-    logDebug('🚀 [VistaNodeService] Sending delete request...');
-    logDebug('   - Message ID: $messageId');
-    logDebug('   - URL: $url');
-
-    try {
-      final response = await http
-          .post(
-            url,
-            headers: await _buildAuthHeaders(),
-            body: json.encode({'messageId': messageId}),
-          )
-          .timeout(_timeout);
-
-      logDebug('📨 [VistaNodeService] Response: ${response.statusCode}');
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        logDebug('✅ [VistaNodeService] Success:');
-        logDebug('   - S3 Deleted: ${data['s3Deleted']}');
-        logDebug('   - S3 Message: ${data['s3Message']}');
-        logDebug('   - DB Deleted: ${data['dbDeleted']}');
-        logDebug('   - Duration: ${data['duration']}');
-      } else {
-        final errorBody = response.body;
-        logWarning('❌ [VistaNodeService] Server Error: $errorBody');
-        throw Exception('Server returned ${response.statusCode}: $errorBody');
-      }
-    } catch (e) {
-      logWarning('❌ [VistaNodeService] Error: $e');
-      rethrow;
-    }
+    await _sendWithAuthRetry(
+      method: 'POST',
+      path: '/chat/delete-message',
+      body: {'messageId': messageId},
+    );
   }
 
-  /// حذف چند پیام به صورت batch
   static Future<void> deleteMessagesBatch(List<String> messageIds) async {
     if (messageIds.isEmpty) return;
-
-    final url = Uri.parse('$_baseUrl/chat/delete-messages-batch');
-
-    logDebug('🚀 [VistaNodeService] Sending batch delete request...');
-    logDebug('   - Count: ${messageIds.length}');
-
-    try {
-      final response = await http
-          .post(
-            url,
-            headers: await _buildAuthHeaders(),
-            body: json.encode({'messageIds': messageIds}),
-          )
-          .timeout(_timeout);
-
-      logDebug('📨 [VistaNodeService] Response: ${response.statusCode}');
-
-      if (response.statusCode != 200) {
-        throw Exception('Batch delete failed: ${response.body}');
-      }
-
-      final data = json.decode(response.body);
-      logDebug('✅ [VistaNodeService] Batch Success:');
-      logDebug('   - Messages Deleted: ${messageIds.length}');
-      logDebug('   - S3 Files Deleted: ${data['s3FilesDeleted']}');
-    } catch (e) {
-      logWarning('❌ [VistaNodeService] Batch Error: $e');
-      rethrow;
-    }
+    await _sendWithAuthRetry(
+      method: 'POST',
+      path: '/chat/delete-messages-batch',
+      body: {'messageIds': messageIds},
+    );
   }
 
-  /// پاکسازی کامل یک مکالمه
   static Future<void> clearConversation(String conversationId) async {
-    final url = Uri.parse('$_baseUrl/chat/clear-conversation');
-
-    logDebug('🧹 [VistaNodeService] Clearing conversation: $conversationId');
-
-    try {
-      final response = await http
-          .post(
-            url,
-            headers: await _buildAuthHeaders(),
-            body: json.encode({'conversationId': conversationId}),
-          )
-          .timeout(_timeout);
-
-      logDebug('📨 [VistaNodeService] Response: ${response.statusCode}');
-
-      if (response.statusCode != 200) {
-        throw Exception('Clear conversation failed: ${response.body}');
-      }
-
-      final data = json.decode(response.body);
-      logDebug('✅ [VistaNodeService] Conversation Cleared:');
-      logDebug('   - Messages Deleted: ${data['messagesDeleted']}');
-      logDebug('   - S3 Files Deleted: ${data['s3FilesDeleted']}');
-    } catch (e) {
-      logWarning('❌ [VistaNodeService] Clear Error: $e');
-      rethrow;
-    }
+    await _sendWithAuthRetry(
+      method: 'POST',
+      path: '/chat/clear-conversation',
+      body: {'conversationId': conversationId},
+    );
   }
 
-  /// دریافت IP عمومی کاربر از سرور
+  static Future<Map<String, dynamic>> verifyBazaarPurchase({
+    required String purchaseToken,
+    required String productId,
+    required String packageName,
+  }) {
+    return _sendWithAuthRetry(
+      method: 'POST',
+      path: '/payment/bazaar-verify',
+      body: {
+        'purchase_token': purchaseToken,
+        'product_id': productId,
+        'package_name': packageName,
+      },
+    );
+  }
+
   static Future<String> getPublicIp() async {
     final url = Uri.parse('$_baseUrl/utils/get-ip');
-
     try {
       final response = await http.get(url).timeout(
-        const Duration(seconds: 5),
-        onTimeout: () {
-          throw Exception('IP Request Timeout');
-        },
-      );
-
+            const Duration(seconds: 5),
+          );
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        return data['ip'] as String;
-      } else {
-        throw Exception('Failed to get IP: ${response.statusCode}');
+        final data = _safeDecodeBody(response.body);
+        if (data is Map<String, dynamic>) {
+          final ip = data['ip']?.toString();
+          if (ip != null && ip.isNotEmpty) return ip;
+        }
       }
-    } catch (e) {
-      // در صورت خطا، یک مقدار پیش‌فرض برمی‌گردانیم تا برنامه کرش نکند
-      return 'unavailable';
-    }
+    } catch (_) {}
+    return 'unavailable';
   }
 }
-

@@ -193,7 +193,20 @@ class _ForYouTab extends ConsumerWidget {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (err, stack) => Center(child: Text('خطا در بارگذاری: $err')),
+      error: (err, stack) => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text('بارگذاری پست‌ها ممکن نشد.'),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () =>
+                  ref.read(personalizedFeedProvider.notifier).refreshPosts(),
+              child: const Text('تلاش مجدد'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -240,7 +253,20 @@ class _FollowingTab extends ConsumerWidget {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (err, stack) => Center(child: Text('خطا: $err')),
+      error: (err, stack) => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text('بارگذاری پست‌های دنبال‌شده ممکن نشد.'),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () =>
+                  ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
+              child: const Text('تلاش مجدد'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

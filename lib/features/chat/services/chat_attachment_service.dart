@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as p;
 import '../../../services/uploadFileChatService.dart';
 import '../../../services/uploadImageChatService.dart';
 import '../../../services/uploadAudioChatService.dart';
@@ -30,8 +31,11 @@ class AttachmentResult {
   final String? url;
   final String? fileName;
   final AttachmentType type;
-  final int? duration; // برای صوتی
+  final int? duration; // for voice/audio
   final String? error;
+  final String? errorStage;
+  final String? errorCode;
+  final String? technicalError;
 
   AttachmentResult({
     required this.success,
@@ -40,12 +44,16 @@ class AttachmentResult {
     required this.type,
     this.duration,
     this.error,
+    this.errorStage,
+    this.errorCode,
+    this.technicalError,
   });
 }
 
 /// سرویس مدیریت پیوست‌ها
 class ChatAttachmentService {
-  static final ChatAttachmentService _instance = ChatAttachmentService._internal();
+  static final ChatAttachmentService _instance =
+      ChatAttachmentService._internal();
   factory ChatAttachmentService() => _instance;
   ChatAttachmentService._internal();
 
@@ -79,10 +87,9 @@ class ChatAttachmentService {
       return await _uploadImage(File(image.path), conversationId, onProgress);
     } catch (e) {
       logInfo('❌ خطا در انتخاب عکس: $e');
-      return AttachmentResult(
-        success: false,
+      return _failedResult(
         type: AttachmentType.image,
-        error: e.toString(),
+        error: e,
       );
     }
   }
@@ -111,10 +118,9 @@ class ChatAttachmentService {
       return await _uploadImage(File(image.path), conversationId, onProgress);
     } catch (e) {
       logInfo('❌ خطا در گرفتن عکس: $e');
-      return AttachmentResult(
-        success: false,
+      return _failedResult(
         type: AttachmentType.image,
-        error: e.toString(),
+        error: e,
       );
     }
   }
@@ -144,15 +150,14 @@ class ChatAttachmentService {
       return AttachmentResult(
         success: true,
         url: url,
-        fileName: file.path.split('/').last,
+        fileName: p.basename(file.path),
         type: AttachmentType.image,
       );
     } catch (e) {
       logInfo('❌ خطا در آپلود عکس: $e');
-      return AttachmentResult(
-        success: false,
+      return _failedResult(
         type: AttachmentType.image,
-        error: e.toString(),
+        error: e,
       );
     }
   }
@@ -199,15 +204,14 @@ class ChatAttachmentService {
       return AttachmentResult(
         success: true,
         url: url,
-        fileName: file.path.split('/').last,
+        fileName: p.basename(file.path),
         type: AttachmentType.video,
       );
     } catch (e) {
       logInfo('❌ خطا در آپلود ویدیو: $e');
-      return AttachmentResult(
-        success: false,
+      return _failedResult(
         type: AttachmentType.video,
-        error: e.toString(),
+        error: e,
       );
     }
   }
@@ -238,10 +242,9 @@ class ChatAttachmentService {
       );
     } catch (e) {
       logInfo('❌ خطا در انتخاب ویدیو: $e');
-      return AttachmentResult(
-        success: false,
+      return _failedResult(
         type: AttachmentType.video,
-        error: e.toString(),
+        error: e,
       );
     }
   }
@@ -258,15 +261,24 @@ class ChatAttachmentService {
     void Function(double)? onProgress,
   }) async {
     try {
-      final extension = file.path.split('.').last.toLowerCase();
+      final extension =
+          p.extension(file.path).replaceFirst('.', '').toLowerCase();
       String? url;
-      
+      AttachmentType resultType = AttachmentType.file;
+
       if (extension == 'pdf') {
         url = await ChatFileUploadService.uploadChatPdfFile(
           file,
           conversationId,
           onProgress: onProgress,
         );
+      } else if (_isAudioExtension(extension)) {
+        url = await ChatAudioUploadService.uploadChatAudio(
+          file,
+          conversationId,
+          onProgress: onProgress,
+        );
+        resultType = AttachmentType.audio;
       } else {
         url = await ChatFileUploadService.uploadChatBinaryFile(
           file,
@@ -286,15 +298,14 @@ class ChatAttachmentService {
       return AttachmentResult(
         success: true,
         url: url,
-        fileName: file.path.split('/').last,
-        type: AttachmentType.file,
+        fileName: p.basename(file.path),
+        type: resultType,
       );
     } catch (e) {
       logInfo('❌ خطا در آپلود فایل: $e');
-      return AttachmentResult(
-        success: false,
+      return _failedResult(
         type: AttachmentType.file,
-        error: e.toString(),
+        error: e,
       );
     }
   }
@@ -321,7 +332,7 @@ class ChatAttachmentService {
       }
 
       final file = File(result.files.first.path!);
-      
+
       return await uploadFile(
         file: file,
         conversationId: conversationId,
@@ -329,10 +340,9 @@ class ChatAttachmentService {
       );
     } catch (e) {
       logInfo('❌ خطا در انتخاب فایل: $e');
-      return AttachmentResult(
-        success: false,
+      return _failedResult(
         type: AttachmentType.file,
-        error: e.toString(),
+        error: e,
       );
     }
   }
@@ -352,7 +362,7 @@ class ChatAttachmentService {
       onDurationChanged: onDurationChanged,
       onWaveformDataChanged: onWaveformDataChanged,
     );
-    
+
     return await VoiceRecordingService.startRecording();
   }
 
@@ -397,16 +407,50 @@ class ChatAttachmentService {
       return AttachmentResult(
         success: true,
         url: url,
-        fileName: audioFile.path.split('/').last,
+        fileName: p.basename(audioFile.path),
         type: AttachmentType.voice,
         duration: duration,
       );
     } catch (e) {
       logInfo('❌ خطا در آپلود صدا: $e');
-      return AttachmentResult(
-        success: false,
+      return _failedResult(
         type: AttachmentType.voice,
-        error: e.toString(),
+        error: e,
+      );
+    }
+  }
+
+  Future<AttachmentResult> uploadAudioFile({
+    required File audioFile,
+    required String conversationId,
+    void Function(double)? onProgress,
+  }) async {
+    try {
+      final url = await ChatAudioUploadService.uploadChatAudio(
+        audioFile,
+        conversationId,
+        onProgress: onProgress,
+      );
+
+      if (url == null || url.isEmpty) {
+        return AttachmentResult(
+          success: false,
+          type: AttachmentType.audio,
+          error: 'آپلود ناموفق',
+        );
+      }
+
+      return AttachmentResult(
+        success: true,
+        url: url,
+        fileName: p.basename(audioFile.path),
+        type: AttachmentType.audio,
+      );
+    } catch (e) {
+      logInfo('❌ خطا در آپلود فایل صوتی: $e');
+      return _failedResult(
+        type: AttachmentType.audio,
+        error: e,
       );
     }
   }
@@ -435,7 +479,7 @@ class ChatAttachmentService {
       }
 
       final file = File(result.files.first.path!);
-      
+
       final url = await ChatAudioUploadService.uploadChatAudio(
         file,
         conversationId,
@@ -458,10 +502,9 @@ class ChatAttachmentService {
       );
     } catch (e) {
       logInfo('❌ خطا در انتخاب فایل صوتی: $e');
-      return AttachmentResult(
-        success: false,
+      return _failedResult(
         type: AttachmentType.audio,
-        error: e.toString(),
+        error: e,
       );
     }
   }
@@ -469,9 +512,79 @@ class ChatAttachmentService {
   // ═══════════════════════════════════════════════════════════════════════════
   // 🛠️ UTILS
   // ═══════════════════════════════════════════════════════════════════════════
+  static String _friendlyError(dynamic error) {
+    final raw = error.toString().trim();
+    final withoutException = raw.startsWith('Exception:')
+        ? raw.substring('Exception:'.length).trim()
+        : raw;
+    const marker = '| technical:';
+    final markerIndex = withoutException.indexOf(marker);
+    final friendly = markerIndex >= 0
+        ? withoutException.substring(0, markerIndex).trim()
+        : withoutException;
+    if (friendly.isEmpty) {
+      return 'Upload failed. Please try again.';
+    }
+    return friendly;
+  }
 
-  /// نمایش Bottom Sheet انتخاب پیوست
-  static Future<AttachmentType?> showAttachmentPicker(BuildContext context) async {
+  static String _technicalError(dynamic error) {
+    final raw = error.toString().trim();
+    const marker = '| technical:';
+    final markerIndex = raw.indexOf(marker);
+    if (markerIndex >= 0) {
+      final extracted = raw.substring(markerIndex + marker.length).trim();
+      if (extracted.isNotEmpty) {
+        return extracted;
+      }
+    }
+    return '${error.runtimeType}: $error';
+  }
+
+  static AttachmentResult _failedResult({
+    required AttachmentType type,
+    required Object error,
+  }) {
+    final parsed = _parseTechnicalError(error);
+    return AttachmentResult(
+      success: false,
+      type: type,
+      error: _friendlyError(error),
+      errorStage: parsed.stage,
+      errorCode: parsed.code,
+      technicalError: parsed.technical,
+    );
+  }
+
+  static _ParsedTechnical _parseTechnicalError(Object error) {
+    final technical = _technicalError(error);
+    String? stage;
+    String? code;
+
+    final stageMatch = RegExp(r'stage=([a-zA-Z0-9_]+)').firstMatch(technical);
+    if (stageMatch != null) {
+      stage = stageMatch.group(1);
+    }
+
+    final codeMatch = RegExp(r'code=([A-Z0-9_]+)').firstMatch(technical);
+    if (codeMatch != null) {
+      code = codeMatch.group(1);
+    }
+
+    return _ParsedTechnical(
+      technical: technical,
+      stage: stage,
+      code: code,
+    );
+  }
+
+  static bool _isAudioExtension(String ext) {
+    return const {'mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac'}.contains(ext);
+  }
+
+  /// Show attachment picker bottom sheet
+  static Future<AttachmentType?> showAttachmentPicker(
+      BuildContext context) async {
     return await showModalBottomSheet<AttachmentType>(
       context: context,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -533,17 +646,23 @@ class ChatAttachmentService {
   /// تشخیص نوع پیوست از URL
   static AttachmentType getTypeFromUrl(String url) {
     final lower = url.toLowerCase();
-    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg') || 
-        lower.endsWith('.png') || lower.endsWith('.gif') ||
+    if (lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.png') ||
+        lower.endsWith('.gif') ||
         lower.endsWith('.webp')) {
       return AttachmentType.image;
     }
-    if (lower.endsWith('.mp4') || lower.endsWith('.mov') ||
-        lower.endsWith('.avi') || lower.endsWith('.mkv')) {
+    if (lower.endsWith('.mp4') ||
+        lower.endsWith('.mov') ||
+        lower.endsWith('.avi') ||
+        lower.endsWith('.mkv')) {
       return AttachmentType.video;
     }
-    if (lower.endsWith('.mp3') || lower.endsWith('.m4a') ||
-        lower.endsWith('.wav') || lower.endsWith('.aac') ||
+    if (lower.endsWith('.mp3') ||
+        lower.endsWith('.m4a') ||
+        lower.endsWith('.wav') ||
+        lower.endsWith('.aac') ||
         lower.endsWith('.ogg')) {
       return AttachmentType.audio;
     }
@@ -565,6 +684,18 @@ class ChatAttachmentService {
         return Icons.mic_rounded;
     }
   }
+}
+
+class _ParsedTechnical {
+  final String technical;
+  final String? stage;
+  final String? code;
+
+  const _ParsedTechnical({
+    required this.technical,
+    this.stage,
+    this.code,
+  });
 }
 
 /// Widget برای گزینه پیوست
@@ -614,4 +745,3 @@ class _AttachmentOption extends StatelessWidget {
     );
   }
 }
-

@@ -45,7 +45,7 @@ class PushNotificationService {
 
   final _firebaseMessaging = FirebaseMessaging.instance;
   final _flutterLocalNotifications = LocalNotificationCenter.plugin;
-  final Map<String, DateTime> _recentForegroundEvents = {};
+  static final Map<String, DateTime> _recentMessageEvents = {};
 
   // ✅ Getter امن برای Supabase (ممکن است در بک‌گراند initialize نشده باشد)
   SupabaseClient? get _supabase {
@@ -60,8 +60,28 @@ class PushNotificationService {
   List<RemoteMessage> get notifications => _notifications;
 
   StreamSubscription<AuthState>? _authStateSubscription;
+  StreamSubscription<String>? _tokenRefreshSubscription;
+  StreamSubscription<RemoteMessage>? _onMessageSubscription;
+  StreamSubscription<RemoteMessage>? _onMessageOpenedSubscription;
 
-  bool _isInitialized = false; // جلوگیری از initialize چندگانه
+  bool _isInitialized = false; // جلوگیری از initialize چندگانه (local plugin)
+  bool _listenersBound = false;
+
+  bool _isTruthy(String? value) {
+    if (value == null) return false;
+    final normalized = value.trim().toLowerCase();
+    return normalized == '1' ||
+        normalized == 'true' ||
+        normalized == 'yes' ||
+        normalized == 'on';
+  }
+
+  bool _shouldShowBackgroundLocalNotification(RemoteMessage message) {
+    // Default policy: do not render local notifications in background.
+    // This prevents duplicate "FCM(system) + local(app)" notifications.
+    // Backend can explicitly opt in for local rendering via data payload.
+    return _isTruthy(message.data['show_local_in_background']?.toString());
+  }
 
   bool _isRecentDuplicate(RemoteMessage message) {
     final data = message.data;
@@ -72,15 +92,15 @@ class PushNotificationService {
     if (key == null || key.isEmpty) return false;
 
     final now = DateTime.now();
-    _recentForegroundEvents.removeWhere(
+    _recentMessageEvents.removeWhere(
       (_, timestamp) => now.difference(timestamp) > const Duration(minutes: 2),
     );
-    final existing = _recentForegroundEvents[key];
+    final existing = _recentMessageEvents[key];
     if (existing != null &&
         now.difference(existing) < const Duration(seconds: 10)) {
       return true;
     }
-    _recentForegroundEvents[key] = now;
+    _recentMessageEvents[key] = now;
     return false;
   }
 
@@ -175,24 +195,19 @@ class PushNotificationService {
         return;
       }
 
-      _authStateSubscription?.cancel();
-      if (_supabase != null) {
-        _authStateSubscription =
-            _supabase!.auth.onAuthStateChange.listen((data) {
-          final AuthChangeEvent event = data.event;
-          if (event == AuthChangeEvent.signedIn ||
-              event == AuthChangeEvent.tokenRefreshed) {
-            logInfo('👤 User Signed In/Refreshed. Updating Token...');
-            saveToken();
-          }
-        });
-      }
-
       await _firebaseMessaging.requestPermission(
         alert: true,
         badge: true,
         sound: true,
         provisional: false,
+      );
+
+      // Keep one foreground rendering path (local notifications) and prevent
+      // native foreground FCM banners from duplicating the same event.
+      await _firebaseMessaging.setForegroundNotificationPresentationOptions(
+        alert: false,
+        badge: false,
+        sound: false,
       );
 
       // کانال چت (حیاتی برای نمایش درست در اندروید 8+)
@@ -231,11 +246,30 @@ class PushNotificationService {
 
       await saveToken();
 
-      _firebaseMessaging.onTokenRefresh.listen((newToken) {
+      if (_listenersBound) {
+        logInfo('✅ Push listeners already bound, skipping re-bind');
+        return;
+      }
+
+      if (_supabase != null && _authStateSubscription == null) {
+        _authStateSubscription =
+            _supabase!.auth.onAuthStateChange.listen((data) {
+          final AuthChangeEvent event = data.event;
+          if (event == AuthChangeEvent.signedIn ||
+              event == AuthChangeEvent.tokenRefreshed) {
+            logInfo('👤 User Signed In/Refreshed. Updating Token...');
+            saveToken();
+          }
+        });
+      }
+
+      _tokenRefreshSubscription =
+          _firebaseMessaging.onTokenRefresh.listen((newToken) {
         saveToken(token: newToken);
       });
 
-      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      _onMessageSubscription =
+          FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         logInfo('📱 Foreground Message: ${message.data}');
         if (_isRecentDuplicate(message)) {
           logInfo('⚠️ Duplicate FCM ignored in foreground');
@@ -246,11 +280,7 @@ class PushNotificationService {
         if (_isChatForActiveConversation(message.data)) {
           logInfo('🔕 Chat notification suppressed for active conversation');
         } else {
-          if (message.notification == null && message.data.isNotEmpty) {
-            _showNotification(message);
-          } else if (message.notification != null) {
-            _showNotification(message);
-          }
+          _showNotification(message);
         }
 
         if (ref != null) {
@@ -258,7 +288,8 @@ class PushNotificationService {
         }
       });
 
-      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      _onMessageOpenedSubscription =
+          FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
         logInfo('📬 FCM notification opened (background)');
         final navContext = navigatorKey.currentContext;
         if (navContext != null) {
@@ -268,6 +299,7 @@ class PushNotificationService {
           );
         }
       });
+      _listenersBound = true;
     } catch (e) {
       logInfo('❌ خطا در راه‌اندازی PushNotificationService: $e');
     }
@@ -277,6 +309,24 @@ class PushNotificationService {
   Future<void> showBackgroundNotification(RemoteMessage message) async {
     // حیاتی: در بک‌گراند باید دستی Init کنیم تا استایل‌ها و اکشن‌ها کار کنند
     await _ensureInitialized();
+    if (_isRecentDuplicate(message)) {
+      logInfo('⚠️ Duplicate background FCM ignored');
+      return;
+    }
+    // When system notification payload exists, avoid showing a second local one.
+    if (message.notification != null) {
+      logInfo('ℹ️ Skipping local background notification (system handled)');
+      return;
+    }
+    if (!_shouldShowBackgroundLocalNotification(message)) {
+      logInfo(
+          'ℹ️ Background local notification disabled by single-path policy');
+      if (message.data['type']?.toString() == 'chat_message') {
+        // Keep offline fallback so incoming chat message appears in local cache.
+        await _saveMessageToLocalDB(message.data);
+      }
+      return;
+    }
     await _showNotification(message);
   }
 
@@ -647,6 +697,13 @@ class PushNotificationService {
   void dispose() {
     _authStateSubscription?.cancel();
     _authStateSubscription = null;
+    _tokenRefreshSubscription?.cancel();
+    _tokenRefreshSubscription = null;
+    _onMessageSubscription?.cancel();
+    _onMessageSubscription = null;
+    _onMessageOpenedSubscription?.cancel();
+    _onMessageOpenedSubscription = null;
+    _listenersBound = false;
   }
 
   String _filterLinksFromText(String text) {

@@ -16,6 +16,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 import '../theme/chat_theme.dart';
 import '../../../services/voice_player_service.dart';
 
@@ -23,19 +24,39 @@ import '../../../services/voice_player_service.dart';
 class VoiceMessageBubble extends StatefulWidget {
   final String messageId;
   final String audioUrl;
+  final String? localFilePath;
   final int? durationSeconds;
   final List<double>? waveformData;
   final bool isMe;
   final DateTime time;
+  final String? senderName;
+  final String? senderAvatarUrl;
+  final String? conversationId;
+  final String? conversationTitle;
+  final String? attachmentType;
+  final String? audioTitle;
+  final String? audioArtist;
+  final String? audioAlbum;
+  final String? caption;
 
   const VoiceMessageBubble({
     super.key,
     required this.messageId,
     required this.audioUrl,
+    this.localFilePath,
     this.durationSeconds,
     this.waveformData,
     required this.isMe,
     required this.time,
+    this.senderName,
+    this.senderAvatarUrl,
+    this.conversationId,
+    this.conversationTitle,
+    this.attachmentType,
+    this.audioTitle,
+    this.audioArtist,
+    this.audioAlbum,
+    this.caption,
   });
 
   @override
@@ -152,19 +173,23 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
       if (!mounted) return;
 
       final relevant = state.voiceId == widget.messageId;
+      final fallbackDuration = widget.durationSeconds != null
+          ? Duration(seconds: widget.durationSeconds!)
+          : Duration.zero;
 
       // Update play/position/duration/initialized based on current state
       setState(() {
         _isPlaying = relevant && state.isPlaying;
         _currentPosition = relevant ? state.position : Duration.zero;
-        _totalDuration = relevant
-            ? state.duration
-            : (widget.durationSeconds != null
-                ? Duration(seconds: widget.durationSeconds!)
-                : Duration.zero);
+        if (relevant && state.duration > Duration.zero) {
+          _totalDuration = state.duration;
+        } else if (_totalDuration == Duration.zero) {
+          _totalDuration = fallbackDuration;
+        }
         // if the service is preparing this voice id, consider it initialized/loading
         _isDownloading = relevant && state.isLoading;
         _isInitialized = relevant || _totalDuration > Duration.zero;
+        _error = relevant ? state.errorMessage : null;
       });
 
       if (_isPlaying) {
@@ -202,7 +227,20 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
 
   Future<void> _togglePlayPause() async {
     HapticFeedback.lightImpact();
-    await _playerService.playOrPause(widget.messageId, widget.audioUrl);
+    if (_error != null && mounted) {
+      setState(() => _error = null);
+    }
+    await _playerService.playOrPause(
+      widget.messageId,
+      widget.audioUrl,
+      localFilePath: widget.localFilePath,
+      title: _resolvePlaybackTitle(),
+      artist: _resolvePlaybackArtist(),
+      artUrl: widget.senderAvatarUrl,
+      conversationId: widget.conversationId,
+      conversationTitle: widget.conversationTitle,
+      attachmentType: widget.attachmentType,
+    );
   }
 
   void _seekToPosition(double progress) {
@@ -237,81 +275,143 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
   @override
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
+    final playbackTitle = _resolvePlaybackTitle();
+    final playbackArtist = _resolvePlaybackArtist();
+    final showTrackMeta =
+        (widget.attachmentType ?? '').toLowerCase() == 'audio' &&
+            (playbackTitle.isNotEmpty || playbackArtist.isNotEmpty);
 
     return Container(
       constraints: const BoxConstraints(maxWidth: 280, minWidth: 200),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      child: Row(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // دکمه پخش/دانلود
-          _buildPlayButton(theme),
-
-          const SizedBox(width: 8),
-
-          // Waveform و progress
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Waveform
-                _buildWaveform(theme),
-
-                const SizedBox(height: 4),
-
-                // زمان و سرعت
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      _formatDuration(
-                          _isPlaying ? _currentPosition : _totalDuration),
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: widget.isMe
-                            ? theme.myBubbleTextColor.withOpacity(0.7)
-                            : theme.secondaryTextColor,
-                      ),
+          if (showTrackMeta) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                playbackTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: widget.isMe
+                      ? theme.myBubbleTextColor
+                      : theme.otherBubbleTextColor,
+                ),
+              ),
+            ),
+            if (playbackArtist.isNotEmpty)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2, bottom: 6),
+                  child: Text(
+                    playbackArtist,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: widget.isMe
+                          ? theme.myBubbleTextColor.withOpacity(0.75)
+                          : theme.secondaryTextColor,
                     ),
-
-                    // دکمه سرعت
-                    if (_isInitialized)
-                      GestureDetector(
-                        onTap: _changePlaybackSpeed,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            // رنگ پس‌زمینه با کنتراست مناسب
+                  ),
+                ),
+              )
+            else
+              const SizedBox(height: 6),
+          ],
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildPlayButton(theme),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildWaveform(theme),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _formatDuration(
+                              _isPlaying ? _currentPosition : _totalDuration),
+                          style: TextStyle(
+                            fontSize: 11,
                             color: widget.isMe
-                                ? (theme.isDark
-                                    ? Colors.white.withOpacity(0.2)
-                                    : theme.sendButtonColor.withOpacity(0.15))
-                                : theme.sendButtonColor.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            '${_playbackSpeed}x',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: widget.isMe
-                                  ? (theme.isDark
-                                      ? Colors.white
-                                      : theme.sendButtonColor)
-                                  : theme.sendButtonColor,
-                            ),
+                                ? theme.myBubbleTextColor.withOpacity(0.7)
+                                : theme.secondaryTextColor,
                           ),
                         ),
-                      ),
+                        if (_isInitialized)
+                          GestureDetector(
+                            onTap: _changePlaybackSpeed,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: widget.isMe
+                                    ? (theme.isDark
+                                        ? Colors.white.withOpacity(0.2)
+                                        : theme.sendButtonColor
+                                            .withOpacity(0.15))
+                                    : theme.sendButtonColor.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                '${_playbackSpeed}x',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: widget.isMe
+                                      ? (theme.isDark
+                                          ? Colors.white
+                                          : theme.sendButtonColor)
+                                      : theme.sendButtonColor,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ],
+                ),
+              ),
+            ],
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(
+                  Icons.error_outline_rounded,
+                  size: 14,
+                  color: theme.errorColor,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    _error!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: theme.errorColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ],
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -472,6 +572,79 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
     final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
     final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
+  }
+
+  String _resolvePlaybackTitle() {
+    final normalizedType = (widget.attachmentType ?? '').toLowerCase();
+    final taggedTitle = widget.audioTitle?.trim();
+    if (taggedTitle != null && taggedTitle.isNotEmpty) {
+      return taggedTitle;
+    }
+    final caption = widget.caption?.trim();
+    if (caption != null && caption.isNotEmpty) {
+      return caption;
+    }
+    final derivedFromFile = _deriveTitleFromFilePath(widget.localFilePath);
+    if (derivedFromFile != null && derivedFromFile.isNotEmpty) {
+      return derivedFromFile;
+    }
+    return normalizedType == 'audio' ? 'Music' : 'Voice message';
+  }
+
+  String _resolvePlaybackArtist() {
+    final taggedArtist = widget.audioArtist?.trim();
+    if (taggedArtist != null && taggedArtist.isNotEmpty) {
+      return taggedArtist;
+    }
+
+    final parsedFromTitle = _deriveArtistFromTrackText(widget.audioTitle);
+    if (parsedFromTitle != null && parsedFromTitle.isNotEmpty) {
+      return parsedFromTitle;
+    }
+
+    final fromLocalName = _deriveArtistFromTrackText(
+        _deriveTitleFromFilePath(widget.localFilePath));
+    if (fromLocalName != null && fromLocalName.isNotEmpty) {
+      return fromLocalName;
+    }
+
+    final sender = widget.senderName?.trim();
+    if (sender != null && sender.isNotEmpty) {
+      return sender;
+    }
+
+    final conversation = widget.conversationTitle?.trim();
+    if (conversation != null && conversation.isNotEmpty) {
+      return conversation;
+    }
+
+    return 'Unknown artist';
+  }
+
+  String? _deriveArtistFromTrackText(String? raw) {
+    if (raw == null) return null;
+    final normalized = raw.trim();
+    if (normalized.isEmpty) return null;
+    final separators = <String>[' - ', ' – ', ' — ', ' | ', ' / ', '_'];
+    for (final sep in separators) {
+      final idx = normalized.indexOf(sep);
+      if (idx > 0) {
+        final candidate = normalized.substring(0, idx).trim();
+        if (candidate.isNotEmpty) return candidate;
+      }
+    }
+    return null;
+  }
+
+  String? _deriveTitleFromFilePath(String? filePath) {
+    if (filePath == null || filePath.isEmpty) return null;
+    final name = p.basename(filePath).trim();
+    if (name.isEmpty) return null;
+    final ext = p.extension(name);
+    final raw =
+        ext.isEmpty ? name : name.substring(0, name.length - ext.length);
+    final normalized = raw.replaceAll(RegExp(r'[_\-]+'), ' ').trim();
+    return normalized.isEmpty ? null : normalized;
   }
 }
 

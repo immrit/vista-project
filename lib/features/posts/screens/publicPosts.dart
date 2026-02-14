@@ -15,7 +15,6 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import '../../../utils/const.dart';
-import '../../../model/MusicModel.dart';
 import '../../../provider/MusicProvider.dart';
 // تغییر به فایل جدید
 import '../../../provider/personalized_feed_provider.dart';
@@ -32,8 +31,8 @@ import '../../../model/publicPostModel.dart';
 import '../../../provider/provider.dart';
 import '../../../services/smart_share_service.dart';
 import 'package:Vista/features/posts/widgets/standard_edit_post_dialog.dart';
+import 'package:Vista/features/posts/widgets/post_music_bubble.dart';
 import '../../../../features/posts/providers/post_upload_provider.dart';
-import 'MusicWaveform.dart';
 import 'notificationScreen.dart';
 import 'profileScreen.dart';
 import 'dart:async';
@@ -53,7 +52,6 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
   late StreamSubscription<ConnectivityResult> _connectivitySubscription;
   bool _isChecking = false;
   bool _mounted = true; // اضافه کردن متغیر برای کنترل وضعیت mount
-  final _pageStorageKey = const PageStorageKey('public_posts');
   final ScrollController _scrollController = ScrollController();
   Timer? _connectivityTimer; // Timer برای بررسی دوره‌ای وضعیت اتصال
 
@@ -171,9 +169,6 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final currentColor = ref.watch(themeProvider);
-    final getProfile = ref.watch(profileProvider);
-    final autoPlay = ref.watch(autoPlayProvider);
 
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
@@ -416,50 +411,58 @@ class _AllPostsPaginatedTab extends ConsumerWidget {
                 ref.read(personalizedFeedProvider.notifier).refreshPosts(),
             child: postsAsync.when(
               loading: () => _buildPostsSkeletonList(),
-              error: (error, stack) => Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.error_outline_rounded,
-                      size: 56,
-                      color: Colors.red,
-                    ),
-                    const SizedBox(height: 16),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Text(
-                        error.toString(),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey,
+              error: (error, stack) {
+                final friendly = error is FeedDisplayError
+                    ? error
+                    : const FeedDisplayError(
+                        message:
+                            'بارگذاری پست‌ها با خطا مواجه شد. لطفا دوباره تلاش کنید.',
+                      );
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.error_outline_rounded,
+                        size: 56,
+                        color: Colors.red,
+                      ),
+                      const SizedBox(height: 16),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Text(
+                          friendly.message,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        ref.refresh(personalizedFeedProvider);
-                        ref.refresh(fetchFollowingPostsProvider);
-                        ref.refresh(activeStoriesProvider);
-                        ref.refresh(commentNotifierProvider);
-                      },
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('تلاش مجدد'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 12,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          ref.invalidate(personalizedFeedProvider);
+                          ref.invalidate(fetchFollowingPostsProvider);
+                          ref.invalidate(activeStoriesProvider);
+                          ref.invalidate(commentNotifierProvider);
+                        },
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('تلاش مجدد'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 12,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
+                    ],
+                  ),
+                );
+              },
               data: (posts) {
                 if (posts.isEmpty) {
                   return const Center(
@@ -549,12 +552,12 @@ class _FollowingPostsTab extends ConsumerWidget {
                       color: Colors.red,
                     ),
                     const SizedBox(height: 16),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 24),
                       child: Text(
-                        error.toString(),
+                        'بارگذاری پست‌ها ممکن نشد. لطفا دوباره تلاش کنید.',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
                           color: Colors.grey,
                         ),
@@ -630,7 +633,6 @@ class _FollowingPostsTab extends ConsumerWidget {
 Widget buildPostSkeleton(BuildContext context) {
   final isDark = Theme.of(context).brightness == Brightness.dark;
   final shimmerBaseColor = isDark ? Colors.grey[800]! : Colors.grey[300]!;
-  final shimmerHighlightColor = isDark ? Colors.grey[700]! : Colors.grey[100]!;
 
   return Padding(
     padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
@@ -835,9 +837,8 @@ Widget _buildPostItem(
                   onComment: () =>
                       showCommentsBottomSheet(context, post.id, ref),
                   onVideoPositionTap: (position) {
-                    ref
-                        .read(videoPositionProvider(post.id ?? '').notifier)
-                        .state = position;
+                    ref.read(videoPositionProvider(post.id).notifier).state =
+                        position;
                   },
                   onTap: () {
                     final profile = ref.read(userProfileProvider(post.userId));
@@ -856,8 +857,7 @@ Widget _buildPostItem(
                           posts: videoPosts,
                           initialIndex: initialIndex < 0 ? 0 : initialIndex,
                           initialPositions: {
-                            post.id ?? '':
-                                ref.read(videoPositionProvider(post.id ?? '')),
+                            post.id: ref.read(videoPositionProvider(post.id)),
                           },
                         ),
                       ),
@@ -1159,57 +1159,37 @@ Widget _buildPostContent(PublicPostModel post, BuildContext context) {
         child: _buildPostContentText(post.content, context),
       ),
       if (post.musicUrl != null && post.musicUrl!.isNotEmpty)
-        Consumer(
-          builder: (context, ref, child) {
-            final isPlaying = ref.watch(isPlayingProvider);
-            final currentlyPlaying = ref.watch(currentlyPlayingProvider).value;
-            final isThisPlaying = currentlyPlaying?.musicUrl == post.musicUrl;
-            final position = ref.watch(musicPositionProvider);
-            final duration = ref.watch(musicDurationProvider);
-
-            return Container(
-                margin: const EdgeInsets.symmetric(vertical: 8.0),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? Colors.grey[900]
-                      : Colors.grey[100],
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: MusicWaveform(
-                  musicUrl: post.musicUrl!,
-                  isPlaying: isPlaying && isThisPlaying,
-                  position: position,
-                  duration: duration,
-                  onPlayPause: () {
-                    if (isPlaying && isThisPlaying) {
-                      ref.read(musicPlayerProvider.notifier).togglePlayPause();
-                    } else {
-                      final music = MusicModel(
-                        id: post.id,
-                        userId: post.userId,
-                        title: post.title ?? 'موزیک',
-                        artist: post.username,
-                        musicUrl: post.musicUrl!,
-                        createdAt: post.createdAt,
-                        username: post.username,
-                        avatarUrl: post.avatarUrl,
-                        isVerified: post.isVerified,
-                      );
-                      ref.read(musicPlayerProvider.notifier).playMusic(music);
-                    }
-                  },
-                ));
-          },
+        PostMusicBubble(
+          postId: post.id,
+          musicUrl: post.musicUrl!,
+          createdAt: post.createdAt,
+          title: _resolveMusicTitle(post),
+          artist: post.username,
+          avatarUrl: post.avatarUrl,
         ),
     ],
   );
+}
+
+String _resolveMusicTitle(PublicPostModel post) {
+  final direct = post.title?.trim() ?? '';
+  if (direct.isNotEmpty) return direct;
+
+  final url = post.musicUrl?.trim() ?? '';
+  if (url.isEmpty) return 'موزیک';
+
+  final uri = Uri.tryParse(url);
+  final lastSegment = (uri?.pathSegments.isNotEmpty ?? false)
+      ? uri!.pathSegments.last
+      : url.split('/').last;
+
+  final withoutExtension = lastSegment.replaceFirst(RegExp(r'\.[^.]+$'), '');
+  final normalized = withoutExtension
+      .replaceFirst(RegExp(r'^[^_]+_[0-9]+_'), '')
+      .replaceAll('_', ' ')
+      .trim();
+
+  return normalized.isEmpty ? 'موزیک' : normalized;
 }
 
 Widget _buildPostContentText(String content, BuildContext context) {
@@ -2771,6 +2751,17 @@ class UploadTaskItem extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final progress = task.progress.clamp(0.0, 1.0).toDouble();
+    final percent = (progress * 100).round();
+    final isUploading = task.status == 'uploading';
+    final isSuccess = task.status == 'success';
+    final isFailed = task.status == 'failed';
+    final statusColor = isFailed
+        ? Colors.red
+        : isSuccess
+            ? Colors.green
+            : Theme.of(context).colorScheme.primary;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(8),
@@ -2779,8 +2770,10 @@ class UploadTaskItem extends ConsumerWidget {
             ? Colors.black26
             : Colors.grey[100],
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: statusColor.withOpacity(0.25)),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             width: 40,
@@ -2794,7 +2787,7 @@ class UploadTaskItem extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(4),
                     child: Image.file(task.thumbnail!, fit: BoxFit.cover),
                   )
-                : const Icon(Icons.image, size: 20, color: Colors.grey),
+                : Icon(_kindIcon(), size: 20, color: Colors.grey[700]),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -2804,19 +2797,29 @@ class UploadTaskItem extends ConsumerWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      task.status == 'uploading'
-                          ? 'در حال ارسال...'
-                          : task.status == 'success'
-                              ? 'پست ارسال شد'
-                              : 'خطا در ارسال',
-                      style: const TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.bold),
+                    Expanded(
+                      child: Text(
+                        _statusText(),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: statusColor,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                    if (task.status == 'failed')
+                    Text(
+                      '$percent%',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: statusColor,
+                      ),
+                    ),
+                    if (isFailed || isSuccess)
                       IconButton(
                         icon: const Icon(Icons.close,
-                            size: 16, color: Colors.red),
+                            size: 16, color: Colors.grey),
                         onPressed: () {
                           ref
                               .read(postUploadProvider.notifier)
@@ -2825,12 +2828,38 @@ class UploadTaskItem extends ConsumerWidget {
                       )
                   ],
                 ),
-                if (task.status == 'uploading')
-                  const LinearProgressIndicator(minHeight: 2),
-                if (task.errorMessage != null)
+                const SizedBox(height: 4),
+                Text(
+                  _kindLabel(),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Theme.of(context).textTheme.bodySmall?.color,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 4,
+                  color: statusColor,
+                  backgroundColor: statusColor.withOpacity(0.15),
+                ),
+                if (task.errorMessage != null && task.errorMessage!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      task.errorMessage!,
+                      style: const TextStyle(fontSize: 10, color: Colors.red),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                if (isUploading)
                   Text(
-                    task.errorMessage!,
-                    style: const TextStyle(fontSize: 10, color: Colors.red),
+                    'در حال آپلود... $percent%',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Theme.of(context).textTheme.bodySmall?.color,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -2840,5 +2869,37 @@ class UploadTaskItem extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  String _statusText() {
+    if (task.status == 'success') return 'پست با موفقیت ارسال شد';
+    if (task.status == 'failed') return 'ارسال پست ناموفق بود';
+    return 'در حال ارسال پست';
+  }
+
+  String _kindLabel() {
+    switch (task.kind) {
+      case 'image':
+        return 'نوع پست: تصویر';
+      case 'video':
+        return 'نوع پست: ویدیو';
+      case 'music':
+        return 'نوع پست: موزیک';
+      default:
+        return 'نوع پست: متنی';
+    }
+  }
+
+  IconData _kindIcon() {
+    switch (task.kind) {
+      case 'image':
+        return Icons.image_outlined;
+      case 'video':
+        return Icons.videocam_outlined;
+      case 'music':
+        return Icons.music_note_rounded;
+      default:
+        return Icons.subject_rounded;
+    }
   }
 }

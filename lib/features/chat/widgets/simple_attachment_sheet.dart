@@ -8,6 +8,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 class SimpleAttachmentSheet extends StatelessWidget {
+  static const Color _galleryLightColor = Color(0xFF7C3AED);
+  static const Color _galleryDarkColor = Color(0xFFC4B5FD);
+  static const Color _cameraLightColor = Color(0xFF0EA5E9);
+  static const Color _cameraDarkColor = Color(0xFF7DD3FC);
+  static const Color _fileLightColor = Color(0xFFF97316);
+  static const Color _fileDarkColor = Color(0xFFFDBA74);
+
   /// تابع فراخوانی‌شده هنگام انتخاب گالری
   final VoidCallback onGalleryTap;
 
@@ -26,6 +33,11 @@ class SimpleAttachmentSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final galleryColor = isDark ? _galleryDarkColor : _galleryLightColor;
+    final cameraColor = isDark ? _cameraDarkColor : _cameraLightColor;
+    final fileColor = isDark ? _fileDarkColor : _fileLightColor;
+
     return Container(
       padding: EdgeInsets.only(
         top: 20.h,
@@ -34,7 +46,9 @@ class SimpleAttachmentSheet extends StatelessWidget {
         bottom: MediaQuery.of(context).viewInsets.bottom + 20.h,
       ),
       decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
+        color: isDark
+            ? Theme.of(context).scaffoldBackgroundColor
+            : const Color(0xFFFCFDFF),
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(20.r),
         ),
@@ -66,7 +80,7 @@ class SimpleAttachmentSheet extends StatelessWidget {
                 context: context,
                 icon: Icons.image,
                 label: 'گالری',
-                color: Colors.purpleAccent,
+                color: galleryColor,
                 onTap: () {
                   Navigator.pop(context);
                   onGalleryTap();
@@ -78,7 +92,7 @@ class SimpleAttachmentSheet extends StatelessWidget {
                 context: context,
                 icon: Icons.camera_alt,
                 label: 'دوربین',
-                color: Colors.blueAccent,
+                color: cameraColor,
                 onTap: () {
                   Navigator.pop(context);
                   onCameraTap();
@@ -90,7 +104,7 @@ class SimpleAttachmentSheet extends StatelessWidget {
                 context: context,
                 icon: Icons.insert_drive_file,
                 label: 'فایل',
-                color: Colors.orangeAccent,
+                color: fileColor,
                 onTap: () {
                   Navigator.pop(context);
                   onFileTap();

@@ -1,14 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'vista_node_service.dart';
 
 class BazaarPaymentService {
   static const platform = MethodChannel('ir.coffevista.vista/bazaar_native');
-
-  static const String _verifyApiUrl =
-      'https://function-vista.chbk.dev/api/payment/bazaar-verify';
 
   bool _isConnected = false;
 
@@ -76,31 +72,13 @@ class BazaarPaymentService {
     if (user == null) return {'success': false, 'message': 'کاربر لاگین نیست.'};
 
     try {
-      print("🚀 [Server] Verifying for $packageName...");
+      final data = await VistaNodeService.verifyBazaarPurchase(
+        purchaseToken: token,
+        productId: productId,
+        packageName: packageName,
+      );
 
-      final response = await http
-          .post(
-            Uri.parse(_verifyApiUrl),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization':
-                  'Bearer ${Supabase.instance.client.auth.currentSession?.accessToken}',
-            },
-            body: jsonEncode({
-              'purchase_token': token,
-              'product_id': productId,
-              'package_name': packageName, // <--- ارسال پکیج نیم داینامیک
-              'user_id': user.id,
-            }),
-          )
-          .timeout(const Duration(seconds: 25));
-
-      print("📥 [Server Response] Code: ${response.statusCode}");
-      print("📥 [Server Response] Body: ${response.body}");
-
-      final data = jsonDecode(response.body);
-
-      if (response.statusCode == 200 && data['success'] == true) {
+      if (data['success'] == true) {
         return {'success': true, 'message': 'اشتراک ویژه فعال شد! 🎉'};
       } else {
         return {
@@ -109,7 +87,10 @@ class BazaarPaymentService {
         };
       }
     } catch (e) {
-      return {'success': false, 'message': 'خطا در ارتباط با سرور.'};
+      return {
+        'success': false,
+        'message': 'در تایید خرید خطا رخ داد. لطفا دوباره تلاش کنید.'
+      };
     }
   }
 }

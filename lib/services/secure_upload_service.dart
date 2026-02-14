@@ -1,8 +1,7 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
-import 'package:aws_s3_api/s3-2006-03-01.dart';
+import 'package:aws_s3_api/s3-2006-03-01.dart' as aws;
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -12,7 +11,7 @@ import 'session_manager_service_v2.dart';
 
 class SecureUploadConfig {
   static const bool enableSignedUploads =
-      bool.fromEnvironment('ENABLE_SIGNED_UPLOADS', defaultValue: false);
+      bool.fromEnvironment('ENABLE_SIGNED_UPLOADS', defaultValue: true);
 
   static bool get allowLegacyPublicUploads {
     return const bool.fromEnvironment('ALLOW_LEGACY_PUBLIC_UPLOADS',
@@ -58,6 +57,47 @@ class SignedDeleteResponse {
   });
 }
 
+enum SecureUploadStage {
+  sign,
+  uploadSigned,
+  uploadLegacy,
+  urlResolve,
+}
+
+class SecureUploadException implements Exception {
+  final String userMessage;
+  final SecureUploadStage stage;
+  final String code;
+  final Object? cause;
+
+  const SecureUploadException({
+    required this.userMessage,
+    required this.stage,
+    required this.code,
+    this.cause,
+  });
+
+  @override
+  String toString() {
+    final technical =
+        cause == null ? '' : ' cause=${cause.runtimeType}: $cause';
+    return '$userMessage | technical: stage=${_stageName(stage)} code=$code$technical';
+  }
+
+  static String _stageName(SecureUploadStage stage) {
+    switch (stage) {
+      case SecureUploadStage.sign:
+        return 'sign';
+      case SecureUploadStage.uploadSigned:
+        return 'upload_signed';
+      case SecureUploadStage.uploadLegacy:
+        return 'upload_legacy';
+      case SecureUploadStage.urlResolve:
+        return 'url_resolve';
+    }
+  }
+}
+
 class SignedUrlService {
   static const String _primaryBaseUrl = String.fromEnvironment(
     'SIGNED_UPLOADS_BASE_URL',
@@ -71,10 +111,14 @@ class SignedUrlService {
   static const int _maxRetries = 2;
 
   static bool _isRetryable(DioException e) {
+    if (_isTlsHandshakeIssue(e)) {
+      return true;
+    }
     return e.type == DioExceptionType.connectionTimeout ||
         e.type == DioExceptionType.sendTimeout ||
         e.type == DioExceptionType.receiveTimeout ||
-        e.type == DioExceptionType.connectionError;
+        e.type == DioExceptionType.connectionError ||
+        e.type == DioExceptionType.badCertificate;
   }
 
   static bool _shouldFallback(DioException e) {
@@ -82,6 +126,19 @@ class SignedUrlService {
     if (_isRetryable(e)) return true;
     final status = e.response?.statusCode ?? 0;
     return status == 404 || status == 405 || status == 410 || status >= 500;
+  }
+
+  static bool _isTlsHandshakeIssue(DioException e) {
+    if (e.error is HandshakeException || e.error is TlsException) {
+      return true;
+    }
+
+    final raw = '${e.message ?? ''} ${e.error ?? ''}'.toLowerCase();
+    return raw.contains('handshakeexception') ||
+        raw.contains('connection terminated during handshake') ||
+        raw.contains('ssl') ||
+        raw.contains('tls') ||
+        raw.contains('certificate');
   }
 
   static void _logDioError(DioException e, String url) {
@@ -132,16 +189,51 @@ class SignedUrlService {
     String path,
     Map<String, dynamic> payload,
   ) async {
-    try {
-      return await _postWithRetryOnBase(_primaryBaseUrl, path, payload);
-    } on DioException catch (e) {
-      if (_shouldFallback(e)) {
-        logInfo(
-            'Signed URL request failed on primary, trying fallback base URL.');
-        return await _postWithRetryOnBase(_fallbackBaseUrl, path, payload);
+    final baseCandidates = <String>[];
+    final seen = <String>{};
+    void addCandidate(String baseUrl) {
+      if (baseUrl.isEmpty) return;
+      if (seen.add(baseUrl)) {
+        baseCandidates.add(baseUrl);
       }
-      rethrow;
     }
+
+    if (kReleaseMode) {
+      // .app is typically more stable on some Android release network stacks.
+      addCandidate(_fallbackBaseUrl);
+    }
+    addCandidate(_primaryBaseUrl);
+    addCandidate(_fallbackBaseUrl);
+
+    DioException? lastDioError;
+    for (var i = 0; i < baseCandidates.length; i++) {
+      final baseUrl = baseCandidates[i];
+      try {
+        return await _postWithRetryOnBase(baseUrl, path, payload);
+      } on DioException catch (e, st) {
+        lastDioError = e;
+        final hasNext = i < baseCandidates.length - 1;
+        final canFallback = hasNext && _shouldFallback(e);
+        logWarning(
+          'Signed URL request failed on $baseUrl (type=${e.type}, fallback=$canFallback)',
+          error: e,
+          stackTrace: st,
+        );
+        if (!canFallback) {
+          rethrow;
+        }
+      }
+    }
+
+    if (lastDioError != null) {
+      throw lastDioError;
+    }
+
+    throw const SecureUploadException(
+      userMessage: 'Could not reach signed upload service.',
+      stage: SecureUploadStage.sign,
+      code: 'SIGNED_URL_SERVICE_UNREACHABLE',
+    );
   }
 
   static Future<SignedUrlResponse> createUploadUrl({
@@ -236,7 +328,8 @@ class SecureUploadService {
   static const String _defaultBucketName =
       String.fromEnvironment('ARVAN_BUCKET_NAME', defaultValue: 'coffevista');
   static const String _cdnBaseUrl = 'https://storage.389346.ir.cdn.ir';
-  static const Duration _uploadTimeout = Duration(seconds: 120);
+  static const Duration _uploadTimeout = Duration(minutes: 10);
+  static bool _modeLoggedOnce = false;
 
   static String? _tryResolveBucket(String? bucket) {
     if (bucket != null && bucket.isNotEmpty) {
@@ -260,73 +353,82 @@ class SecureUploadService {
     String? bucket,
   }) async {
     final bucketName = _tryResolveBucket(bucket);
+    _logRuntimeModeOnce(bucketName: bucketName);
+    Object? signedFailure;
+    StackTrace? signedFailureStack;
+    final canUseLegacy = _canUseLegacyFallback();
 
     if (SecureUploadConfig.enableSignedUploads) {
       try {
-        final signed = await SignedUrlService.createUploadUrl(
+        return await _uploadBytesSigned(
+          bytes: bytes,
           objectKey: objectKey,
           contentType: contentType,
-          contentLength: bytes.length,
-          bucket: bucketName,
+          bucketName: bucketName,
+          onProgress: onProgress,
         );
-
-        final dio = Dio(
-          BaseOptions(
-            connectTimeout: SignedUrlService._timeout,
-            sendTimeout: _uploadTimeout,
-            receiveTimeout: SignedUrlService._timeout,
-          ),
+      } catch (e, st) {
+        signedFailure = _wrapSignedFailure(
+          e,
+          stage: e is SecureUploadException
+              ? e.stage
+              : SecureUploadStage.uploadSigned,
+          code: e is SecureUploadException ? e.code : 'SIGNED_UPLOAD_FAILED',
+          userMessage: 'Upload via signed URL failed.',
         );
-        await dio.put(
-          signed.uploadUrl,
-          data: bytes,
-          options: Options(
-            headers: {
-              'Content-Type': contentType,
-              ...signed.headers,
-            },
-          ),
-          onSendProgress: (sent, total) {
-            if (onProgress != null && total > 0) {
-              onProgress(sent / total);
-            }
-          },
+        signedFailureStack = st;
+        logError(
+          'Signed upload failed [mode=signed key=$objectKey bucket=${bucketName ?? "n/a"}]',
+          error: signedFailure,
+          stackTrace: st,
         );
-
-        final url = signed.fileUrl ??
-            (bucketName != null
-                ? _buildPublicUrl(bucketName, objectKey)
-                : null);
-        if (url == null || url.isEmpty) {
-          throw Exception(
-              'Signed upload did not return file URL and bucket is not configured.');
+        if (!canUseLegacy) {
+          Error.throwWithStackTrace(signedFailure, st);
         }
-        return UploadResult(
-          url: url,
-          objectKey: objectKey,
-          isPublic: signed.isPublic,
+      }
+    }
+
+    if (canUseLegacy) {
+      try {
+        if (bucketName == null || bucketName.isEmpty) {
+          throw const SecureUploadException(
+            userMessage: 'Legacy upload requires a bucket name.',
+            stage: SecureUploadStage.uploadLegacy,
+            code: 'LEGACY_BUCKET_MISSING',
+          );
+        }
+        logInfo(
+          'Using legacy public upload fallback [key=$objectKey bucket=$bucketName]',
         );
-      } catch (e) {
-        logInfo('Signed upload failed: $e');
-        if (!SecureUploadConfig.allowLegacyPublicUploads) rethrow;
+        return _legacyUploadBytes(
+          bytes: bytes,
+          objectKey: objectKey,
+          contentType: contentType,
+          bucket: bucketName,
+          onProgress: onProgress,
+        );
+      } catch (legacyError, legacyStack) {
+        logError(
+          'Legacy upload fallback failed [mode=legacy stage=upload_legacy key=$objectKey]',
+          error: legacyError,
+          stackTrace: legacyStack,
+        );
+        if (signedFailure != null && signedFailureStack != null) {
+          Error.throwWithStackTrace(signedFailure, signedFailureStack);
+        }
+        rethrow;
       }
     }
 
-    if (SecureUploadConfig.allowLegacyPublicUploads) {
-      if (bucketName == null || bucketName.isEmpty) {
-        throw Exception(
-            'Legacy upload requires AWS bucket name. Set AWS_BUCKET_NAME or disable legacy uploads.');
-      }
-      return _legacyUploadBytes(
-        bytes: bytes,
-        objectKey: objectKey,
-        contentType: contentType,
-        bucket: bucketName ?? SecureConfig.awsBucketName,
-        onProgress: onProgress,
-      );
+    if (signedFailure != null && signedFailureStack != null) {
+      Error.throwWithStackTrace(signedFailure, signedFailureStack);
     }
 
-    throw Exception('Secure upload not configured');
+    throw const SecureUploadException(
+      userMessage: 'Upload is not configured for this build.',
+      stage: SecureUploadStage.uploadLegacy,
+      code: 'UPLOAD_NOT_CONFIGURED',
+    );
   }
 
   static Future<UploadResult> uploadFile({
@@ -337,76 +439,269 @@ class SecureUploadService {
     String? bucket,
   }) async {
     final bucketName = _tryResolveBucket(bucket);
+    _logRuntimeModeOnce(bucketName: bucketName);
+    Object? signedFailure;
+    StackTrace? signedFailureStack;
+    final canUseLegacy = _canUseLegacyFallback();
 
     if (SecureUploadConfig.enableSignedUploads) {
       try {
-        final length = await file.length();
-        final signed = await SignedUrlService.createUploadUrl(
+        return await _uploadFileSigned(
+          file: file,
           objectKey: objectKey,
           contentType: contentType,
-          contentLength: length,
-          bucket: bucketName,
+          bucketName: bucketName,
+          onProgress: onProgress,
         );
-
-        final dio = Dio(
-          BaseOptions(
-            connectTimeout: SignedUrlService._timeout,
-            sendTimeout: _uploadTimeout,
-            receiveTimeout: SignedUrlService._timeout,
-          ),
+      } catch (e, st) {
+        signedFailure = _wrapSignedFailure(
+          e,
+          stage: e is SecureUploadException
+              ? e.stage
+              : SecureUploadStage.uploadSigned,
+          code: e is SecureUploadException ? e.code : 'SIGNED_UPLOAD_FAILED',
+          userMessage: 'Upload via signed URL failed.',
         );
-        await dio.put(
-          signed.uploadUrl,
-          data: file.openRead(),
-          options: Options(
-            headers: {
-              'Content-Type': contentType,
-              'Content-Length': length.toString(),
-              ...signed.headers,
-            },
-          ),
-          onSendProgress: (sent, total) {
-            if (onProgress != null && total > 0) {
-              onProgress(sent / total);
-            }
-          },
+        signedFailureStack = st;
+        logError(
+          'Signed file upload failed [mode=signed key=$objectKey bucket=${bucketName ?? "n/a"}]',
+          error: signedFailure,
+          stackTrace: st,
         );
-
-        final url = signed.fileUrl ??
-            (bucketName != null
-                ? _buildPublicUrl(bucketName, objectKey)
-                : null);
-        if (url == null || url.isEmpty) {
-          throw Exception(
-              'Signed upload did not return file URL and bucket is not configured.');
+        if (!canUseLegacy) {
+          Error.throwWithStackTrace(signedFailure, st);
         }
-        return UploadResult(
-          url: url,
-          objectKey: objectKey,
-          isPublic: signed.isPublic,
-        );
-      } catch (e) {
-        logInfo('Signed file upload failed: $e');
-        if (!SecureUploadConfig.allowLegacyPublicUploads) rethrow;
       }
     }
 
-    if (SecureUploadConfig.allowLegacyPublicUploads) {
-      if (bucketName == null || bucketName.isEmpty) {
-        throw Exception(
-            'Legacy upload requires AWS bucket name. Set AWS_BUCKET_NAME or disable legacy uploads.');
+    if (canUseLegacy) {
+      try {
+        if (bucketName == null || bucketName.isEmpty) {
+          throw const SecureUploadException(
+            userMessage: 'Legacy upload requires a bucket name.',
+            stage: SecureUploadStage.uploadLegacy,
+            code: 'LEGACY_BUCKET_MISSING',
+          );
+        }
+        logInfo(
+          'Using legacy public upload fallback [key=$objectKey bucket=$bucketName]',
+        );
+        // استفاده از stream به‌جای load کامل فایل به RAM
+        final bytes = await file.readAsBytes();
+        return _legacyUploadBytes(
+          bytes: bytes,
+          objectKey: objectKey,
+          contentType: contentType,
+          bucket: bucketName,
+          onProgress: onProgress,
+        );
+      } catch (legacyError, legacyStack) {
+        logError(
+          'Legacy file upload fallback failed [mode=legacy stage=upload_legacy key=$objectKey]',
+          error: legacyError,
+          stackTrace: legacyStack,
+        );
+        if (signedFailure != null && signedFailureStack != null) {
+          Error.throwWithStackTrace(signedFailure, signedFailureStack);
+        }
+        rethrow;
       }
-      final bytes = await file.readAsBytes();
-      return _legacyUploadBytes(
-        bytes: bytes,
+    }
+
+    if (signedFailure != null && signedFailureStack != null) {
+      Error.throwWithStackTrace(signedFailure, signedFailureStack);
+    }
+
+    throw const SecureUploadException(
+      userMessage: 'Upload is not configured for this build.',
+      stage: SecureUploadStage.uploadLegacy,
+      code: 'UPLOAD_NOT_CONFIGURED',
+    );
+  }
+
+  static bool _canUseLegacyFallback() {
+    if (!SecureUploadConfig.allowLegacyPublicUploads) {
+      return false;
+    }
+    return SecureConfig.isConfigured;
+  }
+
+  static SecureUploadException _wrapSignedFailure(
+    Object error, {
+    required SecureUploadStage stage,
+    required String code,
+    required String userMessage,
+  }) {
+    if (error is SecureUploadException) {
+      return error;
+    }
+    return SecureUploadException(
+      userMessage: userMessage,
+      stage: stage,
+      code: code,
+      cause: error,
+    );
+  }
+
+  static Future<UploadResult> _uploadBytesSigned({
+    required Uint8List bytes,
+    required String objectKey,
+    required String contentType,
+    required String? bucketName,
+    void Function(double progress)? onProgress,
+  }) async {
+    SignedUrlResponse signed;
+    try {
+      signed = await SignedUrlService.createUploadUrl(
         objectKey: objectKey,
         contentType: contentType,
-        bucket: bucketName ?? SecureConfig.awsBucketName,
-        onProgress: onProgress,
+        contentLength: bytes.length,
+        bucket: bucketName,
+      );
+    } catch (e) {
+      throw SecureUploadException(
+        userMessage: 'Could not get signed upload URL.',
+        stage: SecureUploadStage.sign,
+        code: 'SIGNED_URL_REQUEST_FAILED',
+        cause: e,
       );
     }
 
-    throw Exception('Secure upload not configured');
+    try {
+      final dio = Dio(
+        BaseOptions(
+          connectTimeout: SignedUrlService._timeout,
+          sendTimeout: _uploadTimeout,
+          receiveTimeout: SignedUrlService._timeout,
+        ),
+      );
+      await dio.put(
+        signed.uploadUrl,
+        data: bytes,
+        options: Options(
+          headers: {
+            'Content-Type': contentType,
+            ...signed.headers,
+          },
+        ),
+        onSendProgress: (sent, total) {
+          if (onProgress != null && total > 0) {
+            onProgress(sent / total);
+          }
+        },
+      );
+    } catch (e) {
+      throw SecureUploadException(
+        userMessage: 'Signed upload failed while uploading bytes.',
+        stage: SecureUploadStage.uploadSigned,
+        code: 'SIGNED_UPLOAD_FAILED',
+        cause: e,
+      );
+    }
+
+    final url = signed.fileUrl ??
+        (bucketName != null ? _buildPublicUrl(bucketName, objectKey) : null);
+    if (url == null || url.isEmpty) {
+      throw const SecureUploadException(
+        userMessage: 'Upload URL could not be resolved.',
+        stage: SecureUploadStage.urlResolve,
+        code: 'FILE_URL_MISSING',
+      );
+    }
+
+    return UploadResult(
+      url: url,
+      objectKey: objectKey,
+      isPublic: signed.isPublic,
+    );
+  }
+
+  static Future<UploadResult> _uploadFileSigned({
+    required File file,
+    required String objectKey,
+    required String contentType,
+    required String? bucketName,
+    void Function(double progress)? onProgress,
+  }) async {
+    SignedUrlResponse signed;
+    final length = await file.length();
+
+    try {
+      signed = await SignedUrlService.createUploadUrl(
+        objectKey: objectKey,
+        contentType: contentType,
+        contentLength: length,
+        bucket: bucketName,
+      );
+    } catch (e) {
+      throw SecureUploadException(
+        userMessage: 'Could not get signed upload URL.',
+        stage: SecureUploadStage.sign,
+        code: 'SIGNED_URL_REQUEST_FAILED',
+        cause: e,
+      );
+    }
+
+    try {
+      final dio = Dio(
+        BaseOptions(
+          connectTimeout: SignedUrlService._timeout,
+          sendTimeout: _uploadTimeout,
+          receiveTimeout: SignedUrlService._timeout,
+        ),
+      );
+      await dio.put(
+        signed.uploadUrl,
+        data: file.openRead(),
+        options: Options(
+          headers: {
+            'Content-Type': contentType,
+            'Content-Length': length.toString(),
+            ...signed.headers,
+          },
+        ),
+        onSendProgress: (sent, total) {
+          if (onProgress != null && total > 0) {
+            onProgress(sent / total);
+          }
+        },
+      );
+    } catch (e) {
+      throw SecureUploadException(
+        userMessage: 'Signed upload failed while uploading file.',
+        stage: SecureUploadStage.uploadSigned,
+        code: 'SIGNED_UPLOAD_FAILED',
+        cause: e,
+      );
+    }
+
+    final url = signed.fileUrl ??
+        (bucketName != null ? _buildPublicUrl(bucketName, objectKey) : null);
+    if (url == null || url.isEmpty) {
+      throw const SecureUploadException(
+        userMessage: 'Upload URL could not be resolved.',
+        stage: SecureUploadStage.urlResolve,
+        code: 'FILE_URL_MISSING',
+      );
+    }
+
+    return UploadResult(
+      url: url,
+      objectKey: objectKey,
+      isPublic: signed.isPublic,
+    );
+  }
+
+  static void _logRuntimeModeOnce({required String? bucketName}) {
+    if (_modeLoggedOnce) return;
+    _modeLoggedOnce = true;
+    final secureConfigConfigured = SecureConfig.isConfigured;
+    logInfo(
+      'SecureUpload runtime mode: enableSignedUploads=${SecureUploadConfig.enableSignedUploads}, '
+      'allowLegacyPublicUploads=${SecureUploadConfig.allowLegacyPublicUploads}, '
+      'bucketResolved=${(bucketName ?? "").isNotEmpty}, '
+      'secureConfigConfigured=$secureConfigConfigured',
+    );
   }
 
   static Future<bool> deleteObject({
@@ -501,7 +796,11 @@ class SecureUploadService {
     void Function(double progress)? onProgress,
   }) async {
     if (!SecureConfig.isConfigured) {
-      throw Exception('AWS credentials not properly configured.');
+      throw const SecureUploadException(
+        userMessage: 'Legacy upload credentials are missing.',
+        stage: SecureUploadStage.uploadLegacy,
+        code: 'LEGACY_CREDENTIALS_MISSING',
+      );
     }
 
     final s3 = _buildS3Client();
@@ -515,7 +814,7 @@ class SecureUploadService {
       key: objectKey,
       body: bytes,
       contentType: contentType,
-      acl: ObjectCannedACL.publicRead, // legacy compatibility
+      acl: aws.ObjectCannedACL.publicRead, // legacy compatibility
     );
 
     if (onProgress != null) {
@@ -529,10 +828,10 @@ class SecureUploadService {
     );
   }
 
-  static S3 _buildS3Client() {
-    return S3(
+  static aws.S3 _buildS3Client() {
+    return aws.S3(
       region: SecureConfig.awsRegion,
-      credentials: AwsClientCredentials(
+      credentials: aws.AwsClientCredentials(
         accessKey: SecureConfig.awsAccessKey,
         secretKey: SecureConfig.awsSecretKey,
       ),

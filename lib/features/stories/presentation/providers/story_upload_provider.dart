@@ -59,7 +59,7 @@ class StoryUploadNotifier extends StateNotifier<StoryUploadState> {
               isUploading: false, isSuccess: true, progress: 1.0);
 
           // Refresh active stories so the new story appears immediately
-          _ref.refresh(activeStoriesProvider);
+          _ref.invalidate(activeStoriesProvider);
         },
       );
     } catch (e) {

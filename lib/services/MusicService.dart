@@ -13,9 +13,7 @@ class MusicService {
     try {
       final String fileName =
           '${DateTime.now().millisecondsSinceEpoch}_${basename(file.path)}';
-      final response = await supabase.storage
-          .from(_bucketName)
-          .upload('public/$fileName', file);
+      await supabase.storage.from(_bucketName).upload('public/$fileName', file);
 
       final String musicUrl =
           supabase.storage.from(_bucketName).getPublicUrl('public/$fileName');
@@ -31,7 +29,7 @@ class MusicService {
     try {
       final String fileName =
           '${DateTime.now().millisecondsSinceEpoch}_${basename(file.path)}';
-      final response = await supabase.storage
+      await supabase.storage
           .from(_coverBucketName)
           .upload('public/$fileName', file);
 

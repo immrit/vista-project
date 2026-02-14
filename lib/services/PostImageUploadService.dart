@@ -9,7 +9,6 @@ import 'user_friendly_error_handler.dart';
 import '../utils/const.dart';
 
 class PostImageUploadService {
-
   static Future<File?> convertPngToJpeg(File file) async {
     final img = await FlutterImageCompress.compressWithFile(
       file.absolute.path,
@@ -30,7 +29,10 @@ class PostImageUploadService {
     return convertedFile;
   }
 
-  static Future<String?> uploadPostImage(File file) async {
+  static Future<String?> uploadPostImage(
+    File file, {
+    void Function(double progress)? onProgress,
+  }) async {
     File? compressedFile;
     try {
       if (!await file.exists()) {
@@ -60,6 +62,7 @@ class PostImageUploadService {
         bytes: fileBytes,
         objectKey: fileName,
         contentType: contentType,
+        onProgress: onProgress,
       );
 
       final uploadedUrl = uploadResult.url;
@@ -82,7 +85,10 @@ class PostImageUploadService {
 
   // متد مخصوص آپلود تصویر در وب (بدون استفاده از File)
   static Future<String?> uploadPostImageWeb(
-      Uint8List fileBytes, String fileName) async {
+    Uint8List fileBytes,
+    String fileName, {
+    void Function(double progress)? onProgress,
+  }) async {
     try {
       // همیشه با نوع 'image/jpeg' کار می‌کنیم
       const contentType = 'image/jpeg';
@@ -95,6 +101,7 @@ class PostImageUploadService {
         bytes: fileBytes,
         objectKey: s3FileName,
         contentType: contentType,
+        onProgress: onProgress,
       );
 
       final uploadedUrl = uploadResult.url;
@@ -241,7 +248,10 @@ class PostImageUploadService {
     await storyCache.emptyCache();
   }
 
-  static Future<String> uploadMusicFile(File file) async {
+  static Future<String> uploadMusicFile(
+    File file, {
+    void Function(double progress)? onProgress,
+  }) async {
     try {
       // بررسی سایز فایل
       final fileSize = await file.length();
@@ -256,13 +266,15 @@ class PostImageUploadService {
         throw Exception('فقط فایل‌های mp3 و m4a پشتیبانی می‌شوند');
       }
 
-      // ساخت نام منحصر به فرد برای فایل
+      final originalBaseName = path.basenameWithoutExtension(file.path);
+      final safeBaseName = _sanitizeMusicFileName(originalBaseName);
       final fileName = 'music/${supabase.auth.currentUser!.id}'
-          '_${DateTime.now().millisecondsSinceEpoch}$extension';
+          '_${DateTime.now().millisecondsSinceEpoch}_$safeBaseName$extension';
       final uploadResult = await SecureUploadService.uploadFile(
         file: file,
         objectKey: fileName,
         contentType: _getAudioContentType(extension),
+        onProgress: onProgress,
       );
 
       return uploadResult.url;
@@ -277,6 +289,23 @@ class PostImageUploadService {
     return ['.mp3', '.m4a'].contains(extension);
   }
 
+  static String _sanitizeMusicFileName(String input) {
+    var output = input.trim();
+    if (output.isEmpty) return 'track';
+
+    output = output.replaceAll(RegExp(r'[^\w\-\s]'), '');
+    output = output.replaceAll(RegExp(r'\s+'), '_');
+    output = output.replaceAll(RegExp(r'_+'), '_');
+    output = output.replaceAll(RegExp(r'^_+|_+$'), '');
+
+    if (output.isEmpty) return 'track';
+    if (output.length > 64) {
+      output = output.substring(0, 64);
+      output = output.replaceAll(RegExp(r'_+$'), '');
+    }
+    return output.toLowerCase();
+  }
+
   static String _getAudioContentType(String extension) {
     switch (extension) {
       case '.mp3':
@@ -288,7 +317,10 @@ class PostImageUploadService {
     }
   }
 
-  static Future<String?> uploadVideoFile(File file) async {
+  static Future<String?> uploadVideoFile(
+    File file, {
+    void Function(double progress)? onProgress,
+  }) async {
     try {
       // بررسی سایز فایل (حداکثر ۱۰ مگابایت)
       final fileSize = await file.length();
@@ -310,6 +342,7 @@ class PostImageUploadService {
         file: file,
         objectKey: fileName,
         contentType: _getVideoContentType(extension),
+        onProgress: onProgress,
       );
 
       return uploadResult.url;
@@ -321,7 +354,10 @@ class PostImageUploadService {
   }
 
   static Future<String?> uploadVideoFileWeb(
-      Uint8List fileBytes, String fileName) async {
+    Uint8List fileBytes,
+    String fileName, {
+    void Function(double progress)? onProgress,
+  }) async {
     try {
       final extension = path.extension(fileName).toLowerCase();
       if (!_isValidVideoFormat(extension)) {
@@ -342,6 +378,7 @@ class PostImageUploadService {
         bytes: fileBytes,
         objectKey: s3FileName,
         contentType: _getVideoContentType(extension),
+        onProgress: onProgress,
       );
 
       final url = uploadResult.url;
@@ -370,6 +407,3 @@ class PostImageUploadService {
     }
   }
 }
-
-
-

@@ -303,7 +303,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
                 postId: post.id,
                 imageUrl: post.imageUrl,
                 content: post.content,
-                username: post.username ?? '',
+                username: post.username,
               )),
         ],
       ],
@@ -358,7 +358,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
           postId: post.id,
           imageUrl: post.imageUrl,
           content: post.content,
-          username: post.username ?? '',
+          username: post.username,
         );
       },
     );

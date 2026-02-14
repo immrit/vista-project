@@ -169,8 +169,6 @@ class StoryHeader extends StatelessWidget {
       case StoryVerificationType.black:
         return Colors.white; // Or Colors.grey[300] for dark theme
       case StoryVerificationType.none:
-      default:
-        // Fallback to legacy logic
         return user.isPremium ? Colors.amber : Colors.blue;
     }
   }

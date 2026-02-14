@@ -75,7 +75,7 @@ class AnimatedChatInput extends StatefulWidget {
 }
 
 class _AnimatedChatInputState extends State<AnimatedChatInput>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _sendButtonController;
   late Animation<double> _sendButtonScale;
   late Animation<double> _sendButtonRotation;
@@ -100,9 +100,15 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   double _lastReportedHeight = 0.0;
   bool _heightReportScheduled = false;
 
+  // ── Keyboard animation tracking ──
+  bool _isKeyboardAnimating = false;
+  double _lastKeyboardHeight = 0.0;
+  Timer? _keyboardAnimTimer;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _setupAnimations();
     _hasText = widget.controller.text.isNotEmpty;
     widget.controller.addListener(_onTextChanged);
@@ -239,7 +245,29 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   }
 
   @override
+  void didChangeMetrics() {
+    // تشخیص تغییر ارتفاع کیبورد → فعال‌سازی حالت سبک (بدون BackdropFilter)
+    final newHeight = WidgetsBinding
+            .instance.platformDispatcher.views.first.viewInsets.bottom /
+        WidgetsBinding.instance.platformDispatcher.views.first.devicePixelRatio;
+    if ((newHeight - _lastKeyboardHeight).abs() > 1.0) {
+      _lastKeyboardHeight = newHeight;
+      if (!_isKeyboardAnimating) {
+        setState(() => _isKeyboardAnimating = true);
+      }
+      _keyboardAnimTimer?.cancel();
+      _keyboardAnimTimer = Timer(const Duration(milliseconds: 300), () {
+        if (mounted) {
+          setState(() => _isKeyboardAnimating = false);
+        }
+      });
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _keyboardAnimTimer?.cancel();
     widget.focusNode?.removeListener(_onFocusChange);
     widget.controller.removeListener(_onTextChanged);
     _sendButtonController.dispose();
@@ -364,6 +392,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     final theme = context.chatTheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final shouldReduceEffects = widget.reduceEffects ||
+        _isKeyboardAnimating ||
         MediaQuery.of(context).disableAnimations ||
         MediaQuery.of(context).accessibleNavigation;
     _reportHeightIfNeeded();

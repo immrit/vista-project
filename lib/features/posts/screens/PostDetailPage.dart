@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shamsi_date/shamsi_date.dart';
-import '../../../services/smart_share_service.dart';
 import '../../../model/publicPostModel.dart';
 import 'package:Vista/utils/widgets.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
@@ -17,9 +16,7 @@ import 'publicPosts.dart' as public_posts;
 import '../../../model/CommentModel.dart';
 import '../../../model/UserModel.dart';
 import '../../../provider/provider.dart';
-import '../../../model/MusicModel.dart';
-import '../../../provider/MusicProvider.dart';
-import 'MusicWaveform.dart';
+import 'package:Vista/features/posts/widgets/post_music_bubble.dart';
 import '../../../utils/premium_features_helper.dart';
 
 class PostDetailsPage extends ConsumerStatefulWidget {
@@ -35,7 +32,6 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
   late TextEditingController commentController;
   final List<UserModel> mentionedUsers = [];
   String? replyToCommentId;
-  final bool _isRetrying = false;
 
   @override
   void dispose() {
@@ -47,61 +43,6 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
   void initState() {
     super.initState();
     commentController = TextEditingController();
-  }
-
-  // سیستم اشتراک‌گذاری هوشمند
-  void _sharePost(PublicPostModel post) {
-    // استفاده از قابلیت جدید اشتراک‌گذاری تصویری
-    SmartShareService().showShareOptions(post, context);
-  }
-
-  // مدیریت خطا و retry
-  Widget _buildErrorWidget(String error, VoidCallback onRetry) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.error_outline,
-            size: 64,
-            color: Colors.grey[400],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'خطا در بارگذاری پست',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[600],
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            error,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[500],
-            ),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: _isRetrying ? null : onRetry,
-            icon: _isRetrying
-                ? SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh),
-            label: Text(_isRetrying ? 'در حال تلاش...' : 'تلاش مجدد'),
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   // Loading widget
@@ -168,10 +109,6 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
             );
           }
 
-          double screenWidth = MediaQuery.of(context).size.width - 20;
-          double imageRatio = snapshot.data!.width / snapshot.data!.height;
-          double displayHeight = screenWidth / imageRatio;
-
           return GestureDetector(
             onTap: () {
               Navigator.push(
@@ -188,91 +125,6 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
             ),
           );
         },
-      ),
-    );
-  }
-
-  void _showZoomableImage(BuildContext context, String imageUrl) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => GestureDetector(
-        onTap: () => Navigator.of(context).pop(),
-        child: Container(
-          color: Colors.black.withOpacity(0.9),
-          child: Stack(
-            children: [
-              Container(
-                width: MediaQuery.of(context).size.width,
-                height: MediaQuery.of(context).size.height,
-                alignment: Alignment.center,
-                child: InteractiveViewer(
-                  minScale: 0.5,
-                  maxScale: 4.0,
-                  child: Image.network(
-                    imageUrl,
-                    fit: BoxFit.contain,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Center(
-                        child: CircularProgressIndicator(
-                          value: loadingProgress.expectedTotalBytes != null
-                              ? loadingProgress.cumulativeBytesLoaded /
-                                  loadingProgress.expectedTotalBytes!
-                              : null,
-                          color: Colors.white,
-                        ),
-                      );
-                    },
-                    errorBuilder: (context, error, stackTrace) {
-                      return const Center(
-                        child: Icon(
-                          Icons.error_outline,
-                          size: 50,
-                          color: Colors.white,
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-              Positioned(
-                top: MediaQuery.of(context).padding.top + 10,
-                right: 10,
-                child: IconButton(
-                  icon: const Icon(
-                    Icons.close,
-                    color: Colors.white,
-                    size: 30,
-                  ),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ),
-              // اضافه کردن دکمه دانلود
-              // Positioned(
-              //   top: MediaQuery.of(context).padding.top + 10,
-              //   left: 10,
-              //   child: IconButton(
-              //     icon: const Icon(
-              //       Icons.download,
-              //       color: Colors.white,
-              //       size: 30,
-              //     ),
-              //     onPressed: () {
-              //       // اینجا کد دانلود عکس را اضافه کنید
-              //       ScaffoldMessenger.of(context).showSnackBar(
-              //         const SnackBar(
-              //           content: Text('دانلود تصویر شروع شد'),
-              //           duration: Duration(seconds: 2),
-              //         ),
-              //       );
-              //     },
-              //   ),
-              // ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -296,68 +148,6 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
         );
 
     return completer.future;
-  }
-
-  Widget _buildSingleImage(String imageUrl) {
-    return GestureDetector(
-      onTap: () => _showImageDialog(context, imageUrl),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: _buildImageWithRetry(imageUrl),
-      ),
-    );
-  }
-
-  Widget _buildMultipleImages(List<String> images) {
-    return ListView.builder(
-      scrollDirection: Axis.horizontal,
-      itemCount: images.length,
-      itemBuilder: (context, index) {
-        return Container(
-          width: 200,
-          margin: const EdgeInsets.only(right: 10),
-          child: GestureDetector(
-            onTap: () => _showImageDialog(context, images[index]),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: _buildImageWithRetry(images[index]),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  void _showImageDialog(BuildContext context, String imageUrl) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
-          child: Stack(
-            children: [
-              InteractiveViewer(
-                panEnabled: true,
-                boundaryMargin: const EdgeInsets.all(20),
-                minScale: 0.5,
-                maxScale: 4,
-                child: Image.network(
-                  imageUrl,
-                  fit: BoxFit.contain,
-                ),
-              ),
-              Positioned(
-                right: 0,
-                top: 0,
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
   }
 
   Widget _buildPostDetails(BuildContext context, PublicPostModel post) {
@@ -494,66 +284,40 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
             const SizedBox(height: 10),
             _buildLikeRow(post),
             if (post.musicUrl != null && post.musicUrl!.isNotEmpty)
-              Consumer(
-                builder: (context, ref, child) {
-                  final isPlaying = ref.watch(isPlayingProvider);
-                  final currentlyPlaying =
-                      ref.watch(currentlyPlayingProvider).value;
-                  final isThisPlaying =
-                      currentlyPlaying?.musicUrl == post.musicUrl;
-                  final position = ref.watch(musicPositionProvider);
-                  final duration = ref.watch(musicDurationProvider);
-
-                  return Container(
-                    margin: const EdgeInsets.symmetric(vertical: 16.0),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? Colors.grey[900]
-                          : Colors.grey[100],
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 10,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: MusicWaveform(
-                      musicUrl: post.musicUrl!,
-                      isPlaying: isPlaying && isThisPlaying,
-                      position: position,
-                      duration: duration,
-                      onPlayPause: () {
-                        if (isPlaying && isThisPlaying) {
-                          ref
-                              .read(musicPlayerProvider.notifier)
-                              .togglePlayPause();
-                        } else {
-                          final music = MusicModel(
-                            id: post.id,
-                            userId: post.userId,
-                            title: post.title ?? 'موزیک',
-                            artist: post.username,
-                            musicUrl: post.musicUrl!,
-                            createdAt: post.createdAt,
-                            username: post.username,
-                            avatarUrl: post.avatarUrl,
-                            isVerified: post.isVerified,
-                          );
-                          ref
-                              .read(musicPlayerProvider.notifier)
-                              .playMusic(music);
-                        }
-                      },
-                    ),
-                  );
-                },
+              PostMusicBubble(
+                postId: post.id,
+                musicUrl: post.musicUrl!,
+                createdAt: post.createdAt,
+                title: _resolveMusicTitle(post),
+                artist: post.username,
+                avatarUrl: post.avatarUrl,
+                margin: const EdgeInsets.symmetric(vertical: 16),
               ),
           ],
         ),
       ),
     );
+  }
+
+  String _resolveMusicTitle(PublicPostModel post) {
+    final direct = post.title?.trim() ?? '';
+    if (direct.isNotEmpty) return direct;
+
+    final url = post.musicUrl?.trim() ?? '';
+    if (url.isEmpty) return 'موزیک';
+
+    final uri = Uri.tryParse(url);
+    final lastSegment = (uri?.pathSegments.isNotEmpty ?? false)
+        ? uri!.pathSegments.last
+        : url.split('/').last;
+
+    final withoutExtension = lastSegment.replaceFirst(RegExp(r'\.[^.]+$'), '');
+    final normalized = withoutExtension
+        .replaceFirst(RegExp(r'^[^_]+_[0-9]+_'), '')
+        .replaceAll('_', ' ')
+        .trim();
+
+    return normalized.isEmpty ? 'موزیک' : normalized;
   }
 
   Widget _buildPostHeader(PublicPostModel post) {
@@ -893,7 +657,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
             ),
           ),
         ),
-        Text('${post.commentCount ?? 0}'),
+        Text('${post.commentCount}'),
       ],
     );
   }
@@ -1520,74 +1284,6 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
         );
       }
     }
-  }
-
-  List<TextSpan> _buildCommentTextSpans(CommentModel comment, bool isDarkMode) {
-    final List<TextSpan> spans = [];
-    final mentionRegex = RegExp(r'@(\w+)');
-
-    final matches = mentionRegex.allMatches(comment.content);
-    int lastIndex = 0;
-
-    for (final match in matches) {
-      // متن قبل از منشن
-      if (match.start > lastIndex) {
-        spans.add(
-          TextSpan(
-            text: comment.content.substring(lastIndex, match.start),
-            style: TextStyle(
-              color: isDarkMode ? Colors.white : Colors.black87,
-            ),
-          ),
-        );
-      }
-
-      // استایل منشن
-      spans.add(
-        TextSpan(
-          text: match.group(0),
-          style: TextStyle(
-            color: Colors.blue.shade400,
-            fontWeight: FontWeight.bold,
-          ),
-          recognizer: TapGestureRecognizer()
-            ..onTap = () async {
-              final username = match.group(1); // استخراج نام کاربری
-              if (username != null) {
-                // دریافت userId از پایگاه داده یا API بر اساس username
-                final userId = await getUserIdByUsername(username);
-                if (userId != null) {
-                  // ناوبری به پروفایل کاربر
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ProfileScreen(
-                        username: username,
-                        userId: userId,
-                      ),
-                    ),
-                  );
-                }
-              }
-            },
-        ),
-      );
-
-      lastIndex = match.end;
-    }
-
-    // متن باقی مانده
-    if (lastIndex < comment.content.length) {
-      spans.add(
-        TextSpan(
-          text: comment.content.substring(lastIndex),
-          style: TextStyle(
-              color: isDarkMode ? Colors.white : Colors.black87, fontSize: 15),
-        ),
-      );
-    }
-
-    return spans;
   }
 
   Widget _buildImageWithRetry(String imageUrl) {

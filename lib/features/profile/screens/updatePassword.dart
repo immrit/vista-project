@@ -14,8 +14,7 @@ class ChangePasswordWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final changePasswordState =
-        ref.watch(changePasswordProvider(_newPasswordController.text));
+    ref.watch(changePasswordProvider(_newPasswordController.text));
 
     return Scaffold(
       appBar: AppBar(

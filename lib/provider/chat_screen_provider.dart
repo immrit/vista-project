@@ -165,7 +165,6 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
 
   Future<void> deleteConversation() async {
     try {
-      final repo = ref.read(chatRepositoryProvider);
       // Implementation depends on repo support.
       // For now, we assume we want to clear local or call a repo method if it exists.
       // repo.deleteConversation(conversationId); // If not exists, we skip or add it.
@@ -240,7 +239,6 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
     // Placeholder for reporting logic
     // e.g., call a method in repository or user service
     try {
-      final repo = ref.read(chatRepositoryProvider);
       // If repo has reportUser? No.
       // We can use Supabase direct or specialized service.
       // For now logging it.

@@ -1,6 +1,6 @@
 // lib/features/chat/widgets/improved_animated_message_bubble.dart
 //
-// حباب پیام با نمایش زمان ثابت و شناور بهبود یافته
+// حباب پ�Oا�. با �?�.ا�Oش ز�.ا�? ثابت �^ ش�?ا�^ر ب�?ب�^د �Oافت�?
 //
 
 import 'package:flutter/material.dart';
@@ -18,7 +18,7 @@ import '../../../model/message_model.dart';
 import '../../../utils/rich_text_parser.dart';
 import '../../../utils/navigation_helper.dart';
 
-/// وضعیت پیام
+/// �^ضع�Oت پ�Oا�.
 enum MessageStatus {
   pending,
   sent,
@@ -27,7 +27,7 @@ enum MessageStatus {
   failed,
 }
 
-/// واکنش پیام
+/// �^اک�?ش پ�Oا�.
 class MessageReaction {
   final String emoji;
   final int count;
@@ -83,13 +83,14 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
   final String? attachmentUrl;
   final String? attachmentType;
   final String? attachmentFileName;
-  final int? duration; // برای voice messages
+  final int? duration; // برا�O voice messages
 
   // Forwarding
   final bool isForwarded;
   final String? forwardedFrom;
+  final VoidCallback? onRetryUpload;
 
-  // ✅ MessageModel برای دسترسی به statusNotifier
+  // �o. MessageModel برا�O دسترس�O ب�? statusNotifier
   final MessageModel? message;
 
   const ImprovedAnimatedMessageBubble({
@@ -123,6 +124,7 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
     this.duration,
     this.isForwarded = false,
     this.forwardedFrom,
+    this.onRetryUpload,
     this.message,
   });
 
@@ -141,17 +143,17 @@ class _ImprovedAnimatedMessageBubbleState
   late Animation<Offset> _slideAnimation;
   late Animation<double> _scaleAnimation;
 
-  // 👈 اضافه کردن منطق KeepAlive
+  // �Y'^ اضاف�? کرد�? �.�?ط�, KeepAlive
   @override
   bool get wantKeepAlive {
-    // فقط در این شرایط ویجت را در حافظه نگه دار:
-    // ۱. اگر ویس در حال پخش است (باید از سرویس پلیر چک شود - در مراحل بعد اضافه می‌کنیم)
-    // ۲. اگر ویدیو در حال پخش است
-    // ۳. یا اگر در حال آپلود است
+    // ف�,ط در ا�O�? شرا�Oط �^�Oجت را در حافظ�? �?گ�? دار:
+    // ۱. اگر �^�Oس در حا�" پخش است (با�Oد از سر�^�Oس پ�"�Oر �?ک ش�^د - در �.راح�" بعد اضاف�? �.�O�?Oک�?�O�.)
+    // ۲. اگر �^�Oد�O�^ در حا�" پخش است
+    // ۳. �Oا اگر در حا�" آپ�"�^د است
 
-    // فعلا برای آپلود و مدیاهای در حال پخش true برمی‌گردانیم
+    // فع�"ا برا�O آپ�"�^د �^ �.د�Oا�?ا�O در حا�" پخش true بر�.�O�?Oگردا�?�O�.
     final isUploading = widget.message?.isUploading ?? false;
-    // اینجا بعدا شرط isPlayingAudio را اضافه می‌کنیم
+    // ا�O�?جا بعدا شرط isPlayingAudio را اضاف�? �.�O�?Oک�?�O�.
     return isUploading;
   }
 
@@ -238,8 +240,10 @@ class _ImprovedAnimatedMessageBubbleState
   @override
   Widget build(BuildContext context) {
     super.build(
-        context); // 👈 حتما این را صدا بزن برای AutomaticKeepAliveClientMixin
+        context); // �Y'^ حت�.ا ا�O�? را صدا بز�? برا�O AutomaticKeepAliveClientMixin
     final theme = context.chatTheme;
+    const edgeInset = 1.0;
+    const oppositeInset = 30.0;
 
     return RepaintBoundary(
       child: FadeTransition(
@@ -264,8 +268,10 @@ class _ImprovedAnimatedMessageBubbleState
               onDoubleTap: widget.onDoubleTap,
               child: Padding(
                 padding: EdgeInsets.only(
-                  left: widget.isMe ? 60 : (widget.compactWithAvatar ? 6 : 12),
-                  right: widget.isMe ? 12 : 60,
+                  left: widget.isMe
+                      ? oppositeInset
+                      : (widget.compactWithAvatar ? 6 : edgeInset),
+                  right: widget.isMe ? edgeInset : oppositeInset,
                   bottom: widget.isLastInGroup ? 4 : 1.5,
                   top: widget.isFirstInGroup ? 4 : 1.5,
                 ),
@@ -296,20 +302,18 @@ class _ImprovedAnimatedMessageBubbleState
   }
 
   Widget _buildMessageBubble(ChatTheme theme) {
-    // تشخیص میدیم که آیا پیام مدیا (عکس/ویدیو) هست یا نه
-    final isMedia = (widget.attachmentType == 'image' ||
-            widget.attachmentType == 'video' ||
-            widget.message?.attachmentType == 'image' ||
-            widget.message?.attachmentType == 'video') &&
+    final canonicalType = _canonicalAttachmentType();
+    // تشخ�Oص �.�Oد�O�. ک�? آ�Oا پ�Oا�. �.د�Oا (عکس/�^�Oد�O�^) �?ست �Oا �?�?
+    final isMedia = (canonicalType == 'image' || canonicalType == 'video') &&
         widget.attachmentUrl != null;
 
     return Container(
-      // برای مدیا، ClipRRect رو اعمال میکنیم تا گوشه‌ها گرد بشن
+      // برا�O �.د�Oا�O ClipRRect ر�^ اع�.ا�" �.�Oک�?�O�. تا گ�^ش�?�?O�?ا گرد بش�?
       clipBehavior: isMedia ? Clip.antiAlias : Clip.none,
       decoration: BoxDecoration(
         color: widget.isMe ? theme.myBubbleColor : theme.otherBubbleColor,
         borderRadius: _getBorderRadius(theme),
-        // ✅ سایه حذف شد برای پرفورمنس
+        // �o. سا�O�? حذف شد برا�O پرف�^ر�.�?س
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -321,10 +325,10 @@ class _ImprovedAnimatedMessageBubbleState
             _buildStoryReplySection(theme),
           if (widget.replyToContent != null) _buildReplySection(theme),
 
-          // محتوای اصلی
+          // �.حت�^ا�O اص�"�O
           _buildContent(theme),
 
-          // برای مدیا، ری‌اکشن‌ها رو روی عکس هندل میکنیم یا پایینش (تلگرام پایینش میذاره)
+          // برا�O �.د�Oا�O ر�O�?Oاکش�?�?O�?ا ر�^ ر�^�O عکس �?�?د�" �.�Oک�?�O�. �Oا پا�O�O�?ش (ت�"گرا�. پا�O�O�?ش �.�Oذار�?)
           if (widget.reactions.isNotEmpty) _buildReactionsSection(theme),
         ],
       ),
@@ -415,7 +419,7 @@ class _ImprovedAnimatedMessageBubbleState
           ),
         ),
         child: Column(
-          mainAxisSize: MainAxisSize.min, // ✅ رفع خطای Overflow
+          mainAxisSize: MainAxisSize.min, // �o. رفع خطا�O Overflow
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
@@ -450,11 +454,11 @@ class _ImprovedAnimatedMessageBubbleState
 
     final isExpired = _isStoryReplyExpired(storyData);
     final headerText = widget.isMe
-        ? 'پاسخ به استوری ${storyData.storyOwnerUsername}'
-        : 'پاسخ به استوری شما';
+        ? 'پاسخ ب�? است�^ر�O ${storyData.storyOwnerUsername}'
+        : 'پاسخ ب�? است�^ر�O ش�.ا';
     final secondaryText = isExpired
-        ? 'استوری منقضی شده'
-        : (storyData.storyMediaType == 'video' ? 'ویدیو' : 'تصویر');
+        ? 'است�^ر�O �.�?�,ض�O شد�?'
+        : (storyData.storyMediaType == 'video' ? '�^�Oد�O�^' : 'تص�^�Oر');
 
     return GestureDetector(
       onTap: widget.onStoryReplyTap != null
@@ -607,12 +611,31 @@ class _ImprovedAnimatedMessageBubbleState
   }
 
   Widget _buildContent(ChatTheme theme) {
-    // 1. نمایش GIF ✅ اضافه شده
+    final canonicalType = _canonicalAttachmentType();
+    final isLocalPendingUpload = (widget.message?.isUploading ?? false) &&
+        (widget.message?.attachmentUrl == null ||
+            widget.message!.attachmentUrl!.isEmpty) &&
+        ((widget.message?.localFilePath?.isNotEmpty ?? false) ||
+            (widget.message?.localImagePath?.isNotEmpty ?? false));
+    if (isLocalPendingUpload) {
+      return _buildUploadingLocalAttachment(theme);
+    }
+
+    final isLocalFailedUpload = (widget.message?.isFailed ?? false) &&
+        (widget.message?.attachmentUrl == null ||
+            widget.message!.attachmentUrl!.isEmpty) &&
+        ((widget.message?.localFilePath?.isNotEmpty ?? false) ||
+            (widget.message?.localImagePath?.isNotEmpty ?? false));
+    if (isLocalFailedUpload) {
+      return _buildFailedLocalAttachment(theme);
+    }
+
+    // 1. �?�.ا�Oش GIF �o. اضاف�? شد�?
     if ((widget.attachmentType == 'gif' ||
             widget.message?.messageType == 'gif') &&
         widget.attachmentUrl != null &&
         widget.attachmentUrl!.isNotEmpty) {
-      // اینجا مطمئن می‌شویم که آبجکت مسیج داریم
+      // ا�O�?جا �.ط�.ئ�? �.�O�?Oش�^�O�. ک�? آبجکت �.س�Oج دار�O�.
       if (widget.message != null) {
         return Padding(
           padding: const EdgeInsets.all(8),
@@ -622,8 +645,7 @@ class _ImprovedAnimatedMessageBubbleState
     }
 
     // 2. Voice message
-    if ((widget.attachmentType == 'audio' ||
-            widget.attachmentType == 'voice') &&
+    if ((canonicalType == 'audio' || canonicalType == 'voice') &&
         widget.attachmentUrl != null &&
         widget.attachmentUrl!.isNotEmpty) {
       return Column(
@@ -633,11 +655,20 @@ class _ImprovedAnimatedMessageBubbleState
           VoiceMessageBubble(
             messageId: widget.messageId,
             audioUrl: widget.attachmentUrl!,
+            localFilePath: widget.message?.localFilePath,
             durationSeconds: widget.duration,
             isMe: widget.isMe,
             time: widget.time,
+            senderName: widget.senderName,
+            senderAvatarUrl: widget.message?.senderAvatar,
+            conversationId: widget.message?.conversationId,
+            attachmentType: canonicalType,
+            audioTitle: widget.message?.audioTitle,
+            audioArtist: widget.message?.audioArtist,
+            audioAlbum: widget.message?.audioAlbum,
+            caption: widget.content,
           ),
-          // زمان و تیک داخل حباب - فقط این قسمت با ValueListenableBuilder rebuild میشه
+          // ز�.ا�? �^ ت�Oک داخ�" حباب - ف�,ط ا�O�? �,س�.ت با ValueListenableBuilder rebuild �.�Oش�?
           Padding(
             padding: const EdgeInsets.only(left: 12, right: 12, bottom: 6),
             child: _buildTimeAndStatus(theme),
@@ -647,49 +678,50 @@ class _ImprovedAnimatedMessageBubbleState
     }
 
     // 3. Image & Video message (Updated)
-    if ((widget.attachmentType == 'image' ||
-            widget.attachmentType == 'video' ||
-            widget.message?.attachmentType == 'image' ||
-            widget.message?.attachmentType == 'video') &&
+    if ((canonicalType == 'image' || canonicalType == 'video') &&
         widget.attachmentUrl != null &&
         widget.attachmentUrl!.isNotEmpty) {
-      final isVideo = widget.attachmentType == 'video' ||
-          widget.message?.attachmentType == 'video';
+      final isVideo = canonicalType == 'video';
 
-      // ✅ تغییر مهم: مدیا بابل رو مستقیم برمی‌گردونیم بدون پدینگ اضافه
+      // �o. تغ�O�Oر �.�?�.: �.د�Oا باب�" ر�^ �.ست�,�O�. بر�.�O�?Oگرد�^�?�O�. بد�^�? پد�O�?گ اضاف�?
       return MediaMessageBubble(
-        message: widget.message, // پاس دادن کل مدل پیام برای دسترسی به وضعیت‌ها
+        message: widget
+            .message, // پاس داد�? ک�" �.د�" پ�Oا�. برا�O دسترس�O ب�? �^ضع�Oت�?O�?ا
         mediaUrl: widget.attachmentUrl!,
         mediaType: isVideo ? MediaType.video : MediaType.image,
         isMe: widget.isMe,
         time: widget.time,
         caption: widget.content.isNotEmpty ? widget.content : null,
         videoDuration: isVideo ? widget.duration : null,
-        // پاس دادن وضعیت آپلود
+        // پاس داد�? �^ضع�Oت آپ�"�^د
         isUploading: widget.status == MessageStatus.pending ||
             (widget.message?.isUploading ?? false),
       );
     }
 
     // 4. File message (Fallback for other attachment types)
-    if (widget.attachmentUrl != null && widget.attachmentUrl!.isNotEmpty) {
+    if (widget.attachmentUrl != null &&
+        widget.attachmentUrl!.isNotEmpty &&
+        (canonicalType == 'document' || canonicalType == 'unknown')) {
       return FileMessageBubble(
         messageId: widget.messageId,
         fileUrl: widget.attachmentUrl!,
         fileName: widget.attachmentFileName ?? 'File',
+        fileSizeBytes: widget.message?.attachmentSizeBytes,
+        localFilePath: widget.message?.localFilePath,
         isMe: widget.isMe,
         time: widget.time,
       );
     }
 
-    // Text message - با ساعت inline در پایین سمت چپ
+    // Text message - با ساعت inline در پا�O�O�? س�.ت �?پ
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          // محتوای متنی
+          // �.حت�^ا�O �.ت�?�O
           Flexible(
             child: widget.content.isNotEmpty
                 ? RichText(
@@ -726,16 +758,353 @@ class _ImprovedAnimatedMessageBubbleState
                 : const SizedBox.shrink(),
           ),
           const SizedBox(width: 8),
-          // ✅ زمان و تیک - فقط این قسمت rebuild میشه
+          // �o. ز�.ا�? �^ ت�Oک - ف�,ط ا�O�? �,س�.ت rebuild �.�Oش�?
           _buildTimeAndStatus(theme),
         ],
       ),
     );
   }
 
-  // ✅ Build time and status - فقط این قسمت rebuild میشه
+  String _canonicalAttachmentType() {
+    final raw = (widget.message?.attachmentType ?? widget.attachmentType ?? '')
+        .trim()
+        .toLowerCase();
+    if (raw.isEmpty) return 'unknown';
+
+    if (raw == 'image') return 'image';
+    if (raw == 'video') return 'video';
+    if (raw == 'voice') return 'voice';
+    if (raw == 'audio') return 'audio';
+    if (raw == 'document' || raw == 'pdf' || raw == 'file') {
+      return 'document';
+    }
+    if (raw.startsWith('image/')) return 'image';
+    if (raw.startsWith('audio/')) return 'audio';
+    if (raw.startsWith('video/')) return 'video';
+
+    return 'unknown';
+  }
+
+  Widget _buildUploadingLocalAttachment(ChatTheme theme) {
+    final rawProgress = widget.message?.uploadProgress ?? 0.0;
+    final progress = (rawProgress.isFinite ? rawProgress : 0.0).clamp(0.0, 1.0);
+    final fileName = widget.message?.attachmentFileName ??
+        widget.message?.localFilePath?.split('/').last ??
+        'File';
+    final pct = (progress * 100).toStringAsFixed(0);
+    final canonicalType = _canonicalAttachmentType();
+
+    if (canonicalType == 'audio' || canonicalType == 'voice') {
+      return _buildUploadingAudioAttachment(theme, progress, pct, fileName);
+    }
+
+    return _buildUploadingDocumentAttachment(theme, progress, pct, fileName);
+  }
+
+  Widget _buildUploadingDocumentAttachment(
+    ChatTheme theme,
+    double progress,
+    String pct,
+    String fileName,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildUploadProgressCircle(
+                theme: theme,
+                progress: progress,
+                size: 44,
+                strokeWidth: 2.8,
+                centerLabel: '$pct%',
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  fileName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: widget.isMe
+                        ? theme.myBubbleTextColor
+                        : theme.otherBubbleTextColor,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Uploading • $pct%',
+            style: TextStyle(
+              color: widget.isMe
+                  ? theme.myBubbleTextColor.withOpacity(0.8)
+                  : theme.otherBubbleTextColor.withOpacity(0.8),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (widget.content.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              widget.content,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: widget.isMe
+                    ? theme.myBubbleTextColor.withOpacity(0.9)
+                    : theme.otherBubbleTextColor.withOpacity(0.9),
+                fontSize: 13,
+              ),
+            ),
+          ],
+          const SizedBox(height: 6),
+          _buildTimeAndStatus(theme),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUploadingAudioAttachment(
+    ChatTheme theme,
+    double progress,
+    String pct,
+    String fileName,
+  ) {
+    final title = (widget.message?.audioTitle?.trim().isNotEmpty ?? false)
+        ? widget.message!.audioTitle!.trim()
+        : fileName;
+    final artist = widget.message?.audioArtist?.trim();
+    final waveformBars = List<double>.generate(
+      26,
+      (i) => 0.35 + ((i % 5) * 0.12),
+      growable: false,
+    );
+    final activeBars = (progress * waveformBars.length).floor();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _buildUploadProgressCircle(
+                theme: theme,
+                progress: progress,
+                size: 40,
+                strokeWidth: 2.8,
+                centerLabel: '$pct%',
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: widget.isMe
+                            ? theme.myBubbleTextColor
+                            : theme.otherBubbleTextColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (artist != null && artist.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        artist,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: widget.isMe
+                              ? theme.myBubbleTextColor.withOpacity(0.75)
+                              : theme.otherBubbleTextColor.withOpacity(0.75),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 16,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: List.generate(waveformBars.length, (i) {
+                final isActive = i < activeBars;
+                final barColor = isActive
+                    ? theme.sendButtonColor
+                    : (widget.isMe
+                        ? theme.myBubbleTextColor.withOpacity(0.22)
+                        : theme.otherBubbleTextColor.withOpacity(0.22));
+                return Container(
+                  width: 3,
+                  height: 8 + (waveformBars[i] * 8),
+                  margin: const EdgeInsets.only(right: 2),
+                  decoration: BoxDecoration(
+                    color: barColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                );
+              }),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Uploading audio • $pct%',
+            style: TextStyle(
+              color: widget.isMe
+                  ? theme.myBubbleTextColor.withOpacity(0.8)
+                  : theme.otherBubbleTextColor.withOpacity(0.8),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (widget.content.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              widget.content,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: widget.isMe
+                    ? theme.myBubbleTextColor.withOpacity(0.9)
+                    : theme.otherBubbleTextColor.withOpacity(0.9),
+                fontSize: 13,
+              ),
+            ),
+          ],
+          const SizedBox(height: 6),
+          _buildTimeAndStatus(theme),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUploadProgressCircle({
+    required ChatTheme theme,
+    required double progress,
+    required double size,
+    required double strokeWidth,
+    required String centerLabel,
+  }) {
+    final ringColor = widget.isMe ? Colors.white : theme.sendButtonColor;
+    final trackColor = ringColor.withOpacity(0.22);
+    final labelColor = widget.isMe
+        ? theme.myBubbleTextColor
+        : theme.otherBubbleTextColor.withOpacity(0.9);
+    final normalizedProgress = progress.clamp(0.0, 1.0);
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          CircularProgressIndicator(
+            value: normalizedProgress,
+            strokeWidth: strokeWidth,
+            color: ringColor,
+            backgroundColor: trackColor,
+          ),
+          Text(
+            centerLabel,
+            style: TextStyle(
+              color: labelColor,
+              fontSize: size * 0.24,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFailedLocalAttachment(ChatTheme theme) {
+    final fileName = widget.message?.attachmentFileName ??
+        widget.message?.localFilePath?.split('/').last ??
+        'File';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.error_outline_rounded,
+                size: 18,
+                color: theme.errorColor,
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  fileName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: widget.isMe
+                        ? theme.myBubbleTextColor
+                        : theme.otherBubbleTextColor,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            widget.message?.errorMessage ?? 'آپ�"�^د ا�?جا�. �?شد',
+            style: TextStyle(
+              color: theme.errorColor,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (widget.onRetryUpload != null) ...[
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: widget.onRetryUpload,
+              style: TextButton.styleFrom(
+                foregroundColor: theme.sendButtonColor,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                minimumSize: Size.zero,
+              ),
+              icon: const Icon(Icons.refresh_rounded, size: 16),
+              label: const Text('ت�"اش �.جدد'),
+            ),
+          ],
+          const SizedBox(height: 6),
+          _buildTimeAndStatus(theme),
+        ],
+      ),
+    );
+  }
+
+  // �o. Build time and status - ف�,ط ا�O�? �,س�.ت rebuild �.�Oش�?
   Widget _buildTimeAndStatus(ChatTheme theme) {
-    // ✅ اگر message موجود باشه، از ValueListenableBuilder استفاده کن
+    // �o. اگر message �.�^ج�^د باش�?�O از ValueListenableBuilder استفاد�? ک�?
     if (widget.message != null) {
       return ValueListenableBuilder<MessageDeliveryStatus>(
         valueListenable: widget.message!.statusNotifier,
@@ -763,7 +1132,7 @@ class _ImprovedAnimatedMessageBubbleState
       );
     }
 
-    // Fallback به روش قدیمی
+    // Fallback ب�? ر�^ش �,د�O�.�O
     final deliveryStatus = _convertToDeliveryStatus(widget.status);
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -810,7 +1179,7 @@ class _ImprovedAnimatedMessageBubbleState
     );
   }
 
-  /// تبدیل MessageStatus به MessageDeliveryStatus
+  /// تبد�O�" MessageStatus ب�? MessageDeliveryStatus
   MessageDeliveryStatus _convertToDeliveryStatus(MessageStatus status) {
     switch (status) {
       case MessageStatus.pending:

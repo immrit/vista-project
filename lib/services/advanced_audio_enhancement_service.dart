@@ -155,70 +155,6 @@ class AdvancedAudioEnhancementService {
     return inputBytes;
   }
 
-  /// کاهش نویز پیشرفته
-  Future<Uint8List> _reduceNoiseAdvanced(
-    Uint8List audioBytes,
-    double noiseReductionLevel,
-  ) async {
-    // TODO: پیاده‌سازی کاهش نویز با الگوریتم‌های پیشرفته
-    // می‌توان از Spectral Subtraction یا Wiener Filter استفاده کرد
-    return audioBytes;
-  }
-
-  /// حذف اکو پیشرفته
-  Future<Uint8List> _cancelEchoAdvanced(
-    Uint8List audioBytes,
-    double echoCancellationLevel,
-  ) async {
-    // TODO: پیاده‌سازی حذف اکو با الگوریتم‌های پیشرفته
-    // می‌توان از Adaptive Filter یا NLMS استفاده کرد
-    return audioBytes;
-  }
-
-  /// تنظیم خودکار gain پیشرفته
-  Future<Uint8List> _autoGainAdvanced(
-    Uint8List audioBytes,
-    double targetLoudness,
-  ) async {
-    // TODO: پیاده‌سازی تنظیم خودکار gain با LUFS
-    return audioBytes;
-  }
-
-  /// فیلتر high-pass پیشرفته
-  Future<Uint8List> _applyHighPassFilterAdvanced(
-    Uint8List audioBytes,
-    double frequency,
-  ) async {
-    // TODO: پیاده‌سازی فیلتر high-pass با Butterworth یا Chebyshev
-    return audioBytes;
-  }
-
-  /// فیلتر low-pass پیشرفته
-  Future<Uint8List> _applyLowPassFilterAdvanced(
-    Uint8List audioBytes,
-    double frequency,
-  ) async {
-    // TODO: پیاده‌سازی فیلتر low-pass با Butterworth یا Chebyshev
-    return audioBytes;
-  }
-
-  /// فشرده‌سازی دینامیک پیشرفته
-  Future<Uint8List> _applyCompressionAdvanced(
-    Uint8List audioBytes,
-    double ratio,
-    double attackTime,
-    double releaseTime,
-  ) async {
-    // TODO: پیاده‌سازی فشرده‌سازی دینامیک پیشرفته
-    return audioBytes;
-  }
-
-  /// نرمال‌سازی پیشرفته
-  Future<Uint8List> _applyNormalizationAdvanced(Uint8List audioBytes) async {
-    // TODO: پیاده‌سازی نرمال‌سازی پیشرفته
-    return audioBytes;
-  }
-
   /// تحلیل کیفیت صدا پیشرفته
   Future<AdvancedAudioQualityAnalysis> analyzeAudioQualityAdvanced(
     File audioFile,
@@ -506,6 +442,3 @@ enum AudioQuality {
   high,
   unknown,
 }
-
-
-

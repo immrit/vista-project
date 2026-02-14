@@ -1282,7 +1282,6 @@ class CommentService {
       if (comment.parentCommentId != null) {
         final parentComment = commentMap[comment.parentCommentId];
         if (parentComment != null) {
-          parentComment.replies = parentComment.replies ?? [];
           parentComment.replies.add(comment);
           return true; // حذف ریپلای از لیست اصلی
         }
@@ -1484,9 +1483,7 @@ class CommentNotifier extends StateNotifier<AsyncValue<void>> {
 
 // نوتیفایر جدید برای مدیریت کامنت‌ها
 class CommentsNotifier extends StateNotifier<List<CommentModel>> {
-  final CommentService _commentService;
-
-  CommentsNotifier(this._commentService) : super([]);
+  CommentsNotifier(CommentService _) : super([]);
 
   void addComment({
     required String postId,
@@ -3366,7 +3363,7 @@ class ProfilePostsNotifier
 
       if (postsResponse.isEmpty) {
         _hasMore = false;
-        _isLoading = false;
+        state = AsyncValue.data(List<PublicPostModel>.from(_allPosts));
         return;
       }
 
@@ -3391,7 +3388,7 @@ class ProfilePostsNotifier
       _offset += postsResponse.length; // مطابق تعداد واقعی دریافتی
       _hasMore = postsResponse.length == _limit;
 
-      state = AsyncValue.data(_allPosts);
+      state = AsyncValue.data(List<PublicPostModel>.from(_allPosts));
     } catch (e) {
       state = AsyncValue.error(e, StackTrace.current);
     } finally {

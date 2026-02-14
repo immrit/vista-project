@@ -6,6 +6,7 @@ import 'package:timeago/timeago.dart' as timeago;
 import 'package:Vista/model/session_model.dart';
 import 'package:Vista/provider/session_provider.dart';
 import 'package:Vista/services/session_manager_service_v2.dart';
+import 'package:Vista/services/sensitive_action_guard.dart';
 
 /// صفحه نشست‌های فعال - طراحی مدرن Security Hub
 class ActiveSessionsScreen extends ConsumerStatefulWidget {
@@ -153,8 +154,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
                   // Terminate All Button
                   if (otherSessions.isNotEmpty) ...[
                     const SizedBox(height: 32),
-                    _buildTerminateAllButton(
-                        otherSessions, sessionManager, isDark),
+                    _buildTerminateAllButton(sessionManager),
                   ],
 
                   const SizedBox(height: 40),
@@ -411,12 +411,10 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
   }
 
   Widget _buildTerminateAllButton(
-    List<SessionModel> sessions,
     SessionManagerServiceV2 sessionManager,
-    bool isDark,
   ) {
     return OutlinedButton.icon(
-      onPressed: () => _terminateAllSessions(sessions, sessionManager),
+      onPressed: () => _terminateAllSessions(sessionManager),
       icon: const Icon(Icons.logout, size: 20),
       label: const Text('خاتمه تمام نشست‌های دیگر'),
       style: OutlinedButton.styleFrom(
@@ -545,7 +543,6 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
   }
 
   Future<void> _terminateAllSessions(
-    List<SessionModel> sessions,
     SessionManagerServiceV2 sessionManager,
   ) async {
     final confirmed = await showDialog<bool>(
@@ -559,15 +556,17 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
 
     if (confirmed != true) return;
 
-    int successCount = 0;
-    for (final session in sessions) {
-      final result = await sessionManager.terminateSession(session.id);
-      if (result.success) successCount++;
-    }
+    final allowed = await SensitiveActionGuard.verify(
+      context,
+      action: SensitiveAction.terminateAllOtherSessions,
+    );
+    if (!allowed) return;
+
+    final successCount = await sessionManager.terminateAllOtherSessions();
 
     if (mounted) {
       ref.invalidate(activeSessionsProvider);
-      _showSuccessSnackBar('$successCount نشست با موفقیت خاتمه یافت');
+      _showSuccessSnackBar('$successCount نشست دیگر با موفقیت خاتمه یافت');
     }
   }
 

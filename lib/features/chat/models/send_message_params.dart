@@ -4,6 +4,11 @@ class SendMessageParams {
   final String? attachmentUrl;
   final String? attachmentType;
   final String? attachmentFileName;
+  final String? attachmentMimeType;
+  final int? attachmentSizeBytes;
+  final String? audioTitle;
+  final String? audioArtist;
+  final String? audioAlbum;
   final int? duration;
   final String? replyToMessageId;
   final String? replyToContent;
@@ -15,6 +20,11 @@ class SendMessageParams {
     this.attachmentUrl,
     this.attachmentType,
     this.attachmentFileName,
+    this.attachmentMimeType,
+    this.attachmentSizeBytes,
+    this.audioTitle,
+    this.audioArtist,
+    this.audioAlbum,
     this.duration,
     this.replyToMessageId,
     this.replyToContent,
